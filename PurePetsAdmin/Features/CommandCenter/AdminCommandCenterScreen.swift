@@ -228,6 +228,8 @@ public final class AdminCommandOrbitHostingController: UIViewController {
         store.localeCode = Language.currentLanguageCode()
         self.store = store
         super.init(nibName: nil, bundle: nil)
+        modalPresentationStyle = .fullScreen
+        modalPresentationCapturesStatusBarAppearance = true
     }
 
     public required init?(coder aDecoder: NSCoder) {
@@ -237,6 +239,8 @@ public final class AdminCommandOrbitHostingController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .clear
+        edgesForExtendedLayout = .all
+        extendedLayoutIncludesOpaqueBars = true
 
         let root = AdminCommandCenterScreenView(store: store)
         let host = UIHostingController(rootView: root)
@@ -468,15 +472,23 @@ struct AdminCommandCenterScreenView: View {
                             fixedNavBar(safeTop: safeTop, isRegular: isRegular)
                         }
 
-                        LazyVStack(alignment: .leading, spacing: AdminCommandMetric.sectionSpacing) {
+                        LazyVStack(alignment: .leading, spacing: AdminSectionSpacing.interSection(isRegular: isRegular)) {
                             phaseContent(isRegular: isRegular, containerWidth: contentAvailableWidth)
                         }
                         .padding(.horizontal, AdminCommandMetric.pageMargin)
-                        .padding(.top, 14)
+                        .padding(.top, AdminSectionSpacing.navBarToFirstSection(isRegular: isRegular))
                         .padding(.bottom, max(geometry.safeAreaInsets.bottom + 88, AdminCommandMetric.tabBarBottomInset))
                         .frame(maxWidth: isRegular ? ipadMaxWidth : .infinity)
                         .frame(maxWidth: .infinity)
                     }
+                }
+                .scrollBounceBehavior(.always, axes: .vertical)
+                .refreshable {
+                    let impact = UIImpactFeedbackGenerator(style: .medium)
+                    impact.prepare()
+                    impact.impactOccurred()
+                    refresh()
+                    try? await Task.sleep(nanoseconds: 650_000_000)
                 }
             }
             .background(AdminSurface.background.ignoresSafeArea())
@@ -591,7 +603,7 @@ struct AdminCommandCenterScreenView: View {
     }
 
     private func readyContent(isRegular: Bool, containerWidth: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: AdminCommandMetric.sectionSpacing) {
+        VStack(alignment: .leading, spacing: AdminSectionSpacing.interSection(isRegular: isRegular)) {
             // Deck 1: Sovereign POS Console Station (Fast Sell & POS History)
             CommandPOSDeck(
                 isRegular: isRegular,
@@ -615,42 +627,70 @@ struct AdminCommandCenterScreenView: View {
                 onRoute: { route($0) }
             )
 
-            if isRegular {
-                // MARK: - iPad Multi-Horizon Flight Deck
-                // Deck 2: Twin Telemetry Horizons (Accounting & Hotel side-by-side)
-                if store.canAccessHotel {
-                    HStack(alignment: .top, spacing: 14) {
+            // Deck 4: Telemetry Horizons (Accounting & Hotel)
+            VStack(alignment: .leading, spacing: AdminSectionSpacing.headerToContent(isRegular: isRegular)) {
+                AdminSectionHeader(
+                    title: Language.get("AdminHorizons_SectionTitle", alter: "الأفق المالي والفندقي"),
+                    subtitle: Language.get("AdminHorizons_SectionDetail", alter: "تتبع مباشر للإيرادات، صافي الأرباح، ونزلاء الفندق والغرف"),
+                    eyebrow: Language.get("AdminHorizons_SectionEyebrow", alter: "المؤشرات والأفق التشغيلي"),
+                    symbol: "chart.line.uptrend.xyaxis",
+                    themeColor: Color(red: 0.05, green: 0.65, blue: 0.95),
+                    state: .normal,
+                    isRegular: isRegular
+                )
+
+                if isRegular {
+                    // MARK: - iPad Multi-Horizon Flight Deck
+                    if store.canAccessHotel {
+                        HStack(alignment: .top, spacing: 14) {
+                            CommandAccountingSovereignCard(
+                                onRoute: { route("accounting") }
+                            )
+                            .frame(maxWidth: .infinity)
+
+                            CommandHotelSovereignCard(
+                                onRoute: { route("hotel") }
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                    } else {
                         CommandAccountingSovereignCard(
                             onRoute: { route("accounting") }
                         )
-                        .frame(maxWidth: .infinity)
-
-                        CommandHotelSovereignCard(
-                            onRoute: { route("hotel") }
-                        )
-                        .frame(maxWidth: .infinity)
                     }
                 } else {
-                    CommandAccountingSovereignCard(
-                        onRoute: { route("accounting") }
-                    )
+                    // MARK: - iPhone Single-Column High-Velocity Stack
+                    VStack(spacing: 12) {
+                        CommandAccountingSovereignCard(
+                            onRoute: { route("accounting") }
+                        )
+
+                        if store.canAccessHotel {
+                            CommandHotelSovereignCard(
+                                onRoute: { route("hotel") }
+                            )
+                        }
+                    }
                 }
+            }
 
-                // Deck 3: Panoramic Tactical Operational Beacon
-                CommandEscalationHero(
-                    model: heroModel,
-                    isRegular: true,
-                    onPrimary: { signal in route(signal.id) }
-                )
-                .transition(reduceMotion ? .identity : .opacity)
+            // Deck 5: Panoramic Tactical Operational Beacon
+            CommandEscalationHero(
+                model: heroModel,
+                isRegular: isRegular,
+                onPrimary: { signal in route(signal.id) }
+            )
+            .transition(reduceMotion ? .identity : .opacity)
 
-                // Deck 4: Dual-Wing Base Deck (Priority Runway + Source Ledger)
+            if isRegular {
+                // Deck 6 & 7: iPad Dual-Wing Base Deck (Priority Runway + Source Ledger)
                 HStack(alignment: .top, spacing: 14) {
                     CommandPriorityRunway(
                         title: runwayTitle,
                         detail: runwayDetail,
                         signals: store.snapshot.signals,
                         locale: locale,
+                        isRegular: true,
                         action: { route($0.id) }
                     )
                     .frame(maxWidth: .infinity)
@@ -660,37 +700,19 @@ struct AdminCommandCenterScreenView: View {
                         detail: L10n("AdminCommandCenter_SourceLedger_Detail"),
                         loadingSources: localizedAreaNames(store.readiness.loadingAreas),
                         failedSources: localizedAreaNames(store.readiness.failedAreas),
-                        updatedText: updatedText
+                        updatedText: updatedText,
+                        isRegular: true
                     )
                     .frame(maxWidth: .infinity)
                 }
             } else {
-                // MARK: - iPhone Single-Column High-Velocity Stack (Preserved 100%)
-                // Index 2: Accounting Sovereign Card
-                CommandAccountingSovereignCard(
-                    onRoute: { route("accounting") }
-                )
-
-                // Index 3: Pets Hotel Sovereign Card
-                if store.canAccessHotel {
-                    CommandHotelSovereignCard(
-                        onRoute: { route("hotel") }
-                    )
-                }
-
-                // Index 4: Operational Health & Escalation Hero (Tactical Operational Beacon)
-                CommandEscalationHero(
-                    model: heroModel,
-                    isRegular: false,
-                    onPrimary: { signal in route(signal.id) }
-                )
-                .transition(reduceMotion ? .identity : .opacity)
-
+                // Deck 6 & 7: iPhone Priority Runway & Source Ledger
                 CommandPriorityRunway(
                     title: runwayTitle,
                     detail: runwayDetail,
                     signals: store.snapshot.signals,
                     locale: locale,
+                    isRegular: false,
                     action: { route($0.id) }
                 )
 
@@ -699,7 +721,8 @@ struct AdminCommandCenterScreenView: View {
                     detail: L10n("AdminCommandCenter_SourceLedger_Detail"),
                     loadingSources: localizedAreaNames(store.readiness.loadingAreas),
                     failedSources: localizedAreaNames(store.readiness.failedAreas),
-                    updatedText: updatedText
+                    updatedText: updatedText,
+                    isRegular: false
                 )
             }
         }
@@ -993,6 +1016,232 @@ struct AdminCommandCenterScreenView: View {
 
 }
 
+// MARK: - Workplace Header Backgrounds
+
+/// Sovereign Living Aurora & Specular Glass Cockpit Surface for the Command Center Top Bar.
+/// Category-defining animated background with telemetry-tuned living resonance,
+/// sapphire-crystal specular caustics, and light-sculpted physical bezel strokes.
+private struct CommandCenterCockpitBackground: View {
+    let readinessTone: AdminCommandTone
+    let cornerRadius: CGFloat
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.layoutDirection) private var layoutDirection
+
+    @State private var breatheBrand: Bool = false
+    @State private var breatheTelemetry: Bool = false
+    @State private var sheenSweep: Bool = false
+
+    private var isRTL: Bool {
+        layoutDirection == .rightToLeft
+    }
+
+    private var primaryAuraColor: Color {
+        Color(uiColor: .ppPrimary)
+    }
+
+    private var telemetryAuraColor: Color {
+        readinessTone.accent
+    }
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: colorScheme == .dark
+                        ? [AdminSurface.surface, AdminSurface.surface.opacity(0.96)]
+                        : [Color(uiColor: .ppSurface), Color(uiColor: .ppSurface).opacity(0.98)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .overlay {
+                if !reduceMotion {
+                    GeometryReader { proxy in
+                        let w = proxy.size.width
+                        let h = proxy.size.height
+
+                        let brandCenter = isRTL
+                            ? CGPoint(x: w * 0.78, y: h * 0.32)
+                            : CGPoint(x: w * 0.22, y: h * 0.32)
+                        let telemetryCenter = isRTL
+                            ? CGPoint(x: w * 0.26, y: h * 0.72)
+                            : CGPoint(x: w * 0.74, y: h * 0.72)
+
+                        ZStack {
+                            // Orb 1: Signature Brand Radiance (soft ruby & rose gold orbit)
+                            Circle()
+                                .fill(
+                                    RadialGradient(
+                                        colors: [
+                                            primaryAuraColor.opacity(colorScheme == .dark ? 0.20 : 0.10),
+                                            Color(uiColor: .ppSoftRose).opacity(colorScheme == .dark ? 0.12 : 0.05),
+                                            .clear
+                                        ],
+                                        center: .center,
+                                        startRadius: 0,
+                                        endRadius: max(w, h) * 0.42
+                                    )
+                                )
+                                .frame(width: max(w, h) * 0.84, height: max(w, h) * 0.84)
+                                .position(
+                                    x: brandCenter.x + (breatheBrand ? 12 : -8),
+                                    y: brandCenter.y + (breatheBrand ? -5 : 7)
+                                )
+                                .scaleEffect(breatheBrand ? 1.14 : 0.90)
+                                .blur(radius: 22)
+
+                            // Orb 2: Operational Health Resonance (breathes in sync with readiness tone)
+                            Circle()
+                                .fill(
+                                    RadialGradient(
+                                        colors: [
+                                            telemetryAuraColor.opacity(colorScheme == .dark ? 0.22 : 0.11),
+                                            telemetryAuraColor.opacity(colorScheme == .dark ? 0.08 : 0.03),
+                                            .clear
+                                        ],
+                                        center: .center,
+                                        startRadius: 0,
+                                        endRadius: max(w, h) * 0.38
+                                    )
+                                )
+                                .frame(width: max(w, h) * 0.76, height: max(w, h) * 0.76)
+                                .position(
+                                    x: telemetryCenter.x + (breatheTelemetry ? -10 : 10),
+                                    y: telemetryCenter.y + (breatheTelemetry ? 5 : -5)
+                                )
+                                .scaleEffect(breatheTelemetry ? 1.16 : 0.88)
+                                .blur(radius: 20)
+
+                            // 3. Specular Prismatic Sheen (Sapphire Crystal Light Ray)
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .clear, location: 0.0),
+                                    .init(color: Color.white.opacity(0.0), location: 0.38),
+                                    .init(color: Color.white.opacity(colorScheme == .dark ? 0.12 : 0.28), location: 0.50),
+                                    .init(color: Color.white.opacity(0.0), location: 0.62),
+                                    .init(color: .clear, location: 1.0)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                            .frame(width: w * 1.8, height: h * 2.4)
+                            .rotationEffect(.degrees(22))
+                            .offset(x: sheenSweep ? (w * 0.85) : -(w * 0.85))
+                            .blendMode(colorScheme == .dark ? .plusLighter : .overlay)
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                } else {
+                    // Tranquil static studio lighting for Reduce Motion
+                    LinearGradient(
+                        stops: [
+                            .init(color: primaryAuraColor.opacity(colorScheme == .dark ? 0.08 : 0.04), location: isRTL ? 0.85 : 0.15),
+                            .init(color: telemetryAuraColor.opacity(colorScheme == .dark ? 0.08 : 0.04), location: isRTL ? 0.15 : 0.85),
+                            .init(color: .clear, location: 0.5)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                }
+            }
+            .overlay {
+                // 4. Ultra-Thin Frosted Glass Depth
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(.ultraThinMaterial.opacity(colorScheme == .dark ? 0.20 : 0.30))
+            }
+            .overlay {
+                // 5. Precision Sculpted Multi-Stop Bezel Rim
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            stops: [
+                                .init(color: Color.white.opacity(colorScheme == .dark ? 0.24 : 0.72), location: 0.0),
+                                .init(color: AdminSurface.hairline.opacity(0.85), location: 0.45),
+                                .init(color: telemetryAuraColor.opacity(colorScheme == .dark ? 0.30 : 0.18), location: 0.80),
+                                .init(color: AdminSurface.hairline.opacity(0.70), location: 1.0)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: contrast == .increased ? 1.25 : AdminStroke.hairline
+                    )
+            }
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .shadow(
+                color: AdminShadow.card.color,
+                radius: AdminShadow.card.radius,
+                y: AdminShadow.card.y
+            )
+            .shadow(
+                color: telemetryAuraColor.opacity(colorScheme == .dark ? 0.16 : 0.08),
+                radius: 14,
+                y: 5
+            )
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 7.2).repeatForever(autoreverses: true)) {
+                    breatheBrand = true
+                }
+                withAnimation(.easeInOut(duration: 5.8).repeatForever(autoreverses: true)) {
+                    breatheTelemetry = true
+                }
+                withAnimation(.easeInOut(duration: 9.5).repeatForever(autoreverses: true)) {
+                    sheenSweep = true
+                }
+            }
+    }
+}
+
+/// Fluid Recessed Optic Chamber for the Working Branch Selector inside the top bar.
+private struct CommandCenterChamberBackground: View {
+    let readinessTone: AdminCommandTone
+    let cornerRadius: CGFloat
+
+    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [
+                        AdminSurface.control.opacity(colorScheme == .dark ? 0.85 : 0.72),
+                        AdminSurface.control.opacity(colorScheme == .dark ? 0.60 : 0.46)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .overlay {
+                // Ultra-thin material allowing subtle ambient aurora pass-through
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(.ultraThinMaterial.opacity(colorScheme == .dark ? 0.15 : 0.25))
+            }
+            .overlay {
+                // Precision micro-bevel border: top catches ambient light, bottom grounds it
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            stops: [
+                                .init(color: Color.white.opacity(colorScheme == .dark ? 0.20 : 0.65), location: 0.0),
+                                .init(color: AdminSurface.hairline.opacity(0.85), location: 0.50),
+                                .init(color: readinessTone.accent.opacity(colorScheme == .dark ? 0.22 : 0.14), location: 0.80),
+                                .init(color: AdminSurface.hairline.opacity(0.60), location: 1.0)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: contrast == .increased ? 1.0 : 0.75
+                    )
+            }
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    }
+}
+
 // MARK: - Workplace Header
 
 /// Presentation only. Snapshot, staff scope, branch selection and routes stay
@@ -1018,7 +1267,6 @@ private struct CommandCenterChrome: View {
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.layoutDirection) private var layoutDirection
     @State private var isShowingMoreMenu: Bool = false
-    @State private var isSpinningRefresh: Bool = false
     @State private var pulseBeacon: Bool = false
     @ScaledMetric(relativeTo: .body) private var avatarSide: CGFloat = 36
 
@@ -1061,21 +1309,7 @@ private struct CommandCenterChrome: View {
         .padding(.top, 10)
         .padding(.bottom, 10)
         .background(
-            AdminSurface.surface,
-            in: RoundedRectangle(cornerRadius: 22, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(
-                    AdminSurface.hairline,
-                    lineWidth: contrast == .increased ? 1 : AdminStroke.hairline
-                )
-                .allowsHitTesting(false)
-        }
-        .shadow(
-            color: AdminShadow.card.color,
-            radius: AdminShadow.card.radius,
-            y: AdminShadow.card.y
+            CommandCenterCockpitBackground(readinessTone: readinessTone, cornerRadius: 22)
         )
         .zIndex(isShowingMoreMenu ? 10 : 1)
     }
@@ -1152,7 +1386,7 @@ private struct CommandCenterChrome: View {
 
     private var flightUtilityClusteriPhone: some View {
         HStack(spacing: 6) {
-            // Language Matrix Switcher Pill (Equal Size: 38x38)
+            // Language Matrix Switcher Pill (Width: 48, Height: 38)
             Button(action: onLanguage) {
                 HStack(spacing: 3) {
                     Image(systemName: "globe")
@@ -1162,7 +1396,7 @@ private struct CommandCenterChrome: View {
                         .environment(\.layoutDirection, .leftToRight)
                 }
                 .foregroundStyle(AdminSurface.primaryText)
-                .frame(width: 38, height: 38)
+                .frame(width: 48, height: 38)
                 .background(
                     AdminSurface.control,
                     in: RoundedRectangle(cornerRadius: 11, style: .continuous)
@@ -1177,38 +1411,6 @@ private struct CommandCenterChrome: View {
             .accessibilityLabel(Language.get("Confirm_LanguageChange_Title", alter: nil))
             .accessibilityValue(languageTitle)
             .accessibilityIdentifier("admin.command.header.language")
-
-            // Live Sync Radar Refresh Button with rotation animation (Equal Size: 38x38)
-            Button {
-                let generator = UIImpactFeedbackGenerator(style: .light)
-                generator.prepare()
-                generator.impactOccurred()
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) {
-                    isSpinningRefresh = true
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    isSpinningRefresh = false
-                }
-                onRefresh()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 13.5, weight: .semibold))
-                    .foregroundStyle(isSpinningRefresh ? AdminSurface.primary : AdminSurface.primaryText)
-                    .rotationEffect(.degrees(isSpinningRefresh ? 360 : 0))
-                    .frame(width: 38, height: 38)
-                    .background(
-                        isSpinningRefresh ? AdminSurface.primary.opacity(0.12) : AdminSurface.control,
-                        in: RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 11, style: .continuous)
-                            .strokeBorder(isSpinningRefresh ? AdminSurface.primary.opacity(0.4) : AdminSurface.hairline, lineWidth: 0.75)
-                    )
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(CommandHeaderPressStyle())
-            .accessibilityLabel(Language.get("AdminCommandCenter_Refresh", alter: nil))
-            .accessibilityIdentifier("admin.command.header.refresh")
 
             // Mission More Menu Button (Equal Size: 38x38)
             moreActionsMenu(size: 38)
@@ -1297,12 +1499,7 @@ private struct CommandCenterChrome: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
-            AdminSurface.control.opacity(0.65),
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+            CommandCenterChamberBackground(readinessTone: readinessTone, cornerRadius: 14)
         )
         .contentShape(Rectangle())
         .onTapGesture {
@@ -1384,21 +1581,7 @@ private struct CommandCenterChrome: View {
         .padding(.horizontal, 18)
         .padding(.vertical, 10)
         .background(
-            AdminSurface.surface,
-            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(
-                    AdminSurface.hairline,
-                    lineWidth: contrast == .increased ? 1 : AdminStroke.hairline
-                )
-                .allowsHitTesting(false)
-        }
-        .shadow(
-            color: AdminShadow.card.color,
-            radius: AdminShadow.card.radius,
-            y: AdminShadow.card.y
+            CommandCenterCockpitBackground(readinessTone: readinessTone, cornerRadius: 24)
         )
         .zIndex(isShowingMoreMenu ? 10 : 1)
     }
@@ -1544,66 +1727,32 @@ private struct CommandCenterChrome: View {
     }
 
     private var utilityActionsIPad: some View {
-        HStack(spacing: 8) {
-            // Language Matrix Switcher
-            Button(action: onLanguage) {
-                HStack(spacing: 5) {
-                    Image(systemName: "globe")
-                        .font(.system(size: 13, weight: .semibold))
-                    Text(languageTitle)
-                        .font(PPBrandFont.bold(size: 13, relativeTo: .footnote))
-                        .environment(\.layoutDirection, .leftToRight)
-                }
-                .foregroundStyle(AdminSurface.primaryText)
-                .padding(.horizontal, 11)
-                .frame(height: 36)
-                .background(
-                    AdminSurface.control,
-                    in: RoundedRectangle(cornerRadius: 11, style: .continuous)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
-                )
-                .contentShape(Rectangle())
+        // Language Matrix Switcher
+        Button(action: onLanguage) {
+            HStack(spacing: 5) {
+                Image(systemName: "globe")
+                    .font(.system(size: 13, weight: .semibold))
+                Text(languageTitle)
+                    .font(PPBrandFont.bold(size: 13, relativeTo: .footnote))
+                    .environment(\.layoutDirection, .leftToRight)
             }
-            .buttonStyle(CommandHeaderPressStyle())
-            .accessibilityLabel(Language.get("Confirm_LanguageChange_Title", alter: nil))
-            .accessibilityValue(languageTitle)
-            .accessibilityIdentifier("admin.command.header.language.ipad")
-
-            // Live Sync Refresh with Haptics and Spin Animation
-            Button {
-                let generator = UIImpactFeedbackGenerator(style: .light)
-                generator.prepare()
-                generator.impactOccurred()
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) {
-                    isSpinningRefresh = true
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    isSpinningRefresh = false
-                }
-                onRefresh()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(isSpinningRefresh ? AdminSurface.primary : AdminSurface.primaryText)
-                    .rotationEffect(.degrees(isSpinningRefresh ? 360 : 0))
-                    .frame(width: 36, height: 36)
-                    .background(
-                        isSpinningRefresh ? AdminSurface.primary.opacity(0.12) : AdminSurface.control,
-                        in: RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 11, style: .continuous)
-                            .strokeBorder(isSpinningRefresh ? AdminSurface.primary.opacity(0.4) : AdminSurface.hairline, lineWidth: 0.75)
-                    )
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(CommandHeaderPressStyle())
-            .accessibilityLabel(Language.get("AdminCommandCenter_Refresh", alter: nil))
-            .accessibilityIdentifier("admin.command.header.refresh.ipad")
+            .foregroundStyle(AdminSurface.primaryText)
+            .padding(.horizontal, 14)
+            .frame(height: 36)
+            .background(
+                AdminSurface.control,
+                in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+            )
+            .contentShape(Rectangle())
         }
+        .buttonStyle(CommandHeaderPressStyle())
+        .accessibilityLabel(Language.get("Confirm_LanguageChange_Title", alter: nil))
+        .accessibilityValue(languageTitle)
+        .accessibilityIdentifier("admin.command.header.language.ipad")
     }
 
     private var accountSignatureIPad: some View {
@@ -2828,8 +2977,18 @@ private struct CommandPOSDeck: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            headerRow
+        VStack(alignment: .leading, spacing: AdminSectionSpacing.headerToContent(isRegular: isRegular)) {
+            AdminSectionHeader(
+                title: Language.get("AdminPOS_SectionTitle", alter: "منظومة نقاط البيع والكاشير"),
+                subtitle: Language.get("AdminPOS_SectionDetail", alter: "مساحة البيع الفوري السريع وإدارة سجل فواتير المبيعات"),
+                eyebrow: Language.get("AdminPOS_SectionEyebrow", alter: "نظام نقاط البيع"),
+                symbol: "cart.fill",
+                themeColor: Color(red: 0.06, green: 0.78, blue: 0.56),
+                state: .normal,
+                isRegular: isRegular
+            ) {
+                branchBeaconPill
+            }
 
             if isRegular {
                 CommandPOSiPadFlightDeck(
@@ -2875,53 +3034,37 @@ private struct CommandPOSDeck: View {
         .accessibilityElement(children: .contain)
     }
 
-    private var headerRow: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(Language.get("AdminPOS_SectionTitle", alter: "منظومة نقاط البيع والكاشير"))
-                    .font(AdminType.title3)
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .lineLimit(1)
+    private var branchBeaconPill: some View {
+        HStack(spacing: 5) {
+            ZStack {
+                Circle()
+                    .stroke(Color(red: 0.06, green: 0.78, blue: 0.56).opacity(isRadarPulsing && !reduceMotion ? 0.0 : 0.5), lineWidth: 1.5)
+                    .frame(width: 10, height: 10)
+                    .scaleEffect(isRadarPulsing && !reduceMotion ? 1.8 : 0.8)
 
-                Text(Language.get("AdminPOS_SectionDetail", alter: "مساحة البيع الفوري السريع وإدارة سجل فواتير المبيعات"))
-                    .font(AdminType.caption1)
-                    .foregroundStyle(AdminCommandInk.secondary)
-                    .lineLimit(1)
+                Circle()
+                    .fill(Color(red: 0.06, green: 0.78, blue: 0.56))
+                    .frame(width: 5, height: 5)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(width: 10, height: 10)
 
-            // Branch Beacon Pill with Pulsing Radar Halo
-            HStack(spacing: 5) {
-                ZStack {
-                    Circle()
-                        .stroke(Color(red: 0.06, green: 0.78, blue: 0.56).opacity(isRadarPulsing && !reduceMotion ? 0.0 : 0.5), lineWidth: 1.5)
-                        .frame(width: 10, height: 10)
-                        .scaleEffect(isRadarPulsing && !reduceMotion ? 1.8 : 0.8)
+            Image(systemName: "building.2.fill")
+                .font(.system(size: 8.5))
+                .foregroundStyle(Color(red: 0.06, green: 0.78, blue: 0.56))
 
-                    Circle()
-                        .fill(Color(red: 0.06, green: 0.78, blue: 0.56))
-                        .frame(width: 5, height: 5)
-                }
-                .frame(width: 10, height: 10)
-
-                Image(systemName: "building.2.fill")
-                    .font(.system(size: 8.5))
-                    .foregroundStyle(Color(red: 0.06, green: 0.78, blue: 0.56))
-
-                Text(currentBranchName)
-                    .font(AdminType.caption2Bold)
-                    .foregroundStyle(Color(red: 0.06, green: 0.78, blue: 0.56))
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(Color(red: 0.06, green: 0.78, blue: 0.56).opacity(colorScheme == .dark ? 0.16 : 0.08), in: Capsule(style: .continuous))
-            .overlay(
-                Capsule(style: .continuous)
-                    .strokeBorder(Color(red: 0.06, green: 0.78, blue: 0.56).opacity(0.18), lineWidth: 0.5)
-            )
-            .accessibilityLabel(Language.get("Branch_Scope_Active", alter: "الفرع الحالي") + ": \(currentBranchName)")
+            Text(currentBranchName)
+                .font(Font.custom("Beiruti-Bold", size: 11))
+                .foregroundStyle(Color(red: 0.06, green: 0.78, blue: 0.56))
+                .lineLimit(1)
         }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(Color(red: 0.06, green: 0.78, blue: 0.56).opacity(colorScheme == .dark ? 0.16 : 0.08), in: Capsule(style: .continuous))
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(Color(red: 0.06, green: 0.78, blue: 0.56).opacity(0.18), lineWidth: 0.5)
+        )
+        .accessibilityLabel(Language.get("Branch_Scope_Active", alter: "الفرع الحالي") + ": \(currentBranchName)")
     }
 }
 
@@ -4021,33 +4164,33 @@ private struct CommandPOSQuickExpenseView_iPhone: View {
                     Button {
                         presenter.selectCategory(cat.id)
                     } label: {
-                        HStack(spacing: 5) {
-                            if isSelected {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(Color(red: 0.85, green: 0.15, blue: 0.35))
-                            }
-
-                            Spacer(minLength: 0)
-
-                            Text(cat.localizedTitle)
-                                .font(PPBeirutiFont.bold(11, relativeTo: .caption))
-                                .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminSurface.primaryText.opacity(0.90))
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.70)
-                                .multilineTextAlignment(Language.isRTL() ? .leading : .trailing)
-
+                        HStack(spacing: 6) {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                                     .fill(cat.iconBgColor)
-                                    .frame(width: 28, height: 28)
+                                    .frame(width: 30, height: 30)
 
                                 Image(systemName: cat.icon)
                                     .font(.system(size: 13, weight: .semibold))
                                     .foregroundStyle(cat.iconTintColor)
                             }
+
+                            Text(cat.localizedTitle)
+                                .font(PPBeirutiFont.bold(11.5, relativeTo: .caption))
+                                .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminSurface.primaryText.opacity(0.90))
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.70)
+                                .multilineTextAlignment(.leading)
+
+                            Spacer(minLength: 0)
+
+                            if isSelected {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(Color(red: 0.85, green: 0.15, blue: 0.35))
+                            }
                         }
-                        .padding(.horizontal, 6)
+                        .padding(.horizontal, 7)
                         .padding(.vertical, 4)
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
@@ -4429,6 +4572,7 @@ private struct CommandPOSQuickExpenseView_iPad: View {
             }
         }
         .navigationViewStyle(.stack)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
             presenter.loadShiftTelemetry()
         }
@@ -4605,22 +4749,7 @@ private struct CommandPOSQuickExpenseView_iPad: View {
                     Button {
                         presenter.selectCategory(cat.id)
                     } label: {
-                        HStack(spacing: 6) {
-                            if isSelected {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundStyle(Color(red: 0.85, green: 0.15, blue: 0.35))
-                            }
-
-                            Spacer(minLength: 0)
-
-                            Text(cat.localizedTitle)
-                                .font(PPBeirutiFont.bold(12, relativeTo: .subheadline))
-                                .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminSurface.primaryText.opacity(0.90))
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.75)
-                                .multilineTextAlignment(Language.isRTL() ? .leading : .trailing)
-
+                        HStack(spacing: 7) {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                                     .fill(cat.iconBgColor)
@@ -4629,6 +4758,21 @@ private struct CommandPOSQuickExpenseView_iPad: View {
                                 Image(systemName: cat.icon)
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundStyle(cat.iconTintColor)
+                            }
+
+                            Text(cat.localizedTitle)
+                                .font(PPBeirutiFont.bold(12, relativeTo: .subheadline))
+                                .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminSurface.primaryText.opacity(0.90))
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.75)
+                                .multilineTextAlignment(.leading)
+
+                            Spacer(minLength: 0)
+
+                            if isSelected {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(Color(red: 0.85, green: 0.15, blue: 0.35))
                             }
                         }
                         .padding(.horizontal, 8)
@@ -5893,6 +6037,24 @@ private struct CommandPOSCardPressStyle: ButtonStyle {
     }
 }
 
+// MARK: - Stock Deck Preference Keys
+
+private struct CommandStockStackedHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat { 0 }
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        let next = nextValue()
+        if next > 0 { value = next }
+    }
+}
+
+private struct CommandStockSectionWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat { 0 }
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        let next = nextValue()
+        if next > 0 { value = next }
+    }
+}
+
 // MARK: - Stock Sovereign Horizon Deck (Deck 2)
 
 private struct CommandStockDeck: View {
@@ -5906,6 +6068,23 @@ private struct CommandStockDeck: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var arrowNudge: CGFloat = 0
+    @State private var stackedCardsHeight: CGFloat = 0
+    @State private var measuredSectionWidth: CGFloat = 0
+
+    private var effectiveWidth: CGFloat {
+        if containerWidth > 0 { return containerWidth }
+        if measuredSectionWidth > 0 { return measuredSectionWidth }
+        return 0
+    }
+
+    private func columnWidths(spacing: CGFloat) -> (livePets: CGFloat?, stacked: CGFloat?) {
+        guard effectiveWidth > 0 else { return (nil, nil) }
+        let availableWidth = max(0, effectiveWidth - spacing)
+        // Proportional split: decrease Live Pets width slightly (44%) and increase Accessories/Food width (56%)
+        let livePets = floor(availableWidth * 0.44)
+        let stacked = max(0, availableWidth - livePets)
+        return (livePets, stacked)
+    }
 
     private var accessoriesSignal: AdminCommandOrbitSignal? {
         signals.first { $0.id.contains("accessor") || $0.id.contains("stock") }
@@ -5932,8 +6111,18 @@ private struct CommandStockDeck: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 13) {
-            headerRow
+        VStack(alignment: .leading, spacing: AdminSectionSpacing.headerToContent(isRegular: isRegular)) {
+            AdminSectionHeader(
+                title: Language.get("Stock_Section_Title", alter: "قطاع المخزون والمنتجات"),
+                subtitle: Language.get("Stock_Section_Subtitle", alter: "كتالوج المنتجات، الأغذية، والحيوانات الحية مع تتبع الكميات"),
+                eyebrow: Language.get("Stock_SectionEyebrow", alter: "المخزون والكتالوج"),
+                symbol: "shippingbox.fill",
+                themeColor: Color(red: 0.55, green: 0.36, blue: 0.96),
+                state: .normal,
+                isRegular: isRegular
+            ) {
+                stockTelemetryPill
+            }
 
             if isRegular {
                 ipadStockView
@@ -5948,77 +6137,78 @@ private struct CommandStockDeck: View {
                 arrowNudge = 3.0
             }
         }
+        .onPreferenceChange(CommandStockStackedHeightKey.self) { newHeight in
+            if newHeight > 0 && abs(stackedCardsHeight - newHeight) > 0.5 {
+                stackedCardsHeight = newHeight
+            }
+        }
+        .onPreferenceChange(CommandStockSectionWidthKey.self) { newWidth in
+            if newWidth > 0 && abs(measuredSectionWidth - newWidth) > 0.5 {
+                measuredSectionWidth = newWidth
+            }
+        }
         .accessibilityElement(children: .contain)
     }
 
-    private var headerRow: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(Language.get("Stock_Section_Title", alter: "قطاع المخزون والمنتجات"))
-                    .font(AdminType.title3)
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .lineLimit(1)
-
-                Text(Language.get("Stock_Section_Subtitle", alter: "كتالوج المنتجات، الأغذية، والحيوانات الحية مع تتبع الكميات"))
-                    .font(AdminType.caption1)
-                    .foregroundStyle(AdminCommandInk.secondary)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
+    private var stockTelemetryPill: some View {
+        Group {
             if stockAlertCount > 0 {
-                HStack(spacing: 4) {
+                HStack(spacing: 5) {
                     Circle()
                         .fill(Color(uiColor: .ppWarning))
-                        .frame(width: 5.5, height: 5.5)
+                        .frame(width: 6, height: 6)
                     Text(String(format: Language.get("Stock_Alerts_Count_Format", alter: "%d تنبيهات بالمخزون"), stockAlertCount))
-                        .font(AdminType.caption2Bold)
+                        .font(Font.custom("Beiruti-Bold", size: 11))
                         .foregroundStyle(Color(uiColor: .ppWarning))
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4.5)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
                 .background(Color(uiColor: .ppWarning).opacity(colorScheme == .dark ? 0.18 : 0.08), in: Capsule(style: .continuous))
                 .overlay(
                     Capsule(style: .continuous)
-                        .strokeBorder(Color(uiColor: .ppWarning).opacity(0.18), lineWidth: 0.5)
+                        .strokeBorder(Color(uiColor: .ppWarning).opacity(0.20), lineWidth: 0.5)
                 )
-                .accessibilityHidden(true)
             } else {
-                HStack(spacing: 4) {
+                HStack(spacing: 5) {
                     Circle()
                         .fill(Color(red: 0.55, green: 0.36, blue: 0.96))
-                        .frame(width: 5.5, height: 5.5)
+                        .frame(width: 6, height: 6)
                     Text(Language.get("Stock_Live_Sync_Active", alter: "مزامنة المخزون نشطة"))
-                        .font(AdminType.caption2Bold)
+                        .font(Font.custom("Beiruti-Bold", size: 11))
                         .foregroundStyle(Color(red: 0.55, green: 0.36, blue: 0.96))
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4.5)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
                 .background(Color(red: 0.55, green: 0.36, blue: 0.96).opacity(colorScheme == .dark ? 0.16 : 0.08), in: Capsule(style: .continuous))
                 .overlay(
                     Capsule(style: .continuous)
                         .strokeBorder(Color(red: 0.55, green: 0.36, blue: 0.96).opacity(0.18), lineWidth: 0.5)
                 )
-                .accessibilityHidden(true)
             }
         }
     }
 
     // Stock & Products Horizon: Left column has Live Pets (tall card); Right column has Accessories + Food stacked
     private var iphoneStockView: some View {
-        HStack(alignment: .top, spacing: 9) {
+        let spacing: CGFloat = 9
+        let widths = columnWidths(spacing: spacing)
+
+        return HStack(alignment: .top, spacing: spacing) {
             CommandStockVaultCardTallLivePets(
                 title: Language.get("Stock_LivePets_Title", alter: "الحيوانات الحية"),
                 subtitle: Language.get("Stock_LivePets_Subtitle", alter: "الطيور، القطط، الكلاب، السجلات والشرائح"),
                 iconName: "pawprint.fill",
-                accent: Color(red: 0.05, green: 0.65, blue: 0.52),
+                accent: AdminSurface.primary,
                 badgeCount: livePetsSignal?.count,
                 arrowNudge: arrowNudge,
+                targetHeight: stackedCardsHeight > 0 ? stackedCardsHeight : nil,
                 action: { onRoute("stockSector:livePets") }
             )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(width: widths.livePets)
+            .frame(maxWidth: widths.livePets == nil ? .infinity : nil)
+            .frame(height: stackedCardsHeight > 0 ? stackedCardsHeight : nil)
 
-            VStack(spacing: 9) {
+            VStack(spacing: spacing) {
                 CommandStockVaultCardCompactiPhone(
                     title: Language.get("Stock_Accessories_Title", alter: "المخزون والإكسسوارات"),
                     subtitle: Language.get("Stock_Accessories_Subtitle", alter: "الأطواق، الألعاب، ومستلزمات العناية والرعاية"),
@@ -6041,27 +6231,49 @@ private struct CommandStockDeck: View {
                 )
                 .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
+            .frame(width: widths.stacked)
+            .frame(maxWidth: widths.stacked == nil ? .infinity : nil)
+            .background(
+                GeometryReader { geo in
+                    Color.clear.preference(
+                        key: CommandStockStackedHeightKey.self,
+                        value: geo.size.height
+                    )
+                }
+            )
         }
-        .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity)
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(
+                    key: CommandStockSectionWidthKey.self,
+                    value: geo.size.width
+                )
+            }
+        )
     }
 
     // iPad: Panoramic Horizon Pavilion (Matching 2-Column Blueprint)
     private var ipadStockView: some View {
-        HStack(alignment: .top, spacing: 14) {
+        let spacing: CGFloat = 14
+        let widths = columnWidths(spacing: spacing)
+
+        return HStack(alignment: .top, spacing: spacing) {
             CommandStockVaultCardTallLivePets(
                 title: Language.get("Stock_LivePets_Title", alter: "الحيوانات الحية"),
                 subtitle: Language.get("Stock_LivePets_Subtitle", alter: "الطيور، القطط، الكلاب، السجلات والشرائح"),
                 iconName: "pawprint.fill",
-                accent: Color(red: 0.05, green: 0.65, blue: 0.52),
+                accent: AdminSurface.primary,
                 badgeCount: livePetsSignal?.count,
                 arrowNudge: arrowNudge,
+                targetHeight: stackedCardsHeight > 0 ? stackedCardsHeight : nil,
                 action: { onRoute("stockSector:livePets") }
             )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(width: widths.livePets)
+            .frame(maxWidth: widths.livePets == nil ? .infinity : nil)
+            .frame(height: stackedCardsHeight > 0 ? stackedCardsHeight : nil)
 
-            VStack(spacing: 14) {
+            VStack(spacing: spacing) {
                 CommandStockVaultCardCompactiPhone(
                     title: Language.get("Stock_Accessories_Title", alter: "المخزون والإكسسوارات"),
                     subtitle: Language.get("Stock_Accessories_Subtitle", alter: "الأطواق، الألعاب، ومستلزمات العناية والرعاية"),
@@ -6084,10 +6296,26 @@ private struct CommandStockDeck: View {
                 )
                 .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
+            .frame(width: widths.stacked)
+            .frame(maxWidth: widths.stacked == nil ? .infinity : nil)
+            .background(
+                GeometryReader { geo in
+                    Color.clear.preference(
+                        key: CommandStockStackedHeightKey.self,
+                        value: geo.size.height
+                    )
+                }
+            )
         }
-        .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity)
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(
+                    key: CommandStockSectionWidthKey.self,
+                    value: geo.size.width
+                )
+            }
+        )
     }
 }
 
@@ -6100,6 +6328,7 @@ private struct CommandStockVaultCardTallLivePets: View {
     let accent: Color
     let badgeCount: Int?
     let arrowNudge: CGFloat
+    var targetHeight: CGFloat? = nil
     let action: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -6137,29 +6366,76 @@ private struct CommandStockVaultCardTallLivePets: View {
         }
     }
 
-    /// Lottie cat animation loaded from Firebase Storage ("Loader cat.json") matching the blue box placement
+    /// Lottie cat animation loaded from Firebase Storage ("Loader cat.json") on a borderless circular plate.
+    /// Plate is circular, borderless, decreased by 30%, elevated to top, and faded from bottom.
+    /// Lottie size is preserved at full dimensions with slower animation speed (0.70x).
     private var lottieCatSection: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(accent.opacity(colorScheme == .dark ? 0.08 : 0.04))
+        GeometryReader { proxy in
+            let availW = proxy.size.width
+            let availH = proxy.size.height
+            // Sizing: base plate calculation
+            let maxFromH = availH > 0 ? (availH / 1.3) : 75
+            let maxFromW = availW > 0 ? (availW / 1.3) : 75
+            let cap: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 105 : 82
+            let baseSize = max(44, min(min(maxFromH, maxFromW), cap))
+            // Base Lottie view size
+            let baseLottieSize = (baseSize * 1.3) * 2.0
+            // Lottie size increased by +30% with bottom anchor preserved
+            let lottieSize = baseLottieSize * 1.30
+            // Plate size preserved ((baseSize * 2.0) * 0.70)
+            let plateSize = (baseSize * 2.0) * 0.70
 
-            PPLottieFirebaseView(
-                fileName: "Loader cat",
-                loop: true,
-                contentMode: .scaleAspectFit
+            ZStack(alignment: .center) {
+                // Borderless circular plate: decreased by 30%, moved to top little, faded from bottom
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: accent.opacity(colorScheme == .dark ? 0.24 : 0.16), location: 0.0),
+                                .init(color: accent.opacity(colorScheme == .dark ? 0.13 : 0.08), location: 0.45),
+                                .init(color: accent.opacity(colorScheme == .dark ? 0.04 : 0.02), location: 0.78),
+                                .init(color: accent.opacity(0.0), location: 1.0)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .mask(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .black, location: 0.0),
+                                .init(color: .black, location: 0.40),
+                                .init(color: .black.opacity(0.40), location: 0.75),
+                                .init(color: .clear, location: 1.0)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: plateSize, height: plateSize)
+                    .offset(y: -12)
+
+                // Lottie cat animation anchored at bottom, increased by +30%, calm slow animation speed
+                PPLottieFirebaseView(
+                    fileName: "Loader cat",
+                    loop: true,
+                    speed: 0.35,
+                    contentMode: .scaleAspectFit
+                )
+                .frame(width: lottieSize, height: lottieSize)
+                .offset(y: -((lottieSize - baseLottieSize) / 2.0))
+            }
+            .position(
+                x: availW / 2,
+                y: (availH / 2) + (UIDevice.current.userInterfaceIdiom == .pad ? -8 : -2)
             )
-            .padding(6)
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: UIDevice.current.userInterfaceIdiom == .pad ? 135 : 110)
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(accent.opacity(colorScheme == .dark ? 0.16 : 0.08), lineWidth: 0.75)
-        )
+        .frame(maxWidth: .infinity, alignment: .center)
+        .frame(minHeight: 50, maxHeight: .infinity)
     }
 
     private var contentSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 4) {
                 Circle()
                     .fill(accent)
@@ -6169,11 +6445,11 @@ private struct CommandStockVaultCardTallLivePets: View {
                     .foregroundStyle(accent)
             }
             .padding(.horizontal, 7)
-            .padding(.vertical, 2.5)
+            .padding(.vertical, 2)
             .background(accent.opacity(colorScheme == .dark ? 0.16 : 0.08), in: Capsule())
 
             Text(title)
-                .font(Font.custom("Beiruti-Bold", size: 15.5, relativeTo: .headline))
+                .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
                 .foregroundStyle(AdminSurface.primaryText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
@@ -6181,8 +6457,8 @@ private struct CommandStockVaultCardTallLivePets: View {
             Text(subtitle)
                 .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption))
                 .foregroundStyle(AdminCommandInk.secondary)
-                .lineLimit(3)
-                .lineSpacing(1.2)
+                .lineLimit(2)
+                .lineSpacing(1.1)
                 .multilineTextAlignment(.leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -6195,9 +6471,9 @@ private struct CommandStockVaultCardTallLivePets: View {
         }) {
             VStack(alignment: .leading, spacing: 0) {
                 topBar
-                Spacer(minLength: 6)
+                Spacer(minLength: 4)
                 lottieCatSection
-                Spacer(minLength: 10)
+                Spacer(minLength: 6)
                 contentSection
             }
             .padding(.horizontal, 12)
@@ -6214,7 +6490,9 @@ private struct CommandStockVaultCardTallLivePets: View {
             .shadow(color: accent.opacity(colorScheme == .dark ? 0.14 : 0.04), radius: 5, y: 2)
         }
         .buttonStyle(CommandStockCardPressStyle())
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
+        .frame(height: targetHeight)
+        .frame(maxHeight: targetHeight == nil ? .infinity : nil)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
     }
@@ -6890,8 +7168,18 @@ private struct CommandQuickActionsDeck: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 13) {
-            headerRow
+        VStack(alignment: .leading, spacing: AdminSectionSpacing.headerToContent(isRegular: isRegular)) {
+            AdminSectionHeader(
+                title: Language.get("AdminQuickActions_SectionTitle", alter: "إجراءات سريعة"),
+                subtitle: Language.get("AdminQuickActions_SectionDetail", alter: "منصة إطلاق فورية للعمليات الميدانية"),
+                eyebrow: Language.get("AdminQuickActions_SectionEyebrow", alter: "العمليات الميدانية"),
+                symbol: "bolt.fill",
+                themeColor: AdminSurface.primary,
+                state: .normal,
+                isRegular: isRegular
+            ) {
+                quickActionsTelemetryPill
+            }
 
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(spacing: spacing) {
@@ -6911,38 +7199,24 @@ private struct CommandQuickActionsDeck: View {
         .accessibilityElement(children: .contain)
     }
 
-    private var headerRow: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(Language.get("AdminQuickActions_SectionTitle", alter: "إجراءات سريعة"))
-                    .font(AdminType.title3)
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .lineLimit(1)
-
-                Text(Language.get("AdminQuickActions_SectionDetail", alter: "منصة إطلاق فورية للعمليات الميدانية"))
-                    .font(AdminType.caption1)
-                    .foregroundStyle(AdminCommandInk.secondary)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
+    private var quickActionsTelemetryPill: some View {
+        Group {
             if activeSignalsCount > 0 {
-                HStack(spacing: 4) {
+                HStack(spacing: 5) {
                     Circle()
                         .fill(AdminSurface.primary)
-                        .frame(width: 5.5, height: 5.5)
+                        .frame(width: 6, height: 6)
                     Text(String(format: Language.get("AdminQuickActions_SignalsCount_Format", alter: "%d إشارات نشطة"), activeSignalsCount))
-                        .font(AdminType.caption2Bold)
+                        .font(Font.custom("Beiruti-Bold", size: 11))
                         .foregroundStyle(AdminSurface.primary)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4.5)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
                 .background(AdminSurface.primary.opacity(colorScheme == .dark ? 0.16 : 0.08), in: Capsule(style: .continuous))
                 .overlay(
                     Capsule(style: .continuous)
-                        .strokeBorder(AdminSurface.primary.opacity(0.14), lineWidth: 0.5)
+                        .strokeBorder(AdminSurface.primary.opacity(0.18), lineWidth: 0.5)
                 )
-                .accessibilityHidden(true)
             }
         }
     }
@@ -7177,11 +7451,38 @@ private struct CommandPriorityRunway: View {
     let detail: String
     let signals: [AdminCommandOrbitSignal]
     let locale: Locale
+    var isRegular: Bool = false
     let action: (AdminCommandOrbitSignal) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            SectionHeader(title: title, detail: detail)
+        VStack(alignment: .leading, spacing: AdminSectionSpacing.headerToContent(isRegular: isRegular)) {
+            AdminSectionHeader(
+                title: title,
+                subtitle: detail,
+                eyebrow: Language.get("AdminRunway_SectionEyebrow", alter: "التدخل السريع"),
+                symbol: "exclamationmark.triangle.fill",
+                themeColor: Color(uiColor: .ppWarning),
+                state: signals.isEmpty ? .empty(Language.get("AdminCommandCenter_AllClear_Title", alter: "لا توجد إشارات معلقة")) : .normal,
+                isRegular: isRegular
+            ) {
+                if !signals.isEmpty {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(Color(uiColor: .ppWarning))
+                            .frame(width: 6, height: 6)
+                        Text(signals.count == 1 ? Language.get("AdminSectionHeader_ActiveSignalsSingular", alter: "إشارة نشطة واحدة") : String(format: Language.get("AdminCommandCenter_SignalsCount_Format", alter: "%d إشارات"), signals.count))
+                            .font(Font.custom("Beiruti-Bold", size: 11))
+                            .foregroundStyle(Color(uiColor: .ppWarning))
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Color(uiColor: .ppWarning).opacity(0.12), in: Capsule(style: .continuous))
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder(Color(uiColor: .ppWarning).opacity(0.18), lineWidth: 0.5)
+                    )
+                }
+            }
 
             if signals.isEmpty {
                 CommandCenterStatePanel(
@@ -7355,6 +7656,7 @@ private struct CommandSourceLedger: View {
     let loadingSources: [String]
     let failedSources: [String]
     let updatedText: String
+    var isRegular: Bool = false
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -7374,8 +7676,32 @@ private struct CommandSourceLedger: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            SectionHeader(title: title, detail: detail)
+        VStack(alignment: .leading, spacing: AdminSectionSpacing.headerToContent(isRegular: isRegular)) {
+            AdminSectionHeader(
+                title: title,
+                subtitle: detail,
+                eyebrow: Language.get("AdminLedger_SectionEyebrow", alter: "بيانات المنظومة"),
+                symbol: "network",
+                themeColor: Color(red: 0.20, green: 0.60, blue: 0.86),
+                state: failedSources.isEmpty ? .normal : .error(Language.get("AdminCommandCenter_SourceIssue_Title", alter: "مشكلة بمصدر")),
+                isRegular: isRegular
+            ) {
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(failedSources.isEmpty ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning))
+                        .frame(width: 6, height: 6)
+                    Text(failedSources.isEmpty ? Language.get("AdminSectionHeader_AllOptimal", alter: "الحالة ممتازة ومطابقة") : String(format: Language.get("AdminCommandCenter_FailedSources_Format", alter: "%d مصادر متعثرة"), failedSources.count))
+                        .font(Font.custom("Beiruti-Bold", size: 11))
+                        .foregroundStyle(failedSources.isEmpty ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning))
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background((failedSources.isEmpty ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning)).opacity(0.12), in: Capsule(style: .continuous))
+                .overlay(
+                    Capsule(style: .continuous)
+                        .strokeBorder((failedSources.isEmpty ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning)).opacity(0.18), lineWidth: 0.5)
+                )
+            }
 
             VStack(spacing: 0) {
                 ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
@@ -7678,29 +8004,412 @@ private extension CommandCenterStatePanel where Extra == EmptyView {
     }
 }
 
-// MARK: - Shared Components
+// MARK: - Category-Defining Section Header Architecture & Spacing Tokens
+
+enum AdminSectionSpacing {
+    /// Vertical space between distinct functional sections on the home command center
+    /// Enhanced vertical spacing for category-defining architectural separation
+    static func interSection(isRegular: Bool) -> CGFloat {
+        isRegular ? 44 : 34
+    }
+
+    /// Inner vertical spacing between the section header and the section's content cards/grid
+    static func headerToContent(isRegular: Bool) -> CGFloat {
+        isRegular ? 14 : 11
+    }
+
+    /// Vertical space between header/navbar bottom and the first section (POS) header top
+    static func navBarToFirstSection(isRegular: Bool) -> CGFloat {
+        isRegular ? 32 : 26
+    }
+}
+
+enum AdminSectionHeaderState: Equatable {
+    case normal
+    case loading
+    case empty(String)
+    case error(String)
+}
+
+struct AdminSectionHeader<Accessory: View>: View {
+    let title: String
+    let subtitle: String?
+    let eyebrow: String?
+    let symbol: String?
+    let themeColor: Color
+    let state: AdminSectionHeaderState
+    let isRegular: Bool
+    let onTapHeader: (() -> Void)?
+    @ViewBuilder let accessory: () -> Accessory
+
+    init(
+        title: String,
+        subtitle: String? = nil,
+        eyebrow: String? = nil,
+        symbol: String? = nil,
+        themeColor: Color = AdminSurface.primary,
+        state: AdminSectionHeaderState = .normal,
+        isRegular: Bool = false,
+        onTapHeader: (() -> Void)? = nil,
+        @ViewBuilder accessory: @escaping () -> Accessory = { EmptyView() }
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.eyebrow = eyebrow
+        self.symbol = symbol
+        self.themeColor = themeColor
+        self.state = state
+        self.isRegular = isRegular
+        self.onTapHeader = onTapHeader
+        self.accessory = accessory
+    }
+
+    var body: some View {
+        if isRegular {
+            AdminSectionHeader_iPad(
+                title: title,
+                subtitle: subtitle,
+                eyebrow: eyebrow,
+                symbol: symbol,
+                themeColor: themeColor,
+                state: state,
+                onTapHeader: onTapHeader,
+                accessory: accessory
+            )
+        } else {
+            AdminSectionHeader_iPhone(
+                title: title,
+                subtitle: subtitle,
+                eyebrow: eyebrow,
+                symbol: symbol,
+                themeColor: themeColor,
+                state: state,
+                onTapHeader: onTapHeader,
+                accessory: accessory
+            )
+        }
+    }
+}
+
+// MARK: - iPhone Dedicated Architecture (Mobile Thumb-Zone & High Density)
+
+private struct AdminSectionHeader_iPhone<Accessory: View>: View {
+    let title: String
+    let subtitle: String?
+    let eyebrow: String?
+    let symbol: String?
+    let themeColor: Color
+    let state: AdminSectionHeaderState
+    let onTapHeader: (() -> Void)?
+    @ViewBuilder let accessory: () -> Accessory
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shimmerPhase: CGFloat = 0
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            // Leading Badge / Emblem
+            if let symbol = symbol {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(themeColor.opacity(0.12))
+                    Image(systemName: symbol)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(themeColor)
+                        .flipsForRightToLeftLayoutDirection(true)
+                }
+                .frame(width: 32, height: 32)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .strokeBorder(themeColor.opacity(0.18), lineWidth: 0.5)
+                )
+                .accessibilityHidden(true)
+            }
+
+            // Title & Subtitle Stack
+            VStack(alignment: .leading, spacing: 2) {
+                if let eyebrow = eyebrow, !eyebrow.isEmpty {
+                    Text(eyebrow)
+                        .font(Font.custom("Beiruti-Bold", size: 10.5))
+                        .foregroundStyle(themeColor)
+                        .lineLimit(1)
+                }
+
+                if case .loading = state {
+                    shimmerPlaceholder(width: 140, height: 18)
+                    if subtitle != nil {
+                        shimmerPlaceholder(width: 200, height: 12)
+                            .padding(.top, 2)
+                    }
+                } else {
+                    Text(title)
+                        .font(Font.custom("Beiruti-Bold", size: 19))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let subtitle = subtitle, !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(Font.custom("Beiruti-Regular", size: 12.5))
+                            .foregroundStyle(AdminCommandInk.secondary)
+                            .lineLimit(2)
+                            .lineSpacing(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                // Error state message inline
+                if case .error(let message) = state {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Color(uiColor: .ppWarning))
+                        Text(message)
+                            .font(Font.custom("Beiruti-Bold", size: 11.5))
+                            .foregroundStyle(Color(uiColor: .ppWarning))
+                    }
+                    .padding(.top, 2)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Trailing Accessory
+            if case .loading = state {
+                shimmerPlaceholder(width: 58, height: 26, isCapsule: true)
+            } else {
+                accessory()
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if let onTapHeader = onTapHeader {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onTapHeader()
+            }
+        }
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+                shimmerPhase = 1.0
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var accessibilityLabel: String {
+        var text = title
+        if let subtitle = subtitle {
+            text += ", " + subtitle
+        }
+        return text
+    }
+
+    @ViewBuilder
+    private func shimmerPlaceholder(width: CGFloat, height: CGFloat, isCapsule: Bool = false) -> some View {
+        ZStack {
+            if isCapsule {
+                Capsule(style: .continuous)
+                    .fill(AdminSurface.control)
+            } else {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(AdminSurface.control)
+            }
+
+            if !reduceMotion {
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        Color.white.opacity(0.0),
+                        Color.white.opacity(0.18),
+                        Color.white.opacity(0.0)
+                    ]),
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .offset(x: (shimmerPhase * 2 - 1) * width)
+            }
+        }
+        .frame(width: width, height: height)
+        .clipped()
+    }
+}
+
+// MARK: - iPad Dedicated Architecture (Panoramic Flight-Deck & Pointer Intelligence)
+
+private struct AdminSectionHeader_iPad<Accessory: View>: View {
+    let title: String
+    let subtitle: String?
+    let eyebrow: String?
+    let symbol: String?
+    let themeColor: Color
+    let state: AdminSectionHeaderState
+    let onTapHeader: (() -> Void)?
+    @ViewBuilder let accessory: () -> Accessory
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovered = false
+    @State private var shimmerPhase: CGFloat = 0
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            // Prominent Section Emblem Container
+            if let symbol = symbol {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    themeColor.opacity(0.18),
+                                    themeColor.opacity(0.08)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                    Image(systemName: symbol)
+                        .font(.system(size: 16.5, weight: .bold))
+                        .foregroundStyle(themeColor)
+                        .flipsForRightToLeftLayoutDirection(true)
+                }
+                .frame(width: 42, height: 42)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(themeColor.opacity(0.24), lineWidth: 0.75)
+                )
+                .shadow(color: themeColor.opacity(isHovered ? 0.28 : 0.10), radius: isHovered ? 6 : 3, x: 0, y: 1)
+                .accessibilityHidden(true)
+            }
+
+            // Title & Subtitle Stack
+            VStack(alignment: .leading, spacing: 3) {
+                if let eyebrow = eyebrow, !eyebrow.isEmpty {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(themeColor)
+                            .frame(width: 4.5, height: 4.5)
+                        Text(eyebrow)
+                            .font(Font.custom("Beiruti-Bold", size: 11.5))
+                            .foregroundStyle(themeColor)
+                            .lineLimit(1)
+                    }
+                }
+
+                if case .loading = state {
+                    shimmerPlaceholder(width: 200, height: 22)
+                    if subtitle != nil {
+                        shimmerPlaceholder(width: 320, height: 14)
+                            .padding(.top, 2)
+                    }
+                } else {
+                    Text(title)
+                        .font(Font.custom("Beiruti-Bold", size: 22))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let subtitle = subtitle, !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(Font.custom("Beiruti-Regular", size: 14))
+                            .foregroundStyle(AdminCommandInk.secondary)
+                            .lineLimit(2)
+                            .lineSpacing(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                if case .error(let message) = state {
+                    HStack(spacing: 5) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Color(uiColor: .ppWarning))
+                        Text(message)
+                            .font(Font.custom("Beiruti-Bold", size: 12.5))
+                            .foregroundStyle(Color(uiColor: .ppWarning))
+                    }
+                    .padding(.top, 2)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Trailing Accessory Deck with Pointer Hover
+            if case .loading = state {
+                shimmerPlaceholder(width: 80, height: 32, isCapsule: true)
+            } else {
+                accessory()
+                    .hoverEffect(.highlight)
+            }
+        }
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            isHovered = hovering
+        }
+        .onTapGesture {
+            if let onTapHeader = onTapHeader {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onTapHeader()
+            }
+        }
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+                shimmerPhase = 1.0
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var accessibilityLabel: String {
+        var text = title
+        if let subtitle = subtitle {
+            text += ", " + subtitle
+        }
+        return text
+    }
+
+    @ViewBuilder
+    private func shimmerPlaceholder(width: CGFloat, height: CGFloat, isCapsule: Bool = false) -> some View {
+        ZStack {
+            if isCapsule {
+                Capsule(style: .continuous)
+                    .fill(AdminSurface.control)
+            } else {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(AdminSurface.control)
+            }
+
+            if !reduceMotion {
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        Color.white.opacity(0.0),
+                        Color.white.opacity(0.18),
+                        Color.white.opacity(0.0)
+                    ]),
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .offset(x: (shimmerPhase * 2 - 1) * width)
+            }
+        }
+        .frame(width: width, height: height)
+        .clipped()
+    }
+}
+
+// MARK: - Legacy Compatibility Seam
 
 struct SectionHeader: View {
     let title: String
     let detail: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(AdminType.title3)
-                .foregroundStyle(AdminSurface.primaryText)
-                .lineLimit(nil)
-                .lineSpacing(4)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(detail)
-                .font(AdminType.callout)
-                .foregroundStyle(AdminCommandInk.secondary)
-                .lineLimit(nil)
-                .lineSpacing(3)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isHeader)
+        AdminSectionHeader(
+            title: title,
+            subtitle: detail,
+            themeColor: AdminSurface.primary
+        )
     }
 }
 

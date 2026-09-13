@@ -30,6 +30,17 @@ public struct ReturnConfirmationView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
+            // Full Screen Navigation Bar
+            HStack {
+                Spacer()
+                AdminSquircleCloseButton {
+                    onDismiss()
+                }
+            }
+            .padding(.horizontal, AdminSpacing.screenMargin)
+            .padding(.top, 10)
+            .padding(.bottom, 4)
+
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 20) {
                     // Success Icon Animation / Graphic

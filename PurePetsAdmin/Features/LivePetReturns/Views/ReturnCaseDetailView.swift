@@ -13,11 +13,6 @@ public struct ReturnCaseDetailView: View {
     @ObservedObject private var branchStore = BranchContextStore.shared
     @Environment(\.dismiss) private var dismiss
 
-    @State private var selectedUnitForAction: LivePetReturnUnit?
-    @State private var showingClearanceConfirmation: Bool = false
-    @State private var showingQuarantineConfirmation: Bool = false
-    @State private var actionNotes: String = ""
-
     public init(returnCaseId: String, initialCase: LivePetReturnCase? = nil) {
         _viewModel = StateObject(wrappedValue: ReturnCaseDetailViewModel(returnCaseId: returnCaseId, initialCase: initialCase))
     }
@@ -68,34 +63,6 @@ public struct ReturnCaseDetailView: View {
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .alert(Language.get("LivePet_ConfirmClearanceTitle", alter: "تأكيد اعتماد الحيوان للبيع"), isPresented: $showingClearanceConfirmation) {
-            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
-            Button(Language.get("Confirm", alter: "تأكيد الاعتماد")) {
-                if let unit = selectedUnitForAction {
-                    let trimmed = actionNotes.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let notes = trimmed.isEmpty ? nil : trimmed
-                    Task {
-                        _ = await viewModel.clearUnitForResale(unit: unit, notes: notes)
-                    }
-                }
-            }
-        } message: {
-            Text(Language.get("LivePet_ConfirmClearanceMsg", alter: "هل أنت متأكد من اجتياز الحيوان لكافة الفحوصات البيطرية وأنه مؤهل للإتاحة في المتجر مجدداً؟"))
-        }
-        .alert(Language.get("LivePet_ConfirmQuarantineTitle", alter: "نقل الحيوان للحجر الصحي"), isPresented: $showingQuarantineConfirmation) {
-            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
-            Button(Language.get("Confirm", alter: "تأكيد العزل"), role: .destructive) {
-                if let unit = selectedUnitForAction {
-                    let trimmed = actionNotes.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let notes = trimmed.isEmpty ? nil : trimmed
-                    Task {
-                        _ = await viewModel.quarantineUnit(unit: unit, notes: notes)
-                    }
-                }
-            }
-        } message: {
-            Text(Language.get("LivePet_ConfirmQuarantineMsg", alter: "سيتم عزل الحيوان في وحدة الحجر ونقله من عهدة مكتب الاستلام لحين التقييم الطبي."))
-        }
     }
 
     // MARK: - Header Bar
@@ -212,8 +179,7 @@ public struct ReturnCaseDetailView: View {
                     HStack(spacing: 8) {
                         if canOfferResaleClearance(for: unit) {
                             Button {
-                                selectedUnitForAction = unit
-                                showingClearanceConfirmation = true
+                                promptClearanceConfirmation(for: unit)
                             } label: {
                                 HStack(spacing: 4) {
                                     Image(systemName: "checkmark.seal.fill")
@@ -235,8 +201,7 @@ public struct ReturnCaseDetailView: View {
 
                         if canOfferQuarantine(for: unit) {
                             Button {
-                                selectedUnitForAction = unit
-                                showingQuarantineConfirmation = true
+                                promptQuarantineConfirmation(for: unit)
                             } label: {
                                 HStack(spacing: 4) {
                                     Image(systemName: "shield.lefthalf.filled.badge.checkmark")
@@ -397,5 +362,46 @@ public struct ReturnCaseDetailView: View {
             return cached.fullMeaningfulTitle
         }
         return localized
+    }
+
+    // MARK: - Action Confirmations (PPAlertHelper)
+
+    private func promptClearanceConfirmation(for unit: LivePetReturnUnit) {
+        let confirmTitle = unit.resultingLifecycleStatus == .cleared
+            ? Language.get("LivePet_ActionReleaseResale", alter: "إتاحة للبيع")
+            : Language.get("LivePet_ActionApproveAndRelease", alter: "اعتماد وإتاحة للبيع")
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("LivePet_ConfirmClearanceTitle", alter: "تأكيد اعتماد الحيوان للبيع"),
+            subtitle: Language.get("LivePet_ConfirmClearanceMsg", alter: "هل أنت متأكد من اجتياز الحيوان لكافة الفحوصات البيطرية وأنه مؤهل للإتاحة في المتجر مجدداً؟"),
+            confirmButton: confirmTitle,
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "checkmark.seal.fill"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                Task {
+                    _ = await viewModel.clearUnitForResale(unit: unit, notes: nil)
+                }
+            },
+            cancelBlock: nil
+        )
+    }
+
+    private func promptQuarantineConfirmation(for unit: LivePetReturnUnit) {
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("LivePet_ConfirmQuarantineTitle", alter: "نقل الحيوان للحجر الصحي"),
+            subtitle: Language.get("LivePet_ConfirmQuarantineMsg", alter: "سيتم عزل الحيوان في وحدة الحجر ونقله من عهدة مكتب الاستلام لحين التقييم الطبي."),
+            confirmButton: Language.get("Confirm", alter: "تأكيد العزل"),
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "shield.lefthalf.filled.badge.checkmark"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                Task {
+                    _ = await viewModel.quarantineUnit(unit: unit, notes: nil)
+                }
+            },
+            cancelBlock: nil
+        )
     }
 }

@@ -1130,31 +1130,6 @@ public struct AdminRoleRankSecurityLevelsView: View {
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .alert(
-            Language.get("RoleRank_Delete_Confirm_Title", alter: "تأكيد حذف الدور المخصص"),
-            isPresented: Binding(
-                get: { viewModel.roleToDelete != nil },
-                set: { if !$0 { viewModel.roleToDelete = nil } }
-            )
-        ) {
-            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {
-                viewModel.roleToDelete = nil
-            }
-            Button(Language.get("Delete", alter: "حذف"), role: .destructive) {
-                if let role = viewModel.roleToDelete {
-                    viewModel.deleteCustomRole(role: role) { _ in
-                        viewModel.roleToDelete = nil
-                    }
-                }
-            }
-        } message: {
-            if let role = viewModel.roleToDelete {
-                Text(String.localizedStringWithFormat(
-                    Language.get("RoleRank_Delete_Confirm_Message", alter: "هل أنت متأكد من حذف الدور المخصص '%@'؟ لا يمكن التراجع عن هذه العملية."),
-                    role.localizedTitle
-                ))
-            }
-        }
-        .alert(
             Language.get("Error", alter: "خطأ في العملية"),
             isPresented: Binding(
                 get: { viewModel.deletionErrorMessage != nil },
@@ -1493,12 +1468,33 @@ public struct AdminRoleRankSecurityLevelsView: View {
                             viewModel.isShowingEditor = true
                         },
                         onDelete: {
-                            viewModel.roleToDelete = role
+                            promptDeleteRoleConfirmation(for: role)
                         }
                     )
                 }
             }
         }
+    }
+
+    // MARK: - Delete Role Confirmation (PPAlertHelper)
+
+    private func promptDeleteRoleConfirmation(for role: PlatformRoleModel) {
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("RoleRank_Delete_Confirm_Title", alter: "تأكيد حذف الدور المخصص"),
+            subtitle: String.localizedStringWithFormat(
+                Language.get("RoleRank_Delete_Confirm_Message", alter: "هل أنت متأكد من حذف الدور المخصص '%@'؟ لا يمكن التراجع عن هذه العملية."),
+                role.localizedTitle
+            ),
+            confirmButton: Language.get("Delete", alter: "حذف"),
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "trash.fill"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                viewModel.deleteCustomRole(role: role) { _ in }
+            },
+            cancelBlock: nil
+        )
     }
 }
 

@@ -113,7 +113,7 @@ public struct LivePetReturnCoordinatorView: View {
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .interactiveDismissDisabled(isSubmitting || isConfirmedStep)
-        .sheet(item: Binding<DossierIdentifier?>(
+        .fullScreenCover(item: Binding<DossierIdentifier?>(
             get: { showingDossierCaseId.map { DossierIdentifier(id: $0) } },
             set: { showingDossierCaseId = $0?.id }
         )) { ident in

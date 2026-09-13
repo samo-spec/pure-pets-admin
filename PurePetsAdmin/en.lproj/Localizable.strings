@@ -5526,6 +5526,9 @@
 "LivePetDossier_ActiveOnHandCount" = "%ld available in stock";
 "LivePetDossier_SoldCount" = "%ld sold";
 "LivePet_Units_Archived_Count" = "Sales history and archived (%ld)";
+"LivePet_Units_Archived_Title" = "Sales History & Archived";
+"LivePet_Units_Archived_CollapsedHint" = "Tap to view sold and archived records";
+"LivePet_Units_Archived_ExpandedHint" = "Showing all sold and archived records";
 "LivePetDossier_LoadingHint" = "The current state is being fetched before actions are available.";
 "LivePetDossier_UnitsRestricted" = "Individual animal records are unavailable with your permission.";
 "LivePetDossier_EmptyUnitsHint" = "Add individual stock to create an identity record for each animal.";
@@ -7651,9 +7654,48 @@
 
 /* ===================== Live Pet Return Release Routing ===================== */
 "LivePet_LegacyReturn_Notice_Title" = "Returned animal in quarantine custody";
+"LivePet_Quarantine_Notice_Title" = "Animal under veterinary quarantine";
+"LivePet_ReturnTx_Ref" = "Return Transaction: %@";
 "LivePet_LegacyReturn_Notice_Desc" = "This animal was received through the legacy return flow. It remains unavailable for sale until quarantine review and an authorized release.";
 "LivePet_ActionApproveAndRelease" = "Approve and release for sale";
 "LivePet_ActionReleaseResale" = "Release for sale";
 "LivePet_Error_ResaleLifecycle" = "This animal cannot be returned to sale from its current state. Refresh the return case and review the veterinary disposition.";
 "LivePet_Error_ResaleReadback" = "The release command was submitted, but the final state could not be confirmed. Refresh the return case before retrying.";
 "LivePet_Error_ReturnUnitMissing" = "The return case or selected animal record is no longer available.";
+
+/* ===================== Admin Home Category-Defining Section Headers ===================== */
+"AdminPOS_SectionEyebrow" = "POINT OF SALE";
+"Stock_SectionEyebrow" = "STOCK & CATALOG";
+"AdminQuickActions_SectionEyebrow" = "FIELD OPERATIONS";
+"AdminHorizons_SectionEyebrow" = "OPERATIONAL HORIZONS";
+"AdminHorizons_SectionTitle" = "Financial & Hospitality Horizons";
+"AdminHorizons_SectionDetail" = "Real-time telemetry for revenue, net margin, and hotel occupancy";
+"AdminRunway_SectionEyebrow" = "ACTION RUNWAY";
+"AdminLedger_SectionEyebrow" = "SYSTEM TELEMETRY";
+"AdminSectionHeader_AllOptimal" = "All systems optimal";
+"AdminSectionHeader_Loading" = "Updating telemetry...";
+"AdminSectionHeader_TapToInspect" = "Tap for quick inspection";
+"AdminSectionHeader_ActiveSignalsSingular" = "1 active signal";
+
+/* ===================== Admin Inventory Product Cards (Catalog & Live Pets) ===================== */
+"Valuation_Heading"             = "Valuation & Margin";
+"Cost_Short"                    = "Cost:";
+"Margin_Short"                  = "Margin:";
+"Gross_Margin_Format"           = "Margin: %@";
+"Stock_Lot_Expiry_Alert"        = "Track lots & expiry";
+"Manage_Lots_Button"            = "Lots / Expiry";
+"LivePet_Tracked_Units_Title"   = "Tracked with official ring tags";
+"Biological_Readiness"          = "Veterinary Status";
+"Pet_Health_Sound"              = "In-Store & Healthy";
+"Pet_Quarantine_All"            = "Quarantine / Reserved";
+"LivePet_Manage_Units"          = "Specimen Roster";
+"Quarantine_Studio"             = "Quarantine Studio";
+"Specimen_Actions"              = "Specimen Actions";
+
+/* Inventory Redesign Category-Defining Additions */
+"ActiveInCatalog" = "Active in Catalog";
+"Wholesale_Short" = "Wholesale:";
+"Manage_Lots" = "Manage Lots & Expiry";
+"LivePet_Reserved_Format" = "Reserved (%@)";
+"LivePet_Mortality_Record" = "Record Loss or Mortality";
+"ViewDetails" = "View Details";

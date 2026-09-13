@@ -5585,6 +5585,9 @@
 "LivePetDossier_ActiveOnHandCount" = "%ld متاح بالمخزون";
 "LivePetDossier_SoldCount" = "%ld مباع";
 "LivePet_Units_Archived_Count" = "سجل المبيعات والأرشيف (%ld)";
+"LivePet_Units_Archived_Title" = "سجل المبيعات والأرشيف";
+"LivePet_Units_Archived_CollapsedHint" = "انقر لعرض سجل الحيوانات المباعة والمؤرشفة";
+"LivePet_Units_Archived_ExpandedHint" = "يتم الآن عرض سجل الحيوانات المباعة والمؤرشفة";
 "LivePetDossier_LoadingHint" = "يتم جلب الحالة الحالية قبل إتاحة الإجراءات.";
 "LivePetDossier_UnitsRestricted" = "سجلات الحيوانات الفردية غير متاحة لصلاحيتك.";
 "LivePetDossier_EmptyUnitsHint" = "أضف مخزوناً فردياً لإنشاء سجل هوية لكل حيوان.";
@@ -7713,9 +7716,48 @@
 
 /* ===================== Live Pet Return Release Routing ===================== */
 "LivePet_LegacyReturn_Notice_Title" = "حيوان مسترجع في عهدة الحجر";
+"LivePet_Quarantine_Notice_Title" = "الحيوان خاضع للعزل البيطري";
+"LivePet_ReturnTx_Ref" = "معاملة الاسترجاع: %@";
 "LivePet_LegacyReturn_Notice_Desc" = "تم استلام هذا الحيوان عبر مسار الاسترجاع السابق. يبقى غير متاح للبيع حتى مراجعة الحجر وإصداره بالصلاحيات المعتمدة.";
 "LivePet_ActionApproveAndRelease" = "اعتماد وإتاحة للبيع";
 "LivePet_ActionReleaseResale" = "إتاحة للبيع";
 "LivePet_Error_ResaleLifecycle" = "لا يمكن إتاحة الحيوان للبيع من حالته الحالية. حدّث ملف الاسترجاع وراجع قرار الرعاية البيطرية.";
 "LivePet_Error_ResaleReadback" = "تم إرسال أمر الإتاحة، لكن تعذر تأكيد الحالة النهائية. حدّث ملف الاسترجاع قبل إعادة المحاولة.";
 "LivePet_Error_ReturnUnitMissing" = "لم يعد ملف الاسترجاع أو سجل الحيوان المحدد متاحاً.";
+
+/* ===================== Admin Home Category-Defining Section Headers ===================== */
+"AdminPOS_SectionEyebrow" = "نظام نقاط البيع";
+"Stock_SectionEyebrow" = "المخزون والكتالوج";
+"AdminQuickActions_SectionEyebrow" = "العمليات الميدانية";
+"AdminHorizons_SectionEyebrow" = "المؤشرات والأفق التشغيلي";
+"AdminHorizons_SectionTitle" = "الأفق المالي والفندقي";
+"AdminHorizons_SectionDetail" = "تتبع مباشر للإيرادات، صافي الأرباح، ونزلاء الفندق والغرف";
+"AdminRunway_SectionEyebrow" = "التدخل السريع";
+"AdminLedger_SectionEyebrow" = "بيانات المنظومة";
+"AdminSectionHeader_AllOptimal" = "الحالة ممتازة ومطابقة";
+"AdminSectionHeader_Loading" = "جارٍ التحديث...";
+"AdminSectionHeader_TapToInspect" = "اضغط للمعاينة السريعة";
+"AdminSectionHeader_ActiveSignalsSingular" = "إشارة نشطة واحدة";
+
+/* ===================== Admin Inventory Product Cards (Catalog & Live Pets) ===================== */
+"Valuation_Heading"             = "القيمة والربحية";
+"Cost_Short"                    = "تكلفة:";
+"Margin_Short"                  = "هامش:";
+"Gross_Margin_Format"           = "هامش ربح: %@";
+"Stock_Lot_Expiry_Alert"        = "تتبع الدفعات وتاريخ الصلاحية";
+"Manage_Lots_Button"            = "الدفعات والصلاحية";
+"LivePet_Tracked_Units_Title"   = "وحدات مفردة بحجول رسمية";
+"Biological_Readiness"          = "الحالة الحيوية والبيطرية";
+"Pet_Health_Sound"              = "سليم بالمحل";
+"Pet_Quarantine_All"            = "محجوز / حجر بيطري";
+"LivePet_Manage_Units"          = "سجل الحيوانات الفردية";
+"Quarantine_Studio"             = "الحجر البيطري";
+"Specimen_Actions"              = "خيارات الحيوان";
+
+/* Inventory Redesign Category-Defining Additions */
+"ActiveInCatalog" = "متاح بالمتجر";
+"Wholesale_Short" = "جملة:";
+"Manage_Lots" = "إدارة الشحنات والصلاحية";
+"LivePet_Reserved_Format" = "محجوز (%@)";
+"LivePet_Mortality_Record" = "تسجيل فقدان أو نفوق";
+"ViewDetails" = "عرض التفاصيل";

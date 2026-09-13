@@ -731,8 +731,8 @@ struct AdminPOSHistoryView: View {
                 }
             )
         }
-        // Live Pet Return Coordinator Sheet
-        .sheet(item: $receiptForLivePetReturn) { receipt in
+        // Live Pet Return Coordinator (Full Screen)
+        .fullScreenCover(item: $receiptForLivePetReturn) { receipt in
             LivePetReturnCoordinatorView(
                 receipt: receipt,
                 onProceedToMerchandiseRefund: { mixedReceipt in
@@ -748,8 +748,8 @@ struct AdminPOSHistoryView: View {
                 }
             )
         }
-        // Refund Studio Sheet (Generic Merchandise / Mixed)
-        .sheet(item: $receiptForRefund) { receipt in
+        // Refund Studio (Full Screen)
+        .fullScreenCover(item: $receiptForRefund) { receipt in
             POSRefundStudioSheet(
                 receipt: receipt,
                 viewModel: viewModel,
@@ -3055,7 +3055,7 @@ struct POSTransactionDossierSheet: View {
         .sheet(item: $receiptShare) { share in
             POSHistoryReceiptShareSheet(share: share) {}
         }
-        .sheet(item: $selectedReturnCaseForDetail) { rCase in
+        .fullScreenCover(item: $selectedReturnCaseForDetail) { rCase in
             ReturnCaseDetailView(returnCaseId: rCase.returnCaseId, initialCase: rCase)
         }
         .task {
@@ -3326,7 +3326,7 @@ struct POSRefundStudioSheet: View {
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .sheet(isPresented: $isShowingLivePetCoordinator) {
+        .fullScreenCover(isPresented: $isShowingLivePetCoordinator) {
             LivePetReturnCoordinatorView(
                 receipt: receipt,
                 onProceedToMerchandiseRefund: { _ in

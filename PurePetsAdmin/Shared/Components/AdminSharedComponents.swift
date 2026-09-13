@@ -379,7 +379,7 @@ public struct PPLottieFirebaseView: UIViewRepresentable {
         context.coordinator.startObserving()
 
         // Asynchronously fetch JSON from Firebase Storage and play
-        Styling.setAnimationNamed(fileName, toView: animationView, withSpeed: speed) { success in
+        Styling.setAnimationNamed(fileName, to: animationView, withSpeed: speed) { success in
             if !success {
                 // If remote fetch failed, check if it exists in local app bundle
                 if let bundleAnimation = LOTComposition(name: self.fileName) {
@@ -396,6 +396,7 @@ public struct PPLottieFirebaseView: UIViewRepresentable {
 
     public func updateUIView(_ uiView: UIView, context: Context) {
         if let animationView = context.coordinator.animationView {
+            animationView.animationSpeed = CGFloat(self.speed)
             if !animationView.isAnimationPlaying {
                 animationView.play()
             }

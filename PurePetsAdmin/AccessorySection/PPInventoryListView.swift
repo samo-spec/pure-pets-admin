@@ -3585,6 +3585,10 @@ struct CategorySpecimenAuraTheme {
 @available(iOS 16.0, *)
 private struct FlagshipInventoryCard: View {
     let item: PetAccessory
+    var canManageStock: Bool = true
+    var canDeleteStock: Bool = true
+    var canReleaseQuarantine: Bool = true
+
     let onTap: () -> Void
     let onEdit: () -> Void
     let onAdjustQuantity: (Int) -> Void
@@ -3594,13 +3598,6 @@ private struct FlagshipInventoryCard: View {
     var onQuarantineStudio: (() -> Void)? = nil
     var onManageLots: (() -> Void)? = nil
     var onOpenActionMenu: (() -> Void)? = nil
-
-    @State private var showTactileQuantityPad: Bool = false
-    @State private var isChamberPressed: Bool = false
-
-    var canManageStock: Bool = true
-    var canDeleteStock: Bool = true
-    var canReleaseQuarantine: Bool = true
 
     init(
         item: PetAccessory,
@@ -3630,6 +3627,102 @@ private struct FlagshipInventoryCard: View {
         self.onQuarantineStudio = onQuarantineStudio
         self.onManageLots = onManageLots
         self.onOpenActionMenu = onOpenActionMenu
+    }
+
+    var body: some View {
+        if item.isLivePet {
+            PPAdminLivePetInventoryCard(
+                item: item,
+                canManageStock: canManageStock,
+                canDeleteStock: canDeleteStock,
+                canReleaseQuarantine: canReleaseQuarantine,
+                onTap: onTap,
+                onEdit: onEdit,
+                onToggleStock: onToggleStock,
+                onDelete: onDelete,
+                onQuarantineStudio: onQuarantineStudio,
+                onRecordDamage: onRecordDamage,
+                onOpenActionMenu: onOpenActionMenu
+            )
+        } else {
+            PPAdminCatalogInventoryCard(
+                item: item,
+                canManageStock: canManageStock,
+                canDeleteStock: canDeleteStock,
+                canReleaseQuarantine: canReleaseQuarantine,
+                onTap: onTap,
+                onEdit: onEdit,
+                onAdjustQuantity: onAdjustQuantity,
+                onToggleStock: onToggleStock,
+                onDelete: onDelete,
+                onRecordDamage: onRecordDamage,
+                onQuarantineStudio: onQuarantineStudio,
+                onManageLots: onManageLots,
+                onOpenActionMenu: onOpenActionMenu
+            )
+        }
+    }
+}
+
+// MARK: - Dedicated Architecture 1: Catalog Packaged Goods & Nutrition (Accessories, Food, Medicine)
+
+@available(iOS 16.0, *)
+private struct PPAdminCatalogInventoryCard: View {
+    let item: PetAccessory
+    var canManageStock: Bool = true
+    var canDeleteStock: Bool = true
+    var canReleaseQuarantine: Bool = true
+
+    let onTap: () -> Void
+    let onEdit: () -> Void
+    let onAdjustQuantity: (Int) -> Void
+    let onToggleStock: () -> Void
+    let onDelete: () -> Void
+    var onRecordDamage: (() -> Void)? = nil
+    var onQuarantineStudio: (() -> Void)? = nil
+    var onManageLots: (() -> Void)? = nil
+    var onOpenActionMenu: (() -> Void)? = nil
+
+    init(
+        item: PetAccessory,
+        canManageStock: Bool = true,
+        canDeleteStock: Bool = true,
+        canReleaseQuarantine: Bool = true,
+        onTap: @escaping () -> Void,
+        onEdit: @escaping () -> Void,
+        onAdjustQuantity: @escaping (Int) -> Void,
+        onToggleStock: @escaping () -> Void,
+        onDelete: @escaping () -> Void,
+        onRecordDamage: (() -> Void)? = nil,
+        onQuarantineStudio: (() -> Void)? = nil,
+        onManageLots: (() -> Void)? = nil,
+        onOpenActionMenu: (() -> Void)? = nil
+    ) {
+        self.item = item
+        self.canManageStock = canManageStock
+        self.canDeleteStock = canDeleteStock
+        self.canReleaseQuarantine = canReleaseQuarantine
+        self.onTap = onTap
+        self.onEdit = onEdit
+        self.onAdjustQuantity = onAdjustQuantity
+        self.onToggleStock = onToggleStock
+        self.onDelete = onDelete
+        self.onRecordDamage = onRecordDamage
+        self.onQuarantineStudio = onQuarantineStudio
+        self.onManageLots = onManageLots
+        self.onOpenActionMenu = onOpenActionMenu
+    }
+
+    @State private var showTactileQuantityPad: Bool = false
+    @State private var isChamberPressed: Bool = false
+    @State private var isHovered: Bool = false
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var isIPadRegular: Bool {
+        horizontalSizeClass == .regular
     }
 
     private var imageURL: URL? {
@@ -3671,7 +3764,7 @@ private struct FlagshipInventoryCard: View {
 
     private var stockTone: Color {
         let qty = displayQuantity
-        if qty <= 0 || (item.noStock && !item.isLivePet) {
+        if qty <= 0 || item.noStock {
             return Color(uiColor: .ppError)
         } else if qty <= 3 {
             return Color(uiColor: .ppWarning)
@@ -3682,7 +3775,7 @@ private struct FlagshipInventoryCard: View {
 
     private var stockStatusText: String {
         let qty = displayQuantity
-        if (item.noStock && !item.isLivePet) || qty <= 0 {
+        if item.noStock || qty <= 0 {
             return Language.get("OutOfStock", alter: "نفذ من المخزون")
         } else if qty <= 3 {
             return String(format: Language.get("LowStock_Qty_Format", alter: "وشك النفاذ (%@)"), qty.englishDigits).normalizedEnglishDigits
@@ -3692,70 +3785,48 @@ private struct FlagshipInventoryCard: View {
     }
 
     var body: some View {
-        VStack(spacing: 12) {
-            // Main Specimen Presentation Chamber (Tappable Area + Tap & Hold)
-            HStack(alignment: .top, spacing: 14) {
-                // Visual Specimen Vitrine (88x88)
-                specimenVitrine
-
-                // Nomenclature, Runway & Valuation Track
-                VStack(alignment: .leading, spacing: 6) {
-                    // Architectural Metadata Runway
-                    architecturalMetadataRunway
-
-                    // Specimen Nomenclature (Title)
-                    Text(item.name ?? "")
-                        .font(AdminType.headline)
-                        .foregroundColor(AdminSurface.primaryText)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Spacer(minLength: 2)
-
-                    // Financial Valuation Readout
-                    financialValuationReadout
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+        Group {
+            if isIPadRegular {
+                iPadWorkbenchLayout
+            } else {
+                iPhoneCompactLayout
             }
-            .contentShape(Rectangle())
-            .scaleEffect(isChamberPressed ? 0.98 : 1.0)
-            .opacity(isChamberPressed ? 0.88 : 1.0)
-            .animation(.easeInOut(duration: 0.15), value: isChamberPressed)
-            .onTapGesture {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                onTap()
-            }
-            .onLongPressGesture(minimumDuration: 0.35, pressing: { isPressing in
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    isChamberPressed = isPressing
-                }
-            }) {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                onOpenActionMenu?()
-            }
-
-            // Tactical Horizon Negative-Space Divider
-            Divider()
-                .background(AdminSurface.hairline.opacity(0.65))
-
-            // Integrated Tactical Horizon Cockpit
-            tacticalHorizonCockpit
         }
-        .padding(14)
+        .padding(isIPadRegular ? 16 : 14)
         .background(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(AdminSurface.surface)
-                .shadow(color: Color.black.opacity(0.035), radius: 10, x: 0, y: 3)
+                .shadow(
+                    color: Color.black.opacity(isHovered ? 0.08 : 0.035),
+                    radius: isHovered ? 14 : 10,
+                    x: 0,
+                    y: isHovered ? 5 : 3
+                )
         )
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.60), lineWidth: 0.75)
+                .strokeBorder(
+                    isHovered ? AdminSurface.primary.opacity(0.40) : Color(uiColor: .ppSurfaceBorder).opacity(0.60),
+                    lineWidth: isHovered ? 1.2 : 0.75
+                )
         )
+        .hoverEffect(.lift)
+        .onHover { hovering in
+            if reduceMotion {
+                isHovered = hovering
+            } else {
+                withAnimation(.spring(response: 0.24, dampingFraction: 0.8)) {
+                    isHovered = hovering
+                }
+            }
+        }
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .onLongPressGesture(minimumDuration: 0.35) {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             onOpenActionMenu?()
+        }
+        .contextMenu {
+            contextMenuActions
         }
         .tactileQuantityPad(
             isPresented: $showTactileQuantityPad,
@@ -3775,9 +3846,248 @@ private struct FlagshipInventoryCard: View {
                 onAdjustQuantity(delta)
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("\(item.name ?? "") - \(stockStatusText) - \(finalPriceFormatted)"))
     }
 
-    // MARK: - Architectural Metadata Runway
+    // MARK: - iPhone Composition
+
+    private var iPhoneCompactLayout: some View {
+        VStack(spacing: 12) {
+            HStack(alignment: .top, spacing: 14) {
+                specimenVitrine(size: 88)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    architecturalMetadataRunway
+
+                    Text(item.name ?? "")
+                        .font(AdminType.headline)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer(minLength: 2)
+
+                    financialValuationReadout
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .contentShape(Rectangle())
+            .scaleEffect(isChamberPressed && !reduceMotion ? 0.98 : 1.0)
+            .opacity(isChamberPressed ? 0.88 : 1.0)
+            .animation(.easeInOut(duration: 0.15), value: isChamberPressed)
+            .onTapGesture {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onTap()
+            }
+
+            Divider()
+                .background(AdminSurface.hairline.opacity(0.55))
+
+            HStack(alignment: .center, spacing: 8) {
+                storeVisibilitySentinel
+
+                Spacer(minLength: 4)
+
+                quantumPrecisionStepper
+
+                if let onManageLots = onManageLots, item.isFood || item.isPetMedicine {
+                    lotsManagementButton(action: onManageLots)
+                }
+
+                if let onOpenActionMenu = onOpenActionMenu {
+                    actionMenuButton(action: onOpenActionMenu)
+                }
+            }
+        }
+    }
+
+    // MARK: - iPad Dedicated Spatial Workbench Composition
+
+    private var iPadWorkbenchLayout: some View {
+        HStack(alignment: .center, spacing: 18) {
+            // Column 1: Identity & Visual Vitrine
+            HStack(spacing: 14) {
+                specimenVitrine(size: 88)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    architecturalMetadataRunway
+
+                    Text(item.name ?? "")
+                        .font(AdminType.headline)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+
+                    HStack(spacing: 8) {
+                        if let barcode = item.barcode, !barcode.isEmpty {
+                            HStack(spacing: 3) {
+                                Image(systemName: "barcode.viewfinder")
+                                    .font(.system(size: 9))
+                                Text(barcode)
+                                    .font(PPBrandFont.regular(size: 10))
+                            }
+                            .foregroundColor(AdminCommandInk.tertiary)
+                        }
+
+                        if let sku = item.sku, !sku.isEmpty {
+                            HStack(spacing: 3) {
+                                Image(systemName: "number.square")
+                                    .font(.system(size: 9))
+                                Text(sku)
+                                    .font(PPBrandFont.regular(size: 10))
+                            }
+                            .foregroundColor(AdminCommandInk.tertiary)
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onTap()
+            }
+
+            // Column 2: Financial Telemetry & Margins
+            VStack(alignment: .leading, spacing: 5) {
+                Text(Language.get("Valuation_Heading", alter: "التقييم المالي والمخزون"))
+                    .font(AdminType.caption2Bold)
+                    .foregroundColor(AdminCommandInk.tertiary)
+
+                financialValuationReadout
+
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(stockTone)
+                        .frame(width: 5, height: 5)
+                    Text(stockStatusText)
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminCommandInk.secondary)
+                }
+            }
+            .frame(minWidth: 170, alignment: .leading)
+
+            // Column 3: Logistics & Quantum Cockpit
+            HStack(spacing: 10) {
+                storeVisibilitySentinel
+
+                quantumPrecisionStepper
+
+                if let onManageLots = onManageLots, item.isFood || item.isPetMedicine {
+                    lotsManagementButton(action: onManageLots)
+                }
+
+                if let onOpenActionMenu = onOpenActionMenu {
+                    actionMenuButton(action: onOpenActionMenu)
+                }
+            }
+        }
+    }
+
+    // MARK: - Subcomponents
+
+    private func specimenVitrine(size: CGFloat) -> some View {
+        ZStack(alignment: .topLeading) {
+            Group {
+                if let imageURL = imageURL {
+                    AdminRemoteImage(url: imageURL, contentMode: .fill, targetSize: CGSize(width: size, height: size)) {
+                        ZStack {
+                            AdminSurface.control
+                            ProgressView()
+                                .tint(AdminSurface.primary)
+                        }
+                        .frame(width: size, height: size)
+                    }
+                    .frame(width: size, height: size)
+                    .clipped()
+                } else {
+                    proceduralAuraVitrine(size: size)
+                }
+            }
+            .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.65), lineWidth: 0.75)
+            )
+
+            if hasDiscount, let percent = item.discountPercent, percent.intValue > 0 {
+                Text(verbatim: "-\(percent.intValue.englishDigits)%")
+                    .font(PPBrandFont.bold(size: 10))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 5.5)
+                    .padding(.vertical, 2.5)
+                    .background(
+                        LinearGradient(
+                            colors: [Color(uiColor: .ppError), Color(red: 225/255, green: 29/255, blue: 72/255)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    )
+                    .shadow(color: Color(uiColor: .ppError).opacity(0.35), radius: 3, x: 0, y: 1.5)
+                    .padding(5)
+            }
+
+            if item.imageURLsArray.count > 1 {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        HStack(spacing: 2) {
+                            Image(systemName: "photo.stack.fill")
+                                .font(.system(size: 7.5, weight: .bold))
+                            Text(verbatim: item.imageURLsArray.count.englishDigits)
+                                .font(PPBrandFont.bold(size: 8.5))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 4.5)
+                        .padding(.vertical, 2)
+                        .background(Color.black.opacity(0.65), in: Capsule(style: .continuous))
+                        .padding(5)
+                    }
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private func proceduralAuraVitrine(size: CGFloat) -> some View {
+        let aura = CategorySpecimenAuraTheme.resolve(for: item)
+        return ZStack {
+            LinearGradient(
+                colors: [aura.gradient[0].opacity(0.18), aura.gradient[1].opacity(0.08)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [aura.gradient[0].opacity(0.30), aura.gradient[1].opacity(0.0)],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: 36
+                    )
+                )
+                .frame(width: 56, height: 56)
+
+            Image(systemName: aura.glyphName)
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: aura.gradient,
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .shadow(color: aura.accentTint.opacity(0.3), radius: 4, y: 2)
+        }
+        .frame(width: size, height: size)
+    }
 
     private var architecturalMetadataRunway: some View {
         let aura = CategorySpecimenAuraTheme.resolve(for: item)
@@ -3785,7 +4095,6 @@ private struct FlagshipInventoryCard: View {
         let condText = PetAccessory.conditionText(for: item)
 
         return HStack(spacing: 5) {
-            // Taxonomy Capsule with live tint
             HStack(spacing: 3.5) {
                 Circle()
                     .fill(aura.accentTint)
@@ -3799,7 +4108,6 @@ private struct FlagshipInventoryCard: View {
             .padding(.vertical, 2.5)
             .background(aura.accentTint.opacity(0.10), in: Capsule(style: .continuous))
 
-            // Branch Beacon
             if !branchDisplayName.isEmpty {
                 HStack(spacing: 3) {
                     Image(systemName: "building.2")
@@ -3814,7 +4122,6 @@ private struct FlagshipInventoryCard: View {
                 .background(AdminSurface.control, in: Capsule(style: .continuous))
             }
 
-            // Condition Tag (e.g. جديد / مستعمل)
             if !condText.isEmpty {
                 Text(condText)
                     .font(AdminType.caption2Bold)
@@ -3825,7 +4132,6 @@ private struct FlagshipInventoryCard: View {
                     .lineLimit(1)
             }
 
-            // Size Tag
             if let size = item.size, !size.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 HStack(spacing: 2) {
                     Image(systemName: "ruler.fill")
@@ -3840,7 +4146,6 @@ private struct FlagshipInventoryCard: View {
                 .lineLimit(1)
             }
 
-            // Package Weight Chip
             if let weight = item.weightText, !weight.isEmpty {
                 HStack(spacing: 2) {
                     Image(systemName: "scalemass.fill")
@@ -3855,8 +4160,6 @@ private struct FlagshipInventoryCard: View {
             Spacer(minLength: 0)
         }
     }
-
-    // MARK: - Financial Valuation Readout
 
     private var financialValuationReadout: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -3880,7 +4183,6 @@ private struct FlagshipInventoryCard: View {
                         .font(PPBrandFont.bold(size: 11))
                         .monospacedDigit()
 
-                    // Margin intelligence readout
                     let fp = item.finalPrice.doubleValue
                     if fp > wp && fp > 0 {
                         let marginPercent = Int(round(((fp - wp) / fp) * 100.0))
@@ -3893,156 +4195,6 @@ private struct FlagshipInventoryCard: View {
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2.5)
                 .background(Color(uiColor: .systemTeal).opacity(0.12), in: Capsule(style: .continuous))
-            }
-        }
-    }
-
-    // MARK: - Specimen Visual Vitrine (88x88)
-
-    private var specimenVitrine: some View {
-        ZStack(alignment: .topLeading) {
-            // Artwork Vessel (Image or Procedural Aura)
-            Group {
-                if let imageURL = imageURL {
-                    AdminRemoteImage(url: imageURL, contentMode: .fill, targetSize: CGSize(width: 88, height: 88)) {
-                        ZStack {
-                            AdminSurface.control
-                            ProgressView()
-                                .tint(AdminSurface.primary)
-                        }
-                        .frame(width: 88, height: 88)
-                    }
-                    .frame(width: 88, height: 88)
-                    .clipped()
-                } else {
-                    proceduralAuraVitrine
-                }
-            }
-            .frame(width: 88, height: 88)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.65), lineWidth: 0.75)
-            )
-
-            // Dynamic Discount Ribbon
-            if hasDiscount, let percent = item.discountPercent, percent.intValue > 0 {
-                Text(verbatim: "-\(percent.intValue.englishDigits)%")
-                    .font(PPBrandFont.bold(size: 10))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 5.5)
-                    .padding(.vertical, 2.5)
-                    .background(
-                        LinearGradient(
-                            colors: [Color(uiColor: .ppError), Color(red: 225/255, green: 29/255, blue: 72/255)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    )
-                    .shadow(color: Color(uiColor: .ppError).opacity(0.35), radius: 3, x: 0, y: 1.5)
-                    .padding(5)
-            }
-
-            // Multi-Photo Stack Pip
-            if item.imageURLsArray.count > 1 {
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        HStack(spacing: 2) {
-                            Image(systemName: "photo.stack.fill")
-                                .font(.system(size: 7.5, weight: .bold))
-                            Text(verbatim: item.imageURLsArray.count.englishDigits)
-                                .font(PPBrandFont.bold(size: 8.5))
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 4.5)
-                        .padding(.vertical, 2)
-                        .background(Color.black.opacity(0.65), in: Capsule(style: .continuous))
-                        .shadow(color: Color.black.opacity(0.25), radius: 2, y: 1)
-                        .padding(5)
-                    }
-                }
-            }
-        }
-        .frame(width: 88, height: 88)
-        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
-
-    private var proceduralAuraVitrine: some View {
-        let aura = CategorySpecimenAuraTheme.resolve(for: item)
-        return ZStack {
-            // Soft atmospheric ambient gradient
-            LinearGradient(
-                colors: [aura.gradient[0].opacity(0.18), aura.gradient[1].opacity(0.08)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            // Inner soft luminous focal aura
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [aura.gradient[0].opacity(0.30), aura.gradient[1].opacity(0.0)],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: 36
-                    )
-                )
-                .frame(width: 56, height: 56)
-
-            // Category Vector Archetype Glyph
-            Image(systemName: aura.glyphName)
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: aura.gradient,
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .shadow(color: aura.accentTint.opacity(0.3), radius: 4, y: 2)
-        }
-        .frame(width: 88, height: 88)
-    }
-
-    // MARK: - Integrated Tactical Horizon Cockpit
-
-    private var tacticalHorizonCockpit: some View {
-        HStack(alignment: .center, spacing: 8) {
-            // Store Visibility Sentinel
-            if !item.isLivePet {
-                storeVisibilitySentinel
-            }
-
-            Spacer(minLength: 4)
-
-            // Stepper or Live Pet Unit Registry
-            if item.isLivePet {
-                livePetRosterButton
-            } else {
-                quantumPrecisionStepper
-            }
-
-            // Quick Specimen Action Beacon
-            if let onOpenActionMenu = onOpenActionMenu {
-                Button(action: {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    onOpenActionMenu()
-                }) {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(AdminCommandInk.secondary)
-                        .frame(width: 36, height: 36)
-                        .background(AdminSurface.control, in: Circle())
-                        .overlay(
-                            Circle()
-                                .strokeBorder(AdminSurface.borderSubtle, lineWidth: 0.75)
-                        )
-                }
-                .buttonStyle(CatalogPressStyle())
-                .accessibilityLabel(Language.get("Specimen_Actions", alter: "خيارات الصنف"))
             }
         }
     }
@@ -4070,10 +4222,10 @@ private struct FlagshipInventoryCard: View {
                     .strokeBorder((item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess)).opacity(0.24), lineWidth: 0.75)
             )
         } else {
-            Button(action: {
+            Button {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 onToggleStock()
-            }) {
+            } label: {
                 HStack(spacing: 5) {
                     Image(systemName: item.noStock ? "eye.slash.fill" : "checkmark.seal.fill")
                         .font(.system(size: 11, weight: .bold))
@@ -4099,34 +4251,6 @@ private struct FlagshipInventoryCard: View {
         }
     }
 
-    private var livePetRosterButton: some View {
-        Button(action: {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            onTap()
-        }) {
-            HStack(spacing: 6) {
-                Image(systemName: "pawprint.fill")
-                    .font(.system(size: 11, weight: .bold))
-                Text(Language.get("LivePet_Manage_Units", alter: "سجل الحيوانات"))
-                    .font(AdminType.captionBold)
-                Text(verbatim: "(\(displayQuantity.englishDigits))")
-                    .font(PPBrandFont.bold(size: 11))
-                    .monospacedDigit()
-                Image(systemName: "chevron.forward")
-                    .font(.system(size: 9, weight: .bold))
-            }
-            .foregroundColor(AdminSurface.primary)
-            .padding(.horizontal, 12)
-            .frame(height: 36)
-            .background(AdminSurface.primary.opacity(0.10), in: Capsule(style: .continuous))
-            .overlay(
-                Capsule(style: .continuous)
-                    .strokeBorder(AdminSurface.primary.opacity(0.22), lineWidth: 0.75)
-            )
-        }
-        .buttonStyle(CatalogPressStyle())
-    }
-
     @ViewBuilder
     private var quantumPrecisionStepper: some View {
         if !canManageStock {
@@ -4150,7 +4274,6 @@ private struct FlagshipInventoryCard: View {
             .accessibilityLabel(stockStatusText)
         } else {
             HStack(spacing: 0) {
-                // Decrement (-)
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     onAdjustQuantity(-1)
@@ -4164,7 +4287,6 @@ private struct FlagshipInventoryCard: View {
                 .buttonStyle(CatalogPressStyle())
                 .disabled(displayQuantity <= 0)
 
-                // Tabular Count with Stock Vitality Tint & Rolling Transition
                 HStack(spacing: 4) {
                     Circle()
                         .fill(stockTone)
@@ -4185,7 +4307,6 @@ private struct FlagshipInventoryCard: View {
                     promptQuantityEdit()
                 }
 
-                // Increment (+)
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     onAdjustQuantity(1)
@@ -4206,16 +4327,654 @@ private struct FlagshipInventoryCard: View {
         }
     }
 
+    private func lotsManagementButton(action: @escaping () -> Void) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        } label: {
+            Image(systemName: "shippingbox.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(AdminCommandInk.secondary)
+                .frame(width: 36, height: 36)
+                .background(AdminSurface.control, in: Circle())
+                .overlay(Circle().strokeBorder(AdminSurface.borderSubtle, lineWidth: 0.75))
+        }
+        .buttonStyle(CatalogPressStyle())
+        .accessibilityLabel(Language.get("Manage_Lots", alter: "إدارة الشحنات والصلاحية"))
+    }
+
+    private func actionMenuButton(action: @escaping () -> Void) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            action()
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(AdminCommandInk.secondary)
+                .frame(width: 36, height: 36)
+                .background(AdminSurface.control, in: Circle())
+                .overlay(
+                    Circle()
+                        .strokeBorder(AdminSurface.borderSubtle, lineWidth: 0.75)
+                )
+        }
+        .buttonStyle(CatalogPressStyle())
+        .accessibilityLabel(Language.get("Specimen_Actions", alter: "خيارات الصنف"))
+    }
+
+    @ViewBuilder
+    private var contextMenuActions: some View {
+        Button {
+            onTap()
+        } label: {
+            Label(Language.get("ViewDetails", alter: "عرض التفاصيل"), systemImage: "eye.fill")
+        }
+
+        if canManageStock {
+            Button {
+                onEdit()
+            } label: {
+                Label(Language.get("Edit", alter: "تعديل"), systemImage: "pencil")
+            }
+
+            Button {
+                promptQuantityEdit()
+            } label: {
+                Label(Language.get("EditQuantity", alter: "تعديل الكمية"), systemImage: "number.square.fill")
+            }
+
+            Button {
+                onToggleStock()
+            } label: {
+                Label(
+                    item.noStock ? Language.get("MarkInStock", alter: "تفعيل المخزون") : Language.get("MarkOutOfStock", alter: "تعطيل المخزون"),
+                    systemImage: item.noStock ? "checkmark.seal" : "eye.slash"
+                )
+            }
+
+            if let onManageLots = onManageLots, item.isFood || item.isPetMedicine {
+                Button {
+                    onManageLots()
+                } label: {
+                    Label(Language.get("Manage_Lots", alter: "إدارة الشحنات"), systemImage: "shippingbox.fill")
+                }
+            }
+
+            if let onRecordDamage = onRecordDamage {
+                Button {
+                    onRecordDamage()
+                } label: {
+                    Label(Language.get("Record_Damage", alter: "تسجيل تالف"), systemImage: "exclamationmark.triangle.fill")
+                }
+            }
+        }
+
+        if canDeleteStock {
+            Divider()
+
+            Button(role: .destructive) {
+                onDelete()
+            } label: {
+                Label(Language.get("Delete", alter: "حذف"), systemImage: "trash")
+            }
+        }
+    }
+
     private func promptQuantityEdit() {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         showTactileQuantityPad = true
     }
 }
 
+// MARK: - Dedicated Architecture 2: Live Pet Biological Specimen (Humane Husbandry & Specimen Stewardship)
+
+@available(iOS 16.0, *)
+private struct PPAdminLivePetInventoryCard: View {
+    let item: PetAccessory
+    var canManageStock: Bool = true
+    var canDeleteStock: Bool = true
+    var canReleaseQuarantine: Bool = true
+
+    let onTap: () -> Void
+    let onEdit: () -> Void
+    let onToggleStock: () -> Void
+    let onDelete: () -> Void
+    var onQuarantineStudio: (() -> Void)? = nil
+    var onRecordDamage: (() -> Void)? = nil
+    var onOpenActionMenu: (() -> Void)? = nil
+
+    init(
+        item: PetAccessory,
+        canManageStock: Bool = true,
+        canDeleteStock: Bool = true,
+        canReleaseQuarantine: Bool = true,
+        onTap: @escaping () -> Void,
+        onEdit: @escaping () -> Void,
+        onToggleStock: @escaping () -> Void,
+        onDelete: @escaping () -> Void,
+        onQuarantineStudio: (() -> Void)? = nil,
+        onRecordDamage: (() -> Void)? = nil,
+        onOpenActionMenu: (() -> Void)? = nil
+    ) {
+        self.item = item
+        self.canManageStock = canManageStock
+        self.canDeleteStock = canDeleteStock
+        self.canReleaseQuarantine = canReleaseQuarantine
+        self.onTap = onTap
+        self.onEdit = onEdit
+        self.onToggleStock = onToggleStock
+        self.onDelete = onDelete
+        self.onQuarantineStudio = onQuarantineStudio
+        self.onRecordDamage = onRecordDamage
+        self.onOpenActionMenu = onOpenActionMenu
+    }
+
+    @State private var isChamberPressed: Bool = false
+    @State private var isHovered: Bool = false
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var isIPadRegular: Bool {
+        horizontalSizeClass == .regular
+    }
+
+    private var imageURL: URL? {
+        PetAccessory.firstImageURL(for: item)
+    }
+
+    private var displayQuantity: Int {
+        let activeBranch = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let activeBranch, !activeBranch.isEmpty {
+            if let branchRecord = PPBranchInventoryService.shared.inventory(for: item.accessoryID) {
+                if item.quantity > 0 {
+                    return max(branchRecord.availableQuantity, item.quantity)
+                }
+                return branchRecord.availableQuantity
+            }
+        }
+        return PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
+    }
+
+    private var hasReservedUnits: Bool {
+        item.reservedQuantity > 0
+    }
+
+    var body: some View {
+        Group {
+            if isIPadRegular {
+                iPadHusbandryWorkbenchLayout
+            } else {
+                iPhoneHusbandryCompactLayout
+            }
+        }
+        .padding(isIPadRegular ? 16 : 14)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(AdminSurface.surface)
+                .shadow(
+                    color: Color.black.opacity(isHovered ? 0.08 : 0.035),
+                    radius: isHovered ? 14 : 10,
+                    x: 0,
+                    y: isHovered ? 5 : 3
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(
+                    isHovered ? AdminSurface.primary.opacity(0.45) : Color(uiColor: .ppSurfaceBorder).opacity(0.60),
+                    lineWidth: isHovered ? 1.2 : 0.75
+                )
+        )
+        .hoverEffect(.lift)
+        .onHover { hovering in
+            if reduceMotion {
+                isHovered = hovering
+            } else {
+                withAnimation(.spring(response: 0.24, dampingFraction: 0.8)) {
+                    isHovered = hovering
+                }
+            }
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .onLongPressGesture(minimumDuration: 0.35) {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onOpenActionMenu?()
+        }
+        .contextMenu {
+            livePetContextMenuActions
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("\(item.name ?? "") - \(displayQuantity.englishDigits) \(Language.get("LivePets", alter: "حيوانات")) - \(item.inventoryDisplayPrice)"))
+    }
+
+    // MARK: - iPhone Layout
+
+    private var iPhoneHusbandryCompactLayout: some View {
+        VStack(spacing: 12) {
+            HStack(alignment: .top, spacing: 14) {
+                petSpecimenVitrine(size: 88)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    biologicalMetadataRunway
+
+                    Text(item.name ?? "")
+                        .font(AdminType.headline)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer(minLength: 2)
+
+                    petValuationReadout
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .contentShape(Rectangle())
+            .scaleEffect(isChamberPressed && !reduceMotion ? 0.98 : 1.0)
+            .opacity(isChamberPressed ? 0.88 : 1.0)
+            .animation(.easeInOut(duration: 0.15), value: isChamberPressed)
+            .onTapGesture {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onTap()
+            }
+
+            Divider()
+                .background(AdminSurface.hairline.opacity(0.55))
+
+            HStack(alignment: .center, spacing: 8) {
+                healthStatusBadge
+
+                if hasReservedUnits {
+                    reservedUnitsBadge
+                }
+
+                Spacer(minLength: 4)
+
+                // Roster Drill-Down Button
+                livePetRosterButton
+
+                if let onOpenActionMenu = onOpenActionMenu {
+                    actionMenuButton(action: onOpenActionMenu)
+                }
+            }
+        }
+    }
+
+    // MARK: - iPad Layout
+
+    private var iPadHusbandryWorkbenchLayout: some View {
+        HStack(alignment: .center, spacing: 18) {
+            // Column 1: Portrait & Breed Nomenclature
+            HStack(spacing: 14) {
+                petSpecimenVitrine(size: 88)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    biologicalMetadataRunway
+
+                    Text(item.name ?? "")
+                        .font(AdminType.headline)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+
+                    HStack(spacing: 4) {
+                        Image(systemName: "tag.fill")
+                            .font(.system(size: 9))
+                        Text(Language.get("LivePet_Tracked_Units_Title", alter: "وحدات مفردة بحجول رسمية"))
+                            .font(PPBrandFont.regular(size: 10))
+                    }
+                    .foregroundColor(AdminCommandInk.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onTap()
+            }
+
+            // Column 2: Health & Specimen Vitality Dossier
+            VStack(alignment: .leading, spacing: 5) {
+                Text(Language.get("Biological_Readiness", alter: "الحالة الحيوية والبيطرية"))
+                    .font(AdminType.caption2Bold)
+                    .foregroundColor(AdminCommandInk.tertiary)
+
+                HStack(spacing: 6) {
+                    healthStatusBadge
+
+                    if hasReservedUnits {
+                        reservedUnitsBadge
+                    }
+                }
+
+                petValuationReadout
+            }
+            .frame(minWidth: 180, alignment: .leading)
+
+            // Column 3: Husbandry Controls
+            HStack(spacing: 10) {
+                if let onQuarantineStudio = onQuarantineStudio {
+                    quarantineStudioButton(action: onQuarantineStudio)
+                }
+
+                livePetRosterButton
+
+                if let onOpenActionMenu = onOpenActionMenu {
+                    actionMenuButton(action: onOpenActionMenu)
+                }
+            }
+        }
+    }
+
+    // MARK: - Subcomponents
+
+    private func petSpecimenVitrine(size: CGFloat) -> some View {
+        ZStack(alignment: .topLeading) {
+            Group {
+                if let imageURL = imageURL {
+                    AdminRemoteImage(url: imageURL, contentMode: .fill, targetSize: CGSize(width: size, height: size)) {
+                        ZStack {
+                            AdminSurface.control
+                            ProgressView().tint(AdminSurface.primary)
+                        }
+                        .frame(width: size, height: size)
+                    }
+                    .frame(width: size, height: size)
+                    .clipped()
+                } else {
+                    proceduralAuraVitrine(size: size)
+                }
+            }
+            .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(AdminSurface.primary.opacity(0.35), lineWidth: 1.0)
+            )
+
+            // Live Pet Species Emblem Indicator
+            VStack {
+                HStack {
+                    Circle()
+                        .fill(AdminSurface.primary)
+                        .frame(width: 8, height: 8)
+                        .shadow(color: AdminSurface.primary.opacity(0.6), radius: 3)
+                    Spacer()
+                }
+                Spacer()
+            }
+            .padding(6)
+
+            if item.imageURLsArray.count > 1 {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        HStack(spacing: 2) {
+                            Image(systemName: "photo.stack.fill")
+                                .font(.system(size: 7.5, weight: .bold))
+                            Text(verbatim: item.imageURLsArray.count.englishDigits)
+                                .font(PPBrandFont.bold(size: 8.5))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 4.5)
+                        .padding(.vertical, 2)
+                        .background(Color.black.opacity(0.65), in: Capsule(style: .continuous))
+                        .padding(5)
+                    }
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private func proceduralAuraVitrine(size: CGFloat) -> some View {
+        let aura = CategorySpecimenAuraTheme.resolve(for: item)
+        return ZStack {
+            LinearGradient(
+                colors: [AdminSurface.primary.opacity(0.20), aura.gradient[1].opacity(0.08)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            Image(systemName: aura.glyphName)
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundColor(AdminSurface.primary)
+        }
+        .frame(width: size, height: size)
+    }
+
+    private var biologicalMetadataRunway: some View {
+        let aura = CategorySpecimenAuraTheme.resolve(for: item)
+        let branchDisplayName = item.resolvedBranchName()
+
+        return HStack(spacing: 5) {
+            HStack(spacing: 3.5) {
+                Image(systemName: aura.glyphName)
+                    .font(.system(size: 8))
+                Text(aura.categoryName)
+                    .font(AdminType.caption2Bold)
+                    .lineLimit(1)
+            }
+            .foregroundColor(AdminSurface.primary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2.5)
+            .background(AdminSurface.primary.opacity(0.12), in: Capsule(style: .continuous))
+
+            if !branchDisplayName.isEmpty {
+                HStack(spacing: 3) {
+                    Image(systemName: "building.2")
+                        .font(.system(size: 8))
+                    Text(branchDisplayName)
+                        .font(AdminType.caption2)
+                        .lineLimit(1)
+                }
+                .foregroundColor(AdminCommandInk.secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2.5)
+                .background(AdminSurface.control, in: Capsule(style: .continuous))
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var petValuationReadout: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(verbatim: item.inventoryDisplayPrice.normalizedEnglishDigits)
+                .font(AdminType.title3)
+                .foregroundColor(AdminSurface.primary)
+                .monospacedDigit()
+
+            if let cost = item.costPrice?.doubleValue, cost > 0 {
+                HStack(spacing: 3) {
+                    Text(Language.get("Cost_Short", alter: "تكلفة:"))
+                        .font(PPBrandFont.bold(size: 10))
+                    Text(verbatim: "\(cost.englishDigits(decimals: 0)) \(Language.get("QAR", alter: "ر.ق"))")
+                        .font(PPBrandFont.bold(size: 11))
+                        .monospacedDigit()
+                }
+                .foregroundColor(AdminCommandInk.tertiary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2.5)
+                .background(AdminSurface.control, in: Capsule(style: .continuous))
+            }
+        }
+    }
+
+    private var healthStatusBadge: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(displayQuantity > 0 ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning))
+                .frame(width: 6, height: 6)
+
+            Text(displayQuantity > 0 ? Language.get("Pet_Health_Sound", alter: "سليم بالمحل") : Language.get("Pet_Quarantine_All", alter: "حجر بيطري / فحص"))
+                .font(AdminType.caption2Bold)
+                .foregroundColor(displayQuantity > 0 ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background((displayQuantity > 0 ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning)).opacity(0.10), in: Capsule(style: .continuous))
+    }
+
+    private var reservedUnitsBadge: some View {
+        HStack(spacing: 3.5) {
+            Image(systemName: "lock.circle.fill")
+                .font(.system(size: 9))
+            Text(String(format: Language.get("LivePet_Reserved_Format", alter: "محجوز (%@)"), item.reservedQuantity.englishDigits).normalizedEnglishDigits)
+                .font(AdminType.caption2Bold)
+                .lineLimit(1)
+        }
+        .foregroundColor(Color(red: 147/255, green: 51/255, blue: 234/255))
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(Color(red: 147/255, green: 51/255, blue: 234/255).opacity(0.12), in: Capsule(style: .continuous))
+    }
+
+    private var livePetRosterButton: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            onTap()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "pawprint.fill")
+                    .font(.system(size: 11, weight: .bold))
+                Text(Language.get("LivePet_Manage_Units", alter: "سجل الحيوانات الفردية"))
+                    .font(AdminType.captionBold)
+                Text(verbatim: "(\(displayQuantity.englishDigits))")
+                    .font(PPBrandFont.bold(size: 11))
+                    .monospacedDigit()
+                Image(systemName: "chevron.forward")
+                    .font(.system(size: 9, weight: .bold))
+            }
+            .foregroundColor(AdminSurface.primary)
+            .padding(.horizontal, 12)
+            .frame(height: 36)
+            .background(AdminSurface.primary.opacity(0.12), in: Capsule(style: .continuous))
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(AdminSurface.primary.opacity(0.24), lineWidth: 0.75)
+            )
+        }
+        .buttonStyle(CatalogPressStyle())
+        .accessibilityLabel(Text("\(Language.get("LivePet_Manage_Units", alter: "سجل الحيوانات الفردية")) \(displayQuantity.englishDigits)"))
+    }
+
+    private func quarantineStudioButton(action: @escaping () -> Void) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "cross.case.fill")
+                    .font(.system(size: 11, weight: .bold))
+                Text(Language.get("Quarantine_Studio", alter: "الحجر البيطري"))
+                    .font(AdminType.caption2Bold)
+            }
+            .foregroundColor(Color(uiColor: .ppWarning))
+            .padding(.horizontal, 10)
+            .frame(height: 36)
+            .background(Color(uiColor: .ppWarning).opacity(0.10), in: Capsule(style: .continuous))
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppWarning).opacity(0.24), lineWidth: 0.75)
+            )
+        }
+        .buttonStyle(CatalogPressStyle())
+        .accessibilityLabel(Language.get("Quarantine_Studio", alter: "الحجر البيطري"))
+    }
+
+    private func actionMenuButton(action: @escaping () -> Void) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            action()
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(AdminCommandInk.secondary)
+                .frame(width: 36, height: 36)
+                .background(AdminSurface.control, in: Circle())
+                .overlay(
+                    Circle()
+                        .strokeBorder(AdminSurface.borderSubtle, lineWidth: 0.75)
+                )
+        }
+        .buttonStyle(CatalogPressStyle())
+        .accessibilityLabel(Language.get("Specimen_Actions", alter: "خيارات الحيوان"))
+    }
+
+    @ViewBuilder
+    private var livePetContextMenuActions: some View {
+        Button {
+            onTap()
+        } label: {
+            Label(Language.get("LivePet_Manage_Units", alter: "سجل الحيوانات الفردية"), systemImage: "pawprint.fill")
+        }
+
+        if canManageStock {
+            Button {
+                onEdit()
+            } label: {
+                Label(Language.get("Edit", alter: "تعديل بيانات الفصيلة"), systemImage: "pencil")
+            }
+
+            if let onQuarantineStudio = onQuarantineStudio {
+                Button {
+                    onQuarantineStudio()
+                } label: {
+                    Label(Language.get("Quarantine_Studio", alter: "الحجر البيطري"), systemImage: "cross.case.fill")
+                }
+            }
+
+            Button {
+                onToggleStock()
+            } label: {
+                Label(
+                    item.noStock ? Language.get("MarkInStock", alter: "تفعيل التوفر") : Language.get("MarkOutOfStock", alter: "إيقاف مؤقت"),
+                    systemImage: item.noStock ? "checkmark.seal" : "eye.slash"
+                )
+            }
+
+            if let onRecordDamage = onRecordDamage {
+                Button {
+                    onRecordDamage()
+                } label: {
+                    Label(Language.get("LivePet_Mortality_Record", alter: "تسجيل فقدان أو نفوق"), systemImage: "heart.slash.fill")
+                }
+            }
+        }
+
+        if canDeleteStock {
+            Divider()
+
+            Button(role: .destructive) {
+                onDelete()
+            } label: {
+                Label(Language.get("Delete", alter: "حذف السجل"), systemImage: "trash")
+            }
+        }
+    }
+}
+
+
 // MARK: - Flagship Item Master Detail Screen (Push Navigation)
 
 private struct PPLivePetReturnCaseRoute: Identifiable {
     let id: String
+}
+
+private struct LivePetArchivePressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .opacity(configuration.isPressed ? 0.90 : 1.0)
+            .animation(.spring(response: 0.20, dampingFraction: 0.75), value: configuration.isPressed)
+    }
 }
 
 @available(iOS 16.0, *)
@@ -4251,6 +5010,7 @@ public struct PPInventoryItemDetailView: View {
     @State private var showHistoryUnits: Bool = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     init(
         item: PetAccessory,
@@ -4461,6 +5221,7 @@ public struct PPInventoryItemDetailView: View {
                     removal: .opacity.combined(with: .scale(scale: 0.98))
                 ))
                 .zIndex(150)
+                .ignoresSafeArea()
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
@@ -4514,7 +5275,7 @@ public struct PPInventoryItemDetailView: View {
                 }
             }
         }
-        .sheet(item: $activeReturnCaseRoute, onDismiss: {
+        .fullScreenCover(item: $activeReturnCaseRoute, onDismiss: {
             Task { await liveModel.load() }
         }) { route in
             ReturnCaseDetailView(returnCaseId: route.id)
@@ -6008,45 +6769,167 @@ public struct PPInventoryItemDetailView: View {
                 }
 
                 if !historyUnits.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                showHistoryUnits.toggle()
-                            }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: showHistoryUnits ? "chevron.down" : "chevron.forward")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(AdminCommandInk.secondary)
-                                Text(String(
-                                    format: Language.get("LivePet_Units_Archived_Count", alter: "سجل المبيعات والأرشيف (%ld)"),
-                                    historyUnits.count
-                                ))
-                                .font(Font.custom("Beiruti-SemiBold", size: 13))
-                                .foregroundStyle(AdminCommandInk.secondary)
-                                Spacer()
-                            }
-                            .padding(.vertical, 6)
-                            .padding(.horizontal, 10)
-                            .background(AdminSurface.control.opacity(0.6), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
+                    VStack(alignment: .leading, spacing: 10) {
+                        livePetArchiveDisclosureHeader(count: historyUnits.count)
 
                         if showHistoryUnits {
                             VStack(spacing: 8) {
                                 ForEach(historyUnits) { unit in
                                     livePetUnitRow(unit)
-                                        .opacity(0.7)
+                                        .opacity(0.85)
                                 }
                             }
-                            .transition(.opacity.combined(with: .move(edge: .top)))
+                            .transition(
+                                .asymmetric(
+                                    insertion: .opacity.combined(with: .move(edge: .top)),
+                                    removal: .opacity
+                                )
+                            )
                         }
                     }
-                    .padding(.top, 4)
+                    .padding(.top, 6)
                 }
             }
         }
         .padding(.top, 4)
+    }
+
+    private func livePetArchiveDisclosureHeader(count: Int) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.80)) {
+                showHistoryUnits.toggle()
+            }
+        } label: {
+            HStack(spacing: 12) {
+                // Leading Archive Jewel / Emblem
+                ZStack {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: showHistoryUnits
+                                    ? [Color(red: 0.55, green: 0.36, blue: 0.96).opacity(0.18), Color(red: 0.55, green: 0.36, blue: 0.96).opacity(0.08)]
+                                    : [AdminSurface.control, AdminSurface.control.opacity(0.6)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+
+                    Image(systemName: showHistoryUnits ? "archivebox.fill" : "clock.arrow.circlepath")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(showHistoryUnits ? Color(red: 0.55, green: 0.36, blue: 0.96) : AdminCommandInk.secondary)
+                }
+                .frame(width: 34, height: 34)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .strokeBorder(
+                            showHistoryUnits
+                                ? Color(red: 0.55, green: 0.36, blue: 0.96).opacity(0.24)
+                                : AdminSurface.hairline,
+                            lineWidth: 0.75
+                        )
+                )
+
+                // Title and Subtitle Text Stack
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(Language.get("LivePet_Units_Archived_Title", alter: Language.isRTL() ? "سجل المبيعات والأرشيف" : "Sales History & Archived"))
+                            .font(Language.isRTL() ? Font.custom("Beiruti-Bold", size: 15) : Font.system(size: 14.5, weight: .bold, design: .rounded))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .lineLimit(1)
+
+                        // Count Telemetry Pill Badge
+                        HStack(spacing: 3.5) {
+                            Circle()
+                                .fill(showHistoryUnits ? Color(red: 0.55, green: 0.36, blue: 0.96) : AdminCommandInk.secondary)
+                                .frame(width: 4.5, height: 4.5)
+                            Text("\(count)")
+                                .font(.system(size: 11.5, weight: .bold, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(showHistoryUnits ? Color(red: 0.55, green: 0.36, blue: 0.96) : AdminCommandInk.secondary)
+                        }
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2.5)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(
+                                    showHistoryUnits
+                                        ? Color(red: 0.55, green: 0.36, blue: 0.96).opacity(0.12)
+                                        : AdminSurface.control
+                                )
+                        )
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .strokeBorder(
+                                    showHistoryUnits
+                                        ? Color(red: 0.55, green: 0.36, blue: 0.96).opacity(0.24)
+                                        : AdminSurface.hairline,
+                                    lineWidth: 0.5
+                                )
+                        )
+                    }
+
+                    Text(
+                        showHistoryUnits
+                            ? Language.get("LivePet_Units_Archived_ExpandedHint", alter: Language.isRTL() ? "يتم الآن عرض سجل الحيوانات المباعة والمؤرشفة" : "Showing all sold and archived records")
+                            : Language.get("LivePet_Units_Archived_CollapsedHint", alter: Language.isRTL() ? "انقر لعرض سجل الحيوانات المباعة والمؤرشفة" : "Tap to view sold and archived records")
+                    )
+                    .font(Language.isRTL() ? Font.custom("Beiruti-Regular", size: 11.5) : Font.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .lineLimit(1)
+                }
+
+                Spacer(minLength: 4)
+
+                // Trailing Interactive Chevron Orb
+                ZStack {
+                    Circle()
+                        .fill(showHistoryUnits ? Color(red: 0.55, green: 0.36, blue: 0.96).opacity(0.12) : AdminSurface.control)
+
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(showHistoryUnits ? Color(red: 0.55, green: 0.36, blue: 0.96) : AdminCommandInk.secondary)
+                        .rotationEffect(.degrees(showHistoryUnits ? 180 : 0))
+                }
+                .frame(width: 28, height: 28)
+                .overlay(
+                    Circle()
+                        .strokeBorder(
+                            showHistoryUnits
+                                ? Color(red: 0.55, green: 0.36, blue: 0.96).opacity(0.20)
+                                : AdminSurface.hairline,
+                            lineWidth: 0.5
+                        )
+                )
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    .fill(
+                        showHistoryUnits
+                            ? (colorScheme == .dark ? Color(white: 0.14) : Color(red: 0.97, green: 0.96, blue: 1.0))
+                            : (colorScheme == .dark ? Color(white: 0.11) : Color(white: 0.975))
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    .strokeBorder(
+                        showHistoryUnits
+                            ? Color(red: 0.55, green: 0.36, blue: 0.96).opacity(0.30)
+                            : AdminSurface.hairline,
+                        lineWidth: showHistoryUnits ? 1.0 : 0.75
+                    )
+            )
+            .shadow(
+                color: showHistoryUnits
+                    ? Color(red: 0.55, green: 0.36, blue: 0.96).opacity(colorScheme == .dark ? 0.20 : 0.08)
+                    : Color.black.opacity(0.02),
+                radius: showHistoryUnits ? 6 : 2,
+                y: 1
+            )
+        }
+        .buttonStyle(LivePetArchivePressStyle())
     }
 
     private var dossierLoadingState: some View {
@@ -6338,6 +7221,36 @@ public struct PPInventoryItemDetailView: View {
                 }
                 .padding(10)
                 .background(Color(uiColor: .systemPurple).opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            } else if unit.status == "QUARANTINED" {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: unit.isLegacyReturnedQuarantine ? "arrow.uturn.backward.circle.fill" : "cross.case.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color(uiColor: .ppWarning))
+                        .frame(width: 28, height: 28)
+                        .background(Color(uiColor: .ppWarning).opacity(0.12), in: Circle())
+                    VStack(alignment: .leading, spacing: 2) {
+                        let title = unit.isLegacyReturnedQuarantine
+                            ? Language.get("LivePet_LegacyReturn_Notice_Title", alter: "حيوان مسترجع في عهدة الحجر")
+                            : Language.get("LivePet_Quarantine_Notice_Title", alter: "الحيوان خاضع للعزل البيطري")
+                        Text(title)
+                            .font(Font.custom("Beiruti-Bold", size: 13))
+                            .foregroundStyle(AdminSurface.primaryText)
+                        let rawReason = !unit.returnReason.isEmpty ? unit.returnReason : unit.quarantineReason
+                        if !rawReason.isEmpty && rawReason != "LIVE_ANIMAL_RETURN" {
+                            Text(rawReason)
+                                .font(Font.custom("Beiruti-Regular", size: 11))
+                                .foregroundStyle(AdminCommandInk.secondary)
+                        }
+                        if !unit.returnTransactionId.isEmpty {
+                            Text(String(format: Language.get("LivePet_ReturnTx_Ref", alter: "معاملة الاسترجاع: %@"), unit.returnTransactionId))
+                                .font(Font.custom("Beiruti-Regular", size: 10))
+                                .foregroundStyle(Color(uiColor: .ppWarning))
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(10)
+                .background(Color(uiColor: .ppWarning).opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
 
             if unit.status == "RESERVED" {
@@ -6633,7 +7546,11 @@ private struct PPLivePetActionPortalCard: View {
                             .foregroundStyle(AdminCommandInk.secondary)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(AdminSurface.control, in: Capsule(style: .continuous))
+                            .background(Color(uiColor: .ppBackgroundSecondary).opacity(0.6), in: Capsule(style: .continuous))
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.5)
+                            )
                         }
                     }
 
@@ -6664,17 +7581,17 @@ private struct PPLivePetActionPortalCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 isHero
-                    ? iconTint.opacity(0.06)
-                    : (isDestructive ? Color(uiColor: .ppError).opacity(0.04) : AdminSurface.control),
+                    ? AdminSurface.surface
+                    : (isDestructive ? Color(uiColor: .ppError).opacity(0.03) : AdminSurface.surface),
                 in: RoundedRectangle(cornerRadius: 18, style: .continuous)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .strokeBorder(
                         isHero
-                            ? iconTint.opacity(0.35)
-                            : (isDestructive ? Color(uiColor: .ppError).opacity(0.20) : AdminSurface.hairline),
-                        lineWidth: isHero ? 1.0 : 0.75
+                            ? iconTint.opacity(0.18)
+                            : (isDestructive ? Color(uiColor: .ppError).opacity(0.18) : AdminSurface.hairline),
+                        lineWidth: 0.75
                     )
             )
             .opacity(isLocked ? 0.55 : 1.0)
@@ -6824,6 +7741,7 @@ private struct PPLivePetActionPortalDeck: View {
                 }
                 .padding(.horizontal, AdminSpacing.screenMargin)
             }
+            .frame(maxWidth: .infinity)
             .padding(.bottom, 24)
             .background(
                 AdminSurface.surface
@@ -6835,7 +7753,7 @@ private struct PPLivePetActionPortalDeck: View {
                     .stroke(AdminSurface.hairline, lineWidth: 1)
                     .ignoresSafeArea(edges: .bottom)
             )
-            .shadow(color: Color.black.opacity(0.28), radius: 24, x: 0, y: -8)
+            .shadow(color: Color.black.opacity(0.12), radius: 20, x: 0, y: -4)
             .offset(y: max(0, dragOffset))
             .gesture(
                 DragGesture()
@@ -6923,7 +7841,11 @@ private struct PPLivePetActionPortalDeck: View {
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(AdminCommandInk.secondary)
                         .frame(width: 32, height: 32)
-                        .background(AdminSurface.control, in: Circle())
+                        .background(AdminSurface.surface, in: Circle())
+                        .overlay(
+                            Circle()
+                                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+                        )
                 }
             }
 
@@ -6955,7 +7877,11 @@ private struct PPLivePetActionPortalDeck: View {
                     .foregroundStyle(AdminSurface.secondaryText)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 6)
-                    .background(AdminSurface.control, in: Capsule(style: .continuous))
+                    .background(Color(uiColor: .ppBackgroundSecondary).opacity(0.6), in: Capsule(style: .continuous))
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder(AdminSurface.hairline, lineWidth: 0.5)
+                    )
                 }
 
                 Spacer(minLength: 0)
@@ -6976,7 +7902,7 @@ private struct PPLivePetActionPortalDeck: View {
             }
         }
         .padding(14)
-        .background(AdminSurface.control.opacity(0.6), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
@@ -7011,10 +7937,10 @@ private struct PPLivePetActionPortalDeck: View {
             Spacer(minLength: 0)
         }
         .padding(12)
-        .background(Color(uiColor: .ppWarning).opacity(0.09), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color(uiColor: .ppWarning).opacity(0.24), lineWidth: 0.75)
+                .strokeBorder(Color(uiColor: .ppWarning).opacity(0.20), lineWidth: 0.75)
         )
     }
 
@@ -7062,10 +7988,10 @@ private struct PPLivePetActionPortalDeck: View {
             Spacer(minLength: 0)
         }
         .padding(12)
-        .background(tint.opacity(0.09), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(tint.opacity(0.24), lineWidth: 0.75)
+                .strokeBorder(tint.opacity(0.18), lineWidth: 0.75)
         )
     }
 
@@ -7346,6 +8272,14 @@ private struct PPCockpitPressStyle: ButtonStyle {
     }
 }
 
+private struct PPActionHubContentHeightKey: PreferenceKey {
+    nonisolated(unsafe) static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        let next = nextValue()
+        if next > 0 { value = next }
+    }
+}
+
 @available(iOS 16.0, *)
 public struct PPItemActionsHubView: View {
     let item: PetAccessory
@@ -7365,6 +8299,7 @@ public struct PPItemActionsHubView: View {
 
     @State private var dragOffset: CGFloat = 0
     @State private var hasAppeared: Bool = false
+    @State private var streamContentHeight: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     private var imageURL: URL? {
@@ -7417,6 +8352,7 @@ public struct PPItemActionsHubView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .ignoresSafeArea()
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
             .onAppear {
                 if accessibilityReduceMotion {
@@ -7436,7 +8372,7 @@ public struct PPItemActionsHubView: View {
         VStack(spacing: 0) {
             // Sensory Dismiss Handle
             Capsule()
-                .fill(Color.white.opacity(0.35))
+                .fill(Color(uiColor: .systemGray4))
                 .frame(width: 44, height: 5)
                 .padding(.top, 10)
                 .padding(.bottom, 12)
@@ -7638,9 +8574,25 @@ public struct PPItemActionsHubView: View {
                 }
                 .padding(.horizontal, 18)
                 .padding(.vertical, 14)
-                .padding(.bottom, 24)
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: PPActionHubContentHeightKey.self,
+                            value: proxy.size.height
+                        )
+                    }
+                )
             }
-            .frame(maxHeight: geometry.size.height * 0.78)
+            .frame(height: streamContentHeight > 0 ? min(streamContentHeight, geometry.size.height * 0.78) : nil)
+            .onPreferenceChange(PPActionHubContentHeightKey.self) { val in
+                if val > 0 {
+                    streamContentHeight = val
+                }
+            }
+
+            // Safe Area Bottom Clearance for Home Indicator
+            Color.clear
+                .frame(height: max(geometry.safeAreaInsets.bottom, 16))
         }
         .background(
             AdminSurface.surface
@@ -8399,7 +9351,6 @@ private struct PPLivePetUnitProfileEditorSheet: View {
     @State private var isSubmitting: Bool = false
     @State private var submissionStep: SubmissionStep = .idle
     @State private var validationError: String? = nil
-    @State private var showDiscardAlert: Bool = false
 
     private enum SubmissionStep {
         case idle
@@ -8501,7 +9452,7 @@ private struct PPLivePetUnitProfileEditorSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(Language.get("Cancel", alter: "إلغاء")) {
                         if isDirty {
-                            showDiscardAlert = true
+                            promptDiscardChanges()
                         } else {
                             dismiss()
                         }
@@ -8537,18 +9488,6 @@ private struct PPLivePetUnitProfileEditorSheet: View {
                     .disabled(isSubmitting)
                     .keyboardShortcut("s", modifiers: .command)
                 }
-            }
-            .alert(
-                Language.get("LivePet_Profile_Discard_Title", alter: "تجاهل التغييرات؟"),
-                isPresented: $showDiscardAlert
-            ) {
-                Button(Language.get("LivePet_Profile_Discard_Confirm", alter: "تجاهل"), role: .destructive) {
-                    dismiss()
-                }
-                Button(Language.get("LivePet_Profile_Keep_Editing", alter: "متابعة التعديل"), role: .cancel) {}
-            } message: {
-                Text(Language.get("LivePet_Profile_Discard_Message", alter: "لديك تعديلات غير محفوظة على هذا الحيوان، هل تود إغلاق المحرر؟"))
-                    .font(Font.custom("Beiruti-Regular", size: 14))
             }
             .confirmationDialog(
                 Language.get("LivePet_Profile_Hero_Photo", alter: "صورة الحيوان الحية"),
@@ -8716,7 +9655,7 @@ private struct PPLivePetUnitProfileEditorSheet: View {
                         // Bottom Actions
                         HStack(spacing: 14) {
                             Button(action: {
-                                if isDirty { showDiscardAlert = true } else { dismiss() }
+                                if isDirty { promptDiscardChanges() } else { dismiss() }
                             }) {
                                 Text(Language.get("Cancel", alter: "إلغاء"))
                                     .font(Font.custom("Beiruti-Bold", size: 16))
@@ -9838,6 +10777,24 @@ private struct PPLivePetUnitProfileEditorSheet: View {
             UINotificationFeedbackGenerator().notificationOccurred(.error)
         }
     }
+
+    // MARK: - Discard Confirmation (PPAlertHelper)
+
+    private func promptDiscardChanges() {
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("LivePet_Profile_Discard_Title", alter: "تجاهل التغييرات؟"),
+            subtitle: Language.get("LivePet_Profile_Discard_Message", alter: "لديك تعديلات غير محفوظة على هذا الحيوان، هل تود إغلاق المحرر؟"),
+            confirmButton: Language.get("LivePet_Profile_Discard_Confirm", alter: "تجاهل"),
+            cancelButton: Language.get("LivePet_Profile_Keep_Editing", alter: "متابعة التعديل"),
+            icon: UIImage(systemName: "exclamationmark.triangle.fill"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                dismiss()
+            },
+            cancelBlock: nil
+        )
+    }
 }
 
 // MARK: - Live-Pet Operation Sheet
@@ -10814,13 +11771,14 @@ private struct PPLivePetOperationSheet: View {
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                    if case .releaseQuarantine(let contextUnit) = context,
-                       let unit = currentLiveUnit ?? contextUnit,
-                       !unit.activeReturnCaseID.isEmpty {
-                        let caseId = unit.activeReturnCaseID
-                        dismiss()
-                        onOpenReturnCase?(caseId)
-                        return
+                    if case .releaseQuarantine(let contextUnit) = context {
+                        let unit = currentLiveUnit ?? contextUnit
+                        if !unit.activeReturnCaseID.isEmpty {
+                            let caseId = unit.activeReturnCaseID
+                            dismiss()
+                            onOpenReturnCase?(caseId)
+                            return
+                        }
                     }
                     performAction()
                 } label: {
