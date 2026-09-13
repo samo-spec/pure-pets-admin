@@ -6,6 +6,7 @@ on:
       - design/live-pet-return-confirmation-v2
     paths:
       - PurePetsAdmin/Features/LivePetReturns/Views/ReturnConfirmationView.swift
+      - PurePetsAdmin/Features/LivePetReturns/Views/LivePetReturnCoordinatorView.swift
       - .github/workflows/live-pet-return-confirmation-v2.yml
 
 permissions:
@@ -29,18 +30,32 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('PurePetsAdmin/Features/LivePetReturns/Views/ReturnConfirmationView.swift')
-          s = p.read_text()
+          view = Path('PurePetsAdmin/Features/LivePetReturns/Views/ReturnConfirmationView.swift').read_text()
+          coordinator = Path('PurePetsAdmin/Features/LivePetReturns/Views/LivePetReturnCoordinatorView.swift').read_text()
+
           required = [
-              'iPhoneReadyState', 'iPadReadyState', 'accessibilityReduceMotion',
-              'sensoryFeedback', 'ReturnConfirmationSurfaceState', 'AdminType.'
+              'iPhoneReadyState', 'iPadReadyState', 'iPhoneActionDock',
+              'accessibilityReduceMotion', 'sensoryFeedback',
+              'ReturnConfirmationSurfaceState', 'case .loading:', 'case .empty:',
+              'case .failure(let message):', 'AdminType.', 'Language.get('
           ]
-          missing = [x for x in required if x not in s]
+          missing = [item for item in required if item not in view]
           if missing:
               raise SystemExit(f'Missing confirmation architecture contracts: {missing}')
-          if 'UIFont(' in s:
-              raise SystemExit('Direct UIFont usage is forbidden in the confirmation surface')
-          print('source guard passed')
+
+          forbidden = ['UIFont(', 'UIImpactFeedbackGenerator(', '.font(.body)', '.font(.headline)', '.font(.title)']
+          present = [item for item in forbidden if item in view]
+          if present:
+              raise SystemExit(f'Forbidden confirmation typography/haptic APIs: {present}')
+
+          if 'case .confirmed(let returnCase):\n                confirmationSurface(returnCase)' not in coordinator:
+              raise SystemExit('Confirmed state must own its standalone confirmation surface')
+          if 'ScrollView(.vertical, showsIndicators: false) {\n                VStack(spacing: 16)' not in coordinator:
+              raise SystemExit('Wizard scroll architecture was unexpectedly changed')
+          if 'LivePetReturnService.shared.processLivePetReturn(' not in coordinator:
+              raise SystemExit('Existing live-pet return service path must remain intact')
+
+          print('source quality guard passed')
           PY
 
       - name: Build PurePetsAdmin
