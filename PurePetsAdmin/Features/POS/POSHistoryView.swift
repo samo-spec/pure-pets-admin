@@ -1899,13 +1899,17 @@ private struct DossierItemRow: View {
                             let remainingQuantity = max(0, item.quantity - item.refundedQuantity)
                             let lineFullyRefunded = remainingQuantity == 0
                             let progressColor = lineFullyRefunded ? Color(uiColor: .systemGreen) : Color(uiColor: .systemOrange)
-                            Text(verbatim: String(
-                                format: lineFullyRefunded
-                                    ? Language.get("POS_Refund_ItemFullyRefunded", alter: "%d مسترد • مكتمل")
-                                    : Language.get("POS_Refund_ItemProgress", alter: "%d مسترد • %d متبقي"),
-                                item.refundedQuantity,
-                                remainingQuantity
-                            ))
+                            let progressText = lineFullyRefunded
+                                ? String(
+                                    format: Language.get("POS_Refund_ItemFullyRefunded", alter: "%d مسترد • مكتمل"),
+                                    item.refundedQuantity
+                                )
+                                : String(
+                                    format: Language.get("POS_Refund_ItemProgress", alter: "%d مسترد • %d متبقي"),
+                                    item.refundedQuantity,
+                                    remainingQuantity
+                                )
+                            Text(verbatim: progressText)
                                 .font(DossierFont.bold(10, relativeTo: .caption2))
                                 .foregroundColor(progressColor)
                                 .padding(.horizontal, 6)
