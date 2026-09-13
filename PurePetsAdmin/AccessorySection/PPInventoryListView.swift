@@ -5086,13 +5086,15 @@ public struct PPInventoryItemDetailView: View {
             // Persistent Floating Master Command Dock
             floatingMasterCommandDock
 
-            // Floating Apex Navigation Bar (Transparent)
-            VStack {
+            // Floating Apex Navigation Bar with Top Fade
+            VStack(spacing: 0) {
                 apexNavigationBar
                     .padding(.horizontal, AdminSpacing.screenMargin)
                     .padding(.top, 6)
                     .padding(.bottom, 8)
-                    .background(Color.clear)
+                    .background(
+                        topNavigationBarFade
+                    )
                 Spacer()
             }
 
@@ -5403,7 +5405,28 @@ public struct PPInventoryItemDetailView: View {
         .allowsHitTesting(false)
     }
 
-    // MARK: - Apex Navigation Bar
+    // MARK: - Apex Navigation Bar & Top Fade
+
+    private var appForegroundColor: Color {
+        Color(uiColor: UIColor(named: "AppForgroundColr") ?? .ppElevatedSurface)
+    }
+
+    private var topNavigationBarFade: some View {
+        LinearGradient(
+            stops: [
+                .init(color: appForegroundColor, location: 0.0),
+                .init(color: appForegroundColor, location: 0.55),
+                .init(color: appForegroundColor.opacity(0.85), location: 0.72),
+                .init(color: appForegroundColor.opacity(0.35), location: 0.88),
+                .init(color: appForegroundColor.opacity(0.0), location: 1.0)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .padding(.bottom, -38)
+        .ignoresSafeArea(edges: .top)
+        .allowsHitTesting(false)
+    }
 
     private var apexNavigationBar: some View {
         HStack(alignment: .center, spacing: 12) {

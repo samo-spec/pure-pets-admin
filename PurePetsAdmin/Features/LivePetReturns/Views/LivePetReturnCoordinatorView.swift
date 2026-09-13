@@ -59,54 +59,50 @@ public struct LivePetReturnCoordinatorView: View {
         ZStack {
             AdminSurface.background.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                // Header (only for wizard steps)
-                if case .confirmed = currentStep {
-                    // Confirmation view has its own header
-                } else {
+            if case .confirmed(let returnCase) = currentStep {
+                ReturnConfirmationView(
+                    returnCase: returnCase,
+                    receipt: receipt,
+                    onOpenDossier: {
+                        showingDossierCaseId = returnCase.returnCaseId
+                    },
+                    onDismiss: {
+                        handleDismiss()
+                    },
+                    onProceedToMerchandiseRefund: (receipt.hasGenericMerchandise && onProceedToMerchandiseRefund != nil) ? {
+                        if !hasCompleted {
+                            hasCompleted = true
+                            onComplete(returnCase)
+                        }
+                        dismiss()
+                        onProceedToMerchandiseRefund?(receipt)
+                    } : nil
+                )
+            } else {
+                VStack(spacing: 0) {
                     wizardHeader
                     Divider().background(AdminSurface.hairline)
-                }
 
-                // Step Content
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 16) {
-                        if let error = submissionError {
-                            AdminErrorBanner(message: error)
-                        }
+                    // Step Content
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 16) {
+                            if let error = submissionError {
+                                AdminErrorBanner(message: error)
+                            }
 
-                        switch currentStep {
-                        case .selectUnits:
-                            ReturnUnitSelectionView(viewModel: viewModel)
-                        case .receiveAndResolve:
-                            ReturnReceiveView(viewModel: viewModel)
-                        case .confirmed(let returnCase):
-                            ReturnConfirmationView(
-                                returnCase: returnCase,
-                                onOpenDossier: {
-                                    showingDossierCaseId = returnCase.returnCaseId
-                                },
-                                onDismiss: {
-                                    handleDismiss()
-                                },
-                                onProceedToMerchandiseRefund: (receipt.hasGenericMerchandise && onProceedToMerchandiseRefund != nil) ? {
-                                    if !hasCompleted {
-                                        hasCompleted = true
-                                        onComplete(returnCase)
-                                    }
-                                    dismiss()
-                                    onProceedToMerchandiseRefund?(receipt)
-                                } : nil
-                            )
+                            switch currentStep {
+                            case .selectUnits:
+                                ReturnUnitSelectionView(viewModel: viewModel)
+                            case .receiveAndResolve:
+                                ReturnReceiveView(viewModel: viewModel)
+                            case .confirmed:
+                                EmptyView()
+                            }
                         }
+                        .padding(AdminSpacing.screenMargin)
                     }
-                    .padding(AdminSpacing.screenMargin)
-                }
 
-                // Bottom Action Bar (for wizard steps)
-                if case .confirmed = currentStep {
-                    // Empty bottom bar on confirmation
-                } else {
+                    // Bottom Action Bar (for wizard steps)
                     bottomActionBar
                 }
             }

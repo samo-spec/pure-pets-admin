@@ -73,10 +73,61 @@ struct PPCustomerAccountModel: Identifiable, Hashable, Sendable {
     let features: [String: Bool]
     let restrictions: [String: Bool]
 
+    var countryFlag: String? {
+        let digits = phone.filter { "0123456789+".contains($0) }
+        if digits.hasPrefix("+974") || digits.hasPrefix("00974") { return "🇶🇦" }
+        if digits.hasPrefix("+971") || digits.hasPrefix("00971") { return "🇦🇪" }
+        if digits.hasPrefix("+966") || digits.hasPrefix("00966") { return "🇸🇦" }
+        if digits.hasPrefix("+965") || digits.hasPrefix("00965") { return "🇰🇼" }
+        if digits.hasPrefix("+968") || digits.hasPrefix("00968") { return "🇴🇲" }
+        if digits.hasPrefix("+973") || digits.hasPrefix("00973") { return "🇧🇭" }
+        if digits.hasPrefix("+20") || digits.hasPrefix("0020") { return "🇪🇬" }
+        if digits.hasPrefix("+962") || digits.hasPrefix("00962") { return "🇯🇴" }
+        return nil
+    }
+
+    var isGeneratedPlaceholderName: Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return trimmed.hasPrefix("user +") || trimmed.hasPrefix("user+") || trimmed.hasPrefix("user ") || trimmed == phone.lowercased() || trimmed.isEmpty
+    }
+
+    var displayTitle: String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if isGeneratedPlaceholderName {
+            if let flag = countryFlag {
+                return "\(Language.get("MissionControl_Customers_NewClient", alter: "عميل جديد")) \(flag)"
+            }
+            return Language.get("MissionControl_Customers_NewClient", alter: "عميل جديد")
+        }
+        return trimmed
+    }
+
+    var prettyPhone: String {
+        let digits = phone.filter { "0123456789+".contains($0) }
+        guard !digits.isEmpty else { return "" }
+        if digits.hasPrefix("+974") && digits.count == 12 {
+            let code = digits.prefix(4)
+            let middle = digits.dropFirst(4).prefix(4)
+            let end = digits.suffix(4)
+            return "\(code) \(middle) \(end)"
+        }
+        if digits.hasPrefix("+971") && digits.count == 13 {
+            let code = digits.prefix(4)
+            let prefix = digits.dropFirst(4).prefix(2)
+            let middle = digits.dropFirst(6).prefix(3)
+            let end = digits.suffix(4)
+            return "\(code) \(prefix) \(middle) \(end)"
+        }
+        return digits
+    }
+
     var initials: String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if isGeneratedPlaceholderName {
+            return "PP"
+        }
         guard !trimmed.isEmpty else { return "PP" }
-        let components = trimmed.components(separatedBy: " ")
+        let components = trimmed.components(separatedBy: " ").filter { !$0.isEmpty }
         if components.count >= 2,
            let firstChar = components.first?.first,
            let lastChar = components.last?.first {
@@ -155,6 +206,16 @@ enum CustomerFilterTab: Int, CaseIterable, Identifiable {
         case .verified: return "checkmark.shield.fill"
         case .needsAttention: return "exclamationmark.octagon.fill"
         case .blocked: return "nosign"
+        }
+    }
+
+    var accentColor: Color {
+        switch self {
+        case .all: return AdminSurface.primary
+        case .active: return Color(uiColor: .ppSuccess)
+        case .verified: return Color(red: 0.12, green: 0.50, blue: 0.90)
+        case .needsAttention: return Color(uiColor: .ppWarning)
+        case .blocked: return Color(uiColor: .ppError)
         }
     }
 }
@@ -571,9 +632,12 @@ struct AdminUsersListView: View {
             AdminSurface.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                liquidNavBar
-                bentoTelemetryGrid
-                searchAndFilterDeck
+                sovereignHeaderView
+                sensoryCohortMatrix
+                if viewModel.attentionCount > 0 && viewModel.activeTab != .needsAttention {
+                    attentionTriageBanner
+                }
+                searchAndSortDeck
                 customerListSection
             }
 
@@ -647,25 +711,42 @@ struct AdminUsersListView: View {
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
-    // MARK: - 1. Liquid Navigation Bar (Sovereign Team Members UI Pattern)
+    // MARK: - 1. Sovereign Command Header
 
-    private var liquidNavBar: some View {
-        AdminSovereignNavigationBar(
+    private var sovereignHeaderView: some View {
+        let hasAttention = viewModel.attentionCount > 0
+        let statusColor: Color = hasAttention ? Color(uiColor: .ppWarning) : Color(uiColor: .ppSuccess)
+        let subtitleText: String = {
+            if hasAttention {
+                return String(format: Language.get("MissionControl_Customers_Subtitle_Alert_Format", alter: "تتطلب مراجعة (%d) • إجمالي %d"), viewModel.attentionCount, viewModel.totalCount)
+            } else {
+                return String(format: Language.get("MissionControl_Customers_Subtitle_Stable_Format", alter: "البيانات مستقرة ومؤكدة • %d عميل"), viewModel.totalCount)
+            }
+        }()
+
+        return AdminSovereignNavigationBar(
             title: Language.get("MissionControl_Customers_Title", alter: "حسابات العملاء"),
-            subtitle: "\(Language.get("CommandCenter_Customers_Workspace", alter: "عمليات العملاء • مباشر")) (\(viewModel.totalCount))",
-            statusDotColor: Color(uiColor: .ppSuccess),
+            subtitle: subtitleText,
+            statusDotColor: statusColor,
             onBack: {
                 if let onDismiss {
                     onDismiss()
                 } else {
                     dismiss()
                 }
-            }
+            },
+            onSubtitleTap: hasAttention ? {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                    viewModel.activeTab = .needsAttention
+                    viewModel.applyFilter()
+                }
+            } : nil,
+            isSubtitleActionActive: hasAttention
         ) {
             HStack(spacing: 8) {
                 AdminSquircleActionButton(
                     systemImage: "arrow.clockwise",
-                    isLoading: viewModel.isLoading,
+                    isLoading: viewModel.isLoading || viewModel.isRefreshing,
                     accessibilityLabel: Language.get("Refresh", alter: "تحديث")
                 ) {
                     viewModel.startListening()
@@ -681,269 +762,220 @@ struct AdminUsersListView: View {
         }
     }
 
-    // MARK: - 2. Bento Telemetry Grid
+    // MARK: - 2. Sensory Cohort Matrix
 
-    private var bentoTelemetryGrid: some View {
-        VStack(spacing: 6) {
-            // Operational Health Banner
+    private var sensoryCohortMatrix: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                if viewModel.attentionCount == 0 {
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark.seal.fill")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(Color(uiColor: .ppSuccess))
-                        Text(Language.get("MissionControl_Customers_Signal_Clear", alter: "لا توجد تنبيهات على الحسابات • البيانات مستقرة ومؤكدة"))
-                            .font(Font.custom("Beiruti-Regular", size: 11.5, relativeTo: .caption))
-                            .foregroundColor(Color(uiColor: .ppSuccess))
-                        Spacer()
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Color(uiColor: .ppSuccess).opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                } else {
+                ForEach(CustomerFilterTab.allCases) { tab in
+                    let isSelected = viewModel.activeTab == tab
+                    let count = countForTab(tab)
+                    let isAlert = tab == .needsAttention && count > 0
+
                     Button {
-                        withAnimation(.spring()) {
-                            viewModel.activeTab = .needsAttention
+                        UISelectionFeedbackGenerator().selectionChanged()
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                            viewModel.activeTab = tab
                             viewModel.applyFilter()
                         }
                     } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(Color(uiColor: .ppWarning))
-                            Text(String(format: Language.get("MissionControl_Customers_Signal_Attention_Format", alter: "تحتاج إلى مراجعة: %@ حساب"), "\(viewModel.attentionCount)") + " • اضغط للتصفية")
-                                .font(Font.custom("Beiruti-Bold", size: 11.5, relativeTo: .caption))
-                                .foregroundColor(Color(uiColor: .ppWarning))
-                            Spacer()
-                            Image(systemName: "arrow.left")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(Color(uiColor: .ppWarning))
+                        HStack(spacing: 8) {
+                            ZStack {
+                                Circle()
+                                    .fill(
+                                        isSelected
+                                            ? tab.accentColor.opacity(0.18)
+                                            : AdminSurface.control
+                                    )
+                                    .frame(width: 28, height: 28)
+
+                                Image(systemName: tab.icon)
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(isSelected ? tab.accentColor : AdminSurface.secondaryText)
+                            }
+
+                            Text(tab.title)
+                                .font(Font.custom(isSelected ? "Beiruti-Bold" : "Beiruti-Medium", size: 12.5, relativeTo: .caption))
+                                .foregroundColor(isSelected ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                                .lineLimit(1)
+
+                            Text("\(count)")
+                                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
+                                .monospacedDigit()
+                                .foregroundColor(
+                                    isSelected
+                                        ? .white
+                                        : (isAlert ? Color(uiColor: .ppWarning) : AdminSurface.primaryText)
+                                )
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2)
+                                .background(
+                                    isSelected
+                                        ? tab.accentColor
+                                        : (isAlert ? Color(uiColor: .ppWarning).opacity(0.14) : AdminSurface.control),
+                                    in: Capsule()
+                                )
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Color(uiColor: .ppWarning).opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .padding(.leading, 6)
+                        .padding(.trailing, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            isSelected
+                                ? tab.accentColor.opacity(0.08)
+                                : AdminSurface.surface,
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(
+                                    isSelected
+                                        ? tab.accentColor.opacity(0.85)
+                                        : (isAlert ? Color(uiColor: .ppWarning).opacity(0.4) : AdminSurface.hairline),
+                                    lineWidth: isSelected ? 1.5 : 1
+                                )
+                        )
+                        .shadow(
+                            color: isSelected ? tab.accentColor.opacity(0.12) : Color.black.opacity(0.02),
+                            radius: isSelected ? 6 : 2,
+                            y: isSelected ? 3 : 1
+                        )
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
             }
             .padding(.horizontal, AdminSpacing.screenMargin)
-            .padding(.top, 6)
-
-            // 4 Bento Tiles Row
-            HStack(spacing: 8) {
-                bentoTile(
-                    title: Language.get("MissionControl_Customers_Metric_Total", alter: "الإجمالي"),
-                    value: "\(viewModel.totalCount)",
-                    icon: "person.2.fill",
-                    accent: AdminSurface.primary,
-                    isSelected: viewModel.activeTab == .all
-                ) {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-                        viewModel.activeTab = .all
-                        viewModel.applyFilter()
-                    }
-                }
-
-                bentoTile(
-                    title: Language.get("MissionControl_Customers_Metric_Active", alter: "نشط"),
-                    value: "\(viewModel.activeCount)",
-                    icon: "checkmark.seal.fill",
-                    accent: Color(uiColor: .ppSuccess),
-                    isSelected: viewModel.activeTab == .active
-                ) {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-                        viewModel.activeTab = .active
-                        viewModel.applyFilter()
-                    }
-                }
-
-                bentoTile(
-                    title: Language.get("MissionControl_Customers_Metric_Verified", alter: "موثّق"),
-                    value: "\(viewModel.verifiedCount)",
-                    icon: "checkmark.shield.fill",
-                    accent: Color(red: 0.12, green: 0.50, blue: 0.90),
-                    isSelected: viewModel.activeTab == .verified
-                ) {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-                        viewModel.activeTab = .verified
-                        viewModel.applyFilter()
-                    }
-                }
-
-                bentoTile(
-                    title: Language.get("MissionControl_Customers_Metric_Attention", alter: "تحتاج مراجعة"),
-                    value: "\(viewModel.attentionCount)",
-                    icon: "exclamationmark.octagon.fill",
-                    accent: viewModel.attentionCount > 0 ? Color(uiColor: .ppWarning) : AdminSurface.secondaryText,
-                    isSelected: viewModel.activeTab == .needsAttention,
-                    pulse: viewModel.attentionCount > 0
-                ) {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-                        viewModel.activeTab = .needsAttention
-                        viewModel.applyFilter()
-                    }
-                }
-            }
-            .padding(.horizontal, AdminSpacing.screenMargin)
+            .padding(.vertical, 6)
         }
-        .padding(.bottom, 6)
     }
 
-    private func bentoTile(
-        title: String,
-        value: String,
-        icon: String,
-        accent: Color,
-        isSelected: Bool,
-        pulse: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: {
-            UISelectionFeedbackGenerator().selectionChanged()
-            action()
-        }) {
-            VStack(alignment: .center, spacing: 2) {
-                HStack(spacing: 3) {
-                    Image(systemName: icon)
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(accent)
-                    Text(title)
-                        .font(Font.custom("Beiruti-Regular", size: 10.5, relativeTo: .caption2))
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .lineLimit(1)
+    // MARK: - 3. Attention Triage Banner
+
+    @ViewBuilder
+    private var attentionTriageBanner: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                viewModel.activeTab = .needsAttention
+                viewModel.applyFilter()
+            }
+        } label: {
+            HStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(Color(uiColor: .ppWarning).opacity(0.18))
+                        .frame(width: 24, height: 24)
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color(uiColor: .ppWarning))
                 }
 
-                Text(value)
-                    .font(Font.custom("Beiruti-Bold", size: 19, relativeTo: .title3))
-                    .foregroundColor(pulse ? Color(uiColor: .ppWarning) : AdminSurface.primaryText)
-                    .monospacedDigit()
+                Text(String(format: Language.get("MissionControl_Customers_Signal_Attention_Format", alter: "توجد %d حسابات بحاجة لمراجعة القيود أو التوثيق"), viewModel.attentionCount))
+                    .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                    .foregroundColor(Color(uiColor: .ppWarning))
+                    .lineLimit(1)
+
+                Spacer(minLength: 4)
+
+                HStack(spacing: 4) {
+                    Text(Language.get("Filter_Now", alter: "تصفية الآن"))
+                        .font(Font.custom("Beiruti-Bold", size: 11.5, relativeTo: .caption2))
+                        .foregroundColor(Color(uiColor: .ppWarning))
+                    Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color(uiColor: .ppWarning))
+                }
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity)
-            .background(
-                isSelected ? accent.opacity(0.12) : AdminSurface.surface,
-                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-            )
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(Color(uiColor: .ppWarning).opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(isSelected ? accent : AdminSurface.hairline, lineWidth: isSelected ? 1.5 : 1)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color(uiColor: .ppWarning).opacity(0.30), lineWidth: 1)
             )
         }
         .buttonStyle(PlainButtonStyle())
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.top, 2)
+        .padding(.bottom, 4)
+        .transition(.asymmetric(
+            insertion: .opacity.combined(with: .scale(scale: 0.98)),
+            removal: .opacity.combined(with: .scale(scale: 0.98))
+        ))
     }
 
-    // MARK: - 3. Search & Filter Deck
+    // MARK: - 4. Sensory Search & Sort Deck
 
-    private var searchAndFilterDeck: some View {
-        VStack(spacing: 8) {
-            // Search Input Field
+    private var searchAndSortDeck: some View {
+        HStack(spacing: 8) {
+            // Search Input Pill
             HStack(spacing: 8) {
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(AdminSurface.secondaryText)
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 13.5, weight: .medium))
+                    .foregroundColor(AdminSurface.secondaryText)
 
-                    TextField(Language.get("MissionControl_Customers_Search_Placeholder", alter: "ابحث بالاسم، البريد، الجوال أو المعرّف..."), text: $viewModel.searchText)
-                        .font(Font.custom("Beiruti-Regular", size: 13.5, relativeTo: .body))
-                        .onChange(of: viewModel.searchText, perform: { _ in
-                            viewModel.applyFilter()
-                        })
+                TextField(Language.get("MissionControl_Customers_Search_Placeholder", alter: "ابحث بالاسم، البريد، الجوال أو المعرّف..."), text: $viewModel.searchText)
+                    .font(Font.custom("Beiruti-Regular", size: 13.5, relativeTo: .body))
+                    .foregroundColor(AdminSurface.primaryText)
+                    .onChange(of: viewModel.searchText, perform: { _ in
+                        viewModel.applyFilter()
+                    })
 
-                    if !viewModel.searchText.isEmpty {
-                        Button {
-                            viewModel.searchText = ""
-                            viewModel.applyFilter()
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 13))
-                                .foregroundColor(AdminSurface.secondaryText)
-                        }
+                if !viewModel.searchText.isEmpty {
+                    Button {
+                        viewModel.searchText = ""
+                        viewModel.applyFilter()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(AdminSurface.secondaryText.opacity(0.8))
                     }
+                    .buttonStyle(PlainButtonStyle())
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(AdminSurface.hairline, lineWidth: 1)
-                )
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 1)
+            )
 
-                // Sort Menu Button
-                Menu {
-                    ForEach(CustomerSortOption.allCases) { opt in
-                        Button {
-                            viewModel.activeSort = opt
-                            viewModel.applyFilter()
-                        } label: {
-                            HStack {
-                                Text(opt.title)
-                                if viewModel.activeSort == opt {
-                                    Image(systemName: "checkmark")
-                                }
+            // Sort Menu Button with active state indicator
+            Menu {
+                ForEach(CustomerSortOption.allCases) { opt in
+                    Button {
+                        UISelectionFeedbackGenerator().selectionChanged()
+                        viewModel.activeSort = opt
+                        viewModel.applyFilter()
+                    } label: {
+                        HStack {
+                            Text(opt.title)
+                            if viewModel.activeSort == opt {
+                                Image(systemName: "checkmark")
                             }
                         }
                     }
-                } label: {
-                    Image(systemName: "line.3.horizontal.decrease.circle")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(AdminSurface.primary)
-                        .frame(width: 38, height: 38)
-                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+            } label: {
+                let isCustomSort = viewModel.activeSort != .recent
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(isCustomSort ? AdminSurface.primary.opacity(0.12) : AdminSurface.surface)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(AdminSurface.hairline, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(isCustomSort ? AdminSurface.primary : AdminSurface.hairline, lineWidth: 1)
                         )
+                        .frame(width: 42, height: 42)
+
+                    Image(systemName: isCustomSort ? "arrow.up.arrow.down.circle.fill" : "line.3.horizontal.decrease.circle")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(isCustomSort ? AdminSurface.primary : AdminSurface.primaryText)
                 }
             }
-            .padding(.horizontal, AdminSpacing.screenMargin)
-
-            // Horizontal Filter Tabs
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 7) {
-                    ForEach(CustomerFilterTab.allCases) { tab in
-                        let isSelected = viewModel.activeTab == tab
-                        Button {
-                            UISelectionFeedbackGenerator().selectionChanged()
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                                viewModel.activeTab = tab
-                                viewModel.applyFilter()
-                            }
-                        } label: {
-                            HStack(spacing: 5) {
-                                Image(systemName: tab.icon)
-                                    .font(.system(size: 11, weight: .semibold))
-                                Text(tab.title)
-                                    .font(Font.custom(isSelected ? "Beiruti-Bold" : "Beiruti-Regular", size: 12, relativeTo: .caption))
-
-                                let count = countForTab(tab)
-                                Text("\(count)")
-                                    .font(Font.custom("Beiruti-Bold", size: 10, relativeTo: .caption2))
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 1)
-                                    .background(
-                                        isSelected ? Color.white.opacity(0.25) : AdminSurface.control,
-                                        in: Capsule()
-                                    )
-                            }
-                            .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
-                            .padding(.horizontal, 11)
-                            .padding(.vertical, 6)
-                            .background(
-                                isSelected ? AdminSurface.primary : AdminSurface.surface,
-                                in: Capsule()
-                            )
-                            .overlay(
-                                Capsule().stroke(isSelected ? Color.clear : AdminSurface.hairline, lineWidth: 1)
-                            )
-                        }
-                    }
-                }
-                .padding(.horizontal, AdminSpacing.screenMargin)
-                .padding(.vertical, 2)
-            }
+            .accessibilityLabel(Language.get("Sort", alter: "ترتيب"))
         }
-        .padding(.bottom, 6)
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.vertical, 4)
     }
 
     private func countForTab(_ tab: CustomerFilterTab) -> Int {
@@ -956,13 +988,13 @@ struct AdminUsersListView: View {
         }
     }
 
-    // MARK: - 4. Customer List Section
+    // MARK: - 5. Customer List Section
 
     private var customerListSection: some View {
         ScrollView {
             LazyVStack(spacing: 10) {
                 if viewModel.isLoading {
-                    ForEach(0..<5, id: \.self) { _ in
+                    ForEach(0..<6, id: \.self) { _ in
                         CustomerSkeletonCard()
                     }
                 } else if viewModel.filteredCustomers.isEmpty {
@@ -981,6 +1013,7 @@ struct AdminUsersListView: View {
                             },
                             onCopyUID: {
                                 UIPasteboard.general.string = customer.id
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 viewModel.showToast(Language.get("UID_Copied", alter: "تم نسخ معرّف العميل بنجاح"))
                             },
                             onToggleVerify: {
@@ -1021,7 +1054,7 @@ struct AdminUsersListView: View {
     }
 }
 
-// MARK: - Flagship Customer Account Card
+// MARK: - Flagship Customer Account Card (Living Identity Vitrine)
 
 private struct CustomerAccountCardView: View {
     let customer: PPCustomerAccountModel
@@ -1035,12 +1068,12 @@ private struct CustomerAccountCardView: View {
             VStack(alignment: .leading, spacing: 10) {
                 // Header Row: Avatar, Identity, Status Pill, Chevron
                 HStack(alignment: .top, spacing: 12) {
-                    avatarElement
+                    avatarVitrine
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        // Name & Verification Badge
+                    VStack(alignment: .leading, spacing: 3.5) {
+                        // Display Name
                         HStack(spacing: 5) {
-                            Text(customer.name)
+                            Text(customer.displayTitle)
                                 .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline))
                                 .foregroundColor(AdminSurface.primaryText)
                                 .lineLimit(1)
@@ -1052,39 +1085,50 @@ private struct CustomerAccountCardView: View {
                             }
                         }
 
-                        // Contact Details Row (Email / Phone)
-                        HStack(spacing: 6) {
-                            if !customer.email.isEmpty {
-                                Text(customer.email)
-                                    .font(Font.custom("Beiruti-Regular", size: 11.5, relativeTo: .caption))
-                                    .foregroundColor(AdminSurface.secondaryText)
-                                    .lineLimit(1)
-                            }
-
-                            if !customer.email.isEmpty && !customer.phone.isEmpty {
-                                Text("•")
+                        // Contact Row 1: Phone (with Territory Flag)
+                        if !customer.phone.isEmpty {
+                            HStack(spacing: 5) {
+                                Image(systemName: "phone.fill")
                                     .font(.system(size: 9))
-                                    .foregroundColor(AdminSurface.secondaryText.opacity(0.5))
-                            }
+                                    .foregroundColor(AdminSurface.secondaryText.opacity(0.75))
 
-                            if !customer.phone.isEmpty {
-                                Text(customer.formattedPhone)
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundColor(AdminSurface.secondaryText)
+                                if let flag = customer.countryFlag {
+                                    Text(flag)
+                                        .font(.system(size: 11))
+                                }
+
+                                Text(customer.prettyPhone)
+                                    .font(Font.custom("Beiruti-Medium", size: 12, relativeTo: .subheadline))
+                                    .foregroundColor(AdminSurface.primaryText.opacity(0.90))
                                     .monospacedDigit()
                                     .lineLimit(1)
                             }
                         }
 
-                        // Compact Monospace UID Pill with 1-tap copy
+                        // Contact Row 2: Email (Clean, no violent truncation)
+                        if !customer.email.isEmpty {
+                            HStack(spacing: 5) {
+                                Image(systemName: "envelope.fill")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(AdminSurface.secondaryText.opacity(0.65))
+
+                                Text(customer.email)
+                                    .font(Font.custom("Beiruti-Regular", size: 11.5, relativeTo: .caption))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                        }
+
+                        // Compact Monospace UID Chip with 1-tap copy
                         Button(action: onCopyUID) {
                             HStack(spacing: 4) {
-                                Image(systemName: "number.circle.fill")
-                                    .font(.system(size: 9))
+                                Image(systemName: "number")
+                                    .font(.system(size: 8.5, weight: .bold))
                                 Text(customer.shortUID)
-                                    .font(.system(size: 10.5, weight: .medium, design: .monospaced))
-                                Image(systemName: "doc.on.doc")
-                                    .font(.system(size: 8))
+                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                Image(systemName: "doc.on.doc.fill")
+                                    .font(.system(size: 7.5))
                             }
                             .foregroundColor(AdminSurface.secondaryText.opacity(0.85))
                             .padding(.horizontal, 7)
@@ -1093,12 +1137,13 @@ private struct CustomerAccountCardView: View {
                             .overlay(Capsule().stroke(AdminSurface.hairline, lineWidth: 0.5))
                         }
                         .buttonStyle(PlainButtonStyle())
+                        .accessibilityLabel(String(format: Language.get("Copy_UID_Format", alter: "نسخ المعرف %@"), customer.shortUID))
                     }
 
                     Spacer(minLength: 4)
 
-                    // Right Side: Status Badge & Chevron
-                    VStack(alignment: .trailing, spacing: 6) {
+                    // Right Side: Status Badge & Communication Dial
+                    VStack(alignment: .trailing, spacing: 8) {
                         statusBadge
 
                         HStack(spacing: 6) {
@@ -1107,16 +1152,23 @@ private struct CustomerAccountCardView: View {
                                 Button {
                                     openWhatsApp(customer.phone)
                                 } label: {
-                                    Image("whatsapp")
-                                        .renderingMode(.template)
-                                        .resizable()
-                                        .scaledToFit()
-                                        .frame(width: 12, height: 12)
-                                        .foregroundColor(Color(uiColor: .ppSuccess))
-                                        .frame(width: 26, height: 26)
-                                        .background(Color(uiColor: .ppSuccess).opacity(0.10), in: Circle())
+                                    ZStack {
+                                        Circle()
+                                            .fill(Color(red: 0.15, green: 0.78, blue: 0.42).opacity(0.12))
+                                            .frame(width: 32, height: 32)
+
+                                        Image("whatsapp")
+                                            .renderingMode(.template)
+                                            .resizable()
+                                            .scaledToFit()
+                                            .frame(width: 14, height: 14)
+                                            .foregroundColor(Color(red: 0.15, green: 0.78, blue: 0.42))
+                                    }
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
                                 }
                                 .buttonStyle(PlainButtonStyle())
+                                .accessibilityLabel(Language.get("WhatsApp", alter: "محادثة واتساب"))
                             }
 
                             // Quick Call button if phone exists
@@ -1124,18 +1176,26 @@ private struct CustomerAccountCardView: View {
                                 Button {
                                     openCall(customer.phone)
                                 } label: {
-                                    Image(systemName: "phone.fill")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundColor(AdminSurface.primary)
-                                        .frame(width: 26, height: 26)
-                                        .background(AdminSurface.primary.opacity(0.08), in: Circle())
+                                    ZStack {
+                                        Circle()
+                                            .fill(AdminSurface.primary.opacity(0.10))
+                                            .frame(width: 32, height: 32)
+
+                                        Image(systemName: "phone.fill")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundColor(AdminSurface.primary)
+                                    }
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
                                 }
                                 .buttonStyle(PlainButtonStyle())
+                                .accessibilityLabel(Language.get("Call", alter: "اتصال هاتفي"))
                             }
 
                             Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
                                 .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
+                                .foregroundColor(AdminSurface.secondaryText.opacity(0.5))
+                                .padding(.trailing, 2)
                         }
                     }
                 }
@@ -1152,7 +1212,7 @@ private struct CustomerAccountCardView: View {
                         Spacer()
                     }
                     .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
+                    .padding(.vertical, 3.5)
                     .background(Color(uiColor: .ppWarning).opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
             }
@@ -1207,26 +1267,38 @@ private struct CustomerAccountCardView: View {
         }
     }
 
-    private var avatarElement: some View {
+    private var avatarVitrine: some View {
         ZStack(alignment: .bottomTrailing) {
             if let photo = customer.photoURL, let url = URL(string: photo), !photo.isEmpty {
-                AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 48, height: 48)) {
+                AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 52, height: 52)) {
                     monogramView
                 }
-                .frame(width: 48, height: 48)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .frame(width: 52, height: 52)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(AdminSurface.hairline, lineWidth: 0.75)
+                )
             } else {
                 monogramView
             }
 
-            // Online Presence Indicator Dot
-            Circle()
-                .fill(customer.isOnline ? Color(uiColor: .ppSuccess) : Color.gray.opacity(0.6))
-                .frame(width: 10, height: 10)
-                .overlay(Circle().stroke(Color.white, lineWidth: 2))
-                .offset(x: 2, y: 2)
+            // Online Presence Beacon Dot
+            ZStack {
+                if customer.isOnline {
+                    Circle()
+                        .stroke(Color(uiColor: .ppSuccess).opacity(0.35), lineWidth: 2)
+                        .frame(width: 14, height: 14)
+                }
+
+                Circle()
+                    .fill(customer.isOnline ? Color(uiColor: .ppSuccess) : Color.gray.opacity(0.55))
+                    .frame(width: 10, height: 10)
+                    .overlay(Circle().stroke(AdminSurface.surface, lineWidth: 2))
+            }
+            .offset(x: 2, y: 2)
         }
-        .frame(width: 48, height: 48)
+        .frame(width: 52, height: 52)
     }
 
     private var monogramView: some View {
@@ -1237,22 +1309,26 @@ private struct CustomerAccountCardView: View {
                 endPoint: .bottomTrailing
             )
             Text(customer.initials)
-                .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline))
+                .font(Font.custom("Beiruti-Bold", size: 17, relativeTo: .headline))
                 .foregroundColor(.white)
         }
-        .frame(width: 48, height: 48)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .frame(width: 52, height: 52)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.15), lineWidth: 0.75)
+        )
     }
 
     private var statusBadge: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 3.5) {
             Image(systemName: customer.status.icon)
                 .font(.system(size: 9, weight: .bold))
             Text(customer.status.title)
                 .font(Font.custom("Beiruti-Bold", size: 10.5, relativeTo: .caption2))
         }
         .foregroundColor(customer.status.color)
-        .padding(.horizontal, 7)
+        .padding(.horizontal, 7.5)
         .padding(.vertical, 3)
         .background(customer.status.color.opacity(0.10), in: Capsule())
         .overlay(Capsule().stroke(customer.status.color.opacity(0.20), lineWidth: 0.5))
@@ -1268,11 +1344,11 @@ private struct CustomerAccountCardView: View {
             )
             return
         }
-        let displayPhone = customer.formattedPhone.isEmpty ? phone : customer.formattedPhone
+        let displayPhone = customer.prettyPhone.isEmpty ? (customer.formattedPhone.isEmpty ? phone : customer.formattedPhone) : customer.prettyPhone
         PPAlertHelper.showConfirmation(
             in: nil,
             title: Language.get("Call_Customer_Title", alter: "الاتصال بالعميل"),
-            subtitle: String(format: Language.get("Call_Customer_Subtitle_Format", alter: "هل ترغب في إجراء مكالمة هاتفية مع العميل (%@) على الرقم %@؟"), customer.name, displayPhone),
+            subtitle: String(format: Language.get("Call_Customer_Subtitle_Format", alter: "هل ترغب في إجراء مكالمة هاتفية مع العميل (%@) على الرقم %@؟"), customer.displayTitle, displayPhone),
             confirmButton: Language.get("Call", alter: "اتصال"),
             cancelButton: Language.get("Cancel", alter: "إلغاء"),
             icon: UIImage(systemName: "phone.fill"),
@@ -1298,7 +1374,7 @@ private struct CustomerAccountCardView: View {
         PPAlertHelper.showConfirmation(
             in: nil,
             title: Language.get("WhatsApp_Customer_Title", alter: "محادثة واتساب"),
-            subtitle: String(format: Language.get("WhatsApp_Customer_Subtitle_Format", alter: "هل ترغب في فتح محادثة واتساب مع العميل (%@)؟"), customer.name),
+            subtitle: String(format: Language.get("WhatsApp_Customer_Subtitle_Format", alter: "هل ترغب في فتح محادثة واتساب مع العميل (%@)؟"), customer.displayTitle),
             confirmButton: Language.get("WhatsApp", alter: "فتح واتساب"),
             cancelButton: Language.get("Cancel", alter: "إلغاء"),
             icon: UIImage(named: "whatsapp") ?? UIImage(systemName: "message.fill"),
@@ -1385,6 +1461,7 @@ struct AdminCustomerDossierView: View {
             title: Language.get("MissionControl_UserDetail_Title", alter: "ملف حساب العميل"),
             subtitle: customer.name,
             statusDotColor: customer.isOnline ? Color(uiColor: .ppSuccess) : Color.gray.opacity(0.6),
+            customTopSpacing: 0,
             onBack: {
                 if let onDismiss {
                     onDismiss()
@@ -2416,34 +2493,46 @@ struct AdminAddCustomerSheet: View {
 // MARK: - Skeleton & Empty State Helpers
 
 private struct CustomerSkeletonCard: View {
+    @State private var isShimmering: Bool = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(AdminSurface.control)
-                    .frame(width: 48, height: 48)
+                    .frame(width: 52, height: 52)
 
                 VStack(alignment: .leading, spacing: 6) {
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(AdminSurface.control)
+                        .frame(width: 140, height: 15)
                     RoundedRectangle(cornerRadius: 4)
                         .fill(AdminSurface.control)
-                        .frame(width: 130, height: 14)
+                        .frame(width: 170, height: 12)
                     RoundedRectangle(cornerRadius: 4)
                         .fill(AdminSurface.control)
-                        .frame(width: 170, height: 11)
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(AdminSurface.control)
-                        .frame(width: 80, height: 10)
+                        .frame(width: 90, height: 10)
                 }
                 Spacer()
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(AdminSurface.control)
-                    .frame(width: 50, height: 22)
+                VStack(alignment: .trailing, spacing: 8) {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(AdminSurface.control)
+                        .frame(width: 60, height: 20)
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(AdminSurface.control)
+                        .frame(width: 68, height: 28)
+                }
             }
         }
         .padding(13)
         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.hairline))
-        .opacity(0.6)
+        .opacity(isShimmering ? 0.85 : 0.45)
+        .onAppear {
+            withAnimation(Animation.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                isShimmering = true
+            }
+        }
     }
 }
 

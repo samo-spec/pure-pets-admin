@@ -553,7 +553,7 @@ struct AdminCommandCenterScreenView: View {
             isRegular: isRegular
         )
         .padding(.horizontal, AdminCommandMetric.pageMargin)
-        .padding(.top, safeTop + 4)
+        .padding(.top, safeTop)
         .padding(.bottom, 6)
         .frame(maxWidth: isRegular ? ipadMaxWidth : .infinity)
         .frame(maxWidth: .infinity)
@@ -7033,116 +7033,48 @@ private struct CommandQuickActionsDeck: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var isExpanded: Bool = false
 
-    private let spacing: CGFloat = 11
+    private var spacing: CGFloat { isRegular ? 12 : 8 }
 
     private var allDeckItems: [CommandQuickActionItem] {
         let fulfillmentSignal = signals.first { $0.id.contains("fulfillment") }
         let deliverySignal = signals.first { $0.id.contains("delivery") }
-        let listingSignal = signals.first { $0.id.contains("listing") || $0.id.contains("moderat") }
         let userSignal = signals.first { $0.id.contains("user") }
-        let staffSignal = signals.first { $0.id.contains("staff") }
 
         return [
             // 1. Fulfillment Orders
             CommandQuickActionItem(
                 id: "fulfillment",
                 tag: "fulfillment",
-                title: Language.get("AdminQuickActions_Fulfillment", alter: "تجهيز الطلبات"),
-                subtitle: Language.get("AdminQuickActions_Fulfillment_Subtitle", alter: "معالجة وتحضير الطلبات"),
+                title: Language.get("AdminQuickActions_Fulfillment", alter: "التنفيذ"),
+                subtitle: Language.get("AdminQuickActions_Fulfillment_Subtitle", alter: "معالجة وتحضير"),
                 symbolName: "shippingbox.fill",
                 accent: Color(red: 0.96, green: 0.55, blue: 0.12),
                 badgeCount: (fulfillmentSignal?.count ?? 0) > 0 ? fulfillmentSignal?.count : nil,
                 isLive: fulfillmentSignal?.isLive ?? false
             ),
-            // 3. Delivery Fleet
+            // 2. Delivery Fleet
             CommandQuickActionItem(
                 id: "delivery",
                 tag: "delivery",
-                title: Language.get("AdminQuickActions_Delivery", alter: "أسطول التوصيل"),
-                subtitle: Language.get("AdminQuickActions_Delivery_Subtitle", alter: "الشحنات الحية والمندوبين"),
+                title: Language.get("AdminQuickActions_Delivery", alter: "التوصيل"),
+                subtitle: Language.get("AdminQuickActions_Delivery_Subtitle", alter: "إسناد ومتابعة"),
                 symbolName: "truck.box.fill",
                 accent: Color(red: 0.14, green: 0.54, blue: 0.98),
                 badgeCount: (deliverySignal?.count ?? 0) > 0 ? deliverySignal?.count : nil,
                 isLive: deliverySignal?.isLive ?? false
             ),
-            // 4. Staff & Roles
-            CommandQuickActionItem(
-                id: "staffManagement",
-                tag: "staffManagement",
-                title: Language.get("AdminQuickActions_Staff", alter: "فريق العمل"),
-                subtitle: Language.get("AdminQuickActions_Staff_Subtitle", alter: "الأدوار والصلاحيات"),
-                symbolName: "person.badge.shield.checkmark.fill",
-                accent: Color(red: 0.36, green: 0.45, blue: 0.98),
-                badgeCount: (staffSignal?.count ?? 0) > 0 ? staffSignal?.count : nil,
-                isLive: false
-            ),
-            // 5. Provider Applications
-            CommandQuickActionItem(
-                id: "providerApplications",
-                tag: "providerApplications",
-                title: Language.get("AdminQuickActions_Providers", alter: "طلبات المزودين"),
-                subtitle: Language.get("AdminQuickActions_Providers_Subtitle", alter: "مراجعة الانضمام"),
-                symbolName: "storefront.fill",
-                accent: Color(red: 0.05, green: 0.65, blue: 0.52),
-                badgeCount: nil,
-                isLive: true
-            ),
-            // 6. Broadcast Push Alert
-            CommandQuickActionItem(
-                id: "notificationsCompose",
-                tag: "notificationsCompose",
-                title: Language.get("AdminQuickActions_Broadcast", alter: "بث إشعار عام"),
-                subtitle: Language.get("AdminQuickActions_Broadcast_Subtitle", alter: "إرسال تنبيه للجميع"),
-                symbolName: "bell.badge.fill",
-                accent: Color(red: 0.96, green: 0.25, blue: 0.37),
-                badgeCount: nil,
-                isLive: false
-            ),
-            // 7. Customers Directory
+            // 3. Customers Directory
             CommandQuickActionItem(
                 id: "usersList",
                 tag: "usersList",
-                title: Language.get("AdminQuickActions_Users", alter: "دليل العملاء"),
-                subtitle: Language.get("AdminQuickActions_Users_Subtitle", alter: "الحسابات والسجلات"),
+                title: Language.get("AdminQuickActions_Users", alter: "المستخدمون"),
+                subtitle: Language.get("AdminQuickActions_Users_Subtitle", alter: "الحسابات والصلاحيات"),
                 symbolName: "person.2.fill",
                 accent: Color(red: 0.05, green: 0.60, blue: 0.56),
                 badgeCount: (userSignal?.count ?? 0) > 0 ? userSignal?.count : nil,
                 isLive: userSignal?.isLive ?? false
             ),
-            // 8. Listings & Moderation
-            CommandQuickActionItem(
-                id: "moderation",
-                tag: "moderation",
-                title: Language.get("AdminQuickActions_Moderation", alter: "إعلانات المنصة"),
-                subtitle: Language.get("AdminQuickActions_Listings_Subtitle", alter: "تدقيق واعتماد الإعلانات"),
-                symbolName: "checkmark.seal.fill",
-                accent: Color(red: 0.45, green: 0.38, blue: 0.95),
-                badgeCount: (listingSignal?.count ?? 0) > 0 ? listingSignal?.count : nil,
-                isLive: listingSignal?.isLive ?? false
-            ),
-            // 9. Branch Network
-            CommandQuickActionItem(
-                id: "branches",
-                tag: "branches",
-                title: Language.get("AdminQuickActions_Branches", alter: "شبكة الفروع"),
-                subtitle: Language.get("AdminQuickActions_Branches_Subtitle", alter: "المواقع والعمليات"),
-                symbolName: "building.2.fill",
-                accent: Color(red: 0.92, green: 0.50, blue: 0.15),
-                badgeCount: nil,
-                isLive: false
-            ),
-            // 10. Store Home Control
-            CommandQuickActionItem(
-                id: "homeControl",
-                tag: "homeControl",
-                title: Language.get("AdminQuickActions_HomeControl", alter: "واجهة التطبيق"),
-                subtitle: Language.get("AdminQuickActions_HomeControl_Subtitle", alter: "أقسام وبانرات المتجر"),
-                symbolName: "slider.horizontal.3",
-                accent: Color(red: 0.20, green: 0.40, blue: 0.85),
-                badgeCount: nil,
-                isLive: false
-            ),
-            // 11. Security & Audit Trail
+            // 4. Security & Audit Trail
             CommandQuickActionItem(
                 id: "audit",
                 tag: "audit",
@@ -7154,13 +7086,6 @@ private struct CommandQuickActionsDeck: View {
                 isLive: false
             )
         ]
-    }
-
-    private var visibleItems: [CommandQuickActionItem] {
-        if isRegular || dynamicTypeSize.isAccessibilitySize || isExpanded {
-            return allDeckItems
-        }
-        return Array(allDeckItems.prefix(6))
     }
 
     private var activeSignalsCount: Int {
@@ -7184,7 +7109,7 @@ private struct CommandQuickActionsDeck: View {
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(spacing: spacing) {
                     ForEach(allDeckItems) { item in
-                        CommandQuickActionCard(item: item) {
+                        CommandQuickActionCard(item: item, isRegular: true) {
                             onRoute(item.tag)
                         }
                     }
@@ -7221,63 +7146,23 @@ private struct CommandQuickActionsDeck: View {
         }
     }
 
-    // iPhone Operations Matrix (2 columns + expansion affordance)
+    // iPhone Operations Line (All 4 actions in 1 line)
     private var iphoneOperationsMatrixView: some View {
-        VStack(spacing: spacing) {
-            let columns = [
-                GridItem(.flexible(), spacing: spacing),
-                GridItem(.flexible(), spacing: spacing)
-            ]
-
-            LazyVGrid(columns: columns, spacing: spacing) {
-                ForEach(visibleItems) { item in
-                    CommandQuickActionCard(item: item) {
-                        onRoute(item.tag)
-                    }
+        HStack(spacing: spacing) {
+            ForEach(allDeckItems) { item in
+                CommandQuickActionCard(item: item, isRegular: false) {
+                    onRoute(item.tag)
                 }
-            }
-
-            // Interactive Expansion Affordance (+5 More Tools)
-            if !dynamicTypeSize.isAccessibilitySize {
-                Button(action: {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
-                        isExpanded.toggle()
-                    }
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 10, weight: .bold))
-
-                        Text(isExpanded ? Language.get("AdminQuickActions_ShowLess", alter: "عرض أقل") : (Language.get("AdminQuickActions_ShowMore", alter: "المزيد من الأدوات") + " (+\(max(allDeckItems.count - 6, 0)))"))
-                            .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
-                    }
-                    .foregroundStyle(AdminCommandInk.secondary)
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 14)
-                    .frame(maxWidth: .infinity)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.6)
-                    )
-                }
-                .buttonStyle(CommandQuickActionCardStyle())
             }
         }
         .frame(maxWidth: .infinity)
     }
 
-    // iPad Operations Matrix (Panoramic 3 to 4 columns)
+    // iPad Operations Line (All 4 actions in 1 line)
     private var ipadOperationsMatrixView: some View {
-        let effectiveWidth = containerWidth > 0 ? containerWidth : max(UIScreen.main.bounds.width - 2 * AdminCommandMetric.pageMargin, 740)
-        let isWide = effectiveWidth >= 900
-        let columnCount = isWide ? 4 : 3
-        let columns = Array(repeating: GridItem(.flexible(), spacing: spacing), count: columnCount)
-
-        return LazyVGrid(columns: columns, spacing: spacing) {
+        HStack(spacing: spacing) {
             ForEach(allDeckItems) { item in
-                CommandQuickActionCard(item: item) {
+                CommandQuickActionCard(item: item, isRegular: true) {
                     onRoute(item.tag)
                 }
             }
@@ -7286,10 +7171,11 @@ private struct CommandQuickActionsDeck: View {
     }
 }
 
-// MARK: - Sovereign Quick Action Card (Ergonomic 2-Tier Squircle)
+// MARK: - Sovereign Quick Action Card (Adaptive Ergonomic Single-Line Tile)
 
 private struct CommandQuickActionCard: View {
     let item: CommandQuickActionItem
+    var isRegular: Bool = false
     let action: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -7300,126 +7186,11 @@ private struct CommandQuickActionCard: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             action()
         }) {
-            VStack(alignment: .leading, spacing: 7) {
-                // Tier 1: Icon squircle + Telemetry Indicator
-                HStack(alignment: .center, spacing: 8) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(
-                                colorScheme == .dark
-                                    ? item.accent.opacity(0.28)
-                                    : Color.white.opacity(0.92)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.22 : 0.14), lineWidth: 0.75)
-                            )
-                            .shadow(color: item.accent.opacity(colorScheme == .dark ? 0.22 : 0.08), radius: 3, y: 1)
-
-                        CommandQuickActionIcon(item: item, size: 17)
-                    }
-                    .frame(width: 36, height: 36)
-                    .accessibilityHidden(true)
-
-                    Spacer(minLength: 4)
-
-                    // Trailing Telemetry Pill / Arrow Affordance
-                    if let count = item.badgeCount, count > 0 {
-                        HStack(spacing: 3) {
-                            Circle()
-                                .fill(item.accent)
-                                .frame(width: 5, height: 5)
-                                .scaleEffect(isPulsing ? 1.25 : 0.85)
-                            Text("\(count)")
-                                .font(AdminType.caption2Bold)
-                                .foregroundStyle(item.accent)
-                                .monospacedDigit()
-                        }
-                        .padding(.horizontal, 6.5)
-                        .padding(.vertical, 3)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(colorScheme == .dark ? item.accent.opacity(0.22) : Color.white.opacity(0.92))
-                        )
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .strokeBorder(item.accent.opacity(0.18), lineWidth: 0.75)
-                        )
-                    } else if item.isLive {
-                        HStack(spacing: 3) {
-                            Circle()
-                                .fill(item.accent)
-                                .frame(width: 4.5, height: 4.5)
-                                .scaleEffect(isPulsing ? 1.25 : 0.85)
-                            Text(Language.get("AdminQuickActions_Live", alter: "مباشر"))
-                                .font(AdminType.caption2Bold)
-                                .foregroundStyle(item.accent)
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(item.accent.opacity(colorScheme == .dark ? 0.18 : 0.08), in: Capsule(style: .continuous))
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .strokeBorder(item.accent.opacity(0.18), lineWidth: 0.75)
-                        )
-                    } else {
-                        Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
-                            .font(.system(size: 9.5, weight: .bold))
-                            .foregroundStyle(item.accent.opacity(0.55))
-                            .accessibilityHidden(true)
-                    }
-                }
-
-                Spacer(minLength: 2)
-
-                // Tier 2: Arabic Typography Horizons
-                VStack(alignment: .leading, spacing: 1.5) {
-                    Text(item.title)
-                        .font(Font.custom("Beiruti-Bold", size: 14.5, relativeTo: .subheadline))
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-
-                    Text(item.subtitle)
-                        .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
-                        .foregroundStyle(AdminCommandInk.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if isRegular {
+                regularContent
+            } else {
+                compactSingleLineContent
             }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .frame(height: 94)
-            .background(
-                ZStack {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
-
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    item.accent.opacity(colorScheme == .dark ? 0.03 : 0.012),
-                                    Color.clear
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.18 : 0.10), lineWidth: 0.75)
-            )
-            .shadow(
-                color: item.accent.opacity(colorScheme == .dark ? 0.14 : 0.04),
-                radius: 4,
-                y: 1.5
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(CommandQuickActionCardStyle())
         .onAppear {
@@ -7430,8 +7201,229 @@ private struct CommandQuickActionCard: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(item.title), \(item.subtitle)")
+        .accessibilityLabel("\(item.title)، \(item.subtitle)")
         .accessibilityHint(Language.get("AdminCommandCenter_OpenHint", alter: "يفتح القسم"))
+    }
+
+    // MARK: - iPhone Single-Line Compact Content (Vertical Ergonomic Tile)
+    private var compactSingleLineContent: some View {
+        VStack(spacing: 5) {
+            // Icon squircle with attached micro-badge
+            ZStack(alignment: .topTrailing) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(
+                            colorScheme == .dark
+                                ? item.accent.opacity(0.24)
+                                : Color.white.opacity(0.95)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.25 : 0.16), lineWidth: 0.75)
+                        )
+                        .shadow(color: item.accent.opacity(colorScheme == .dark ? 0.20 : 0.08), radius: 3, y: 1)
+
+                    CommandQuickActionIcon(item: item, size: 17)
+                }
+                .frame(width: 36, height: 36)
+
+                // Micro-badge badge overlay
+                if let count = item.badgeCount, count > 0 {
+                    Text("\(count)")
+                        .font(Font.custom("Beiruti-Bold", size: 10))
+                        .foregroundStyle(Color.white)
+                        .monospacedDigit()
+                        .padding(.horizontal, 4.5)
+                        .padding(.vertical, 1)
+                        .background(item.accent, in: Capsule())
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(colorScheme == .dark ? Color.black : Color.white, lineWidth: 1.2)
+                        )
+                        .offset(x: Language.isRTL() ? -4 : 4, y: -4)
+                } else if item.isLive {
+                    Circle()
+                        .fill(item.accent)
+                        .frame(width: 6.5, height: 6.5)
+                        .scaleEffect(isPulsing ? 1.25 : 0.85)
+                        .overlay(
+                            Circle()
+                                .strokeBorder(colorScheme == .dark ? Color.black : Color.white, lineWidth: 1)
+                        )
+                        .offset(x: Language.isRTL() ? -2 : 2, y: -2)
+                }
+            }
+            .accessibilityHidden(true)
+
+            // Text Stack (Title + Subtitle)
+            VStack(spacing: 1.5) {
+                Text(item.title)
+                    .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .subheadline))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .multilineTextAlignment(.center)
+
+                Text(item.subtitle)
+                    .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.70)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .frame(height: 98)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
+
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                item.accent.opacity(colorScheme == .dark ? 0.05 : 0.025),
+                                Color.clear
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+            }
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.20 : 0.12), lineWidth: 0.75)
+        )
+        .shadow(
+            color: item.accent.opacity(colorScheme == .dark ? 0.14 : 0.04),
+            radius: 4,
+            y: 1.5
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+    }
+
+    // MARK: - iPad Panoramic Single-Line Content (Horizontal Executive Card)
+    private var regularContent: some View {
+        HStack(spacing: 10) {
+            ZStack(alignment: .topTrailing) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(
+                            colorScheme == .dark
+                                ? item.accent.opacity(0.24)
+                                : Color.white.opacity(0.95)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.25 : 0.16), lineWidth: 0.75)
+                        )
+                        .shadow(color: item.accent.opacity(colorScheme == .dark ? 0.20 : 0.08), radius: 3, y: 1)
+
+                    CommandQuickActionIcon(item: item, size: 18)
+                }
+                .frame(width: 38, height: 38)
+            }
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title)
+                    .font(Font.custom("Beiruti-Bold", size: 14.5, relativeTo: .subheadline))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+
+                Text(item.subtitle)
+                    .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+
+            Spacer(minLength: 4)
+
+            // Trailing Telemetry Pill / Arrow Affordance
+            if let count = item.badgeCount, count > 0 {
+                HStack(spacing: 3) {
+                    Circle()
+                        .fill(item.accent)
+                        .frame(width: 5, height: 5)
+                        .scaleEffect(isPulsing ? 1.25 : 0.85)
+                    Text("\(count)")
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(item.accent)
+                        .monospacedDigit()
+                }
+                .padding(.horizontal, 6.5)
+                .padding(.vertical, 3)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(colorScheme == .dark ? item.accent.opacity(0.22) : Color.white.opacity(0.92))
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .strokeBorder(item.accent.opacity(0.18), lineWidth: 0.75)
+                )
+            } else if item.isLive {
+                HStack(spacing: 3) {
+                    Circle()
+                        .fill(item.accent)
+                        .frame(width: 4.5, height: 4.5)
+                        .scaleEffect(isPulsing ? 1.25 : 0.85)
+                    Text(Language.get("AdminQuickActions_Live", alter: "مباشر"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(item.accent)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(item.accent.opacity(colorScheme == .dark ? 0.18 : 0.08), in: Capsule(style: .continuous))
+                .overlay(
+                    Capsule(style: .continuous)
+                        .strokeBorder(item.accent.opacity(0.18), lineWidth: 0.75)
+                )
+            } else {
+                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 9.5, weight: .bold))
+                    .foregroundStyle(item.accent.opacity(0.55))
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: 76)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
+
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                item.accent.opacity(colorScheme == .dark ? 0.03 : 0.012),
+                                Color.clear
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.18 : 0.10), lineWidth: 0.75)
+        )
+        .shadow(
+            color: item.accent.opacity(colorScheme == .dark ? 0.14 : 0.04),
+            radius: 4,
+            y: 1.5
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 

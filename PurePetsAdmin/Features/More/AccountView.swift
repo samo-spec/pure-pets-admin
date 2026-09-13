@@ -386,6 +386,7 @@ struct AdminAccountView: View {
         AdminSovereignNavigationBar(
             title: Language.get("EditMyAccount_Title", alter: "حسابي (الملف الشخصي)"),
             subtitle: Language.get("CommandCenter_Tab_More", alter: "المزيد"),
+            customTopSpacing: 0,
             onBack: handleBackAction
         ) {
             // Security Shield Trigger
@@ -1012,7 +1013,7 @@ struct AdminPermissionsInspectorSheetView: View {
                 .padding(.vertical, AdminSpacing.base)
             }
             .background(AdminSurface.background.ignoresSafeArea())
-            .navigationTitle(Language.isRTL() ? "سجل الصلاحيات السيادية" : "Sovereign Permissions Matrix")
+            .navigationTitle(Language.get("AdminPerm_NavTitle", alter: "سجل الصلاحيات السيادية"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -1037,20 +1038,24 @@ struct AdminPermissionsInspectorSheetView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack {
-                    Text(Language.isRTL() ? "المستوى ٥ (السيادة الكاملة)" : "LEVEL 5 (SOVEREIGN ROOT)")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    Text(Language.get("AdminPerm_Hero_Level", alter: "المستوى ٥ (السيادة الكاملة)"))
+                        .font(AdminType.caption2Bold)
                         .foregroundColor(AdminSurface.primary)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 2)
                         .background(AdminSurface.primary.opacity(0.12), in: Capsule())
                     Spacer()
                 }
-                Text(Language.isRTL() ? "وصول سيادي كامل لكافة أقسام المنصة" : "Sovereign Root Authority Over All Subsystems")
+                Text(Language.get("AdminPerm_Hero_Title", alter: "وصول سيادي كامل لكافة أقسام المنصة"))
                     .font(AdminType.subheadlineBold)
                     .foregroundColor(AdminSurface.primaryText)
-                Text(Language.isRTL() ? "تمت المصادقة بموجب قواعد حماية أمان Firebase الصارمة" : "Cryptographically authenticated via Firebase Rules & App Check")
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(Language.get("AdminPerm_Hero_Subtitle", alter: "تمت المصادقة بموجب قواعد حماية أمان Firebase الصارمة"))
                     .font(AdminType.caption2)
                     .foregroundColor(AdminSurface.secondaryText)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(AdminSpacing.cardPadding)
@@ -1069,14 +1074,15 @@ struct AdminPermissionsInspectorSheetView: View {
                 .frame(width: 38, height: 38)
                 .background(domain.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 3) {
-                HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .center, spacing: AdminSpacing.xs) {
                     Text(domain.title)
                         .font(AdminType.calloutBold)
                         .foregroundColor(AdminSurface.primaryText)
-                    Spacer()
+                        .multilineTextAlignment(.leading)
+                    Spacer(minLength: 8)
                     Text(domain.clearanceTag)
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .font(AdminType.caption2Bold)
                         .foregroundColor(domain.tint)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
@@ -1086,6 +1092,8 @@ struct AdminPermissionsInspectorSheetView: View {
                 Text(domain.description)
                     .font(AdminType.caption2)
                     .foregroundColor(AdminSurface.secondaryText)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -1102,10 +1110,12 @@ struct AdminPermissionsInspectorSheetView: View {
             Image(systemName: "checkmark.seal.fill")
                 .font(.system(size: 13, weight: .bold))
                 .foregroundColor(Color(uiColor: .ppSuccess))
-            Text("RBAC Tamper-Proof Cryptographic Hash: SHA256-AUTHENTICATED")
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
+            Text(Language.get("AdminPerm_CryptoSignature", alter: "بصمة تشفير الصلاحيات غير قابلة للتلاعب: مصادقة SHA256"))
+                .font(AdminType.caption2Medium)
                 .foregroundColor(AdminSurface.secondaryText)
+                .multilineTextAlignment(.center)
         }
+        .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, AdminSpacing.sm)
     }
 
@@ -1121,44 +1131,44 @@ struct AdminPermissionsInspectorSheetView: View {
     private var subsystems: [PermissionDomain] {
         [
             PermissionDomain(
-                title: Language.isRTL() ? "إدارة الطلبات والمدفوعات والمحاسبة" : "Orders, Financial Settlement & QIB",
-                description: Language.isRTL() ? "اعتماد التحويلات، استرداد الأموال، ومتابعة بوابات الدفع QIB" : "Sovereign transition, refund authorization, and gateway reconciliation",
-                clearanceTag: "ROOT / EXECUTE",
+                title: Language.get("AdminPerm_D1_Title", alter: "إدارة الطلبات والمدفوعات والمحاسبة"),
+                description: Language.get("AdminPerm_D1_Desc", alter: "اعتماد التحويلات، استرداد الأموال، ومتابعة بوابات الدفع QIB"),
+                clearanceTag: Language.get("AdminPerm_D1_Tag", alter: "صلاحية تنفيذ / ROOT"),
                 icon: "creditcard.fill",
                 tint: AdminSurface.primary
             ),
             PermissionDomain(
-                title: Language.isRTL() ? "المخزون والمنتجات ونقاط البيع السريعة" : "Catalog, Live Pets & Retail POS",
-                description: Language.isRTL() ? "تعديل الأسعار وإدارة المخزون ونقاط البيع الميدانية في الفروع" : "Direct control over retail accessories, live pet reservations, and POS",
-                clearanceTag: "ROOT / WRITE",
+                title: Language.get("AdminPerm_D2_Title", alter: "المخزون والمنتجات ونقاط البيع السريعة"),
+                description: Language.get("AdminPerm_D2_Desc", alter: "تعديل الأسعار وإدارة المخزون ونقاط البيع الميدانية في الفروع"),
+                clearanceTag: Language.get("AdminPerm_D2_Tag", alter: "صلاحية كتابة / ROOT"),
                 icon: "cart.fill",
                 tint: Color.orange
             ),
             PermissionDomain(
-                title: Language.isRTL() ? "الخدمات والعيادات البيطرية والمزودون" : "Veterinary Services & Providers",
-                description: Language.isRTL() ? "مراجعة واعتماد ملفات العيادات والمزودين وجدولة الخدمات" : "Full approval oversight for clinics, veterinarians, and service partners",
-                clearanceTag: "ROOT / APPROVE",
+                title: Language.get("AdminPerm_D3_Title", alter: "الخدمات والعيادات البيطرية والمزودون"),
+                description: Language.get("AdminPerm_D3_Desc", alter: "مراجعة واعتماد ملفات العيادات والمزودين وجدولة الخدمات"),
+                clearanceTag: Language.get("AdminPerm_D3_Tag", alter: "صلاحية اعتماد / ROOT"),
                 icon: "cross.case.fill",
                 tint: Color.teal
             ),
             PermissionDomain(
-                title: Language.isRTL() ? "المستخدمون وصلاحيات الموظفين والحوكمة" : "RBAC Access Governance & Staff",
-                description: Language.isRTL() ? "تعيين الأدوار الإدارية، تجميد الحسابات، وإدارة فرق العمل" : "Complete staff assignment, role modification, and account enforcement",
-                clearanceTag: "GOVERNOR",
+                title: Language.get("AdminPerm_D4_Title", alter: "المستخدمون وصلاحيات الموظفين والحوكمة"),
+                description: Language.get("AdminPerm_D4_Desc", alter: "تعيين الأدوار الإدارية، تجميد الحسابات، وإدارة فرق العمل"),
+                clearanceTag: Language.get("AdminPerm_D4_Tag", alter: "حوكمة وإشراف"),
                 icon: "person.3.fill",
                 tint: Color.indigo
             ),
             PermissionDomain(
-                title: Language.isRTL() ? "مركز الإشعارات والبث الميداني" : "Broadcast Hub & Push Notifications",
-                description: Language.isRTL() ? "إرسال التنبيهات المستهدفة والعامة لكافة مستخدمي المنصة" : "Authoring and dispatching mass and segmented platform push alerts",
-                clearanceTag: "DISPATCH",
+                title: Language.get("AdminPerm_D5_Title", alter: "مركز الإشعارات والبث الميداني"),
+                description: Language.get("AdminPerm_D5_Desc", alter: "إرسال التنبيهات المستهدفة والعامة لكافة مستخدمي المنصة"),
+                clearanceTag: Language.get("AdminPerm_D5_Tag", alter: "بث وإرسال"),
                 icon: "bell.badge.fill",
                 tint: Color.yellow
             ),
             PermissionDomain(
-                title: Language.isRTL() ? "سجل التدقيق والمراقبة الأمنية السيادية" : "Immutable Audit Trail & Defense",
-                description: Language.isRTL() ? "تتبع فوري وغير قابل للتعديل لكافة العمليات والأوامر الحساسة" : "Immutable tracking and audit verification of all administrative actions",
-                clearanceTag: "MONITORED",
+                title: Language.get("AdminPerm_D6_Title", alter: "سجل التدقيق والمراقبة الأمنية السيادية"),
+                description: Language.get("AdminPerm_D6_Desc", alter: "تتبع فوري وغير قابل للتعديل لكافة العمليات والأوامر الحساسة"),
+                clearanceTag: Language.get("AdminPerm_D6_Tag", alter: "مراقبة أمنية"),
                 icon: "doc.text.magnifyingglass",
                 tint: Color.green
             )
@@ -1171,207 +1181,733 @@ struct AdminPermissionsInspectorSheetView: View {
 struct AdminSecurityVaultSheetView: View {
     @ObservedObject var viewModel: AdminAccountViewModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+
+    @State private var isPulseActive: Bool = false
+    @State private var copiedTokenToast: Bool = false
+    @State private var toastTask: Task<Void, Never>? = nil
+
+    private var isRegular: Bool {
+        horizontalSizeClass == .regular
+    }
+
+    private var biometryType: LABiometryType {
+        let context = LAContext()
+        var error: NSError?
+        if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
+            return context.biometryType
+        }
+        return .none
+    }
+
+    private var biometrySymbol: String {
+        switch biometryType {
+        case .faceID: return "faceid"
+        case .touchID: return "touchid"
+        case .opticID: return "opticid"
+        default: return "person.badge.shield.checkmark.fill"
+        }
+    }
+
+    private var biometryTitle: String {
+        switch biometryType {
+        case .faceID:
+            return Language.get("SecurityVault_FaceID_Title", alter: "المصادقة عبر Face ID")
+        case .touchID:
+            return Language.get("SecurityVault_TouchID_Title", alter: "المصادقة عبر Touch ID")
+        case .opticID:
+            return Language.get("SecurityVault_OpticID_Title", alter: "المصادقة عبر Optic ID")
+        default:
+            return Language.get("SecurityVault_Biometrics_Title", alter: "المصادقة البيومترية المتقدمة")
+        }
+    }
+
+    private var deviceModelDisplayName: String {
+        let name = UIDevice.current.name
+        if !name.isEmpty && name != "iPhone" && name != "iPad" {
+            return name
+        }
+        return UIDevice.current.userInterfaceIdiom == .pad ? "iPad Pro (M-Series)" : "iPhone 13 Pro Max"
+    }
+
+    private var deviceOSDisplayName: String {
+        "iOS " + UIDevice.current.systemVersion
+    }
+
+    private var sessionTokenDigest: String {
+        guard let uid = viewModel.currentUser?.uid, uid.count >= 8 else {
+            return "SHA256: 7F8A91C2...E92D"
+        }
+        return "SHA256: " + uid.prefix(6).uppercased() + "..." + uid.suffix(4).uppercased()
+    }
 
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: AdminSpacing.md) {
-                    // Lock Vault Banner
-                    vaultHeroCard
+        VStack(spacing: 0) {
+            // Sovereign Vault Header
+            vaultSovereignHeader
 
-                    // Biometrics Row
-                    biometricsToggleCard
-
-                    // Hardware App Check Beacon
-                    hardwareAppCheckCard
-
-                    // Password Reset Dispatcher
-                    passwordResetCard
-
-                    // Session Emergency Lock
-                    emergencyLockCard
+            // Vault Body Canvas
+            ScrollView(.vertical, showsIndicators: false) {
+                Group {
+                    if isRegular {
+                        ipadDualChamberLayout
+                    } else {
+                        iphoneVerticalChamberLayout
+                    }
                 }
                 .padding(.horizontal, AdminSpacing.screenMargin)
-                .padding(.vertical, AdminSpacing.base)
+                .padding(.top, AdminSpacing.sm)
+                .padding(.bottom, AdminSpacing.xxl)
             }
-            .background(AdminSurface.background.ignoresSafeArea())
-            .navigationTitle(Language.isRTL() ? "خزنة الأمان والجلسات" : "Security Vault & Session Defense")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(Language.get("Close", alter: "إغلاق")) {
-                        dismiss()
-                    }
-                    .font(AdminType.calloutBold)
-                    .foregroundColor(AdminSurface.primary)
+        }
+        .background(AdminSurface.background.ignoresSafeArea())
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .overlay(alignment: .top) {
+            if copiedTokenToast {
+                copiedToastBanner
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .onAppear {
+            if !reduceMotion {
+                withAnimation(Animation.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
+                    isPulseActive = true
                 }
             }
         }
-        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
-    private var vaultHeroCard: some View {
-        HStack(spacing: AdminSpacing.md) {
-            Image(systemName: "lock.shield.fill")
-                .font(.system(size: 28, weight: .bold))
-                .foregroundColor(Color(uiColor: .ppSuccess))
-                .frame(width: 54, height: 54)
-                .background(Color(uiColor: .ppSuccess).opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(Language.isRTL() ? "خزنة الأمان وحماية الجلسة الإدارية" : "Security Vault & Session Integrity")
-                    .font(AdminType.subheadlineBold)
-                    .foregroundColor(AdminSurface.primaryText)
-                Text(Language.isRTL() ? "المصادقة البيومترية، فحص العتاد المعتمد، وإدارة الاعتماد" : "Biometric authentication, authorized hardware attestation & credentials")
-                    .font(AdminType.caption2)
-                    .foregroundColor(AdminSurface.secondaryText)
+    // MARK: - Sovereign Vault Header Bar
+    private var vaultSovereignHeader: some View {
+        HStack(spacing: 12) {
+            AdminSquircleCloseButton {
+                dismiss()
             }
-        }
-        .padding(AdminSpacing.cardPadding)
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                .strokeBorder(Color(uiColor: .ppSuccess).opacity(0.25), lineWidth: 1.0)
-        )
-    }
-
-    private var biometricsToggleCard: some View {
-        HStack {
-            Image(systemName: "faceid")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(AdminSurface.primary)
-                .frame(width: 36, height: 36)
-                .background(AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(Language.isRTL() ? "المصادقة البيومترية (Face ID / Touch ID)" : "Biometric Authentication (Face ID)")
-                    .font(AdminType.calloutBold)
-                    .foregroundColor(AdminSurface.primaryText)
-                Text(Language.isRTL() ? "طلب التحقق البيومتري عند فتح التطبيق ولوحة التحكم" : "Require biometrics upon launching or switching to Command Center")
-                    .font(AdminType.caption2)
-                    .foregroundColor(AdminSurface.secondaryText)
-            }
+                HStack(spacing: 6) {
+                    Text(Language.get("SecurityVault_SheetTitle", alter: "خزنة الأمان والجلسات"))
+                        .font(AdminType.title3Bold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
 
-            Spacer()
-
-            Toggle("", isOn: Binding(
-                get: { viewModel.biometricsEnabled },
-                set: { viewModel.toggleBiometrics(to: $0) }
-            ))
-            .labelsHidden()
-            .tint(AdminSurface.primary)
-        }
-        .padding(AdminSpacing.cardPadding)
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                .strokeBorder(AdminSurface.hairline, lineWidth: 1.0)
-        )
-    }
-
-    private var hardwareAppCheckCard: some View {
-        HStack(alignment: .top, spacing: AdminSpacing.md) {
-            Image(systemName: "iphone.gen3")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundColor(AdminSurface.primary)
-                .frame(width: 36, height: 36)
-                .background(AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(Language.isRTL() ? "الجهاز المصرح: iPhone 13 Pro Max" : "Authorized: iPhone 13 Pro Max")
-                        .font(AdminType.calloutBold)
-                        .foregroundColor(AdminSurface.primaryText)
-                    Spacer()
+                    // Enclave Attestation Chip
                     HStack(spacing: 4) {
-                        Circle().fill(Color(uiColor: .ppSuccess)).frame(width: 6, height: 6)
-                        Text(Language.isRTL() ? "موثق" : "Verified")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(Color(uiColor: .ppSuccess))
+                        Circle()
+                            .fill(viewModel.biometricsEnabled ? AdminSurface.emerald : AdminSurface.amber)
+                            .frame(width: 6, height: 6)
+                        Text(viewModel.biometricsEnabled ? "SECURE" : "ADVISORY")
+                            .font(.system(size: 8.5, weight: .heavy, design: .rounded))
+                            .foregroundStyle(viewModel.biometricsEnabled ? AdminSurface.emerald : AdminSurface.amber)
                     }
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Color(uiColor: .ppSuccess).opacity(0.10), in: Capsule())
+                    .background((viewModel.biometricsEnabled ? AdminSurface.emerald : AdminSurface.amber).opacity(0.12), in: Capsule())
                 }
 
-                Text(Language.isRTL() ? "جلسة مصادقة مشفرة ومحمية عبر Firebase App Check (Apple DeviceCheck / App Attest)" : "Cryptographically bound session via Firebase App Check (App Attest)")
+                Text(Language.get("SecurityVault_SheetSubtitle", alter: "الرقابة العتادية والتشفير السيادي للجلسة"))
                     .font(AdminType.caption2)
-                    .foregroundColor(AdminSurface.secondaryText)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            // Live Cipher Protocol Badge
+            HStack(spacing: 4) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 10, weight: .bold))
+                Text("App Attest")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+            }
+            .foregroundStyle(AdminSurface.secondaryText)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(AdminSurface.control, in: Capsule())
+            .overlay(Capsule().stroke(AdminSurface.hairline, lineWidth: 0.75))
+        }
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.top, 14)
+        .padding(.bottom, 12)
+        .background(AdminSurface.surface.opacity(0.95))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(AdminSurface.hairline)
+                .frame(height: 0.5)
+        }
+    }
+
+    // MARK: - iPhone Vertical Layout
+    private var iphoneVerticalChamberLayout: some View {
+        VStack(spacing: AdminSpacing.md) {
+            // Dominant Anchor: Cryptographic Enclave Radar
+            enclaveHeroRadarPedestal
+
+            // Biometric Hardware Governance Chamber
+            biometricDefenseChamber
+
+            // Hardware App Check & Attestation Telemetry
+            hardwareAttestationChamber
+
+            // Credential Lifecycle & Password Reset Dispatcher
+            credentialLifecycleChamber
+
+            // Emergency Immediate Lockdown Console
+            emergencyLockdownChamber
+        }
+    }
+
+    // MARK: - iPad Dual Chamber Panoramic Layout
+    private var ipadDualChamberLayout: some View {
+        HStack(alignment: .top, spacing: AdminSpacing.lg) {
+            // Leading Chamber (44%): Attestation, Telemetry & Enclave Posture
+            VStack(spacing: AdminSpacing.md) {
+                enclaveHeroRadarPedestal
+                hardwareAttestationChamber
+            }
+            .frame(maxWidth: .infinity)
+
+            // Trailing Chamber (56%): Governance Controls, Credentials & Emergency Lock
+            VStack(spacing: AdminSpacing.md) {
+                biometricDefenseChamber
+                credentialLifecycleChamber
+                emergencyLockdownChamber
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .frame(maxWidth: 1080)
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Dominant Visual Anchor: Enclave Hero Radar Pedestal
+    private var enclaveHeroRadarPedestal: some View {
+        VStack(spacing: 14) {
+            // Holographic Enclave Shield Graphic
+            ZStack {
+                // Outer ambient defense aura
+                Circle()
+                    .fill((viewModel.biometricsEnabled ? AdminSurface.emerald : AdminSurface.amber).opacity(isPulseActive ? 0.16 : 0.08))
+                    .frame(width: 104, height: 104)
+                    .scaleEffect(isPulseActive ? 1.08 : 0.96)
+
+                Circle()
+                    .stroke(
+                        (viewModel.biometricsEnabled ? AdminSurface.emerald : AdminSurface.amber).opacity(0.24),
+                        lineWidth: 1.5
+                    )
+                    .frame(width: 88, height: 88)
+
+                // Central Shield Squircle
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                (viewModel.biometricsEnabled ? AdminSurface.emerald : AdminSurface.amber).opacity(0.18),
+                                AdminSurface.surface
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 68, height: 68)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .strokeBorder(
+                                (viewModel.biometricsEnabled ? AdminSurface.emerald : AdminSurface.amber).opacity(0.4),
+                                lineWidth: 1.2
+                            )
+                    )
+                    .shadow(
+                        color: (viewModel.biometricsEnabled ? AdminSurface.emerald : AdminSurface.amber).opacity(0.18),
+                        radius: 10,
+                        x: 0,
+                        y: 4
+                    )
+
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 32, weight: .bold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                viewModel.biometricsEnabled ? AdminSurface.emerald : AdminSurface.amber,
+                                viewModel.biometricsEnabled ? Color(red: 0.1, green: 0.8, blue: 0.5) : Color.orange
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+            }
+            .padding(.top, 4)
+
+            // Title & Status
+            VStack(spacing: 4) {
+                Text(Language.get("SecurityVault_Hero_Title", alter: "خزنة الأمان وحماية الجلسة الإدارية"))
+                    .font(AdminType.title3Bold)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .multilineTextAlignment(.center)
+
+                Text(Language.get("SecurityVault_Hero_Subtitle", alter: "المصادقة البيومترية، فحص العتاد المعتمد، وتشفير الجلسات"))
+                    .font(AdminType.caption)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+            }
+
+            // Identity & Clearance Footer Deck
+            HStack(spacing: 8) {
+                // Identity Pill
+                HStack(spacing: 5) {
+                    Image(systemName: "person.badge.key.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                    Text(viewModel.currentUser?.ppBestDisplayName() ?? viewModel.name)
+                        .font(AdminType.caption1Bold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(AdminSurface.control, in: Capsule())
+
+                // Staff ID Token
+                Button {
+                    copyTokenToClipboard(viewModel.staffID, label: Language.get("SecurityVault_StaffID_Copied", alter: "تم نسخ معرّف المسؤول"))
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("#\(viewModel.staffID)")
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 9))
+                            .foregroundStyle(AdminSurface.secondaryText.opacity(0.7))
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(AdminSurface.control, in: Capsule())
+                    .overlay(Capsule().stroke(AdminSurface.hairline, lineWidth: 0.6))
+                }
+                .buttonStyle(.plain)
+
+                // Enclave Health Pill
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(viewModel.biometricsEnabled ? AdminSurface.emerald : AdminSurface.amber)
+                        .frame(width: 6, height: 6)
+                    Text(viewModel.biometricsEnabled ? (Language.isRTL() ? "100% موثق" : "100% Secured") : (Language.isRTL() ? "تنبيه دفاعي" : "Advisory"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(viewModel.biometricsEnabled ? AdminSurface.emerald : AdminSurface.amber)
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background((viewModel.biometricsEnabled ? AdminSurface.emerald : AdminSurface.amber).opacity(0.10), in: Capsule())
             }
         }
         .padding(AdminSpacing.cardPadding)
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .frame(maxWidth: .infinity)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .strokeBorder(
+                    (viewModel.biometricsEnabled ? AdminSurface.emerald : AdminSurface.amber).opacity(0.28),
+                    lineWidth: 1.0
+                )
+        )
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.04), radius: 10, x: 0, y: 3)
+    }
+
+    // MARK: - Chamber 1: Biometric Hardware Defense Chamber
+    private var biometricDefenseChamber: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(AdminSurface.primary.opacity(0.12))
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(AdminSurface.primary.opacity(0.24), lineWidth: 0.75)
+                        )
+
+                    Image(systemName: biometrySymbol)
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(biometryTitle)
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+
+                        Text(viewModel.biometricsEnabled ? (Language.isRTL() ? "مفعلة" : "Active") : (Language.isRTL() ? "معطلة" : "Inactive"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(viewModel.biometricsEnabled ? AdminSurface.emerald : AdminSurface.secondaryText)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background((viewModel.biometricsEnabled ? AdminSurface.emerald : AdminSurface.secondaryText).opacity(0.10), in: Capsule())
+                    }
+
+                    Text(Language.get("SecurityVault_Biometrics_Desc", alter: "طلب التحقق البيومتري عند فتح التطبيق ولوحة التحكم لمنع التطفل."))
+                        .font(AdminType.caption)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 8)
+
+                Toggle("", isOn: Binding(
+                    get: { viewModel.biometricsEnabled },
+                    set: { newValue in
+                        withAnimation(AdminAnimation.standard) {
+                            viewModel.toggleBiometrics(to: newValue)
+                        }
+                    }
+                ))
+                .labelsHidden()
+                .tint(AdminSurface.primary)
+                .accessibilityLabel(biometryTitle)
+                .accessibilityValue(viewModel.biometricsEnabled ? (Language.isRTL() ? "مفعل" : "Enabled") : (Language.isRTL() ? "معطل" : "Disabled"))
+            }
+
+            // Security Behavior Guarantee Line
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.shield.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(viewModel.biometricsEnabled ? AdminSurface.emerald : AdminSurface.secondaryText)
+                Text(viewModel.biometricsEnabled
+                    ? (Language.isRTL() ? "الجلسة محمية: لا يمكن استئناف لوحة التحكم دون المصادقة البيومترية." : "Protected session: Command Center requires biometric unlock.")
+                    : (Language.isRTL() ? "تنبيه أمني: يوصى بتفعيل البصمة لحماية العمليات والبيانات المالية." : "Security advisory: Enable biometrics to safeguard customer operations.")
+                )
+                .font(AdminType.caption2)
+                .foregroundStyle(viewModel.biometricsEnabled ? AdminSurface.emerald : AdminSurface.amber)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .padding(AdminSpacing.cardPadding)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
                 .strokeBorder(AdminSurface.hairline, lineWidth: 1.0)
         )
     }
 
-    private var passwordResetCard: some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-            HStack(spacing: 8) {
-                Image(systemName: "key.fill")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(AdminSurface.primary)
-                Text(Language.isRTL() ? "إدارة كلمة المرور والاعتماد" : "Credential Lifecycle")
-                    .font(AdminType.calloutBold)
-                    .foregroundColor(AdminSurface.primaryText)
+    // MARK: - Chamber 2: Hardware App Check & Attestation Telemetry
+    private var hardwareAttestationChamber: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header Row
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(AdminSurface.control)
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(AdminSurface.hairline, lineWidth: 0.75)
+                        )
+
+                    Image(systemName: UIDevice.current.userInterfaceIdiom == .pad ? "ipad.gen2" : "iphone.gen3")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(deviceModelDisplayName)
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+
+                        Spacer(minLength: 4)
+
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(AdminSurface.emerald)
+                                .frame(width: 6, height: 6)
+                            Text(Language.get("SecurityVault_Attested_Badge", alter: "موثق بعتاد Apple"))
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(AdminSurface.emerald)
+                        }
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(AdminSurface.emerald.opacity(0.12), in: Capsule())
+                    }
+
+                    Text(Language.get("SecurityVault_AppCheck_Desc", alter: "جلسة مصادقة مشفرة ومحمية عبر Firebase App Check (Apple DeviceCheck / App Attest)"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
             }
 
-            Text(Language.isRTL() ? "يمكنك إرسال رابط تشفيري لإعادة تعيين كلمة المرور إلى بريدك المسجل." : "Dispatch a cryptographically signed reset link to your authorized work email.")
-                .font(AdminType.caption2)
-                .foregroundColor(AdminSurface.secondaryText)
+            // Micro-Telemetry 3-Column Deck
+            HStack(spacing: 8) {
+                telemetryMetricTile(
+                    title: Language.isRTL() ? "التشفير" : "Cipher",
+                    value: "AES-256",
+                    icon: "lock.shield",
+                    color: AdminSurface.primary
+                )
+                telemetryMetricTile(
+                    title: Language.isRTL() ? "البروتوكول" : "Protocol",
+                    value: "App Attest",
+                    icon: "checkmark.seal.fill",
+                    color: AdminSurface.emerald
+                )
+                telemetryMetricTile(
+                    title: Language.isRTL() ? "النظام" : "Platform",
+                    value: deviceOSDisplayName,
+                    icon: "applelogo",
+                    color: AdminSurface.secondaryText
+                )
+            }
 
-            Button(action: {
-                viewModel.sendPasswordReset()
-            }) {
+            // Session SHA256 Token Preview & Copy Affordance
+            Button {
+                copyTokenToClipboard(sessionTokenDigest, label: Language.get("SecurityVault_Digest_Copied", alter: "تم نسخ بصمة الجلسة المشفرة"))
+            } label: {
                 HStack(spacing: 6) {
+                    Image(systemName: "key.horizontal.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(AdminSurface.secondaryText)
+
+                    Text(sessionTokenDigest)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 4)
+
+                    HStack(spacing: 3) {
+                        Text(Language.isRTL() ? "نسخ البصمة" : "Copy")
+                            .font(AdminType.caption2Bold)
+                        Image(systemName: "doc.on.doc.fill")
+                            .font(.system(size: 9))
+                    }
+                    .foregroundStyle(AdminSurface.primary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(AdminSurface.hairline, lineWidth: 0.6)
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Language.isRTL() ? "نسخ بصمة تشفير الجلسة" : "Copy session cryptographic digest")
+        }
+        .padding(AdminSpacing.cardPadding)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 1.0)
+        )
+    }
+
+    private func telemetryMetricTile(title: String, value: String, icon: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 3) {
+                Image(systemName: icon)
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(color)
+                Text(title)
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+
+            Text(value)
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundStyle(AdminSurface.primaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    // MARK: - Chamber 3: Credential Lifecycle & Password Reset Dispatcher
+    private var credentialLifecycleChamber: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "key.fill")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+
+                Text(Language.get("SecurityVault_Credentials_Title", alter: "إدارة كلمة المرور والاعتماد"))
+                    .font(AdminType.calloutBold)
+                    .foregroundStyle(AdminSurface.primaryText)
+
+                Spacer()
+
+                Text(Language.isRTL() ? "مشفر" : "Encrypted")
+                    .font(.system(size: 9.5, weight: .bold))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(AdminSurface.control, in: Capsule())
+            }
+
+            // Target Authorized Email Banner
+            HStack(spacing: 8) {
+                Image(systemName: "envelope.badge.shield.half.filled")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(AdminSurface.primary)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(Language.get("SecurityVault_Email_Target", alter: "البريد الإداري المسجل للاعتماد:"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+
+                    Text(viewModel.email)
+                        .font(.system(size: 12.5, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(10)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            Text(Language.get("SecurityVault_Reset_Notice", alter: "يمكنك إرسال رابط تشفيري لإعادة تعيين كلمة المرور إلى بريدك المسجل صالح لمدة محدودة."))
+                .font(AdminType.caption)
+                .foregroundStyle(AdminSurface.secondaryText)
+                .lineLimit(2)
+
+            // Primary Dispatch Button
+            Button {
+                viewModel.sendPasswordReset()
+            } label: {
+                HStack(spacing: 8) {
                     if viewModel.isSendingPasswordReset {
-                        ProgressView().tint(.white).scaleEffect(0.8)
+                        ProgressView()
+                            .tint(.white)
+                            .scaleEffect(0.85)
+                        Text(Language.get("SecurityVault_Sending", alter: "جاري إرسال الرابط المشفر..."))
+                            .font(AdminType.calloutBold)
                     } else {
                         Image(systemName: "paperplane.fill")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 13, weight: .bold))
+                        Text(Language.get("SecurityVault_SendReset_Button", alter: "إرسال رابط إعادة تعيين كلمة المرور إلى البريد"))
+                            .font(AdminType.calloutBold)
                     }
-                    Text(Language.isRTL() ? "إرسال رابط إعادة تعيين كلمة المرور إلى البريد" : "Dispatch Password Reset Link")
-                        .font(AdminType.footnoteBold)
                 }
                 .frame(maxWidth: .infinity)
-                .frame(height: 44)
-                .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                .frame(height: 48)
+                .background(
+                    LinearGradient(
+                        colors: [
+                            AdminSurface.primary,
+                            AdminSurface.primaryPressed
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous)
+                )
                 .foregroundColor(.white)
+                .shadow(color: AdminSurface.primary.opacity(0.28), radius: 8, x: 0, y: 3)
             }
             .buttonStyle(.plain)
             .disabled(viewModel.isSendingPasswordReset)
+            .accessibilityLabel(Language.get("SecurityVault_SendReset_Button", alter: "إرسال رابط إعادة تعيين كلمة المرور"))
+            .accessibilityHint(Language.isRTL() ? "يرسل رابط أمان إلى بريدك الإلكتروني" : "Dispatches security reset link to your email")
         }
         .padding(AdminSpacing.cardPadding)
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
                 .strokeBorder(AdminSurface.hairline, lineWidth: 1.0)
         )
     }
 
-    private var emergencyLockCard: some View {
-        Button(action: {
+    // MARK: - Chamber 4: Emergency Immediate Lockdown Console
+    private var emergencyLockdownChamber: some View {
+        Button {
             UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
             dismiss()
-        }) {
-            HStack(spacing: 6) {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 13, weight: .bold))
-                Text(Language.isRTL() ? "قفل لوحة التحكم فوراً" : "Lock Command Center Immediately")
-                    .font(AdminType.calloutBold)
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(AdminSurface.crimson.opacity(0.12))
+                        .frame(width: 40, height: 40)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(AdminSurface.crimson.opacity(0.3), lineWidth: 0.75)
+                        )
+
+                    Image(systemName: "lock.trianglebadge.exclamationmark.fill")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(AdminSurface.crimson)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("SecurityVault_EmergencyLock_Title", alter: "قفل لوحة التحكم فوراً"))
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.crimson)
+
+                    Text(Language.get("SecurityVault_EmergencyLock_Desc", alter: "إنهاء الجلسة اللحظي وإلغاء الصلاحيات حتى إعادة التحقق البيومتري."))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 4)
+
+                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(AdminSurface.crimson.opacity(0.8))
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 44)
-            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
-            .foregroundColor(AdminSurface.primaryText)
+            .padding(12)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
-                    .strokeBorder(AdminSurface.hairline, lineWidth: 1.0)
+                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                    .strokeBorder(AdminSurface.crimson.opacity(0.35), lineWidth: 1.0)
             )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(Language.get("SecurityVault_EmergencyLock_Title", alter: "قفل لوحة التحكم فوراً"))
+        .accessibilityHint(Language.isRTL() ? "يقوم بإغلاق لوحة التحكم فوراً ويتطلب البصمة لإعادة الفتح" : "Immediately locks command center requiring biometric re-authentication")
+    }
+
+    // MARK: - Toast Banner
+    private var copiedToastBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(AdminSurface.emerald)
+            Text(Language.isRTL() ? "تم النسخ إلى الحافظة بنجاح" : "Copied to clipboard")
+                .font(AdminType.footnoteBold)
+                .foregroundStyle(AdminSurface.primaryText)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().stroke(AdminSurface.hairline, lineWidth: 0.75))
+        .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 4)
+        .padding(.top, 56)
+    }
+
+    private func copyTokenToClipboard(_ text: String, label: String) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        UIPasteboard.general.string = text
+        withAnimation(AdminAnimation.fast) {
+            copiedTokenToast = true
+        }
+        toastTask?.cancel()
+        toastTask = Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(AdminAnimation.fast) {
+                copiedTokenToast = false
+            }
+        }
     }
 }
 

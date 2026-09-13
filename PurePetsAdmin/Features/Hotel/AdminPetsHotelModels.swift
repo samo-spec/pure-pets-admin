@@ -44,6 +44,8 @@ public enum HotelWing: String, CaseIterable, Identifiable, Codable {
         }
     }
 
+    public var localizedTitle: String { title }
+
     public var icon: String {
         switch self {
         case .dogs: return "dog.fill"
@@ -157,6 +159,8 @@ public enum HotelReservationStatus: String, CaseIterable, Identifiable, Codable 
         case .earlyCheckout: return Language.get("Hotel_Res_EarlyCheckout", alter: "مغادرة مبكرة")
         }
     }
+
+    public var localizedTitle: String { title }
 
     public var color: Color {
         switch self {

@@ -818,7 +818,7 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         }
     }
 
-    public func extendReservation(reservation: AdminHotelReservation, newDepartureAt: Date, reasonCode: String = "operator_request") async -> Bool {
+    public func extendReservation(reservation: AdminHotelReservation, newDepartureAt: Date, reasonCode: String = "operator_request", note: String? = nil) async -> Bool {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         isSubmitting = true
         errorMessage = nil
@@ -826,7 +826,8 @@ public final class AdminPetsHotelViewModel: ObservableObject {
             _ = try await AdminPetsHotelService.shared.extendReservation(
                 reservationId: reservation.id,
                 newDepartureAt: newDepartureAt,
-                reasonCode: reasonCode
+                reasonCode: reasonCode,
+                note: note
             )
             isSubmitting = false
             loadHotelOperations()
