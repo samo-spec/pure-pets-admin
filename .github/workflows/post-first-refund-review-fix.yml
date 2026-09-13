@@ -1,0 +1,38 @@
+name: Post-first-refund review fix
+
+on:
+  push:
+    branches:
+      - fix/post-first-refund-multi-refund
+    paths:
+      - .github/workflows/post-first-refund-review-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/post-first-refund-multi-refund
+          fetch-depth: 0
+      - name: Apply review fix
+        run: python3 scripts/fix_post_refund_progress_format.py
+      - name: Validate source
+        run: |
+          set -euo pipefail
+          git diff --check
+          python3 -c "from pathlib import Path; t=Path('PurePetsAdmin/Features/POS/POSHistoryView.swift').read_text(); assert 'let progressText = lineFullyRefunded' in t; assert 'if let firstReturnCase = returnCases.first' not in t; print('Review fix contracts passed.')"
+          swiftc -frontend -parse PurePetsAdmin/Features/POS/POSHistoryView.swift
+      - name: Commit review fix and remove temporary harness
+        run: |
+          rm .github/workflows/post-first-refund-review-fix.yml
+          rm scripts/fix_post_refund_progress_format.py
+          git config user.name 'Pure Pets implementation bot'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix: tighten post-refund progress formatting'
+          git push origin HEAD:fix/post-first-refund-multi-refund
