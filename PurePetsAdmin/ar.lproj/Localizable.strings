@@ -7719,3 +7719,10 @@
 "LivePet_Error_ResaleLifecycle" = "لا يمكن إتاحة الحيوان للبيع من حالته الحالية. حدّث ملف الاسترجاع وراجع قرار الرعاية البيطرية.";
 "LivePet_Error_ResaleReadback" = "تم إرسال أمر الإتاحة، لكن تعذر تأكيد الحالة النهائية. حدّث ملف الاسترجاع قبل إعادة المحاولة.";
 "LivePet_Error_ReturnUnitMissing" = "لم يعد ملف الاسترجاع أو سجل الحيوان المحدد متاحاً.";
+
+// Post-first-refund multi-refund lifecycle
+"POS_Action_AdditionalRefund" = "استرداد عنصر آخر";
+"LivePet_Action_ReturnAnother" = "استرجاع حيوان آخر";
+"POS_Refund_ItemProgress" = "%d مسترد • %d متبقي";
+"POS_Refund_ItemFullyRefunded" = "%d مسترد • مكتمل";
+"POS_Refund_NetRetained" = "صافي قيمة البيع المتبقية";

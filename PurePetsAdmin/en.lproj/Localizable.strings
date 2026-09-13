@@ -7657,3 +7657,10 @@
 "LivePet_Error_ResaleLifecycle" = "This animal cannot be returned to sale from its current state. Refresh the return case and review the veterinary disposition.";
 "LivePet_Error_ResaleReadback" = "The release command was submitted, but the final state could not be confirmed. Refresh the return case before retrying.";
 "LivePet_Error_ReturnUnitMissing" = "The return case or selected animal record is no longer available.";
+
+// Post-first-refund multi-refund lifecycle
+"POS_Action_AdditionalRefund" = "Refund another item";
+"LivePet_Action_ReturnAnother" = "Return another animal";
+"POS_Refund_ItemProgress" = "%d refunded • %d remaining";
+"POS_Refund_ItemFullyRefunded" = "%d refunded • complete";
+"POS_Refund_NetRetained" = "Net retained";
