@@ -1708,14 +1708,14 @@ private struct PPScannerAnalysisContext {
 
 @MainActor
 final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate, AVCapturePhotoCaptureDelegate {
-    let session = AVCaptureSession()
+    nonisolated(unsafe) let session = AVCaptureSession()
     private let sessionQueue = DispatchQueue(label: "com.purepets.ppscanner.session", qos: .userInitiated)
     private let visionQueue = DispatchQueue(label: "com.purepets.ppscanner.vision", qos: .userInitiated)
     private nonisolated(unsafe) let motionManager = CMMotionManager()
 
-    private var videoDevice: AVCaptureDevice?
-    private let photoOutput = AVCapturePhotoOutput()
-    private let videoOutput = AVCaptureVideoDataOutput()
+    private nonisolated(unsafe) var videoDevice: AVCaptureDevice?
+    private nonisolated(unsafe) let photoOutput = AVCapturePhotoOutput()
+    private nonisolated(unsafe) let videoOutput = AVCaptureVideoDataOutput()
 
     @Published var isTorchOn: Bool = false
     @Published var isLowLight: Bool = false

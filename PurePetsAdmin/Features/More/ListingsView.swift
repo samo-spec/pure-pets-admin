@@ -9,22 +9,26 @@
 import SwiftUI
 
 struct AdminListingsView: View {
-    var onDismiss: (() -> Void)? = nil
+    var onDismiss: (@Sendable () -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
-    init(onDismiss: (() -> Void)? = nil) {
+    init(onDismiss: (@Sendable () -> Void)? = nil) {
         self.onDismiss = onDismiss
     }
 
     var body: some View {
+        let dismissAction = dismiss
+        let customDismiss = onDismiss
         NavigationView {
             PPListingsCommandCenterScreen(
                 viewModel: PPListingsCommandCenterViewModel(
                     onDismiss: {
-                        if let onDismiss {
-                            onDismiss()
-                        } else {
-                            dismiss()
+                        Task { @MainActor in
+                            if let customDismiss {
+                                customDismiss()
+                            } else {
+                                dismissAction()
+                            }
                         }
                     }
                 )

@@ -8,6 +8,9 @@ on:
       - PurePetsAdmin/Features/LivePetReturns/Views/ReturnConfirmationView.swift
       - PurePetsAdmin/Features/LivePetReturns/Views/LivePetReturnCoordinatorView.swift
       - PurePetsAdmin/Shared/Components/AdminSharedComponents.swift
+      - PurePetsAdmin/Features/POS/PPScannerView.swift
+      - PurePetsAdmin/Features/Providers/ProvidersView.swift
+      - PurePetsAdmin/Features/More/ListingsView.swift
       - PurePetsAdmin/ar.lproj/Localizable.strings
       - PurePetsAdmin/en.lproj/Localizable.strings
       - .github/workflows/live-pet-return-confirmation-v2.yml
