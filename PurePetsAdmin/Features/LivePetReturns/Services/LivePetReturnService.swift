@@ -23,7 +23,6 @@ public final class LivePetReturnService: @unchecked Sendable {
     public func canCreateReturn() -> Bool {
         guard let staff = PPStaffAuth.shared().cachedCurrentStaff else { return false }
         return staff.hasPermission("returns.live_pet.create") ||
-               staff.hasPermission(kStaffPermPosSell) ||
                staff.isAdmin()
     }
 
@@ -37,8 +36,12 @@ public final class LivePetReturnService: @unchecked Sendable {
     public func canInspectOrClear() -> Bool {
         guard let staff = PPStaffAuth.shared().cachedCurrentStaff else { return false }
         return staff.hasPermission("returns.live_pet.inspect") ||
-               staff.hasPermission(kStaffPermStockManage) ||
                staff.isAdmin()
+    }
+
+    public func canClearForResale() -> Bool {
+        guard let staff = PPStaffAuth.shared().cachedCurrentStaff else { return false }
+        return staff.hasPermission("returns.live_pet.clear_for_resale") || staff.isAdmin()
     }
 
     // MARK: - Execute Return & Refund
@@ -65,6 +68,17 @@ public final class LivePetReturnService: @unchecked Sendable {
         let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmedReason.count >= 3 else {
             throw NSError(domain: "LivePetReturn", code: 400, userInfo: [NSLocalizedDescriptionKey: "A valid return reason (at least 3 characters) is required."])
+        }
+
+        // A refund-bearing return is a two-authority workflow. Fail before
+        // creating the server-owned return case when this staff session cannot
+        // perform the financial leg; the callable repeats the check server-side.
+        if financialResolution == .fullRefund || financialResolution == .partialRefund {
+            guard canRefundPayment() else {
+                throw NSError(domain: "LivePetReturn", code: 403, userInfo: [
+                    NSLocalizedDescriptionKey: "You lack authorization to refund payments (payments.refund)."
+                ])
+            }
         }
 
         let maximumRefundMinor = selectedUnits.reduce(Int64(0)) { $0 + $1.refundableRemainingMinor }
@@ -104,7 +118,6 @@ public final class LivePetReturnService: @unchecked Sendable {
         let caseId = existingInFlight?.returnCaseId ?? "ret-\(UUID().uuidString.prefix(12))"
         let caseNumber = "RTN-\(year)-\(UUID().uuidString.prefix(8).uppercased())"
         let currentUserId = PPStaffAuth.shared().cachedCurrentStaff?.uid ?? "unknown"
-        let currentUserName = PPStaffAuth.shared().cachedCurrentStaff?.displayName ?? PPStaffAuth.shared().cachedCurrentStaff?.email ?? "Staff"
 
         // 3. Track in-flight command for crash recovery
         recoveryService.trackCommand(
@@ -114,171 +127,13 @@ public final class LivePetReturnService: @unchecked Sendable {
             fingerprint: command.fingerprint
         )
 
-        // 4. If financial refund is requested, submit payment refund through PPPOSService with exact units
-        var initialRefundStatus: LivePetRefundStatus = .notRequested
-        let refundCommandId = "pos-refund-\(UUID().uuidString)"
-        var resolvedRefundId: String? = nil
-
-        if financialResolution == .fullRefund || financialResolution == .partialRefund {
-            guard canRefundPayment() else {
-                throw NSError(domain: "LivePetReturn", code: 403, userInfo: [
-                    NSLocalizedDescriptionKey: "You lack authorization to refund payments (payments.refund)."
-                ])
-            }
-            let refundItemsPayload = command.buildRefundItemsPayload()
-            initialRefundStatus = .processing
-
-            let (refundStatusResult, actualRefundId): (LivePetRefundStatus, String?) = await withCheckedContinuation { continuation in
-                var hasResumed = false
-                let lock = NSLock()
-
-                let safeResume: (LivePetRefundStatus, String?) -> Void = { status, rId in
-                    lock.lock()
-                    defer { lock.unlock() }
-                    guard !hasResumed else { return }
-                    hasResumed = true
-                    continuation.resume(returning: (status, rId))
-                }
-
-                // 25 second timeout safeguard for payment gateway: keep pending for reconciliation
-                DispatchQueue.global().asyncAfter(deadline: .now() + 25.0) {
-                    safeResume(.processing, refundCommandId)
-                }
-
-                PPPOSService.shared().refundTransaction(
-                    transactionID: transaction.receiptID,
-                    refundAmount: command.refundAmount,
-                    refundItems: refundItemsPayload,
-                    reason: trimmedReason,
-                    currency: command.currency,
-                    commandID: refundCommandId,
-                    refundMode: financialResolution == .partialRefund ? "partial_amount" : "full_amount",
-                    refundAdjustmentReason: financialResolution == .partialRefund ? trimmedAdjustmentReason : nil
-                ) { success, returnedRefundId, error in
-                    if success {
-                        safeResume(.succeeded, returnedRefundId ?? refundCommandId)
-                    } else {
-                        NSLog("[LivePetReturnService] Payment refund callable error: %@", error?.localizedDescription ?? "Unknown")
-                        safeResume(.failed, nil)
-                    }
-                }
-            }
-
-            initialRefundStatus = refundStatusResult
-            resolvedRefundId = actualRefundId
-
-            // 4a. Transition each returned unit to QUARANTINED authoritatively via validateInventoryChange
-            if initialRefundStatus == .succeeded, let effectiveRefundId = resolvedRefundId {
-                for unit in selectedUnits {
-                    let unitCommandId = "cmd_accept_return_\(unit.unitId)_\(UUID().uuidString.prefix(8))"
-                    do {
-                        _ = try await LivePetReturnRemoteDataSource.shared.acceptLiveAnimalReturn(
-                            productId: unit.productId,
-                            unitId: unit.unitId,
-                            ringTag: unit.ringTag,
-                            transactionId: transaction.receiptID,
-                            refundId: effectiveRefundId,
-                            reason: trimmedReason,
-                            notes: "Intake via Live Pet Return Studio",
-                            commandId: unitCommandId,
-                            returnCaseId: caseId
-                        )
-                    } catch {
-                        NSLog("[LivePetReturnService] acceptLiveAnimalReturn warning for unit %@: %@", unit.unitId, error.localizedDescription)
-                    }
-                }
-            }
-        } else {
-            initialRefundStatus = .notRequired
-            // If the transaction already had a financial refund processed earlier, resolve its refundId to accept physical return
-            resolvedRefundId = await LivePetReturnRemoteDataSource.shared.fetchLatestRefundId(for: transaction.receiptID)
-            if let effectiveRefundId = resolvedRefundId {
-                for unit in selectedUnits {
-                    let unitCommandId = "cmd_accept_return_\(unit.unitId)_\(UUID().uuidString.prefix(8))"
-                    do {
-                        _ = try await LivePetReturnRemoteDataSource.shared.acceptLiveAnimalReturn(
-                            productId: unit.productId,
-                            unitId: unit.unitId,
-                            ringTag: unit.ringTag,
-                            transactionId: transaction.receiptID,
-                            refundId: effectiveRefundId,
-                            reason: trimmedReason,
-                            notes: "Intake via Live Pet Return Studio (previously refunded)",
-                            commandId: unitCommandId,
-                            returnCaseId: caseId
-                        )
-                    } catch {
-                        NSLog("[LivePetReturnService] acceptLiveAnimalReturn warning for previously refunded unit %@: %@", unit.unitId, error.localizedDescription)
-                    }
-                }
-            }
-        }
-
-        // 5. Construct initial append-only events
-        var events: [LivePetReturnEvent] = [
-            LivePetReturnEvent(
-                eventId: "evt-\(UUID().uuidString)",
-                eventType: .returnCreated,
-                returnCaseId: caseId,
-                actorId: currentUserId,
-                actorName: currentUserName,
-                branchId: receivingBranchId,
-                commandId: command.commandId,
-                occurredAt: now,
-                notes: trimmedReason
-            ),
-            LivePetReturnEvent(
-                eventId: "evt-\(UUID().uuidString)",
-                eventType: .unitReceived,
-                returnCaseId: caseId,
-                actorId: currentUserId,
-                actorName: currentUserName,
-                branchId: receivingBranchId,
-                commandId: command.commandId,
-                occurredAt: now.addingTimeInterval(1),
-                notes: "Intake of \(selectedUnits.count) animal(s) into custody at branch return desk."
-            )
-        ]
-
-        if initialRefundStatus == .succeeded {
-            events.append(LivePetReturnEvent(
-                eventId: "evt-\(UUID().uuidString)",
-                eventType: .refundSucceeded,
-                returnCaseId: caseId,
-                actorId: currentUserId,
-                actorName: currentUserName,
-                branchId: receivingBranchId,
-                commandId: command.commandId,
-                occurredAt: now.addingTimeInterval(2),
-                notes: "Refund of \(String(format: "%.2f", command.refundAmount)) \(command.currency) settled."
-            ))
-        } else if initialRefundStatus == .failed {
-            events.append(LivePetReturnEvent(
-                eventId: "evt-\(UUID().uuidString)",
-                eventType: .refundFailed,
-                returnCaseId: caseId,
-                actorId: currentUserId,
-                actorName: currentUserName,
-                branchId: receivingBranchId,
-                commandId: command.commandId,
-                occurredAt: now.addingTimeInterval(2),
-                notes: "Financial settlement failed with gateway; requires manual review or retry."
-            ))
-        } else if initialRefundStatus == .processing {
-            events.append(LivePetReturnEvent(
-                eventId: "evt-\(UUID().uuidString)",
-                eventType: .refundProcessing,
-                returnCaseId: caseId,
-                actorId: currentUserId,
-                actorName: currentUserName,
-                branchId: receivingBranchId,
-                commandId: command.commandId,
-                occurredAt: now.addingTimeInterval(2),
-                notes: "Payment gateway response pending; tracked for automated reconciliation."
-            ))
-        }
-
-        // 6. Assemble complete LivePetReturnCase aggregate
+        // 4. Create the server-owned aggregate before any financial reversal.
+        // The create command binds each exact unit while it is still SOLD and
+        // advances its inventory version. It deliberately does not claim that
+        // a payment refund or physical receipt has already happened.
+        let initialRefundStatus: LivePetRefundStatus = financialResolution == .none || financialResolution == .manualSettlement
+            ? .notRequired
+            : .notRequested
         let returnCase = LivePetReturnCase(
             returnCaseId: caseId,
             caseNumber: caseNumber,
@@ -288,7 +143,7 @@ public final class LivePetReturnService: @unchecked Sendable {
             customerId: nil,
             customerName: transaction.customerName,
             customerPhone: transaction.customerPhone,
-            status: .underInspection, // Non-negotiable: enters under_inspection, never available
+            status: .draft,
             units: selectedUnits,
             reasonCode: "customer_return",
             reasonNotes: trimmedReason,
@@ -299,29 +154,65 @@ public final class LivePetReturnService: @unchecked Sendable {
             currency: command.currency,
             createdAt: now,
             createdBy: currentUserId,
-            receivedAt: now,
-            receivedBy: currentUserId,
+            receivedAt: nil,
+            receivedBy: nil,
             version: 1,
-            events: events
+            events: []
         )
 
-        // 7. Persist to Firestore & delete local draft
-        do {
-            let persistedCase = try await repository.submitLivePetReturn(returnCase: returnCase, draftId: draftId)
+        let remote = LivePetReturnRemoteDataSource.shared
+        let createdCase = try await repository.submitLivePetReturn(
+            returnCase: returnCase,
+            draftId: draftId,
+            commandId: command.commandId
+        )
 
-            // 8. Mark recovery command resolved only if refund is not pending reconciliation
-            if initialRefundStatus != .processing {
-                recoveryService.markCommandResolved(commandId: command.commandId)
-            }
+        var caseVersion = createdCase.version
+        var unitVersions = Dictionary(uniqueKeysWithValues: createdCase.units.map { ($0.unitId, $0.inventoryVersion) })
 
-            return persistedCase
-        } catch {
-            // If refund was dispatched and settled or processing, ensure rescue case is persisted
-            // so custody and financial state are not lost, keeping command tracked for recovery
-            if initialRefundStatus == .succeeded || initialRefundStatus == .processing {
-                try? await LivePetReturnRemoteDataSource.shared.persistReturnCase(returnCase)
+        // 5. Request payment reversal through the same server authority. The
+        // callable is idempotent and records its own transaction/refund,
+        // accounting, case event, command envelope, and audit entry.
+        if financialResolution == .fullRefund || financialResolution == .partialRefund {
+            guard canRefundPayment() else {
+                throw NSError(domain: "LivePetReturn", code: 403, userInfo: [
+                    NSLocalizedDescriptionKey: "You lack authorization to refund payments (payments.refund)."
+                ])
             }
-            throw error
+            let refundCommandId = "\(command.commandId)-refund"
+            let refundResult = try await remote.requestReturnRefund(
+                returnCaseId: caseId,
+                expectedCaseVersion: caseVersion,
+                refundItems: command.buildRefundItemsPayload(),
+                refundAmount: command.refundAmount,
+                reason: trimmedReason,
+                currency: command.currency,
+                refundMode: financialResolution == .partialRefund ? "partial_amount" : "full_amount",
+                refundAdjustmentReason: financialResolution == .partialRefund ? trimmedAdjustmentReason : nil,
+                commandId: refundCommandId
+            )
+            caseVersion = (refundResult["caseVersion"] as? Int) ?? (caseVersion + 1)
         }
+
+        // 6. Accept physical custody one exact unit at a time. A payment
+        // reversal never performs this transition; receipt moves SOLD to
+        // QUARANTINED/under_inspection and emits the stock movement and audit.
+        for unit in selectedUnits {
+            let expectedUnitVersion = unitVersions[unit.unitId] ?? (unit.inventoryVersion + 1)
+            let receiveResult = try await remote.receiveLivePetReturn(
+                returnCaseId: caseId,
+                unitId: unit.unitId,
+                expectedCaseVersion: caseVersion,
+                expectedUnitVersion: expectedUnitVersion,
+                conditionAtReturn: unit.conditionAtReturn.rawValue,
+                notes: unit.notes ?? "Intake via Live Pet Return Studio",
+                commandId: "\(command.commandId)-receive-\(unit.unitId)"
+            )
+            caseVersion = (receiveResult["caseVersion"] as? Int) ?? (caseVersion + 1)
+            unitVersions[unit.unitId] = (receiveResult["unitVersion"] as? Int) ?? (expectedUnitVersion + 1)
+        }
+
+        recoveryService.markCommandResolved(commandId: command.commandId)
+        return (try? await remote.fetchReturnCase(returnCaseId: caseId)) ?? createdCase
     }
 }

@@ -128,6 +128,8 @@ public struct LivePetReturnCase: Identifiable, Codable, Hashable, Sendable {
             "transactionId": transactionId,
             "originalBranchId": originalBranchId,
             "receivingBranchId": receivingBranchId,
+            "branchId": receivingBranchId,
+            "branchID": receivingBranchId,
             "status": status.rawValue,
             "reasonCode": reasonCode,
             "reasonNotes": reasonNotes,

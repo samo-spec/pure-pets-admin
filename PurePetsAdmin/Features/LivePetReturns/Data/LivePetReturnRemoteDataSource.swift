@@ -19,6 +19,18 @@ public final class LivePetReturnRemoteDataSource: @unchecked Sendable {
 
     private init() {}
 
+    private func call(_ name: String, payload: [String: Any]) async throws -> [String: Any] {
+        let result = try await functions.httpsCallable(name).call(payload)
+        guard let data = result.data as? [String: Any], data["ok"] as? Bool == true else {
+            throw NSError(
+                domain: "LivePetReturn",
+                code: 500,
+                userInfo: [NSLocalizedDescriptionKey: "The server did not acknowledge the live-pet return command."]
+            )
+        }
+        return data
+    }
+
     // MARK: - Fetch Sold Live Pet Units from Transaction
 
     public func fetchSoldLivePetUnits(transactionId: String) async throws -> [LivePetReturnUnit] {
@@ -55,6 +67,7 @@ public final class LivePetReturnRemoteDataSource: @unchecked Sendable {
             let unitPriceMinor: Int64
             let allocatedDiscountMinor: Int64
             let alreadyReturned: Bool
+            let isFinanciallyRefunded: Bool
             let existingCaseId: String?
             let existingCaseNumber: String?
         }
@@ -96,7 +109,8 @@ public final class LivePetReturnRemoteDataSource: @unchecked Sendable {
                 }
 
                 let existingCaseInfo = returnedUnitIdsWithCase[uId]
-                let alreadyReturned = refundedUnitIds.contains(uId) || existingCaseInfo != nil
+                let alreadyReturned = existingCaseInfo != nil
+                let isFinanciallyRefunded = refundedUnitIds.contains(uId)
 
                 pendingLookups.append(UnitPendingLookup(
                     unitId: uId,
@@ -106,6 +120,7 @@ public final class LivePetReturnRemoteDataSource: @unchecked Sendable {
                     unitPriceMinor: unitPriceMinor,
                     allocatedDiscountMinor: allocatedDiscountMinor,
                     alreadyReturned: alreadyReturned,
+                    isFinanciallyRefunded: isFinanciallyRefunded,
                     existingCaseId: existingCaseInfo?.caseId,
                     existingCaseNumber: existingCaseInfo?.caseNumber
                 ))
@@ -118,6 +133,13 @@ public final class LivePetReturnRemoteDataSource: @unchecked Sendable {
             let breed: String?
             let sex: String?
             let status: String?
+            let saleTransactionId: String?
+            let version: Int
+            /// Raw inventory-unit reads are intentionally denied to POS-only
+            /// staff because the document contains purchase cost and private
+            /// intake/medical fields. Keep that denial distinguishable from a
+            /// successful read of a unit that is no longer sold.
+            let readSucceeded: Bool
         }
 
         let metadataByUnitId: [String: UnitMetadata] = try await withThrowingTaskGroup(of: (String, UnitMetadata).self) { group in
@@ -129,9 +151,11 @@ public final class LivePetReturnRemoteDataSource: @unchecked Sendable {
                         let breed = (uData["subSubKindItemNameAr"] as? String) ?? (uData["subSubKindItemNameEn"] as? String) ?? (uData["breed"] as? String)
                         let sex = uData["sex"] as? String
                         let status = (uData["status"] as? String) ?? ""
-                        return (lookup.unitId, UnitMetadata(species: species, breed: breed, sex: sex, status: status))
+                        let saleTransactionId = uData["saleTransactionId"] as? String
+                        let version = (uData["version"] as? Int) ?? 1
+                        return (lookup.unitId, UnitMetadata(species: species, breed: breed, sex: sex, status: status, saleTransactionId: saleTransactionId, version: version, readSucceeded: true))
                     } else {
-                        return (lookup.unitId, UnitMetadata(species: nil, breed: nil, sex: nil, status: nil))
+                        return (lookup.unitId, UnitMetadata(species: nil, breed: nil, sex: nil, status: nil, saleTransactionId: nil, version: 1, readSucceeded: false))
                     }
                 }
             }
@@ -146,10 +170,15 @@ public final class LivePetReturnRemoteDataSource: @unchecked Sendable {
         var resultUnits: [LivePetReturnUnit] = []
         for lookup in pendingLookups {
             let meta = metadataByUnitId[lookup.unitId]
-            let isPhysicallySold = (meta?.status?.uppercased() == "SOLD")
-            // A unit is only considered truly returned if it has an existing return case OR its status is no longer SOLD.
-            // If it is still SOLD in inventory, physical intake is required even if a financial refund was recorded.
-            let unitAlreadyReturned = isPhysicallySold ? false : lookup.alreadyReturned
+            // A denied raw-unit read is not evidence that custody changed. The
+            // canonical create/receive callables re-check SOLD, sale binding,
+            // active return state, and the expected version transactionally.
+            // Only a successful read may mark a unit unavailable here.
+            let isStillOriginalSale = meta?.readSucceeded != true ||
+                ((meta?.status?.uppercased() == "SOLD") && meta?.saleTransactionId == trimmedId)
+            // Financial reversal never proves physical receipt. Only canonical custody/state does.
+            let unitAlreadyReturned = lookup.alreadyReturned || !isStillOriginalSale
+            let netPaidMinor = max(0, lookup.unitPriceMinor - lookup.allocatedDiscountMinor)
             let returnUnit = LivePetReturnUnit(
                 unitId: lookup.unitId,
                 productId: lookup.productId,
@@ -161,12 +190,15 @@ public final class LivePetReturnRemoteDataSource: @unchecked Sendable {
                 originalSaleTransactionId: trimmedId,
                 originalSalePriceMinor: lookup.unitPriceMinor,
                 allocatedDiscountMinor: lookup.allocatedDiscountMinor,
+                refundableRemainingMinor: lookup.isFinanciallyRefunded ? 0 : netPaidMinor,
+                refundAmountMinor: lookup.isFinanciallyRefunded ? 0 : netPaidMinor,
                 currency: (data["currency"] as? String) ?? "QAR",
                 conditionAtReturn: .appearsNormal,
                 inspectionStatus: .inspectionRequired,
                 disposition: .hold,
                 previousLifecycleStatus: .sold,
                 resultingLifecycleStatus: .returnRequested,
+                inventoryVersion: meta?.version ?? 1,
                 isAlreadyReturned: unitAlreadyReturned,
                 activeReturnCaseId: lookup.existingCaseId,
                 activeReturnCaseNumber: lookup.existingCaseNumber
@@ -206,200 +238,127 @@ public final class LivePetReturnRemoteDataSource: @unchecked Sendable {
         }
     }
 
-    // MARK: - Save Return Case & Events (Server-Authoritative with Local Fallback)
+    // MARK: - Return command callables
 
-    public func persistReturnCase(_ returnCase: LivePetReturnCase) async throws {
-        // 1. First attempt authoritative server callable
-        let callable = functions.httpsCallable("createLivePetReturn")
-        var requestPayload: [String: Any] = returnCase.toDictionary()
-        requestPayload["units"] = returnCase.units.map { $0.toDictionary() }
-        requestPayload["events"] = returnCase.events.map { $0.toDictionary() }
-
-        do {
-            let result = try await callable.call(requestPayload)
-            if let data = result.data as? [String: Any], (data["ok"] as? Bool) == true {
-                return
+    /// Creates the server-owned return aggregate. Only immutable sale identity,
+    /// expected inventory versions, and the requested financial amount cross the
+    /// client/server boundary; case fields and events are authored by Infra.
+    @discardableResult
+    public func persistReturnCase(_ returnCase: LivePetReturnCase, commandId: String? = nil) async throws -> [String: Any] {
+        let resolvedCommandId = commandId
+            ?? returnCase.events.compactMap(\.commandId).first
+            ?? "cmd-\(returnCase.returnCaseId)"
+        let requestPayload: [String: Any] = [
+            "commandId": resolvedCommandId,
+            "transactionId": returnCase.transactionId,
+            "returnCaseId": returnCase.returnCaseId,
+            "receivingBranchId": returnCase.receivingBranchId,
+            "reasonCode": returnCase.reasonCode,
+            "reasonNotes": returnCase.reasonNotes,
+            "financialResolution": returnCase.financialResolution.rawValue,
+            "units": returnCase.units.map { unit in
+                [
+                    "unitId": unit.unitId,
+                    "expectedVersion": unit.inventoryVersion,
+                    "refundAmountMinor": unit.refundAmountMinor,
+                    "conditionAtReturn": unit.conditionAtReturn.rawValue
+                ]
             }
-        } catch {
-            NSLog("[LivePetReturnRemoteDataSource] createLivePetReturn callable failed, falling back to direct batch write: %@", error.localizedDescription)
-        }
-
-        // 2. Fallback to direct batch write (permitted by firestore.rules for authorized staff)
-        let caseRef = db.collection("returnCases").document(returnCase.returnCaseId)
-        let batch = db.batch()
-        batch.setData(returnCase.toDictionary(), forDocument: caseRef, merge: true)
-
-        // Write units to return case subcollection.
-        for unit in returnCase.units {
-            let unitRef = caseRef.collection("units").document(unit.unitId)
-            batch.setData(unit.toDictionary(), forDocument: unitRef, merge: true)
-        }
-
-        // Write initial events
-        for event in returnCase.events {
-            let eventRef = caseRef.collection("events").document(event.eventId)
-            batch.setData(event.toDictionary(), forDocument: eventRef, merge: true)
-        }
-
-        try await batch.commit()
+        ]
+        return try await call("createLivePetReturn", payload: requestPayload)
     }
 
-    // MARK: - Server Authoritative Live Animal Return Acceptance
-
-    public func acceptLiveAnimalReturn(
-        productId: String,
-        unitId: String,
-        ringTag: String,
-        transactionId: String,
-        refundId: String,
-        reason: String,
-        notes: String?,
-        commandId: String,
-        returnCaseId: String? = nil
-    ) async throws -> [String: Any] {
-        let callable = functions.httpsCallable("validateInventoryChange")
-        var payloadDict: [String: Any] = [
-            "transactionId": transactionId,
-            "refundId": refundId,
-            "unitId": unitId,
-            "ringTag": ringTag,
-            "reason": reason,
-            "notes": notes ?? ""
-        ]
-        if let returnCaseId {
-            payloadDict["returnCaseId"] = returnCaseId
-        }
-        let requestData: [String: Any] = [
-            "action": "accept_live_animal_return",
-            "productId": productId,
-            "commandId": commandId,
-            "payload": payloadDict
-        ]
-
-        let result = try await callable.call(requestData)
-        guard let data = result.data as? [String: Any],
-              (data["ok"] as? Bool) == true else {
-            throw NSError(
-                domain: "LivePetReturn",
-                code: 500,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to accept live animal return via server."]
-            )
-        }
-        return data
-    }
-
-    // MARK: - Server Authoritative Live Animal Quarantine Release
-
-    public func releaseLiveAnimalQuarantine(
-        productId: String,
-        unitId: String,
-        reason: String,
-        commandId: String,
-        returnCaseId: String? = nil
-    ) async throws -> [String: Any] {
-        let callable = functions.httpsCallable("validateInventoryChange")
-        var payloadDict: [String: Any] = [
-            "unitId": unitId,
-            "reason": reason
-        ]
-        if let returnCaseId {
-            payloadDict["returnCaseId"] = returnCaseId
-        }
-        let requestData: [String: Any] = [
-            "action": "release_quarantine",
-            "productId": productId,
-            "commandId": commandId,
-            "payload": payloadDict
-        ]
-
-        let result = try await callable.call(requestData)
-        guard let data = result.data as? [String: Any],
-              (data["ok"] as? Bool) == true else {
-            throw NSError(
-                domain: "LivePetReturn",
-                code: 500,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to release animal from quarantine via server."]
-            )
-        }
-        return data
-    }
-
-    public func updateUnitInspection(
+    @discardableResult
+    public func receiveLivePetReturn(
         returnCaseId: String,
         unitId: String,
-        newCondition: String,
-        newHealthDisposition: String,
-        newCommercialDisposition: String,
-        actorId: String
-    ) async throws {
-        let unitRef = db.collection("returnCases").document(returnCaseId).collection("units").document(unitId)
-        try await unitRef.setData([
-            "conditionAtReturn": newCondition,
-            "inspectionStatus": newHealthDisposition,
-            "disposition": newCommercialDisposition,
-            "updatedAt": FieldValue.serverTimestamp(),
-            "updatedBy": actorId
-        ], merge: true)
+        expectedCaseVersion: Int,
+        expectedUnitVersion: Int,
+        conditionAtReturn: String,
+        notes: String?,
+        commandId: String
+    ) async throws -> [String: Any] {
+        try await call("receiveLivePetReturn", payload: [
+            "commandId": commandId,
+            "returnCaseId": returnCaseId,
+            "unitId": unitId,
+            "expectedCaseVersion": expectedCaseVersion,
+            "expectedUnitVersion": expectedUnitVersion,
+            "conditionAtReturn": conditionAtReturn,
+            "notes": notes ?? ""
+        ])
+    }
+
+    @discardableResult
+    public func requestReturnRefund(
+        returnCaseId: String,
+        expectedCaseVersion: Int,
+        refundItems: [[String: Any]],
+        refundAmount: Double,
+        reason: String,
+        currency: String,
+        refundMode: String,
+        refundAdjustmentReason: String?,
+        commandId: String
+    ) async throws -> [String: Any] {
+        var payload: [String: Any] = [
+            "commandId": commandId,
+            "returnCaseId": returnCaseId,
+            "expectedCaseVersion": expectedCaseVersion,
+            "refundItems": refundItems,
+            "refundAmount": refundAmount,
+            "reason": reason,
+            "currency": currency,
+            "refundMode": refundMode
+        ]
+        if let refundAdjustmentReason, !refundAdjustmentReason.isEmpty {
+            payload["refundAdjustmentReason"] = refundAdjustmentReason
+        }
+        return try await call("requestReturnRefund", payload: payload)
     }
 
     public func recordInspectionProgress(
         returnCaseId: String,
         unitId: String,
+        expectedCaseVersion: Int,
+        expectedUnitVersion: Int,
         newCondition: String,
         newHealthDisposition: String,
         newCommercialDisposition: String,
-        actorId: String,
-        event: LivePetReturnEvent
-    ) async throws {
-        // 1. Attempt authoritative server callable
-        let callable = functions.httpsCallable("recordLivePetInspection")
+        notes: String?,
+        commandId: String
+    ) async throws -> [String: Any] {
         let requestPayload: [String: Any] = [
+            "commandId": commandId,
             "returnCaseId": returnCaseId,
             "unitId": unitId,
+            "expectedCaseVersion": expectedCaseVersion,
+            "expectedUnitVersion": expectedUnitVersion,
             "newCondition": newCondition,
             "newHealthDisposition": newHealthDisposition,
             "newCommercialDisposition": newCommercialDisposition,
-            "actorId": actorId,
-            "event": event.toDictionary()
+            "notes": notes ?? ""
         ]
-
-        do {
-            let result = try await callable.call(requestPayload)
-            if let data = result.data as? [String: Any], (data["ok"] as? Bool) == true {
-                return
-            }
-        } catch {
-            NSLog("[LivePetReturnRemoteDataSource] recordLivePetInspection callable failed, falling back to direct batch write: %@", error.localizedDescription)
-        }
-
-        // 2. Fallback to direct batch write (permitted by firestore.rules for authorized staff)
-        let batch = db.batch()
-        let unitRef = db.collection("returnCases").document(returnCaseId).collection("units").document(unitId)
-        batch.setData([
-            "conditionAtReturn": newCondition,
-            "inspectionStatus": newHealthDisposition,
-            "disposition": newCommercialDisposition,
-            "updatedAt": FieldValue.serverTimestamp(),
-            "updatedBy": actorId
-        ], forDocument: unitRef, merge: true)
-
-        guard event.returnCaseId == returnCaseId else {
-            throw NSError(domain: "LivePetReturn", code: 400, userInfo: [
-                NSLocalizedDescriptionKey: "Event case id does not match the target return case."
-            ])
-        }
-        let eventRef = db.collection("returnCases").document(returnCaseId).collection("events").document(event.eventId)
-        batch.setData(event.toDictionary(), forDocument: eventRef, merge: true)
-
-        try await batch.commit()
+        return try await call("recordLivePetInspection", payload: requestPayload)
     }
 
-    // MARK: - Append Event to Case Timeline
-
-    public func appendEvent(_ event: LivePetReturnEvent) async throws {
-        let caseRef = db.collection("returnCases").document(event.returnCaseId)
-        let eventRef = caseRef.collection("events").document(event.eventId)
-        try await eventRef.setData(event.toDictionary(), merge: true)
+    @discardableResult
+    public func clearLivePetForResale(
+        returnCaseId: String,
+        unitId: String,
+        expectedCaseVersion: Int,
+        expectedUnitVersion: Int,
+        notes: String?,
+        commandId: String
+    ) async throws -> [String: Any] {
+        try await call("clearLivePetForResale", payload: [
+            "commandId": commandId,
+            "returnCaseId": returnCaseId,
+            "unitId": unitId,
+            "expectedCaseVersion": expectedCaseVersion,
+            "expectedUnitVersion": expectedUnitVersion,
+            "notes": notes ?? ""
+        ])
     }
 
     // MARK: - Fetch Single Return Case with Units & Events

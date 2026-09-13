@@ -33,10 +33,12 @@ public final class LivePetReturnRepository: @unchecked Sendable {
 
     public func submitLivePetReturn(
         returnCase: LivePetReturnCase,
-        draftId: String? = nil
+        draftId: String? = nil,
+        commandId: String? = nil
     ) async throws -> LivePetReturnCase {
-        // 1. Persist the return case aggregate in Firestore
-        try await remoteDataSource.persistReturnCase(returnCase)
+        // The callable is the only write path. Read back the server-authored
+        // aggregate so versions/statuses never come from the local draft.
+        _ = try await remoteDataSource.persistReturnCase(returnCase, commandId: commandId)
 
         // 2. Clear any local offline draft once persisted
         if let draftId {
@@ -45,7 +47,7 @@ public final class LivePetReturnRepository: @unchecked Sendable {
             draftStore.deleteDraftForTransaction(transactionId: returnCase.transactionId)
         }
 
-        return returnCase
+        return (try? await remoteDataSource.fetchReturnCase(returnCaseId: returnCase.returnCaseId)) ?? returnCase
     }
 
     // MARK: - Inspection & Custody Updates
@@ -61,25 +63,27 @@ public final class LivePetReturnRepository: @unchecked Sendable {
         branchId: String,
         notes: String?
     ) async throws {
-        let event = LivePetReturnEvent(
-            eventId: "evt-\(UUID().uuidString)",
-            eventType: .inspectionUpdated,
-            returnCaseId: returnCaseId,
-            unitId: unitId,
-            actorId: actorId,
-            actorName: actorName,
-            branchId: branchId,
-            notes: notes ?? "Updated inspection: \(newCondition.localizedTitle)"
-        )
+        guard let currentCase = try await remoteDataSource.fetchReturnCase(returnCaseId: returnCaseId),
+              let currentUnit = currentCase.units.first(where: { $0.unitId == unitId }) else {
+            throw NSError(domain: "LivePetReturn", code: 404, userInfo: [
+                NSLocalizedDescriptionKey: "The return case or exact unit is no longer available."
+            ])
+        }
 
-        try await remoteDataSource.recordInspectionProgress(
+        _ = actorId
+        _ = actorName
+        _ = branchId
+        let commandId = "inspect-\(returnCaseId)-\(unitId)-\(UUID().uuidString)"
+        _ = try await remoteDataSource.recordInspectionProgress(
             returnCaseId: returnCaseId,
             unitId: unitId,
+            expectedCaseVersion: currentCase.version,
+            expectedUnitVersion: currentUnit.inventoryVersion,
             newCondition: newCondition.rawValue,
             newHealthDisposition: newHealthDisposition.rawValue,
             newCommercialDisposition: newCommercialDisposition.rawValue,
-            actorId: actorId,
-            event: event
+            notes: notes ?? "Updated inspection: \(newCondition.localizedTitle)",
+            commandId: commandId
         )
     }
 
@@ -94,43 +98,26 @@ public final class LivePetReturnRepository: @unchecked Sendable {
         branchId: String,
         notes: String?
     ) async throws {
-        let db = Firestore.firestore()
-        let caseUnitRef = db.collection("returnCases").document(returnCaseId).collection("units").document(unitId)
+        guard let currentCase = try await remoteDataSource.fetchReturnCase(returnCaseId: returnCaseId),
+              let currentUnit = currentCase.units.first(where: { $0.unitId == unitId }) else {
+            throw NSError(domain: "LivePetReturn", code: 404, userInfo: [
+                NSLocalizedDescriptionKey: "The return case or exact unit is no longer available."
+            ])
+        }
 
-        let event = LivePetReturnEvent(
-            eventId: "evt-\(UUID().uuidString)",
-            eventType: .inspectionCleared,
+        _ = productId
+        _ = actorId
+        _ = actorName
+        _ = branchId
+        let commandId = "clear-\(returnCaseId)-\(unitId)-\(UUID().uuidString)"
+        _ = try await remoteDataSource.clearLivePetForResale(
             returnCaseId: returnCaseId,
             unitId: unitId,
-            actorId: actorId,
-            actorName: actorName,
-            branchId: branchId,
-            notes: notes ?? "Animal explicitly cleared for resale after veterinarian inspection."
+            expectedCaseVersion: currentCase.version,
+            expectedUnitVersion: currentUnit.inventoryVersion,
+            notes: notes ?? "Animal explicitly cleared for resale after veterinarian inspection.",
+            commandId: commandId
         )
-        let eventRef = db.collection("returnCases").document(returnCaseId).collection("events").document(event.eventId)
-
-        // 1. Authoritatively release quarantine via server function validateInventoryChange
-        let commandId = "cmd_release_quarantine_\(unitId)_\(UUID().uuidString.prefix(8))"
-        _ = try await remoteDataSource.releaseLiveAnimalQuarantine(
-            productId: productId,
-            unitId: unitId,
-            reason: notes ?? "Animal explicitly cleared for resale after veterinarian inspection.",
-            commandId: commandId,
-            returnCaseId: returnCaseId
-        )
-
-        // 2. Update return case unit and record clearance audit event
-        let batch = db.batch()
-        batch.setData([
-            "resultingLifecycleStatus": "cleared",
-            "disposition": "eligible_resale",
-            "inspectionStatus": "cleared",
-            "clearedAt": FieldValue.serverTimestamp(),
-            "clearedBy": actorId
-        ], forDocument: caseUnitRef, merge: true)
-
-        batch.setData(event.toDictionary(), forDocument: eventRef, merge: true)
-        try await batch.commit()
     }
 
     // MARK: - Single Case Fetch & Real-time Listen

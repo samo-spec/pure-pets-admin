@@ -91,6 +91,7 @@
 		B0A200102FAA000100B0A002 /* PPInventoryCommandService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A200092FAA000100B0A001 /* PPInventoryCommandService.swift */; };
 		B1F2E7D32C99BE04EF9D5A2E /* Pods_PurePetsAdmin.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 380FB3B9B3805FA82F10A7E3 /* Pods_PurePetsAdmin.framework */; };
 		BF4031A37BA040D3A26BE0C8 /* Features/Operations/BranchesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6564A1528C24320B208A2D2 /* Features/Operations/BranchesView.swift */; };
+		F2BB00027BA040D3A26BE0C2 /* Features/Operations/PPBranchEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2BB000128C24320B208A2D1 /* Features/Operations/PPBranchEditorView.swift */; };
 		BFA92434ABD548479D7C6D92 /* Features/More/AccountingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6B81D643527420280F321EA /* Features/More/AccountingView.swift */; };
 		C1A000010000000000000101 /* PPAdminWebAppViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = C1A000010000000000000103 /* PPAdminWebAppViewController.m */; };
 		C54AFB88580CEB55093C550F /* ImageViewerController.m in Sources */ = {isa = PBXBuildFile; fileRef = 1F4961B9BADF9C82FBB7B6FC /* ImageViewerController.m */; };
@@ -508,6 +509,7 @@
 		E052D77C53614E45BF9E1687 /* Features/More/SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/More/SettingsView.swift; sourceTree = "<group>"; };
 		E3B58C28B4FC29BF66823B12 /* QBVideoIconView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBVideoIconView.h; sourceTree = "<group>"; };
 		E6564A1528C24320B208A2D2 /* Features/Operations/BranchesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Operations/BranchesView.swift; sourceTree = "<group>"; };
+		F2BB000128C24320B208A2D1 /* Features/Operations/PPBranchEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Operations/PPBranchEditorView.swift; sourceTree = "<group>"; };
 		EC26493C439637AD9C289661 /* Pods-PurePetsAdmin.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PurePetsAdmin.release.xcconfig"; path = "Target Support Files/Pods-PurePetsAdmin/Pods-PurePetsAdmin.release.xcconfig"; sourceTree = "<group>"; };
 		ECD890CCB8754E2E867F436C /* Features/Customers/StaffManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Customers/StaffManagementView.swift; sourceTree = "<group>"; };
 		EF6EFC6E14664F16AB54D315 /* PPVetSubscriptionViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPVetSubscriptionViewController.m; sourceTree = "<group>"; };
@@ -1352,6 +1354,7 @@
 				5F43E8492E564639B8A1D187 /* Features/Operations/ServicesView.swift */,
 				906191B1195A44C48F903980 /* Features/Operations/HomeControlView.swift */,
 				E6564A1528C24320B208A2D2 /* Features/Operations/BranchesView.swift */,
+				F2BB000128C24320B208A2D1 /* Features/Operations/PPBranchEditorView.swift */,
 				3F173B5D57994D969B7CF647 /* Features/Operations/AgentsView.swift */,
 				24BFB2EE1EA34564A0AA48A2 /* Features/Operations/ModerationView.swift */,
 				49E8B035587D46E78C90A618 /* Features/More/AuditLogView.swift */,
@@ -2597,6 +2600,7 @@
 				A13B9AA9C899479FA55F4047 /* Features/Operations/ServicesView.swift in Sources */,
 				37053D1B0B8C47789DD2F6E3 /* Features/Operations/HomeControlView.swift in Sources */,
 				BF4031A37BA040D3A26BE0C8 /* Features/Operations/BranchesView.swift in Sources */,
+				F2BB00027BA040D3A26BE0C2 /* Features/Operations/PPBranchEditorView.swift in Sources */,
 				F37952CFA43E4A218077BFBE /* Features/Operations/AgentsView.swift in Sources */,
 				783A5E7AA010485BB961D6F6 /* Features/Operations/ModerationView.swift in Sources */,
 				8173FC7D1C544D2C945552DD /* Features/More/AuditLogView.swift in Sources */,

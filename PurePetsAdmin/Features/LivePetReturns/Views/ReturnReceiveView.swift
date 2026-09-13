@@ -226,7 +226,7 @@ public struct ReturnReceiveView: View {
                             )
                         )
                         .keyboardType(.decimalPad)
-                        .font(.system(size: 20, weight: .semibold, design: .rounded))
+                        .font(PPBeirutiFont.bold(20, relativeTo: .title3))
                         .monospacedDigit()
                         .padding(12)
                         .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -320,7 +320,7 @@ public struct ReturnReceiveView: View {
                 .foregroundColor(emphasized ? AdminSurface.primaryText : AdminSurface.secondaryText)
             Spacer()
             Text(value)
-                .font(emphasized ? .system(size: 21, weight: .bold, design: .rounded) : AdminType.subheadlineBold)
+                .font(emphasized ? PPBeirutiFont.bold(21, relativeTo: .title3) : AdminType.subheadlineBold)
                 .foregroundColor(emphasized ? AdminSurface.primary : AdminSurface.primaryText)
                 .monospacedDigit()
         }

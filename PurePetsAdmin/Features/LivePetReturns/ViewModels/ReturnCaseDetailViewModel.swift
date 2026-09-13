@@ -62,8 +62,8 @@ public final class ReturnCaseDetailViewModel: ObservableObject {
     // MARK: - Staff Clearance Action
 
     public func clearUnitForResale(unit: LivePetReturnUnit, notes: String?) async -> Bool {
-        guard service.canInspectOrClear() else {
-            actionErrorMessage = Language.get("LivePet_Error_NoClearancePerm", alter: "ليس لديك صلاحية لاعتماد الحيوانات للبيع (returns.live_pet.inspect).")
+        guard service.canClearForResale() else {
+            actionErrorMessage = Language.get("LivePet_Error_NoClearancePerm", alter: "ليس لديك صلاحية لاعتماد الحيوانات للبيع (returns.live_pet.clear_for_resale).")
             return false
         }
 

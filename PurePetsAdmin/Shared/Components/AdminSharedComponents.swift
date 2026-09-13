@@ -336,6 +336,98 @@ public struct PPLottieAnimationView: UIViewRepresentable {
     }
 }
 
+/// Reusable SwiftUI wrapper for Lottie animations fetched from Firebase Storage via `Styling`.
+public struct PPLottieFirebaseView: UIViewRepresentable {
+    public let fileName: String
+    public var loop: Bool
+    public var speed: Float
+    public var contentMode: UIView.ContentMode
+
+    public init(fileName: String, loop: Bool = true, speed: Float = 1.0, contentMode: UIView.ContentMode = .scaleAspectFit) {
+        let cleanName = (fileName as NSString).deletingPathExtension
+        self.fileName = cleanName
+        self.loop = loop
+        self.speed = speed
+        self.contentMode = contentMode
+    }
+
+    public func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    public func makeUIView(context: Context) -> UIView {
+        let container = UIView(frame: .zero)
+        container.backgroundColor = .clear
+        container.isOpaque = false
+
+        let animationView = LOTAnimationView()
+        animationView.translatesAutoresizingMaskIntoConstraints = false
+        animationView.contentMode = contentMode
+        animationView.loopAnimation = loop
+        animationView.backgroundColor = .clear
+        animationView.isOpaque = false
+
+        container.addSubview(animationView)
+        NSLayoutConstraint.activate([
+            animationView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            animationView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            animationView.topAnchor.constraint(equalTo: container.topAnchor),
+            animationView.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+        ])
+
+        context.coordinator.animationView = animationView
+        context.coordinator.startObserving()
+
+        // Asynchronously fetch JSON from Firebase Storage and play
+        Styling.setAnimationNamed(fileName, toView: animationView, withSpeed: speed) { success in
+            if !success {
+                // If remote fetch failed, check if it exists in local app bundle
+                if let bundleAnimation = LOTComposition(name: self.fileName) {
+                    animationView.sceneModel = bundleAnimation
+                    animationView.loopAnimation = self.loop
+                    animationView.animationSpeed = CGFloat(self.speed)
+                    animationView.play()
+                }
+            }
+        }
+
+        return container
+    }
+
+    public func updateUIView(_ uiView: UIView, context: Context) {
+        if let animationView = context.coordinator.animationView {
+            if !animationView.isAnimationPlaying {
+                animationView.play()
+            }
+        }
+    }
+
+    public final class Coordinator: NSObject {
+        weak var animationView: LOTAnimationView?
+        private var observer: NSObjectProtocol?
+
+        func startObserving() {
+            guard observer == nil else { return }
+            observer = NotificationCenter.default.addObserver(
+                forName: UIApplication.willEnterForegroundNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                guard let anim = self?.animationView else { return }
+                if !anim.isAnimationPlaying {
+                    anim.play()
+                }
+            }
+        }
+
+        deinit {
+            if let observer = observer {
+                NotificationCenter.default.removeObserver(observer)
+            }
+        }
+    }
+}
+
 struct AdminErrorBanner: View {
     let message: String; var retry: (() -> Void)?
     var body: some View {
@@ -829,6 +921,18 @@ public enum PPBrandFont {
         return Font.custom("Beiruti-Regular", size: size, relativeTo: textStyle)
     }
 
+    public static func bold(_ size: CGFloat, relativeTo textStyle: Font.TextStyle = .body) -> Font {
+        bold(size: size, relativeTo: textStyle)
+    }
+
+    public static func medium(_ size: CGFloat, relativeTo textStyle: Font.TextStyle = .body) -> Font {
+        medium(size: size, relativeTo: textStyle)
+    }
+
+    public static func regular(_ size: CGFloat, relativeTo textStyle: Font.TextStyle = .body) -> Font {
+        regular(size: size, relativeTo: textStyle)
+    }
+
     public static func uiFontBold(size: CGFloat) -> UIFont {
         registerIfNeeded()
         return UIFont(name: "Beiruti-Bold", size: size) ?? UIFont.boldSystemFont(ofSize: size)
@@ -844,6 +948,8 @@ public enum PPBrandFont {
         return UIFont(name: "Beiruti-Regular", size: size) ?? UIFont.systemFont(ofSize: size)
     }
 }
+
+public typealias PPBeirutiFont = PPBrandFont
 
 // MARK: - Reusable Barcode Scanner Trigger Button & Sheet Components
 

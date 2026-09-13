@@ -697,8 +697,8 @@ struct AdminPOSHistoryView: View {
         .sheet(item: $receiptForThermalPrint, onDismiss: { receiptNoticeForPrint = nil }) { completedReceipt in
             POSCompletedReceiptSheet(receipt: completedReceipt, notice: receiptNoticeForPrint)
         }
-        // Transaction Dossier Modal
-        .sheet(item: $selectedDossierReceipt) { receipt in
+        // Transaction Dossier Modal (Full Screen)
+        .fullScreenCover(item: $selectedDossierReceipt) { receipt in
             POSTransactionDossierSheet(
                 receipt: receipt,
                 onPrint: {
@@ -1413,6 +1413,12 @@ private struct POSTransactionCard: View {
     @State private var feedbackMessage: String?
     @State private var isPreparingReceipt = false
     @State private var shareFailed = false
+    @State private var lastActionButtonTapTime: Date = .distantPast
+
+    private func handleCardTap() {
+        guard Date().timeIntervalSince(lastActionButtonTapTime) > 0.45 else { return }
+        onTap()
+    }
 
     var body: some View {
         VStack(spacing: AdminSpacing.sm) {
@@ -1426,6 +1432,10 @@ private struct POSTransactionCard: View {
                 .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
         )
         .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 2)
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .onTapGesture {
+            handleCardTap()
+        }
         .sheet(item: $receiptShare, onDismiss: {
             if shareFailed {
                 shareFailed = false
@@ -1450,126 +1460,139 @@ private struct POSTransactionCard: View {
     }
 
     private var receiptContent: some View {
-        Button(action: onTap) {
-            VStack(spacing: AdminSpacing.sm) {
-                // 1. Top Header: Cryptopill Slug + Timestamp + Status Badge
-                HStack(alignment: .center) {
-                    // Monospaced Cryptopill Slug with Tap-to-Copy
+        VStack(spacing: AdminSpacing.sm) {
+            // 1. Top Header: Cryptopill Slug + Timestamp + Status Badge
+            HStack(alignment: .center) {
+                // Monospaced Cryptopill Slug with Quick-Copy icon + context menu
+                HStack(spacing: 4) {
+                    Text(verbatim: POSReceiptFormat.receiptID(receipt.receiptID))
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundColor(Color(uiColor: .ppPrimary))
+
+                    Button {
+                        lastActionButtonTapTime = Date()
+                        onCopyID(receipt.receiptID)
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .padding(2)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Language.get("POS_Action_CopyID", alter: "نسخ رقم الإيصال"))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color(uiColor: .ppPrimary).opacity(0.08), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .contextMenu {
                     Button {
                         onCopyID(receipt.receiptID)
                     } label: {
-                        HStack(spacing: 4) {
-                            Text(verbatim: POSReceiptFormat.receiptID(receipt.receiptID))
-                                .font(.system(size: 13, weight: .bold, design: .monospaced))
-                                .foregroundColor(Color(uiColor: .ppPrimary))
-
-                            Image(systemName: "doc.on.doc")
-                                .font(.system(size: 9, weight: .semibold))
-                                .foregroundColor(AdminSurface.secondaryText)
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color(uiColor: .ppPrimary).opacity(0.08), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        Label(Language.get("POS_Action_CopyID", alter: "نسخ رقم الإيصال"), systemImage: "doc.on.doc")
                     }
-                    .buttonStyle(.plain)
+                }
+
+                Spacer()
+
+                // Timestamp
+                if let date = receipt.createdAt {
+                    Text(formattedDate(date))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+
+                // Status Badge
+                statusBadge
+            }
+
+            // 2. Customer identity. Contact actions remain available below every receipt.
+            if !receipt.customerName.isEmpty || !receipt.customerPhone.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "person.crop.circle.fill")
+                        .font(.system(size: 13))
+                        .foregroundColor(Color(uiColor: .ppPrimary))
+
+                    Text(receipt.customerName.isEmpty ? receipt.customerPhone : receipt.customerName)
+                        .font(AdminType.captionBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(1)
+
+                    Spacer()
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color(uiColor: .ppBackgroundSecondary).opacity(0.5), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+
+            // 3. Purchased Items Specimen Strip
+            if !receipt.items.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "bag.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(AdminSurface.secondaryText)
+
+                    Text(itemsPreviewText)
+                        .font(AdminType.caption)
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(1)
 
                     Spacer()
 
-                    // Timestamp
-                    if let date = receipt.createdAt {
-                        Text(formattedDate(date))
+                    if let cashier = receipt.cashierName, !cashier.isEmpty {
+                        Text(verbatim: String(format: Language.get("POS_Card_Cashier", alter: "الكاشير: %@"), cashier))
                             .font(AdminType.caption2)
                             .foregroundColor(AdminSurface.secondaryText)
                     }
-
-                    // Status Badge
-                    statusBadge
-                }
-
-                // 2. Customer identity. Contact actions remain available below every receipt.
-                if !receipt.customerName.isEmpty || !receipt.customerPhone.isEmpty {
-                    HStack(spacing: 8) {
-                        Image(systemName: "person.crop.circle.fill")
-                            .font(.system(size: 13))
-                            .foregroundColor(Color(uiColor: .ppPrimary))
-
-                        Text(receipt.customerName.isEmpty ? receipt.customerPhone : receipt.customerName)
-                            .font(AdminType.captionBold)
-                            .foregroundColor(AdminSurface.primaryText)
-                            .lineLimit(1)
-
-                        Spacer()
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color(uiColor: .ppBackgroundSecondary).opacity(0.5), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                }
-
-                // 3. Purchased Items Specimen Strip
-                if !receipt.items.isEmpty {
-                    HStack(spacing: 6) {
-                        Image(systemName: "bag.fill")
-                            .font(.system(size: 11))
-                            .foregroundColor(AdminSurface.secondaryText)
-
-                        Text(itemsPreviewText)
-                            .font(AdminType.caption)
-                            .foregroundColor(AdminSurface.secondaryText)
-                            .lineLimit(1)
-
-                        Spacer()
-
-                        if let cashier = receipt.cashierName, !cashier.isEmpty {
-                            Text(verbatim: String(format: Language.get("POS_Card_Cashier", alter: "الكاشير: %@"), cashier))
-                                .font(AdminType.caption2)
-                                .foregroundColor(AdminSurface.secondaryText)
-                        }
-                    }
-                }
-
-                Divider().background(AdminSurface.hairline)
-
-                // 4. Bottom Line: Payment Badge + Items Count + Total + Thermal Print
-                HStack(alignment: .center, spacing: 8) {
-                    paymentMethodBadge
-
-                    Label(
-                        String(format: Language.get("POS_Card_Items_Count", alter: "%@ عناصر"), receipt.items.count.englishDigits),
-                        systemImage: "shippingbox.fill"
-                    )
-                    .font(AdminType.caption2)
-                    .foregroundColor(AdminSurface.secondaryText)
-
-                    Spacer()
-
-                    // Grand Total Display
-                    VStack(alignment: .trailing, spacing: 1) {
-                        Text(verbatim: receipt.total.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
-                            .font(PPBrandFont.bold(size: 19, relativeTo: .subheadline))
-                            .foregroundColor(receiptIsCancelled ? AdminSurface.secondaryText : AdminSurface.primaryText)
-                            .monospacedDigit()
-
-                        if receipt.refundedAmount > 0 {
-                            Text(verbatim: "−" + receipt.refundedAmount.englishDigits(decimals: 2) + " " + Language.get("POS_Status_Refunded", alter: "مسترد"))
-                                .font(AdminType.caption2Bold)
-                                .foregroundColor(Color(uiColor: .systemOrange))
-                        }
-                    }
-
-                    // Direct Print Button
-                    Button(action: onPrint) {
-                        Image(systemName: "printer.fill")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(AdminSurface.primaryText)
-                            .frame(width: 34, height: 34)
-                            .background(Color(uiColor: .ppBackgroundSecondary), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Language.get("POS_Action_PrintReceipt", alter: "طباعة"))
                 }
             }
+
+            Divider().background(AdminSurface.hairline)
+
+            // 4. Bottom Line: Payment Badge + Items Count + Total + Thermal Print
+            HStack(alignment: .center, spacing: 8) {
+                paymentMethodBadge
+
+                Label(
+                    String(format: Language.get("POS_Card_Items_Count", alter: "%@ عناصر"), receipt.items.count.englishDigits),
+                    systemImage: "shippingbox.fill"
+                )
+                .font(AdminType.caption2)
+                .foregroundColor(AdminSurface.secondaryText)
+
+                Spacer()
+
+                // Grand Total Display
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(verbatim: receipt.total.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
+                        .font(PPBrandFont.bold(size: 19, relativeTo: .subheadline))
+                        .foregroundColor(receiptIsCancelled ? AdminSurface.secondaryText : AdminSurface.primaryText)
+                        .monospacedDigit()
+
+                    if receipt.refundedAmount > 0 {
+                        Text(verbatim: "−" + receipt.refundedAmount.englishDigits(decimals: 2) + " " + Language.get("POS_Status_Refunded", alter: "مسترد"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundColor(Color(uiColor: .systemOrange))
+                    }
+                }
+
+                // Direct Print Button
+                Button(action: {
+                    lastActionButtonTapTime = Date()
+                    onPrint()
+                }) {
+                    Image(systemName: "printer.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .frame(width: 34, height: 34)
+                        .background(Color(uiColor: .ppBackgroundSecondary), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Language.get("POS_Action_PrintReceipt", alter: "طباعة"))
+            }
         }
-        .buttonStyle(.plain)
+        .contentShape(Rectangle())
     }
 
     private var contactActions: some View {
@@ -1578,7 +1601,10 @@ private struct POSTransactionCard: View {
             : AnyLayout(HStackLayout(spacing: 8))
 
         return layout {
-            Button(action: shareReceipt) {
+            Button(action: {
+                lastActionButtonTapTime = Date()
+                shareReceipt()
+            }) {
                 HStack(spacing: 7) {
                     if isPreparingReceipt {
                         ProgressView().tint(AdminSurface.primaryText)
@@ -1603,7 +1629,10 @@ private struct POSTransactionCard: View {
             .accessibilityLabel(Language.get("POS_Action_WhatsAppReceipt", alter: "إرسال الإيصال عبر واتساب"))
             .accessibilityHint(Language.get("POS_History_WhatsAppShareHint", alter: "فتح واتساب مع تجهيز الرسالة ونسخ صورة الفاتورة للصقها فوراً وإرسالها."))
 
-            Button(action: callCustomer) {
+            Button(action: {
+                lastActionButtonTapTime = Date()
+                callCustomer()
+            }) {
                 Label(
                     customerCallURL == nil
                         ? Language.get("POS_History_CallNoPhone", alter: "اتصال · لا يوجد رقم")
@@ -1750,7 +1779,1120 @@ private struct POSTransactionCard: View {
     }
 }
 
-// MARK: - Transaction Dossier Sheet (Full Inspection & Operational Workflows)
+// MARK: - Transaction Dossier Sheet (Full-Screen Dual-Architecture Native Console)
+
+private enum DossierFont {
+    static func bold(_ size: CGFloat, relativeTo textStyle: Font.TextStyle = .body) -> Font {
+        Font.custom("Beiruti-Bold", size: size, relativeTo: textStyle)
+    }
+    static func medium(_ size: CGFloat, relativeTo textStyle: Font.TextStyle = .body) -> Font {
+        Font.custom("Beiruti-Medium", size: size, relativeTo: textStyle)
+    }
+    static func regular(_ size: CGFloat, relativeTo textStyle: Font.TextStyle = .body) -> Font {
+        Font.custom("Beiruti-Regular", size: size, relativeTo: textStyle)
+    }
+}
+
+private enum DossierHaptics {
+    static func light() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+    static func medium() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+    static func success() {
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+    static func warning() {
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+    }
+}
+
+enum DossierStatusKind {
+    case completed
+    case fullyRefunded
+    case partiallyRefunded
+    case cancelled
+
+    var localizedTitle: String {
+        switch self {
+        case .completed:
+            return Language.get("POS_Dossier_Status_Completed", alter: "مكتملة ومحصّلة")
+        case .fullyRefunded:
+            return Language.get("POS_Status_Refunded", alter: "مستردة بالكامل")
+        case .partiallyRefunded:
+            return Language.get("POS_Status_PartiallyRefunded", alter: "مستردة جزئياً")
+        case .cancelled:
+            return Language.get("POS_Status_Cancelled", alter: "معاملة ملغاة ومبطلة")
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .completed: return "checkmark.seal.fill"
+        case .fullyRefunded: return "arrow.uturn.backward.circle.fill"
+        case .partiallyRefunded: return "clock.arrow.circlepath"
+        case .cancelled: return "xmark.octagon.fill"
+        }
+    }
+
+    var tintColor: Color {
+        switch self {
+        case .completed: return Color(uiColor: .systemGreen)
+        case .fullyRefunded: return Color(uiColor: .systemPurple)
+        case .partiallyRefunded: return Color(uiColor: .systemOrange)
+        case .cancelled: return Color(uiColor: .systemRed)
+        }
+    }
+}
+
+private struct DossierPaymentBadge: View {
+    let paymentMethod: String
+
+    private var info: (icon: String, title: String, color: Color) {
+        let pm = paymentMethod.lowercased()
+        if pm.contains("cash") {
+            return ("banknote.fill", Language.get("POS_Payment_Cash", alter: "نقداً"), Color(uiColor: .systemGreen))
+        } else if pm.contains("card") || pm.contains("qib") || pm.contains("visa") || pm.contains("mastercard") {
+            return ("creditcard.fill", Language.get("POS_Payment_Card", alter: "بطاقة بنكية"), Color(uiColor: .systemBlue))
+        } else if pm.contains("tabby") || pm.contains("tamara") {
+            return ("sparkles", Language.get("POS_Payment_Installment", alter: "تقسيط"), Color(uiColor: .systemPurple))
+        } else {
+            return ("wallet.pass.fill", paymentMethod.isEmpty ? Language.get("POS_Payment_Other", alter: "أخرى") : paymentMethod, Color(uiColor: .systemOrange))
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: info.icon)
+                .font(.system(size: 11, weight: .bold))
+            Text(info.title)
+                .font(DossierFont.medium(12, relativeTo: .caption))
+        }
+        .foregroundColor(info.color)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .background(info.color.opacity(0.12), in: Capsule())
+    }
+}
+
+private struct DossierItemRow: View {
+    let item: PPPOSCartItem
+    let isLast: Bool
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 12) {
+                // Item details
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.name.isEmpty ? Language.get("POS_Receipt_UnnamedItem", alter: "عنصر") : item.name)
+                        .font(DossierFont.bold(15, relativeTo: .body))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 6) {
+                        Text(verbatim: "\(item.quantity.englishDigits) × \(item.price.englishDigits(decimals: 2)) \(Language.get("QAR", alter: "ر.ق"))")
+                            .font(DossierFont.medium(12, relativeTo: .caption))
+                            .foregroundColor(AdminSurface.secondaryText)
+
+                        if item.refundedQuantity > 0 {
+                            Text(verbatim: "(\(item.refundedQuantity.englishDigits) \(Language.get("POS_Status_Refunded", alter: "مسترد")))")
+                                .font(DossierFont.bold(10, relativeTo: .caption2))
+                                .foregroundColor(Color(uiColor: .systemOrange))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color(uiColor: .systemOrange).opacity(0.12), in: Capsule())
+                        }
+                    }
+
+                    // Tracked Live Pet Ring Tag Chips
+                    if !item.unitRingTags.isEmpty {
+                        HStack(spacing: 6) {
+                            Image(systemName: "pawprint.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(Color(uiColor: .ppPrimary))
+
+                            ForEach(item.unitRingTags, id: \.self) { tag in
+                                Text(verbatim: "#\(tag)")
+                                    .font(DossierFont.bold(11, relativeTo: .caption2))
+                                    .foregroundColor(Color(uiColor: .ppPrimary))
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 2)
+                                    .background(Color(uiColor: .ppPrimary).opacity(0.1), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            }
+                        }
+                        .padding(.top, 2)
+                    }
+                }
+
+                Spacer()
+
+                // Line Total
+                let lineTotal = item.lineTotal > 0 ? item.lineTotal : (item.price * Double(item.quantity))
+                Text(verbatim: lineTotal.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
+                    .font(DossierFont.bold(15, relativeTo: .subheadline))
+                    .foregroundColor(AdminSurface.primaryText)
+                    .monospacedDigit()
+            }
+
+            if !isLast {
+                Divider().background(AdminSurface.hairline)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private struct DossierCustomerCard: View {
+    let customerName: String
+    let customerPhone: String
+    let isPreparingWhatsApp: Bool
+    let onCall: () -> Void
+    let onWhatsApp: () -> Void
+
+    private var isWalkIn: Bool {
+        customerName.isEmpty && customerPhone.isEmpty
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(Language.get("POS_Dossier_Customer_Section", alter: "بيانات العميل"))
+                .font(DossierFont.bold(13, relativeTo: .caption))
+                .foregroundColor(AdminSurface.secondaryText)
+
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(isWalkIn ? Color(uiColor: .ppBackgroundSecondary) : Color(uiColor: .ppPrimary).opacity(0.12))
+                        .frame(width: 44, height: 44)
+
+                    Image(systemName: isWalkIn ? "person.fill" : "person.crop.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(isWalkIn ? AdminSurface.secondaryText : Color(uiColor: .ppPrimary))
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(isWalkIn ? Language.get("POS_Dossier_WalkInCustomer", alter: "عميل نقدي مباشر") : customerName)
+                        .font(DossierFont.bold(15, relativeTo: .body))
+                        .foregroundColor(AdminSurface.primaryText)
+
+                    if !customerPhone.isEmpty {
+                        Text(verbatim: customerPhone)
+                            .font(DossierFont.medium(13, relativeTo: .caption))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    } else if isWalkIn {
+                        Text(Language.get("POS_Payment_Cash", alter: "نقداً"))
+                            .font(DossierFont.regular(12, relativeTo: .caption2))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                }
+
+                Spacer()
+
+                if !customerPhone.isEmpty {
+                    HStack(spacing: 8) {
+                        Button(action: onCall) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color(uiColor: .systemGreen).opacity(0.12))
+                                    .frame(width: 36, height: 36)
+                                Image(systemName: "phone.fill")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(Color(uiColor: .systemGreen))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Language.get("POS_Customer_Call", alter: "اتصال هاتفي"))
+
+                        Button(action: onWhatsApp) {
+                            ZStack {
+                                Circle()
+                                    .fill(POSReceiptWhatsAppSender.brandColor)
+                                    .frame(width: 36, height: 36)
+
+                                if isPreparingWhatsApp {
+                                    ProgressView().tint(.white)
+                                        .scaleEffect(0.7)
+                                } else {
+                                    Image("whatsapp")
+                                        .renderingMode(.template)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 18, height: 18)
+                                        .foregroundColor(.white)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isPreparingWhatsApp)
+                        .accessibilityLabel(Language.get("POS_Action_WhatsAppReceipt", alter: "إرسال الإيصال عبر واتساب"))
+                        .accessibilityHint(Language.get("POS_History_WhatsAppShareHint", alter: "فتح واتساب مع تجهيز الرسالة ونسخ صورة الفاتورة للصقها فوراً وإرسالها."))
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+        )
+    }
+}
+
+private struct DossierFinancialCard: View {
+    let receipt: PPPOSReceipt
+    let effectiveRefundedAmount: Double
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(Language.get("POS_Dossier_Financial_Section", alter: "التفاصيل المالية"))
+                    .font(DossierFont.bold(13, relativeTo: .caption))
+                    .foregroundColor(AdminSurface.secondaryText)
+
+                Spacer()
+
+                DossierPaymentBadge(paymentMethod: receipt.paymentMethod)
+            }
+
+            VStack(spacing: 9) {
+                // Subtotal
+                dossierRow(
+                    label: Language.get("POS_Subtotal", alter: "المجموع الفرعي"),
+                    value: (receipt.subtotal > 0 ? receipt.subtotal : receipt.total + receipt.discount).englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق")
+                )
+
+                // Discount
+                if receipt.discount > 0 {
+                    dossierRow(
+                        label: Language.get("POS_Discount", alter: "الخصم"),
+                        value: "−" + receipt.discount.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"),
+                        valueColor: Color(uiColor: .systemGreen)
+                    )
+                }
+
+                // Cash details
+                if receipt.paymentMethod.lowercased().contains("cash") {
+                    if receipt.cashReceived > 0 {
+                        dossierRow(
+                            label: Language.get("POS_CashReceived", alter: "المبلغ المستلم نقداً"),
+                            value: receipt.cashReceived.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق")
+                        )
+                    }
+                    if receipt.changeDue > 0 {
+                        HStack {
+                            Text(Language.get("POS_ChangeDue", alter: "المتبقي للعميل"))
+                                .font(DossierFont.medium(14, relativeTo: .body))
+                                .foregroundColor(AdminSurface.secondaryText)
+                            Spacer()
+                            HStack(spacing: 4) {
+                                Text(verbatim: receipt.changeDue.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
+                                    .font(DossierFont.bold(14, relativeTo: .body))
+                                    .foregroundColor(Color(uiColor: .systemBlue))
+                                    .monospacedDigit()
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color(uiColor: .systemBlue).opacity(0.1), in: Capsule())
+                        }
+                    }
+                }
+
+                if effectiveRefundedAmount > 0 {
+                    dossierRow(
+                        label: Language.get("POS_Telemetry_Refunds", alter: "إجمالي المسترد"),
+                        value: "−" + effectiveRefundedAmount.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"),
+                        valueColor: Color(uiColor: .systemOrange)
+                    )
+                }
+
+                Divider().background(AdminSurface.hairline)
+
+                // Grand Total Banner
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("POS_GrandTotal", alter: "الإجمالي النهائي"))
+                            .font(DossierFont.bold(15, relativeTo: .headline))
+                            .foregroundColor(AdminSurface.primaryText)
+                    }
+
+                    Spacer()
+
+                    Text(verbatim: receipt.total.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
+                        .font(DossierFont.bold(22, relativeTo: .title2))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .monospacedDigit()
+                }
+                .padding(.top, 2)
+            }
+        }
+        .padding(14)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+        )
+    }
+
+    private func dossierRow(label: String, value: String, valueColor: Color = AdminSurface.primaryText) -> some View {
+        HStack {
+            Text(label)
+                .font(DossierFont.medium(14, relativeTo: .body))
+                .foregroundColor(AdminSurface.secondaryText)
+            Spacer()
+            Text(verbatim: value)
+                .font(DossierFont.bold(14, relativeTo: .body))
+                .foregroundColor(valueColor)
+                .monospacedDigit()
+        }
+    }
+}
+
+private struct DossierAuditCard: View {
+    let receipt: PPPOSReceipt
+    let onCopyServerID: () -> Void
+
+    private func formattedDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .medium
+        formatter.locale = Locale(identifier: Language.isRTL() ? "ar_QA" : "en_US")
+        return formatter.string(from: date)
+    }
+
+    var body: some View {
+        VStack(spacing: 9) {
+            // Timestamp
+            HStack {
+                Text(Language.get("POS_Dossier_Date", alter: "وقت المعاملة"))
+                    .font(DossierFont.medium(12, relativeTo: .caption))
+                    .foregroundColor(AdminSurface.secondaryText)
+                Spacer()
+                if let date = receipt.createdAt {
+                    Text(formattedDate(date))
+                        .font(DossierFont.bold(12, relativeTo: .caption))
+                        .foregroundColor(AdminSurface.primaryText)
+                }
+            }
+
+            // Cashier
+            if let cashier = receipt.cashierName, !cashier.isEmpty {
+                HStack {
+                    Text(Language.get("POS_Dossier_Cashier", alter: "كاشير العملية"))
+                        .font(DossierFont.medium(12, relativeTo: .caption))
+                        .foregroundColor(AdminSurface.secondaryText)
+                    Spacer()
+                    HStack(spacing: 4) {
+                        Image(systemName: "person.badge.key.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(uiColor: .ppPrimary))
+                        Text(cashier)
+                            .font(DossierFont.bold(12, relativeTo: .caption))
+                            .foregroundColor(AdminSurface.primaryText)
+                    }
+                }
+            }
+
+            // Server Transaction ID
+            HStack {
+                Text(Language.get("POS_Dossier_ServerID", alter: "معرّف المعاملة الخادمي"))
+                    .font(DossierFont.medium(12, relativeTo: .caption))
+                    .foregroundColor(AdminSurface.secondaryText)
+                Spacer()
+                Button(action: onCopyServerID) {
+                    HStack(spacing: 5) {
+                        Text(verbatim: String(receipt.receiptID.prefix(16)) + "...")
+                            .font(DossierFont.bold(11, relativeTo: .caption2))
+                            .foregroundColor(Color(uiColor: .ppPrimary))
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Color(uiColor: .ppPrimary).opacity(0.08), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Language.get("POS_Dossier_CopyServerID", alter: "نسخ المعرّف الخادمي"))
+            }
+        }
+        .padding(14)
+        .background(Color(uiColor: .ppBackgroundSecondary).opacity(0.5), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+private struct DossierStatusBanner: View {
+    let statusKind: DossierStatusKind
+    let receipt: PPPOSReceipt
+    let effectiveRefundedAmount: Double
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: statusKind.iconName)
+                .font(.system(size: 22))
+                .foregroundColor(statusKind.tintColor)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(statusKind.localizedTitle)
+                    .font(DossierFont.bold(15, relativeTo: .headline))
+                    .foregroundColor(statusKind.tintColor)
+
+                if statusKind == .cancelled {
+                    if let reason = receipt.cancellationReason, !reason.isEmpty {
+                        Text(verbatim: reason)
+                            .font(DossierFont.regular(13, relativeTo: .caption))
+                            .foregroundColor(AdminSurface.primaryText)
+                    }
+                    if let by = receipt.cancelledBy, !by.isEmpty {
+                        Text(verbatim: "\(Language.get("CancelledBy", alter: "بواسطة")): \(by)")
+                            .font(DossierFont.medium(11, relativeTo: .caption2))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                } else if statusKind == .fullyRefunded || statusKind == .partiallyRefunded {
+                    Text(verbatim: "\(Language.get("POS_Telemetry_Refunds", alter: "المبلغ المسترد")): \(effectiveRefundedAmount.englishDigits(decimals: 2)) \(Language.get("QAR", alter: "ر.ق"))")
+                        .font(DossierFont.bold(13, relativeTo: .caption))
+                        .foregroundColor(AdminSurface.primaryText)
+
+                    if let reason = receipt.refundReason, !reason.isEmpty {
+                        Text(verbatim: "\(Language.get("Reason", alter: "السبب")): \(reason)")
+                            .font(DossierFont.regular(11, relativeTo: .caption2))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                }
+            }
+            Spacer()
+        }
+        .padding(14)
+        .background(statusKind.tintColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(statusKind.tintColor.opacity(0.3), lineWidth: 1)
+        )
+    }
+}
+
+private struct DossierLivePetCasesSection: View {
+    let returnCases: [LivePetReturnCase]
+    let isLoading: Bool
+    let onOpenCase: (LivePetReturnCase) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(Language.get("LivePet_ReturnDossier_SectionTitle", alter: "ملف استرجاع الحيوانات الأليفة"))
+                    .font(DossierFont.bold(13, relativeTo: .caption))
+                    .foregroundColor(AdminSurface.secondaryText)
+
+                Spacer()
+
+                if isLoading {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                }
+            }
+
+            ForEach(returnCases) { rCase in
+                VStack(spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "pawprint.circle.fill")
+                            .font(.system(size: 26))
+                            .foregroundColor(Color(uiColor: .ppPrimary))
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 6) {
+                                Text(verbatim: rCase.caseNumber)
+                                    .font(DossierFont.bold(13, relativeTo: .subheadline))
+                                    .foregroundColor(AdminSurface.primaryText)
+
+                                Spacer()
+
+                                Text(rCase.status.localizedTitle)
+                                    .font(DossierFont.bold(11, relativeTo: .caption2))
+                                    .foregroundColor(rCase.status.badgeColor)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(rCase.status.badgeColor.opacity(0.12), in: Capsule())
+                            }
+
+                            if !rCase.units.isEmpty {
+                                let unitNames = rCase.units.map { $0.ringTag.isEmpty ? $0.unitId : $0.ringTag }.joined(separator: " • ")
+                                Text(verbatim: "\(Language.get("LivePet_Units", alter: "الحيوانات")): \(unitNames)")
+                                    .font(DossierFont.medium(12, relativeTo: .caption))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                            }
+
+                            if !rCase.reasonNotes.isEmpty {
+                                Text(verbatim: "\(Language.get("Reason", alter: "السبب")): \(rCase.reasonNotes)")
+                                    .font(DossierFont.regular(11, relativeTo: .caption2))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                    .lineLimit(2)
+                            }
+                        }
+                    }
+
+                    Divider().background(AdminSurface.hairline)
+
+                    Button {
+                        onOpenCase(rCase)
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "folder.badge.gearshape.fill")
+                                .font(.system(size: 13, weight: .bold))
+                            Text(Language.get("LivePet_OpenDossierButton", alter: "فتح ملف الاسترجاع والمتابعة"))
+                                .font(DossierFont.bold(13, relativeTo: .caption))
+                            Spacer()
+                            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .foregroundColor(Color(uiColor: .ppPrimary))
+                        .padding(.vertical, 9)
+                        .padding(.horizontal, 12)
+                        .background(Color(uiColor: .ppPrimary).opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(14)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color(uiColor: .ppPrimary).opacity(0.3), lineWidth: 1)
+                )
+            }
+        }
+    }
+}
+
+// MARK: - iPhone Cockpit Architecture
+
+struct POSTransactionDossier_iPhone: View {
+    let receipt: PPPOSReceipt
+    let statusKind: DossierStatusKind
+    let isRefunded: Bool
+    let isFullyRefunded: Bool
+    let isCancelled: Bool
+    let effectiveRefundedAmount: Double
+    let returnCases: [LivePetReturnCase]
+    let isLoadingReturnCases: Bool
+    let isPreparingWhatsApp: Bool
+    let onPrint: () -> Void
+    let onRefund: () -> Void
+    let onCancel: () -> Void
+    let onSendWhatsApp: () -> Void
+    let onCallCustomer: () -> Void
+    let onCopyServerID: () -> Void
+    let onOpenReturnCase: (LivePetReturnCase) -> Void
+    let onDismiss: () -> Void
+
+    private var routesToLivePetReturn: Bool {
+        receipt.hasIndividuallyTrackedLivePets && !receipt.hasGenericMerchandise
+    }
+
+    private var refundDisabled: Bool {
+        isCancelled || (isFullyRefunded && !routesToLivePetReturn)
+    }
+
+    var body: some View {
+        ZStack {
+            AdminSurface.background.ignoresSafeArea()
+
+            // Atmospheric Ambient Glow
+            VStack {
+                LinearGradient(
+                    colors: [statusKind.tintColor.opacity(0.12), Color.clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 220)
+                .ignoresSafeArea()
+                Spacer()
+            }
+
+            VStack(spacing: 0) {
+                // Header Cockpit Bar
+                HStack(alignment: .center, spacing: 12) {
+                    AdminSquircleCloseButton {
+                        onDismiss()
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("POS_Dossier_Title", alter: "ملف المعاملة المالية"))
+                            .font(DossierFont.bold(17, relativeTo: .headline))
+                            .foregroundColor(AdminSurface.primaryText)
+
+                        HStack(spacing: 6) {
+                            Text(verbatim: POSReceiptFormat.receiptID(receipt.receiptID))
+                                .font(DossierFont.bold(13, relativeTo: .caption))
+                                .foregroundColor(Color(uiColor: .ppPrimary))
+
+                            if let branch = receipt.branchName ?? BranchContextStore.shared.activeBranch?.localizedName() {
+                                Text("•")
+                                    .font(DossierFont.regular(12, relativeTo: .caption2))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                Text(branch)
+                                    .font(DossierFont.regular(12, relativeTo: .caption2))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                            }
+                        }
+                    }
+
+                    Spacer()
+
+                    // Status Pill
+                    HStack(spacing: 5) {
+                        Image(systemName: statusKind.iconName)
+                            .font(.system(size: 11, weight: .bold))
+                        Text(statusKind.localizedTitle)
+                            .font(DossierFont.bold(11, relativeTo: .caption2))
+                    }
+                    .foregroundColor(statusKind.tintColor)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(statusKind.tintColor.opacity(0.12), in: Capsule())
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(statusKind.tintColor.opacity(0.3), lineWidth: 1)
+                    )
+                }
+                .padding(.horizontal, AdminSpacing.screenMargin)
+                .padding(.vertical, AdminSpacing.md)
+
+                Divider().background(AdminSurface.hairline)
+
+                // Scrollable Content
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: AdminSpacing.md) {
+                        // Cancellation / Refund Banner
+                        if statusKind != .completed {
+                            DossierStatusBanner(
+                                statusKind: statusKind,
+                                receipt: receipt,
+                                effectiveRefundedAmount: effectiveRefundedAmount
+                            )
+                        }
+
+                        // Live Pet Return Cases
+                        if !returnCases.isEmpty || isLoadingReturnCases {
+                            DossierLivePetCasesSection(
+                                returnCases: returnCases,
+                                isLoading: isLoadingReturnCases,
+                                onOpenCase: onOpenReturnCase
+                            )
+                        }
+
+                        // Customer Conduit Card
+                        DossierCustomerCard(
+                            customerName: receipt.customerName,
+                            customerPhone: receipt.customerPhone,
+                            isPreparingWhatsApp: isPreparingWhatsApp,
+                            onCall: onCallCustomer,
+                            onWhatsApp: onSendWhatsApp
+                        )
+
+                        // Itemized Products Manifest
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text(Language.get("POS_Dossier_Items_Section", alter: "العناصر المشتراة"))
+                                    .font(DossierFont.bold(13, relativeTo: .caption))
+                                    .foregroundColor(AdminSurface.secondaryText)
+
+                                Spacer()
+
+                                Text(String(format: Language.get("POS_Dossier_ItemsCount", alter: "%d عنصر"), receipt.items.count))
+                                    .font(DossierFont.medium(12, relativeTo: .caption2))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 2)
+                                    .background(Color(uiColor: .ppBackgroundSecondary), in: Capsule())
+                            }
+
+                            VStack(spacing: 0) {
+                                ForEach(0..<receipt.items.count, id: \.self) { idx in
+                                    DossierItemRow(
+                                        item: receipt.items[idx],
+                                        isLast: idx == receipt.items.count - 1
+                                    )
+                                }
+                            }
+                            .padding(14)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                            )
+                        }
+
+                        // Financial Ledger Card
+                        DossierFinancialCard(
+                            receipt: receipt,
+                            effectiveRefundedAmount: effectiveRefundedAmount
+                        )
+
+                        // Server Audit & Governance Card
+                        DossierAuditCard(
+                            receipt: receipt,
+                            onCopyServerID: onCopyServerID
+                        )
+
+                        // Safe Area Cushion
+                        Spacer().frame(height: 70)
+                    }
+                    .padding(AdminSpacing.screenMargin)
+                }
+
+                // Bottom Elevated Action Dock
+                VStack(spacing: 10) {
+                    Divider().background(AdminSurface.hairline)
+
+                    HStack(spacing: 10) {
+                        // Print Button
+                        Button(action: onPrint) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "printer.fill")
+                                    .font(.system(size: 14, weight: .bold))
+                                Text(isRefunded ? Language.get("POS_Action_PrintRefundReceipt", alter: "طباعة إيصال الاسترداد") : Language.get("POS_Action_PrintReceipt", alter: "طباعة الإيصال"))
+                                    .font(DossierFont.bold(13, relativeTo: .subheadline))
+                            }
+                            .foregroundColor(AdminSurface.primaryText)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
+
+                        // Refund / Return Button
+                        Button(action: onRefund) {
+                            HStack(spacing: 6) {
+                                Image(systemName: routesToLivePetReturn ? "pawprint.fill" : "arrow.uturn.backward.circle.fill")
+                                    .font(.system(size: 14, weight: .bold))
+                                Text(routesToLivePetReturn ? Language.get("LivePet_Action_Return", alter: "استرجاع الحيوان") : Language.get("POS_Action_Refund", alter: "استرداد"))
+                                    .font(DossierFont.bold(13, relativeTo: .subheadline))
+                            }
+                            .foregroundColor(refundDisabled ? AdminSurface.secondaryText.opacity(0.5) : Color(uiColor: .systemOrange))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                            .background(Color(uiColor: .systemOrange).opacity(refundDisabled ? 0.04 : 0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(refundDisabled)
+
+                        // Void / Cancel Button
+                        Button(action: onCancel) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 14, weight: .bold))
+                                Text(Language.get("POS_Action_Cancel", alter: "إلغاء"))
+                                    .font(DossierFont.bold(13, relativeTo: .subheadline))
+                            }
+                            .foregroundColor(isCancelled || isRefunded ? AdminSurface.secondaryText.opacity(0.5) : Color(uiColor: .systemRed))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                            .background(Color(uiColor: .systemRed).opacity(isCancelled || isRefunded ? 0.04 : 0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isCancelled || isRefunded)
+                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.bottom, 12)
+                }
+                .background(AdminSurface.surface)
+            }
+        }
+    }
+}
+
+// MARK: - iPad Dual-Wing Studio Console Architecture
+
+struct POSTransactionDossier_iPad: View {
+    let receipt: PPPOSReceipt
+    let statusKind: DossierStatusKind
+    let isRefunded: Bool
+    let isFullyRefunded: Bool
+    let isCancelled: Bool
+    let effectiveRefundedAmount: Double
+    let returnCases: [LivePetReturnCase]
+    let isLoadingReturnCases: Bool
+    let isPreparingWhatsApp: Bool
+    let onPrint: () -> Void
+    let onRefund: () -> Void
+    let onCancel: () -> Void
+    let onSendWhatsApp: () -> Void
+    let onCallCustomer: () -> Void
+    let onCopyServerID: () -> Void
+    let onOpenReturnCase: (LivePetReturnCase) -> Void
+    let onDismiss: () -> Void
+
+    private var routesToLivePetReturn: Bool {
+        receipt.hasIndividuallyTrackedLivePets && !receipt.hasGenericMerchandise
+    }
+
+    private var refundDisabled: Bool {
+        isCancelled || (isFullyRefunded && !routesToLivePetReturn)
+    }
+
+    var body: some View {
+        ZStack {
+            AdminSurface.background.ignoresSafeArea()
+
+            // Atmospheric Ambient Glow
+            VStack {
+                LinearGradient(
+                    colors: [statusKind.tintColor.opacity(0.14), Color.clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 260)
+                .ignoresSafeArea()
+                Spacer()
+            }
+
+            VStack(spacing: 0) {
+                // iPad Header Cockpit
+                HStack(alignment: .center, spacing: 16) {
+                    AdminSquircleCloseButton {
+                        onDismiss()
+                    }
+                    .keyboardShortcut(.escape, modifiers: [])
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 10) {
+                            Text(Language.get("POS_Dossier_Title", alter: "ملف المعاملة المالية"))
+                                .font(DossierFont.bold(22, relativeTo: .title2))
+                                .foregroundColor(AdminSurface.primaryText)
+
+                            // Status Pill
+                            HStack(spacing: 6) {
+                                Image(systemName: statusKind.iconName)
+                                    .font(.system(size: 12, weight: .bold))
+                                Text(statusKind.localizedTitle)
+                                    .font(DossierFont.bold(12, relativeTo: .caption))
+                            }
+                            .foregroundColor(statusKind.tintColor)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(statusKind.tintColor.opacity(0.12), in: Capsule())
+                            .overlay(
+                                Capsule()
+                                    .strokeBorder(statusKind.tintColor.opacity(0.3), lineWidth: 1)
+                            )
+                        }
+
+                        HStack(spacing: 8) {
+                            Text(verbatim: POSReceiptFormat.receiptID(receipt.receiptID))
+                                .font(DossierFont.bold(14, relativeTo: .subheadline))
+                                .foregroundColor(Color(uiColor: .ppPrimary))
+
+                            if let branch = receipt.branchName ?? BranchContextStore.shared.activeBranch?.localizedName() {
+                                Text("•")
+                                    .font(DossierFont.regular(13, relativeTo: .caption))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                Text(branch)
+                                    .font(DossierFont.medium(13, relativeTo: .caption))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                            }
+                        }
+                    }
+
+                    Spacer()
+
+                    // Quick Print Button in Header with ⌘P
+                    Button(action: onPrint) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "printer.fill")
+                                .font(.system(size: 14, weight: .bold))
+                            Text(Language.get("POS_Dossier_PrintShortcutHint", alter: "طباعة (⌘P)"))
+                                .font(DossierFont.bold(13, relativeTo: .subheadline))
+                        }
+                        .foregroundColor(AdminSurface.primaryText)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(Color(uiColor: .ppSurfaceBorder), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .hoverEffect(.highlight)
+                    .keyboardShortcut("p", modifiers: .command)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 18)
+
+                Divider().background(AdminSurface.hairline)
+
+                // Dual-Wing Main Stage
+                GeometryReader { geo in
+                    let leadingWidth = max(340, geo.size.width * 0.40)
+
+                    HStack(alignment: .top, spacing: 20) {
+                        // Leading Wing: Financials, Customer & Commands (40%)
+                        ScrollView(.vertical, showsIndicators: false) {
+                            VStack(spacing: 16) {
+                                // Financial Ledger Card
+                                DossierFinancialCard(
+                                    receipt: receipt,
+                                    effectiveRefundedAmount: effectiveRefundedAmount
+                                )
+
+                                // Customer Conduit Card
+                                DossierCustomerCard(
+                                    customerName: receipt.customerName,
+                                    customerPhone: receipt.customerPhone,
+                                    isPreparingWhatsApp: isPreparingWhatsApp,
+                                    onCall: onCallCustomer,
+                                    onWhatsApp: onSendWhatsApp
+                                )
+
+                                // Action Command Horizon
+                                VStack(spacing: 10) {
+                                    // Print Button
+                                    Button(action: onPrint) {
+                                        HStack(spacing: 8) {
+                                            Image(systemName: "printer.fill")
+                                                .font(.system(size: 15, weight: .bold))
+                                            Text(isRefunded ? Language.get("POS_Action_PrintRefundReceipt", alter: "طباعة إيصال الاسترداد") : Language.get("POS_Action_PrintReceipt", alter: "طباعة الإيصال"))
+                                                .font(DossierFont.bold(14, relativeTo: .body))
+                                            Spacer()
+                                            Text("⌘P")
+                                                .font(DossierFont.medium(12, relativeTo: .caption))
+                                                .foregroundColor(AdminSurface.secondaryText)
+                                        }
+                                        .foregroundColor(AdminSurface.primaryText)
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: 50)
+                                        .padding(.horizontal, 16)
+                                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                                .strokeBorder(Color(uiColor: .ppSurfaceBorder), lineWidth: 1)
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .hoverEffect(.lift)
+
+                                    // Refund / Return Button
+                                    Button(action: onRefund) {
+                                        HStack(spacing: 8) {
+                                            Image(systemName: routesToLivePetReturn ? "pawprint.fill" : "arrow.uturn.backward.circle.fill")
+                                                .font(.system(size: 15, weight: .bold))
+                                            Text(routesToLivePetReturn ? Language.get("LivePet_Action_Return", alter: "استرجاع الحيوان") : Language.get("POS_Action_Refund", alter: "استرداد"))
+                                                .font(DossierFont.bold(14, relativeTo: .body))
+                                            Spacer()
+                                            Text("⌘R")
+                                                .font(DossierFont.medium(12, relativeTo: .caption))
+                                                .foregroundColor(Color(uiColor: .systemOrange).opacity(0.8))
+                                        }
+                                        .foregroundColor(refundDisabled ? AdminSurface.secondaryText.opacity(0.5) : Color(uiColor: .systemOrange))
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: 50)
+                                        .padding(.horizontal, 16)
+                                        .background(Color(uiColor: .systemOrange).opacity(refundDisabled ? 0.04 : 0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(refundDisabled)
+                                    .hoverEffect(.lift)
+                                    .keyboardShortcut("r", modifiers: .command)
+
+                                    // Void / Cancel Button
+                                    Button(action: onCancel) {
+                                        HStack(spacing: 8) {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .font(.system(size: 15, weight: .bold))
+                                            Text(Language.get("POS_Action_Cancel", alter: "إلغاء المعاملة"))
+                                                .font(DossierFont.bold(14, relativeTo: .body))
+                                            Spacer()
+                                        }
+                                        .foregroundColor(isCancelled || isRefunded ? AdminSurface.secondaryText.opacity(0.5) : Color(uiColor: .systemRed))
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: 50)
+                                        .padding(.horizontal, 16)
+                                        .background(Color(uiColor: .systemRed).opacity(isCancelled || isRefunded ? 0.04 : 0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(isCancelled || isRefunded)
+                                    .hoverEffect(.lift)
+                                }
+                            }
+                            .padding(.vertical, 16)
+                        }
+                        .frame(width: leadingWidth)
+
+                        // Trailing Wing: Manifest & Governance (60%)
+                        ScrollView(.vertical, showsIndicators: false) {
+                            VStack(spacing: 16) {
+                                // Status Banner (if not completed)
+                                if statusKind != .completed {
+                                    DossierStatusBanner(
+                                        statusKind: statusKind,
+                                        receipt: receipt,
+                                        effectiveRefundedAmount: effectiveRefundedAmount
+                                    )
+                                }
+
+                                // Live Pet Return Cases
+                                if !returnCases.isEmpty || isLoadingReturnCases {
+                                    DossierLivePetCasesSection(
+                                        returnCases: returnCases,
+                                        isLoading: isLoadingReturnCases,
+                                        onOpenCase: onOpenReturnCase
+                                    )
+                                }
+
+                                // Itemized Manifest Table
+                                VStack(alignment: .leading, spacing: 12) {
+                                    HStack {
+                                        Text(Language.get("POS_Dossier_Items_Section", alter: "العناصر المشتراة"))
+                                            .font(DossierFont.bold(14, relativeTo: .caption))
+                                            .foregroundColor(AdminSurface.secondaryText)
+
+                                        Spacer()
+
+                                        Text(String(format: Language.get("POS_Dossier_ItemsCount", alter: "%d عنصر"), receipt.items.count))
+                                            .font(DossierFont.bold(12, relativeTo: .caption2))
+                                            .foregroundColor(Color(uiColor: .ppPrimary))
+                                            .padding(.horizontal, 9)
+                                            .padding(.vertical, 3)
+                                            .background(Color(uiColor: .ppPrimary).opacity(0.1), in: Capsule())
+                                    }
+
+                                    VStack(spacing: 0) {
+                                        ForEach(0..<receipt.items.count, id: \.self) { idx in
+                                            DossierItemRow(
+                                                item: receipt.items[idx],
+                                                isLast: idx == receipt.items.count - 1
+                                            )
+                                        }
+                                    }
+                                    .padding(16)
+                                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                            .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                                    )
+                                }
+
+                                // Server Audit & Governance Card
+                                DossierAuditCard(
+                                    receipt: receipt,
+                                    onCopyServerID: onCopyServerID
+                                )
+                            }
+                            .padding(.vertical, 16)
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Root Transaction Dossier Container (Sheet Controller)
 
 struct POSTransactionDossierSheet: View {
     let receipt: PPPOSReceipt
@@ -1759,6 +2901,8 @@ struct POSTransactionDossierSheet: View {
     let onCancel: () -> Void
     let onCopied: (String) -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var isPreparingWhatsApp = false
     @State private var receiptShare: POSHistoryReceiptShare?
@@ -1766,51 +2910,149 @@ struct POSTransactionDossierSheet: View {
     @State private var returnCases: [LivePetReturnCase] = []
     @State private var isLoadingReturnCases = false
     @State private var selectedReturnCaseForDetail: LivePetReturnCase?
+    @State private var toastMessage: String? = nil
+
+    private var isPad: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass == .regular
+    }
+
+    private var isCancelled: Bool {
+        let st = receipt.status.lowercased()
+        return st == "cancelled" || st == "voided"
+    }
+
+    private var effectiveRefundedAmount: Double {
+        if receipt.refundedAmount > 0 { return receipt.refundedAmount }
+        let sum = receipt.items.reduce(0.0) { $0 + (Double($1.refundedQuantity) * $1.price) }
+        return sum
+    }
+
+    private var isRefunded: Bool {
+        let st = receipt.status.lowercased()
+        return st == "refunded" || st == "partially_refunded" || effectiveRefundedAmount > 0
+    }
+
+    private var isFullyRefunded: Bool {
+        let st = receipt.status.lowercased()
+        if st == "refunded" { return true }
+        if effectiveRefundedAmount >= receipt.total && receipt.total > 0 { return true }
+        return !receipt.items.isEmpty && receipt.items.allSatisfy { $0.refundedQuantity >= $0.quantity }
+    }
+
+    private var statusKind: DossierStatusKind {
+        if isCancelled {
+            return .cancelled
+        } else if isFullyRefunded {
+            return .fullyRefunded
+        } else if isRefunded {
+            return .partiallyRefunded
+        } else {
+            return .completed
+        }
+    }
 
     var body: some View {
         ZStack {
-            AdminSurface.background.ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                // Header
-                dossierHeader
-
-                Divider().background(AdminSurface.hairline)
-
-                // Scrollable Content
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: AdminSpacing.md) {
-                        // Cancellation or Refund Banner
-                        if isCancelled {
-                            cancellationBanner
-                        } else if isRefunded {
-                            refundBanner
+            if isPad {
+                POSTransactionDossier_iPad(
+                    receipt: receipt,
+                    statusKind: statusKind,
+                    isRefunded: isRefunded,
+                    isFullyRefunded: isFullyRefunded,
+                    isCancelled: isCancelled,
+                    effectiveRefundedAmount: effectiveRefundedAmount,
+                    returnCases: returnCases,
+                    isLoadingReturnCases: isLoadingReturnCases,
+                    isPreparingWhatsApp: isPreparingWhatsApp,
+                    onPrint: {
+                        DossierHaptics.medium()
+                        onPrint()
+                    },
+                    onRefund: {
+                        DossierHaptics.medium()
+                        if let firstReturnCase = returnCases.first {
+                            selectedReturnCaseForDetail = firstReturnCase
+                        } else {
+                            onRefund()
                         }
-
-                        // Associated Live Pet Return Dossier Cards
-                        if !returnCases.isEmpty {
-                            livePetReturnCasesSection
-                        }
-
-                        // Customer Contact Conduit
-                        if !receipt.customerName.isEmpty || !receipt.customerPhone.isEmpty {
-                            customerConduitCard
-                        }
-
-                        // Itemized Products Section
-                        itemizedProductsSection
-
-                        // Financial Breakdown Section
-                        financialBreakdownSection
-
-                        // Operator Metadata Section
-                        metadataSection
+                    },
+                    onCancel: {
+                        DossierHaptics.warning()
+                        onCancel()
+                    },
+                    onSendWhatsApp: sendWhatsAppReceipt,
+                    onCallCustomer: callCustomer,
+                    onCopyServerID: copyServerID,
+                    onOpenReturnCase: { rCase in
+                        DossierHaptics.light()
+                        selectedReturnCaseForDetail = rCase
+                    },
+                    onDismiss: {
+                        DossierHaptics.light()
+                        dismiss()
                     }
-                    .padding(AdminSpacing.screenMargin)
-                }
+                )
+            } else {
+                POSTransactionDossier_iPhone(
+                    receipt: receipt,
+                    statusKind: statusKind,
+                    isRefunded: isRefunded,
+                    isFullyRefunded: isFullyRefunded,
+                    isCancelled: isCancelled,
+                    effectiveRefundedAmount: effectiveRefundedAmount,
+                    returnCases: returnCases,
+                    isLoadingReturnCases: isLoadingReturnCases,
+                    isPreparingWhatsApp: isPreparingWhatsApp,
+                    onPrint: {
+                        DossierHaptics.medium()
+                        onPrint()
+                    },
+                    onRefund: {
+                        DossierHaptics.medium()
+                        if let firstReturnCase = returnCases.first {
+                            selectedReturnCaseForDetail = firstReturnCase
+                        } else {
+                            onRefund()
+                        }
+                    },
+                    onCancel: {
+                        DossierHaptics.warning()
+                        onCancel()
+                    },
+                    onSendWhatsApp: sendWhatsAppReceipt,
+                    onCallCustomer: callCustomer,
+                    onCopyServerID: copyServerID,
+                    onOpenReturnCase: { rCase in
+                        DossierHaptics.light()
+                        selectedReturnCaseForDetail = rCase
+                    },
+                    onDismiss: {
+                        DossierHaptics.light()
+                        dismiss()
+                    }
+                )
+            }
 
-                // Command Action Bar
-                commandActionBar
+            // In-App Toast Notification Banner
+            if let toast = toastMessage {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(Color(uiColor: .systemGreen))
+                        Text(toast)
+                            .font(DossierFont.bold(13, relativeTo: .subheadline))
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.black.opacity(0.85), in: Capsule())
+                    .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                    .padding(.bottom, isPad ? 40 : 90)
+                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                }
+                .zIndex(99)
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
@@ -1851,12 +3093,14 @@ struct POSTransactionDossierSheet: View {
     private func sendWhatsAppReceipt() {
         guard !isPreparingWhatsApp else { return }
         isPreparingWhatsApp = true
+        DossierHaptics.light()
         Task { @MainActor in
             await Task.yield()
             defer { isPreparingWhatsApp = false }
             let completed = POSCompletedReceipt(receipt: receipt)
             let success = POSReceiptWhatsAppSender.sendReceipt(for: completed) { errorMsg in
                 feedbackMessage = errorMsg
+                DossierHaptics.warning()
             }
             if !success {
                 do {
@@ -1864,598 +3108,40 @@ struct POSTransactionDossierSheet: View {
                 } catch {
                     if feedbackMessage == nil {
                         feedbackMessage = Language.get("POS_History_WhatsAppUnavailable", alter: "ثبّت واتساب على هذا الجهاز لمشاركة الإيصال.")
+                        DossierHaptics.warning()
                     }
                 }
+            } else {
+                DossierHaptics.success()
             }
         }
     }
 
-    private var isCancelled: Bool {
-        let st = receipt.status.lowercased()
-        return st == "cancelled" || st == "voided"
-    }
-
-    private var effectiveRefundedAmount: Double {
-        if receipt.refundedAmount > 0 { return receipt.refundedAmount }
-        let sum = receipt.items.reduce(0.0) { $0 + (Double($1.refundedQuantity) * $1.price) }
-        return sum
-    }
-
-    private var isRefunded: Bool {
-        let st = receipt.status.lowercased()
-        return st == "refunded" || st == "partially_refunded" || effectiveRefundedAmount > 0
-    }
-
-    private var isFullyRefunded: Bool {
-        let st = receipt.status.lowercased()
-        if st == "refunded" { return true }
-        if effectiveRefundedAmount >= receipt.total && receipt.total > 0 { return true }
-        return !receipt.items.isEmpty && receipt.items.allSatisfy { $0.refundedQuantity >= $0.quantity }
-    }
-
-    private var dossierHeader: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(Language.get("POS_Dossier_Title", alter: "ملف المعاملة المالية"))
-                    .font(AdminType.headline)
-                    .foregroundColor(AdminSurface.primaryText)
-
-                HStack(spacing: 6) {
-                    Text(verbatim: POSReceiptFormat.receiptID(receipt.receiptID))
-                        .font(.system(size: 13, weight: .bold, design: .monospaced))
-                        .foregroundColor(Color(uiColor: .ppPrimary))
-
-                    if let branch = receipt.branchName ?? BranchContextStore.shared.activeBranch?.localizedName() {
-                        Text("•")
-                            .foregroundColor(AdminSurface.secondaryText)
-                        Text(branch)
-                            .font(AdminType.caption2)
-                            .foregroundColor(AdminSurface.secondaryText)
-                    }
-                }
-            }
-
-            Spacer()
-
-            AdminSquircleCloseButton {
-                dismiss()
-            }
+    private func callCustomer() {
+        let clean = receipt.customerPhone.filter { $0.isNumber || $0 == "+" }
+        guard !clean.isEmpty, let url = URL(string: "tel://\(clean)"), UIApplication.shared.canOpenURL(url) else {
+            feedbackMessage = Language.get("POS_History_CallNoPhone", alter: "لا يتوفر رقم هاتف صحيح للاتصال بهذا العميل.")
+            DossierHaptics.warning()
+            return
         }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.vertical, AdminSpacing.md)
+        DossierHaptics.medium()
+        UIApplication.shared.open(url)
     }
 
-    // MARK: - Cancellation & Refund Banners
-
-    private var cancellationBanner: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "xmark.octagon.fill")
-                .font(.system(size: 20))
-                .foregroundColor(Color(uiColor: .systemRed))
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(Language.get("POS_Status_Cancelled", alter: "معاملة ملغاة ومبطلة"))
-                    .font(AdminType.headline)
-                    .foregroundColor(Color(uiColor: .systemRed))
-
-                if let reason = receipt.cancellationReason, !reason.isEmpty {
-                    Text(verbatim: reason)
-                        .font(AdminType.caption)
-                        .foregroundColor(AdminSurface.primaryText)
-                }
-
-                if let by = receipt.cancelledBy, !by.isEmpty {
-                    Text(verbatim: "بواسطة: \(by)")
-                        .font(AdminType.caption2)
-                        .foregroundColor(AdminSurface.secondaryText)
-                }
-            }
-            Spacer()
+    private func copyServerID() {
+        UIPasteboard.general.string = receipt.receiptID
+        DossierHaptics.success()
+        onCopied(receipt.receiptID)
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+            toastMessage = Language.get("POS_Dossier_CopiedToast", alter: "تم نسخ معرّف العملية بنجاح")
         }
-        .padding(14)
-        .background(Color(uiColor: .systemRed).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color(uiColor: .systemRed).opacity(0.3), lineWidth: 1)
-        )
-    }
-
-    private var refundBanner: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: isFullyRefunded ? "checkmark.seal.fill" : "arrow.uturn.backward.circle.fill")
-                .font(.system(size: 22))
-                .foregroundColor(isFullyRefunded ? Color(uiColor: .systemPurple) : Color(uiColor: .systemOrange))
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(isFullyRefunded ? Language.get("POS_Status_Refunded", alter: "مستردة بالكامل") : Language.get("POS_Status_PartiallyRefunded", alter: "مستردة جزئياً"))
-                    .font(AdminType.headline)
-                    .foregroundColor(isFullyRefunded ? Color(uiColor: .systemPurple) : Color(uiColor: .systemOrange))
-
-                Text(verbatim: "المبلغ المسترد: \(effectiveRefundedAmount.englishDigits(decimals: 2)) \(Language.get("QAR", alter: "ر.ق"))")
-                    .font(AdminType.captionBold)
-                    .foregroundColor(AdminSurface.primaryText)
-
-                if let reason = receipt.refundReason, !reason.isEmpty {
-                    Text(verbatim: "السبب: \(reason)")
-                        .font(AdminType.caption2)
-                        .foregroundColor(AdminSurface.secondaryText)
-                }
-            }
-            Spacer()
-        }
-        .padding(14)
-        .background(
-            (isFullyRefunded ? Color(uiColor: .systemPurple) : Color(uiColor: .systemOrange)).opacity(0.08),
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(
-                    (isFullyRefunded ? Color(uiColor: .systemPurple) : Color(uiColor: .systemOrange)).opacity(0.3),
-                    lineWidth: 1
-                )
-        )
-    }
-
-    // MARK: - Live Pet Return Cases Section
-
-    private var livePetReturnCasesSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(Language.get("LivePet_ReturnDossier_SectionTitle", alter: "ملف استرجاع الحيوانات الأليفة"))
-                .font(AdminType.captionBold)
-                .foregroundColor(AdminSurface.secondaryText)
-
-            ForEach(returnCases) { rCase in
-                VStack(spacing: 12) {
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: "pawprint.circle.fill")
-                            .font(.system(size: 26))
-                            .foregroundColor(Color(uiColor: .ppPrimary))
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack(spacing: 6) {
-                                Text(verbatim: rCase.caseNumber)
-                                    .font(.system(size: 13, weight: .bold, design: .monospaced))
-                                    .foregroundColor(AdminSurface.primaryText)
-
-                                Spacer()
-
-                                Text(rCase.status.localizedTitle)
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(rCase.status.badgeColor)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
-                                    .background(rCase.status.badgeColor.opacity(0.12), in: Capsule())
-                            }
-
-                            if !rCase.units.isEmpty {
-                                let unitNames = rCase.units.map { $0.ringTag.isEmpty ? $0.unitId : $0.ringTag }.joined(separator: " • ")
-                                Text(verbatim: "\(Language.get("LivePet_Units", alter: "الحيوانات")): \(unitNames)")
-                                    .font(AdminType.caption)
-                                    .foregroundColor(AdminSurface.secondaryText)
-                            }
-
-                            if !rCase.reasonNotes.isEmpty {
-                                Text(verbatim: "\(Language.get("Reason", alter: "السبب")): \(rCase.reasonNotes)")
-                                    .font(AdminType.caption2)
-                                    .foregroundColor(AdminSurface.secondaryText)
-                                    .lineLimit(2)
-                            }
-                        }
-                    }
-
-                    Divider().background(AdminSurface.hairline)
-
-                    Button {
-                        selectedReturnCaseForDetail = rCase
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "folder.badge.gearshape.fill")
-                                .font(.system(size: 13, weight: .bold))
-                            Text(Language.get("LivePet_OpenDossierButton", alter: "فتح ملف الاسترجاع والمتابعة"))
-                                .font(AdminType.captionBold)
-                            Spacer()
-                            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
-                                .font(.system(size: 11, weight: .semibold))
-                        }
-                        .foregroundColor(Color(uiColor: .ppPrimary))
-                        .padding(.vertical, 9)
-                        .padding(.horizontal, 12)
-                        .background(Color(uiColor: .ppPrimary).opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(14)
-                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(Color(uiColor: .ppPrimary).opacity(0.3), lineWidth: 1)
-                )
-            }
-        }
-    }
-
-    // MARK: - Customer Conduit Card
-
-    private var customerConduitCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(Language.get("POS_Dossier_Customer_Section", alter: "بيانات العميل"))
-                .font(AdminType.captionBold)
-                .foregroundColor(AdminSurface.secondaryText)
-
-            HStack(spacing: 12) {
-                Image(systemName: "person.circle.fill")
-                    .font(.system(size: 34))
-                    .foregroundColor(Color(uiColor: .ppPrimary))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    if !receipt.customerName.isEmpty {
-                        Text(receipt.customerName)
-                            .font(AdminType.headline)
-                            .foregroundColor(AdminSurface.primaryText)
-                    }
-                    if !receipt.customerPhone.isEmpty {
-                        Text(verbatim: receipt.customerPhone)
-                            .font(AdminType.caption.monospaced())
-                            .foregroundColor(AdminSurface.secondaryText)
-                    }
-                }
-
-                Spacer()
-
-                // Call & WhatsApp Actions
-                if !receipt.customerPhone.isEmpty {
-                    HStack(spacing: 8) {
-                        Button {
-                            let clean = receipt.customerPhone.filter { $0.isNumber || $0 == "+" }
-                            if let url = URL(string: "tel://\(clean)"), UIApplication.shared.canOpenURL(url) {
-                                UIApplication.shared.open(url)
-                            }
-                        } label: {
-                            Image(systemName: "phone.circle.fill")
-                                .font(.system(size: 30))
-                                .foregroundColor(Color(uiColor: .systemGreen))
-                        }
-                        .buttonStyle(.plain)
-
-                        Button(action: sendWhatsAppReceipt) {
-                            ZStack {
-                                Circle()
-                                    .fill(POSReceiptWhatsAppSender.brandColor)
-                                    .frame(width: 30, height: 30)
-                                if isPreparingWhatsApp {
-                                    ProgressView().tint(.white)
-                                        .scaleEffect(0.7)
-                                } else {
-                                    Image("whatsapp")
-                                        .renderingMode(.template)
-                                        .resizable()
-                                        .scaledToFit()
-                                        .frame(width: 17, height: 17)
-                                        .foregroundColor(.white)
-                                }
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(isPreparingWhatsApp)
-                        .accessibilityLabel(Language.get("POS_Action_WhatsAppReceipt", alter: "إرسال الإيصال عبر واتساب"))
-                        .accessibilityHint(Language.get("POS_History_WhatsAppShareHint", alter: "فتح واتساب مع تجهيز الرسالة ونسخ صورة الفاتورة للصقها فوراً وإرسالها."))
-                    }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            withAnimation(.easeOut(duration: 0.25)) {
+                if toastMessage == Language.get("POS_Dossier_CopiedToast", alter: "تم نسخ معرّف العملية بنجاح") {
+                    toastMessage = nil
                 }
             }
         }
-        .padding(14)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
-        )
-    }
-
-    // MARK: - Itemized Products Section
-
-    private var itemizedProductsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(Language.get("POS_Dossier_Items_Section", alter: "العناصر المشتراة"))
-                .font(AdminType.captionBold)
-                .foregroundColor(AdminSurface.secondaryText)
-
-            VStack(spacing: 8) {
-                ForEach(0..<receipt.items.count, id: \.self) { idx in
-                    let item = receipt.items[idx]
-                    HStack(alignment: .top, spacing: 10) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(item.name.isEmpty ? Language.get("POS_Receipt_UnnamedItem", alter: "عنصر") : item.name)
-                                .font(AdminType.body)
-                                .foregroundColor(AdminSurface.primaryText)
-
-                            HStack(spacing: 6) {
-                                Text(verbatim: "\(item.quantity.englishDigits) × \(item.price.englishDigits(decimals: 2)) \(Language.get("QAR", alter: "ر.ق"))")
-                                    .font(AdminType.caption)
-                                    .foregroundColor(AdminSurface.secondaryText)
-
-                                if item.refundedQuantity > 0 {
-                                    Text(verbatim: "(\(item.refundedQuantity.englishDigits) مسترد)")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundColor(Color(uiColor: .systemOrange))
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(Color(uiColor: .systemOrange).opacity(0.1), in: Capsule())
-                                }
-                            }
-
-                            // Unit Ring Tags
-                            if !item.unitRingTags.isEmpty {
-                                HStack(spacing: 4) {
-                                    ForEach(item.unitRingTags, id: \.self) { tag in
-                                        Text(verbatim: "#\(tag)")
-                                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                                            .foregroundColor(AdminSurface.secondaryText)
-                                            .padding(.horizontal, 5)
-                                            .padding(.vertical, 2)
-                                            .background(Color(uiColor: .ppBackgroundSecondary), in: RoundedRectangle(cornerRadius: 4))
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer()
-
-                        let lineTotal = item.lineTotal > 0 ? item.lineTotal : (item.price * Double(item.quantity))
-                        Text(verbatim: lineTotal.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
-                            .font(AdminType.headline)
-                            .foregroundColor(AdminSurface.primaryText)
-                            .monospacedDigit()
-                    }
-                    .padding(.vertical, 4)
-
-                    if idx < receipt.items.count - 1 {
-                        Divider().background(AdminSurface.hairline)
-                    }
-                }
-            }
-            .padding(14)
-            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
-            )
-        }
-    }
-
-    // MARK: - Financial Breakdown Section
-
-    private var financialBreakdownSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(Language.get("POS_Dossier_Financial_Section", alter: "التفاصيل المالية"))
-                .font(AdminType.captionBold)
-                .foregroundColor(AdminSurface.secondaryText)
-
-            VStack(spacing: 10) {
-                summaryRow(
-                    label: Language.get("POS_Subtotal", alter: "المجموع الفرعي"),
-                    value: (receipt.subtotal > 0 ? receipt.subtotal : receipt.total + receipt.discount).englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق")
-                )
-
-                if receipt.discount > 0 {
-                    summaryRow(
-                        label: Language.get("POS_Discount", alter: "الخصم"),
-                        value: "−" + receipt.discount.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"),
-                        valueColor: Color(uiColor: .systemGreen)
-                    )
-                }
-
-                if receipt.paymentMethod.lowercased().contains("cash") {
-                    if receipt.cashReceived > 0 {
-                        summaryRow(
-                            label: Language.get("POS_CashReceived", alter: "المستلم نقداً"),
-                            value: receipt.cashReceived.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق")
-                        )
-                    }
-                    if receipt.changeDue > 0 {
-                        summaryRow(
-                            label: Language.get("POS_ChangeDue", alter: "المتبقي للعميل"),
-                            value: receipt.changeDue.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"),
-                            valueColor: Color(uiColor: .systemBlue)
-                        )
-                    }
-                }
-
-                Divider().background(AdminSurface.hairline)
-
-                // Grand Total
-                HStack {
-                    Text(Language.get("POS_GrandTotal", alter: "الإجمالي النهائي"))
-                        .font(AdminType.headline)
-                        .foregroundColor(AdminSurface.primaryText)
-
-                    Spacer()
-
-                    Text(verbatim: receipt.total.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
-                        .font(PPBrandFont.bold(size: 22, relativeTo: .title2))
-                        .foregroundColor(AdminSurface.primaryText)
-                        .monospacedDigit()
-                }
-
-                if effectiveRefundedAmount > 0 {
-                    HStack {
-                        Text(Language.get("POS_Telemetry_Refunds", alter: "إجمالي المسترد"))
-                            .font(AdminType.captionBold)
-                            .foregroundColor(Color(uiColor: .systemOrange))
-
-                        Spacer()
-
-                        Text(verbatim: "−" + effectiveRefundedAmount.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
-                            .font(AdminType.headline)
-                            .foregroundColor(Color(uiColor: .systemOrange))
-                            .monospacedDigit()
-                    }
-                }
-            }
-            .padding(14)
-            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
-            )
-        }
-    }
-
-    private func summaryRow(label: String, value: String, valueColor: Color = AdminSurface.primaryText) -> some View {
-        HStack {
-            Text(label)
-                .font(AdminType.body)
-                .foregroundColor(AdminSurface.secondaryText)
-            Spacer()
-            Text(verbatim: value)
-                .font(AdminType.body)
-                .foregroundColor(valueColor)
-                .monospacedDigit()
-        }
-    }
-
-    // MARK: - Metadata Section
-
-    private var metadataSection: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Text(Language.get("POS_Dossier_Date", alter: "وقت المعاملة"))
-                    .font(AdminType.caption)
-                    .foregroundColor(AdminSurface.secondaryText)
-                Spacer()
-                if let date = receipt.createdAt {
-                    Text(formattedFullDate(date))
-                        .font(AdminType.captionBold)
-                        .foregroundColor(AdminSurface.primaryText)
-                }
-            }
-
-            if let cashier = receipt.cashierName, !cashier.isEmpty {
-                HStack {
-                    Text("كاشير العملية")
-                        .font(AdminType.caption)
-                        .foregroundColor(AdminSurface.secondaryText)
-                    Spacer()
-                    Text(cashier)
-                        .font(AdminType.captionBold)
-                        .foregroundColor(AdminSurface.primaryText)
-                }
-            }
-
-            HStack {
-                Text("معرّف المعاملة الخادمي")
-                    .font(AdminType.caption)
-                    .foregroundColor(AdminSurface.secondaryText)
-                Spacer()
-                Button {
-                    UIPasteboard.general.string = receipt.receiptID
-                    onCopied(receipt.receiptID)
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(verbatim: String(receipt.receiptID.prefix(16)) + "...")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(Color(uiColor: .ppPrimary))
-                        Image(systemName: "doc.on.doc")
-                            .font(.system(size: 10))
-                            .foregroundColor(AdminSurface.secondaryText)
-                    }
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(14)
-        .background(Color(uiColor: .ppBackgroundSecondary).opacity(0.5), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-
-    // MARK: - Command Action Bar
-
-    private var commandActionBar: some View {
-        VStack(spacing: 10) {
-            Divider().background(AdminSurface.hairline)
-
-            HStack(spacing: 10) {
-                // Thermal Receipt Button
-                Button(action: onPrint) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "printer.fill")
-                            .font(.system(size: 14, weight: .bold))
-                        Text(isRefunded ? Language.get("POS_Action_PrintRefundReceipt", alter: "طباعة إيصال الاسترداد") : Language.get("POS_Action_PrintReceipt", alter: "طباعة الإيصال"))
-                            .font(AdminType.captionBold)
-                    }
-                    .foregroundColor(AdminSurface.primaryText)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 48)
-                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(Color(uiColor: .ppSurfaceBorder), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-
-                // Refund / Live Pet Return Button
-                if let firstReturnCase = returnCases.first {
-                    Button {
-                        selectedReturnCaseForDetail = firstReturnCase
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "folder.badge.gearshape.fill")
-                                .font(.system(size: 14, weight: .bold))
-                            Text(Language.get("LivePet_Action_ViewReturnCase", alter: "ملف الاسترجاع"))
-                                .font(AdminType.captionBold)
-                        }
-                        .foregroundColor(Color(uiColor: .ppPrimary))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                        .background(Color(uiColor: .ppPrimary).opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    Button(action: onRefund) {
-                        HStack(spacing: 6) {
-                            let routesToLivePetReturn = receipt.hasIndividuallyTrackedLivePets && !receipt.hasGenericMerchandise
-                            Image(systemName: routesToLivePetReturn ? "pawprint.fill" : "arrow.uturn.backward.circle.fill")
-                                .font(.system(size: 14, weight: .bold))
-                            Text(routesToLivePetReturn ? Language.get("LivePet_Action_Return", alter: "استرجاع الحيوان") : Language.get("POS_Action_Refund", alter: "استرداد"))
-                                .font(AdminType.captionBold)
-                        }
-                        .foregroundColor(isCancelled || (isFullyRefunded && !(receipt.hasIndividuallyTrackedLivePets && !receipt.hasGenericMerchandise)) ? AdminSurface.secondaryText.opacity(0.5) : Color(uiColor: .systemOrange))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                        .background(Color(uiColor: .systemOrange).opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isCancelled || (isFullyRefunded && !(receipt.hasIndividuallyTrackedLivePets && !receipt.hasGenericMerchandise)))
-                }
-
-                // Cancel / Void Button
-                Button(action: onCancel) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 14, weight: .bold))
-                        Text(Language.get("POS_Action_Cancel", alter: "إلغاء"))
-                            .font(AdminType.captionBold)
-                    }
-                    .foregroundColor(isCancelled || isRefunded ? AdminSurface.secondaryText.opacity(0.5) : Color(uiColor: .systemRed))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 48)
-                    .background(Color(uiColor: .systemRed).opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .disabled(isCancelled || isRefunded)
-            }
-            .padding(.horizontal, AdminSpacing.screenMargin)
-            .padding(.bottom, 14)
-        }
-        .background(AdminSurface.surface)
-    }
-
-    private func formattedFullDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .medium
-        formatter.locale = Locale(identifier: Language.isRTL() ? "ar_QA" : "en_US")
-        return formatter.string(from: date)
     }
 }
 

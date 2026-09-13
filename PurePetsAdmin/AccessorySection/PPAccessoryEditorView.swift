@@ -406,7 +406,13 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     let onDismiss: () -> Void
 
     // MARK: - First-Principles Navigation & Twin State
-    @Published var activeStage: PPEditorStage = .identity
+    @Published var activeStage: PPEditorStage = .identity {
+        didSet {
+            if activeStage == .pricing {
+                populateDefaultLivePetPriceIfNeeded()
+            }
+        }
+    }
     @Published var digitalTwinMode: PPDigitalTwinMode = .marketplace
 
     // MARK: - Form State
@@ -533,6 +539,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             syncBasePriceToSingleGroup()
         }
     }
+    var hasManuallyEditedStandardPrice: Bool = false
     @Published var wholesaleEnabled: Bool = false {
         didSet {
             updateUnsavedChanges()
@@ -585,6 +592,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     
     // Publishing / Draft
     @Published var isDraft: Bool = false { didSet { updateUnsavedChanges() } }
+    @Published var showInAppMarket: Bool = true { didSet { updateUnsavedChanges() } }
     
     // Images
     @Published var existingImageURLs: [String] = [] { didSet { updateUnsavedChanges() } }
@@ -715,6 +723,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             liveInventoryMode = PPLivePetInventoryMode(rawValue: acc.inventoryMode ?? "") ?? .quantity
             if liveInventoryMode == .individual, let standardPrice = acc.standardSellingPrice, standardPrice.doubleValue > 0 {
                 priceText = String(format: "%g", standardPrice.doubleValue)
+                hasManuallyEditedStandardPrice = true
             }
         }
         condition = (acc.condition == .used) ? .used : .new
@@ -732,6 +741,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         selectedStoreName = (acc.storeName ?? "").isEmpty == false ? acc.storeName! : Language.get("Main Store", alter: "المتجر الرئيسي")
         
         isDraft = !acc.active
+        showInAppMarket = acc.showInAppMarket
         existingImageURLs = acc.imageURLsArray ?? []
         existingImageMetadata = alignedImageMetadata(
             urls: existingImageURLs,
@@ -1954,6 +1964,39 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         }
     }
 
+    /// Pre-populates the required standard price for live pet intake from the animal's selling price
+    /// if the standard price is currently empty or zero, while allowing the user to edit it.
+    func populateDefaultLivePetPriceIfNeeded() {
+        guard isLivePet else { return }
+        let currentTrimmed = priceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if hasManuallyEditedStandardPrice {
+            if !currentTrimmed.isEmpty, let currentVal = decimalValue(currentTrimmed), currentVal > 0 {
+                return
+            }
+        }
+
+        if isIndividualLivePet {
+            if isEditingLivePet {
+                if let standardPrice = editingAccessory?.standardSellingPrice, standardPrice.doubleValue > 0 {
+                    priceText = canonicalDecimalText(standardPrice.doubleValue, maximumFractionDigits: 2)
+                    return
+                } else if let accPrice = editingAccessory?.price, accPrice.doubleValue > 0 {
+                    priceText = canonicalDecimalText(accPrice.doubleValue, maximumFractionDigits: 2)
+                    return
+                }
+            }
+
+            let validPrices = livePetUnits.compactMap { unit -> Double? in
+                guard let val = decimalValue(unit.sellingPriceText), val > 0 else { return nil }
+                return val
+            }
+            if let defaultVal = validPrices.first {
+                let resolved = validPrices.min() ?? defaultVal
+                priceText = canonicalDecimalText(resolved, maximumFractionDigits: 2)
+            }
+        }
+    }
+
     private func decimalValue(_ text: String) -> Double? {
         let clean = text.normalizedEnglishDigits.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty, let value = Double(clean), value.isFinite else { return nil }
@@ -2602,6 +2645,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         
         accessory.expiryDate = (isFood && hasExpiryDate) ? expiryDate : nil
         accessory.active = !isDraft
+        accessory.showInAppMarket = showInAppMarket
         
         if accessory.createdAt == nil {
             accessory.createdAt = Date()
@@ -3008,6 +3052,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         }
         original.imageURLsArray = retainedURLs
         original.active = !isDraft
+        original.showInAppMarket = showInAppMarket
         original.normalizeInventoryState()
     }
 
@@ -3079,7 +3124,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             "category": "Live Pets",
             "imageURLsArray": resolvedImageURLs,
             "active": accessory.active,
-            "showInAppMarket": !isDraft,
+            "showInAppMarket": showInAppMarket,
             "isNew": true,
         ]
         if liveInventoryMode == .quantity {
@@ -3143,7 +3188,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 "imageURLsArray": resolvedImageURLs,
                 "isNew": true,
                 "hasOffer": liveInventoryMode == .individual ? false : accessory.hasOffer,
-                "showInAppMarket": !isDraft,
+                "showInAppMarket": showInAppMarket,
                 "product_type": "live",
                 "category": "Live Pets",
                 "inventoryMode": liveInventoryMode.rawValue,
@@ -8518,6 +8563,9 @@ private struct PPLivePetIntakeJourney: View {
             if expandedUnitID == nil {
                 expandedUnitID = viewModel.livePetUnits.first?.id
             }
+            if viewModel.activeStage == .pricing {
+                viewModel.populateDefaultLivePetPriceIfNeeded()
+            }
         }
         .onChange(of: viewModel.isSubmitting) { submitting in
             guard submitting else { return }
@@ -11029,6 +11077,16 @@ private struct PPLivePetIntakeJourney: View {
 
     // MARK: Pricing
 
+    private var standardPriceBinding: Binding<String> {
+        Binding(
+            get: { viewModel.priceText },
+            set: { newValue in
+                viewModel.hasManuallyEditedStandardPrice = true
+                viewModel.priceText = newValue
+            }
+        )
+    }
+
     private var pricingScene: some View {
         PPLivePetDecisionSurface(
             eyebrow: tr("LivePetIntake_PricingEyebrow", "قيمة واضحة"),
@@ -11048,9 +11106,9 @@ private struct PPLivePetIntakeJourney: View {
                             : tr("LivePetIntake_BasePrice", "السعر الأساسي (ر.ق)"),
                         required: true
                     )
-                    TextField("0.00", text: $viewModel.priceText)
+                    TextField("0.00", text: standardPriceBinding)
                         .font(PPBrandFont.bold(size: 24))
-                        .englishNumericInput(text: $viewModel.priceText, allowsDecimal: true)
+                        .englishNumericInput(text: standardPriceBinding, allowsDecimal: true)
                         .focused($focusedField, equals: .standardPrice)
                         .multilineTextAlignment(.leading)
                         .padding(.horizontal, AdminSpacing.md)
@@ -11104,6 +11162,9 @@ private struct PPLivePetIntakeJourney: View {
                     marginSummary(telemetry)
                 }
             }
+        }
+        .onAppear {
+            viewModel.populateDefaultLivePetPriceIfNeeded()
         }
     }
 
@@ -11546,6 +11607,22 @@ private struct PPLivePetIntakeJourney: View {
                 subtitle: tr("LivePetIntake_SaveDraftSub", "يُنشأ المخزون والتدقيق، بينما يبقى الصنف غير ظاهر للعملاء."),
                 symbol: "eye.slash.fill"
             )
+
+            Toggle(isOn: $viewModel.showInAppMarket) {
+                VStack(alignment: .leading, spacing: AdminSpacing.xxs) {
+                    Text(tr("CatalogIntake_AppMarketToggle", "العرض في متجر التطبيق"))
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                    Text(viewModel.showInAppMarket
+                        ? tr("CatalogIntake_AppMarketHintOn", "سيظهر السجل للعملاء في تطبيق Pure Pets فور الحفظ.")
+                        : tr("CatalogIntake_AppMarketHintOff", "السجل مخفي عن متجر التطبيق ومتاح للكاشير والعمليات الداخلية فقط."))
+                        .font(AdminType.caption)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+            }
+            .tint(AdminSurface.primary)
+            .padding(AdminSpacing.md)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
         }
     }
 
@@ -11634,6 +11711,14 @@ private struct PPLivePetIntakeJourney: View {
                 title: tr("LivePetIntake_ReviewBranch", "الفرع والإتاحة"),
                 value: viewModel.selectedStoreName,
                 complete: validationMessage(for: .governance) == nil,
+                stage: .governance
+            )
+            readinessRow(
+                title: tr("CatalogIntake_ReviewAppMarket", "متجر التطبيق"),
+                value: viewModel.showInAppMarket
+                    ? tr("CatalogIntake_MarketplaceOn", "معروض في تطبيق المتجر")
+                    : tr("CatalogIntake_MarketplaceOff", "مخفي (كاشير فقط)"),
+                complete: true,
                 stage: .governance
             )
         }
@@ -12031,6 +12116,9 @@ private struct PPLivePetIntakeJourney: View {
             stageMessage = nil
         }
         UISelectionFeedbackGenerator().selectionChanged()
+        if stage == .pricing {
+            viewModel.populateDefaultLivePetPriceIfNeeded()
+        }
         if accessibilityReduceMotion {
             viewModel.activeStage = stage
         } else {
@@ -16910,6 +16998,22 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 .padding(AdminSpacing.md)
                 .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
 
+                Toggle(isOn: $viewModel.showInAppMarket) {
+                    VStack(alignment: .leading, spacing: AdminSpacing.xxs) {
+                        Text(tr("CatalogIntake_AppMarketToggle", "العرض في متجر التطبيق"))
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                        Text(viewModel.showInAppMarket
+                            ? tr("CatalogIntake_AppMarketHintOn", "سيظهر الصنف للعملاء في تطبيق Pure Pets فور الحفظ.")
+                            : tr("CatalogIntake_AppMarketHintOff", "الصنف مخفي عن متجر التطبيق وسيكون متاحاً داخلياً للكاشير فقط."))
+                            .font(AdminType.caption)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                }
+                .tint(AdminSurface.primary)
+                .padding(AdminSpacing.md)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+
                 VStack(alignment: .leading, spacing: AdminSpacing.md) {
                     Text(tr("CatalogIntake_ReviewTitle", "ملخص قبل الحفظ"))
                         .font(AdminType.headline)
@@ -16982,6 +17086,13 @@ private struct PPAccessoryFoodIntakeJourney: View {
                             value: viewModel.expiryDate.formatted(date: .abbreviated, time: .omitted).normalizedEnglishDigits
                         )
                     }
+                    reviewRow(
+                        symbol: "storefront.fill",
+                        title: tr("CatalogIntake_ReviewAppMarket", "متجر التطبيق"),
+                        value: viewModel.showInAppMarket
+                            ? tr("CatalogIntake_MarketplaceOn", "معروض في تطبيق المتجر")
+                            : tr("CatalogIntake_MarketplaceOff", "مخفي (كاشير فقط)")
+                    )
                 }
                 .padding(AdminSpacing.md)
                 .background(AdminSurface.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))

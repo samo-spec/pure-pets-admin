@@ -218,6 +218,34 @@ static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<N
 }
 @end
 
+static NSDate * _Nullable PPAccountingParseDate(id val) {
+    if ([val isKindOfClass:FIRTimestamp.class]) {
+        return [(FIRTimestamp *)val dateValue];
+    }
+    if ([val isKindOfClass:NSDate.class]) {
+        return (NSDate *)val;
+    }
+    if ([val isKindOfClass:NSString.class] && [(NSString *)val length] > 0) {
+        static NSISO8601DateFormatter *formatter;
+        static dispatch_once_t onceToken;
+        dispatch_once(&onceToken, ^{
+            formatter = [[NSISO8601DateFormatter alloc] init];
+            formatter.formatOptions = NSISO8601DateFormatWithInternetDateTime | NSISO8601DateFormatWithFractionalSeconds;
+        });
+        NSDate *d = [formatter dateFromString:(NSString *)val];
+        if (!d) {
+            static NSISO8601DateFormatter *simple;
+            static dispatch_once_t onceToken2;
+            dispatch_once(&onceToken2, ^{
+                simple = [[NSISO8601DateFormatter alloc] init];
+            });
+            d = [simple dateFromString:(NSString *)val];
+        }
+        return d;
+    }
+    return nil;
+}
+
 @implementation PPAccountingDocument
 - (instancetype)initWithDictionary:(NSDictionary *)dict {
     self = [super init];
@@ -237,6 +265,15 @@ static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<N
         _sourceDocumentId = [dict[@"sourceDocumentId"] isKindOfClass:NSString.class] ? dict[@"sourceDocumentId"] : nil;
         _isLegacy = [dict[@"legacy"] boolValue];
         _canonicalLinked = [dict[@"canonicalLinked"] boolValue];
+
+        NSDictionary *cp = [dict[@"counterparty"] isKindOfClass:NSDictionary.class] ? dict[@"counterparty"] : nil;
+        _counterpartyName = PPSafeString(cp[@"name"]);
+        _counterpartyPhone = PPSafeString(cp[@"phone"]);
+        _paymentMethod = PPSafeString(dict[@"paymentMethod"]);
+        _referenceNumber = PPSafeString(dict[@"referenceNumber"]);
+        _notes = PPSafeString(dict[@"notes"]);
+        _createdBy = PPSafeString(dict[@"createdBy"]);
+        _createdAt = PPAccountingParseDate(dict[@"createdAt"]) ?: PPAccountingParseDate(dict[@"accountingDate"]);
     }
     return self;
 }
@@ -734,6 +771,139 @@ static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<N
     NSDictionary *payload = @{
         @"documentId": documentID,
         @"reason": @"Voided by authorized Admin operator",
+        @"branchId": branchID,
+        @"idempotencyKey": NSUUID.UUID.UUIDString,
+    };
+    FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"voidAccountingDocument"];
+    __weak typeof(self) weakSelf = self;
+    [callable callWithObject:payload completion:^(__unused FIRHTTPSCallableResult *result, NSError *error) {
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!error && self && [PPAccountingSelectedBranchID() isEqualToString:branchID]) {
+            @synchronized (self.workspacesByFilter) {
+                [self.workspacesByFilter removeAllObjects];
+            }
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [[NSNotificationCenter defaultCenter] postNotificationName:@"PPAccountingDataDidChangeNotification" object:nil];
+            });
+            [self fetchAccountingWorkspaceWithFilter:self.currentFilterKey ?: @"this_month" completion:nil];
+        }
+        if (completion) completion(error);
+    }];
+}
+
+- (void)createVoucherWithKind:(NSString *)kind
+                       amount:(double)amount
+                   categoryId:(NSString *)categoryId
+                  description:(NSString *)desc
+             counterpartyName:(nullable NSString *)counterpartyName
+            counterpartyPhone:(nullable NSString *)counterpartyPhone
+                paymentMethod:(nullable NSString *)paymentMethod
+              referenceNumber:(nullable NSString *)referenceNumber
+                        notes:(nullable NSString *)notes
+                   completion:(void(^ _Nullable)(NSError * _Nullable error))completion {
+    NSString *branchID = PPAccountingSelectedBranchID();
+    if (branchID.length == 0) {
+        PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+        branchID = staff.defaultBranchID ?: @"";
+    }
+    if (branchID.length == 0) {
+        PPBranchModel *first = [PPBranchContextManager sharedManager].availableBranches.firstObject;
+        branchID = first.branchID ?: @"";
+    }
+    if (branchID.length == 0) {
+        if (completion) completion(PPAccountingBranchRequiredError());
+        return;
+    }
+
+    NSString *cleanKind = [kind.lowercaseString stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (![cleanKind isEqualToString:@"income"] && ![cleanKind isEqualToString:@"expense"]) {
+        cleanKind = @"expense";
+    }
+
+    NSDictionary<NSString *, NSString *> *categoryMap = @{
+        @"salary": @"salaries", @"salaries": @"salaries",
+        @"rent": @"rent",
+        @"supplies": @"office_expenses", @"office_expenses": @"office_expenses",
+        @"utilities": @"utilities",
+        @"marketing": @"marketing",
+        @"logistics": @"transportation", @"transportation": @"transportation",
+        @"medical": @"other",
+        @"maintenance": @"maintenance",
+        @"inventory": @"equipment", @"equipment": @"equipment",
+        @"sales_service": @"sales", @"sales": @"sales",
+        @"customer_deposit": @"other",
+        @"partner_settlement": @"other",
+        @"vendor_rebate": @"other",
+        @"other_income": @"other",
+        @"other": @"other"
+    };
+
+    NSString *normalizedCategory = [categoryId.lowercaseString stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *finalCategoryID = categoryMap[normalizedCategory] ?: @"other";
+
+    NSMutableDictionary *counterparty = [NSMutableDictionary dictionary];
+    if (counterpartyName.length) counterparty[@"name"] = counterpartyName;
+    if (counterpartyPhone.length) counterparty[@"phone"] = counterpartyPhone;
+    counterparty[@"type"] = [cleanKind isEqualToString:@"income"] ? @"customer" : @"vendor";
+
+    NSMutableDictionary *payload = [NSMutableDictionary dictionaryWithDictionary:@{
+        @"kind": cleanKind,
+        @"amount": @(amount),
+        @"currency": @"QAR",
+        @"status": @"paid",
+        @"categoryId": finalCategoryID,
+        @"description": desc ?: @"",
+        @"branchId": branchID,
+        @"idempotencyKey": NSUUID.UUID.UUIDString,
+    }];
+    if (counterparty.count) payload[@"counterparty"] = counterparty;
+    if (paymentMethod.length) payload[@"paymentMethod"] = paymentMethod;
+    if (referenceNumber.length) payload[@"referenceNumber"] = referenceNumber;
+    if (notes.length) payload[@"notes"] = notes;
+
+    FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"createAccountingDocument"];
+    __weak typeof(self) weakSelf = self;
+    [callable callWithObject:payload completion:^(__unused FIRHTTPSCallableResult *result, NSError *error) {
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!error && self && [PPAccountingSelectedBranchID() isEqualToString:branchID]) {
+            @synchronized (self.workspacesByFilter) {
+                [self.workspacesByFilter removeAllObjects];
+            }
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [[NSNotificationCenter defaultCenter] postNotificationName:@"PPAccountingDataDidChangeNotification" object:nil];
+            });
+            [self fetchAccountingWorkspaceWithFilter:self.currentFilterKey ?: @"this_month" completion:nil];
+        }
+        if (completion) completion(error);
+    }];
+}
+
+- (void)voidVoucherWithDocumentID:(NSString *)documentID
+                           reason:(nullable NSString *)reason
+                       completion:(void(^ _Nullable)(NSError * _Nullable error))completion {
+    NSString *branchID = PPAccountingSelectedBranchID();
+    if (branchID.length == 0) {
+        PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+        branchID = staff.defaultBranchID ?: @"";
+    }
+    if (branchID.length == 0) {
+        PPBranchModel *first = [PPBranchContextManager sharedManager].availableBranches.firstObject;
+        branchID = first.branchID ?: @"";
+    }
+    if (branchID.length == 0) {
+        if (completion) completion(PPAccountingBranchRequiredError());
+        return;
+    }
+
+    NSString *cleanDocID = [documentID stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (cleanDocID.length == 0) {
+        if (completion) completion([NSError errorWithDomain:PPAccountingOrderScopeErrorDomain code:400 userInfo:@{NSLocalizedDescriptionKey: @"Invalid document ID"}]);
+        return;
+    }
+
+    NSDictionary *payload = @{
+        @"documentId": cleanDocID,
+        @"reason": reason.length ? reason : @"Voided by authorized Admin operator",
         @"branchId": branchID,
         @"idempotencyKey": NSUUID.UUID.UUIDString,
     };

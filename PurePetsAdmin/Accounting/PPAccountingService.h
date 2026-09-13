@@ -56,6 +56,13 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) NSString *descriptionText;
 @property (nonatomic, copy, nullable) NSString *sourceType;
 @property (nonatomic, copy, nullable) NSString *sourceDocumentId;
+@property (nonatomic, copy, nullable) NSString *counterpartyName;
+@property (nonatomic, copy, nullable) NSString *counterpartyPhone;
+@property (nonatomic, copy, nullable) NSString *paymentMethod;
+@property (nonatomic, copy, nullable) NSString *referenceNumber;
+@property (nonatomic, copy, nullable) NSString *notes;
+@property (nonatomic, copy, nullable) NSString *createdBy;
+@property (nonatomic, strong, nullable) NSDate *createdAt;
 @property (nonatomic, assign) BOOL isLegacy;
 @property (nonatomic, assign) BOOL canonicalLinked;
 - (instancetype)initWithDictionary:(NSDictionary *)dict;
@@ -103,6 +110,21 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)addExpense:(double)amount category:(NSString *)category description:(NSString *)desc completion:(nullable void(^)(NSError * _Nullable error))completion;
 - (void)deleteExpense:(NSString *)expenseID completion:(nullable void(^)(NSError * _Nullable error))completion;
+
+- (void)createVoucherWithKind:(NSString *)kind
+                       amount:(double)amount
+                   categoryId:(NSString *)categoryId
+                  description:(NSString *)desc
+             counterpartyName:(nullable NSString *)counterpartyName
+            counterpartyPhone:(nullable NSString *)counterpartyPhone
+                paymentMethod:(nullable NSString *)paymentMethod
+              referenceNumber:(nullable NSString *)referenceNumber
+                        notes:(nullable NSString *)notes
+                   completion:(nullable void(^)(NSError * _Nullable error))completion;
+
+- (void)voidVoucherWithDocumentID:(NSString *)documentID
+                           reason:(nullable NSString *)reason
+                       completion:(nullable void(^)(NSError * _Nullable error))completion;
 @end
 
 NS_ASSUME_NONNULL_END

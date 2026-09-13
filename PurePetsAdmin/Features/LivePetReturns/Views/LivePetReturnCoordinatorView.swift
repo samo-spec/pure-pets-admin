@@ -125,10 +125,19 @@ public struct LivePetReturnCoordinatorView: View {
 
     private var wizardHeader: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(Language.get("LivePet_Return_CoordinatorTitle", alter: "استرجاع حيوان أليف (حجل محدد)"))
-                    .font(AdminType.headline)
-                    .foregroundColor(AdminSurface.primaryText)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(Language.get("LivePet_Return_CoordinatorTitle", alter: "استرجاع حيوان أليف (حجل محدد)"))
+                        .font(AdminType.headline)
+                        .foregroundColor(AdminSurface.primaryText)
+
+                    Text(Language.get("LivePet_HeaderBadge_LiveUnits", alter: "حيوانات محجلة"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundColor(Color(red: 0.05, green: 0.65, blue: 0.52))
+                        .padding(.horizontal, 6.5)
+                        .padding(.vertical, 2.5)
+                        .background(Color(red: 0.05, green: 0.65, blue: 0.52).opacity(0.12), in: Capsule())
+                }
 
                 Text(verbatim: "\(Language.get("POS_TransactionID", alter: "فاتورة")): #\(receipt.receiptID)")
                     .font(AdminType.caption)
@@ -169,14 +178,17 @@ public struct LivePetReturnCoordinatorView: View {
                     .disabled(isSubmitting)
                 }
 
-                Button(action: handlePrimaryAction) {
+                Button(action: {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    handlePrimaryAction()
+                }) {
                     HStack(spacing: 8) {
                         if isSubmitting {
                             ProgressView()
                                 .tint(.white)
                         } else {
                             Image(systemName: primaryActionIcon)
-                                .font(.system(size: 16, weight: .bold))
+                                .font(.system(size: 15, weight: .bold))
                         }
 
                         Text(primaryActionTitle)
@@ -186,9 +198,10 @@ public struct LivePetReturnCoordinatorView: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 50)
                     .background(
-                        canProceedWithPrimary ? AdminSurface.primary : Color.gray.opacity(0.4),
+                        canProceedWithPrimary ? Color(red: 0.05, green: 0.65, blue: 0.52) : Color.gray.opacity(0.4),
                         in: RoundedRectangle(cornerRadius: 14, style: .continuous)
                     )
+                    .shadow(color: canProceedWithPrimary ? Color(red: 0.05, green: 0.65, blue: 0.52).opacity(0.24) : Color.clear, radius: 6, y: 2)
                 }
                 .buttonStyle(.plain)
                 .disabled(!canProceedWithPrimary || isSubmitting)
@@ -211,11 +224,17 @@ public struct LivePetReturnCoordinatorView: View {
         switch currentStep {
         case .selectUnits:
             let count = viewModel.selectedUnitIds.count
+            if count > 0 {
+                let currency = viewModel.receipt.currency
+                let scale = LivePetMoney.minorUnitScale(for: currency)
+                let amountStr = viewModel.maximumRefundAmountMajor.formatted(.number.precision(.fractionLength(scale))) + " " + (currency == "QAR" ? (Language.isRTL() ? "ر.ق" : "QAR") : currency)
+                return String(format: Language.get("LivePet_FloatingCTAFormat", alter: "متابعة الاستلام (%d حيوان) • %@"), count, amountStr)
+            }
             return String(format: Language.get("LivePet_NextCustodyIntake", alter: "متابعة الاستلام (%d حيوان)"), count)
         case .receiveAndResolve:
             let currency = viewModel.receipt.currency
             let scale = LivePetMoney.minorUnitScale(for: currency)
-            let amountStr = viewModel.calculatedRefundAmountMajor.formatted(.number.precision(.fractionLength(scale))) + " " + currency
+            let amountStr = viewModel.calculatedRefundAmountMajor.formatted(.number.precision(.fractionLength(scale))) + " " + (currency == "QAR" ? (Language.isRTL() ? "ر.ق" : "QAR") : currency)
             return String(format: Language.get("LivePet_ConfirmReturnAction", alter: "تأكيد الاسترجاع (%@)"), amountStr)
         case .confirmed:
             return Language.get("Done", alter: "تم")

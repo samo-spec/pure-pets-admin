@@ -269,7 +269,20 @@ public struct QuarantineStudioSheet: View {
                 VStack(spacing: 0) {
                     headerBar
 
-                    if isPad {
+                    if item.isLivePet {
+                        LivePetVeterinaryQuarantineDeckView(
+                            item: item,
+                            branchId: resolvedBranchId,
+                            branchRecord: branchRecord,
+                            availableQty: availableQty,
+                            quarantineQty: quarantineQty,
+                            onDismiss: { dismiss() },
+                            onResolved: {
+                                onResolved?()
+                                dismiss()
+                            }
+                        )
+                    } else if isPad {
                         iPadInspectionCockpitView(
                             item: item,
                             branchRecord: branchRecord,
@@ -343,7 +356,7 @@ public struct QuarantineStudioSheet: View {
                 normalizeInitialSelection()
             }
             .onChange(of: branchRecord) { _ in
-                normalizeInitialSelection()
+                normalizeInitialSelection(force: false)
             }
             .sheet(isPresented: $showingKeypadModal) {
                 QuarantinePrecisionKeypadModal(
@@ -365,7 +378,7 @@ public struct QuarantineStudioSheet: View {
     private var headerBar: some View {
         ZStack {
             // Centered Screen Title with generous horizontal clearance
-            Text(Language.get("Quarantine_Studio_Title", alter: "استوديو الفحص والتصرف"))
+            Text(item.isLivePet ? Language.get("LivePet_Quarantine_Studio_Title", alter: "استوديو الحجر البيطري والعزل الطبي") : Language.get("Quarantine_Studio_Title", alter: "استوديو الفحص والتصرف"))
                 .font(AdminType.headlineBold)
                 .foregroundColor(AdminSurface.primaryText)
                 .lineLimit(1)
@@ -1845,3 +1858,995 @@ private struct QuarantinePrecisionKeypadModal: View {
         .buttonStyle(.plain)
     }
 }
+
+// MARK: - 🐾 Live Pet Veterinary Quarantine & Clinical Disposition Deck
+
+private struct LivePetVeterinaryQuarantineDeckView: View {
+    let item: PetAccessory
+    let branchId: String
+    let branchRecord: PPBranchInventory?
+    let availableQty: Int
+    let quarantineQty: Int
+    let onDismiss: () -> Void
+    let onResolved: (() -> Void)?
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var quarantinedUnits: [PPLivePetInventoryUnit] = []
+    @State private var selectedUnit: PPLivePetInventoryUnit? = nil
+    @State private var isLoadingUnits: Bool = true
+    @State private var errorMessage: String? = nil
+
+    @State private var selectedDecision: LivePetClinicalDecision = .releaseToHealthy
+    @State private var selectedReasonCode: String = "clinical_recovery"
+    @State private var clinicalNotes: String = ""
+    @State private var isSubmitting: Bool = false
+
+    private var isPad: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact
+    }
+
+    private var onHandQty: Int {
+        branchRecord?.onHandQuantity ?? (availableQty + quarantineQty)
+    }
+
+    private var canReleaseQuarantine: Bool {
+        let staff = PPStaffAuth.shared().cachedCurrentStaff
+        let isManager = staff?.hasPermission("stock.manage") ?? false
+        let isQuarantineRelease = staff?.hasPermission("stock.quarantine.release") ?? false
+        return isManager || isQuarantineRelease
+    }
+
+    private var isSubmitDisabled: Bool {
+        if isSubmitting { return true }
+        if selectedDecision == .releaseToHealthy && !canReleaseQuarantine { return true }
+        if item.inventoryMode == "individual" && selectedUnit == nil && !quarantinedUnits.isEmpty { return true }
+        return false
+    }
+
+    var body: some View {
+        Group {
+            if isPad {
+                iPadLivePetDeck
+            } else {
+                iPhoneLivePetDeck
+            }
+        }
+        .task {
+            await loadQuarantinedUnits()
+        }
+    }
+
+    // MARK: - 📱 iPhone Live Pet Deck
+
+    private var iPhoneLivePetDeck: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: AdminSpacing.md) {
+                LivePetSpecimenHeroCard(item: item, onHandQty: onHandQty)
+                LivePetTelemetryRadar(quarantineQty: quarantineQty, availableQty: availableQty)
+
+                if let errorMessage = errorMessage {
+                    AdminErrorBanner(message: errorMessage) {
+                        self.errorMessage = nil
+                    }
+                }
+
+                quarantinedUnitsSection
+                decisionsSection
+                reasonsSection
+                vetNotesSection
+
+                Spacer().frame(height: 100)
+            }
+            .padding(.horizontal, AdminSpacing.screenMargin)
+            .padding(.top, AdminSpacing.sm)
+        }
+        .clipped()
+        .safeAreaInset(edge: .bottom) {
+            LivePetFloatingCommandDock(
+                decision: selectedDecision,
+                selectedUnit: selectedUnit,
+                isDisabled: isSubmitDisabled,
+                isSubmitting: isSubmitting,
+                onSubmit: promptConfirmation
+            )
+        }
+    }
+
+    // MARK: - 🖥️ iPad Live Pet Dual-Pane Deck
+
+    private var iPadLivePetDeck: some View {
+        HStack(spacing: 0) {
+            // Leading Pane: Specimen Radar & Quarantined Units (Width: 380)
+            VStack(spacing: 0) {
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: AdminSpacing.md) {
+                        LivePetSpecimenHeroCard(item: item, onHandQty: onHandQty, isWidescreen: true)
+                        LivePetTelemetryRadar(quarantineQty: quarantineQty, availableQty: availableQty)
+                        quarantinedUnitsSection
+                    }
+                    .padding(AdminSpacing.lg)
+                }
+                .clipped()
+            }
+            .frame(width: 380)
+            .background(AdminSurface.surface)
+            .overlay(
+                Rectangle()
+                    .fill(AdminSurface.hairline)
+                    .frame(width: 1),
+                alignment: .trailing
+            )
+
+            // Trailing Pane: Clinical Decision & Execution
+            VStack(spacing: 0) {
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: AdminSpacing.lg) {
+                        if let errorMessage = errorMessage {
+                            AdminErrorBanner(message: errorMessage) {
+                                self.errorMessage = nil
+                            }
+                        }
+
+                        decisionsSection
+                        reasonsSection
+                        vetNotesSection
+                    }
+                    .padding(AdminSpacing.lg)
+                }
+                .clipped()
+
+                Divider().background(AdminSurface.hairline)
+
+                LivePetFloatingCommandDock(
+                    decision: selectedDecision,
+                    selectedUnit: selectedUnit,
+                    isDisabled: isSubmitDisabled,
+                    isSubmitting: isSubmitting,
+                    onSubmit: promptConfirmation
+                )
+                .padding(.top, 10)
+            }
+        }
+    }
+
+    // MARK: - Quarantined Units Section
+
+    private var quarantinedUnitsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(Language.get("LivePet_Quarantined_Units_Header", alter: "الحالات المعزولة قيد الفحص الطبي"))
+                    .font(AdminType.captionBold)
+                    .foregroundColor(AdminSurface.secondaryText)
+
+                Spacer()
+
+                if isLoadingUnits {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                } else {
+                    Text(verbatim: "\(quarantinedUnits.count)".normalizedEnglishDigits)
+                        .font(AdminType.captionBold)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(Color(red: 147/255, green: 51/255, blue: 234/255).opacity(0.12), in: Capsule())
+                        .foregroundColor(Color(red: 147/255, green: 51/255, blue: 234/255))
+                }
+            }
+
+            if quarantinedUnits.isEmpty && !isLoadingUnits {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.shield.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(Color(red: 16/255, green: 185/255, blue: 129/255))
+                    Text(Language.get("LivePet_No_Quarantined_Units", alter: "لا توجد حيوانات قيد العزل الطبي حالياً"))
+                        .font(AdminType.caption)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(AdminSurface.hairline, lineWidth: 1)
+                )
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(quarantinedUnits) { unit in
+                        quarantinedUnitCard(unit)
+                    }
+                }
+            }
+        }
+    }
+
+    private func quarantinedUnitCard(_ unit: PPLivePetInventoryUnit) -> some View {
+        let isSelected = selectedUnit?.id == unit.id
+        return Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                selectedUnit = unit
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    // Ring Tag
+                    HStack(spacing: 4) {
+                        Image(systemName: "tag.fill")
+                            .font(.system(size: 10, weight: .bold))
+                        Text(unit.ringTag.isEmpty ? String(unit.id.prefix(6)).uppercased() : unit.ringTag)
+                            .font(Font.system(size: 13, weight: .bold, design: .monospaced))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color(red: 147/255, green: 51/255, blue: 234/255).opacity(0.14), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .foregroundColor(Color(red: 147/255, green: 51/255, blue: 234/255))
+
+                    // Status Pill
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color(red: 147/255, green: 51/255, blue: 234/255))
+                            .frame(width: 6, height: 6)
+                        Text(Language.get("LivePet_Status_UnderInspection", alter: "قيد الفحص والتقييم"))
+                            .font(AdminType.caption2)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Color(red: 147/255, green: 51/255, blue: 234/255).opacity(0.10), in: Capsule())
+                    .foregroundColor(Color(red: 147/255, green: 51/255, blue: 234/255))
+
+                    Spacer()
+
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 18))
+                        .foregroundColor(isSelected ? Color(red: 147/255, green: 51/255, blue: 234/255) : AdminSurface.control)
+                }
+
+                // If from return case (e.g. Canary CR4)
+                if !unit.returnCaseId.isEmpty || unit.quarantineReason == "LIVE_ANIMAL_RETURN" {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.uturn.backward.circle.fill")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color(red: 147/255, green: 51/255, blue: 234/255))
+                            Text(Language.get("LivePet_Custody_UnderInspection", alter: "الحيوان مسترجع وقيد الفحص والتقييم"))
+                                .font(AdminType.captionBold)
+                                .foregroundColor(AdminSurface.primaryText)
+                        }
+
+                        if !unit.returnCaseId.isEmpty {
+                            Text(verbatim: String(format: Language.get("LivePet_ReturnCase_Ref", alter: "ملف الاسترجاع: %@"), unit.returnCaseId))
+                                .font(Font.system(size: 11, weight: .semibold, design: .monospaced))
+                                .foregroundColor(Color(red: 147/255, green: 51/255, blue: 234/255))
+                        }
+
+                        if !unit.returnReason.isEmpty {
+                            Text(verbatim: String(format: Language.get("LivePet_ReturnReason_Label", alter: "سبب الإرجاع: %@"), unit.returnReason))
+                                .font(AdminType.caption2)
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(red: 147/255, green: 51/255, blue: 234/255).opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+            }
+            .padding(12)
+            .background(isSelected ? Color(red: 147/255, green: 51/255, blue: 234/255).opacity(0.04) : AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(isSelected ? Color(red: 147/255, green: 51/255, blue: 234/255) : AdminSurface.hairline, lineWidth: isSelected ? 1.5 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Decisions Section
+
+    private var decisionsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(Language.get("LivePet_Clinical_Decision_Header", alter: "القرار والإجراء البيطري"))
+                .font(AdminType.captionBold)
+                .foregroundColor(AdminSurface.secondaryText)
+
+            VStack(spacing: 8) {
+                ForEach(LivePetClinicalDecision.allCases) { decision in
+                    LivePetClinicalActionCard(
+                        decision: decision,
+                        isSelected: selectedDecision == decision,
+                        canRelease: canReleaseQuarantine,
+                        onSelect: {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                                selectedDecision = decision
+                                if let first = currentReasons.first {
+                                    selectedReasonCode = first.code
+                                }
+                            }
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - Reasons Section
+
+    private var reasonsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(Language.get("LivePet_Clinical_Reason_Header", alter: "المسوغ الطبي والتشخيص السريري"))
+                .font(AdminType.captionBold)
+                .foregroundColor(AdminSurface.secondaryText)
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], spacing: 8) {
+                ForEach(currentReasons) { reason in
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.spring(response: 0.24, dampingFraction: 0.8)) {
+                            selectedReasonCode = reason.code
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            if selectedReasonCode == reason.code {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 11, weight: .bold))
+                            }
+                            Text(reason.label)
+                                .font(AdminType.captionBold)
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            selectedReasonCode == reason.code
+                                ? selectedDecision.tintColor
+                                : AdminSurface.surface
+                        )
+                        .foregroundColor(
+                            selectedReasonCode == reason.code
+                                ? .white
+                                : AdminSurface.primaryText
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(
+                                    selectedReasonCode == reason.code
+                                        ? Color.clear
+                                        : AdminSurface.hairline,
+                                    lineWidth: 1
+                                )
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    // MARK: - Vet Notes Section
+
+    private var vetNotesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(Language.get("LivePet_VetNotes_Title", alter: "تقرير الفحص السريري والملاحظات البيطرية"))
+                .font(AdminType.captionBold)
+                .foregroundColor(AdminSurface.secondaryText)
+
+            // Quick clinical tags
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(quickClinicalTags, id: \.self) { tag in
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            if clinicalNotes.isEmpty {
+                                clinicalNotes = tag
+                            } else if !clinicalNotes.contains(tag) {
+                                clinicalNotes += " • " + tag
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 10))
+                            Text(tag)
+                                .font(AdminType.caption2)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(AdminSurface.control, in: Capsule())
+                            .foregroundColor(AdminSurface.primaryText)
+                            .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            // Notes Text Area
+            ZStack(alignment: .topLeading) {
+                if clinicalNotes.isEmpty {
+                    Text(Language.get("LivePet_VetNotes_Placeholder", alter: "سجل الفحص السريري: درجة الحرارة، التنفس، فحص الريش/الفراء، الأدوية الموصوفة وتوصية الطبيب..."))
+                        .font(AdminType.caption)
+                        .foregroundColor(AdminSurface.secondaryText.opacity(0.7))
+                        .padding(10)
+                }
+
+                TextEditor(text: $clinicalNotes)
+                    .font(AdminType.callout)
+                    .frame(minHeight: 70)
+                    .padding(6)
+                    .background(Color.clear)
+            }
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline, lineWidth: 1)
+            )
+        }
+    }
+
+    // MARK: - Helpers & Data Handlers
+
+    private var quickClinicalTags: [String] {
+        [
+            Language.get("LivePet_Tag_RespiratoryClear", alter: "فحص تنفسي سليم"),
+            Language.get("LivePet_Tag_ActiveNormal", alter: "نشاط وحركة طبيعية"),
+            Language.get("LivePet_Tag_GoodAppetite", alter: "شهية جيدة"),
+            Language.get("LivePet_Tag_UnderAntibiotic", alter: "تحت المضاد الحيوي"),
+            Language.get("LivePet_Tag_Lethargic", alter: "خمول بحاجة راحة")
+        ]
+    }
+
+    private var selectedReasonLabel: String {
+        currentReasons.first { $0.code == selectedReasonCode }?.label ?? selectedReasonCode
+    }
+
+    private var currentReasons: [LivePetReasonItem] {
+        switch selectedDecision {
+        case .releaseToHealthy:
+            return [
+                LivePetReasonItem(code: "clinical_recovery", label: Language.get("LivePet_Reason_Recovery", alter: "تعافي سريري واكتمال العلاج")),
+                LivePetReasonItem(code: "post_return_cleared", label: Language.get("LivePet_Reason_ReturnCleared", alter: "سلامة الفحص الطبي بعد الاسترجاع")),
+                LivePetReasonItem(code: "quarantine_completed", label: Language.get("LivePet_Reason_QuarantineDone", alter: "انتهاء فترة الملاحظة الوقائية")),
+                LivePetReasonItem(code: "vet_clearance_certified", label: Language.get("LivePet_Reason_VetClearance", alter: "شهادة فحص واعتماد طبيب بيطري"))
+            ]
+        case .recordMortality:
+            return [
+                LivePetReasonItem(code: "sudden_mortality", label: Language.get("LivePet_Reason_SuddenDeath", alter: "نفوق مفاجئ / هبوط حاد")),
+                LivePetReasonItem(code: "infectious_disease", label: Language.get("LivePet_Reason_Infectious", alter: "مرض معدي وتدهور سريري")),
+                LivePetReasonItem(code: "post_return_complications", label: Language.get("LivePet_Reason_ReturnComp", alter: "مضاعفات صحية بعد الاسترجاع")),
+                LivePetReasonItem(code: "heat_respiratory_stress", label: Language.get("LivePet_Reason_Stress", alter: "إجهاد حراري أو تنفسي")),
+                LivePetReasonItem(code: "age_physiological", label: Language.get("LivePet_Reason_Physiological", alter: "أسباب طبيعية وفسيولوجية"))
+            ]
+        case .extendIsolation:
+            return [
+                LivePetReasonItem(code: "under_active_treatment", label: Language.get("LivePet_Reason_UnderTreatment", alter: "تحت العلاج والمضادات الحيوية")),
+                LivePetReasonItem(code: "awaiting_lab_results", label: Language.get("LivePet_Reason_AwaitingLabs", alter: "بانتظار نتائج الفحوصات والتحاليل")),
+                LivePetReasonItem(code: "observation_period", label: Language.get("LivePet_Reason_ObsPeriod", alter: "استكمال فترة الحجر والملاحظة"))
+            ]
+        }
+    }
+
+    private func loadQuarantinedUnits() async {
+        isLoadingUnits = true
+        do {
+            let allUnits = try await PPLivePetInventoryService.listUnits(
+                productID: item.accessoryID,
+                includeHistory: true,
+                includeReservations: false
+            )
+            let filtered = allUnits.filter { $0.isUnderInspection || $0.status.uppercased() == "QUARANTINED" }.sorted()
+            await MainActor.run {
+                self.quarantinedUnits = filtered
+                self.selectedUnit = filtered.first
+                self.isLoadingUnits = false
+            }
+        } catch {
+            await MainActor.run {
+                self.isLoadingUnits = false
+            }
+        }
+    }
+
+    private func promptConfirmation() {
+        let confirmTitle = selectedDecision == .recordMortality
+            ? Language.get("LivePet_Action_ConfirmMortality", alter: "إقرار وتسجيل النفوق رسمياً")
+            : Language.get("Confirm", alter: "تأكيد التنفيذ")
+        let cancelTitle = Language.get("Cancel", alter: "إلغاء")
+        let alertTitle = selectedDecision.title
+
+        let alertSubtitle: String = {
+            let specimenLabel = selectedUnit.map { "(\($0.ringTag.isEmpty ? String($0.id.prefix(6)) : $0.ringTag))" } ?? ""
+            switch selectedDecision {
+            case .releaseToHealthy:
+                return "\(Language.get("LivePet_Confirm_Release_Desc", alter: "هل أنت متأكد من إنهاء الحجر البيطري وإعادة الحيوان")) \(specimenLabel) \(Language.get("LivePet_Confirm_Release_End", alter: "إلى الرصيد المتاح للبيع؟"))"
+            case .recordMortality:
+                return "\(Language.get("LivePet_Confirm_Mortality_Desc", alter: "تحذير: سيتم تسجيل نفوق الحيوان")) \(specimenLabel) \(Language.get("LivePet_Confirm_Mortality_End", alter: "وإسقاطه نهائياً من سجلات العهدة الحية بناءً على التشخيص البيطري."))"
+            case .extendIsolation:
+                return "\(Language.get("LivePet_Confirm_Extend_Desc", alter: "سيتم حفظ تقرير الكشف السريري وتثبيت الحيوان في قفص العزل والملاحظة."))"
+            }
+        }()
+
+        let icon = UIImage(systemName: selectedDecision.iconName)
+
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: alertTitle,
+            subtitle: alertSubtitle,
+            confirmButton: confirmTitle,
+            cancelButton: cancelTitle,
+            icon: icon,
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                executeDecision()
+            },
+            cancelBlock: nil
+        )
+    }
+
+    private func executeDecision() {
+        guard !isSubmitting else { return }
+        isSubmitting = true
+        errorMessage = nil
+
+        Task {
+            do {
+                let commandId = PPLivePetInventoryService.commandID("live-quarantine")
+                switch selectedDecision {
+                case .releaseToHealthy:
+                    if let unit = selectedUnit {
+                        var payload: [String: Any] = [
+                            "unitId": unit.id,
+                            "reason": selectedReasonLabel,
+                            "notes": clinicalNotes
+                        ]
+                        if !unit.returnCaseId.isEmpty {
+                            payload["returnCaseId"] = unit.returnCaseId
+                        }
+                        _ = try await PPLivePetInventoryService.callInventory(
+                            action: "release_quarantine",
+                            productID: item.accessoryID,
+                            commandID: commandId,
+                            payload: payload
+                        )
+                    } else {
+                        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                            PPBranchInventoryService.shared.resolveDisposition(
+                                productId: item.accessoryID,
+                                branchId: branchId,
+                                quantity: 1,
+                                action: "move",
+                                fromBucket: "quarantine",
+                                toBucket: "available",
+                                reasonCode: selectedReasonCode,
+                                notes: clinicalNotes
+                            ) { result in
+                                switch result {
+                                case .success: continuation.resume()
+                                case .failure(let err): continuation.resume(throwing: err)
+                                }
+                            }
+                        }
+                    }
+
+                case .recordMortality:
+                    if let unit = selectedUnit {
+                        let payload: [String: Any] = [
+                            "unitId": unit.id,
+                            "reason": selectedReasonLabel,
+                            "causeCode": selectedReasonCode,
+                            "notes": clinicalNotes,
+                            "veterinaryReference": "VET-QUARANTINE",
+                            "attachmentURLs": []
+                        ]
+                        _ = try await PPLivePetInventoryService.callInventory(
+                            action: "record_mortality",
+                            productID: item.accessoryID,
+                            commandID: commandId,
+                            payload: payload
+                        )
+                    } else {
+                        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                            PPBranchInventoryService.shared.resolveDisposition(
+                                productId: item.accessoryID,
+                                branchId: branchId,
+                                quantity: 1,
+                                action: "write_off",
+                                fromBucket: "quarantine",
+                                reasonCode: selectedReasonCode,
+                                notes: clinicalNotes
+                            ) { result in
+                                switch result {
+                                case .success: continuation.resume()
+                                case .failure(let err): continuation.resume(throwing: err)
+                                }
+                            }
+                        }
+                    }
+
+                case .extendIsolation:
+                    if let unit = selectedUnit {
+                        let docRef = Firestore.firestore().collection("petAccessories").document(item.accessoryID).collection("inventoryUnits").document(unit.id)
+                        try await docRef.setData([
+                            "quarantineNotes": clinicalNotes,
+                            "lastClinicalCheckAt": FieldValue.serverTimestamp(),
+                            "clinicalStatus": selectedReasonCode
+                        ], merge: true)
+                    }
+                }
+
+                await MainActor.run {
+                    isSubmitting = false
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    onResolved?()
+                    onDismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    isSubmitting = false
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    errorMessage = PPLivePetInventoryService.localizedMessage(for: error)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - 🐾 Live Pet Subcomponents
+
+private struct LivePetSpecimenHeroCard: View {
+    let item: PetAccessory
+    let onHandQty: Int
+    var isWidescreen: Bool = false
+
+    private var displayName: String {
+        if !Language.isRTL(), let nameEn = item.nameEn?.trimmingCharacters(in: .whitespacesAndNewlines), !nameEn.isEmpty {
+            return nameEn
+        }
+        return item.name
+    }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack(alignment: .top, spacing: 14) {
+                // Species Image
+                ZStack {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(AdminSurface.control)
+
+                    if let first = item.imageURLsArray.first, !first.isEmpty, let url = URL(string: first) {
+                        AsyncImage(url: url) { img in
+                            img.resizable().scaledToFill()
+                        } placeholder: {
+                            Image(systemName: "pawprint.fill")
+                                .font(.system(size: 24))
+                                .foregroundColor(Color(red: 147/255, green: 51/255, blue: 234/255).opacity(0.6))
+                        }
+                    } else {
+                        Image(systemName: "pawprint.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(Color(red: 147/255, green: 51/255, blue: 234/255).opacity(0.6))
+                    }
+                }
+                .frame(width: isWidescreen ? 80 : 68, height: isWidescreen ? 80 : 68)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color(red: 147/255, green: 51/255, blue: 234/255).opacity(0.3), lineWidth: 1)
+                )
+
+                // Identity Details
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        // Kind Badge
+                        let categoryName = item.category ?? item.accessoryCategoryName ?? Language.get("LivePet_Species", alter: "حيوان حي")
+                        Text(categoryName)
+                            .font(AdminType.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(AdminSurface.control, in: Capsule())
+                            .foregroundColor(AdminSurface.secondaryText)
+
+                        // Live Pet Veterinary Badge
+                        HStack(spacing: 3) {
+                            Image(systemName: "stethoscope")
+                                .font(.system(size: 9, weight: .bold))
+                            Text(Language.get("LivePet_Quarantine_Badge", alter: "عزل بيطري"))
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color(red: 147/255, green: 51/255, blue: 234/255).opacity(0.12), in: Capsule())
+                        .foregroundColor(Color(red: 147/255, green: 51/255, blue: 234/255))
+                    }
+
+                    Text(displayName)
+                        .font(AdminType.headlineBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(2)
+
+                    // Tracking Mode Pill
+                    HStack(spacing: 4) {
+                        Image(systemName: item.inventoryMode == "individual" ? "tag.fill" : "square.stack.3d.up.fill")
+                            .font(.system(size: 10, weight: .bold))
+                        Text(item.inventoryMode == "individual" ? Language.get("Live_Mode_Individual", alter: "تتبع فردي بالرأس (حجل/شريحة)") : Language.get("Live_Mode_Group", alter: "إدارة كمية بالمجموعة"))
+                            .font(AdminType.caption2)
+                    }
+                    .foregroundColor(AdminSurface.secondaryText)
+                }
+
+                Spacer()
+            }
+        }
+        .padding(14)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.card)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 1)
+        )
+    }
+}
+
+private struct LivePetTelemetryRadar: View {
+    let quarantineQty: Int
+    let availableQty: Int
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Quarantine & Medical Isolation Card
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Image(systemName: "cross.case.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Color(red: 147/255, green: 51/255, blue: 234/255))
+                    Spacer()
+                    Text(verbatim: "\(quarantineQty)".normalizedEnglishDigits)
+                        .font(Font.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundColor(Color(red: 147/255, green: 51/255, blue: 234/255))
+                }
+
+                Text(Language.get("LivePet_Status_Quarantined", alter: "في الحجر والعزل"))
+                    .font(AdminType.captionBold)
+                    .foregroundColor(AdminSurface.primaryText)
+
+                Text(Language.get("LivePet_Status_UnderInspection", alter: "قيد الفحص والتقييم"))
+                    .font(AdminType.caption2)
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(red: 147/255, green: 51/255, blue: 234/255).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color(red: 147/255, green: 51/255, blue: 234/255).opacity(0.25), lineWidth: 1)
+            )
+
+            // Healthy & Ready For Sale Card
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Color(red: 16/255, green: 185/255, blue: 129/255))
+                    Spacer()
+                    Text(verbatim: "\(availableQty)".normalizedEnglishDigits)
+                        .font(Font.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundColor(Color(red: 16/255, green: 185/255, blue: 129/255))
+                }
+
+                Text(Language.get("InStock", alter: "سليم ومتاح للبيع"))
+                    .font(AdminType.captionBold)
+                    .foregroundColor(AdminSurface.primaryText)
+
+                Text(Language.get("LivePet_Ready_For_Sale", alter: "جاهز للصرف والتسليم"))
+                    .font(AdminType.caption2)
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.25), lineWidth: 1)
+            )
+        }
+    }
+}
+
+private struct LivePetClinicalActionCard: View {
+    let decision: LivePetClinicalDecision
+    let isSelected: Bool
+    let canRelease: Bool
+    let onSelect: () -> Void
+
+    private var isBlocked: Bool {
+        decision == .releaseToHealthy && !canRelease
+    }
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 12) {
+                Image(systemName: decision.iconName)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(decision.tintColor)
+                    .frame(width: 38, height: 38)
+                    .background(decision.tintColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(decision.title)
+                            .font(AdminType.calloutBold)
+                            .foregroundColor(AdminSurface.primaryText)
+
+                        Text(decision.badgeText)
+                            .font(.system(size: 9, weight: .bold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(decision.tintColor.opacity(0.12), in: Capsule())
+                            .foregroundColor(decision.tintColor)
+
+                        if isBlocked {
+                            HStack(spacing: 3) {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 8))
+                                Text(Language.get("Quarantine_Perm_Locked", alter: "صلاحية مقيدة"))
+                                    .font(.system(size: 9, weight: .bold))
+                            }
+                            .foregroundColor(.amber)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.amber.opacity(0.12), in: Capsule())
+                        }
+                    }
+
+                    Text(decision.subtitle)
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20))
+                    .foregroundColor(isSelected ? decision.tintColor : AdminSurface.control)
+            }
+            .padding(12)
+            .background(isSelected ? decision.tintColor.opacity(0.06) : AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.card)
+                    .strokeBorder(isSelected ? decision.tintColor : AdminSurface.hairline, lineWidth: isSelected ? 1.5 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct LivePetFloatingCommandDock: View {
+    let decision: LivePetClinicalDecision
+    let selectedUnit: PPLivePetInventoryUnit?
+    let isDisabled: Bool
+    let isSubmitting: Bool
+    let onSubmit: () -> Void
+
+    var buttonTitle: String {
+        switch decision {
+        case .releaseToHealthy:
+            return Language.get("LivePet_Action_ConfirmRelease", alter: "اعتماد الإفراج ونقل للرصيد المتاح")
+        case .recordMortality:
+            return Language.get("LivePet_Action_ConfirmMortality", alter: "إقرار وتسجيل النفوق رسمياً")
+        case .extendIsolation:
+            return Language.get("LivePet_Action_ConfirmExtend", alter: "حفظ تقرير الفحص وتمديد العزل")
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: AdminSpacing.md) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Circle().fill(decision.tintColor).frame(width: 8, height: 8)
+                        Text(decision.title)
+                            .font(AdminType.captionBold)
+                            .foregroundColor(AdminSurface.primaryText)
+                            .lineLimit(1)
+                    }
+
+                    if let unit = selectedUnit {
+                        Text(verbatim: "\(Language.get("LivePet_Ring", alter: "الحجل")): \(unit.ringTag.isEmpty ? String(unit.id.prefix(6)) : unit.ringTag)".normalizedEnglishDigits)
+                            .font(Font.system(size: 13, weight: .bold, design: .monospaced))
+                            .foregroundColor(decision.tintColor)
+                    }
+                }
+
+                Spacer()
+
+                Button(action: onSubmit) {
+                    HStack(spacing: 8) {
+                        if isSubmitting {
+                            ProgressView().tint(.white)
+                        } else {
+                            Image(systemName: decision.iconName)
+                                .font(.system(size: 14, weight: .bold))
+                            Text(buttonTitle)
+                                .font(AdminType.calloutBold)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(isDisabled ? AdminSurface.control : decision.tintColor, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+                    .foregroundColor(isDisabled ? AdminSurface.secondaryText : .white)
+                }
+                .disabled(isDisabled)
+            }
+            .padding(.horizontal, AdminSpacing.md)
+            .padding(.vertical, AdminSpacing.sm)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18)
+                    .strokeBorder(AdminSurface.hairline, lineWidth: 1)
+            )
+            .padding(.horizontal, AdminSpacing.screenMargin)
+            .padding(.bottom, 8)
+        }
+    }
+}
+
+private struct LivePetReasonItem: Identifiable {
+    var id: String { code }
+    let code: String
+    let label: String
+}
+
+private enum LivePetClinicalDecision: String, CaseIterable, Identifiable {
+    case releaseToHealthy = "release"
+    case recordMortality = "mortality"
+    case extendIsolation = "extend"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .releaseToHealthy:
+            return Language.get("LivePet_Decision_Release", alter: "إفراج للمخزون السليم (جاهز للبيع)")
+        case .recordMortality:
+            return Language.get("LivePet_Decision_Mortality", alter: "إقرار وتسجيل نفوق الحيوان")
+        case .extendIsolation:
+            return Language.get("LivePet_Decision_Extend", alter: "تمديد العزل والملاحظة السريرية")
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .releaseToHealthy:
+            return Language.get("LivePet_Decision_Release_Sub", alter: "اجتياز الفحص الطبي السريري والتأكد من سلامة الحيوان وإعادته للبيع")
+        case .recordMortality:
+            return Language.get("LivePet_Decision_Mortality_Sub", alter: "توثيق وفاة الحيوان وتحديد السبب الطبي البيطري وإسقاط الرأس رسمياً")
+        case .extendIsolation:
+            return Language.get("LivePet_Decision_Extend_Sub", alter: "إبقاء الحيوان في قفص العزل الطبي ومتابعة العلاج والفحوصات اليومية")
+        }
+    }
+
+    var badgeText: String {
+        switch self {
+        case .releaseToHealthy: return Language.get("Healthy_Certified", alter: "سليم ومعافى")
+        case .recordMortality: return Language.get("Death_Certificate", alter: "شهادة وفاة")
+        case .extendIsolation: return Language.get("Clinical_Observation", alter: "متابعة سريرية")
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .releaseToHealthy: return "checkmark.seal.fill"
+        case .recordMortality: return "heart.slash.fill"
+        case .extendIsolation: return "cross.case.fill"
+        }
+    }
+
+    var tintColor: Color {
+        switch self {
+        case .releaseToHealthy: return Color(red: 16/255, green: 185/255, blue: 129/255)
+        case .recordMortality: return Color(red: 225/255, green: 29/255, blue: 72/255)
+        case .extendIsolation: return Color(red: 147/255, green: 51/255, blue: 234/255)
+        }
+    }
+}
+

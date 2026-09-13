@@ -43,6 +43,8 @@ public struct LivePetReturnUnit: Identifiable, Codable, Hashable, Sendable {
 
     public var previousLifecycleStatus: LivePetLifecycleStatus
     public var resultingLifecycleStatus: LivePetLifecycleStatus
+    /// Monotonic server-owned inventory unit version used for optimistic concurrency.
+    public var inventoryVersion: Int
 
     public var isAlreadyReturned: Bool
     public var activeReturnCaseId: String?
@@ -70,6 +72,7 @@ public struct LivePetReturnUnit: Identifiable, Codable, Hashable, Sendable {
         disposition: CommercialDisposition = .hold,
         previousLifecycleStatus: LivePetLifecycleStatus = .sold,
         resultingLifecycleStatus: LivePetLifecycleStatus = .returnRequested,
+        inventoryVersion: Int = 1,
         isAlreadyReturned: Bool = false,
         activeReturnCaseId: String? = nil,
         activeReturnCaseNumber: String? = nil,
@@ -100,6 +103,7 @@ public struct LivePetReturnUnit: Identifiable, Codable, Hashable, Sendable {
         self.disposition = disposition
         self.previousLifecycleStatus = previousLifecycleStatus
         self.resultingLifecycleStatus = resultingLifecycleStatus
+        self.inventoryVersion = max(1, inventoryVersion)
         self.isAlreadyReturned = isAlreadyReturned
         self.activeReturnCaseId = activeReturnCaseId
         self.activeReturnCaseNumber = activeReturnCaseNumber
@@ -151,6 +155,7 @@ public struct LivePetReturnUnit: Identifiable, Codable, Hashable, Sendable {
         case disposition
         case previousLifecycleStatus
         case resultingLifecycleStatus
+        case inventoryVersion
         case isAlreadyReturned
         case activeReturnCaseId
         case activeReturnCaseNumber
@@ -177,6 +182,7 @@ public struct LivePetReturnUnit: Identifiable, Codable, Hashable, Sendable {
         let disposition = try container.decodeIfPresent(CommercialDisposition.self, forKey: .disposition) ?? .hold
         let previousLifecycleStatus = try container.decodeIfPresent(LivePetLifecycleStatus.self, forKey: .previousLifecycleStatus) ?? .sold
         let resultingLifecycleStatus = try container.decodeIfPresent(LivePetLifecycleStatus.self, forKey: .resultingLifecycleStatus) ?? .returnRequested
+        let inventoryVersion = try container.decodeIfPresent(Int.self, forKey: .inventoryVersion) ?? 1
         let isAlreadyReturned = try container.decodeIfPresent(Bool.self, forKey: .isAlreadyReturned) ?? false
         let activeReturnCaseId = try container.decodeIfPresent(String.self, forKey: .activeReturnCaseId)
         let activeReturnCaseNumber = try container.decodeIfPresent(String.self, forKey: .activeReturnCaseNumber)
@@ -201,6 +207,7 @@ public struct LivePetReturnUnit: Identifiable, Codable, Hashable, Sendable {
             disposition: disposition,
             previousLifecycleStatus: previousLifecycleStatus,
             resultingLifecycleStatus: resultingLifecycleStatus,
+            inventoryVersion: inventoryVersion,
             isAlreadyReturned: isAlreadyReturned,
             activeReturnCaseId: activeReturnCaseId,
             activeReturnCaseNumber: activeReturnCaseNumber,
@@ -231,6 +238,7 @@ public struct LivePetReturnUnit: Identifiable, Codable, Hashable, Sendable {
         try container.encode(disposition, forKey: .disposition)
         try container.encode(previousLifecycleStatus, forKey: .previousLifecycleStatus)
         try container.encode(resultingLifecycleStatus, forKey: .resultingLifecycleStatus)
+        try container.encode(inventoryVersion, forKey: .inventoryVersion)
         try container.encode(isAlreadyReturned, forKey: .isAlreadyReturned)
         try container.encodeIfPresent(activeReturnCaseId, forKey: .activeReturnCaseId)
         try container.encodeIfPresent(activeReturnCaseNumber, forKey: .activeReturnCaseNumber)
@@ -258,6 +266,8 @@ public struct LivePetReturnUnit: Identifiable, Codable, Hashable, Sendable {
             "disposition": disposition.rawValue,
             "previousLifecycleStatus": previousLifecycleStatus.rawValue,
             "resultingLifecycleStatus": resultingLifecycleStatus.rawValue,
+            "inventoryVersion": inventoryVersion,
+            "expectedVersion": inventoryVersion,
             "isAlreadyReturned": isAlreadyReturned
         ]
         if let speciesName { dict["speciesName"] = speciesName }
@@ -326,6 +336,7 @@ public struct LivePetReturnUnit: Identifiable, Codable, Hashable, Sendable {
             disposition: disposition,
             previousLifecycleStatus: prevStatus,
             resultingLifecycleStatus: resultStatus,
+            inventoryVersion: (dict["inventoryVersion"] as? Int) ?? (dict["version"] as? Int) ?? 1,
             isAlreadyReturned: alreadyReturned,
             activeReturnCaseId: activeReturnCaseId,
             activeReturnCaseNumber: activeReturnCaseNumber,

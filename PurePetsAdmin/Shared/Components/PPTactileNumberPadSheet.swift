@@ -7,9 +7,47 @@
 //  Quantities, Prices, Amounts, Age, Discounts, and Percentages across
 //  all Inventory and POS workflows.
 //
+//  Completely redesigned from first principles with separate, dedicated
+//  architectures for iPhone (iOS) and iPad (iPadOS).
+//  STRICT MANDATE: 100% of all typography uses the Beiruti brand font family.
+//
 
 import SwiftUI
 import UIKit
+
+// MARK: - Brand Typography Tokens (Strict Beiruti Only)
+
+private enum PPTactileType {
+    static func heroReadout(isPad: Bool) -> Font {
+        Font.custom("Beiruti-Bold", size: isPad ? 60 : 48)
+    }
+
+    static func heroUnit(isPad: Bool) -> Font {
+        Font.custom("Beiruti-Bold", size: isPad ? 22 : 18)
+    }
+
+    static func keypadDigit(isPad: Bool) -> Font {
+        Font.custom("Beiruti-Bold", size: isPad ? 28 : 24)
+    }
+
+    static func keypadAction(isPad: Bool) -> Font {
+        Font.custom("Beiruti-Bold", size: isPad ? 22 : 18)
+    }
+
+    static let title = Font.custom("Beiruti-Bold", size: 19)
+    static let subtitle = Font.custom("Beiruti-Regular", size: 13)
+    static let specimenTitle = Font.custom("Beiruti-Bold", size: 16)
+    static let specimenSubtitle = Font.custom("Beiruti-Regular", size: 12)
+    static let badgeBold = Font.custom("Beiruti-Bold", size: 13)
+    static let badgeCaption = Font.custom("Beiruti-Medium", size: 12)
+    static let chipLabel = Font.custom("Beiruti-SemiBold", size: 13)
+    static let ledgerLabel = Font.custom("Beiruti-Regular", size: 13)
+    static let ledgerValue = Font.custom("Beiruti-Bold", size: 14)
+    static let actionButton = Font.custom("Beiruti-Bold", size: 17)
+    static let secondaryButton = Font.custom("Beiruti-Bold", size: 16)
+    static let hint = Font.custom("Beiruti-Regular", size: 11)
+    static let tagMono = Font.custom("Beiruti-Bold", size: 12)
+}
 
 // MARK: - Input Modes
 
@@ -41,9 +79,7 @@ public enum PPTactileNumberPadMode: Equatable {
             return true
         case .number(let allowDecimal, _, _, _):
             return allowDecimal
-        case .age:
-            return false
-        case .quantity:
+        case .age, .quantity:
             return false
         }
     }
@@ -209,9 +245,13 @@ public struct PPTactileNumberPadSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var inputText: String = ""
+    @State private var dragScrubOffset: CGFloat = 0
+    @State private var isScrubbing: Bool = false
+    @State private var showZeroWarning: Bool = false
+    @State private var keypadBounceTrigger: Bool = false
 
     public init(
         config: PPTactileNumberPadConfig,
@@ -266,7 +306,7 @@ public struct PPTactileNumberPadSheet: View {
     }
 
     private var financialImpact: Double? {
-        guard let delta = referenceDelta, let cost = config.specimen?.unitCost ?? (config.referenceValue != nil ? 0.0 : nil) else { return nil }
+        guard let delta = referenceDelta, let cost = config.specimen?.unitCost, cost > 0 else { return nil }
         return abs(delta) * cost
     }
 
@@ -289,10 +329,11 @@ public struct PPTactileNumberPadSheet: View {
             }
             chips.append(
                 PPTactilePresetChip(
-                    title: String(format: Language.get("TactilePad_Match_Ref", alter: "%@ (%@)"), config.referenceLabel ?? Language.get("Original", alter: "المطابق"), refText),
+                    id: "chip_match_ref",
+                    title: String(format: Language.get("TactilePad_Match_Ref", alter: "%@ (%@)"), config.referenceLabel ?? Language.get("TactilePad_Book_Stock", alter: "الرصيد الدفتري"), refText),
                     icon: "equal.circle.fill",
                     action: .matchReference,
-                    tint: AdminSurface.primary
+                    tint: AdminSurface.emerald
                 )
             )
         }
@@ -303,33 +344,27 @@ public struct PPTactileNumberPadSheet: View {
             if allowZero {
                 chips.append(
                     PPTactilePresetChip(
-                        title: Language.get("CycleCount_Keypad_Zero_Out", alter: "0 (نفاذ الرف)"),
+                        id: "chip_zero_out",
+                        title: Language.get("TactilePad_Zero_Shelf", alter: "0 (نفاذ الرف)"),
                         icon: "slash.circle.fill",
                         action: .zeroOut,
                         tint: AdminSurface.crimson
                     )
                 )
             }
-            for d in [1, 5, 10] {
-                chips.append(
-                    PPTactilePresetChip(
-                        title: "+\(d)".normalizedEnglishDigits,
-                        action: .delta(Double(d)),
-                        tint: AdminSurface.primaryText
-                    )
-                )
-            }
             chips.append(
                 PPTactilePresetChip(
-                    title: "-1".normalizedEnglishDigits,
-                    action: .delta(-1.0),
-                    tint: AdminSurface.secondaryText
+                    id: "chip_plus_1",
+                    title: "+1".normalizedEnglishDigits,
+                    action: .delta(1.0),
+                    tint: AdminSurface.primaryText
                 )
             )
 
         case .price, .amount:
             chips.append(
                 PPTactilePresetChip(
+                    id: "chip_zero_price",
                     title: "0.00",
                     icon: "arrow.counterclockwise",
                     action: .zeroOut,
@@ -339,6 +374,7 @@ public struct PPTactileNumberPadSheet: View {
             for p in [5, 10, 50, 100] {
                 chips.append(
                     PPTactilePresetChip(
+                        id: "chip_price_\(p)",
                         title: "+\(p)".normalizedEnglishDigits,
                         action: .delta(Double(p)),
                         tint: AdminSurface.primaryText
@@ -349,6 +385,7 @@ public struct PPTactileNumberPadSheet: View {
         case .percentage:
             chips.append(
                 PPTactilePresetChip(
+                    id: "chip_pct_0",
                     title: "0%",
                     action: .set(0.0),
                     tint: AdminSurface.secondaryText
@@ -357,6 +394,7 @@ public struct PPTactileNumberPadSheet: View {
             for pct in [5, 10, 15, 20, 25, 50] {
                 chips.append(
                     PPTactilePresetChip(
+                        id: "chip_pct_\(pct)",
                         title: "\(pct)%",
                         action: .set(Double(pct)),
                         tint: AdminSurface.primary
@@ -367,6 +405,7 @@ public struct PPTactileNumberPadSheet: View {
         case .discount(_, let isPercentage, _):
             chips.append(
                 PPTactilePresetChip(
+                    id: "chip_disc_zero",
                     title: isPercentage ? "0%" : "0.00",
                     action: .zeroOut,
                     tint: AdminSurface.crimson
@@ -376,6 +415,7 @@ public struct PPTactileNumberPadSheet: View {
                 for pct in [5, 10, 15, 20, 25, 50] {
                     chips.append(
                         PPTactilePresetChip(
+                            id: "chip_disc_pct_\(pct)",
                             title: "\(pct)%",
                             action: .set(Double(pct)),
                             tint: AdminSurface.primary
@@ -386,6 +426,7 @@ public struct PPTactileNumberPadSheet: View {
                 for amt in [5, 10, 20, 50, 100] {
                     chips.append(
                         PPTactilePresetChip(
+                            id: "chip_disc_amt_\(amt)",
                             title: "+\(amt)".normalizedEnglishDigits,
                             action: .delta(Double(amt)),
                             tint: AdminSurface.primaryText
@@ -398,6 +439,7 @@ public struct PPTactileNumberPadSheet: View {
             for m in [1, 2, 3, 6, 12, 24] {
                 chips.append(
                     PPTactilePresetChip(
+                        id: "chip_age_\(m)",
                         title: "\(m) \(unit)".normalizedEnglishDigits,
                         action: .set(Double(m)),
                         tint: AdminSurface.primary
@@ -406,6 +448,7 @@ public struct PPTactileNumberPadSheet: View {
             }
             chips.append(
                 PPTactilePresetChip(
+                    id: "chip_age_plus_1",
                     title: "+1",
                     action: .delta(1.0),
                     tint: AdminSurface.primaryText
@@ -415,21 +458,21 @@ public struct PPTactileNumberPadSheet: View {
         case .number:
             chips.append(
                 PPTactilePresetChip(
+                    id: "chip_num_zero",
                     title: Language.get("Reset", alter: "إعادة ضبط (0)"),
                     icon: "arrow.counterclockwise",
                     action: .zeroOut,
                     tint: AdminSurface.secondaryText
                 )
             )
-            for d in [1, 5, 10] {
-                chips.append(
-                    PPTactilePresetChip(
-                        title: "+\(d)".normalizedEnglishDigits,
-                        action: .delta(Double(d)),
-                        tint: AdminSurface.primaryText
-                    )
+            chips.append(
+                PPTactilePresetChip(
+                    id: "chip_num_1",
+                    title: "+1".normalizedEnglishDigits,
+                    action: .delta(1.0),
+                    tint: AdminSurface.primaryText
                 )
-            }
+            )
         }
 
         return chips
@@ -455,199 +498,83 @@ public struct PPTactileNumberPadSheet: View {
         }
     }
 
-    // MARK: - Body
+    // MARK: - Main Body
 
     public var body: some View {
         Group {
             if isPad {
-                iPadStageLayout
+                iPadStudioLayout
             } else {
-                iPhoneSheetLayout
+                iPhoneCapsuleLayout
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
-    // MARK: - iPhone Bottom Sheet Layout
+    // MARK: - ════════════════════════════════════════════════════════════════
+    // MARK: iPhone (iOS) Tactile Capsule Layout
+    // MARK: ════════════════════════════════════════════════════════════════
 
-    private var iPhoneSheetLayout: some View {
+    private var compactSheetHeight: CGFloat {
+        let base: CGFloat = config.specimen != nil ? 585 : 510
+        return min(base, UIScreen.main.bounds.height * 0.90)
+    }
+
+    private var iPhoneCapsuleLayout: some View {
         VStack(spacing: 0) {
-            // 1. Header Bar
-            headerBar
-                .padding(.horizontal, AdminSpacing.screenMargin)
-                .padding(.top, 16)
-                .padding(.bottom, 10)
+            // Grabber Handle
+            Capsule()
+                .fill(AdminSurface.hairline.opacity(0.8))
+                .frame(width: 36, height: 4.5)
+                .padding(.top, 10)
+                .padding(.bottom, 6)
 
-            // 2. Specimen Info Strip (if provided)
+            // Header Bar
+            iPhoneHeaderBar
+                .padding(.horizontal, AdminSpacing.screenMargin)
+                .padding(.bottom, 8)
+
+            // Specimen Identity Deck
             if let specimen = config.specimen {
-                specimenStrip(specimen: specimen)
+                specimenGlassDeck(specimen: specimen)
                     .padding(.horizontal, AdminSpacing.screenMargin)
-                    .padding(.bottom, 10)
+                    .padding(.bottom, 8)
             }
 
-            // 3. Hero Count Readout & Live Variance Pill
-            readoutAndVarianceCard
+            // Hero Interactive Readout & Variance Sentinel
+            heroReadoutAndVarianceSentinel
                 .padding(.horizontal, AdminSpacing.screenMargin)
-                .padding(.bottom, 10)
+                .padding(.bottom, 8)
 
-            // 4. Horizontal Accelerator Chips Bar
-            acceleratorChipsBar
+            // Multi-Tier Quick Accelerator Ribbon
+            acceleratorChipsRibbon
+                .padding(.bottom, 8)
+
+            // Sculpted Tactile Numeric Matrix
+            keypadMatrix(buttonHeight: 48)
+                .padding(.horizontal, AdminSpacing.screenMargin)
                 .padding(.bottom, 12)
 
-            // 5. Tactile Numeric Matrix (3x4 Grid)
-            keypadMatrix(buttonHeight: 52)
-                .padding(.horizontal, AdminSpacing.screenMargin)
-
-            Spacer(minLength: 8)
-
-            // 6. Sovereign Primary Action Button
+            // Sovereign Primary Action Command
             primaryActionButton
                 .padding(.horizontal, AdminSpacing.screenMargin)
                 .padding(.bottom, 14)
         }
         .background(AdminSurface.background.ignoresSafeArea())
-        .presentationDetents([.fraction(0.88), .large])
-        .presentationDragIndicator(.visible)
+        .presentationDetents([.height(compactSheetHeight)])
+        .presentationDragIndicator(.hidden)
     }
 
-    // MARK: - iPad Tactical Console Layout
-
-    private var iPadStageLayout: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Top iPad Bar
-                HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(config.title)
-                            .font(AdminType.title3Bold)
-                            .foregroundColor(AdminSurface.primaryText)
-
-                        if let subtitle = config.subtitle {
-                            Text(subtitle)
-                                .font(AdminType.caption)
-                                .foregroundColor(AdminSurface.secondaryText)
-                        } else {
-                            Text(Language.get("TactilePad_Keyboard_Hint", alter: "يمكنك استخدام لوحة المفاتيح الخارجية للأرقام مباشرة"))
-                                .font(AdminType.caption)
-                                .foregroundColor(AdminSurface.secondaryText)
-                        }
-                    }
-
-                    Spacer()
-
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        handleDismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 26))
-                            .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
-                    }
-                }
-                .padding(.horizontal, 24)
-                .padding(.top, 20)
-                .padding(.bottom, 16)
-
-                Divider().background(AdminSurface.hairline)
-
-                // Split Tactical Stage
-                HStack(spacing: 24) {
-                    // LEFT WING (44%): Specimen Identity, Economics & Accelerator Dock
-                    VStack(spacing: 16) {
-                        if let specimen = config.specimen {
-                            specimenStrip(specimen: specimen)
-                        }
-
-                        if let delta = referenceDelta {
-                            iPadEconomicsCard(delta: delta)
-                        }
-
-                        // Vertical Chips Dock
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(Language.get("TactilePad_Quick_Accelerators", alter: "الإجراءات السريعة والمعدلات"))
-                                .font(AdminType.captionBold)
-                                .foregroundColor(AdminSurface.secondaryText)
-
-                            acceleratorChipsGrid
-                        }
-
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity)
-
-                    // Vertical Separator
-                    Rectangle()
-                        .fill(AdminSurface.hairline)
-                        .frame(width: 1)
-
-                    // RIGHT WING (56%): Readout, Pro 56pt Matrix & Action Footer
-                    VStack(spacing: 14) {
-                        readoutAndVarianceCard
-
-                        keypadMatrix(buttonHeight: 58)
-
-                        Spacer()
-
-                        // Dual Action Buttons (Cancel & Commit)
-                        HStack(spacing: 12) {
-                            Button {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                handleDismiss()
-                            } label: {
-                                Text(Language.get("Cancel", alter: "إلغاء"))
-                                    .font(AdminType.headlineBold)
-                                    .foregroundColor(AdminSurface.secondaryText)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 14)
-                                    .background(AdminSurface.cardElevated, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
-                            }
-
-                            primaryActionButton
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .padding(24)
-            }
-            .background(AdminSurface.background.ignoresSafeArea())
-        }
-        .frame(minWidth: 720, minHeight: 560)
-        .onKeyPress { press in
-            if press.characters == "\r" || press.key == .return {
-                handleCommit()
-                return .handled
-            } else if press.key == .escape {
-                handleDismiss()
-                return .handled
-            } else if press.characters.count == 1, let char = press.characters.first {
-                if char.isNumber {
-                    handleKeypadPress(String(char))
-                    return .handled
-                } else if (char == "." || char == ",") && config.mode.allowsDecimal {
-                    handleKeypadPress(".")
-                    return .handled
-                }
-            } else if press.key == .delete || press.key == .deleteForward {
-                handleKeypadBackspace()
-                return .handled
-            }
-            return .ignored
-        }
-    }
-
-    // MARK: - Subviews: Header Bar
-
-    private var headerBar: some View {
-        HStack {
+    private var iPhoneHeaderBar: some View {
+        HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(config.title)
-                    .font(AdminType.headlineBold)
+                    .font(PPTactileType.title)
                     .foregroundColor(AdminSurface.primaryText)
 
                 if let subtitle = config.subtitle {
                     Text(subtitle)
-                        .font(AdminType.caption)
+                        .font(PPTactileType.subtitle)
                         .foregroundColor(AdminSurface.secondaryText)
                         .lineLimit(1)
                 }
@@ -659,33 +586,40 @@ public struct PPTactileNumberPadSheet: View {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 handleDismiss()
             } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 24))
-                    .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
+                ZStack {
+                    Circle()
+                        .fill(AdminSurface.cardElevated)
+                        .frame(width: 32, height: 32)
+                    Image(systemName: "xmark")
+                        .font(Font.custom("Beiruti-Bold", size: 12))
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+                .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: 0.8))
             }
+            .accessibilityLabel(Language.get("Cancel", alter: "إلغاء"))
         }
     }
 
-    // MARK: - Subviews: Specimen Strip
+    // MARK: - Specimen Glass Deck
 
-    private func specimenStrip(specimen: PPTactileSpecimenInfo) -> some View {
+    private func specimenGlassDeck(specimen: PPTactileSpecimenInfo) -> some View {
         HStack(spacing: 12) {
-            // Thumbnail
+            // Thumbnail / Icon
             ZStack {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(AdminSurface.cardElevated)
-                    .frame(width: 52, height: 52)
+                    .frame(width: 48, height: 48)
 
                 if let url = specimen.imageURL {
                     AdminRemoteImage(url: url) {
                         ProgressView().scaleEffect(0.7)
                     }
-                    .frame(width: 52, height: 52)
+                    .frame(width: 48, height: 48)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 } else {
                     Image(systemName: "cube.box.fill")
-                        .font(.system(size: 20))
-                        .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
+                        .font(Font.custom("Beiruti-Bold", size: 20))
+                        .foregroundColor(AdminSurface.primary.opacity(0.8))
                 }
             }
             .overlay(
@@ -693,137 +627,146 @@ public struct PPTactileNumberPadSheet: View {
                     .stroke(AdminSurface.hairline, lineWidth: 0.8)
             )
 
-            // Metadata
-            VStack(alignment: .leading, spacing: 4) {
+            // Info
+            VStack(alignment: .leading, spacing: 3) {
                 Text(specimen.title)
-                    .font(AdminType.subheadlineBold)
+                    .font(PPTactileType.specimenTitle)
                     .foregroundColor(AdminSurface.primaryText)
                     .lineLimit(1)
 
                 HStack(spacing: 6) {
                     if let sku = specimen.sku, !sku.isEmpty {
                         Text(verbatim: sku.normalizedEnglishDigits)
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .font(PPTactileType.tagMono)
                             .foregroundColor(AdminSurface.secondaryText)
                             .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
+                            .padding(.vertical, 1)
                             .background(AdminSurface.cardElevated, in: RoundedRectangle(cornerRadius: 4))
                     }
 
                     if let shelf = specimen.shelfLocation, !shelf.isEmpty {
                         HStack(spacing: 2) {
                             Image(systemName: "mappin")
-                                .font(.system(size: 9))
+                                .font(Font.custom("Beiruti-Bold", size: 9))
                             Text(verbatim: shelf.normalizedEnglishDigits)
                         }
-                        .font(AdminType.caption2Bold)
+                        .font(PPTactileType.tagMono)
                         .foregroundColor(.orange)
                         .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
+                        .padding(.vertical, 1)
                         .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
                     }
 
-                    if let barcode = specimen.barcode, !barcode.isEmpty {
-                        HStack(spacing: 2) {
-                            Image(systemName: "barcode")
-                                .font(.system(size: 9))
-                            Text(verbatim: barcode.normalizedEnglishDigits)
+                    if let ref = config.referenceValue {
+                        HStack(spacing: 3) {
+                            Text((config.referenceLabel ?? Language.get("TactilePad_Book_Stock", alter: "الرصيد الدفتري")) + ":")
+                                .font(PPTactileType.specimenSubtitle)
+                                .foregroundColor(AdminSurface.secondaryText)
+                            let refFormatted = config.mode.allowsDecimal ? String(format: "%.2f", ref) : "\(Int(ref))"
+                            Text(verbatim: refFormatted.normalizedEnglishDigits)
+                                .font(PPTactileType.badgeBold)
+                                .foregroundColor(AdminSurface.primaryText)
+                            Text(config.mode.defaultUnit)
+                                .font(PPTactileType.specimenSubtitle)
+                                .foregroundColor(AdminSurface.secondaryText)
                         }
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(AdminSurface.secondaryText)
-                    }
-                }
-
-                if let ref = config.referenceValue {
-                    HStack(spacing: 4) {
-                        Text((config.referenceLabel ?? Language.get("TactilePad_Current_Value", alter: "القيمة المرجعية")) + ":")
-                            .font(AdminType.caption)
-                            .foregroundColor(AdminSurface.secondaryText)
-
-                        let refFormatted = config.mode.allowsDecimal ? String(format: "%.2f", ref) : "\(Int(ref))"
-                        Text(verbatim: refFormatted.normalizedEnglishDigits)
-                            .font(AdminType.captionBold)
-                            .foregroundColor(AdminSurface.primaryText)
-
-                        Text(config.mode.defaultUnit)
-                            .font(AdminType.caption)
-                            .foregroundColor(AdminSurface.secondaryText)
                     }
                 }
             }
 
-            Spacer()
+            Spacer(minLength: 0)
         }
         .padding(10)
-        .background(AdminSurface.cardElevated, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(AdminSurface.cardElevated.opacity(0.7), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(AdminSurface.hairline, lineWidth: 0.8)
         )
     }
 
-    // MARK: - Subviews: Readout & Live Variance Pill
+    // MARK: - Hero Interactive Readout & Variance Sentinel
 
-    private var readoutAndVarianceCard: some View {
+    private var heroReadoutAndVarianceSentinel: some View {
         let delta = referenceDelta
 
         return VStack(spacing: 6) {
-            // Giant Hero Numeric Readout
+            // Numeric Readout with Interactive Scrub Gestures
             HStack(alignment: .lastTextBaseline, spacing: 6) {
                 Text(verbatim: displayDigits)
-                    .font(.system(size: isPad ? 58 : 46, weight: .heavy, design: .rounded))
+                    .font(PPTactileType.heroReadout(isPad: isPad))
                     .foregroundColor(AdminSurface.primaryText)
                     .contentTransition(.numericText())
-                    .animation(.spring(response: 0.25, dampingFraction: 0.8), value: inputText)
+                    .animation(reduceMotion ? .none : .spring(response: 0.22, dampingFraction: 0.8), value: inputText)
 
                 Text(config.mode.defaultUnit)
-                    .font(AdminType.headlineBold)
+                    .font(PPTactileType.heroUnit(isPad: isPad))
                     .foregroundColor(AdminSurface.secondaryText)
                     .padding(.bottom, 4)
 
-                // Quick clear button when input is not empty
                 if !inputText.isEmpty {
                     Button {
                         handleKeypadClear()
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 18))
+                            .font(Font.custom("Beiruti-Bold", size: 16))
                             .foregroundColor(AdminSurface.secondaryText.opacity(0.5))
                     }
                     .buttonStyle(PlainButtonStyle())
                     .padding(.leading, 4)
+                    .accessibilityLabel(Language.get("TactilePad_Clear", alter: "مسح"))
                 }
             }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 12)
+                    .onChanged { gesture in
+                        let translation = gesture.translation.width
+                        let stepDelta = Int(translation / 30)
+                        if stepDelta != 0 && !isScrubbing {
+                            isScrubbing = true
+                            let dir = Language.isRTL() ? -1 : 1
+                            let deltaToAdd = Double(stepDelta * dir)
+                            executeChipAction(.delta(deltaToAdd))
+                        }
+                    }
+                    .onEnded { _ in
+                        isScrubbing = false
+                    }
+            )
 
-            // Live Variance Telemetry Badge (if reference exists)
+            // Dynamic Variance Telemetry Badge
             if let delta = delta {
                 HStack(spacing: 6) {
                     if abs(delta) < 0.001 {
                         Image(systemName: "checkmark.seal.fill")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(Font.custom("Beiruti-Bold", size: 13))
                             .foregroundColor(AdminSurface.emerald)
-                        Text(Language.get("TactilePad_Matched_Badge", alter: "مطابق للقيمة المرجعية (0 فرق)"))
-                            .font(AdminType.captionBold)
+                        Text(Language.get("TactilePad_Matched_Badge", alter: "مطابق تماماً للرصيد الدفتري (0 فرق)"))
+                            .font(PPTactileType.badgeBold)
                             .foregroundColor(AdminSurface.emerald)
                     } else if delta < 0 {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(Font.custom("Beiruti-Bold", size: 13))
                             .foregroundColor(AdminSurface.crimson)
 
                         let deltaStr = config.mode.allowsDecimal ? String(format: "%.2f", abs(delta)) : "\(Int(abs(delta)))"
-                        let impactStr = (financialImpact != nil && financialImpact! > 0) ? String(format: " (أثر %.2f ر.ق)", financialImpact!) : ""
-                        Text(verbatim: String(format: Language.get("TactilePad_Deficit_Badge", alter: "تخفيض / عجز -%@ %@%@"), deltaStr, config.mode.defaultUnit, impactStr).normalizedEnglishDigits)
-                            .font(AdminType.captionBold)
+                        let impactStr = (financialImpact != nil && financialImpact! > 0)
+                            ? String(format: Language.get("TactilePad_Financial_Impact_Minus", alter: " (أثر -%.2f ر.ق)"), financialImpact!)
+                            : ""
+                        Text(verbatim: String(format: Language.get("TactilePad_Deficit_Badge", alter: "عجز / نقص -%@ %@%@"), deltaStr, config.mode.defaultUnit, impactStr).normalizedEnglishDigits)
+                            .font(PPTactileType.badgeBold)
                             .foregroundColor(AdminSurface.crimson)
                     } else {
                         Image(systemName: "arrow.up.right.circle.fill")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(Font.custom("Beiruti-Bold", size: 13))
                             .foregroundColor(AdminSurface.amber)
 
                         let deltaStr = config.mode.allowsDecimal ? String(format: "%.2f", delta) : "\(Int(delta))"
-                        let impactStr = (financialImpact != nil && financialImpact! > 0) ? String(format: " (أثر +%.2f ر.ق)", financialImpact!) : ""
-                        Text(verbatim: String(format: Language.get("TactilePad_Surplus_Badge", alter: "زيادة / فائض +%@ %@%@"), deltaStr, config.mode.defaultUnit, impactStr).normalizedEnglishDigits)
-                            .font(AdminType.captionBold)
+                        let impactStr = (financialImpact != nil && financialImpact! > 0)
+                            ? String(format: Language.get("TactilePad_Financial_Impact_Plus", alter: " (أثر +%.2f ر.ق)"), financialImpact!)
+                            : ""
+                        Text(verbatim: String(format: Language.get("TactilePad_Surplus_Badge", alter: "فائض / زيادة +%@ %@%@"), deltaStr, config.mode.defaultUnit, impactStr).normalizedEnglishDigits)
+                            .font(PPTactileType.badgeBold)
                             .foregroundColor(AdminSurface.amber)
                     }
                 }
@@ -833,7 +776,19 @@ public struct PPTactileNumberPadSheet: View {
                     badgeTone(delta: delta).opacity(0.12),
                     in: Capsule()
                 )
-                .animation(.easeInOut(duration: 0.2), value: delta)
+                .animation(reduceMotion ? .none : .easeInOut(duration: 0.2), value: delta)
+            } else if parsedValue == 0 && !config.mode.allowsDecimal {
+                HStack(spacing: 5) {
+                    Image(systemName: "slash.circle.fill")
+                        .font(Font.custom("Beiruti-Bold", size: 12))
+                        .foregroundColor(AdminSurface.crimson)
+                    Text(Language.get("TactilePad_Zero_Stock_Warning", alter: "تم تصفير الكمية. سيتم وسم الصنف بأنه نافذ من الرف."))
+                        .font(PPTactileType.hint)
+                        .foregroundColor(AdminSurface.crimson)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(AdminSurface.crimson.opacity(0.08), in: Capsule())
             }
         }
         .frame(maxWidth: .infinity)
@@ -841,10 +796,7 @@ public struct PPTactileNumberPadSheet: View {
         .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(
-                    badgeTone(delta: delta).opacity(0.3),
-                    lineWidth: 1
-                )
+                .stroke(badgeTone(delta: delta).opacity(0.35), lineWidth: 1)
         )
     }
 
@@ -859,9 +811,9 @@ public struct PPTactileNumberPadSheet: View {
         }
     }
 
-    // MARK: - Subviews: Accelerator Chips Bar (Horizontal for iPhone)
+    // MARK: - Accelerator Ribbon (iPhone Horizontal Scroll)
 
-    private var acceleratorChipsBar: some View {
+    private var acceleratorChipsRibbon: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(activeChips) { chip in
@@ -869,18 +821,9 @@ public struct PPTactileNumberPadSheet: View {
                 }
             }
             .padding(.horizontal, AdminSpacing.screenMargin)
+            .padding(.vertical, 6)
         }
-    }
-
-    // MARK: - Subviews: Accelerator Chips Grid (for iPad)
-
-    private var acceleratorChipsGrid: some View {
-        VStack(spacing: 8) {
-            ForEach(activeChips) { chip in
-                chipButton(chip: chip)
-                    .frame(maxWidth: .infinity)
-            }
-        }
+        .frame(height: 48)
     }
 
     private func chipButton(chip: PPTactilePresetChip) -> some View {
@@ -890,65 +833,35 @@ public struct PPTactileNumberPadSheet: View {
             HStack(spacing: 4) {
                 if let icon = chip.icon {
                     Image(systemName: icon)
-                        .font(.system(size: 12))
+                        .font(Font.custom("Beiruti-Bold", size: 12))
                 }
                 Text(chip.title)
-                    .font(AdminType.captionBold)
+                    .font(PPTactileType.chipLabel)
                     .lineLimit(1)
             }
             .foregroundColor(chip.tint ?? AdminSurface.primaryText)
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.vertical, 7)
             .background(
                 (chip.tint ?? AdminSurface.primaryText).opacity(chip.icon != nil ? 0.12 : 0.06),
                 in: RoundedRectangle(cornerRadius: 10, style: .continuous)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke((chip.tint ?? AdminSurface.hairline).opacity(0.3), lineWidth: 0.8)
+                    .stroke((chip.tint ?? AdminSurface.hairline).opacity(0.35), lineWidth: 0.8)
             )
         }
         .buttonStyle(PPTactilePressFeedbackStyle())
+        .hoverEffect(isPad ? .highlight : .automatic)
+        .accessibilityLabel(chip.title)
     }
 
-    // MARK: - Subviews: iPad Economics Card
-
-    private func iPadEconomicsCard(delta: Double) -> some View {
-        VStack(spacing: 8) {
-            HStack {
-                Text(Language.get("TactilePad_Economics_Title", alter: "تحليل الأثر المحاسبي"))
-                    .font(AdminType.captionBold)
-                    .foregroundColor(AdminSurface.secondaryText)
-                Spacer()
-                if let impact = financialImpact {
-                    Text(verbatim: String(format: "%@%.2f %@", delta < 0 ? "-" : "+", impact, config.mode.defaultUnit).normalizedEnglishDigits)
-                        .font(AdminType.captionBold)
-                        .foregroundColor(badgeTone(delta: delta))
-                }
-            }
-
-            HStack(spacing: 8) {
-                Image(systemName: abs(delta) < 0.001 ? "shield.checkmark.fill" : (delta < 0 ? "exclamationmark.triangle.fill" : "chart.line.uptrend.xyaxis.circle.fill"))
-                    .font(.system(size: 16))
-                    .foregroundColor(badgeTone(delta: delta))
-
-                Text(verbatim: String(format: Language.get("TactilePad_Difference_Formula", alter: "المدخل: %@ | الفرق: %@"), "\(displayDigits) \(config.mode.defaultUnit)", "\(delta >= 0 ? "+" : "")\(config.mode.allowsDecimal ? String(format: "%.2f", delta) : "\(Int(delta))")").normalizedEnglishDigits)
-                    .font(AdminType.footnoteBold)
-                    .foregroundColor(badgeTone(delta: delta))
-                Spacer()
-            }
-        }
-        .padding(14)
-        .background(badgeTone(delta: delta).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(badgeTone(delta: delta).opacity(0.3), lineWidth: 0.8))
-    }
-
-    // MARK: - Subviews: Tactile Keypad Grid
+    // MARK: - Tactile Numeric Matrix (Keypad)
 
     private func keypadMatrix(buttonHeight: CGFloat) -> some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 7) {
             ForEach(0..<keypadKeys.count, id: \.self) { row in
-                HStack(spacing: 8) {
+                HStack(spacing: 7) {
                     ForEach(keypadKeys[row], id: \.id) { keyItem in
                         keypadKeyButton(keyItem: keyItem, height: buttonHeight)
                     }
@@ -981,22 +894,22 @@ public struct PPTactileNumberPadSheet: View {
                 switch keyItem {
                 case .digit(let d):
                     Text(verbatim: d.normalizedEnglishDigits)
-                        .font(.system(size: isPad ? 28 : 24, weight: .bold, design: .rounded))
+                        .font(PPTactileType.keypadDigit(isPad: isPad))
                         .foregroundColor(AdminSurface.primaryText)
 
                 case .decimal:
                     Text(verbatim: ".")
-                        .font(.system(size: isPad ? 32 : 28, weight: .heavy, design: .rounded))
+                        .font(PPTactileType.keypadDigit(isPad: isPad))
                         .foregroundColor(AdminSurface.primaryText)
 
                 case .clear:
                     Text(verbatim: "C")
-                        .font(.system(size: isPad ? 22 : 20, weight: .heavy, design: .rounded))
+                        .font(PPTactileType.keypadAction(isPad: isPad))
                         .foregroundColor(AdminSurface.crimson)
 
                 case .backspace:
                     Image(systemName: "delete.left.fill")
-                        .font(.system(size: isPad ? 22 : 20, weight: .bold))
+                        .font(Font.custom("Beiruti-Bold", size: isPad ? 22 : 18))
                         .foregroundColor(AdminSurface.secondaryText)
                 }
             }
@@ -1004,8 +917,10 @@ public struct PPTactileNumberPadSheet: View {
             .frame(height: height)
         }
         .buttonStyle(PPTactilePressFeedbackStyle())
+        .hoverEffect(isPad ? .highlight : .automatic)
+        .accessibilityLabel(accessibilityLabel(for: keyItem))
         .simultaneousGesture(
-            LongPressGesture(minimumDuration: 0.55).onEnded { _ in
+            LongPressGesture(minimumDuration: 0.45).onEnded { _ in
                 if keyItem == .backspace {
                     handleKeypadClear()
                 }
@@ -1026,7 +941,20 @@ public struct PPTactileNumberPadSheet: View {
         }
     }
 
-    // MARK: - Subviews: Sovereign Primary Action Button
+    private func accessibilityLabel(for key: PPTactileKey) -> String {
+        switch key {
+        case .digit(let d):
+            return String(format: Language.get("TactilePad_A11y_Key", alter: "مفتاح %@"), d)
+        case .decimal:
+            return Language.get("TactilePad_A11y_Decimal", alter: "فاصلة عشرية")
+        case .clear:
+            return Language.get("TactilePad_A11y_Clear", alter: "مسح القيمة")
+        case .backspace:
+            return Language.get("TactilePad_A11y_Backspace", alter: "حذف آخر رقم")
+        }
+    }
+
+    // MARK: - Sovereign Primary Action Button
 
     private var primaryActionButton: some View {
         let delta = referenceDelta
@@ -1035,7 +963,7 @@ public struct PPTactileNumberPadSheet: View {
         if let d = delta, abs(d) < 0.001 {
             buttonColor = AdminSurface.emerald
         } else if parsedValue <= 0 && !config.allowNegative {
-            buttonColor = AdminSurface.primary
+            buttonColor = AdminSurface.crimson
         } else {
             buttonColor = AdminSurface.primary
         }
@@ -1071,18 +999,306 @@ public struct PPTactileNumberPadSheet: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: delta != nil && abs(delta!) < 0.001 ? "checkmark.circle.fill" : "arrow.up.circle.fill")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(Font.custom("Beiruti-Bold", size: 16))
 
                 Text(verbatim: buttonTitle.normalizedEnglishDigits)
-                    .font(AdminType.headlineBold)
+                    .font(PPTactileType.actionButton)
             }
             .foregroundColor(.white)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
+            .padding(.vertical, 13)
             .background(buttonColor, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .shadow(color: buttonColor.opacity(0.3), radius: 6, y: 3)
         }
         .buttonStyle(PPTactilePressFeedbackStyle())
+        .hoverEffect(isPad ? .lift : .automatic)
+    }
+
+    // MARK: - ════════════════════════════════════════════════════════════════
+    // MARK: iPad (iPadOS) Studio Tactical Console Layout
+    // MARK: ════════════════════════════════════════════════════════════════
+
+    private var iPadStudioLayout: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // Top iPad Bar
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(config.title)
+                            .font(PPTactileType.title)
+                            .foregroundColor(AdminSurface.primaryText)
+
+                        if let subtitle = config.subtitle {
+                            Text(subtitle)
+                                .font(PPTactileType.subtitle)
+                                .foregroundColor(AdminSurface.secondaryText)
+                        } else {
+                            Text(Language.get("TactilePad_Keyboard_Hint", alter: "يمكنك استخدام لوحة المفاتيح الخارجية للأرقام مباشرة"))
+                                .font(PPTactileType.subtitle)
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+                    }
+
+                    Spacer()
+
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        handleDismiss()
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(AdminSurface.cardElevated)
+                                .frame(width: 36, height: 36)
+                            Image(systemName: "xmark")
+                                .font(Font.custom("Beiruti-Bold", size: 14))
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+                        .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: 0.8))
+                    }
+                    .accessibilityLabel(Language.get("Cancel", alter: "إلغاء"))
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 18)
+                .padding(.bottom, 14)
+
+                Divider().background(AdminSurface.hairline)
+
+                // Asymmetric Dual-Wing Studio Canvas
+                HStack(spacing: 24) {
+                    // LEFT WING (42%): Specimen Telemetry, Stock Meter & Accounting Ledger
+                    VStack(spacing: 14) {
+                        if let specimen = config.specimen {
+                            iPadSpecimenStudioCard(specimen: specimen)
+                        }
+
+                        if let delta = referenceDelta {
+                            iPadStockComparisonGauge(delta: delta)
+                            iPadValuationLedgerCard(delta: delta)
+                        }
+
+                        // Presets Grid
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(Language.get("TactilePad_Quick_Accelerators", alter: "المعدلات السريعة"))
+                                .font(PPTactileType.badgeBold)
+                                .foregroundColor(AdminSurface.secondaryText)
+
+                            acceleratorChipsGrid
+                        }
+
+                        Spacer()
+                    }
+                    .frame(maxWidth: 340)
+
+                    // Vertical Separator
+                    Rectangle()
+                        .fill(AdminSurface.hairline)
+                        .frame(width: 1)
+
+                    // RIGHT WING (58%): Readout Canvas, Pro Keypad & Dual Action Footer
+                    VStack(spacing: 14) {
+                        heroReadoutAndVarianceSentinel
+
+                        keypadMatrix(buttonHeight: 56)
+
+                        Spacer()
+
+                        // Dual Action Buttons (Cancel & Commit)
+                        HStack(spacing: 12) {
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                handleDismiss()
+                            } label: {
+                                Text(Language.get("Cancel", alter: "إلغاء"))
+                                    .font(PPTactileType.secondaryButton)
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 13)
+                                    .background(AdminSurface.cardElevated, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
+                            }
+                            .buttonStyle(PPTactilePressFeedbackStyle())
+
+                            primaryActionButton
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .padding(24)
+            }
+            .background(AdminSurface.background.ignoresSafeArea())
+        }
+        .frame(minWidth: 740, minHeight: 560)
+        .onKeyPress { press in
+            if press.characters == "\r" || press.key == .return {
+                handleCommit()
+                return .handled
+            } else if press.key == .escape {
+                handleDismiss()
+                return .handled
+            } else if press.characters.count == 1, let char = press.characters.first {
+                if char.isNumber {
+                    handleKeypadPress(String(char))
+                    return .handled
+                } else if (char == "." || char == ",") && config.mode.allowsDecimal {
+                    handleKeypadDecimal()
+                    return .handled
+                }
+            } else if press.key == .delete || press.key == .deleteForward {
+                handleKeypadBackspace()
+                return .handled
+            }
+            return .ignored
+        }
+    }
+
+    private func iPadSpecimenStudioCard(specimen: PPTactileSpecimenInfo) -> some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(AdminSurface.cardElevated)
+                    .frame(width: 64, height: 64)
+
+                if let url = specimen.imageURL {
+                    AdminRemoteImage(url: url) {
+                        ProgressView().scaleEffect(0.8)
+                    }
+                    .frame(width: 64, height: 64)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                } else {
+                    Image(systemName: "cube.box.fill")
+                        .font(Font.custom("Beiruti-Bold", size: 28))
+                        .foregroundColor(AdminSurface.primary.opacity(0.8))
+                }
+            }
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(specimen.title)
+                    .font(PPTactileType.specimenTitle)
+                    .foregroundColor(AdminSurface.primaryText)
+                    .lineLimit(2)
+
+                HStack(spacing: 6) {
+                    if let sku = specimen.sku, !sku.isEmpty {
+                        Text(verbatim: sku.normalizedEnglishDigits)
+                            .font(PPTactileType.tagMono)
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(AdminSurface.cardElevated, in: RoundedRectangle(cornerRadius: 4))
+                    }
+
+                    if let shelf = specimen.shelfLocation, !shelf.isEmpty {
+                        HStack(spacing: 2) {
+                            Image(systemName: "mappin")
+                                .font(Font.custom("Beiruti-Bold", size: 9))
+                            Text(verbatim: shelf.normalizedEnglishDigits)
+                        }
+                        .font(PPTactileType.tagMono)
+                        .foregroundColor(.orange)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
+    }
+
+    private func iPadStockComparisonGauge(delta: Double) -> some View {
+        guard let ref = config.referenceValue else { return AnyView(EmptyView()) }
+        let maxVal = max(ref, parsedValue, 1.0)
+        let bookRatio = CGFloat(ref / maxVal)
+        let newRatio = CGFloat(parsedValue / maxVal)
+
+        return AnyView(
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(config.referenceLabel ?? Language.get("TactilePad_Book_Stock", alter: "الرصيد الدفتري"))
+                        .font(PPTactileType.badgeCaption)
+                        .foregroundColor(AdminSurface.secondaryText)
+                    Spacer()
+                    Text(verbatim: "\(Int(ref)) \(config.mode.defaultUnit)".normalizedEnglishDigits)
+                        .font(PPTactileType.badgeBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                }
+
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(AdminSurface.cardElevated)
+                        Capsule()
+                            .fill(AdminSurface.primary.opacity(0.6))
+                            .frame(width: max(8, geo.size.width * bookRatio))
+                    }
+                }
+                .frame(height: 7)
+
+                HStack {
+                    Text(Language.get("TactilePad_New_Valuation", alter: "الكمية المدخلة"))
+                        .font(PPTactileType.badgeCaption)
+                        .foregroundColor(AdminSurface.secondaryText)
+                    Spacer()
+                    Text(verbatim: "\(displayDigits) \(config.mode.defaultUnit)".normalizedEnglishDigits)
+                        .font(PPTactileType.badgeBold)
+                        .foregroundColor(badgeTone(delta: delta))
+                }
+
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(AdminSurface.cardElevated)
+                        Capsule()
+                            .fill(badgeTone(delta: delta))
+                            .frame(width: max(8, geo.size.width * newRatio))
+                    }
+                }
+                .frame(height: 7)
+            }
+            .padding(12)
+            .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
+        )
+    }
+
+    private func iPadValuationLedgerCard(delta: Double) -> some View {
+        VStack(spacing: 8) {
+            HStack {
+                Text(Language.get("TactilePad_Economics_Title", alter: "تحليل الأثر المالي والمحاسبي"))
+                    .font(PPTactileType.badgeBold)
+                    .foregroundColor(AdminSurface.secondaryText)
+                Spacer()
+                if let impact = financialImpact {
+                    Text(verbatim: String(format: "%@%.2f %@", delta < 0 ? "-" : "+", impact, Language.get("QAR", alter: "ر.ق")).normalizedEnglishDigits)
+                        .font(PPTactileType.badgeBold)
+                        .foregroundColor(badgeTone(delta: delta))
+                }
+            }
+
+            HStack(spacing: 8) {
+                Image(systemName: abs(delta) < 0.001 ? "shield.checkmark.fill" : (delta < 0 ? "exclamationmark.triangle.fill" : "chart.line.uptrend.xyaxis.circle.fill"))
+                    .font(Font.custom("Beiruti-Bold", size: 16))
+                    .foregroundColor(badgeTone(delta: delta))
+
+                Text(verbatim: String(format: Language.get("TactilePad_Difference_Formula", alter: "المدخل: %@ | الفرق: %@"), "\(displayDigits) \(config.mode.defaultUnit)", "\(delta >= 0 ? "+" : "")\(config.mode.allowsDecimal ? String(format: "%.2f", delta) : "\(Int(delta))")").normalizedEnglishDigits)
+                    .font(PPTactileType.ledgerValue)
+                    .foregroundColor(badgeTone(delta: delta))
+                Spacer()
+            }
+        }
+        .padding(12)
+        .background(badgeTone(delta: delta).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(badgeTone(delta: delta).opacity(0.3), lineWidth: 0.8))
+    }
+
+    private var acceleratorChipsGrid: some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+            ForEach(activeChips) { chip in
+                chipButton(chip: chip)
+            }
+        }
     }
 
     // MARK: - Keypad Handlers
@@ -1090,10 +1306,11 @@ public struct PPTactileNumberPadSheet: View {
     private func handleKeypadPress(_ digit: String) {
         UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
 
-        // Digits limit check
-        if inputText.count >= config.maxDigits { return }
+        if inputText.count >= config.maxDigits {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            return
+        }
 
-        // Percentage max clamp
         if case .percentage(let maxLimit) = config.mode {
             let prospective = (inputText == "0" ? digit : inputText + digit)
             if let val = Double(prospective), val > maxLimit {
@@ -1105,7 +1322,7 @@ public struct PPTactileNumberPadSheet: View {
         if inputText == "0" && digit != "0" {
             inputText = digit
         } else if inputText == "0" && digit == "0" {
-            // keep 0
+            // keep single zero
         } else {
             inputText.append(digit)
         }
@@ -1193,9 +1410,9 @@ public struct PPTactilePressFeedbackStyle: ButtonStyle {
 
     public func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.93 : 1.0)
             .opacity(configuration.isPressed ? 0.85 : 1.0)
-            .animation(.spring(response: 0.18, dampingFraction: 0.65), value: configuration.isPressed)
+            .animation(.spring(response: 0.16, dampingFraction: 0.65), value: configuration.isPressed)
     }
 }
 
@@ -1227,7 +1444,7 @@ public extension View {
             mode: .quantity(),
             initialValue: Double(currentQuantity),
             referenceValue: referenceQuantity.map(Double.init),
-            referenceLabel: Language.get("CycleCount_Keypad_Expected", alter: "الرصيد الدفتري"),
+            referenceLabel: Language.get("TactilePad_Book_Stock", alter: "الرصيد الدفتري"),
             specimen: specimen
         )
         return self.sheet(isPresented: isPresented) {
@@ -1288,7 +1505,7 @@ public final class PPTactileNumberPadBridge: NSObject {
             mode: .quantity(),
             initialValue: Double(currentQuantity),
             referenceValue: referenceQuantity?.doubleValue,
-            referenceLabel: Language.get("CycleCount_Keypad_Expected", alter: "الرصيد الدفتري"),
+            referenceLabel: Language.get("TactilePad_Book_Stock", alter: "الرصيد الدفتري"),
             specimen: specimen
         )
 
@@ -1299,8 +1516,15 @@ public final class PPTactileNumberPadBridge: NSObject {
         let hosting = UIHostingController(rootView: sheetView)
         hosting.modalPresentationStyle = .pageSheet
         if let sheet = hosting.sheetPresentationController {
-            sheet.detents = [.medium(), .large()]
-            sheet.prefersGrabberVisible = true
+            let targetHeight: CGFloat = (config.specimen != nil ? 585.0 : 510.0)
+            if #available(iOS 16.0, *) {
+                sheet.detents = [
+                    .custom { _ in min(targetHeight, UIScreen.main.bounds.height * 0.90) }
+                ]
+            } else {
+                sheet.detents = [.medium()]
+            }
+            sheet.prefersGrabberVisible = false
         }
         viewController.present(hosting, animated: true)
     }

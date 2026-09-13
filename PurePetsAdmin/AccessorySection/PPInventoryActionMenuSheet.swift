@@ -10,6 +10,7 @@
 
 import SwiftUI
 import UIKit
+import FirebaseFirestore
 
 public struct PPInventoryActionMenuSheet: View {
     let item: PetAccessory
@@ -23,6 +24,7 @@ public struct PPInventoryActionMenuSheet: View {
     var onOpenPOS: (() -> Void)? = nil
     var onRecordMortality: (() -> Void)? = nil
     var onLiveIntake: (() -> Void)? = nil
+    var onToggleAppMarket: (() -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -38,7 +40,8 @@ public struct PPInventoryActionMenuSheet: View {
         onDelete: @escaping () -> Void,
         onOpenPOS: (() -> Void)? = nil,
         onRecordMortality: (() -> Void)? = nil,
-        onLiveIntake: (() -> Void)? = nil
+        onLiveIntake: (() -> Void)? = nil,
+        onToggleAppMarket: (() -> Void)? = nil
     ) {
         self.item = item
         self.onEdit = onEdit
@@ -51,6 +54,7 @@ public struct PPInventoryActionMenuSheet: View {
         self.onOpenPOS = onOpenPOS
         self.onRecordMortality = onRecordMortality
         self.onLiveIntake = onLiveIntake
+        self.onToggleAppMarket = onToggleAppMarket
     }
 
     private var imageURL: URL? {
@@ -406,6 +410,55 @@ public struct PPInventoryActionMenuSheet: View {
                 }
                 .buttonStyle(SpecimenActionPressStyle())
             }
+
+            // App Marketplace Visibility Toggle Row
+            if canManageStock {
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    if let onToggleAppMarket = onToggleAppMarket {
+                        onToggleAppMarket()
+                    } else {
+                        toggleAppMarketDirectly()
+                    }
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: item.showInAppMarket ? "storefront.fill" : "eye.slash.fill")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.showInAppMarket ? Language.get("AppMarket_Hide_Action", alter: "إخفاء من متجر التطبيق") : Language.get("AppMarket_Show_Action", alter: "إظهار في متجر التطبيق"))
+                                .font(PPBrandFont.bold(size: 14))
+                                .foregroundColor(AdminSurface.primaryText)
+                                .multilineTextAlignment(.leading)
+                            Text(item.showInAppMarket ? Language.get("AppMarket_Currently_Visible", alter: "الصنف معروض للعملاء في تطبيق Pure Pets") : Language.get("AppMarket_Currently_Hidden", alter: "الصنف مخفي عن المتجر ومتاح للكاشير والبيع الداخلي فقط"))
+                                .font(AdminType.caption2)
+                                .foregroundColor(AdminSurface.secondaryText)
+                                .multilineTextAlignment(.leading)
+                        }
+
+                        Spacer()
+
+                        Text(item.showInAppMarket ? Language.get("AppMarket_Status_Visible", alter: "معروض بالمتجر") : Language.get("AppMarket_Status_Hidden", alter: "مخفي من المتجر"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundColor(item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                (item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText).opacity(0.12),
+                                in: Capsule()
+                            )
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(AdminSurface.hairline, lineWidth: 1)
+                    )
+                }
+                .buttonStyle(SpecimenActionPressStyle())
+            }
         }
     }
 
@@ -629,6 +682,32 @@ public struct PPInventoryActionMenuSheet: View {
                                 }
                                 .buttonStyle(SpecimenActionPressStyle())
                             }
+
+                            if canManageStock {
+                                Button {
+                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                    if let onToggleAppMarket = onToggleAppMarket {
+                                        onToggleAppMarket()
+                                    } else {
+                                        toggleAppMarketDirectly()
+                                    }
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: item.showInAppMarket ? "storefront.fill" : "eye.slash.fill")
+                                            .font(.system(size: 14, weight: .bold))
+                                        Text(item.showInAppMarket ? Language.get("AppMarket_Hide_Action", alter: "إخفاء من المتجر") : Language.get("AppMarket_Show_Action", alter: "إظهار بالمتجر"))
+                                            .font(PPBrandFont.bold(size: 14))
+                                    }
+                                    .foregroundColor(item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 44)
+                                    .background(
+                                        (item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText).opacity(0.10),
+                                        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    )
+                                }
+                                .buttonStyle(SpecimenActionPressStyle())
+                            }
                         }
                         .padding(.top, 4)
 
@@ -836,6 +915,20 @@ public struct PPInventoryActionMenuSheet: View {
                 .font(.system(size: 26, weight: .bold))
                 .foregroundColor(.white.opacity(0.9))
         }
+    }
+
+    private func toggleAppMarketDirectly() {
+        let newStatus = !item.showInAppMarket
+        item.showInAppMarket = newStatus
+        let docId = item.accessoryID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !docId.isEmpty else { return }
+        Firestore.firestore().collection("petAccessories").document(docId).updateData(["showInAppMarket": newStatus]) { error in
+            if let error = error {
+                print("Failed to toggle showInAppMarket: \(error.localizedDescription)")
+            }
+        }
+        let message = newStatus ? Language.get("AppMarket_NowVisible_Toast", alter: "تم إظهار الصنف في متجر التطبيق") : Language.get("AppMarket_NowHidden_Toast", alter: "تم إخفاء الصنف من متجر التطبيق")
+        PPHUD.showSuccess(message)
     }
 }
 

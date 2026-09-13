@@ -199,6 +199,23 @@ struct PPLivePetInventoryUnit: Identifiable, Equatable {
     let subSubKindItemNameEn: String?
     let gender: PPLivePetUnitGender
     let mediaURLs: [String]
+    let quarantineReason: String
+    let quarantinedAt: Date?
+    let refundedAt: Date?
+    let returnCaseId: String
+    let returnReason: String
+    let returnTransactionId: String
+
+    var isUnderInspection: Bool {
+        if status == "UNDER_INSPECTION" { return true }
+        if status == "QUARANTINED" && (quarantineReason == "LIVE_ANIMAL_RETURN" || !returnCaseId.isEmpty || refundedAt != nil) {
+            return true
+        }
+        if status == "SOLD" && (refundedAt != nil || !returnCaseId.isEmpty) {
+            return true
+        }
+        return false
+    }
 
     var subSubKindName: String? {
         if Language.isRTL() {
@@ -248,6 +265,37 @@ struct PPLivePetInventoryUnit: Identifiable, Equatable {
         subSubKindItemNameEn = PPLivePetInventoryService.string(dictionary["subSubKindItemNameEn"])
         gender = PPLivePetUnitGender.resolved(dictionary["gender"])
         mediaURLs = PPLivePetInventoryService.strings(dictionary["mediaURLs"] ?? dictionary["mediaUrls"])
+        quarantineReason = PPLivePetInventoryService.string(dictionary["quarantineReason"])
+        quarantinedAt = PPLivePetInventoryService.date(dictionary["quarantinedAt"])
+        refundedAt = PPLivePetInventoryService.date(dictionary["refundedAt"])
+        returnCaseId = PPLivePetInventoryService.string(dictionary["returnCaseId"])
+        returnReason = PPLivePetInventoryService.string(dictionary["returnReason"])
+        returnTransactionId = PPLivePetInventoryService.string(dictionary["returnTransactionId"])
+    }
+
+    var displayIdentity: String {
+        let tag = ringTag.trimmingCharacters(in: .whitespacesAndNewlines)
+        return tag.isEmpty ? id : tag
+    }
+
+    var naturalSortKey: String {
+        displayIdentity.normalizedEnglishDigits.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+extension PPLivePetInventoryUnit: Comparable {
+    static func < (lhs: PPLivePetInventoryUnit, rhs: PPLivePetInventoryUnit) -> Bool {
+        let primary = lhs.naturalSortKey.compare(rhs.naturalSortKey, options: [.numeric, .caseInsensitive])
+        if primary != .orderedSame {
+            return primary == .orderedAscending
+        }
+        let fallbackKeyLhs = lhs.id.normalizedEnglishDigits.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallbackKeyRhs = rhs.id.normalizedEnglishDigits.trimmingCharacters(in: .whitespacesAndNewlines)
+        let secondary = fallbackKeyLhs.compare(fallbackKeyRhs, options: [.numeric, .caseInsensitive])
+        if secondary != .orderedSame {
+            return secondary == .orderedAscending
+        }
+        return lhs.id < rhs.id
     }
 }
 
@@ -341,6 +389,8 @@ struct PPInventoryBranchOption: Identifiable, Equatable, Hashable {
     }
 
     var name: String { displayName }
+    var localizedName: String { displayName }
+    //func localizedName() -> String { displayName }
 
     var displayName: String {
         if Language.isRTL() {
@@ -537,7 +587,7 @@ enum PPLivePetInventoryService {
             seenCursors.insert(nextCursor)
             cursor = nextCursor
         } while true
-        return result
+        return result.sorted()
     }
 
     /// Uses the redacted, permission-scoped POS reservation projection. Passing
@@ -932,13 +982,20 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
     func fetchTaxonomy() {
         guard availableSubSubKinds.isEmpty, !isLoadingSubSubTaxonomy else { return }
         let mainID = item.petMainCategoryID
-        let subID = item.petSubCategoryID
+        let subID = item.petSubCategoryID > 0 ? item.petSubCategoryID : ((item.petSubCategoryIDs as? [NSNumber])?.first?.intValue ?? 0)
         guard mainID > 0 || subID > 0 else { return }
 
         let cachedKinds = (AppManager.shared().mainKindsArray as? [MainKindsModel]) ?? (MainKindsArrayManager.shared().mainKindsArray as? [MainKindsModel]) ?? []
         let fallbackKind: MainKindsModel? = MainKindsArrayManager.shared().mainKind(forID: mainID)
-        if let mainKind = cachedKinds.first(where: { $0.id == mainID }) ?? fallbackKind,
-           let subKinds = (mainKind.subKindsArray as? [SubKindModel]) ?? (MainKindsArrayManager.shared().getSubKindArray(mainID) as? [SubKindModel]),
+        var resolvedMainKind = cachedKinds.first(where: { $0.id == mainID }) ?? fallbackKind
+        if resolvedMainKind == nil && subID > 0 {
+            resolvedMainKind = cachedKinds.first(where: { mk in
+                let subs = (mk.subKindsArray as? [SubKindModel]) ?? (MainKindsArrayManager.shared().getSubKindArray(mk.id) as? [SubKindModel]) ?? []
+                return subs.contains(where: { $0.id == subID })
+            })
+        }
+        if let mainKind = resolvedMainKind,
+           let subKinds = (mainKind.subKindsArray as? [SubKindModel]) ?? (MainKindsArrayManager.shared().getSubKindArray(mainKind.id) as? [SubKindModel]),
            let subKind = subKinds.first(where: { $0.id == subID }) {
             if let arr = subKind.subSubKindArray as? [subSubKindModel], !arr.isEmpty {
                 self.availableSubSubKinds = arr.map { m in
@@ -1046,7 +1103,7 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
             if mode == .individual {
                 do {
                     if canManageStock {
-                        units = try await PPLivePetInventoryService.listUnits(productID: item.accessoryID)
+                        units = try await PPLivePetInventoryService.listUnits(productID: item.accessoryID).sorted()
                     } else if canSell {
                         // `includeReservations` is a stock.manage-only read in
                         // Infra. POS staff still receive available units here;
@@ -1056,7 +1113,7 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
                             productID: item.accessoryID,
                             includeHistory: false,
                             includeReservations: false
-                        )
+                        ).sorted()
                     } else {
                         units = []
                     }
@@ -1333,6 +1390,84 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
                 payload: ["unitId": unit.id, "sellingPrice": price]
             )
         }, successKey: "LivePet_Price_Success", successFallback: "تم تحديث سعر بيع الحيوان.")
+    }
+
+    func updateUnitProfile(
+        unit: PPLivePetInventoryUnit,
+        ringTag: String,
+        gender: PPLivePetUnitGender,
+        notes: String,
+        sellingPrice: Double,
+        photoDraft: PPLivePetUnitPhotoDraft?,
+        removeExistingPhoto: Bool = false,
+        subSubKindID: Int? = nil,
+        subSubKindNameAr: String? = nil,
+        subSubKindNameEn: String? = nil,
+        subSubKindItemID: Int? = nil,
+        subSubKindItemNameAr: String? = nil,
+        subSubKindItemNameEn: String? = nil,
+        commandID: String
+    ) async -> Bool {
+        await perform({
+            var mediaURLs: [String]? = nil
+            var expectedMediaURLs: [String]? = nil
+
+            if var draft = photoDraft {
+                guard let actorUID = Auth.auth().currentUser?.uid, !actorUID.isEmpty else {
+                    throw PPLivePetUnitPhotoStorageService.livePetUnitPhotoError(
+                        code: 2,
+                        key: "LivePetIntake_UnitPhotoSessionExpired",
+                        fallback: "انتهت جلسة الموظف. سجّل الدخول مجدداً قبل رفع صورة الحيوان."
+                    )
+                }
+                let uploadedURL = try await PPLivePetUnitPhotoStorageService.upload(
+                    photo: &draft,
+                    unitID: unit.id,
+                    commandID: commandID,
+                    actorUID: actorUID
+                )
+                if !uploadedURL.isEmpty {
+                    mediaURLs = [uploadedURL]
+                    expectedMediaURLs = unit.mediaURLs
+                }
+            } else if removeExistingPhoto {
+                mediaURLs = []
+                expectedMediaURLs = unit.mediaURLs
+            }
+
+            var payload: [String: Any] = [
+                "unitId": unit.id,
+                "ringTag": ringTag,
+                "gender": gender.rawValue,
+                "notes": notes,
+                "sellingPrice": sellingPrice,
+            ]
+            if let mediaURLs {
+                payload["mediaURLs"] = mediaURLs
+                payload["expectedMediaURLs"] = expectedMediaURLs ?? []
+            }
+            if let subSubKindID {
+                payload["subSubKindID"] = subSubKindID
+                if let subSubKindNameAr { payload["subSubKindNameAr"] = subSubKindNameAr }
+                if let subSubKindNameEn { payload["subSubKindNameEn"] = subSubKindNameEn }
+            } else {
+                payload["subSubKindID"] = NSNull()
+            }
+            if let subSubKindItemID {
+                payload["subSubKindItemID"] = subSubKindItemID
+                if let subSubKindItemNameAr { payload["subSubKindItemNameAr"] = subSubKindItemNameAr }
+                if let subSubKindItemNameEn { payload["subSubKindItemNameEn"] = subSubKindItemNameEn }
+            } else {
+                payload["subSubKindItemID"] = NSNull()
+            }
+
+            _ = try await PPLivePetInventoryService.callInventory(
+                action: "update_unit_profile",
+                productID: self.item.accessoryID,
+                commandID: commandID,
+                payload: payload
+            )
+        }, successKey: "LivePet_Profile_Success", successFallback: "تم تحديث ملف الحيوان بنجاح.")
     }
 
     func adjustGroup(targetQuantity: Int, reason: String, commandID: String) async -> Bool {
@@ -1896,6 +2031,35 @@ final class PPInventoryListViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Quick App Market Visibility Toggle
+
+    func toggleAppMarketVisibility(for item: PetAccessory) {
+        let docID = item.accessoryID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !docID.isEmpty else { return }
+
+        let previousValue = item.showInAppMarket
+        let newValue = !previousValue
+
+        item.showInAppMarket = newValue
+        objectWillChange.send()
+        applyFilter()
+
+        Firestore.firestore().collection("petAccessories").document(docID).updateData(["showInAppMarket": newValue]) { [weak self] error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    item.showInAppMarket = previousValue
+                    self?.objectWillChange.send()
+                    self?.applyFilter()
+                    PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: error.localizedDescription)
+                } else {
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    let msg = newValue ? Language.get("AppMarket_NowVisible_Toast", alter: "تم إظهار الصنف في متجر التطبيق") : Language.get("AppMarket_NowHidden_Toast", alter: "تم إخفاء الصنف من متجر التطبيق")
+                    PPHUD.showSuccess(msg)
+                }
+            }
+        }
+    }
+
     // MARK: - Delete & Status Operations
 
     func deleteAccessory(_ item: PetAccessory) {
@@ -2150,6 +2314,7 @@ struct PPInventoryListView: View {
                             .frame(maxWidth: isRegular ? 980 : .infinity)
                             .frame(maxWidth: .infinity)
                         }
+                        .scrollDismissesKeyboardCompat()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .refreshable {
                             await viewModel.refresh()
@@ -2160,6 +2325,7 @@ struct PPInventoryListView: View {
             }
         }
         .ignoresSafeArea()
+        .dismissKeyboardOnTapOutside()
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .sheet(isPresented: $showingBranchSwitcherSheet) {
             PPBranchSelectionGateView()
@@ -2265,6 +2431,9 @@ struct PPInventoryListView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         openItemDetail(for: item)
                     }
+                },
+                onToggleAppMarket: {
+                    viewModel.toggleAppMarketVisibility(for: item)
                 }
             )
             .presentationDetents([.fraction(0.72), .large])
@@ -2833,13 +3002,21 @@ struct PPInventoryListView: View {
                     confirmDelete(item: item)
                 },
                 onRecordDamage: {
-                    itemForDamage = item
+                    if item.isLivePet {
+                        openItemDetail(for: item)
+                    } else {
+                        itemForDamage = item
+                    }
                 },
                 onQuarantineStudio: {
                     itemForQuarantine = item
                 },
                 onManageLots: {
-                    itemForLots = item
+                    if item.isLivePet {
+                        openItemDetail(for: item)
+                    } else {
+                        itemForLots = item
+                    }
                 },
                 onOpenActionMenu: {
                     itemForActionMenu = item
@@ -4007,6 +4184,7 @@ public struct PPInventoryItemDetailView: View {
     let onAdjustQuantity: ((Int) -> Void)?
     let onToggleStock: (() -> Void)?
     let onDelete: (() -> Void)?
+    var onToggleAppMarket: (() -> Void)? = nil
 
     @ObservedObject private var branchInventory = PPBranchInventoryService.shared
     @StateObject private var liveModel: PPLivePetOperationsViewModel
@@ -4037,7 +4215,8 @@ public struct PPInventoryItemDetailView: View {
         onOpenPOS: @escaping () -> Void,
         onAdjustQuantity: ((Int) -> Void)? = nil,
         onToggleStock: (() -> Void)? = nil,
-        onDelete: (() -> Void)? = nil
+        onDelete: (() -> Void)? = nil,
+        onToggleAppMarket: (() -> Void)? = nil
     ) {
         self.item = item
         self.viewModel = viewModel
@@ -4047,6 +4226,7 @@ public struct PPInventoryItemDetailView: View {
         self.onAdjustQuantity = onAdjustQuantity
         self.onToggleStock = onToggleStock
         self.onDelete = onDelete
+        self.onToggleAppMarket = onToggleAppMarket
         _liveModel = StateObject(wrappedValue: PPLivePetOperationsViewModel(item: item))
         let initialStock = PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
         _currentQuantity = State(initialValue: initialStock)
@@ -4075,6 +4255,9 @@ public struct PPInventoryItemDetailView: View {
 
                     // Specimen Telemetry Ribbon (Sculpted 2x2 Glass Grid: Branch, Condition, Weight, Category)
                     specimenTelemetryRibbon
+
+                    // Category-Defining App Marketplace Visibility Deck
+                    appMarketVisibilityControlCard
 
                     // Specimen Narrative Deck (Typographic Description with Expandable Fold)
                     if !item.desc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -4203,6 +4386,9 @@ public struct PPInventoryItemDetailView: View {
                     onToggleStock: !item.isLivePet ? {
                         toggleStockVisibility()
                     } : nil,
+                    onToggleAppMarket: {
+                        toggleAppMarketVisibility()
+                    },
                     onShare: {
                         if let root = UIApplication.shared.connectedScenes
                             .compactMap({ $0 as? UIWindowScene })
@@ -4265,7 +4451,12 @@ public struct PPInventoryItemDetailView: View {
             }
         }
         .sheet(item: $liveModel.operation) { operation in
-            PPLivePetOperationSheet(context: operation, model: liveModel)
+            switch operation {
+            case .price(let unit):
+                PPLivePetUnitProfileEditorSheet(unit: unit, model: liveModel)
+            default:
+                PPLivePetOperationSheet(context: operation, model: liveModel)
+            }
         }
         .sheet(isPresented: $isLightboxPresented) {
             specimenLightboxView
@@ -4690,18 +4881,23 @@ public struct PPInventoryItemDetailView: View {
                 .background(inventoryTrackingTint.opacity(0.10), in: Capsule(style: .continuous))
                 .overlay(Capsule(style: .continuous).strokeBorder(inventoryTrackingTint.opacity(0.22), lineWidth: 0.5))
 
-                // Catalog Active Status Pill
-                HStack(spacing: 4) {
-                    Image(systemName: item.noStock ? "eye.slash.fill" : "eye.fill")
-                        .font(.system(size: 9))
-                    Text(item.noStock ? Language.get("HiddenFromCatalog", alter: "موقوف") : Language.get("VisibleInCatalog", alter: "معروض"))
-                        .font(Font.custom("Beiruti-Regular", size: 11))
+                // App Marketplace Visibility Pill
+                Button {
+                    toggleAppMarketVisibility()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: item.showInAppMarket ? "storefront.fill" : "eye.slash.fill")
+                            .font(.system(size: 9))
+                        Text(item.showInAppMarket ? Language.get("AppMarket_Status_Visible", alter: "معروض بالمتجر") : Language.get("AppMarket_Status_Hidden", alter: "مخفي من المتجر"))
+                            .font(Font.custom("Beiruti-Bold", size: 11))
+                    }
+                    .foregroundStyle(item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3.5)
+                    .background((item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText).opacity(0.10), in: Capsule(style: .continuous))
+                    .overlay(Capsule(style: .continuous).strokeBorder((item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText).opacity(0.25), lineWidth: 0.5))
                 }
-                .foregroundStyle(item.noStock ? Color(uiColor: .ppWarning) : AdminSurface.secondaryText)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3.5)
-                .background(AdminSurface.control, in: Capsule(style: .continuous))
-                .overlay(Capsule(style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.5))
+                .buttonStyle(CatalogPressStyle())
             }
 
             // Interactive SKU/Barcode Cryptopill
@@ -5334,6 +5530,100 @@ public struct PPInventoryItemDetailView: View {
         onToggleStock?()
     }
 
+    private func toggleAppMarketVisibility() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        let previous = item.showInAppMarket
+        let next = !previous
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+            item.showInAppMarket = next
+        }
+        if let onToggleAppMarket = onToggleAppMarket {
+            onToggleAppMarket()
+        } else if let viewModel = viewModel {
+            let docID = item.accessoryID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !docID.isEmpty else { return }
+            Firestore.firestore().collection("petAccessories").document(docID).updateData(["showInAppMarket": next]) { error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        item.showInAppMarket = previous
+                        viewModel.applyFilter()
+                        PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: error.localizedDescription)
+                    } else {
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        let msg = next ? Language.get("AppMarket_NowVisible_Toast", alter: "تم إظهار الصنف في متجر التطبيق") : Language.get("AppMarket_NowHidden_Toast", alter: "تم إخفاء الصنف من متجر التطبيق")
+                        PPHUD.showSuccess(msg)
+                        viewModel.applyFilter()
+                    }
+                }
+            }
+        } else {
+            let docID = item.accessoryID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !docID.isEmpty else { return }
+            Firestore.firestore().collection("petAccessories").document(docID).updateData(["showInAppMarket": next]) { error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        item.showInAppMarket = previous
+                        PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: error.localizedDescription)
+                    } else {
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        let msg = next ? Language.get("AppMarket_NowVisible_Toast", alter: "تم إظهار الصنف في متجر التطبيق") : Language.get("AppMarket_NowHidden_Toast", alter: "تم إخفاء الصنف من متجر التطبيق")
+                        PPHUD.showSuccess(msg)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - App Marketplace Visibility Control Card
+
+    private var appMarketVisibilityControlCard: some View {
+        HStack(alignment: .center, spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill((item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText).opacity(0.12))
+                    .frame(width: 44, height: 44)
+                Image(systemName: item.showInAppMarket ? "storefront.fill" : "eye.slash.fill")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(Language.get("AppMarket_Card_Title", alter: "العرض في متجر التطبيق"))
+                        .font(Font.custom("Beiruti-Bold", size: 14))
+                        .foregroundStyle(AdminSurface.primaryText)
+
+                    Text(item.showInAppMarket ? Language.get("AppMarket_Status_Visible", alter: "معروض") : Language.get("AppMarket_Status_Hidden", alter: "مخفي"))
+                        .font(Font.custom("Beiruti-Bold", size: 10))
+                        .foregroundStyle(item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background((item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText).opacity(0.12), in: Capsule())
+                }
+
+                Text(item.showInAppMarket ? Language.get("AppMarket_Card_Desc_On", alter: "الصنف معروض ومتاح لعملاء تطبيق Pure Pets للشراء والتصفح") : Language.get("AppMarket_Card_Desc_Off", alter: "مخفي من متجر التطبيق، ومتاح فقط داخلياً لعمليات الكاشير والفرع"))
+                    .font(Font.custom("Beiruti-Regular", size: 12))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 4)
+
+            Toggle("", isOn: Binding(
+                get: { item.showInAppMarket },
+                set: { _ in toggleAppMarketVisibility() }
+            ))
+            .labelsHidden()
+            .tint(Color(uiColor: .systemIndigo))
+        }
+        .padding(14)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(item.showInAppMarket ? Color(uiColor: .systemIndigo).opacity(0.22) : AdminSurface.hairline, lineWidth: 0.85)
+        )
+    }
+
     // MARK: - Live-Pet Operations Section
 
     private var livePetOperationsSection: some View {
@@ -5601,10 +5891,27 @@ public struct PPInventoryItemDetailView: View {
     // MARK: - Individual Animal Ledger
 
     private var individualAnimalLedger: some View {
-        let activeUnits = liveModel.units.filter { $0.status == "AVAILABLE" || $0.status == "RESERVED" || $0.status == "QUARANTINED" }
-        let historyUnits = liveModel.units.filter { $0.status == "SOLD" || $0.status == "REMOVED" || $0.status == "DECEASED" || $0.status == "TRANSFERRED" }
+        let activeUnits = liveModel.units.filter { 
+            $0.status == "AVAILABLE" || $0.status == "RESERVED" || $0.status == "QUARANTINED" || $0.status == "UNDER_INSPECTION" || $0.isUnderInspection 
+        }.sorted()
+        let historyUnits = liveModel.units.filter { !activeUnits.contains($0) }.sorted()
         let availableCount = liveModel.units.filter { $0.status == "AVAILABLE" }.count
-        let soldCount = liveModel.units.filter { $0.status == "SOLD" }.count
+        let underInspectionCount = liveModel.units.filter { $0.isUnderInspection || $0.status == "UNDER_INSPECTION" || ($0.status == "QUARANTINED" && $0.quarantineReason == "LIVE_ANIMAL_RETURN") }.count
+        let soldCount = liveModel.units.filter { $0.status == "SOLD" && !$0.isUnderInspection }.count
+
+        var subtitleParts: [String] = []
+        if availableCount > 0 {
+            subtitleParts.append(String(format: Language.get("LivePetDossier_ActiveOnHandCount", alter: "%ld متاح بالمخزون"), availableCount))
+        } else if activeUnits.isEmpty {
+            subtitleParts.append(Language.get("LivePetDossier_NoActiveInStock", alter: "لا توجد حيوانات متاحة حالياً بالمخزون"))
+        }
+        if underInspectionCount > 0 {
+            subtitleParts.append(String(format: Language.get("LivePetDossier_UnderInspectionCount", alter: "%ld قيد الفحص والتقييم"), underInspectionCount))
+        }
+        if soldCount > 0 {
+            subtitleParts.append(String(format: Language.get("LivePetDossier_SoldCount", alter: "%ld مباع"), soldCount))
+        }
+        let ledgerSubtitle = subtitleParts.joined(separator: " • ")
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 8) {
@@ -5612,18 +5919,9 @@ public struct PPInventoryItemDetailView: View {
                     Text(Language.get("LivePetDossier_UnitLedgerTitle", alter: "سجل الحيوانات الفردية"))
                         .font(Font.custom("Beiruti-Bold", size: 16))
                         .foregroundStyle(AdminSurface.primaryText)
-                    if activeUnits.isEmpty {
-                        Text(Language.get("LivePetDossier_NoActiveInStock", alter: "لا توجد حيوانات متاحة حالياً بالمخزون") + (soldCount > 0 ? " • " + String(format: Language.get("LivePetDossier_SoldCount", alter: "%ld مباع"), soldCount) : ""))
-                            .font(Font.custom("Beiruti-Regular", size: 12))
-                            .foregroundStyle(soldCount > 0 ? AdminCommandInk.secondary : Color(uiColor: .ppError))
-                    } else {
-                        Text(String(
-                            format: Language.get("LivePetDossier_ActiveOnHandCount", alter: "%ld متاح بالمخزون"),
-                            availableCount
-                        ) + (soldCount > 0 ? " • " + String(format: Language.get("LivePetDossier_SoldCount", alter: "%ld مباع"), soldCount) : ""))
+                    Text(ledgerSubtitle)
                         .font(Font.custom("Beiruti-Regular", size: 12))
-                        .foregroundStyle(AdminCommandInk.secondary)
-                    }
+                        .foregroundStyle(activeUnits.isEmpty && soldCount == 0 ? Color(uiColor: .ppError) : AdminCommandInk.secondary)
                 }
                 Spacer(minLength: AdminSpacing.xs)
                 dossierStatusPill(
@@ -5819,9 +6117,10 @@ public struct PPInventoryItemDetailView: View {
     }
 
     private func livePetUnitRow(_ unit: PPLivePetInventoryUnit) -> some View {
-        let identity = unit.ringTag.isEmpty ? unit.id : unit.ringTag
-        let status = liveUnitStatus(unit.status)
-        let statusColor = liveUnitStatusColor(unit.status)
+        let identity = unit.displayIdentity
+        let status = liveUnitStatus(unit)
+        let statusColor = liveUnitStatusColor(unit)
+        let statusSymbol = liveUnitStatusSymbol(unit)
         let firstMediaURL = unit.mediaURLs.first.flatMap { URL(string: $0) }
 
         return VStack(alignment: .leading, spacing: 10) {
@@ -5833,7 +6132,7 @@ public struct PPInventoryItemDetailView: View {
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
                                 .fill(statusColor.opacity(0.12))
                                 .overlay(
-                                    Image(systemName: liveUnitStatusSymbol(unit.status))
+                                    Image(systemName: statusSymbol)
                                         .font(.system(size: 16, weight: .bold))
                                         .foregroundStyle(statusColor)
                                 )
@@ -5855,7 +6154,7 @@ public struct PPInventoryItemDetailView: View {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .fill(statusColor.opacity(0.12))
                             .overlay(
-                                Image(systemName: liveUnitStatusSymbol(unit.status))
+                                Image(systemName: statusSymbol)
                                     .font(.system(size: 16, weight: .bold))
                                     .foregroundStyle(statusColor)
                             )
@@ -5876,7 +6175,7 @@ public struct PPInventoryItemDetailView: View {
                     HStack(spacing: 6) {
                         dossierStatusPill(
                             title: status,
-                            symbol: liveUnitStatusSymbol(unit.status),
+                            symbol: statusSymbol,
                             tint: statusColor
                         )
 
@@ -5896,6 +6195,19 @@ public struct PPInventoryItemDetailView: View {
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
                             .background(AdminSurface.control, in: Capsule(style: .continuous))
+                        }
+
+                        if let subSub = unit.subSubKindName, !subSub.isEmpty {
+                            HStack(spacing: 3) {
+                                Image(systemName: "arrow.triangle.branch")
+                                    .font(.system(size: 9))
+                                Text(verbatim: subSub + (unit.subSubKindItemName.map { " · \($0)" } ?? ""))
+                                    .font(Font.custom("Beiruti-Regular", size: 11))
+                            }
+                            .foregroundStyle(AdminSurface.primary)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(AdminSurface.primary.opacity(0.10), in: Capsule(style: .continuous))
                         }
                     }
                 }
@@ -5936,6 +6248,35 @@ public struct PPInventoryItemDetailView: View {
                         identity
                     ))
                 }
+            }
+
+            if unit.isUnderInspection {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "stethoscope")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color(uiColor: .systemPurple))
+                        .frame(width: 28, height: 28)
+                        .background(Color(uiColor: .systemPurple).opacity(0.12), in: Circle())
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("LivePet_Custody_UnderInspection", alter: "الحيوان مسترجع وقيد الفحص والتقييم"))
+                            .font(Font.custom("Beiruti-Bold", size: 13))
+                            .foregroundStyle(AdminSurface.primaryText)
+                        let reasonDisplay = !unit.returnReason.isEmpty ? unit.returnReason : unit.quarantineReason
+                        if !reasonDisplay.isEmpty {
+                            Text(reasonDisplay)
+                                .font(Font.custom("Beiruti-Regular", size: 11))
+                                .foregroundStyle(AdminCommandInk.secondary)
+                        }
+                        if !unit.returnCaseId.isEmpty {
+                            Text(String(format: Language.get("LivePet_ReturnCase_Ref", alter: "ملف الاسترجاع: %@"), unit.returnCaseId))
+                                .font(Font.custom("Beiruti-Regular", size: 10))
+                                .foregroundStyle(Color(uiColor: .systemPurple))
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(10)
+                .background(Color(uiColor: .systemPurple).opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
 
             if unit.status == "RESERVED" {
@@ -6007,25 +6348,48 @@ public struct PPInventoryItemDetailView: View {
         return name.isEmpty ? id : name
     }
 
+    private func liveUnitStatus(_ unit: PPLivePetInventoryUnit) -> String {
+        if unit.isUnderInspection {
+            return Language.get("LivePet_Status_UnderInspection", alter: "قيد الفحص والتقييم")
+        }
+        return liveUnitStatus(unit.status)
+    }
+
     private func liveUnitStatus(_ status: String) -> String {
         switch status {
         case "AVAILABLE": return Language.get("LivePet_Status_Available", alter: "متاح")
         case "RESERVED": return Language.get("LivePet_Status_Reserved", alter: "محجوز")
         case "SOLD": return Language.get("LivePet_Status_Sold", alter: "مباع")
         case "QUARANTINED": return Language.get("LivePet_Status_Quarantined", alter: "في الحجر")
+        case "UNDER_INSPECTION": return Language.get("LivePet_Status_UnderInspection", alter: "قيد الفحص والتقييم")
         case "DECEASED": return Language.get("LivePet_Status_Deceased", alter: "متوفى")
         case "TRANSFERRED": return Language.get("LivePet_Status_Transferred", alter: "منقول نهائياً")
         default: return Language.get("LivePet_Status_Removed", alter: "مزال")
         }
     }
 
+    private func liveUnitStatusColor(_ unit: PPLivePetInventoryUnit) -> Color {
+        if unit.isUnderInspection {
+            return Color(uiColor: .systemPurple)
+        }
+        return liveUnitStatusColor(unit.status)
+    }
+
     private func liveUnitStatusColor(_ status: String) -> Color {
         switch status {
         case "AVAILABLE": return Color(uiColor: .ppSuccess)
         case "RESERVED", "QUARANTINED": return Color(uiColor: .ppWarning)
+        case "UNDER_INSPECTION": return Color(uiColor: .systemPurple)
         case "SOLD", "TRANSFERRED": return AdminCommandInk.secondary
         default: return Color(uiColor: .ppError)
         }
+    }
+
+    private func liveUnitStatusSymbol(_ unit: PPLivePetInventoryUnit) -> String {
+        if unit.isUnderInspection {
+            return "stethoscope"
+        }
+        return liveUnitStatusSymbol(unit.status)
     }
 
     private func liveUnitStatusSymbol(_ status: String) -> String {
@@ -6034,6 +6398,7 @@ public struct PPInventoryItemDetailView: View {
         case "RESERVED": return "calendar.badge.clock"
         case "SOLD": return "checkmark.seal.fill"
         case "QUARANTINED": return "cross.case.fill"
+        case "UNDER_INSPECTION": return "stethoscope"
         case "DECEASED": return "heart.slash.fill"
         case "TRANSFERRED": return "arrow.left.arrow.right.circle.fill"
         default: return "minus.circle.fill"
@@ -6274,11 +6639,15 @@ private struct PPLivePetActionPortalDeck: View {
     }
 
     private var statusTitle: String {
+        if unit.isUnderInspection {
+            return Language.get("LivePet_Status_UnderInspection", alter: "قيد الفحص والتقييم")
+        }
         switch unit.status {
         case "AVAILABLE": return Language.get("LivePet_Status_Available", alter: "متاح بالمخزون")
         case "RESERVED": return Language.get("LivePet_Status_Reserved", alter: "محجوز لعميل")
         case "SOLD": return Language.get("LivePet_Status_Sold", alter: "مباع ومسلّم")
         case "QUARANTINED": return Language.get("LivePet_Status_Quarantined", alter: "في الحجر الصحي")
+        case "UNDER_INSPECTION": return Language.get("LivePet_Status_UnderInspection", alter: "قيد الفحص والتقييم")
         case "DECEASED": return Language.get("LivePet_Status_Deceased", alter: "متوفى")
         case "TRANSFERRED": return Language.get("LivePet_Status_Transferred", alter: "منقول لفرع آخر")
         default: return Language.get("LivePet_Status_Removed", alter: "مزال من المخزون")
@@ -6286,21 +6655,29 @@ private struct PPLivePetActionPortalDeck: View {
     }
 
     private var statusColor: Color {
+        if unit.isUnderInspection {
+            return Color(uiColor: .systemPurple)
+        }
         switch unit.status {
         case "AVAILABLE": return Color(uiColor: .ppSuccess)
         case "RESERVED": return Color(uiColor: .ppWarning)
         case "QUARANTINED": return Color(uiColor: .ppInfo)
+        case "UNDER_INSPECTION": return Color(uiColor: .systemPurple)
         case "SOLD", "TRANSFERRED": return AdminCommandInk.secondary
         default: return Color(uiColor: .ppError)
         }
     }
 
     private var statusSymbol: String {
+        if unit.isUnderInspection {
+            return "stethoscope"
+        }
         switch unit.status {
         case "AVAILABLE": return "checkmark.circle.fill"
         case "RESERVED": return "calendar.badge.clock"
         case "SOLD": return "checkmark.seal.fill"
         case "QUARANTINED": return "cross.case.fill"
+        case "UNDER_INSPECTION": return "stethoscope"
         case "DECEASED": return "heart.slash.fill"
         case "TRANSFERRED": return "arrow.left.arrow.right.circle.fill"
         default: return "minus.circle.fill"
@@ -6358,8 +6735,8 @@ private struct PPLivePetActionPortalDeck: View {
                         activeReservationBanner
                     }
 
-                    // Active Quarantine Notice if Quarantined
-                    if unit.status == "QUARANTINED" {
+                    // Active Quarantine Notice if Quarantined or under inspection
+                    if unit.status == "QUARANTINED" || unit.isUnderInspection {
                         activeQuarantineNotice
                     }
 
@@ -6373,7 +6750,7 @@ private struct PPLivePetActionPortalDeck: View {
                             } else if unit.status == "RESERVED" {
                                 reservedStateSector
                                 terminalGuardSector
-                            } else if unit.status == "QUARANTINED" {
+                            } else if unit.status == "QUARANTINED" || unit.isUnderInspection {
                                 quarantinedStateSector
                                 terminalGuardSector
                             } else {
@@ -6583,29 +6960,42 @@ private struct PPLivePetActionPortalDeck: View {
     // MARK: - Active Quarantine Notice
 
     private var activeQuarantineNotice: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "cross.case.fill")
+        let isInspection = unit.isUnderInspection || unit.quarantineReason == "LIVE_ANIMAL_RETURN" || !unit.returnCaseId.isEmpty
+        let symbol = isInspection ? "stethoscope" : "cross.case.fill"
+        let tint = isInspection ? Color(uiColor: .systemPurple) : Color(uiColor: .ppInfo)
+        let title = isInspection ? Language.get("LivePet_Inspection_Notice_Title", alter: "الحيوان خاضع للفحص والتقييم") : Language.get("LivePet_Quarantine_Notice_Title", alter: "الحيوان خاضع للعزل البيطري")
+        let desc = isInspection ? Language.get("LivePet_Inspection_Notice_Desc", alter: "تم استرجاع هذا الحيوان وهو قيد الفحص والتقييم البيطري لتحديد حالته قبل الإفراج أو البيع.") : Language.get("LivePet_Quarantine_Notice_Desc", alter: "تم إيقاف عرض هذا الحيوان من نقاط البيع لحين التحقق من التعافي وإصدار إذن خروج.")
+
+        return HStack(alignment: .top, spacing: 10) {
+            Image(systemName: symbol)
                 .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(Color(uiColor: .ppInfo))
+                .foregroundStyle(tint)
                 .frame(width: 32, height: 32)
-                .background(Color(uiColor: .ppInfo).opacity(0.14), in: Circle())
+                .background(tint.opacity(0.14), in: Circle())
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(Language.get("LivePet_Quarantine_Notice_Title", alter: "الحيوان خاضع للعزل البيطري"))
+                Text(title)
                     .font(Font.custom("Beiruti-Bold", size: 14))
                     .foregroundStyle(AdminSurface.primaryText)
-                Text(Language.get("LivePet_Quarantine_Notice_Desc", alter: "تم إيقاف عرض هذا الحيوان من نقاط البيع لحين التحقق من التعافي وإصدار إذن خروج."))
+                Text(desc)
                     .font(Font.custom("Beiruti-Regular", size: 11))
                     .foregroundStyle(AdminCommandInk.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                let reason = !unit.returnReason.isEmpty ? unit.returnReason : unit.quarantineReason
+                if !reason.isEmpty {
+                    Text(String(format: Language.get("LivePet_ReturnReason_Label", alter: "سبب الإرجاع: %@"), reason))
+                        .font(Font.custom("Beiruti-Regular", size: 11))
+                        .foregroundStyle(tint)
+                        .padding(.top, 2)
+                }
             }
             Spacer(minLength: 0)
         }
         .padding(12)
-        .background(Color(uiColor: .ppInfo).opacity(0.09), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(tint.opacity(0.09), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color(uiColor: .ppInfo).opacity(0.24), lineWidth: 0.75)
+                .strokeBorder(tint.opacity(0.24), lineWidth: 0.75)
         )
     }
 
@@ -6681,9 +7071,9 @@ private struct PPLivePetActionPortalDeck: View {
                 }
 
                 PPLivePetActionPortalCard(
-                    title: Language.get("LivePet_Edit_Price_Action", alter: "تعديل سعر البيع"),
-                    subtitle: Language.get("LivePet_Edit_Price_Action_Desc", alter: "تحديث السعر الفردي المعتمد لهذا الحيوان"),
-                    icon: "tag",
+                    title: Language.get("LivePet_Edit_Price_Action", alter: "تعديل بيانات وسعر الحيوان"),
+                    subtitle: Language.get("LivePet_Edit_Price_Action_Desc", alter: "تحديث صورة الحيوان، رقم الحجل، الجنس، الملاحظات، وسعر البيع"),
+                    icon: "pawprint.fill",
                     iconTint: AdminSurface.primary,
                     iconBackground: AdminSurface.primary.opacity(0.12),
                     trailingPill: unit.sellingPrice != nil ? PetAccessory.formatCurrency(NSNumber(value: unit.sellingPrice!)) : nil,
@@ -6822,9 +7212,9 @@ private struct PPLivePetActionPortalDeck: View {
                 }
 
                 PPLivePetActionPortalCard(
-                    title: Language.get("LivePet_Edit_Price_Action", alter: "تعديل سعر البيع"),
-                    subtitle: Language.get("LivePet_Edit_Price_Desc_Quarantine", alter: "تحديث السعر المعتمد للحيوان خلال فترة العزل"),
-                    icon: "tag",
+                    title: Language.get("LivePet_Edit_Price_Action", alter: "تعديل بيانات وسعر الحيوان"),
+                    subtitle: Language.get("LivePet_Edit_Price_Desc_Quarantine", alter: "تحديث صورة الحيوان، رقم الحجل، الجنس، الملاحظات، وسعر البيع خلال فترة العزل"),
+                    icon: "pawprint.fill",
                     iconTint: AdminSurface.primary,
                     iconBackground: AdminSurface.primary.opacity(0.12),
                     trailingPill: unit.sellingPrice != nil ? PetAccessory.formatCurrency(NSNumber(value: unit.sellingPrice!)) : nil,
@@ -6886,6 +7276,7 @@ public struct PPItemActionsHubView: View {
     var onManageLots: (() -> Void)? = nil
     var onTransferStock: (() -> Void)? = nil
     var onToggleStock: (() -> Void)? = nil
+    var onToggleAppMarket: (() -> Void)? = nil
     let onShare: () -> Void
     let onDelete: () -> Void
 
@@ -7143,6 +7534,11 @@ public struct PPItemActionsHubView: View {
                         if let onToggleStock = onToggleStock {
                             availabilityControllerCard(onToggle: onToggleStock)
                         }
+
+                        // App Marketplace Visibility Controller Card
+                        if let onToggleAppMarket = onToggleAppMarket {
+                            appMarketControllerCard(onToggle: onToggleAppMarket)
+                        }
                     }
 
                     // Collaboration & Sharing
@@ -7337,6 +7733,10 @@ public struct PPItemActionsHubView: View {
 
                         if !item.isLivePet, let onToggleStock = onToggleStock {
                             availabilityControllerCard(onToggle: onToggleStock)
+                        }
+
+                        if let onToggleAppMarket = onToggleAppMarket {
+                            appMarketControllerCard(onToggle: onToggleAppMarket)
                         }
 
                         actionHubRow(
@@ -7619,6 +8019,62 @@ public struct PPItemActionsHubView: View {
     }
 
     @ViewBuilder
+    private func appMarketControllerCard(onToggle: @escaping () -> Void) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onToggle()
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(item.showInAppMarket ? Color(uiColor: .systemIndigo).opacity(0.12) : AdminSurface.secondaryText.opacity(0.12))
+                    Image(systemName: item.showInAppMarket ? "storefront.fill" : "eye.slash.fill")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText)
+                }
+                .frame(width: 38, height: 38)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder((item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText).opacity(0.22), lineWidth: 0.75)
+                )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("AppMarket_Visibility_Title", alter: "العرض في متجر التطبيق"))
+                        .font(Font.custom("Beiruti-Bold", size: 14))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+
+                    Text(item.showInAppMarket ? Language.get("AppMarket_Currently_Visible", alter: "الصنف معروض للعملاء في تطبيق Pure Pets") : Language.get("AppMarket_Currently_Hidden", alter: "مخفي عن متجر التطبيق ومتاح للكاشير فقط"))
+                        .font(Font.custom("Beiruti-Regular", size: 11))
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 4)
+
+                // State Pill Toggle
+                Text(item.showInAppMarket ? Language.get("AppMarket_Status_Visible", alter: "معروض") : Language.get("AppMarket_Status_Hidden", alter: "مخفي"))
+                    .font(Font.custom("Beiruti-Bold", size: 12))
+                    .foregroundStyle(item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background((item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText).opacity(0.12), in: Capsule(style: .continuous))
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder((item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText).opacity(0.3), lineWidth: 0.75)
+                    )
+            }
+            .padding(10)
+            .background(AdminSurface.control.opacity(0.5), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.65), lineWidth: 0.75)
+            )
+        }
+        .buttonStyle(PPCockpitPressStyle())
+    }
+
+    @ViewBuilder
     private func destructiveSafetyCard(onDelete: @escaping () -> Void) -> some View {
         Button {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -7818,11 +8274,1488 @@ private struct PPInventoryItemDossierSheet: View {
             onDelete: {
                 dismiss()
                 viewModel.deleteAccessory(item)
+            },
+            onToggleAppMarket: {
+                viewModel.toggleAppMarketVisibility(for: item)
             }
         )
     }
 }
 
+// MARK: - Live-Pet Specimen Profile Editor Sheet (Category-Defining Studio)
+
+private struct PPLivePetUnitProfileEditorSheet: View {
+    let unit: PPLivePetInventoryUnit
+    @ObservedObject var model: PPLivePetOperationsViewModel
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    // Form state
+    @State private var ringTag: String
+    @State private var selectedGender: PPLivePetUnitGender
+    @State private var sellingPriceText: String
+    @State private var notes: String
+    @State private var photoDraft: PPLivePetUnitPhotoDraft? = nil
+    @State private var existingPhotoRemoved: Bool = false
+    @State private var selectedSubSubKindID: Int?
+    @State private var selectedSubSubKindNameAr: String?
+    @State private var selectedSubSubKindNameEn: String?
+    @State private var selectedSubSubKindItemID: Int?
+    @State private var selectedSubSubKindItemNameAr: String?
+    @State private var selectedSubSubKindItemNameEn: String?
+
+    // Media picking sheets
+    @State private var showPhotoSourceDialog: Bool = false
+    @State private var showPhotoLibrary: Bool = false
+    @State private var showCamera: Bool = false
+    @State private var showCameraAccessAlert: Bool = false
+    @State private var previewMedia: PPLivePetPreviewMedia? = nil
+
+    // Interaction & execution states
+    @State private var isSubmitting: Bool = false
+    @State private var submissionStep: SubmissionStep = .idle
+    @State private var validationError: String? = nil
+    @State private var showDiscardAlert: Bool = false
+
+    private enum SubmissionStep {
+        case idle
+        case uploadingPhoto
+        case savingProfile
+
+        var message: String {
+            switch self {
+            case .idle:
+                return ""
+            case .uploadingPhoto:
+                return Language.get("LivePet_Profile_Save_Uploading", alter: "جارٍ تجهيز ورفع صورة الحيوان...")
+            case .savingProfile:
+                return Language.get("LivePet_Profile_Save_Committing", alter: "جارٍ حفظ البيانات وتحديث السجل...")
+            }
+        }
+    }
+
+    private let quickNotesTags: [String] = [
+        Language.get("LivePet_Profile_Tag_Vaccinated", alter: "تطعيم مكتمل"),
+        Language.get("LivePet_Profile_Tag_HealthOK", alter: "صحة ممتازة"),
+        Language.get("LivePet_Profile_Tag_SpecialDiet", alter: "تغذية خاصة"),
+        Language.get("LivePet_Profile_Tag_Docile", alter: "أليف وهادئ")
+    ]
+
+    init(unit: PPLivePetInventoryUnit, model: PPLivePetOperationsViewModel) {
+        self.unit = unit
+        self.model = model
+        let liveUnit = model.units.first(where: { $0.id == unit.id }) ?? unit
+        _ringTag = State(initialValue: liveUnit.ringTag)
+        _selectedGender = State(initialValue: liveUnit.gender)
+        _notes = State(initialValue: liveUnit.notes)
+        if let price = liveUnit.sellingPrice, price > 0 {
+            _sellingPriceText = State(initialValue: String(format: "%g", price))
+        } else if let stdPrice = model.item.standardSellingPrice?.doubleValue ?? (model.item.price.doubleValue > 0 ? model.item.price.doubleValue : nil) {
+            _sellingPriceText = State(initialValue: String(format: "%g", stdPrice))
+        } else {
+            _sellingPriceText = State(initialValue: "")
+        }
+        _selectedSubSubKindID = State(initialValue: liveUnit.subSubKindID)
+        _selectedSubSubKindNameAr = State(initialValue: liveUnit.subSubKindNameAr)
+        _selectedSubSubKindNameEn = State(initialValue: liveUnit.subSubKindNameEn)
+        _selectedSubSubKindItemID = State(initialValue: liveUnit.subSubKindItemID)
+        _selectedSubSubKindItemNameAr = State(initialValue: liveUnit.subSubKindItemNameAr)
+        _selectedSubSubKindItemNameEn = State(initialValue: liveUnit.subSubKindItemNameEn)
+    }
+
+    private var currentLiveUnit: PPLivePetInventoryUnit {
+        model.units.first(where: { $0.id == unit.id }) ?? unit
+    }
+
+    private var isPad: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact
+    }
+
+    private var isDirty: Bool {
+        let live = currentLiveUnit
+        let livePriceText = live.sellingPrice != nil ? String(format: "%g", live.sellingPrice!) : ""
+        let currentPriceText = sellingPriceText.normalizedEnglishDigits(allowsDecimal: true).replacingOccurrences(of: ",", with: ".")
+        return ringTag.trimmingCharacters(in: .whitespacesAndNewlines) != live.ringTag ||
+            selectedGender != live.gender ||
+            notes.trimmingCharacters(in: .whitespacesAndNewlines) != live.notes ||
+            currentPriceText != livePriceText ||
+            photoDraft != nil ||
+            existingPhotoRemoved ||
+            selectedSubSubKindID != live.subSubKindID ||
+            selectedSubSubKindItemID != live.subSubKindItemID
+    }
+
+    private var effectivePhotoURL: URL? {
+        if existingPhotoRemoved { return nil }
+        return currentLiveUnit.mediaURLs.first.flatMap { URL(string: $0) }
+    }
+
+    private var hasActivePhoto: Bool {
+        photoDraft != nil || effectivePhotoURL != nil
+    }
+
+    private var standardCatalogPrice: Double {
+        model.item.standardSellingPrice?.doubleValue ?? model.item.price.doubleValue
+    }
+
+    // MARK: - Body
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                AdminSurface.background.ignoresSafeArea()
+
+                Group {
+                    if isPad {
+                        iPadStudioLayout
+                    } else {
+                        iPhoneMobileLayout
+                    }
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(Language.get("Cancel", alter: "إلغاء")) {
+                        if isDirty {
+                            showDiscardAlert = true
+                        } else {
+                            dismiss()
+                        }
+                    }
+                    .font(Font.custom("Beiruti-Medium", size: 16))
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .disabled(isSubmitting)
+                    .keyboardShortcut(.cancelAction)
+                }
+
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 2) {
+                        Text(Language.get("LivePet_Profile_Studio_Title", alter: "ملف الحيوان والبيانات الحية"))
+                            .font(Font.custom("Beiruti-Bold", size: 17))
+                            .foregroundStyle(AdminCommandInk.primary)
+                        Text(verbatim: (unit.ringTag.isEmpty ? unit.id : unit.ringTag).normalizedEnglishDigits)
+                            .font(Font.custom("Beiruti-Medium", size: 12))
+                            .foregroundStyle(AdminCommandInk.secondary)
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(action: { Task { await commitProfile() } }) {
+                        if isSubmitting {
+                            ProgressView()
+                                .tint(AdminSurface.primary)
+                        } else {
+                            Text(Language.get("Save", alter: "حفظ"))
+                                .font(Font.custom("Beiruti-Bold", size: 16))
+                                .foregroundStyle(AdminSurface.primary)
+                        }
+                    }
+                    .disabled(isSubmitting)
+                    .keyboardShortcut("s", modifiers: .command)
+                }
+            }
+            .alert(
+                Language.get("LivePet_Profile_Discard_Title", alter: "تجاهل التغييرات؟"),
+                isPresented: $showDiscardAlert
+            ) {
+                Button(Language.get("LivePet_Profile_Discard_Confirm", alter: "تجاهل"), role: .destructive) {
+                    dismiss()
+                }
+                Button(Language.get("LivePet_Profile_Keep_Editing", alter: "متابعة التعديل"), role: .cancel) {}
+            } message: {
+                Text(Language.get("LivePet_Profile_Discard_Message", alter: "لديك تعديلات غير محفوظة على هذا الحيوان، هل تود إغلاق المحرر؟"))
+                    .font(Font.custom("Beiruti-Regular", size: 14))
+            }
+            .confirmationDialog(
+                Language.get("LivePet_Profile_Hero_Photo", alter: "صورة الحيوان الحية"),
+                isPresented: $showPhotoSourceDialog,
+                titleVisibility: .visible
+            ) {
+                Button(Language.get("LivePet_Profile_Camera_Capture", alter: "التقاط بالكاميرا")) {
+                    requestCamera()
+                }
+                Button(Language.get("LivePet_Profile_Library_Select", alter: "اختيار من الألبوم")) {
+                    showPhotoLibrary = true
+                }
+                if hasActivePhoto {
+                    Button(Language.get("LivePet_Profile_Remove_Photo", alter: "إزالة الصورة الحالية"), role: .destructive) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            photoDraft = nil
+                            existingPhotoRemoved = true
+                        }
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    }
+                }
+                Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+            }
+            .sheet(isPresented: $showPhotoLibrary) {
+                PPLivePetPhotoPicker(maxSelection: 1) { images, _ in
+                    if let image = images.first {
+                        acceptSelectedPhoto(image)
+                    }
+                }
+            }
+            .fullScreenCover(isPresented: $showCamera) {
+                PPLivePetCameraPicker { image in
+                    acceptSelectedPhoto(image)
+                }
+            }
+            .alert(
+                Language.get("LivePetIntake_UnitPhotoCameraPermissionTitle", alter: "السماح باستخدام الكاميرا"),
+                isPresented: $showCameraAccessAlert
+            ) {
+                Button(Language.get("LivePetIntake_OpenSettings", alter: "فتح الإعدادات")) {
+                    if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(settingsURL)
+                    }
+                }
+                Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+            } message: {
+                Text(Language.get("LivePetIntake_UnitPhotoCameraPermissionMessage", alter: "فعّل إذن الكاميرا من الإعدادات لالتقاط صورة خاصة بهذا الحيوان."))
+                    .font(Font.custom("Beiruti-Regular", size: 14))
+            }
+            .fullScreenCover(item: $previewMedia) { media in
+                PPLivePetMediaPreview(media: media)
+            }
+            .onAppear {
+                model.fetchTaxonomy()
+            }
+        }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+
+    // MARK: - iPhone Mobile Layout
+    private var iPhoneMobileLayout: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                if let error = validationError {
+                    errorBanner(error)
+                }
+
+                if isSubmitting {
+                    submissionStatusBanner
+                }
+
+                // 1. Specimen Photo Hero
+                iPhonePhotoHeroCard
+
+                // 2. Ring ID / Tag
+                ringTagCard
+
+                // 3. Biological Sex
+                genderSelectorCard
+
+                // 4. SubSubKind & Variety
+                subSubKindCard
+
+                // 5. Selling Price
+                sellingPriceCard
+
+                // 6. Clinical & Internal Notes
+                notesCard
+
+                // Primary Bottom CTA
+                Button(action: { Task { await commitProfile() } }) {
+                    HStack(spacing: 10) {
+                        if isSubmitting {
+                            ProgressView()
+                                .tint(.white)
+                            Text(submissionStep.message)
+                                .font(Font.custom("Beiruti-Bold", size: 16))
+                                .foregroundStyle(Color.white)
+                        } else {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(Color.white)
+                            Text(Language.get("LivePet_Profile_Save_Button", alter: "حفظ وتثبيت التعديلات"))
+                                .font(Font.custom("Beiruti-Bold", size: 17))
+                                .foregroundStyle(Color.white)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(AdminSurface.primary)
+                    )
+                }
+                .disabled(isSubmitting)
+                .padding(.top, 8)
+                .padding(.bottom, 24)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+        }
+    }
+
+    // MARK: - iPad Studio Layout
+    private var iPadStudioLayout: some View {
+        GeometryReader { geometry in
+            HStack(alignment: .top, spacing: 24) {
+                // Left Studio Bay: Specimen Media & Identity HUD
+                VStack(spacing: 18) {
+                    iPadPhotoStudioBay
+                    iPadSpecimenHUDCard
+                    Spacer(minLength: 0)
+                }
+                .frame(width: max(320, min(380, geometry.size.width * 0.40)))
+
+                // Right Dossier Bay: Editable Parameters
+                ScrollView {
+                    VStack(spacing: 18) {
+                        if let error = validationError {
+                            errorBanner(error)
+                        }
+
+                        if isSubmitting {
+                            submissionStatusBanner
+                        }
+
+                        // Product Taxonomy Breadcrumb
+                        iPadTaxonomyHeader
+
+                        // 1. Ring Tag / Microchip
+                        ringTagCard
+
+                        // 2. Biological Sex
+                        iPadGenderCards
+
+                        // 3. SubSubKind & Variety
+                        subSubKindCard
+
+                        // 4. Selling Price Deck
+                        sellingPriceCard
+
+                        // 5. Clinical & Internal Notes
+                        notesCard
+
+                        // Bottom Actions
+                        HStack(spacing: 14) {
+                            Button(action: {
+                                if isDirty { showDiscardAlert = true } else { dismiss() }
+                            }) {
+                                Text(Language.get("Cancel", alter: "إلغاء"))
+                                    .font(Font.custom("Beiruti-Bold", size: 16))
+                                    .foregroundStyle(AdminCommandInk.secondary)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 50)
+                                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                            .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            .hoverEffect(.highlight)
+
+                            Button(action: { Task { await commitProfile() } }) {
+                                HStack(spacing: 10) {
+                                    if isSubmitting {
+                                        ProgressView()
+                                            .tint(.white)
+                                        Text(submissionStep.message)
+                                            .font(Font.custom("Beiruti-Bold", size: 16))
+                                            .foregroundStyle(Color.white)
+                                    } else {
+                                        Image(systemName: "checkmark.seal.fill")
+                                            .font(.system(size: 16, weight: .bold))
+                                            .foregroundStyle(Color.white)
+                                        Text(Language.get("LivePet_Profile_Save_Button", alter: "حفظ وتثبيت التعديلات"))
+                                            .font(Font.custom("Beiruti-Bold", size: 17))
+                                            .foregroundStyle(Color.white)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 50)
+                                .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            .hoverEffect(.highlight)
+                            .disabled(isSubmitting)
+                        }
+                        .padding(.top, 6)
+                        .padding(.bottom, 24)
+                    }
+                    .padding(.trailing, 4)
+                }
+            }
+            .padding(24)
+        }
+    }
+
+    // MARK: - Subviews: Photo Handling
+
+    private var iPhonePhotoHeroCard: some View {
+        VStack(spacing: 0) {
+            ZStack(alignment: .bottom) {
+                ZStack {
+                    if let draft = photoDraft {
+                        Image(uiImage: draft.image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(height: 190)
+                            .clipped()
+                    } else if let url = effectivePhotoURL {
+                        AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 400, height: 200)) {
+                            photoPlaceholderView
+                        }
+                        .frame(height: 190)
+                        .clipped()
+                    } else {
+                        photoPlaceholderView
+                            .frame(height: 190)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .background(AdminSurface.control)
+
+                // Bottom Action Bar over photo
+                HStack(spacing: 8) {
+                    Button(action: { showPhotoSourceDialog = true }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 13, weight: .bold))
+                            Text(hasActivePhoto
+                                 ? Language.get("LivePet_Profile_Replace_Photo", alter: "تغيير الصورة")
+                                 : Language.get("LivePet_Profile_Hero_Photo", alter: "إضافة صورة"))
+                                .font(Font.custom("Beiruti-Bold", size: 13))
+                        }
+                        .foregroundStyle(AdminCommandInk.primary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+                    }
+                    .buttonStyle(.plain)
+
+                    if hasActivePhoto {
+                        Button(action: {
+                            if let draft = photoDraft {
+                                previewMedia = PPLivePetPreviewMedia(source: .local(draft.image))
+                            } else if let url = effectivePhotoURL {
+                                previewMedia = PPLivePetPreviewMedia(source: .remote(url))
+                            }
+                        }) {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(AdminCommandInk.primary)
+                                .padding(8)
+                                .background(.ultraThinMaterial, in: Circle())
+                                .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+                        }
+                        .buttonStyle(.plain)
+
+                        Spacer()
+
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                photoDraft = nil
+                                existingPhotoRemoved = true
+                            }
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        }) {
+                            Image(systemName: "trash.fill")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(Color(uiColor: .ppError))
+                                .padding(8)
+                                .background(.ultraThinMaterial, in: Circle())
+                                .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Spacer()
+                    }
+                }
+                .padding(12)
+                .background(
+                    LinearGradient(
+                        colors: [Color.black.opacity(0.6), Color.clear],
+                        startPoint: .bottom,
+                        endPoint: .top
+                    )
+                )
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        }
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+    }
+
+    private var photoPlaceholderView: some View {
+        Button(action: { showPhotoSourceDialog = true }) {
+            VStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(AdminSurface.primary.opacity(0.12))
+                        .frame(width: 54, height: 54)
+                    Image(systemName: "camera.badge.ellipsis")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+                Text(Language.get("LivePet_Profile_Hero_Photo", alter: "صورة الحيوان الحية"))
+                    .font(Font.custom("Beiruti-Bold", size: 15))
+                    .foregroundStyle(AdminCommandInk.primary)
+                Text(Language.get("LivePet_Profile_Studio_Subtitle", alter: "اضغط لالتقاط بالكاميرا أو اختيار من الألبوم"))
+                    .font(Font.custom("Beiruti-Regular", size: 12))
+                    .foregroundStyle(AdminCommandInk.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var iPadPhotoStudioBay: some View {
+        VStack(spacing: 12) {
+            ZStack(alignment: .bottom) {
+                ZStack {
+                    if let draft = photoDraft {
+                        Image(uiImage: draft.image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(height: 310)
+                            .clipped()
+                    } else if let url = effectivePhotoURL {
+                        AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 500, height: 400)) {
+                            photoPlaceholderView
+                        }
+                        .frame(height: 310)
+                        .clipped()
+                    } else {
+                        photoPlaceholderView
+                            .frame(height: 310)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .background(AdminSurface.control)
+
+                // Studio inspection button top trailing
+                if hasActivePhoto {
+                    VStack {
+                        HStack {
+                            Spacer()
+                            Button(action: {
+                                if let draft = photoDraft {
+                                    previewMedia = PPLivePetPreviewMedia(source: .local(draft.image))
+                                } else if let url = effectivePhotoURL {
+                                    previewMedia = PPLivePetPreviewMedia(source: .remote(url))
+                                }
+                            }) {
+                                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(AdminCommandInk.primary)
+                                    .padding(9)
+                                    .background(.ultraThinMaterial, in: Circle())
+                                    .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+                            }
+                            .buttonStyle(.plain)
+                            .hoverEffect(.highlight)
+                            .padding(12)
+                        }
+                        Spacer()
+                    }
+                }
+            }
+            .frame(height: 310)
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+            )
+
+            // Capture Actions
+            HStack(spacing: 10) {
+                Button(action: { requestCamera() }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 14, weight: .bold))
+                        Text(Language.get("LivePet_Profile_Camera_Capture", alter: "التقاط بالكاميرا"))
+                            .font(Font.custom("Beiruti-Bold", size: 14))
+                    }
+                    .foregroundStyle(AdminSurface.primary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .hoverEffect(.highlight)
+
+                Button(action: { showPhotoLibrary = true }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "photo.on.rectangle")
+                            .font(.system(size: 14, weight: .bold))
+                        Text(Language.get("LivePet_Profile_Library_Select", alter: "من الألبوم"))
+                            .font(Font.custom("Beiruti-Bold", size: 14))
+                    }
+                    .foregroundStyle(AdminCommandInk.primary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+                    )
+                }
+                .buttonStyle(.plain)
+                .hoverEffect(.highlight)
+            }
+
+            if hasActivePhoto {
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        photoDraft = nil
+                        existingPhotoRemoved = true
+                    }
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 12, weight: .bold))
+                        Text(Language.get("LivePet_Profile_Remove_Photo", alter: "إزالة الصورة الحالية"))
+                            .font(Font.custom("Beiruti-Medium", size: 13))
+                    }
+                    .foregroundStyle(Color(uiColor: .ppError))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                }
+                .buttonStyle(.plain)
+                .hoverEffect(.highlight)
+            }
+        }
+    }
+
+    private var iPadSpecimenHUDCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(Language.get("LivePet_Sector_Identity", alter: "بيانات العهدة الحية"))
+                .font(Font.custom("Beiruti-Bold", size: 13))
+                .foregroundStyle(AdminCommandInk.secondary)
+
+            HStack {
+                Text(Language.get("LivePet_Status_Label", alter: "الحالة"))
+                    .font(Font.custom("Beiruti-Regular", size: 13))
+                    .foregroundStyle(AdminCommandInk.secondary)
+                Spacer()
+                Text(verbatim: currentLiveUnit.status)
+                    .font(Font.custom("Beiruti-Bold", size: 13))
+                    .foregroundStyle(currentLiveUnit.status == "AVAILABLE" ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(
+                        (currentLiveUnit.status == "AVAILABLE" ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning)).opacity(0.12),
+                        in: Capsule()
+                    )
+            }
+
+            if !currentLiveUnit.currentBranchID.isEmpty {
+                HStack {
+                    Text(Language.get("LivePet_Branch_Label", alter: "الفرع الحالي"))
+                        .font(Font.custom("Beiruti-Regular", size: 13))
+                        .foregroundStyle(AdminCommandInk.secondary)
+                    Spacer()
+                    let bName = model.branches.first(where: { $0.id == currentLiveUnit.currentBranchID })?.displayName ?? currentLiveUnit.currentBranchID
+                    Text(verbatim: bName)
+                        .font(Font.custom("Beiruti-Medium", size: 13))
+                        .foregroundStyle(AdminCommandInk.primary)
+                }
+            }
+
+            HStack {
+                Text(Language.get("LivePet_UnitID_Label", alter: "معرف السجل"))
+                    .font(Font.custom("Beiruti-Regular", size: 13))
+                    .foregroundStyle(AdminCommandInk.secondary)
+                Spacer()
+                Text(verbatim: String(currentLiveUnit.id.prefix(16)))
+                    .font(Font.custom("Beiruti-Medium", size: 12))
+                    .foregroundStyle(AdminCommandInk.tertiary)
+            }
+        }
+        .padding(14)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+    }
+
+    private var iPadTaxonomyHeader: some View {
+        HStack(alignment: .center, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(AdminSurface.primary.opacity(0.12))
+                    .frame(width: 42, height: 42)
+                Image(systemName: "pawprint.fill")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: model.item.name)
+                    .font(Font.custom("Beiruti-Bold", size: 18))
+                    .foregroundStyle(AdminCommandInk.primary)
+                    .lineLimit(1)
+
+                let sub = selectedSubSubKindID != nil ? currentSubSubKindTitle : currentLiveUnit.subSubKindName
+                if let sub, !sub.isEmpty {
+                    Text(verbatim: sub)
+                        .font(Font.custom("Beiruti-Regular", size: 13))
+                        .foregroundStyle(AdminCommandInk.secondary)
+                }
+            }
+            Spacer()
+        }
+        .padding(14)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+    }
+
+    // MARK: - Subviews: Form Cards
+
+    private var ringTagCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "tag.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+                Text(Language.get("LivePet_Profile_RingTag_Title", alter: "رقم الحجل / الشريحة التعريفية"))
+                    .font(Font.custom("Beiruti-Bold", size: 15))
+                    .foregroundStyle(AdminCommandInk.primary)
+                Spacer()
+            }
+
+            HStack(spacing: 10) {
+                TextField(
+                    Language.get("LivePet_Profile_RingTag_Prompt", alter: "رقم الحجل أو الرمز التعريفي"),
+                    text: Binding(get: {
+                        ringTag
+                    }, set: {
+                        ringTag = $0.normalizedEnglishDigits(allowsDecimal: false)
+                    })
+                )
+                .font(Font.custom("Beiruti-SemiBold", size: 16))
+                .foregroundStyle(AdminCommandInk.primary)
+                .keyboardType(.asciiCapable)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.characters)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+                )
+            }
+
+            Text(Language.get("LivePet_Profile_RingTag_Hint", alter: "الرمز التعريفي الفريد لهذا الحيوان داخل النظام والكتالوج."))
+                .font(Font.custom("Beiruti-Regular", size: 12))
+                .foregroundStyle(AdminCommandInk.secondary)
+                .padding(.horizontal, 2)
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+    }
+
+    private var genderSelectorCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "circle.circle")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+                Text(Language.get("LivePet_Profile_Gender_Title", alter: "الجنس البيولوجي"))
+                    .font(Font.custom("Beiruti-Bold", size: 15))
+                    .foregroundStyle(AdminCommandInk.primary)
+                Spacer()
+            }
+
+            // Tactile 4-pill selector
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                ForEach(PPLivePetUnitGender.allCases) { gender in
+                    let isSelected = selectedGender == gender
+                    let tint = Color(uiColor: gender.tint)
+
+                    Button(action: {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                            selectedGender = gender
+                        }
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: gender.symbolName)
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(tint)
+
+                            Text(gender.localizedTitle)
+                                .font(Font.custom(isSelected ? "Beiruti-Bold" : "Beiruti-Medium", size: 15))
+                                .foregroundStyle(AdminCommandInk.primary)
+
+                            Spacer(minLength: 0)
+
+                            if isSelected {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(tint)
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(
+                            isSelected ? tint.opacity(0.14) : AdminSurface.control,
+                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(
+                                    isSelected ? tint : AdminSurface.hairline,
+                                    lineWidth: isSelected ? 1.5 : 0.75
+                                )
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+    }
+
+    private var iPadGenderCards: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "circle.circle")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+                Text(Language.get("LivePet_Profile_Gender_Title", alter: "الجنس البيولوجي"))
+                    .font(Font.custom("Beiruti-Bold", size: 16))
+                    .foregroundStyle(AdminCommandInk.primary)
+                Spacer()
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                ForEach(PPLivePetUnitGender.allCases) { gender in
+                    let isSelected = selectedGender == gender
+                    let tint = Color(uiColor: gender.tint)
+
+                    Button(action: {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                            selectedGender = gender
+                        }
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    }) {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                Circle()
+                                    .fill(tint.opacity(isSelected ? 0.25 : 0.12))
+                                    .frame(width: 38, height: 38)
+                                Image(systemName: gender.symbolName)
+                                    .font(.system(size: 18, weight: .bold))
+                                    .foregroundStyle(tint)
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(gender.localizedTitle)
+                                    .font(Font.custom("Beiruti-Bold", size: 16))
+                                    .foregroundStyle(AdminCommandInk.primary)
+                                Text(verbatim: gender.rawValue)
+                                    .font(Font.custom("Beiruti-Regular", size: 11))
+                                    .foregroundStyle(AdminCommandInk.tertiary)
+                            }
+
+                            Spacer()
+
+                            if isSelected {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundStyle(tint)
+                            }
+                        }
+                        .padding(12)
+                        .background(
+                            isSelected ? tint.opacity(0.12) : AdminSurface.control,
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(
+                                    isSelected ? tint : AdminSurface.hairline,
+                                    lineWidth: isSelected ? 1.5 : 0.75
+                                )
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .hoverEffect(.highlight)
+                }
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+    }
+
+    // MARK: - SubSubKind & Variety Taxonomy Card
+
+    private var shouldShowSubSubKindCard: Bool {
+        model.hasSubSubKinds || !model.availableSubSubKinds.isEmpty || selectedSubSubKindID != nil || model.isLoadingSubSubTaxonomy
+    }
+
+    private var availableSubSubKindItems: [AdminSubKindItemDetail] {
+        guard let id = selectedSubSubKindID else { return [] }
+        return model.subSubKindItemsBySubSubID[id] ?? []
+    }
+
+    private var hasSelectedSubSub: Bool {
+        selectedSubSubKindID != nil
+    }
+
+    private var hasSelectedSubSubItem: Bool {
+        selectedSubSubKindItemID != nil
+    }
+
+    private var showSubSubKindItemSelector: Bool {
+        hasSelectedSubSub && (!availableSubSubKindItems.isEmpty || hasSelectedSubSubItem)
+    }
+
+    private var currentSubSubKindTitle: String {
+        if let selected = model.availableSubSubKinds.first(where: { $0.numericID == selectedSubSubKindID }) {
+            return selected.localizedName
+        }
+        if Language.isRTL() {
+            if let ar = selectedSubSubKindNameAr, !ar.isEmpty { return ar }
+            if let en = selectedSubSubKindNameEn, !en.isEmpty { return en }
+        } else {
+            if let en = selectedSubSubKindNameEn, !en.isEmpty { return en }
+            if let ar = selectedSubSubKindNameAr, !ar.isEmpty { return ar }
+        }
+        return Language.get("LivePet_Profile_SubSubKind_Prompt", alter: "اختر التفريع الفرعي...")
+    }
+
+    private var currentSubSubKindItemTitle: String {
+        if let subSubID = selectedSubSubKindID,
+           let selected = availableSubSubKindItems.first(where: { $0.numericID == selectedSubSubKindItemID }) {
+            return selected.localizedName
+        }
+        if Language.isRTL() {
+            if let ar = selectedSubSubKindItemNameAr, !ar.isEmpty { return ar }
+            if let en = selectedSubSubKindItemNameEn, !en.isEmpty { return en }
+        } else {
+            if let en = selectedSubSubKindItemNameEn, !en.isEmpty { return en }
+            if let ar = selectedSubSubKindItemNameAr, !ar.isEmpty { return ar }
+        }
+        return Language.get("LivePet_Profile_SubSubKind_Item_Prompt", alter: "اختر عنصر التفريع / الطفرة...")
+    }
+
+    private func selectSubSubKind(_ subSub: AdminSubSubKindItem?) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+            if let subSub = subSub {
+                selectedSubSubKindID = subSub.numericID
+                selectedSubSubKindNameAr = subSub.nameAr
+                selectedSubSubKindNameEn = subSub.nameEn
+            } else {
+                selectedSubSubKindID = nil
+                selectedSubSubKindNameAr = nil
+                selectedSubSubKindNameEn = nil
+            }
+            selectedSubSubKindItemID = nil
+            selectedSubSubKindItemNameAr = nil
+            selectedSubSubKindItemNameEn = nil
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    private func selectSubSubKindItem(_ item: AdminSubKindItemDetail?) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+            if let item = item {
+                selectedSubSubKindItemID = item.numericID
+                selectedSubSubKindItemNameAr = item.itemNameAr
+                selectedSubSubKindItemNameEn = item.itemNameEn
+            } else {
+                selectedSubSubKindItemID = nil
+                selectedSubSubKindItemNameAr = nil
+                selectedSubSubKindItemNameEn = nil
+            }
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    @ViewBuilder
+    private var subSubKindCard: some View {
+        if shouldShowSubSubKindCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.triangle.branch")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                    Text(Language.get("LivePet_Profile_SubSubKind_Title", alter: "التفريع الفرعي واللون / الطفرة"))
+                        .font(Font.custom("Beiruti-Bold", size: 15))
+                        .foregroundStyle(AdminCommandInk.primary)
+                    Spacer()
+                    if model.isLoadingSubSubTaxonomy {
+                        ProgressView()
+                            .scaleEffect(0.75)
+                            .tint(AdminSurface.primary)
+                    }
+                }
+
+                // 1. SubSubKind Selector Menu
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(Language.get("LivePetIntake_SubSubKindLabel", alter: "التفريع الفرعي (SubSubKind)"))
+                        .font(Font.custom("Beiruti-Medium", size: 13))
+                        .foregroundStyle(AdminCommandInk.secondary)
+
+                    HStack(spacing: 8) {
+                        Menu {
+                            Button(role: .destructive) {
+                                selectSubSubKind(nil)
+                            } label: {
+                                Label(Language.get("LivePet_Profile_SubSubKind_None", alter: "بدون تفريع"), systemImage: "xmark.circle")
+                            }
+
+                            if !model.availableSubSubKinds.isEmpty {
+                                Divider()
+                                ForEach(model.availableSubSubKinds) { subSub in
+                                    Button {
+                                        selectSubSubKind(subSub)
+                                    } label: {
+                                        HStack {
+                                            Text(subSub.localizedName)
+                                            if selectedSubSubKindID == subSub.numericID {
+                                                Image(systemName: "checkmark")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "arrow.triangle.branch")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(hasSelectedSubSub ? AdminSurface.primary : AdminCommandInk.tertiary)
+
+                                Text(currentSubSubKindTitle)
+                                    .font(Font.custom(hasSelectedSubSub ? "Beiruti-Bold" : "Beiruti-Regular", size: 15))
+                                    .foregroundStyle(hasSelectedSubSub ? AdminCommandInk.primary : AdminCommandInk.tertiary)
+                                    .lineLimit(1)
+
+                                Spacer(minLength: 0)
+
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(AdminCommandInk.tertiary)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .background(
+                                hasSelectedSubSub ? AdminSurface.primary.opacity(0.06) : AdminSurface.control,
+                                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(
+                                        hasSelectedSubSub ? AdminSurface.primary.opacity(0.35) : AdminSurface.hairline,
+                                        lineWidth: hasSelectedSubSub ? 1 : 0.75
+                                    )
+                            )
+                        }
+                        .buttonStyle(.plain)
+
+                        if hasSelectedSubSub {
+                            Button {
+                                selectSubSubKind(nil)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 17))
+                                    .foregroundStyle(AdminCommandInk.tertiary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                // 2. SubSubKindItem Selector Menu
+                if showSubSubKindItemSelector {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(Language.get("LivePetIntake_SubSubKindItemLabel", alter: "عنصر التفريع / الطفرة اللونية (SubSubKindItem)"))
+                            .font(Font.custom("Beiruti-Medium", size: 13))
+                            .foregroundStyle(AdminCommandInk.secondary)
+
+                        HStack(spacing: 8) {
+                            Menu {
+                                Button(role: .destructive) {
+                                    selectSubSubKindItem(nil)
+                                } label: {
+                                    Label(Language.get("LivePet_Profile_SubSubKind_Item_None", alter: "بدون عنصر"), systemImage: "xmark.circle")
+                                }
+
+                                if !availableSubSubKindItems.isEmpty {
+                                    Divider()
+                                    ForEach(availableSubSubKindItems) { item in
+                                        Button {
+                                            selectSubSubKindItem(item)
+                                        } label: {
+                                            HStack {
+                                                Text(item.localizedName)
+                                                if selectedSubSubKindItemID == item.numericID {
+                                                    Image(systemName: "checkmark")
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "tag.fill")
+                                        .font(.system(size: 13, weight: .bold))
+                                        .foregroundStyle(hasSelectedSubSubItem ? AdminSurface.primary : AdminCommandInk.tertiary)
+
+                                    Text(currentSubSubKindItemTitle)
+                                        .font(Font.custom(hasSelectedSubSubItem ? "Beiruti-Bold" : "Beiruti-Regular", size: 15))
+                                        .foregroundStyle(hasSelectedSubSubItem ? AdminCommandInk.primary : AdminCommandInk.tertiary)
+                                        .lineLimit(1)
+
+                                    Spacer(minLength: 0)
+
+                                    Image(systemName: "chevron.up.chevron.down")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(AdminCommandInk.tertiary)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 12)
+                                .background(
+                                    hasSelectedSubSubItem ? AdminSurface.primary.opacity(0.06) : AdminSurface.control,
+                                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .strokeBorder(
+                                            hasSelectedSubSubItem ? AdminSurface.primary.opacity(0.35) : AdminSurface.hairline,
+                                            lineWidth: hasSelectedSubSubItem ? 1 : 0.75
+                                        )
+                                )
+                            }
+                            .buttonStyle(.plain)
+
+                            if hasSelectedSubSubItem {
+                                Button {
+                                    selectSubSubKindItem(nil)
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 17))
+                                        .foregroundStyle(AdminCommandInk.tertiary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
+                Text(Language.get("LivePet_Profile_SubSubKind_Hint", alter: "تحديد السلالة الفرعية أو الطفرة اللونية الخاصة بهذا الحيوان في الكتالوج."))
+                    .font(Font.custom("Beiruti-Regular", size: 12))
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .padding(.horizontal, 2)
+            }
+            .padding(16)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+            )
+        }
+    }
+
+    private var sellingPriceCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "banknote")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+                Text(Language.get("LivePet_Profile_SellingPrice_Title", alter: "سعر البيع الفردي المعتمد"))
+                    .font(Font.custom("Beiruti-Bold", size: 15))
+                    .foregroundStyle(AdminCommandInk.primary)
+                Spacer()
+            }
+
+            HStack(spacing: 12) {
+                TextField(
+                    Language.get("LivePet_Profile_SellingPrice_Prompt", alter: "سعر البيع"),
+                    text: Binding(get: {
+                        sellingPriceText
+                    }, set: {
+                        sellingPriceText = $0.normalizedEnglishDigits(allowsDecimal: true)
+                    })
+                )
+                .font(Font.custom("Beiruti-Bold", size: 22))
+                .foregroundStyle(AdminCommandInk.primary)
+                .keyboardType(.decimalPad)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+                )
+
+                Text(Language.get("QAR", alter: "ر.ق"))
+                    .font(Font.custom("Beiruti-Bold", size: 16))
+                    .foregroundStyle(AdminSurface.primary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+
+            if standardCatalogPrice > 0 {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 12))
+                        .foregroundStyle(AdminCommandInk.tertiary)
+                    Text(Language.get("LivePet_Profile_Catalog_Standard_Price", alter: "سعر الكتالوج الموحد:"))
+                        .font(Font.custom("Beiruti-Regular", size: 12))
+                        .foregroundStyle(AdminCommandInk.secondary)
+                    Text(verbatim: PetAccessory.formatCurrency(NSNumber(value: standardCatalogPrice)))
+                        .font(Font.custom("Beiruti-Bold", size: 12))
+                        .foregroundStyle(AdminCommandInk.primary)
+                }
+                .padding(.horizontal, 2)
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+    }
+
+    private var notesCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+                Text(Language.get("LivePet_Profile_Notes_Title", alter: "السجل الطبي والملاحظات الداخلية"))
+                    .font(Font.custom("Beiruti-Bold", size: 15))
+                    .foregroundStyle(AdminCommandInk.primary)
+                Spacer()
+                Text("\(notes.count)/500")
+                    .font(Font.custom("Beiruti-Regular", size: 12))
+                    .foregroundStyle(AdminCommandInk.tertiary)
+            }
+
+            // Quick suggestion chips
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(quickNotesTags, id: \.self) { tag in
+                        Button(action: {
+                            appendTagToNotes(tag)
+                        }) {
+                            Text(verbatim: tag)
+                                .font(Font.custom("Beiruti-Medium", size: 13))
+                                .foregroundStyle(AdminSurface.primary)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+                                .overlay(Capsule().strokeBorder(AdminSurface.primary.opacity(0.25), lineWidth: 0.75))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            ZStack(alignment: .topLeading) {
+                if notes.isEmpty {
+                    Text(Language.get("LivePet_Profile_Notes_Prompt", alter: "ملاحظات السلوك، التغذية، الفحص الطبي..."))
+                        .font(Font.custom("Beiruti-Regular", size: 14))
+                        .foregroundStyle(AdminCommandInk.tertiary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                }
+
+                TextEditor(text: Binding(get: {
+                    notes
+                }, set: {
+                    if $0.count <= 500 { notes = $0 }
+                }))
+                .font(Font.custom("Beiruti-Regular", size: 14))
+                .foregroundStyle(AdminCommandInk.primary)
+                .frame(minHeight: 80)
+                .padding(8)
+                .scrollContentBackground(.hidden)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+                )
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+    }
+
+    private func errorBanner(_ message: String) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(Color(uiColor: .ppError))
+            Text(verbatim: message)
+                .font(Font.custom("Beiruti-Medium", size: 14))
+                .foregroundStyle(Color(uiColor: .ppError))
+            Spacer()
+        }
+        .padding(14)
+        .background(Color(uiColor: .ppError).opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppError).opacity(0.35), lineWidth: 0.75)
+        )
+    }
+
+    private var submissionStatusBanner: some View {
+        HStack(spacing: 12) {
+            ProgressView()
+                .tint(AdminSurface.primary)
+            Text(submissionStep.message)
+                .font(Font.custom("Beiruti-SemiBold", size: 14))
+                .foregroundStyle(AdminCommandInk.primary)
+            Spacer()
+        }
+        .padding(14)
+        .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(AdminSurface.primary.opacity(0.25), lineWidth: 0.75)
+        )
+    }
+
+    // MARK: - Actions & Mutations
+
+    private func appendTagToNotes(_ tag: String) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let clean = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+        if notes.isEmpty {
+            notes = clean
+        } else if !notes.contains(clean) {
+            notes = "\(notes) - \(clean)"
+        }
+    }
+
+    private func requestCamera() {
+        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+            validationError = Language.get(
+                "LivePetIntake_UnitPhotoCameraUnavailable",
+                alter: "الكاميرا غير متاحة على هذا الجهاز. اختر صورة من المكتبة."
+            )
+            return
+        }
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        switch status {
+        case .authorized:
+            showCamera = true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    if granted {
+                        self.showCamera = true
+                    } else {
+                        self.showCameraAccessAlert = true
+                    }
+                }
+            }
+        case .denied, .restricted:
+            showCameraAccessAlert = true
+        @unknown default:
+            showCamera = true
+        }
+    }
+
+    private func acceptSelectedPhoto(_ image: UIImage) {
+        if let draft = PPLivePetUnitPhotoStorageService.prepareLivePetUnitPhoto(image) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                photoDraft = draft
+                existingPhotoRemoved = false
+                validationError = nil
+            }
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        } else {
+            validationError = Language.get(
+                "LivePet_Profile_Error_UploadFailed",
+                alter: "تعذر استيراد الصورة المحددة. اختر صورة أخرى وحاول مجدداً."
+            )
+        }
+    }
+
+    private func commitProfile() async {
+        let trimmedRing = ringTag.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedRing.isEmpty else {
+            validationError = Language.get("LivePet_Profile_Error_RingEmpty", alter: "يرجى كتابة رقم الحجل أو الرمز التعريفي للحيوان.")
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
+        }
+
+        let cleanPriceText = sellingPriceText.normalizedEnglishDigits(allowsDecimal: true).replacingOccurrences(of: ",", with: ".")
+        guard let price = Double(cleanPriceText), price > 0, price <= 999_999_999.99,
+              abs(price * 100 - (price * 100).rounded()) < 0.000001 else {
+            validationError = Language.get("LivePet_Profile_Error_InvalidPrice", alter: "يرجى إدخال سعر بيع صحيح وموجب وبحد أقصى منزلتين عشريتين.")
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
+        }
+
+        validationError = nil
+        isSubmitting = true
+        if photoDraft != nil {
+            submissionStep = .uploadingPhoto
+        } else {
+            submissionStep = .savingProfile
+        }
+
+        let commandID = UUID().uuidString
+        let ok = await model.updateUnitProfile(
+            unit: unit,
+            ringTag: trimmedRing,
+            gender: selectedGender,
+            notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
+            sellingPrice: price,
+            photoDraft: photoDraft,
+            removeExistingPhoto: existingPhotoRemoved,
+            subSubKindID: selectedSubSubKindID,
+            subSubKindNameAr: selectedSubSubKindNameAr,
+            subSubKindNameEn: selectedSubSubKindNameEn,
+            subSubKindItemID: selectedSubSubKindItemID,
+            subSubKindItemNameAr: selectedSubSubKindItemNameAr,
+            subSubKindItemNameEn: selectedSubSubKindItemNameEn,
+            commandID: commandID
+        )
+
+        isSubmitting = false
+        submissionStep = .idle
+
+        if ok {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            dismiss()
+        } else {
+            validationError = model.errorMessage ?? Language.get("Error_Operation_Failed", alter: "تعذر حفظ التعديلات. يرجى المحاولة مرة أخرى.")
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
+    }
+}
 
 // MARK: - Live-Pet Operation Sheet
 
@@ -8007,7 +9940,17 @@ private struct PPLivePetOperationSheet: View {
     var body: some View {
         NavigationView {
             ZStack {
-                AdminSurface.background.ignoresSafeArea()
+                AdminSurface.background
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+
+                PPKeyboardDismissOverlay()
+                    .frame(width: 0, height: 0)
+                    .allowsHitTesting(false)
+
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         operationHeader
@@ -8028,6 +9971,7 @@ private struct PPLivePetOperationSheet: View {
                     }
                     .padding(16)
                 }
+                .scrollDismissesKeyboardCompat()
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -8039,6 +9983,7 @@ private struct PPLivePetOperationSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     AdminSquircleCloseButton {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                         dismiss()
                     }
                     .disabled(model.isMutating)
@@ -8046,6 +9991,7 @@ private struct PPLivePetOperationSheet: View {
             }
         }
         .navigationViewStyle(.stack)
+        .dismissKeyboardOnTapOutside()
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .sheet(isPresented: $isBranchPickerPresented) {
             PPBranchSelectionStudioSheet(
@@ -8523,7 +10469,7 @@ private struct PPLivePetOperationSheet: View {
             }
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(verbatim: (unit.ringTag.isEmpty ? unit.id : unit.ringTag).normalizedEnglishDigits)
+                Text(verbatim: unit.displayIdentity.normalizedEnglishDigits)
                     .font(PPBrandFont.bold(size: 16))
                     .foregroundStyle(AdminSurface.primaryText)
                 HStack(spacing: 6) {
@@ -8712,6 +10658,7 @@ private struct PPLivePetOperationSheet: View {
                let validUntil = reservation.validUntil, validUntil <= Date() {
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                     let commandID = stableCommandIDForCurrentIntent()
                     Task {
                         let ok = await model.cancel(reservation: reservation, commandID: commandID)
@@ -8737,6 +10684,7 @@ private struct PPLivePetOperationSheet: View {
             } else {
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                     performAction()
                 } label: {
                     HStack(spacing: 10) {
@@ -10656,7 +12604,16 @@ private struct PPBranchSelectionStudioSheet: View {
     var body: some View {
         NavigationView {
             ZStack {
-                AdminSurface.background.ignoresSafeArea()
+                AdminSurface.background
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+
+                PPKeyboardDismissOverlay()
+                    .frame(width: 0, height: 0)
+                    .allowsHitTesting(false)
 
                 ScrollView {
                     VStack(spacing: 14) {
@@ -10699,6 +12656,7 @@ private struct PPBranchSelectionStudioSheet: View {
                     }
                     .padding(16)
                 }
+                .scrollDismissesKeyboardCompat()
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -10710,12 +12668,14 @@ private struct PPBranchSelectionStudioSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     AdminSquircleCloseButton {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                         dismiss()
                     }
                 }
             }
         }
         .navigationViewStyle(.stack)
+        .dismissKeyboardOnTapOutside()
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
@@ -11988,3 +13948,89 @@ private struct CatalogPressStyle: ButtonStyle {
         navigationController?.interactivePopGestureRecognizer?.isEnabled = true
     }
 }
+
+// MARK: - Keyboard Dismiss Overlay & Extensions
+
+private struct PPKeyboardDismissOverlay: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Controller {
+        Controller()
+    }
+
+    func updateUIViewController(_ uiViewController: Controller, context: Context) {}
+
+    final class Controller: UIViewController, UIGestureRecognizerDelegate {
+        private var dismissTap: UITapGestureRecognizer?
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            view.backgroundColor = .clear
+            view.isUserInteractionEnabled = false
+        }
+
+        override func didMove(toParent parent: UIViewController?) {
+            super.didMove(toParent: parent)
+            setupTap()
+        }
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            setupTap()
+        }
+
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            if let tap = dismissTap {
+                tap.view?.removeGestureRecognizer(tap)
+                dismissTap = nil
+            }
+        }
+
+        private func setupTap() {
+            guard dismissTap == nil, let hostView = parent?.view ?? view.window else { return }
+            let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
+            tap.cancelsTouchesInView = false
+            tap.delegate = self
+            hostView.addGestureRecognizer(tap)
+            dismissTap = tap
+        }
+
+        @objc private func handleTap() {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            var current = touch.view
+            while let v = current {
+                if v is UITextField || v is UITextView {
+                    return false
+                }
+                current = v.superview
+            }
+            return true
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            return true
+        }
+    }
+}
+
+fileprivate extension View {
+    @ViewBuilder
+    func scrollDismissesKeyboardCompat() -> some View {
+        if #available(iOS 16.0, *) {
+            self.scrollDismissesKeyboard(.interactively)
+        } else {
+            self
+        }
+    }
+
+    func dismissKeyboardOnTapOutside() -> some View {
+        self.background(
+            PPKeyboardDismissOverlay()
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+        )
+    }
+}
+

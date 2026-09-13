@@ -1045,15 +1045,26 @@ public struct InventoryLotsSheet: View {
             }
 
             VStack(spacing: 6) {
-                Text(Language.get("Inventory_Lots_Sync_Notice", alter: "تعذر مزامنة التشغيلات السحابية"))
+                Text(Language.get("Inventory_Lots_Sync_Notice", alter: "تعذر تحميل التشغيلات"))
                     .font(Font.custom("Beiruti-Bold", size: 17))
                     .foregroundStyle(AdminSurface.primaryText)
 
-                Text(Language.get("Inventory_Lots_Sync_Notice_Sub", alter: "تم تفعيل القراءة المباشرة من قاعدة البيانات. يمكنك إعادة المحاولة أو تسجيل تشغيلة جديدة."))
+                Text(Language.get("Inventory_Lots_Sync_Notice_Sub", alter: "تعذر الوصول إلى خدمة التشغيلات الآمنة. لم تتأثر بيانات المخزون؛ أعد المحاولة، وإذا استمرت المشكلة فتحقق من الاتصال والصلاحيات."))
                     .font(Font.custom("Beiruti-Regular", size: 13))
                     .foregroundStyle(AdminSurface.secondaryText)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 360)
+
+                #if DEBUG
+                if !errorText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(errorText)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(AdminSurface.secondaryText.opacity(0.72))
+                        .multilineTextAlignment(.center)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: 420)
+                }
+                #endif
             }
 
             HStack(spacing: 12) {

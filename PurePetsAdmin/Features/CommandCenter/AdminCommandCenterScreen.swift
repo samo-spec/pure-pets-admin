@@ -317,6 +317,7 @@ private enum AdminCommandTypography {
 }
 
 enum AdminCommandInk {
+    static let primary = AdminSurface.primaryText.opacity(0.86)
     static let secondary = AdminSurface.primaryText.opacity(0.72)
     static let tertiary = AdminSurface.primaryText.opacity(0.58)
 }
@@ -2877,26 +2878,10 @@ private struct CommandPOSDeck: View {
     private var headerRow: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 7) {
-                    Text(Language.get("AdminPOS_SectionTitle", alter: "منظومة نقاط البيع والكاشير"))
-                        .font(AdminType.title3)
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(1)
-
-                    HStack(spacing: 3.5) {
-                        Circle()
-                            .fill(Color(red: 0.06, green: 0.78, blue: 0.56))
-                            .frame(width: 5.5, height: 5.5)
-                            .scaleEffect(isRadarPulsing && !reduceMotion ? 1.25 : 0.85)
-
-                        Text("ONLINE")
-                            .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                            .foregroundStyle(Color(red: 0.06, green: 0.78, blue: 0.56))
-                    }
-                    .padding(.horizontal, 6.5)
-                    .padding(.vertical, 3)
-                    .background(Color(red: 0.06, green: 0.78, blue: 0.56).opacity(0.12), in: Capsule())
-                }
+                Text(Language.get("AdminPOS_SectionTitle", alter: "منظومة نقاط البيع والكاشير"))
+                    .font(AdminType.title3)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
 
                 Text(Language.get("AdminPOS_SectionDetail", alter: "مساحة البيع الفوري السريع وإدارة سجل فواتير المبيعات"))
                     .font(AdminType.caption1)
@@ -2965,28 +2950,36 @@ private struct CommandPOSiPhoneCockpit: View {
                 quickScanAction: { onRoute("pos") }
             )
 
-            // Station 2: Twin Horizon — Sales Ledger & Shift Log + Quick Expense Studio
-            HStack(alignment: .top, spacing: 10) {
-                // Card 1: Sovereign Sales Ledger & Shift Log Card
-                CommandPOSShiftLedgerCardiPhone(
-                    telemetryStore: telemetryStore,
-                    arrowNudge: arrowNudge,
-                    reduceMotion: reduceMotion,
-                    action: { onRoute("posHistory") }
-                )
-                .frame(maxWidth: .infinity)
+            // Station 2: Twin Horizon — Sales Ledger & Shift Log + Quick Expense Studio (6:4 Proportional Ratio)
+            GeometryReader { geo in
+                let spacing: CGFloat = 10
+                let availableWidth = max(0, geo.size.width - spacing)
+                let salesWidth = availableWidth * 0.60
+                let expenseWidth = availableWidth * 0.40
 
-                // Card 2: Dedicated Add New Expense Card (Smaller width, exact matching height)
-                CommandPOSQuickExpenseCardiPhone(
-                    reduceMotion: reduceMotion,
-                    action: { showsQuickExpenseSheet = true }
-                )
-                .frame(width: 122)
+                HStack(alignment: .top, spacing: spacing) {
+                    // Card 1: Sovereign Sales Ledger & Shift Log Card (60% Horizon)
+                    CommandPOSShiftLedgerCardiPhone(
+                        telemetryStore: telemetryStore,
+                        arrowNudge: arrowNudge,
+                        reduceMotion: reduceMotion,
+                        action: { onRoute("posHistory") }
+                    )
+                    .frame(width: salesWidth, height: 142)
+
+                    // Card 2: Dedicated Add New Expense Card (40% Horizon)
+                    CommandPOSQuickExpenseCardiPhone(
+                        reduceMotion: reduceMotion,
+                        action: { showsQuickExpenseSheet = true }
+                    )
+                    .frame(width: expenseWidth, height: 142)
+                }
+                .frame(width: geo.size.width, alignment: .leading)
             }
             .frame(height: 142)
         }
         .frame(maxWidth: .infinity)
-        .sheet(isPresented: $showsQuickExpenseSheet) {
+        .fullScreenCover(isPresented: $showsQuickExpenseSheet) {
             CommandPOSQuickExpenseSheet(
                 currentBranchName: currentBranchName,
                 onRoute: onRoute
@@ -3015,44 +3008,11 @@ private struct CommandPOSHeroExpressCardiPhone: View {
             action()
         }) {
             VStack(spacing: 0) {
-                // Top Telemetry Header
-                HStack(spacing: 6) {
-                    // Live Radar Badge
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(accent)
-                            .frame(width: 6, height: 6)
-                        Text(Language.get("AdminQuickActions_POS_Live", alter: "مباشر"))
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(accent)
-                    }
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3.5)
-                    .background(accent.opacity(colorScheme == .dark ? 0.20 : 0.09), in: Capsule(style: .continuous))
-
-                    Spacer(minLength: 4)
-
-                    // Customer Ready Beacon
-                    HStack(spacing: 3) {
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundStyle(Color(red: 1.0, green: 0.78, blue: 0.17))
-                        Text(Language.get("AdminPOS_ReadyForCustomers", alter: "جاهز لاستقبال العملاء"))
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(AdminCommandInk.secondary)
-                    }
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3.5)
-                    .background(Color(red: 1.0, green: 0.78, blue: 0.17).opacity(colorScheme == .dark ? 0.15 : 0.08), in: Capsule(style: .continuous))
-                }
-                .padding(.horizontal, 14)
-                .padding(.top, 13)
-
                 // Center Hero Chamber: Laser Scanner Reticle + Dynamic Content
                 HStack(alignment: .center, spacing: 14) {
                     // Optical Viewfinder Reticle with Laser Beam
                     ZStack {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .fill(
                                 LinearGradient(
                                     colors: [
@@ -3065,10 +3025,10 @@ private struct CommandPOSHeroExpressCardiPhone: View {
                             )
 
                         Image(systemName: "barcode.viewfinder")
-                            .font(.system(size: 28, weight: .semibold))
+                            .font(.system(size: 24, weight: .semibold))
                             .symbolRenderingMode(.hierarchical)
                             .foregroundStyle(accent)
-                            .shadow(color: accent.opacity(colorScheme == .dark ? 0.45 : 0.25), radius: 5, y: 1.5)
+                            .shadow(color: accent.opacity(colorScheme == .dark ? 0.45 : 0.25), radius: 4, y: 1.2)
 
                         // Animated Laser Scan Sweep
                         if !reduceMotion {
@@ -3080,23 +3040,45 @@ private struct CommandPOSHeroExpressCardiPhone: View {
                                         endPoint: .bottom
                                     )
                                 )
-                                .frame(height: 2.2)
-                                .offset(y: (scannerSweep - 0.5) * 32)
-                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .frame(height: 2.0)
+                                .offset(y: (scannerSweep - 0.5) * 26)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
                     }
-                    .frame(width: 60, height: 60)
+                    .frame(width: 52, height: 52)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .strokeBorder(accent.opacity(colorScheme == .dark ? 0.35 : 0.18), lineWidth: 0.9)
                     )
 
-                    // Title & Subtitle Hierarchy
-                    VStack(alignment: .leading, spacing: 3.5) {
-                        Text(Language.get("AdminPOS_TerminalTitle", alter: "نقطة بيع سريعة"))
-                            .font(Font.custom("Beiruti-Bold", size: 17, relativeTo: .headline))
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .lineLimit(1)
+                    // Title & Subtitle Hierarchy with Trailing Customer Ready Beacon
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(alignment: .top, spacing: 6) {
+                            Text(Language.get("AdminPOS_TerminalTitle", alter: "نقطة بيع سريعة"))
+                                .font(Font.custom("Beiruti-Bold", size: 16.5, relativeTo: .headline))
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
+
+                            Spacer(minLength: 4)
+
+                            // Customer Ready Beacon
+                            HStack(spacing: 3) {
+                                Image(systemName: "bolt.fill")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(Color(red: 1.0, green: 0.78, blue: 0.17))
+                                Text(Language.get("AdminPOS_ReadyForCustomers", alter: "جاهز لاستقبال العملاء"))
+                                    .font(AdminType.caption2Bold)
+                                    .foregroundStyle(AdminCommandInk.secondary)
+                            }
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(
+                                Color(red: 1.0, green: 0.78, blue: 0.17).opacity(colorScheme == .dark ? 0.15 : 0.08),
+                                in: Capsule(style: .continuous)
+                            )
+                            .fixedSize(horizontal: true, vertical: true)
+                        }
 
                         Text(Language.get("AdminPOS_TerminalSubtitle", alter: "مسح باركود • بيع فوري • دفع مباشر"))
                             .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .subheadline))
@@ -3106,17 +3088,17 @@ private struct CommandPOSHeroExpressCardiPhone: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.horizontal, 14)
-                .padding(.top, 11)
-                .padding(.bottom, 12)
+                .padding(.top, 13)
+                .padding(.bottom, 10)
 
                 // Primary Tactile Action Launch Bar
                 HStack(spacing: 6) {
                     Image(systemName: "barcode.viewfinder")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(.white)
 
                     Text(Language.get("AdminPOS_StartFastCheckout", alter: "ابدأ عملية بيع سريعة"))
-                        .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .callout))
+                        .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .callout))
                         .foregroundStyle(.white)
                         .lineLimit(1)
 
@@ -3129,7 +3111,7 @@ private struct CommandPOSHeroExpressCardiPhone: View {
                 }
                 .padding(.horizontal, 14)
                 .frame(maxWidth: .infinity)
-                .frame(height: 44)
+                .frame(height: 40)
                 .background(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(
@@ -3146,7 +3128,8 @@ private struct CommandPOSHeroExpressCardiPhone: View {
                 )
                 .shadow(color: accent.opacity(colorScheme == .dark ? 0.35 : 0.20), radius: 6, y: 2.5)
                 .padding(.horizontal, 13)
-                .padding(.bottom, 13)
+                .padding(.bottom, 10)
+
             }
             .frame(maxWidth: .infinity)
             .background(
@@ -3215,18 +3198,6 @@ private struct CommandPOSShiftLedgerCardiPhone: View {
             .background(accent.opacity(colorScheme == .dark ? 0.20 : 0.08), in: Capsule(style: .continuous))
 
             Spacer(minLength: 2)
-
-            HStack(spacing: 2.5) {
-                Circle()
-                    .fill(telemetryStore.todayReceiptsCount > 0 ? Color(red: 0.06, green: 0.78, blue: 0.56) : accent)
-                    .frame(width: 5, height: 5)
-                Text("AUDIT")
-                    .font(.system(size: 7.5, weight: .bold, design: .monospaced))
-                    .foregroundStyle(AdminCommandInk.secondary)
-            }
-            .padding(.horizontal, 5)
-            .padding(.vertical, 2.5)
-            .background(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.04), in: Capsule(style: .continuous))
         }
         .padding(.horizontal, 10)
         .padding(.top, 9)
@@ -3301,6 +3272,7 @@ private struct CommandPOSShiftLedgerCardiPhone: View {
                 .font(Font.custom("Beiruti-Bold", size: 11.5, relativeTo: .caption2))
                 .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.92) : AdminSurface.primaryText)
                 .lineLimit(1)
+                .minimumScaleFactor(0.85)
 
             Spacer(minLength: 2)
 
@@ -3313,11 +3285,11 @@ private struct CommandPOSShiftLedgerCardiPhone: View {
         .frame(maxWidth: .infinity)
         .frame(height: 32)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color.white)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .strokeBorder(accent.opacity(colorScheme == .dark ? 0.28 : 0.16), lineWidth: 0.75)
         )
         .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.03), radius: 3, y: 1)
@@ -3380,63 +3352,42 @@ private struct CommandPOSQuickExpenseCardiPhone: View {
     @Environment(\.colorScheme) private var colorScheme
     private let coral = Color(red: 0.96, green: 0.44, blue: 0.30)
 
-    private var headerBar: some View {
-        HStack(spacing: 4) {
-            HStack(spacing: 2.5) {
-                Image(systemName: "minus.circle.fill")
-                    .font(.system(size: 7.5))
-                    .foregroundStyle(coral)
-                Text(Language.get("AdminPOS_ExpenseCard_Badge", alter: "المصروفات"))
-                    .font(AdminType.caption2Bold)
-                    .foregroundStyle(coral)
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(coral.opacity(colorScheme == .dark ? 0.20 : 0.09), in: Capsule(style: .continuous))
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 9)
-        .padding(.top, 9)
-    }
-
     private var centerChamber: some View {
-        VStack(spacing: 3) {
+        VStack(spacing: 4) {
             ZStack {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
                     .fill(coral.opacity(colorScheme == .dark ? 0.20 : 0.10))
-                    .frame(width: 32, height: 32)
+                    .frame(width: 46, height: 46)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .strokeBorder(coral.opacity(0.35), lineWidth: 0.75)
+                        RoundedRectangle(cornerRadius: 13, style: .continuous)
+                            .strokeBorder(coral.opacity(colorScheme == .dark ? 0.40 : 0.25), lineWidth: 0.85)
                     )
 
                 Image(systemName: "banknote.fill")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 21, weight: .semibold))
                     .foregroundStyle(coral)
 
                 // Micro floating plus badge
                 Circle()
                     .fill(Color.white)
-                    .frame(width: 12, height: 12)
+                    .frame(width: 15, height: 15)
                     .overlay(
                         Image(systemName: "plus")
-                            .font(.system(size: 7.5, weight: .bold))
+                            .font(.system(size: 8.5, weight: .bold))
                             .foregroundStyle(coral)
                     )
-                    .shadow(color: Color.black.opacity(0.12), radius: 1)
-                    .offset(x: 10, y: -10)
+                    .shadow(color: Color.black.opacity(0.12), radius: 1.5, y: 0.5)
+                    .offset(x: 15, y: -15)
             }
 
             Text(Language.get("AdminPOS_ExpenseCard_Title", alter: "تسجيل مصروف"))
-                .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
+                .font(PPBeirutiFont.bold(12.5, relativeTo: .caption))
                 .foregroundStyle(AdminSurface.primaryText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
 
             Text(Language.get("AdminPOS_ExpenseCard_Subtitle", alter: "صرف عهدة ونثرية"))
-                .font(Font.custom("Beiruti-Regular", size: 9.5, relativeTo: .caption2))
+                .font(PPBeirutiFont.regular(9.5, relativeTo: .caption2))
                 .foregroundStyle(AdminCommandInk.secondary)
                 .lineLimit(1)
         }
@@ -3450,18 +3401,18 @@ private struct CommandPOSQuickExpenseCardiPhone: View {
                 .foregroundStyle(coral)
 
             Text(Language.get("AdminPOS_ExpenseCard_Action", alter: "إضافة"))
-                .font(Font.custom("Beiruti-Bold", size: 11.5, relativeTo: .caption2))
+                .font(PPBeirutiFont.bold(11.5, relativeTo: .caption2))
                 .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.92) : AdminSurface.primaryText)
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity)
         .frame(height: 32)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color.white)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .strokeBorder(coral.opacity(colorScheme == .dark ? 0.30 : 0.18), lineWidth: 0.75)
         )
         .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.03), radius: 3, y: 1)
@@ -3475,14 +3426,12 @@ private struct CommandPOSQuickExpenseCardiPhone: View {
             action()
         }) {
             VStack(spacing: 0) {
-                headerBar
-                Spacer(minLength: 0)
+                Spacer(minLength: 4)
                 centerChamber
-                Spacer(minLength: 0)
+                Spacer(minLength: 4)
                 actionButton
             }
-            .frame(width: 122)
-            .frame(maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(
                 ZStack {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -3516,48 +3465,247 @@ private struct CommandPOSQuickExpenseCardiPhone: View {
     }
 }
 
-// MARK: - Dedicated POS Quick Shift Expense Studio Sheet (Bilingual & Real-time)
+// MARK: - Category-Defining POS Shift Expense Studio (Dedicated iPhone & iPad Architectures)
 
-private struct CommandPOSQuickExpenseSheet: View {
-    let currentBranchName: String
-    let onRoute: (String) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+@MainActor
+private final class CommandPOSQuickExpensePresenter: ObservableObject {
+    @Published var amountText: String = ""
+    @Published var selectedCategory: String = "supplies"
+    @Published var descriptionText: String = ""
+    @Published var isSubmitting: Bool = false
+    @Published var errorMessage: String? = nil
+    @Published var showSuccessBanner: Bool = false
+    @Published var recentVouchers: [PPAccountingExpense] = []
+    @Published var todayExpenseTotal: Double = 0.0
+    @Published var todayExpenseCount: Int = 0
 
-    @State private var amountText: String = ""
-    @State private var selectedCategory: String = "supplies"
-    @State private var descriptionText: String = ""
-    @State private var isSubmitting: Bool = false
-    @State private var errorMessage: String? = nil
-    @State private var showSuccessBanner: Bool = false
+    struct ReasonTagItem: Hashable {
+        let key: String
+        let fallback: String
+        var localizedText: String {
+            Language.get(key, alter: fallback)
+        }
+    }
 
-    private let coral = Color(red: 0.96, green: 0.44, blue: 0.30)
-
-    private struct CategoryItem: Identifiable {
+    struct CategoryItem: Identifiable, Hashable {
         let id: String
         let titleKey: String
         let fallback: String
         let icon: String
+        let iconTintColor: Color
+        let iconBgColor: Color
+        let tags: [ReasonTagItem]
+
+        var localizedTitle: String {
+            Language.get(titleKey, alter: fallback)
+        }
+
+        var reasonTags: [String] {
+            tags.map { $0.localizedText }
+        }
     }
 
-    private let categories: [CategoryItem] = [
-        CategoryItem(id: "supplies", titleKey: "AdminPOS_Category_Supplies", fallback: "مستلزمات ونظافة", icon: "sparkles"),
-        CategoryItem(id: "maintenance", titleKey: "AdminPOS_Category_Maintenance", fallback: "صيانة وتشغيل", icon: "wrench.and.screwdriver.fill"),
-        CategoryItem(id: "cash_out", titleKey: "AdminPOS_Category_CashOut", fallback: "عهدة ونثرية كاشير", icon: "banknote.fill"),
-        CategoryItem(id: "delivery", titleKey: "AdminPOS_Category_Delivery", fallback: "توصيل وخدمات", icon: "bicycle"),
-        CategoryItem(id: "other", titleKey: "AdminPOS_Category_Other", fallback: "مصروفات أخرى", icon: "ellipsis.circle.fill")
+    let categories: [CategoryItem] = [
+        CategoryItem(
+            id: "salary",
+            titleKey: "AdminPOS_Category_Salary",
+            fallback: "راتب",
+            icon: "person.2.fill",
+            iconTintColor: .white,
+            iconBgColor: Color(red: 0.65, green: 0.48, blue: 0.96),
+            tags: [
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_SalaryAdvance", fallback: "سلفة موظف"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_Bonus", fallback: "مكافأة فورية"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_Transport", fallback: "بدل انتقال")
+            ]
+        ),
+        CategoryItem(
+            id: "rent",
+            titleKey: "AdminPOS_Category_Rent",
+            fallback: "إيجار",
+            icon: "building.2.fill",
+            iconTintColor: .white,
+            iconBgColor: Color(red: 0.96, green: 0.56, blue: 0.24),
+            tags: [
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_StoreRent", fallback: "دفعة إيجار فرع"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_HousingRent", fallback: "إيجار سكن موظفين"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_WarehouseRent", fallback: "إيجار مستودع")
+            ]
+        ),
+        CategoryItem(
+            id: "supplies",
+            titleKey: "AdminPOS_Category_Supplies",
+            fallback: "لوازم",
+            icon: "shippingbox.fill",
+            iconTintColor: .white,
+            iconBgColor: Color(red: 0.18, green: 0.56, blue: 0.98),
+            tags: [
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_Bags", fallback: "أكياس ومواد تغليف"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_Cleaning", fallback: "منظفات ومطهرات فرع"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_Water", fallback: "مياه وضيافة عملاء"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_Supplies", fallback: "أدوات ومستلزمات متجر")
+            ]
+        ),
+        CategoryItem(
+            id: "bills",
+            titleKey: "AdminPOS_Category_Bills",
+            fallback: "فواتير",
+            icon: "bolt.fill",
+            iconTintColor: Color(red: 0.92, green: 0.62, blue: 0.05),
+            iconBgColor: Color(red: 0.99, green: 0.93, blue: 0.76),
+            tags: [
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_Electricity", fallback: "فاتورة كهرباء وماء"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_Telecom", fallback: "فاتورة إنترنت واتصالات"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_Municipal", fallback: "رسوم بلدية وتراخيص")
+            ]
+        ),
+        CategoryItem(
+            id: "marketing",
+            titleKey: "AdminPOS_Category_Marketing",
+            fallback: "تسويق",
+            icon: "megaphone.fill",
+            iconTintColor: Color(red: 0.95, green: 0.28, blue: 0.50),
+            iconBgColor: Color(red: 0.99, green: 0.88, blue: 0.92),
+            tags: [
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_LocalAds", fallback: "إعلانات وترويج محلي"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_PrintAds", fallback: "مطبوعات وبنرات فرع"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_PromoGifts", fallback: "عينات وهدايا ترويجية")
+            ]
+        ),
+        CategoryItem(
+            id: "logistics",
+            titleKey: "AdminPOS_Category_Logistics",
+            fallback: "اللوجستيات والتوصيل",
+            icon: "truck.box.fill",
+            iconTintColor: Color(red: 0.32, green: 0.44, blue: 0.94),
+            iconBgColor: Color(red: 0.89, green: 0.92, blue: 0.99),
+            tags: [
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_Delivery", fallback: "أجرة توصيل طارئة"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_ExpressShipping", fallback: "شحن وتوصيل مستعجل"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_DriverTip", fallback: "إكرامية سائق معتمدة"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_VehicleFuel", fallback: "وقود مركبة التوصيل")
+            ]
+        ),
+        CategoryItem(
+            id: "clinic",
+            titleKey: "AdminPOS_Category_Clinic",
+            fallback: "العيادة واللوازم الطبية",
+            icon: "cross.case.fill",
+            iconTintColor: Color(red: 0.12, green: 0.72, blue: 0.46),
+            iconBgColor: Color(red: 0.88, green: 0.97, blue: 0.92),
+            tags: [
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_MedicalGauze", fallback: "شاش ومطهرات طبية"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_Medicines", fallback: "أدوية وإسعافات أولية"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_VetConsumables", fallback: "مستهلكات عيادة بيطرية")
+            ]
+        ),
+        CategoryItem(
+            id: "tech_maintenance",
+            titleKey: "AdminPOS_Category_TechMaintenance",
+            fallback: "التقنية والصيانة",
+            icon: "wrench.and.screwdriver.fill",
+            iconTintColor: Color(red: 0.14, green: 0.68, blue: 0.80),
+            iconBgColor: Color(red: 0.88, green: 0.96, blue: 0.98),
+            tags: [
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_Maintenance", fallback: "صيانة عاجلة وأدوات"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_Printer", fallback: "صيانة طابعة وفواتير"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_Lighting", fallback: "إضاءة وكهرباء فرع"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_Plumbing", fallback: "سباكة ومغاسل")
+            ]
+        ),
+        CategoryItem(
+            id: "inventory",
+            titleKey: "AdminPOS_Category_Inventory",
+            fallback: "المخزون والتوريد",
+            icon: "cube.box.fill",
+            iconTintColor: Color(red: 0.28, green: 0.58, blue: 0.92),
+            iconBgColor: Color(red: 0.90, green: 0.95, blue: 1.0),
+            tags: [
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_UrgentStock", fallback: "شراء بضاعة عاجلة"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_FreightFee", fallback: "رسوم تفريغ ونقل بضاعة"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_ShippingCartons", fallback: "تغليف وكراتين شحن")
+            ]
+        ),
+        CategoryItem(
+            id: "other",
+            titleKey: "AdminPOS_Category_Other",
+            fallback: "أخرى",
+            icon: "ellipsis",
+            iconTintColor: Color(red: 0.48, green: 0.50, blue: 0.55),
+            iconBgColor: Color(red: 0.91, green: 0.92, blue: 0.94),
+            tags: [
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_Sundry", fallback: "نثريات تشغيلية"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_BranchPurchases", fallback: "مشتريات عاجلة للفرع"),
+                ReasonTagItem(key: "AdminPOS_QuickExpense_Reason_Utilities", fallback: "رسوم خدمات عامة")
+            ]
+        )
     ]
 
-    private var parsedAmount: Double? {
-        let clean = amountText.normalizedEnglishDigits(allowsDecimal: true).replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
+    var currentCategoryItem: CategoryItem {
+        categories.first(where: { $0.id == selectedCategory }) ?? categories[0]
+    }
+
+    var parsedAmount: Double? {
+        let clean = amountText.normalizedEnglishDigits(allowsDecimal: true)
+            .replacingOccurrences(of: ",", with: ".")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         guard let val = Double(clean), val > 0, val.isFinite else { return nil }
         return val
     }
 
-    private func submitExpense() {
+    var formattedAmountDisplay: String {
+        let text = amountText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? "0.00" : text
+    }
+
+    func addPreset(delta: Double) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let current = parsedAmount ?? 0.0
+        let newTotal = current + delta
+        if newTotal == floor(newTotal) {
+            amountText = String(format: "%.0f", newTotal)
+        } else {
+            amountText = String(format: "%.2f", newTotal)
+        }
+        errorMessage = nil
+    }
+
+    func clearAmount() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        amountText = ""
+        errorMessage = nil
+    }
+
+    func selectCategory(_ categoryId: String) {
+        UISelectionFeedbackGenerator().selectionChanged()
+        selectedCategory = categoryId
+    }
+
+    func applyReasonTag(_ tag: String) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        descriptionText = tag
+    }
+
+    func loadShiftTelemetry() {
+        let allExpenses = PPAccountingService.shared().expenses ?? []
+        let calendar = Calendar.current
+        let todayExpenses = allExpenses.filter { expense in
+            guard let created = expense.createdAt else { return false }
+            return calendar.isDateInToday(created)
+        }
+        recentVouchers = Array(todayExpenses.prefix(8))
+        todayExpenseCount = todayExpenses.count
+        todayExpenseTotal = todayExpenses.reduce(0.0) { $0 + $1.amount }
+    }
+
+    private var onExpenseSuccess: (@MainActor @Sendable () -> Void)? = nil
+
+    func submitExpense(onSuccess: (@MainActor @Sendable () -> Void)? = nil) {
+        if let onSuccess {
+            self.onExpenseSuccess = onSuccess
+        }
         guard let amount = parsedAmount else {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
             errorMessage = Language.get("AdminPOS_QuickExpense_ValidationAmount", alter: "يرجى إدخال مبلغ صالح أكبر من صفر")
             return
         }
@@ -3570,8 +3718,9 @@ private struct CommandPOSQuickExpenseSheet: View {
             amount,
             category: selectedCategory,
             description: descriptionText.trimmingCharacters(in: .whitespacesAndNewlines)
-        ) { error in
-            DispatchQueue.main.async {
+        ) { [weak self] error in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
                 self.isSubmitting = false
                 if let error = error {
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
@@ -3581,239 +3730,437 @@ private struct CommandPOSQuickExpenseSheet: View {
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
                         self.showSuccessBanner = true
                     }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-                        self.dismiss()
-                    }
+                    self.loadShiftTelemetry()
+                    try? await Task.sleep(nanoseconds: 850_000_000)
+                    guard !Task.isCancelled else { return }
+                    self.onExpenseSuccess?()
                 }
             }
         }
     }
+}
+
+// MARK: - Dedicated Button Press Style with Haptic Spring
+
+private struct CommandQuickExpensePressStyle: ButtonStyle {
+    let reduceMotion: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? (reduceMotion ? 0.98 : 0.96) : 1.0)
+            .opacity(configuration.isPressed ? 0.90 : 1.0)
+            .animation(reduceMotion ? nil : .spring(response: 0.20, dampingFraction: 0.72), value: configuration.isPressed)
+    }
+}
+
+// MARK: - iPhone Dedicated Architecture: Thumb-Zone Express Cashier Studio
+
+private struct CommandPOSQuickExpenseView_iPhone: View {
+    @ObservedObject var presenter: CommandPOSQuickExpensePresenter
+    let currentBranchName: String
+    let onRoute: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private let coral = Color(red: 0.96, green: 0.44, blue: 0.30)
 
     var body: some View {
         NavigationView {
             ZStack {
-                (colorScheme == .dark ? Color(white: 0.09) : Color(white: 0.98))
+                (colorScheme == .dark ? Color(white: 0.08) : Color(white: 0.97))
                     .ignoresSafeArea()
 
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 16) {
-                        // 1. Amount Input Chamber
-                        amountInputCard
+                        // 1. Active Shift Status Filament
+                        activeShiftFilament
 
-                        // 2. Category Selector Chips
-                        categorySelectorCard
+                        // 2. Tactile Cash Voucher Slip (Hero Chamber)
+                        digitalVoucherSlip
 
-                        // 3. Description Field
-                        descriptionFieldCard
+                        // 3. Rapid Denomination Preset Bubbles
+                        denominationBubblesRow
 
-                        // 4. Audit Assurance Filament
-                        auditAssuranceNotice
+                        // 4. Category Selector (2-Column Grid matching media_1789251697960.png)
+                        categoryCarouselDeck
 
-                        // Error Banner if needed
-                        if let error = errorMessage {
-                            HStack(spacing: 8) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundStyle(Color(uiColor: .ppError))
-                                Text(error)
-                                    .font(AdminType.caption)
-                                    .foregroundStyle(Color(uiColor: .ppError))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .padding(12)
-                            .background(Color(uiColor: .ppError).opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
-                            .transition(.opacity)
+                        // 5. Smart Contextual Auto-Fill Reason Tags
+                        quickReasonTagsDeck
+
+                        // 6. Reason & Notes Field
+                        notesInputCard
+
+                        // 7. Micro Shift Footprint Summary
+                        shiftFootprintPill
+
+                        // 8. Security & Immutable Audit Notice
+                        auditAssuranceFilament
+
+                        // 9. Error Banner (if present)
+                        if let error = presenter.errorMessage {
+                            errorBanner(message: error)
                         }
 
-                        // Success Confirmation Banner
-                        if showSuccessBanner {
-                            HStack(spacing: 8) {
-                                Image(systemName: "checkmark.seal.fill")
-                                    .foregroundStyle(Color(red: 0.06, green: 0.78, blue: 0.56))
-                                Text(Language.get("AdminPOS_QuickExpense_Success", alter: "تم تسجيل المصروف وتوثيقه بنجاح"))
-                                    .font(PPBrandFont.bold(size: 13))
-                                    .foregroundStyle(Color(red: 0.06, green: 0.78, blue: 0.56))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .padding(12)
-                            .background(Color(red: 0.06, green: 0.78, blue: 0.56).opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
-                            .transition(.scale.combined(with: .opacity))
+                        // 10. Success Confirmation Seal
+                        if presenter.showSuccessBanner {
+                            successBanner
                         }
 
-                        // 5. Submit Action Button
-                        submitButton
+                        // 11. Primary Sticky Commit Action Button
+                        submitActionButton
 
-                        // 6. Secondary link to full accounting
-                        Button {
-                            dismiss()
-                            onRoute("accounting")
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "chart.bar.doc.horizontal")
-                                    .font(.system(size: 12, weight: .semibold))
-                                Text(Language.get("AdminPOS_QuickExpense_ViewAccounting", alter: "فتح سجل الحسابات العام"))
-                                    .font(AdminType.caption2Bold)
-                            }
-                            .foregroundStyle(AdminCommandInk.secondary)
-                            .padding(.vertical, 8)
-                        }
+                        // 12. General Accounting Deep Link
+                        viewAccountingLink
                     }
-                    .padding(16)
-                    .padding(.bottom, 24)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 10)
+                    .padding(.bottom, 28)
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(Language.get("Cancel", alter: "إلغاء")) {
+                    Button {
                         dismiss()
+                    } label: {
+                        Text(Language.get("Cancel", alter: "إلغاء"))
+                            .font(PPBeirutiFont.bold(15, relativeTo: .body))
+                            .foregroundStyle(AdminSurface.secondaryText)
                     }
-                    .foregroundStyle(AdminSurface.secondaryText)
                 }
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 1) {
                         Text(Language.get("AdminPOS_QuickExpense_SheetTitle", alter: "تسجيل مصروف وردية"))
-                            .font(PPBrandFont.bold(size: 15))
+                            .font(PPBeirutiFont.bold(16, relativeTo: .headline))
                             .foregroundStyle(AdminSurface.primaryText)
+                            .multilineTextAlignment(.center)
 
                         Text(currentBranchName)
-                            .font(AdminType.caption2)
+                            .font(PPBeirutiFont.regular(12, relativeTo: .caption))
                             .foregroundStyle(AdminCommandInk.secondary)
+                            .multilineTextAlignment(.center)
                     }
                 }
             }
         }
+        .navigationViewStyle(.stack)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .onAppear {
+            presenter.loadShiftTelemetry()
+        }
     }
 
-    private var amountInputCard: some View {
-        VStack(spacing: 8) {
-            Text(Language.get("AdminPOS_QuickExpense_Amount", alter: "مبلغ المصروف (ر.ق)"))
-                .font(AdminType.caption2Bold)
+    private var activeShiftFilament: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(Color(red: 0.10, green: 0.74, blue: 0.54))
+                .frame(width: 7, height: 7)
+                .shadow(color: Color(red: 0.10, green: 0.74, blue: 0.54).opacity(0.6), radius: 3)
+
+            Text(Language.get("AdminPOS_QuickExpense_ActiveShiftPill", alter: "الوردية نشطة • صرف مباشر"))
+                .font(PPBeirutiFont.bold(11.5, relativeTo: .caption))
+                .foregroundStyle(Color(red: 0.10, green: 0.74, blue: 0.54))
+                .multilineTextAlignment(.leading)
+
+            Spacer(minLength: 0)
+
+            Text(currentBranchName)
+                .font(PPBeirutiFont.medium(11, relativeTo: .caption2))
                 .foregroundStyle(AdminCommandInk.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2.5)
+                .background(
+                    Capsule()
+                        .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+                )
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.35 : 0.15), lineWidth: 0.75)
+        )
+    }
+
+    private var digitalVoucherSlip: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Text(Language.get("AdminPOS_QuickExpense_Amount", alter: "مبلغ المصروف (ر.ق)"))
+                    .font(PPBeirutiFont.bold(12.5, relativeTo: .subheadline))
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .multilineTextAlignment(.leading)
+
+                Spacer()
+
+                if !presenter.amountText.isEmpty {
+                    Button {
+                        presenter.clearAmount()
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 10, weight: .bold))
+                            Text(Language.get("AdminPOS_QuickExpense_Clear", alter: "تفريغ"))
+                                .font(PPBeirutiFont.medium(11, relativeTo: .caption2))
+                        }
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2.5)
+                        .background(
+                            Capsule()
+                                .fill(colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.05))
+                        )
+                    }
+                }
+            }
 
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                TextField("0.00", text: $amountText)
-                    .font(Font.custom("Beiruti-Bold", size: 36, relativeTo: .title))
+                TextField("0.00", text: $presenter.amountText)
+                    .font(PPBeirutiFont.bold(42, relativeTo: .largeTitle))
                     .foregroundStyle(coral)
                     .multilineTextAlignment(.center)
                     .keyboardType(.decimalPad)
-                    .onChange(of: amountText) { val in
+                    .onChange(of: presenter.amountText) { val in
                         let clean = val.normalizedEnglishDigits(allowsDecimal: true)
-                        if clean != val { amountText = clean }
-                        if errorMessage != nil { errorMessage = nil }
+                        if clean != val { presenter.amountText = clean }
+                        if presenter.errorMessage != nil { presenter.errorMessage = nil }
                     }
 
-                Text(Language.isRTL() ? "ر.ق" : "QAR")
-                    .font(PPBrandFont.bold(size: 15))
-                    .foregroundStyle(coral.opacity(0.85))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(coral.opacity(colorScheme == .dark ? 0.20 : 0.10), in: Capsule())
+                Text(Language.get("Currency_QAR", alter: Language.isRTL() ? "ر.ق" : "QAR"))
+                    .font(PPBeirutiFont.bold(16, relativeTo: .headline))
+                    .foregroundStyle(coral)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(
+                        coral.opacity(colorScheme == .dark ? 0.22 : 0.12),
+                        in: Capsule()
+                    )
             }
             .frame(maxWidth: .infinity)
+            .padding(.vertical, 4)
         }
         .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(colorScheme == .dark ? Color(white: 0.14) : Color.white)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(coral.opacity(colorScheme == .dark ? 0.30 : 0.18), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(coral.opacity(colorScheme == .dark ? 0.35 : 0.20), lineWidth: 1.2)
         )
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.20 : 0.04), radius: 6, y: 2)
+        .shadow(color: coral.opacity(colorScheme == .dark ? 0.18 : 0.06), radius: 8, y: 3)
     }
 
-    private var categorySelectorCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(Language.get("AdminPOS_QuickExpense_Category", alter: "تصنيف المصروف"))
-                .font(AdminType.caption2Bold)
+    private var denominationBubblesRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(Language.get("AdminPOS_QuickExpense_QuickPresets", alter: "فئات الإضافة السريعة"))
+                .font(PPBeirutiFont.bold(11.5, relativeTo: .caption))
                 .foregroundStyle(AdminCommandInk.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.leading)
+                .padding(.horizontal, 2)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(categories) { cat in
-                        let isSelected = selectedCategory == cat.id
+                    let presets: [Double] = [10, 25, 50, 100, 500]
+                    ForEach(presets, id: \.self) { val in
                         Button {
-                            UISelectionFeedbackGenerator().selectionChanged()
-                            withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) {
-                                selectedCategory = cat.id
-                            }
+                            presenter.addPreset(delta: val)
                         } label: {
-                            HStack(spacing: 5) {
-                                Image(systemName: cat.icon)
-                                    .font(.system(size: 11, weight: .semibold))
-
-                                Text(Language.get(cat.titleKey, alter: cat.fallback))
-                                    .font(PPBrandFont.bold(size: 12))
-                                    .lineLimit(1)
+                            HStack(spacing: 2.5) {
+                                Text("+")
+                                    .font(PPBeirutiFont.bold(11, relativeTo: .caption2))
+                                Text(String(format: "%.0f", val))
+                                    .font(PPBeirutiFont.bold(13, relativeTo: .subheadline))
+                                Text(Language.get("Currency_QAR", alter: Language.isRTL() ? "ر.ق" : "QAR"))
+                                    .font(PPBeirutiFont.medium(9.5, relativeTo: .caption2))
                             }
-                            .foregroundStyle(
-                                isSelected
-                                    ? (colorScheme == .dark ? Color.white : coral)
-                                    : AdminSurface.secondaryText
-                            )
+                            .foregroundStyle(AdminSurface.primaryText)
                             .padding(.horizontal, 11)
                             .padding(.vertical, 7)
                             .background(
                                 Capsule()
-                                    .fill(
-                                        isSelected
-                                            ? coral.opacity(colorScheme == .dark ? 0.35 : 0.14)
-                                            : (colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
-                                    )
+                                    .fill(colorScheme == .dark ? Color.white.opacity(0.08) : Color.white)
                             )
                             .overlay(
                                 Capsule()
-                                    .strokeBorder(
-                                        isSelected ? coral.opacity(0.60) : Color.clear,
-                                        lineWidth: 1
-                                    )
+                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.40 : 0.22), lineWidth: 0.8)
                             )
+                            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.03), radius: 3, y: 1.5)
                         }
-                        .buttonStyle(PPLivePetPressStyle(reduceMotion: reduceMotion))
+                        .buttonStyle(CommandQuickExpensePressStyle(reduceMotion: reduceMotion))
                     }
                 }
+                .padding(.horizontal, 1)
                 .padding(.vertical, 2)
             }
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(colorScheme == .dark ? Color(white: 0.14) : Color.white)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.35 : 0.15), lineWidth: 0.75)
-        )
     }
 
-    private var descriptionFieldCard: some View {
+    private var categoryCarouselDeck: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(Language.get("AdminPOS_QuickExpense_Category", alter: "التصنيف"))
+                .font(PPBeirutiFont.bold(13, relativeTo: .headline))
+                .foregroundStyle(AdminCommandInk.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.leading)
+                .padding(.horizontal, 2)
+
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                ForEach(presenter.categories) { cat in
+                    let isSelected = presenter.selectedCategory == cat.id
+                    Button {
+                        presenter.selectCategory(cat.id)
+                    } label: {
+                        HStack(spacing: 8) {
+                            if isSelected {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(Color(red: 0.85, green: 0.15, blue: 0.35))
+                            }
+
+                            Spacer(minLength: 0)
+
+                            Text(cat.localizedTitle)
+                                .font(PPBeirutiFont.bold(13, relativeTo: .subheadline))
+                                .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminSurface.primaryText.opacity(0.90))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                                .multilineTextAlignment(.leading)
+
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(cat.iconBgColor)
+                                    .frame(width: 36, height: 36)
+
+                                Image(systemName: cat.icon)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(cat.iconTintColor)
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(
+                                    isSelected
+                                        ? (colorScheme == .dark ? Color.blue.opacity(0.18) : Color(red: 0.94, green: 0.97, blue: 1.0))
+                                        : (colorScheme == .dark ? Color(white: 0.12) : Color.white)
+                                )
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(
+                                    isSelected
+                                        ? Color(red: 0.20, green: 0.60, blue: 1.0)
+                                        : (colorScheme == .dark ? Color.white.opacity(0.12) : Color(red: 0.91, green: 0.91, blue: 0.93)),
+                                    lineWidth: isSelected ? 1.6 : 0.8
+                                )
+                        )
+                        .shadow(color: isSelected ? Color(red: 0.20, green: 0.60, blue: 1.0).opacity(colorScheme == .dark ? 0.25 : 0.10) : Color.clear, radius: 4, y: 1.5)
+                    }
+                    .buttonStyle(CommandQuickExpensePressStyle(reduceMotion: reduceMotion))
+                }
+            }
+        }
+    }
+
+    private var quickReasonTagsDeck: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(Language.get("AdminPOS_QuickExpense_QuickReasons", alter: "أسباب شائعة للتحديد الفوري"))
+                .font(PPBeirutiFont.bold(11.5, relativeTo: .caption))
+                .foregroundStyle(AdminCommandInk.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.leading)
+                .padding(.horizontal, 2)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(presenter.currentCategoryItem.reasonTags, id: \.self) { tag in
+                        let isApplied = presenter.descriptionText == tag
+                        Button {
+                            presenter.applyReasonTag(tag)
+                        } label: {
+                            Text(tag)
+                                .font(PPBeirutiFont.medium(11.5, relativeTo: .caption))
+                                .foregroundStyle(
+                                    isApplied ? Color(red: 0.18, green: 0.56, blue: 0.98) : AdminSurface.primaryText
+                                )
+                                .multilineTextAlignment(.leading)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(
+                                            isApplied
+                                                ? Color(red: 0.18, green: 0.56, blue: 0.98).opacity(0.12)
+                                                : (colorScheme == .dark ? Color.white.opacity(0.06) : Color.white)
+                                        )
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .strokeBorder(
+                                            isApplied ? Color(red: 0.18, green: 0.56, blue: 0.98).opacity(0.5) : Color(uiColor: .ppSurfaceBorder).opacity(0.25),
+                                            lineWidth: 0.8
+                                        )
+                                )
+                        }
+                        .buttonStyle(CommandQuickExpensePressStyle(reduceMotion: reduceMotion))
+                    }
+                }
+                .padding(.horizontal, 1)
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
+    private var notesInputCard: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(Language.get("AdminPOS_QuickExpense_Notes", alter: "بيان وسبب الصرف"))
-                .font(AdminType.caption2Bold)
+                .font(PPBeirutiFont.bold(12, relativeTo: .subheadline))
                 .foregroundStyle(AdminCommandInk.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.leading)
 
             HStack(spacing: 8) {
                 Image(systemName: "pencil.line")
                     .font(.system(size: 13))
-                    .foregroundStyle(coral)
+                    .foregroundStyle(Color(red: 0.18, green: 0.56, blue: 0.98))
 
                 TextField(
                     Language.get("AdminPOS_QuickExpense_NotesPlaceholder", alter: "مثال: أدوات نظافة، أكياس، عهدة نثرية، صيانة سريعة..."),
-                    text: $descriptionText
+                    text: $presenter.descriptionText
                 )
-                .font(Font.custom("Beiruti-Regular", size: 13.5, relativeTo: .body))
+                .font(PPBeirutiFont.regular(13.5, relativeTo: .body))
                 .foregroundStyle(AdminSurface.primaryText)
+                .multilineTextAlignment(.leading)
+
+                if !presenter.descriptionText.isEmpty {
+                    Button {
+                        presenter.descriptionText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                }
             }
             .padding(.horizontal, 12)
-            .frame(height: 44)
+            .frame(height: 46)
             .background(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.03))
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.white)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.40), lineWidth: 0.75)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.35), lineWidth: 0.8)
             )
         }
         .padding(14)
@@ -3827,47 +4174,924 @@ private struct CommandPOSQuickExpenseSheet: View {
         )
     }
 
-    private var auditAssuranceNotice: some View {
+    private var shiftFootprintPill: some View {
         HStack(spacing: 8) {
-            Image(systemName: "shield.checkerboard")
-                .font(.system(size: 13, weight: .semibold))
+            Image(systemName: "chart.line.downtrend.xyaxis")
+                .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(coral)
 
-            Text(Language.get("AdminPOS_QuickExpense_SheetSubtitle", alter: "تسجيل عملية صرف فوري من صندوق الكاشير وتوثيقها تلقائياً"))
-                .font(AdminType.caption2)
+            Text(Language.get("AdminPOS_QuickExpense_ShiftTotalLabel", alter: "إجمالي مصروفات اليوم") + ":")
+                .font(PPBeirutiFont.regular(11.5, relativeTo: .caption))
                 .foregroundStyle(AdminCommandInk.secondary)
-                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+
+            Text(String(format: "%.2f %@", presenter.todayExpenseTotal, Language.get("Currency_QAR", alter: Language.isRTL() ? "ر.ق" : "QAR")))
+                .font(PPBeirutiFont.bold(12, relativeTo: .subheadline))
+                .foregroundStyle(coral)
+
+            Spacer()
+
+            Text("(\(presenter.todayExpenseCount) " + Language.get("AdminPOS_QuickExpense_ShiftCountLabel", alter: "سند") + ")")
+                .font(PPBeirutiFont.medium(11, relativeTo: .caption2))
+                .foregroundStyle(AdminSurface.secondaryText)
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(coral.opacity(colorScheme == .dark ? 0.12 : 0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .strokeBorder(coral.opacity(0.20), lineWidth: 0.75)
+        )
     }
 
-    private var submitButton: some View {
-        Button(action: submitExpense) {
+    private var auditAssuranceFilament: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "shield.checkerboard")
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundStyle(Color(red: 0.10, green: 0.74, blue: 0.54))
+
+            Text(Language.get("AdminPOS_QuickExpense_VoucherAuditNotice", alter: "سند قيد فوري موثق بالرقم السري وهويتك الإدارية في السحابة"))
+                .font(PPBeirutiFont.regular(11.5, relativeTo: .caption))
+                .foregroundStyle(AdminCommandInk.secondary)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+        }
+        .padding(.horizontal, 8)
+    }
+
+    private func errorBanner(message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Color(uiColor: .ppError))
+            Text(message)
+                .font(PPBeirutiFont.medium(12.5, relativeTo: .caption))
+                .foregroundStyle(Color(uiColor: .ppError))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.leading)
+        }
+        .padding(12)
+        .background(Color(uiColor: .ppError).opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+        .transition(.opacity)
+    }
+
+    private var successBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.seal.fill")
+                .foregroundStyle(Color(red: 0.06, green: 0.78, blue: 0.56))
+            Text(Language.get("AdminPOS_QuickExpense_Success", alter: "تم تسجيل المصروف وتوثيقه بنجاح"))
+                .font(PPBeirutiFont.bold(13, relativeTo: .subheadline))
+                .foregroundStyle(Color(red: 0.06, green: 0.78, blue: 0.56))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.leading)
+        }
+        .padding(12)
+        .background(Color(red: 0.06, green: 0.78, blue: 0.56).opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+        .transition(.scale.combined(with: .opacity))
+    }
+
+    private var submitActionButton: some View {
+        Button {
+            presenter.submitExpense {
+                dismiss()
+            }
+        } label: {
             HStack(spacing: 8) {
-                if isSubmitting {
+                if presenter.isSubmitting {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                         .scaleEffect(0.9)
                 } else {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 15, weight: .bold))
                 }
 
                 Text(Language.get("AdminPOS_QuickExpense_Confirm", alter: "اعتماد الصرف وتوثيق السند"))
-                    .font(PPBrandFont.bold(size: 14.5))
+                    .font(PPBeirutiFont.bold(15, relativeTo: .headline))
             }
             .foregroundStyle(Color.white)
             .frame(maxWidth: .infinity)
-            .frame(height: 48)
+            .frame(height: 50)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
                     .fill(coral)
             )
             .shadow(color: coral.opacity(0.35), radius: 8, y: 3)
         }
-        .buttonStyle(CommandPOSCardPressStyle())
-        .disabled(isSubmitting)
-        .opacity(isSubmitting ? 0.7 : 1.0)
+        .buttonStyle(CommandQuickExpensePressStyle(reduceMotion: reduceMotion))
+        .disabled(presenter.isSubmitting)
+        .opacity(presenter.isSubmitting ? 0.72 : 1.0)
+    }
+
+    private var viewAccountingLink: some View {
+        Button {
+            dismiss()
+            onRoute("accounting")
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "chart.bar.doc.horizontal")
+                    .font(.system(size: 12, weight: .semibold))
+                Text(Language.get("AdminPOS_QuickExpense_ViewAccounting", alter: "فتح سجل الحسابات العام"))
+                    .font(PPBeirutiFont.bold(12.5, relativeTo: .subheadline))
+            }
+            .foregroundStyle(AdminCommandInk.secondary)
+            .padding(.vertical, 6)
+        }
+    }
+}
+
+// MARK: - iPad Dedicated Architecture: Widescreen Countertop Financial Studio
+
+private struct CommandPOSQuickExpenseView_iPad: View {
+    @ObservedObject var presenter: CommandPOSQuickExpensePresenter
+    let currentBranchName: String
+    let onRoute: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private let coral = Color(red: 0.96, green: 0.44, blue: 0.30)
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                (colorScheme == .dark ? Color(white: 0.08) : Color(white: 0.96))
+                    .ignoresSafeArea()
+
+                HStack(alignment: .top, spacing: 20) {
+                    // Left Column (58%): Active Voucher Creation Forge
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 16) {
+                            // Studio Header with Active Station Pulse
+                            stationHeaderCard
+
+                            // Large Express Amount Deck with Keypad & Presets
+                            amountExpressDeck
+
+                            // 2-Column Rich Category Matrix matching media_1789251697960.png
+                            categoryMatrixDeck
+
+                            // Smart Auto-Fill Reason Grid
+                            quickReasonChipsDeck
+
+                            // Multi-Line Description Editor
+                            notesEditorDeck
+
+                            // Error Banner
+                            if let error = presenter.errorMessage {
+                                errorBanner(message: error)
+                            }
+
+                            // Success Confirmation
+                            if presenter.showSuccessBanner {
+                                successBanner
+                            }
+
+                            // Primary Authorization Action Button (⌘+Return)
+                            submitActionButton
+                        }
+                        .padding(.vertical, 16)
+                        .padding(.leading, 20)
+                        .padding(.trailing, 8)
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    // Right Column (42%): Shift Financial Telemetry & Live Vouchers Deck
+                    VStack(spacing: 14) {
+                        // Live Shift Telemetry Card
+                        shiftTelemetryCard
+
+                        // Live Recent Vouchers Feed for this shift
+                        recentVouchersDeck
+
+                        // Audit & Security Seal
+                        auditSealCard
+
+                        // Full Accounting Portal Link
+                        accountingWorkspacePortalButton
+                    }
+                    .padding(.vertical, 16)
+                    .padding(.trailing, 20)
+                    .padding(.leading, 8)
+                    .frame(width: 350)
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 13, weight: .bold))
+                            Text(Language.get("Cancel", alter: "إلغاء"))
+                                .font(PPBeirutiFont.bold(14, relativeTo: .headline))
+                        }
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                }
+                ToolbarItem(placement: .principal) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "creditcard.and.123")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(coral)
+
+                        Text(Language.get("AdminPOS_QuickExpense_SheetTitle", alter: "تسجيل مصروف وردية"))
+                            .font(PPBeirutiFont.bold(17, relativeTo: .title3))
+                            .foregroundStyle(AdminSurface.primaryText)
+
+                        Text("•")
+                            .foregroundStyle(AdminSurface.secondaryText)
+
+                        Text(currentBranchName)
+                            .font(PPBeirutiFont.medium(13.5, relativeTo: .subheadline))
+                            .foregroundStyle(AdminCommandInk.secondary)
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Text(Language.get("AdminPOS_QuickExpense_KeyboardHint", alter: "اختصار الاعتماد: ⌘ + Return"))
+                        .font(PPBeirutiFont.medium(11, relativeTo: .caption2))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule()
+                                .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+                        )
+                }
+            }
+        }
+        .navigationViewStyle(.stack)
+        .onAppear {
+            presenter.loadShiftTelemetry()
+        }
+    }
+
+    private var stationHeaderCard: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(coral.opacity(colorScheme == .dark ? 0.25 : 0.12))
+                    .frame(width: 42, height: 42)
+
+                Image(systemName: "banknote.fill")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(coral)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(Color(red: 0.10, green: 0.74, blue: 0.54))
+                        .frame(width: 7, height: 7)
+
+                    Text(Language.get("AdminPOS_QuickExpense_ActiveShiftPill", alter: "الوردية نشطة • صرف مباشر"))
+                        .font(PPBeirutiFont.bold(12, relativeTo: .caption))
+                        .foregroundStyle(Color(red: 0.10, green: 0.74, blue: 0.54))
+                        .multilineTextAlignment(.leading)
+                }
+
+                Text(Language.get("AdminPOS_QuickExpense_SheetSubtitle", alter: "تسجيل عملية صرف فوري من صندوق الكاشير وتوثيقها تلقائياً"))
+                    .font(PPBeirutiFont.regular(11.5, relativeTo: .caption))
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .lineLimit(1)
+                    .multilineTextAlignment(.leading)
+            }
+
+            Spacer(minLength: 0)
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(currentBranchName)
+                    .font(PPBeirutiFont.bold(12.5, relativeTo: .subheadline))
+                    .foregroundStyle(AdminSurface.primaryText)
+
+                Text(Date(), style: .time)
+                    .font(PPBeirutiFont.medium(11, relativeTo: .caption2))
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.35 : 0.15), lineWidth: 0.8)
+        )
+    }
+
+    private var amountExpressDeck: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Text(Language.get("AdminPOS_QuickExpense_Amount", alter: "مبلغ المصروف (ر.ق)"))
+                    .font(PPBeirutiFont.bold(13, relativeTo: .subheadline))
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .multilineTextAlignment(.leading)
+
+                Spacer()
+
+                if !presenter.amountText.isEmpty {
+                    Button {
+                        presenter.clearAmount()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 11, weight: .bold))
+                            Text(Language.get("AdminPOS_QuickExpense_Clear", alter: "تفريغ"))
+                                .font(PPBeirutiFont.bold(12, relativeTo: .subheadline))
+                        }
+                        .foregroundStyle(coral)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(coral.opacity(0.10), in: Capsule())
+                    }
+                    .hoverEffect(.highlight)
+                }
+            }
+
+            // Hero Typographic Numeric Input Display
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                TextField("0.00", text: $presenter.amountText)
+                    .font(PPBeirutiFont.bold(48, relativeTo: .largeTitle))
+                    .foregroundStyle(coral)
+                    .multilineTextAlignment(.center)
+                    .keyboardType(.decimalPad)
+                    .onChange(of: presenter.amountText) { val in
+                        let clean = val.normalizedEnglishDigits(allowsDecimal: true)
+                        if clean != val { presenter.amountText = clean }
+                        if presenter.errorMessage != nil { presenter.errorMessage = nil }
+                    }
+
+                Text(Language.get("Currency_QAR", alter: Language.isRTL() ? "ر.ق" : "QAR"))
+                    .font(PPBeirutiFont.bold(18, relativeTo: .headline))
+                    .foregroundStyle(coral)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        coral.opacity(colorScheme == .dark ? 0.22 : 0.12),
+                        in: Capsule()
+                    )
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+
+            // Rapid Denomination Presets Bar
+            HStack(spacing: 8) {
+                let presets: [Double] = [10, 25, 50, 100, 200, 500]
+                ForEach(presets, id: \.self) { val in
+                    Button {
+                        presenter.addPreset(delta: val)
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text("+")
+                                .font(PPBeirutiFont.bold(11, relativeTo: .caption))
+                            Text(String(format: "%.0f", val))
+                                .font(PPBeirutiFont.bold(13.5, relativeTo: .subheadline))
+                            Text(Language.get("Currency_QAR", alter: Language.isRTL() ? "ر.ق" : "QAR"))
+                                .font(PPBeirutiFont.medium(10, relativeTo: .caption2))
+                        }
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 38)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(colorScheme == .dark ? Color.white.opacity(0.08) : Color.white)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.40 : 0.20), lineWidth: 0.8)
+                        )
+                    }
+                    .buttonStyle(CommandQuickExpensePressStyle(reduceMotion: reduceMotion))
+                    .hoverEffect(.highlight)
+                }
+            }
+        }
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(colorScheme == .dark ? Color(white: 0.13) : Color.white)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(coral.opacity(colorScheme == .dark ? 0.40 : 0.22), lineWidth: 1.2)
+        )
+        .shadow(color: coral.opacity(colorScheme == .dark ? 0.20 : 0.06), radius: 10, y: 4)
+    }
+
+    private var categoryMatrixDeck: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(Language.get("AdminPOS_QuickExpense_Category", alter: "التصنيف"))
+                .font(PPBeirutiFont.bold(13, relativeTo: .subheadline))
+                .foregroundStyle(AdminCommandInk.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.leading)
+
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 10) {
+                ForEach(presenter.categories) { cat in
+                    let isSelected = presenter.selectedCategory == cat.id
+                    Button {
+                        presenter.selectCategory(cat.id)
+                    } label: {
+                        HStack(spacing: 8) {
+                            if isSelected {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(Color(red: 0.85, green: 0.15, blue: 0.35))
+                            }
+
+                            Spacer(minLength: 0)
+
+                            Text(cat.localizedTitle)
+                                .font(PPBeirutiFont.bold(13.5, relativeTo: .subheadline))
+                                .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminSurface.primaryText.opacity(0.90))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                                .multilineTextAlignment(.leading)
+
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(cat.iconBgColor)
+                                    .frame(width: 38, height: 38)
+
+                                Image(systemName: cat.icon)
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(cat.iconTintColor)
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(
+                                    isSelected
+                                        ? (colorScheme == .dark ? Color.blue.opacity(0.18) : Color(red: 0.94, green: 0.97, blue: 1.0))
+                                        : (colorScheme == .dark ? Color(white: 0.12) : Color.white)
+                                )
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(
+                                    isSelected
+                                        ? Color(red: 0.20, green: 0.60, blue: 1.0)
+                                        : (colorScheme == .dark ? Color.white.opacity(0.12) : Color(red: 0.91, green: 0.91, blue: 0.93)),
+                                    lineWidth: isSelected ? 1.6 : 0.8
+                                )
+                        )
+                        .shadow(color: isSelected ? Color(red: 0.20, green: 0.60, blue: 1.0).opacity(colorScheme == .dark ? 0.25 : 0.10) : Color.clear, radius: 4, y: 1.5)
+                    }
+                    .buttonStyle(CommandQuickExpensePressStyle(reduceMotion: reduceMotion))
+                    .hoverEffect(.lift)
+                }
+            }
+        }
+    }
+
+    private var quickReasonChipsDeck: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(Language.get("AdminPOS_QuickExpense_QuickReasons", alter: "أسباب شائعة للتحديد الفوري"))
+                .font(PPBeirutiFont.bold(12, relativeTo: .caption))
+                .foregroundStyle(AdminCommandInk.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.leading)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(presenter.currentCategoryItem.reasonTags, id: \.self) { tag in
+                        let isApplied = presenter.descriptionText == tag
+                        Button {
+                            presenter.applyReasonTag(tag)
+                        } label: {
+                            Text(tag)
+                                .font(PPBeirutiFont.medium(12, relativeTo: .caption))
+                                .foregroundStyle(
+                                    isApplied ? Color(red: 0.18, green: 0.56, blue: 0.98) : AdminSurface.primaryText
+                                )
+                                .multilineTextAlignment(.leading)
+                                .padding(.horizontal, 11)
+                                .padding(.vertical, 6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                        .fill(
+                                            isApplied
+                                                ? Color(red: 0.18, green: 0.56, blue: 0.98).opacity(0.14)
+                                                : (colorScheme == .dark ? Color.white.opacity(0.07) : Color.white)
+                                        )
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                        .strokeBorder(
+                                            isApplied ? Color(red: 0.18, green: 0.56, blue: 0.98).opacity(0.6) : Color(uiColor: .ppSurfaceBorder).opacity(0.25),
+                                            lineWidth: 0.8
+                                        )
+                                )
+                        }
+                        .buttonStyle(CommandQuickExpensePressStyle(reduceMotion: reduceMotion))
+                        .hoverEffect(.highlight)
+                    }
+                }
+            }
+        }
+    }
+
+    private var notesEditorDeck: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(Language.get("AdminPOS_QuickExpense_Notes", alter: "بيان وسبب الصرف"))
+                    .font(PPBeirutiFont.bold(12.5, relativeTo: .subheadline))
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .multilineTextAlignment(.leading)
+
+                Spacer()
+
+                Text("\(presenter.descriptionText.count) / 250")
+                    .font(PPBeirutiFont.regular(11, relativeTo: .caption2))
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+
+            HStack(spacing: 8) {
+                Image(systemName: "pencil.line")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color(red: 0.18, green: 0.56, blue: 0.98))
+
+                TextField(
+                    Language.get("AdminPOS_QuickExpense_NotesPlaceholder", alter: "مثال: أدوات نظافة، أكياس، عهدة نثرية، صيانة سريعة..."),
+                    text: $presenter.descriptionText
+                )
+                .font(PPBeirutiFont.regular(14, relativeTo: .body))
+                .foregroundStyle(AdminSurface.primaryText)
+                .multilineTextAlignment(.leading)
+
+                if !presenter.descriptionText.isEmpty {
+                    Button {
+                        presenter.descriptionText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                }
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 48)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.white)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.35), lineWidth: 0.8)
+            )
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(colorScheme == .dark ? Color(white: 0.13) : Color.white)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.35 : 0.15), lineWidth: 0.8)
+        )
+    }
+
+    private func errorBanner(message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Color(uiColor: .ppError))
+            Text(message)
+                .font(PPBeirutiFont.medium(13, relativeTo: .caption))
+                .foregroundStyle(Color(uiColor: .ppError))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.leading)
+        }
+        .padding(14)
+        .background(Color(uiColor: .ppError).opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+        .transition(.opacity)
+    }
+
+    private var successBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.seal.fill")
+                .foregroundStyle(Color(red: 0.06, green: 0.78, blue: 0.56))
+            Text(Language.get("AdminPOS_QuickExpense_Success", alter: "تم تسجيل المصروف وتوثيقه بنجاح"))
+                .font(PPBeirutiFont.bold(14, relativeTo: .subheadline))
+                .foregroundStyle(Color(red: 0.06, green: 0.78, blue: 0.56))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.leading)
+        }
+        .padding(14)
+        .background(Color(red: 0.06, green: 0.78, blue: 0.56).opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+        .transition(.scale.combined(with: .opacity))
+    }
+
+    private var submitActionButton: some View {
+        Button {
+            presenter.submitExpense {
+                dismiss()
+            }
+        } label: {
+            HStack(spacing: 10) {
+                if presenter.isSubmitting {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .scaleEffect(1.0)
+                } else {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 16, weight: .bold))
+                }
+
+                Text(Language.get("AdminPOS_QuickExpense_Confirm", alter: "اعتماد الصرف وتوثيق السند"))
+                    .font(PPBeirutiFont.bold(16, relativeTo: .headline))
+
+                Spacer()
+
+                Text("⌘ ↵")
+                    .font(PPBeirutiFont.bold(13, relativeTo: .subheadline))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.white.opacity(0.20), in: Capsule())
+            }
+            .foregroundStyle(Color.white)
+            .padding(.horizontal, 20)
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(coral)
+            )
+            .shadow(color: coral.opacity(0.35), radius: 10, y: 4)
+        }
+        .buttonStyle(CommandQuickExpensePressStyle(reduceMotion: reduceMotion))
+        .hoverEffect(.lift)
+        .keyboardShortcut(.defaultAction)
+        .disabled(presenter.isSubmitting)
+        .opacity(presenter.isSubmitting ? 0.72 : 1.0)
+    }
+
+    // MARK: - Right Column: Shift Telemetry & Live Vouchers Deck
+
+    private var shiftTelemetryCard: some View {
+        VStack(spacing: 12) {
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "chart.bar.xaxis")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(coral)
+
+                    Text(Language.get("AdminPOS_QuickExpense_ShiftTelemetry_Title", alter: "مؤشرات مصروفات الوردية"))
+                        .font(PPBeirutiFont.bold(13, relativeTo: .subheadline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .multilineTextAlignment(.leading)
+                }
+
+                Spacer()
+
+                Text(Language.isRTL() ? "اليوم" : "Today")
+                    .font(PPBeirutiFont.medium(11, relativeTo: .caption2))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule()
+                            .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+                    )
+            }
+
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(Language.get("AdminPOS_QuickExpense_ShiftTotalLabel", alter: "إجمالي مصروفات اليوم"))
+                        .font(PPBeirutiFont.regular(11, relativeTo: .caption))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .multilineTextAlignment(.leading)
+
+                    Text(String(format: "%.2f %@", presenter.todayExpenseTotal, Language.get("Currency_QAR", alter: Language.isRTL() ? "ر.ق" : "QAR")))
+                        .font(PPBeirutiFont.bold(22, relativeTo: .title2))
+                        .foregroundStyle(coral)
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text(Language.get("AdminPOS_QuickExpense_ShiftCountLabel", alter: "عدد السندات"))
+                        .font(PPBeirutiFont.regular(11, relativeTo: .caption))
+                        .foregroundStyle(AdminSurface.secondaryText)
+
+                    Text("\(presenter.todayExpenseCount)")
+                        .font(PPBeirutiFont.bold(22, relativeTo: .title2))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+            }
+            .padding(.top, 4)
+
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.shield")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color(red: 0.98, green: 0.60, blue: 0.18))
+
+                Text(Language.get("AdminPOS_QuickExpense_EstimatedDrawer", alter: "الصرف يخفّض رصيد الخزينة النقدية فوراً"))
+                    .font(PPBeirutiFont.regular(11, relativeTo: .caption))
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .multilineTextAlignment(.leading)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 2)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.35 : 0.15), lineWidth: 0.8)
+        )
+    }
+
+    private var recentVouchersDeck: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(Language.get("AdminPOS_QuickExpense_RecentVouchers", alter: "آخر سندات مصروف مسجلة بالفرع"))
+                    .font(PPBeirutiFont.bold(12.5, relativeTo: .subheadline))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .multilineTextAlignment(.leading)
+
+                Spacer()
+
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+
+            if presenter.recentVouchers.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.system(size: 26))
+                        .foregroundStyle(AdminSurface.secondaryText.opacity(0.6))
+                        .padding(.top, 8)
+
+                    Text(Language.get("AdminPOS_QuickExpense_NoRecentVouchers", alter: "لم تُسجل مصروفات في وردية اليوم حتى الآن"))
+                        .font(PPBeirutiFont.regular(11.5, relativeTo: .caption))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .multilineTextAlignment(.center)
+                        .padding(.bottom, 8)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(16)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(colorScheme == .dark ? Color.white.opacity(0.03) : Color.black.opacity(0.02))
+                )
+            } else {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 8) {
+                        ForEach(presenter.recentVouchers, id: \.expenseID) { voucher in
+                            HStack(spacing: 10) {
+                                ZStack {
+                                    Circle()
+                                        .fill(coral.opacity(0.12))
+                                        .frame(width: 28, height: 28)
+
+                                    Image(systemName: "arrow.down.right")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(coral)
+                                }
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(voucher.desc.isEmpty ? voucher.category : voucher.desc)
+                                        .font(PPBeirutiFont.bold(12, relativeTo: .caption))
+                                        .foregroundStyle(AdminSurface.primaryText)
+                                        .lineLimit(1)
+                                        .multilineTextAlignment(.leading)
+
+                                    if let created = voucher.createdAt {
+                                        Text(created, style: .time)
+                                            .font(PPBeirutiFont.regular(10.5, relativeTo: .caption2))
+                                            .foregroundStyle(AdminSurface.secondaryText)
+                                    }
+                                }
+
+                                Spacer()
+
+                                Text(String(format: "%.2f %@", voucher.amount, Language.get("Currency_QAR", alter: Language.isRTL() ? "ر.ق" : "QAR")))
+                                    .font(PPBeirutiFont.bold(13, relativeTo: .subheadline))
+                                    .foregroundStyle(coral)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.white)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.25), lineWidth: 0.6)
+                            )
+                        }
+                    }
+                }
+                .frame(maxHeight: 190)
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.35 : 0.15), lineWidth: 0.8)
+        )
+    }
+
+    private var auditSealCard: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.shield.fill")
+                .font(.system(size: 16))
+                .foregroundStyle(Color(red: 0.10, green: 0.74, blue: 0.54))
+
+            Text(Language.get("AdminPOS_QuickExpense_VoucherAuditNotice", alter: "سند قيد فوري موثق بالرقم السري وهويتك الإدارية في السحابة"))
+                .font(PPBeirutiFont.regular(11, relativeTo: .caption))
+                .foregroundStyle(AdminCommandInk.secondary)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(red: 0.10, green: 0.74, blue: 0.54).opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color(red: 0.10, green: 0.74, blue: 0.54).opacity(0.20), lineWidth: 0.8)
+        )
+    }
+
+    private var accountingWorkspacePortalButton: some View {
+        Button {
+            dismiss()
+            onRoute("accounting")
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "chart.bar.doc.horizontal.fill")
+                    .font(.system(size: 13))
+
+                Text(Language.get("AdminPOS_QuickExpense_ViewAccounting", alter: "فتح سجل الحسابات العام"))
+                    .font(PPBeirutiFont.bold(13, relativeTo: .subheadline))
+
+                Spacer()
+
+                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 11, weight: .bold))
+            }
+            .foregroundStyle(AdminSurface.primaryText)
+            .padding(.horizontal, 14)
+            .frame(height: 44)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(colorScheme == .dark ? Color.white.opacity(0.08) : Color.white)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.35), lineWidth: 0.8)
+            )
+        }
+        .buttonStyle(CommandQuickExpensePressStyle(reduceMotion: reduceMotion))
+        .hoverEffect(.highlight)
+    }
+}
+
+// MARK: - Adaptive Studio Container Dispatcher
+
+private struct CommandPOSQuickExpenseSheet: View {
+    let currentBranchName: String
+    let onRoute: (String) -> Void
+
+    @StateObject private var presenter = CommandPOSQuickExpensePresenter()
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    var body: some View {
+        Group {
+            if horizontalSizeClass == .regular && UIDevice.current.userInterfaceIdiom == .pad {
+                CommandPOSQuickExpenseView_iPad(
+                    presenter: presenter,
+                    currentBranchName: currentBranchName,
+                    onRoute: onRoute
+                )
+            } else {
+                CommandPOSQuickExpenseView_iPhone(
+                    presenter: presenter,
+                    currentBranchName: currentBranchName,
+                    onRoute: onRoute
+                )
+            }
+        }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 }
 
@@ -3952,13 +5176,13 @@ private struct CommandPOSQuickExpenseConsoleiPad: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(Language.get("AdminPOS_ExpenseCard_Title", alter: "تسجيل مصروف"))
-                    .font(Font.custom("Beiruti-Bold", size: 14.5, relativeTo: .subheadline))
+                    .font(PPBeirutiFont.bold(14.5, relativeTo: .subheadline))
                     .foregroundStyle(AdminSurface.primaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
 
                 Text(Language.get("AdminPOS_ExpenseCard_Subtitle", alter: "صرف عهدة ونثرية"))
-                    .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption))
+                    .font(PPBeirutiFont.regular(11, relativeTo: .caption))
                     .foregroundStyle(AdminCommandInk.secondary)
                     .lineLimit(2)
                     .minimumScaleFactor(0.85)
@@ -3978,7 +5202,7 @@ private struct CommandPOSQuickExpenseConsoleiPad: View {
                     .foregroundStyle(coral)
 
                 Text(Language.get("AdminPOS_ExpenseCard_Action", alter: "إضافة مصروف"))
-                    .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .callout))
+                    .font(PPBeirutiFont.bold(13.5, relativeTo: .callout))
                     .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.92) : AdminSurface.primaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -3993,11 +5217,11 @@ private struct CommandPOSQuickExpenseConsoleiPad: View {
             .frame(maxWidth: .infinity)
             .frame(height: 44)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
                     .fill(colorScheme == .dark ? Color.white.opacity(0.08) : Color.white)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
                     .strokeBorder(coral.opacity(colorScheme == .dark ? 0.35 : 0.22), lineWidth: 0.8)
             )
             .shadow(color: coral.opacity(colorScheme == .dark ? 0.18 : 0.04), radius: 4, y: 1.5)
@@ -4115,7 +5339,7 @@ private struct CommandPOSiPadFlightDeck: View {
                 .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.45 : 0.22), lineWidth: 0.8)
         )
         .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.32 : 0.06), radius: 14, y: 5)
-        .sheet(isPresented: $showsQuickExpenseSheet) {
+        .fullScreenCover(isPresented: $showsQuickExpenseSheet) {
             CommandPOSQuickExpenseSheet(
                 currentBranchName: currentBranchName,
                 onRoute: onRoute
@@ -4527,11 +5751,11 @@ private struct CommandPOSHistoryConsoleiPad: View {
             .frame(maxWidth: .infinity)
             .frame(height: 44)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
                     .fill(colorScheme == .dark ? Color.white.opacity(0.08) : Color.white)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
                     .strokeBorder(accent.opacity(colorScheme == .dark ? 0.32 : 0.20), lineWidth: 0.8)
             )
             .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.04), radius: 4, y: 1.5)
@@ -4772,30 +5996,10 @@ private struct CommandStockDeck: View {
         }
     }
 
-    // iPhone: 3 Sculpted Vault Rows
+    // Stock & Products Horizon: Left column has Live Pets (tall card); Right column has Accessories + Food stacked
     private var iphoneStockView: some View {
-        VStack(spacing: 9) {
-            CommandStockVaultCardiPhone(
-                title: Language.get("Stock_Accessories_Title", alter: "المخزون والإكسسوارات"),
-                subtitle: Language.get("Stock_Accessories_Subtitle", alter: "الأطواق، الألعاب، ومستلزمات العناية والرعاية"),
-                iconName: "archivebox.fill",
-                accent: Color(red: 0.55, green: 0.36, blue: 0.96),
-                badgeCount: accessoriesSignal?.count ?? (stockAlertCount > 0 ? stockAlertCount : nil),
-                arrowNudge: arrowNudge,
-                action: { onRoute("stockSector:accessories") }
-            )
-
-            CommandStockVaultCardiPhone(
-                title: Language.get("Stock_Food_Title", alter: "الأغذية والتغذية"),
-                subtitle: Language.get("Stock_Food_Subtitle", alter: "الأغذية الجافة، الرطبة، المكملات والمكافآت"),
-                iconName: "bag.fill",
-                accent: Color(red: 0.96, green: 0.55, blue: 0.12),
-                badgeCount: foodSignal?.count,
-                arrowNudge: arrowNudge,
-                action: { onRoute("stockSector:food") }
-            )
-
-            CommandStockVaultCardiPhone(
+        HStack(alignment: .top, spacing: 9) {
+            CommandStockVaultCardTallLivePets(
                 title: Language.get("Stock_LivePets_Title", alter: "الحيوانات الحية"),
                 subtitle: Language.get("Stock_LivePets_Subtitle", alter: "الطيور، القطط، الكلاب، السجلات والشرائح"),
                 iconName: "pawprint.fill",
@@ -4804,50 +6008,332 @@ private struct CommandStockDeck: View {
                 arrowNudge: arrowNudge,
                 action: { onRoute("stockSector:livePets") }
             )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            VStack(spacing: 9) {
+                CommandStockVaultCardCompactiPhone(
+                    title: Language.get("Stock_Accessories_Title", alter: "المخزون والإكسسوارات"),
+                    subtitle: Language.get("Stock_Accessories_Subtitle", alter: "الأطواق، الألعاب، ومستلزمات العناية والرعاية"),
+                    iconName: "archivebox.fill",
+                    accent: Color(red: 0.55, green: 0.36, blue: 0.96),
+                    badgeCount: accessoriesSignal?.count ?? (stockAlertCount > 0 ? stockAlertCount : nil),
+                    arrowNudge: arrowNudge,
+                    action: { onRoute("stockSector:accessories") }
+                )
+                .frame(maxWidth: .infinity)
+
+                CommandStockVaultCardCompactiPhone(
+                    title: Language.get("Stock_Food_Title", alter: "الأغذية والتغذية"),
+                    subtitle: Language.get("Stock_Food_Subtitle", alter: "الأغذية الجافة، الرطبة، المكملات والمكافآت"),
+                    iconName: "bag.fill",
+                    accent: Color(red: 0.96, green: 0.55, blue: 0.12),
+                    badgeCount: foodSignal?.count,
+                    arrowNudge: arrowNudge,
+                    action: { onRoute("stockSector:food") }
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .frame(maxWidth: .infinity)
         }
+        .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity)
     }
 
-    // iPad: Panoramic 3-Column Horizon Pavilion
+    // iPad: Panoramic Horizon Pavilion (Matching 2-Column Blueprint)
     private var ipadStockView: some View {
-        HStack(spacing: 14) {
-            CommandStockVaultCardiPad(
-                title: Language.get("Stock_Accessories_Title", alter: "المخزون والإكسسوارات"),
-                subtitle: Language.get("Stock_Accessories_Subtitle", alter: "الأطواق، الألعاب، ومستلزمات العناية والرعاية"),
-                categoryBadge: Language.get("Stock_Category_General", alter: "مستلزمات عامة"),
-                iconName: "archivebox.fill",
-                accent: Color(red: 0.55, green: 0.36, blue: 0.96),
-                badgeCount: accessoriesSignal?.count ?? (stockAlertCount > 0 ? stockAlertCount : nil),
-                arrowNudge: arrowNudge,
-                action: { onRoute("stockSector:accessories") }
-            )
-            .frame(maxWidth: .infinity)
-
-            CommandStockVaultCardiPad(
-                title: Language.get("Stock_Food_Title", alter: "الأغذية والتغذية"),
-                subtitle: Language.get("Stock_Food_Subtitle", alter: "الأغذية الجافة، الرطبة، المكملات والمكافآت"),
-                categoryBadge: Language.get("Stock_Category_Nutrition", alter: "تغذية ومكملات"),
-                iconName: "bag.fill",
-                accent: Color(red: 0.96, green: 0.55, blue: 0.12),
-                badgeCount: foodSignal?.count,
-                arrowNudge: arrowNudge,
-                action: { onRoute("stockSector:food") }
-            )
-            .frame(maxWidth: .infinity)
-
-            CommandStockVaultCardiPad(
+        HStack(alignment: .top, spacing: 14) {
+            CommandStockVaultCardTallLivePets(
                 title: Language.get("Stock_LivePets_Title", alter: "الحيوانات الحية"),
                 subtitle: Language.get("Stock_LivePets_Subtitle", alter: "الطيور، القطط، الكلاب، السجلات والشرائح"),
-                categoryBadge: Language.get("Stock_Category_LivePets", alter: "حيوانات حية"),
                 iconName: "pawprint.fill",
                 accent: Color(red: 0.05, green: 0.65, blue: 0.52),
                 badgeCount: livePetsSignal?.count,
                 arrowNudge: arrowNudge,
                 action: { onRoute("stockSector:livePets") }
             )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            VStack(spacing: 14) {
+                CommandStockVaultCardCompactiPhone(
+                    title: Language.get("Stock_Accessories_Title", alter: "المخزون والإكسسوارات"),
+                    subtitle: Language.get("Stock_Accessories_Subtitle", alter: "الأطواق، الألعاب، ومستلزمات العناية والرعاية"),
+                    iconName: "archivebox.fill",
+                    accent: Color(red: 0.55, green: 0.36, blue: 0.96),
+                    badgeCount: accessoriesSignal?.count ?? (stockAlertCount > 0 ? stockAlertCount : nil),
+                    arrowNudge: arrowNudge,
+                    action: { onRoute("stockSector:accessories") }
+                )
+                .frame(maxWidth: .infinity)
+
+                CommandStockVaultCardCompactiPhone(
+                    title: Language.get("Stock_Food_Title", alter: "الأغذية والتغذية"),
+                    subtitle: Language.get("Stock_Food_Subtitle", alter: "الأغذية الجافة، الرطبة، المكملات والمكافآت"),
+                    iconName: "bag.fill",
+                    accent: Color(red: 0.96, green: 0.55, blue: 0.12),
+                    badgeCount: foodSignal?.count,
+                    arrowNudge: arrowNudge,
+                    action: { onRoute("stockSector:food") }
+                )
+                .frame(maxWidth: .infinity)
+            }
             .frame(maxWidth: .infinity)
         }
+        .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Stock Vault Card Tall (Live Pets Column)
+
+private struct CommandStockVaultCardTallLivePets: View {
+    let title: String
+    let subtitle: String
+    let iconName: String
+    let accent: Color
+    let badgeCount: Int?
+    let arrowNudge: CGFloat
+    let action: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var chevronPill: some View {
+        HStack(spacing: 2) {
+            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(accent)
+                .offset(x: (Language.isRTL() ? -1 : 1) * arrowNudge * 0.5)
+        }
+        .frame(width: 26, height: 26)
+        .background(accent.opacity(colorScheme == .dark ? 0.12 : 0.06), in: Circle())
+    }
+
+    private var topBar: some View {
+        HStack(alignment: .center, spacing: 4) {
+            Spacer(minLength: 4)
+
+            if let count = badgeCount, count > 0 {
+                HStack(spacing: 3) {
+                    Circle()
+                        .fill(Color(uiColor: .ppWarning))
+                        .frame(width: 4.5, height: 4.5)
+                    Text("\(count)")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2.5)
+                .background(Color(uiColor: .ppWarning), in: Capsule())
+            }
+
+            chevronPill
+        }
+    }
+
+    /// Lottie cat animation loaded from Firebase Storage ("Loader cat.json") matching the blue box placement
+    private var lottieCatSection: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(accent.opacity(colorScheme == .dark ? 0.08 : 0.04))
+
+            PPLottieFirebaseView(
+                fileName: "Loader cat",
+                loop: true,
+                contentMode: .scaleAspectFit
+            )
+            .padding(6)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: UIDevice.current.userInterfaceIdiom == .pad ? 135 : 110)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(accent.opacity(colorScheme == .dark ? 0.16 : 0.08), lineWidth: 0.75)
+        )
+    }
+
+    private var contentSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(accent)
+                    .frame(width: 5, height: 5)
+                Text(Language.get("Stock_Category_LivePets", alter: "حيوانات حية"))
+                    .font(Font.custom("Beiruti-Bold", size: 10.5, relativeTo: .caption2))
+                    .foregroundStyle(accent)
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2.5)
+            .background(accent.opacity(colorScheme == .dark ? 0.16 : 0.08), in: Capsule())
+
+            Text(title)
+                .font(Font.custom("Beiruti-Bold", size: 15.5, relativeTo: .headline))
+                .foregroundStyle(AdminSurface.primaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+
+            Text(subtitle)
+                .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption))
+                .foregroundStyle(AdminCommandInk.secondary)
+                .lineLimit(3)
+                .lineSpacing(1.2)
+                .multilineTextAlignment(.leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    var body: some View {
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            action()
+        }) {
+            VStack(alignment: .leading, spacing: 0) {
+                topBar
+                Spacer(minLength: 6)
+                lottieCatSection
+                Spacer(minLength: 10)
+                contentSection
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 11)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(accent.opacity(colorScheme == .dark ? 0.28 : 0.14), lineWidth: 0.75)
+            )
+            .shadow(color: accent.opacity(colorScheme == .dark ? 0.14 : 0.04), radius: 5, y: 2)
+        }
+        .buttonStyle(CommandStockCardPressStyle())
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(title)
+    }
+}
+
+// MARK: - Stock Vault Card Compact (iPhone 2-Column Row)
+
+private struct CommandStockVaultCardCompactiPhone: View {
+    let title: String
+    let subtitle: String
+    let iconName: String
+    let accent: Color
+    let badgeCount: Int?
+    let arrowNudge: CGFloat
+    let action: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var iconGradient: LinearGradient {
+        let topOpacity: Double = colorScheme == .dark ? 0.25 : 0.14
+        let bottomOpacity: Double = colorScheme == .dark ? 0.08 : 0.04
+        return LinearGradient(
+            colors: [
+                accent.opacity(topOpacity),
+                accent.opacity(bottomOpacity)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    private var iconSquircle: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(iconGradient)
+
+            Image(systemName: iconName)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(accent)
+        }
+        .frame(width: 38, height: 38)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(accent.opacity(colorScheme == .dark ? 0.32 : 0.18), lineWidth: 0.75)
+        )
+    }
+
+    private var chevronPill: some View {
+        HStack(spacing: 2) {
+            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(accent)
+                .offset(x: (Language.isRTL() ? -1 : 1) * arrowNudge * 0.5)
+        }
+        .frame(width: 26, height: 26)
+        .background(accent.opacity(colorScheme == .dark ? 0.12 : 0.06), in: Circle())
+    }
+
+    private var topBar: some View {
+        HStack(alignment: .center, spacing: 4) {
+            iconSquircle
+
+            Spacer(minLength: 4)
+
+            if let count = badgeCount, count > 0 {
+                HStack(spacing: 3) {
+                    Circle()
+                        .fill(Color(uiColor: .ppWarning))
+                        .frame(width: 4.5, height: 4.5)
+                    Text("\(count)")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2.5)
+                .background(Color(uiColor: .ppWarning), in: Capsule())
+            }
+
+            chevronPill
+        }
+    }
+
+    private var titleAndSubtitle: some View {
+        VStack(alignment: .leading, spacing: 2.5) {
+            Text(title)
+                .font(Font.custom("Beiruti-Bold", size: 14.5, relativeTo: .subheadline))
+                .foregroundStyle(AdminSurface.primaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(subtitle)
+                .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption))
+                .foregroundStyle(AdminCommandInk.secondary)
+                .lineLimit(2)
+                .lineSpacing(1.2)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    var body: some View {
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            action()
+        }) {
+            VStack(alignment: .leading, spacing: 9) {
+                topBar
+                titleAndSubtitle
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 11)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(accent.opacity(colorScheme == .dark ? 0.28 : 0.14), lineWidth: 0.75)
+            )
+            .shadow(color: accent.opacity(colorScheme == .dark ? 0.14 : 0.04), radius: 5, y: 2)
+        }
+        .buttonStyle(CommandStockCardPressStyle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(title)
     }
 }
 
