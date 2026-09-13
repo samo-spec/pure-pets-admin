@@ -7761,3 +7761,10 @@
 "LivePet_Reserved_Format" = "محجوز (%@)";
 "LivePet_Mortality_Record" = "تسجيل فقدان أو نفوق";
 "ViewDetails" = "عرض التفاصيل";
+
+// Post-first-refund multi-refund lifecycle
+"POS_Action_AdditionalRefund" = "استرداد عنصر آخر";
+"LivePet_Action_ReturnAnother" = "استرجاع حيوان آخر";
+"POS_Refund_ItemProgress" = "%d مسترد • %d متبقي";
+"POS_Refund_ItemFullyRefunded" = "%d مسترد • مكتمل";
+"POS_Refund_NetRetained" = "صافي قيمة البيع المتبقية";

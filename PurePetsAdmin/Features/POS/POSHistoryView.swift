@@ -1896,12 +1896,25 @@ private struct DossierItemRow: View {
                             .foregroundColor(AdminSurface.secondaryText)
 
                         if item.refundedQuantity > 0 {
-                            Text(verbatim: "(\(item.refundedQuantity.englishDigits) \(Language.get("POS_Status_Refunded", alter: "مسترد")))")
+                            let remainingQuantity = max(0, item.quantity - item.refundedQuantity)
+                            let lineFullyRefunded = remainingQuantity == 0
+                            let progressColor = lineFullyRefunded ? Color(uiColor: .systemGreen) : Color(uiColor: .systemOrange)
+                            let progressText = lineFullyRefunded
+                                ? String(
+                                    format: Language.get("POS_Refund_ItemFullyRefunded", alter: "%d مسترد • مكتمل"),
+                                    item.refundedQuantity
+                                )
+                                : String(
+                                    format: Language.get("POS_Refund_ItemProgress", alter: "%d مسترد • %d متبقي"),
+                                    item.refundedQuantity,
+                                    remainingQuantity
+                                )
+                            Text(verbatim: progressText)
                                 .font(DossierFont.bold(10, relativeTo: .caption2))
-                                .foregroundColor(Color(uiColor: .systemOrange))
+                                .foregroundColor(progressColor)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(Color(uiColor: .systemOrange).opacity(0.12), in: Capsule())
+                                .background(progressColor.opacity(0.12), in: Capsule())
                         }
                     }
 
@@ -2104,6 +2117,11 @@ private struct DossierFinancialCard: View {
                         label: Language.get("POS_Telemetry_Refunds", alter: "إجمالي المسترد"),
                         value: "−" + effectiveRefundedAmount.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"),
                         valueColor: Color(uiColor: .systemOrange)
+                    )
+                    dossierRow(
+                        label: Language.get("POS_Refund_NetRetained", alter: "صافي قيمة البيع المتبقية"),
+                        value: max(0, receipt.total - effectiveRefundedAmount).englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"),
+                        valueColor: Color(uiColor: .systemBlue)
                     )
                 }
 
@@ -2392,6 +2410,17 @@ struct POSTransactionDossier_iPhone: View {
         isCancelled || (isFullyRefunded && !routesToLivePetReturn)
     }
 
+    private var refundActionTitle: String {
+        if routesToLivePetReturn {
+            return isRefunded && !isFullyRefunded
+                ? Language.get("LivePet_Action_ReturnAnother", alter: "استرجاع حيوان آخر")
+                : Language.get("LivePet_Action_Return", alter: "استرجاع الحيوان")
+        }
+        return isRefunded && !isFullyRefunded
+            ? Language.get("POS_Action_AdditionalRefund", alter: "استرداد عنصر آخر")
+            : Language.get("POS_Action_Refund", alter: "استرداد")
+    }
+
     var body: some View {
         ZStack {
             AdminSurface.background.ignoresSafeArea()
@@ -2565,7 +2594,7 @@ struct POSTransactionDossier_iPhone: View {
                             HStack(spacing: 6) {
                                 Image(systemName: routesToLivePetReturn ? "pawprint.fill" : "arrow.uturn.backward.circle.fill")
                                     .font(.system(size: 14, weight: .bold))
-                                Text(routesToLivePetReturn ? Language.get("LivePet_Action_Return", alter: "استرجاع الحيوان") : Language.get("POS_Action_Refund", alter: "استرداد"))
+                                Text(refundActionTitle)
                                     .font(DossierFont.bold(13, relativeTo: .subheadline))
                             }
                             .foregroundColor(refundDisabled ? AdminSurface.secondaryText.opacity(0.5) : Color(uiColor: .systemOrange))
@@ -2628,6 +2657,17 @@ struct POSTransactionDossier_iPad: View {
 
     private var refundDisabled: Bool {
         isCancelled || (isFullyRefunded && !routesToLivePetReturn)
+    }
+
+    private var refundActionTitle: String {
+        if routesToLivePetReturn {
+            return isRefunded && !isFullyRefunded
+                ? Language.get("LivePet_Action_ReturnAnother", alter: "استرجاع حيوان آخر")
+                : Language.get("LivePet_Action_Return", alter: "استرجاع الحيوان")
+        }
+        return isRefunded && !isFullyRefunded
+            ? Language.get("POS_Action_AdditionalRefund", alter: "استرداد عنصر آخر")
+            : Language.get("POS_Action_Refund", alter: "استرداد")
     }
 
     var body: some View {
@@ -2776,7 +2816,7 @@ struct POSTransactionDossier_iPad: View {
                                         HStack(spacing: 8) {
                                             Image(systemName: routesToLivePetReturn ? "pawprint.fill" : "arrow.uturn.backward.circle.fill")
                                                 .font(.system(size: 15, weight: .bold))
-                                            Text(routesToLivePetReturn ? Language.get("LivePet_Action_Return", alter: "استرجاع الحيوان") : Language.get("POS_Action_Refund", alter: "استرداد"))
+                                            Text(refundActionTitle)
                                                 .font(DossierFont.bold(14, relativeTo: .body))
                                             Spacer()
                                             Text("⌘R")
@@ -2966,11 +3006,11 @@ struct POSTransactionDossierSheet: View {
                     },
                     onRefund: {
                         DossierHaptics.medium()
-                        if let firstReturnCase = returnCases.first {
-                            selectedReturnCaseForDetail = firstReturnCase
-                        } else {
-                            onRefund()
-                        }
+                        // Existing return cases are history and have their own explicit
+                        // dossier buttons. They must never hijack the primary refund
+                        // action: a partially-refunded sale can still refund any
+                        // remaining eligible quantity or exact live-pet unit.
+                        onRefund()
                     },
                     onCancel: {
                         DossierHaptics.warning()
@@ -3005,11 +3045,11 @@ struct POSTransactionDossierSheet: View {
                     },
                     onRefund: {
                         DossierHaptics.medium()
-                        if let firstReturnCase = returnCases.first {
-                            selectedReturnCaseForDetail = firstReturnCase
-                        } else {
-                            onRefund()
-                        }
+                        // Existing return cases are history and have their own explicit
+                        // dossier buttons. They must never hijack the primary refund
+                        // action: a partially-refunded sale can still refund any
+                        // remaining eligible quantity or exact live-pet unit.
+                        onRefund()
                     },
                     onCancel: {
                         DossierHaptics.warning()

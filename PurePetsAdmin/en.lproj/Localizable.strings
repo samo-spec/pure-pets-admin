@@ -7699,3 +7699,10 @@
 "LivePet_Reserved_Format" = "Reserved (%@)";
 "LivePet_Mortality_Record" = "Record Loss or Mortality";
 "ViewDetails" = "View Details";
+
+// Post-first-refund multi-refund lifecycle
+"POS_Action_AdditionalRefund" = "Refund another item";
+"LivePet_Action_ReturnAnother" = "Return another animal";
+"POS_Refund_ItemProgress" = "%d refunded • %d remaining";
+"POS_Refund_ItemFullyRefunded" = "%d refunded • complete";
+"POS_Refund_NetRetained" = "Net retained";
