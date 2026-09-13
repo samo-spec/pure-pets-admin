@@ -20,6 +20,8 @@ on:
       - PurePetsAdmin/AccessorySection/PPAccessoryEditorView.swift
       - PurePetsAdmin/Features/Fulfillment/FulfillmentListView.swift
       - PurePetsAdmin/Features/Delivery/DeliveryListView.swift
+      - PurePetsAdmin/ThirdParty/PPImagePicker+Viewer/QBAssetsViewController.m
+      - PurePetsAdmin/ThirdParty/PPStyles/PPNavigationController.m
       - PurePetsAdmin/ar.lproj/Localizable.strings
       - PurePetsAdmin/en.lproj/Localizable.strings
       - .github/workflows/live-pet-return-confirmation-v2.yml
