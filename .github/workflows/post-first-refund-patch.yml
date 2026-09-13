@@ -1,0 +1,69 @@
+name: Apply post-first-refund routing patch
+
+on:
+  push:
+    branches:
+      - fix/post-first-refund-multi-refund
+    paths:
+      - .github/workflows/post-first-refund-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/post-first-refund-multi-refund
+          fetch-depth: 0
+
+      - name: Patch only post-first-refund dossier routing
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path("PurePetsAdmin/Features/POS/POSHistoryView.swift")
+          text = path.read_text()
+          old = '''                    onRefund: {
+                        DossierHaptics.medium()
+                        if let firstReturnCase = returnCases.first {
+                            selectedReturnCaseForDetail = firstReturnCase
+                        } else {
+                            onRefund()
+                        }
+                    },'''
+          new = '''                    onRefund: {
+                        DossierHaptics.medium()
+                        // Existing return cases are history and have their own explicit
+                        // dossier buttons. They must never hijack the primary refund
+                        // action: a partially-refunded sale can still refund any
+                        // remaining eligible quantity or exact live-pet unit.
+                        onRefund()
+                    },'''
+          count = text.count(old)
+          if count != 2:
+              raise SystemExit(f"Expected exactly 2 post-refund routing sites, found {count}; refusing to patch.")
+          path.write_text(text.replace(old, new))
+
+      - name: Static scope guard
+        shell: python
+        run: |
+          from pathlib import Path
+          text = Path("PurePetsAdmin/Features/POS/POSHistoryView.swift").read_text()
+          if "if let firstReturnCase = returnCases.first" in text:
+              raise SystemExit("Stale refund hijack remains.")
+          if text.count("Existing return cases are history") != 2:
+              raise SystemExit("Expected iPhone and iPad routing guards.")
+          print("Post-first-refund routing patch verified at exactly two dossier sites.")
+
+      - name: Commit patch and remove temporary workflow
+        shell: bash
+        run: |
+          rm .github/workflows/post-first-refund-patch.yml
+          git config user.name "Pure Pets implementation bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix: allow subsequent refunds after partial refund"
+          git push origin HEAD:fix/post-first-refund-multi-refund
