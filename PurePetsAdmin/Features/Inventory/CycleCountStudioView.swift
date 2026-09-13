@@ -2760,14 +2760,15 @@ public struct CycleCountStudioView: View {
         isLoading = true
         errorMessage = nil
 
-        let countsPayload: [[String: Any]] = session.items.map { item in
+        let countsPayload: [[String: any Sendable]] = session.items.map { item in
             let c = localCounts[item.productId] ?? item.countedQuantity
             let notes = itemNotes[item.productId] ?? ""
-            return [
+            let row: [String: any Sendable] = [
                 "productId": item.productId,
                 "countedQuantity": c,
                 "notes": notes
             ]
+            return row
         }
 
         PPBranchInventoryService.shared.submitCycleCount(

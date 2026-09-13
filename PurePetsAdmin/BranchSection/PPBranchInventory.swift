@@ -863,17 +863,18 @@ public final class PPBranchInventoryService: ObservableObject {
     public func submitCycleCount(
         auditId: String,
         branchId: String,
-        counts: [[String: Any]],
+        counts: [[String: any Sendable]],
         completion: @escaping (Result<PPCycleCountSession, Error>) -> Void
     ) {
-        let payload: [String: Any] = [
+        let payload: [String: any Sendable] = [
             "auditId": auditId,
             "branchId": branchId,
             "counts": counts
         ]
 
         let callable = Functions.functions().httpsCallable("submitCycleCount")
-        callable.call(["payload": payload]) { result, error in
+        let requestPayload: [String: any Sendable] = ["payload": payload]
+        callable.call(requestPayload) { result, error in
             if let error = error {
                 completion(.failure(error))
                 return
@@ -891,14 +892,15 @@ public final class PPBranchInventoryService: ObservableObject {
         resolutionNotes: String = "",
         completion: @escaping (Result<[String: Any], Error>) -> Void
     ) {
-        let payload: [String: Any] = [
+        let payload: [String: any Sendable] = [
             "auditId": auditId,
             "branchId": branchId,
             "resolutionNotes": resolutionNotes
         ]
 
         let callable = Functions.functions().httpsCallable("reconcileCycleCount")
-        callable.call(["payload": payload]) { [weak self] result, error in
+        let requestPayload: [String: any Sendable] = ["payload": payload]
+        callable.call(requestPayload) { [weak self] result, error in
             if let error = error {
                 completion(.failure(error))
                 return

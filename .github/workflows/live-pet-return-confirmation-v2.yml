@@ -13,6 +13,8 @@ on:
       - PurePetsAdmin/Features/Providers/ProvidersView.swift
       - PurePetsAdmin/Features/More/ListingsView.swift
       - PurePetsAdmin/App/PPSessionRestorationGatewayView.swift
+      - PurePetsAdmin/BranchSection/PPBranchInventory.swift
+      - PurePetsAdmin/Features/Inventory/CycleCountStudioView.swift
       - PurePetsAdmin/ar.lproj/Localizable.strings
       - PurePetsAdmin/en.lproj/Localizable.strings
       - .github/workflows/live-pet-return-confirmation-v2.yml
