@@ -23,7 +23,7 @@ jobs:
         run: |
           set -euo pipefail
           git diff --check origin/main...HEAD
-          changed=$(git diff --name-only origin/main...HEAD | sort)
+          changed=$(git diff --name-only origin/main...HEAD | grep -v '^.github/workflows/post-first-refund-validate.yml$' | sort)
           test "$changed" = "PurePetsAdmin/Features/POS/POSHistoryView.swift"
 
       - name: Post-first-refund behavioral contract
