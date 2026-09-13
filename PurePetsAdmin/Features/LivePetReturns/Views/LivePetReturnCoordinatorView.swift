@@ -59,56 +59,11 @@ public struct LivePetReturnCoordinatorView: View {
         ZStack {
             AdminSurface.background.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                // Header (only for wizard steps)
-                if case .confirmed = currentStep {
-                    // Confirmation view has its own header
-                } else {
-                    wizardHeader
-                    Divider().background(AdminSurface.hairline)
-                }
-
-                // Step Content
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 16) {
-                        if let error = submissionError {
-                            AdminErrorBanner(message: error)
-                        }
-
-                        switch currentStep {
-                        case .selectUnits:
-                            ReturnUnitSelectionView(viewModel: viewModel)
-                        case .receiveAndResolve:
-                            ReturnReceiveView(viewModel: viewModel)
-                        case .confirmed(let returnCase):
-                            ReturnConfirmationView(
-                                returnCase: returnCase,
-                                onOpenDossier: {
-                                    showingDossierCaseId = returnCase.returnCaseId
-                                },
-                                onDismiss: {
-                                    handleDismiss()
-                                },
-                                onProceedToMerchandiseRefund: (receipt.hasGenericMerchandise && onProceedToMerchandiseRefund != nil) ? {
-                                    if !hasCompleted {
-                                        hasCompleted = true
-                                        onComplete(returnCase)
-                                    }
-                                    dismiss()
-                                    onProceedToMerchandiseRefund?(receipt)
-                                } : nil
-                            )
-                        }
-                    }
-                    .padding(AdminSpacing.screenMargin)
-                }
-
-                // Bottom Action Bar (for wizard steps)
-                if case .confirmed = currentStep {
-                    // Empty bottom bar on confirmation
-                } else {
-                    bottomActionBar
-                }
+            switch currentStep {
+            case .confirmed(let returnCase):
+                confirmationSurface(returnCase)
+            case .selectUnits, .receiveAndResolve:
+                wizardSurface
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
@@ -119,6 +74,57 @@ public struct LivePetReturnCoordinatorView: View {
         )) { ident in
             ReturnCaseDetailView(returnCaseId: ident.id)
         }
+    }
+
+    @ViewBuilder
+    private var wizardSurface: some View {
+        VStack(spacing: 0) {
+            wizardHeader
+            Divider().background(AdminSurface.hairline)
+
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 16) {
+                    if let error = submissionError {
+                        AdminErrorBanner(message: error)
+                    }
+
+                    switch currentStep {
+                    case .selectUnits:
+                        ReturnUnitSelectionView(viewModel: viewModel)
+                    case .receiveAndResolve:
+                        ReturnReceiveView(viewModel: viewModel)
+                    case .confirmed:
+                        EmptyView()
+                    }
+                }
+                .padding(AdminSpacing.screenMargin)
+            }
+
+            bottomActionBar
+        }
+    }
+
+    private func confirmationSurface(_ returnCase: LivePetReturnCase) -> some View {
+        ReturnConfirmationView(
+            returnCase: returnCase,
+            onOpenDossier: {
+                showingDossierCaseId = returnCase.returnCaseId
+            },
+            onDismiss: {
+                handleDismiss()
+            },
+            onProceedToMerchandiseRefund: (receipt.hasGenericMerchandise && onProceedToMerchandiseRefund != nil) ? {
+                completeConfirmedStepIfNeeded(returnCase)
+                dismiss()
+                onProceedToMerchandiseRefund?(receipt)
+            } : nil
+        )
+    }
+
+    private func completeConfirmedStepIfNeeded(_ returnCase: LivePetReturnCase) {
+        guard !hasCompleted else { return }
+        hasCompleted = true
+        onComplete(returnCase)
     }
 
     // MARK: - Wizard Header
