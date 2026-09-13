@@ -2966,11 +2966,11 @@ struct POSTransactionDossierSheet: View {
                     },
                     onRefund: {
                         DossierHaptics.medium()
-                        if let firstReturnCase = returnCases.first {
-                            selectedReturnCaseForDetail = firstReturnCase
-                        } else {
-                            onRefund()
-                        }
+                        // Existing return cases are history and have their own explicit
+                        // dossier buttons. They must never hijack the primary refund
+                        // action: a partially-refunded sale can still refund any
+                        // remaining eligible quantity or exact live-pet unit.
+                        onRefund()
                     },
                     onCancel: {
                         DossierHaptics.warning()
@@ -3005,11 +3005,11 @@ struct POSTransactionDossierSheet: View {
                     },
                     onRefund: {
                         DossierHaptics.medium()
-                        if let firstReturnCase = returnCases.first {
-                            selectedReturnCaseForDetail = firstReturnCase
-                        } else {
-                            onRefund()
-                        }
+                        // Existing return cases are history and have their own explicit
+                        // dossier buttons. They must never hijack the primary refund
+                        // action: a partially-refunded sale can still refund any
+                        // remaining eligible quantity or exact live-pet unit.
+                        onRefund()
                     },
                     onCancel: {
                         DossierHaptics.warning()
