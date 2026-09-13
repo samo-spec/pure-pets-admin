@@ -62,6 +62,12 @@ public final class ReturnCaseDetailViewModel: ObservableObject {
     // MARK: - Staff Clearance Action
 
     public func clearUnitForResale(unit: LivePetReturnUnit, notes: String?) async -> Bool {
+        if [.underInspection, .quarantined].contains(unit.resultingLifecycleStatus),
+           !service.canInspectOrClear() {
+            actionErrorMessage = Language.get("LivePet_Error_NoInspectPerm", alter: "ليس لديك صلاحية لتحديث حالة الفحص (returns.live_pet.inspect).")
+            return false
+        }
+
         guard service.canClearForResale() else {
             actionErrorMessage = Language.get("LivePet_Error_NoClearancePerm", alter: "ليس لديك صلاحية لاعتماد الحيوانات للبيع (returns.live_pet.clear_for_resale).")
             return false
@@ -69,6 +75,8 @@ public final class ReturnCaseDetailViewModel: ObservableObject {
 
         isPerformingAction = true
         actionErrorMessage = nil
+        actionSuccessMessage = nil
+        defer { isPerformingAction = false }
 
         let currentStaff = PPStaffAuth.shared().cachedCurrentStaff
         let actorId = currentStaff?.uid ?? "unknown"
@@ -85,11 +93,9 @@ public final class ReturnCaseDetailViewModel: ObservableObject {
                 branchId: branchId,
                 notes: notes
             )
-            isPerformingAction = false
             actionSuccessMessage = Language.get("LivePet_Clearance_Success", alter: "تم اعتماد الحيوان بنجاح وأصبح متاحاً للبيع في المتجر.")
             return true
         } catch {
-            isPerformingAction = false
             actionErrorMessage = error.localizedDescription
             return false
         }

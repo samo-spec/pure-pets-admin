@@ -264,11 +264,15 @@ extension UIViewController {
     public override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
         super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
         hidesBottomBarWhenPushed = true
+        definesPresentationContext = true
+        modalPresentationStyle = .fullScreen
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         hidesBottomBarWhenPushed = true
+        definesPresentationContext = true
+        modalPresentationStyle = .fullScreen
     }
 
     public override func viewDidLoad() {

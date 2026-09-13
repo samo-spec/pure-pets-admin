@@ -210,39 +210,54 @@ public struct ReturnCaseDetailView: View {
 
                     // Staff Inspection Action Buttons
                     HStack(spacing: 8) {
-                        Button {
-                            selectedUnitForAction = unit
-                            showingClearanceConfirmation = true
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "checkmark.seal.fill")
-                                Text(Language.get("LivePet_ActionClearResale", alter: "اعتماد للبيع"))
+                        if canOfferResaleClearance(for: unit) {
+                            Button {
+                                selectedUnitForAction = unit
+                                showingClearanceConfirmation = true
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "checkmark.seal.fill")
+                                    Text(
+                                        unit.resultingLifecycleStatus == .cleared
+                                            ? Language.get("LivePet_ActionReleaseResale", alter: "إتاحة للبيع")
+                                            : Language.get("LivePet_ActionApproveAndRelease", alter: "اعتماد وإتاحة للبيع")
+                                    )
+                                }
+                                .font(AdminType.caption2Bold)
+                                .foregroundColor(Color(uiColor: .systemGreen))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color(uiColor: .systemGreen).opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                             }
-                            .font(AdminType.caption2Bold)
-                            .foregroundColor(Color(uiColor: .systemGreen))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color(uiColor: .systemGreen).opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .buttonStyle(.plain)
+                            .disabled(viewModel.isPerformingAction)
                         }
-                        .buttonStyle(.plain)
 
-                        Button {
-                            selectedUnitForAction = unit
-                            showingQuarantineConfirmation = true
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "shield.lefthalf.filled.badge.checkmark")
-                                Text(Language.get("LivePet_ActionQuarantine", alter: "نقل للحجر"))
+                        if canOfferQuarantine(for: unit) {
+                            Button {
+                                selectedUnitForAction = unit
+                                showingQuarantineConfirmation = true
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "shield.lefthalf.filled.badge.checkmark")
+                                    Text(Language.get("LivePet_ActionQuarantine", alter: "نقل للحجر"))
+                                }
+                                .font(AdminType.caption2Bold)
+                                .foregroundColor(Color(uiColor: .systemPurple))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color(uiColor: .systemPurple).opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                             }
-                            .font(AdminType.caption2Bold)
-                            .foregroundColor(Color(uiColor: .systemPurple))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color(uiColor: .systemPurple).opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .buttonStyle(.plain)
+                            .disabled(viewModel.isPerformingAction)
                         }
-                        .buttonStyle(.plain)
 
                         Spacer()
+
+                        if viewModel.isPerformingAction {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
                     }
                     .padding(.top, 4)
                 }
@@ -253,6 +268,14 @@ public struct ReturnCaseDetailView: View {
     }
 
     // MARK: - Timeline Section
+
+    private func canOfferResaleClearance(for unit: LivePetReturnUnit) -> Bool {
+        [.underInspection, .quarantined, .cleared].contains(unit.resultingLifecycleStatus)
+    }
+
+    private func canOfferQuarantine(for unit: LivePetReturnUnit) -> Bool {
+        [.underInspection, .medicalHold].contains(unit.resultingLifecycleStatus)
+    }
 
     private func timelineSection(for rCase: LivePetReturnCase) -> some View {
         VStack(alignment: .leading, spacing: 10) {

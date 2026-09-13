@@ -4578,6 +4578,18 @@
 "LivePet_Quarantine_Confirm" = "Confirm quarantine";
 "LivePet_Quarantine_Hint" = "The animal leaves available inventory until an authorized quarantine release.";
 "LivePet_Release_Quarantine_Action" = "Release from quarantine";
+"LivePet_Release_Quarantine_Title" = "Release from Quarantine";
+"LivePet_Release_Quarantine_Hint" = "The animal will be returned to active inventory after the inspection period ends.";
+"LivePet_Confirm_Release" = "Confirm Release from Quarantine";
+"LivePet_ReturnCase_Release_Title" = "Return Case & Veterinary Inspection";
+"LivePet_ReturnCase_Release_Hint" = "This animal is registered under an active return case; medical inspection and resale authorization must be completed via the return dossier.";
+"LivePet_ReturnCase_Notice_Title" = "Animal Linked to Active Return Case";
+"LivePet_Release_ReturnCase_Notice" = "This animal is registered under active return case (%@). It cannot be directly released to stock; inspection clearance and resale authorization must be completed through the return case dossier.";
+"LivePet_Open_ReturnCase_Action" = "Open Return & Inspection Dossier";
+"LivePet_Open_ReturnCase_Desc" = "Review approved case and complete inspection before resale authorization";
+"LivePet_Return_View_Perm_Required" = "Return dossier view permission required";
+"Badge_ReturnCase" = "Return Dossier";
+"LivePet_Error_ReturnedAnimalNeedsClearance" = "Returned live animals require veterinarian inspection clearance and resale authorization through the return case dossier.";
 "LivePet_Release_Confirm" = "Confirm release";
 "LivePet_Release_Hint" = "The animal returns to available inventory and the catalog price projection is recalculated.";
 "LivePet_Lifecycle_Success" = "Animal state was updated and the movement was audited.";
@@ -7637,4 +7649,11 @@
 "CatalogIntake_MarketplaceOn" = "Visible in Consumer App";
 "CatalogIntake_MarketplaceOff" = "Hidden (POS Only)";
 
-
+/* ===================== Live Pet Return Release Routing ===================== */
+"LivePet_LegacyReturn_Notice_Title" = "Returned animal in quarantine custody";
+"LivePet_LegacyReturn_Notice_Desc" = "This animal was received through the legacy return flow. It remains unavailable for sale until quarantine review and an authorized release.";
+"LivePet_ActionApproveAndRelease" = "Approve and release for sale";
+"LivePet_ActionReleaseResale" = "Release for sale";
+"LivePet_Error_ResaleLifecycle" = "This animal cannot be returned to sale from its current state. Refresh the return case and review the veterinary disposition.";
+"LivePet_Error_ResaleReadback" = "The release command was submitted, but the final state could not be confirmed. Refresh the return case before retrying.";
+"LivePet_Error_ReturnUnitMissing" = "The return case or selected animal record is no longer available.";

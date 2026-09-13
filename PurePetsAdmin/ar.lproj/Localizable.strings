@@ -4639,6 +4639,18 @@
 "LivePet_Quarantine_Confirm" = "تأكيد الحجر";
 "LivePet_Quarantine_Hint" = "يخرج الحيوان من المخزون المتاح حتى يتم إخراجه من الحجر بصلاحية معتمدة.";
 "LivePet_Release_Quarantine_Action" = "إخراج من الحجر";
+"LivePet_Release_Quarantine_Title" = "إخراج من الحجر الصحي";
+"LivePet_Release_Quarantine_Hint" = "يُعاد الحيوان إلى المخزون المتاح بعد انتهاء فترة الفحص.";
+"LivePet_Confirm_Release" = "تأكيد الإخراج من الحجر";
+"LivePet_ReturnCase_Release_Title" = "ملف الاسترجاع والفحص البيطري";
+"LivePet_ReturnCase_Release_Hint" = "هذا الحيوان مسجل ضمن حالة استرجاع نشطة، ويجب استكمال الفحص البيطري واعتماد إعادته للبيع عبر ملف الاسترجاع.";
+"LivePet_ReturnCase_Notice_Title" = "حيوان مسجل ضمن ملف استرجاع معتمد";
+"LivePet_Release_ReturnCase_Notice" = "هذا الحيوان مسجل ضمن حالة استرجاع نشطة (%@). لا يمكن إخراجه مباشرة من المخزون، بل يجب استكمال الفحص البيطري واعتماد إعادة البيع من خلال ملف الاسترجاع.";
+"LivePet_Open_ReturnCase_Action" = "فتح ملف الاسترجاع والفحص";
+"LivePet_Open_ReturnCase_Desc" = "مراجعة الملف المعتمد وإكمال الفحص قبل إعادة الإتاحة للبيع";
+"LivePet_Return_View_Perm_Required" = "صلاحية عرض ملفات الاسترجاع مطلوبة";
+"Badge_ReturnCase" = "ملف معتمد";
+"LivePet_Error_ReturnedAnimalNeedsClearance" = "الحيوانات المسترجعة تتطلب استكمال الفحص البيطري واعتماد إعادة البيع من خلال ملف الاسترجاع.";
 "LivePet_Release_Confirm" = "تأكيد الإخراج";
 "LivePet_Release_Hint" = "يعود الحيوان إلى المتاح ويُعاد حساب سعر عرض الكتالوج.";
 "LivePet_Lifecycle_Success" = "تم تحديث حالة الحيوان وتسجيل الحركة في التدقيق.";
@@ -7699,4 +7711,11 @@
 "CatalogIntake_MarketplaceOn" = "معروض في تطبيق المتجر";
 "CatalogIntake_MarketplaceOff" = "مخفي (كاشير فقط)";
 
-
+/* ===================== Live Pet Return Release Routing ===================== */
+"LivePet_LegacyReturn_Notice_Title" = "حيوان مسترجع في عهدة الحجر";
+"LivePet_LegacyReturn_Notice_Desc" = "تم استلام هذا الحيوان عبر مسار الاسترجاع السابق. يبقى غير متاح للبيع حتى مراجعة الحجر وإصداره بالصلاحيات المعتمدة.";
+"LivePet_ActionApproveAndRelease" = "اعتماد وإتاحة للبيع";
+"LivePet_ActionReleaseResale" = "إتاحة للبيع";
+"LivePet_Error_ResaleLifecycle" = "لا يمكن إتاحة الحيوان للبيع من حالته الحالية. حدّث ملف الاسترجاع وراجع قرار الرعاية البيطرية.";
+"LivePet_Error_ResaleReadback" = "تم إرسال أمر الإتاحة، لكن تعذر تأكيد الحالة النهائية. حدّث ملف الاسترجاع قبل إعادة المحاولة.";
+"LivePet_Error_ReturnUnitMissing" = "لم يعد ملف الاسترجاع أو سجل الحيوان المحدد متاحاً.";

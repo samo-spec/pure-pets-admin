@@ -4011,40 +4011,44 @@ private struct CommandPOSQuickExpenseView_iPhone: View {
                 .multilineTextAlignment(.leading)
                 .padding(.horizontal, 2)
 
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+            LazyVGrid(columns: [
+                GridItem(.flexible(), spacing: 8),
+                GridItem(.flexible(), spacing: 8),
+                GridItem(.flexible(), spacing: 8)
+            ], spacing: 8) {
                 ForEach(presenter.categories) { cat in
                     let isSelected = presenter.selectedCategory == cat.id
                     Button {
                         presenter.selectCategory(cat.id)
                     } label: {
-                        HStack(spacing: 8) {
+                        HStack(spacing: 5) {
                             if isSelected {
                                 Image(systemName: "checkmark")
-                                    .font(.system(size: 13, weight: .bold))
+                                    .font(.system(size: 10, weight: .bold))
                                     .foregroundStyle(Color(red: 0.85, green: 0.15, blue: 0.35))
                             }
 
                             Spacer(minLength: 0)
 
                             Text(cat.localizedTitle)
-                                .font(PPBeirutiFont.bold(13, relativeTo: .subheadline))
+                                .font(PPBeirutiFont.bold(11, relativeTo: .caption))
                                 .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminSurface.primaryText.opacity(0.90))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.75)
-                                .multilineTextAlignment(.leading)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.70)
+                                .multilineTextAlignment(Language.isRTL() ? .leading : .trailing)
 
                             ZStack {
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
                                     .fill(cat.iconBgColor)
-                                    .frame(width: 36, height: 36)
+                                    .frame(width: 28, height: 28)
 
                                 Image(systemName: cat.icon)
-                                    .font(.system(size: 15, weight: .semibold))
+                                    .font(.system(size: 13, weight: .semibold))
                                     .foregroundStyle(cat.iconTintColor)
                             }
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                         .background(
@@ -4591,40 +4595,44 @@ private struct CommandPOSQuickExpenseView_iPad: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .multilineTextAlignment(.leading)
 
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 10) {
+            LazyVGrid(columns: [
+                GridItem(.flexible(), spacing: 10),
+                GridItem(.flexible(), spacing: 10),
+                GridItem(.flexible(), spacing: 10)
+            ], spacing: 10) {
                 ForEach(presenter.categories) { cat in
                     let isSelected = presenter.selectedCategory == cat.id
                     Button {
                         presenter.selectCategory(cat.id)
                     } label: {
-                        HStack(spacing: 8) {
+                        HStack(spacing: 6) {
                             if isSelected {
                                 Image(systemName: "checkmark")
-                                    .font(.system(size: 13, weight: .bold))
+                                    .font(.system(size: 11, weight: .bold))
                                     .foregroundStyle(Color(red: 0.85, green: 0.15, blue: 0.35))
                             }
 
                             Spacer(minLength: 0)
 
                             Text(cat.localizedTitle)
-                                .font(PPBeirutiFont.bold(13.5, relativeTo: .subheadline))
+                                .font(PPBeirutiFont.bold(12, relativeTo: .subheadline))
                                 .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminSurface.primaryText.opacity(0.90))
-                                .lineLimit(1)
+                                .lineLimit(2)
                                 .minimumScaleFactor(0.75)
-                                .multilineTextAlignment(.leading)
+                                .multilineTextAlignment(Language.isRTL() ? .leading : .trailing)
 
                             ZStack {
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                RoundedRectangle(cornerRadius: 9, style: .continuous)
                                     .fill(cat.iconBgColor)
-                                    .frame(width: 38, height: 38)
+                                    .frame(width: 32, height: 32)
 
                                 Image(systemName: cat.icon)
-                                    .font(.system(size: 16, weight: .semibold))
+                                    .font(.system(size: 14, weight: .semibold))
                                     .foregroundStyle(cat.iconTintColor)
                             }
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
                         .frame(maxWidth: .infinity)
                         .frame(height: 54)
                         .background(

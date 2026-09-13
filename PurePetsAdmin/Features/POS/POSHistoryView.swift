@@ -1994,11 +1994,11 @@ private struct DossierCustomerCard: View {
                         Button(action: onCall) {
                             ZStack {
                                 Circle()
-                                    .fill(Color(uiColor: .systemGreen).opacity(0.12))
+                                    .fill(Color(uiColor: .systemBlue))
                                     .frame(width: 36, height: 36)
                                 Image(systemName: "phone.fill")
                                     .font(.system(size: 14, weight: .bold))
-                                    .foregroundColor(Color(uiColor: .systemGreen))
+                                    .foregroundColor(.white)
                             }
                         }
                         .buttonStyle(.plain)
@@ -2545,24 +2545,20 @@ struct POSTransactionDossier_iPhone: View {
                     Divider().background(AdminSurface.hairline)
 
                     HStack(spacing: 10) {
-                        // Print Button
+                        // Print Button (Icon Only)
                         Button(action: onPrint) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "printer.fill")
-                                    .font(.system(size: 14, weight: .bold))
-                                Text(isRefunded ? Language.get("POS_Action_PrintRefundReceipt", alter: "طباعة إيصال الاسترداد") : Language.get("POS_Action_PrintReceipt", alter: "طباعة الإيصال"))
-                                    .font(DossierFont.bold(13, relativeTo: .subheadline))
-                            }
-                            .foregroundColor(AdminSurface.primaryText)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 48)
-                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder), lineWidth: 1)
-                            )
+                            Image(systemName: "printer.fill")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(AdminSurface.primaryText)
+                                .frame(width: 48, height: 48)
+                                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .strokeBorder(Color(uiColor: .ppSurfaceBorder), lineWidth: 1)
+                                )
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel(isRefunded ? Language.get("POS_Action_PrintRefundReceipt", alter: "طباعة إيصال الاسترداد") : Language.get("POS_Action_PrintReceipt", alter: "طباعة الإيصال"))
 
                         // Refund / Return Button
                         Button(action: onRefund) {

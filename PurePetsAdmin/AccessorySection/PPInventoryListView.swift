@@ -203,18 +203,43 @@ struct PPLivePetInventoryUnit: Identifiable, Equatable {
     let quarantinedAt: Date?
     let refundedAt: Date?
     let returnCaseId: String
+    let activeReturnCaseID: String
+    let activeReturnCaseNumber: String
+    let returnLifecycleStatus: String
+    let healthStatus: String
+    let custodyStatus: String
+    let version: Int
     let returnReason: String
     let returnTransactionId: String
 
     var isUnderInspection: Bool {
         if status == "UNDER_INSPECTION" { return true }
-        if status == "QUARANTINED" && (quarantineReason == "LIVE_ANIMAL_RETURN" || !returnCaseId.isEmpty || refundedAt != nil) {
-            return true
-        }
-        if status == "SOLD" && (refundedAt != nil || !returnCaseId.isEmpty) {
-            return true
-        }
-        return false
+        let lifecycle = returnLifecycleStatus.lowercased()
+        let activeInspectionStates: Set<String> = [
+            "return_requested",
+            "return_in_transit",
+            "return_received",
+            "under_inspection",
+            "quarantined",
+            "medical_hold"
+        ]
+        if !activeReturnCaseID.isEmpty && activeInspectionStates.contains(lifecycle) { return true }
+        // Backward-compatible fallback for modern records created before the
+        // lifecycle projection was added. A legacy financial-return quarantine
+        // without an active case must not be presented as a current dossier.
+        return !activeReturnCaseID.isEmpty && status == "QUARANTINED" && lifecycle.isEmpty
+    }
+
+    var isLegacyReturnedQuarantine: Bool {
+        status == "QUARANTINED" &&
+            activeReturnCaseID.isEmpty &&
+            (quarantineReason == "LIVE_ANIMAL_RETURN" || !returnCaseId.isEmpty || refundedAt != nil)
+    }
+
+    var linkedReturnCaseReference: String {
+        if !activeReturnCaseNumber.isEmpty { return activeReturnCaseNumber }
+        if !activeReturnCaseID.isEmpty { return activeReturnCaseID }
+        return returnCaseId
     }
 
     var subSubKindName: String? {
@@ -269,6 +294,12 @@ struct PPLivePetInventoryUnit: Identifiable, Equatable {
         quarantinedAt = PPLivePetInventoryService.date(dictionary["quarantinedAt"])
         refundedAt = PPLivePetInventoryService.date(dictionary["refundedAt"])
         returnCaseId = PPLivePetInventoryService.string(dictionary["returnCaseId"])
+        activeReturnCaseID = PPLivePetInventoryService.string(dictionary["activeReturnCaseId"])
+        activeReturnCaseNumber = PPLivePetInventoryService.string(dictionary["activeReturnCaseNumber"])
+        returnLifecycleStatus = PPLivePetInventoryService.string(dictionary["returnLifecycleStatus"]).lowercased()
+        healthStatus = PPLivePetInventoryService.string(dictionary["healthStatus"]).lowercased()
+        custodyStatus = PPLivePetInventoryService.string(dictionary["custodyStatus"]).lowercased()
+        version = max(1, PPLivePetInventoryService.integer(dictionary["version"]))
         returnReason = PPLivePetInventoryService.string(dictionary["returnReason"])
         returnTransactionId = PPLivePetInventoryService.string(dictionary["returnTransactionId"])
     }
@@ -526,6 +557,12 @@ enum PPLivePetInventoryService {
             return Language.get("LivePet_Error_Unauthenticated", alter: "انتهت صلاحية جلسة الموظف أو تعذر التحقق من المصادقة. أعد فتح التطبيق وسجّل الدخول مجدداً.")
         }
         let backendMsg = string(details["message"] ?? details["error"] ?? nsError.userInfo[NSLocalizedDescriptionKey])
+        if backendMsg.contains("clearLivePetForResale") || backendMsg.contains("Returned live animals must be released") {
+            return Language.get(
+                "LivePet_Error_ReturnedAnimalNeedsClearance",
+                alter: "الحيوانات المسترجعة تتطلب استكمال الفحص البيطري واعتماد إعادة البيع من خلال ملف الاسترجاع."
+            )
+        }
         if !backendMsg.isEmpty && !backendMsg.contains("com.firebase.functions") && !backendMsg.lowercased().contains("the operation couldn") {
             return backendMsg
         }
@@ -1074,6 +1111,9 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
         canSell && (staff?.hasPermission(kStaffPermPaymentsRefund) ?? false)
     }
     var canReleaseQuarantine: Bool { canManageStock && (staff?.hasPermission("stock.quarantine.release") ?? false) }
+    var canViewLivePetReturns: Bool {
+        (staff?.hasPermission("returns.live_pet.view") ?? false) || (staff?.isAdmin() ?? false)
+    }
     var canViewCosts: Bool { (staff?.hasPermission("stock.cost.view") ?? false) || (staff?.isAdmin() ?? false) }
 
     func reservation(for unit: PPLivePetInventoryUnit) -> PPLivePetReservation? {
@@ -4174,6 +4214,10 @@ private struct FlagshipInventoryCard: View {
 
 // MARK: - Flagship Item Master Detail Screen (Push Navigation)
 
+private struct PPLivePetReturnCaseRoute: Identifiable {
+    let id: String
+}
+
 @available(iOS 16.0, *)
 public struct PPInventoryItemDetailView: View {
     let item: PetAccessory
@@ -4203,6 +4247,7 @@ public struct PPInventoryItemDetailView: View {
     @State private var showLotsSheet: Bool = false
     @State private var showTactileQuantityPad: Bool = false
     @State private var activeCommandUnit: PPLivePetInventoryUnit? = nil
+    @State private var activeReturnCaseRoute: PPLivePetReturnCaseRoute? = nil
     @State private var showHistoryUnits: Bool = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
@@ -4306,7 +4351,12 @@ public struct PPInventoryItemDetailView: View {
                             activeCommandUnit = nil
                         }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                            liveModel.operation = op
+                            if case .releaseQuarantine(let unit) = op,
+                               !unit.activeReturnCaseID.isEmpty {
+                                activeReturnCaseRoute = PPLivePetReturnCaseRoute(id: unit.activeReturnCaseID)
+                            } else {
+                                liveModel.operation = op
+                            }
                         }
                     }
                 )
@@ -4450,13 +4500,24 @@ public struct PPInventoryItemDetailView: View {
                 item.noStock = (count <= 0)
             }
         }
-        .sheet(item: $liveModel.operation) { operation in
+        .sheet(item: $liveModel.operation, onDismiss: {
+            liveModel.errorMessage = nil
+        }) { operation in
             switch operation {
             case .price(let unit):
                 PPLivePetUnitProfileEditorSheet(unit: unit, model: liveModel)
             default:
-                PPLivePetOperationSheet(context: operation, model: liveModel)
+                PPLivePetOperationSheet(context: operation, model: liveModel) { returnCaseId in
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        activeReturnCaseRoute = PPLivePetReturnCaseRoute(id: returnCaseId)
+                    }
+                }
             }
+        }
+        .sheet(item: $activeReturnCaseRoute, onDismiss: {
+            Task { await liveModel.load() }
+        }) { route in
+            ReturnCaseDetailView(returnCaseId: route.id)
         }
         .sheet(isPresented: $isLightboxPresented) {
             specimenLightboxView
@@ -5637,7 +5698,7 @@ public struct PPInventoryItemDetailView: View {
                     tone: Color(uiColor: .ppSuccess)
                 )
             }
-            if let error = liveModel.errorMessage {
+            if let error = liveModel.errorMessage, liveModel.operation == nil {
                 dossierStateNotice(
                     error,
                     symbol: "exclamationmark.triangle.fill",
@@ -5896,7 +5957,7 @@ public struct PPInventoryItemDetailView: View {
         }.sorted()
         let historyUnits = liveModel.units.filter { !activeUnits.contains($0) }.sorted()
         let availableCount = liveModel.units.filter { $0.status == "AVAILABLE" }.count
-        let underInspectionCount = liveModel.units.filter { $0.isUnderInspection || $0.status == "UNDER_INSPECTION" || ($0.status == "QUARANTINED" && $0.quarantineReason == "LIVE_ANIMAL_RETURN") }.count
+        let underInspectionCount = liveModel.units.filter { $0.isUnderInspection }.count
         let soldCount = liveModel.units.filter { $0.status == "SOLD" && !$0.isUnderInspection }.count
 
         var subtitleParts: [String] = []
@@ -6267,8 +6328,8 @@ public struct PPInventoryItemDetailView: View {
                                 .font(Font.custom("Beiruti-Regular", size: 11))
                                 .foregroundStyle(AdminCommandInk.secondary)
                         }
-                        if !unit.returnCaseId.isEmpty {
-                            Text(String(format: Language.get("LivePet_ReturnCase_Ref", alter: "ملف الاسترجاع: %@"), unit.returnCaseId))
+                        if !unit.linkedReturnCaseReference.isEmpty {
+                            Text(String(format: Language.get("LivePet_ReturnCase_Ref", alter: "ملف الاسترجاع: %@"), unit.linkedReturnCaseReference))
                                 .font(Font.custom("Beiruti-Regular", size: 10))
                                 .foregroundStyle(Color(uiColor: .systemPurple))
                         }
@@ -6960,11 +7021,20 @@ private struct PPLivePetActionPortalDeck: View {
     // MARK: - Active Quarantine Notice
 
     private var activeQuarantineNotice: some View {
-        let isInspection = unit.isUnderInspection || unit.quarantineReason == "LIVE_ANIMAL_RETURN" || !unit.returnCaseId.isEmpty
-        let symbol = isInspection ? "stethoscope" : "cross.case.fill"
-        let tint = isInspection ? Color(uiColor: .systemPurple) : Color(uiColor: .ppInfo)
-        let title = isInspection ? Language.get("LivePet_Inspection_Notice_Title", alter: "الحيوان خاضع للفحص والتقييم") : Language.get("LivePet_Quarantine_Notice_Title", alter: "الحيوان خاضع للعزل البيطري")
-        let desc = isInspection ? Language.get("LivePet_Inspection_Notice_Desc", alter: "تم استرجاع هذا الحيوان وهو قيد الفحص والتقييم البيطري لتحديد حالته قبل الإفراج أو البيع.") : Language.get("LivePet_Quarantine_Notice_Desc", alter: "تم إيقاف عرض هذا الحيوان من نقاط البيع لحين التحقق من التعافي وإصدار إذن خروج.")
+        let isInspection = unit.isUnderInspection
+        let isLegacyReturn = unit.isLegacyReturnedQuarantine
+        let symbol = isInspection ? "stethoscope" : (isLegacyReturn ? "arrow.uturn.backward.circle.fill" : "cross.case.fill")
+        let tint = isInspection ? Color(uiColor: .systemPurple) : (isLegacyReturn ? Color(uiColor: .ppWarning) : Color(uiColor: .ppInfo))
+        let title = isInspection
+            ? Language.get("LivePet_Inspection_Notice_Title", alter: "الحيوان خاضع للفحص والتقييم")
+            : (isLegacyReturn
+                ? Language.get("LivePet_LegacyReturn_Notice_Title", alter: "حيوان مسترجع في عهدة الحجر")
+                : Language.get("LivePet_Quarantine_Notice_Title", alter: "الحيوان خاضع للعزل البيطري"))
+        let desc = isInspection
+            ? Language.get("LivePet_Inspection_Notice_Desc", alter: "تم استرجاع هذا الحيوان وهو قيد الفحص والتقييم البيطري لتحديد حالته قبل الإفراج أو البيع.")
+            : (isLegacyReturn
+                ? Language.get("LivePet_LegacyReturn_Notice_Desc", alter: "تم استلام هذا الحيوان عبر مسار الاسترجاع السابق. يبقى غير متاح للبيع حتى مراجعة الحجر وإصداره بالصلاحيات المعتمدة.")
+                : Language.get("LivePet_Quarantine_Notice_Desc", alter: "تم إيقاف عرض هذا الحيوان من نقاط البيع لحين التحقق من التعافي وإصدار إذن خروج."))
 
         return HStack(alignment: .top, spacing: 10) {
             Image(systemName: symbol)
@@ -7173,7 +7243,10 @@ private struct PPLivePetActionPortalDeck: View {
 
     // Quarantined State Sector
     private var quarantinedStateSector: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let hasReturnCase = !unit.activeReturnCaseID.isEmpty
+        let canUsePrimaryAction = hasReturnCase ? liveModel.canViewLivePetReturns : liveModel.canReleaseQuarantine
+
+        return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: "cross.case.circle.fill")
                     .font(.system(size: 13, weight: .bold))
@@ -7185,15 +7258,25 @@ private struct PPLivePetActionPortalDeck: View {
 
             VStack(spacing: 8) {
                 PPLivePetActionPortalCard(
-                    title: Language.get("LivePet_Release_Quarantine_Action", alter: "إخراج من الحجر الصحي"),
-                    subtitle: Language.get("LivePet_Release_Quarantine_Desc", alter: "إعادة إتاحة الحيوان للبيع بعد التأكد من سلامته البيطرية"),
-                    icon: "checkmark.shield",
-                    iconTint: Color(uiColor: .ppSuccess),
-                    iconBackground: Color(uiColor: .ppSuccess).opacity(0.14),
-                    badge: Language.get("Badge_Medical_Clearance", alter: "تصريح طبي"),
+                    title: hasReturnCase
+                        ? Language.get("LivePet_Open_ReturnCase_Action", alter: "فتح ملف الاسترجاع والفحص")
+                        : Language.get("LivePet_Release_Quarantine_Action", alter: "إخراج من الحجر الصحي"),
+                    subtitle: hasReturnCase
+                        ? Language.get("LivePet_Open_ReturnCase_Desc", alter: "مراجعة الملف المعتمد وإكمال الفحص قبل إعادة الإتاحة للبيع")
+                        : Language.get("LivePet_Release_Quarantine_Desc", alter: "إعادة إتاحة الحيوان للبيع بعد التأكد من سلامته البيطرية"),
+                    icon: hasReturnCase ? "doc.text.magnifyingglass" : "checkmark.shield",
+                    iconTint: hasReturnCase ? Color(uiColor: .systemPurple) : Color(uiColor: .ppSuccess),
+                    iconBackground: (hasReturnCase ? Color(uiColor: .systemPurple) : Color(uiColor: .ppSuccess)).opacity(0.14),
+                    badge: hasReturnCase
+                        ? Language.get("Badge_ReturnCase", alter: "ملف معتمد")
+                        : Language.get("Badge_Medical_Clearance", alter: "تصريح طبي"),
                     isHero: true,
-                    isLocked: !liveModel.canReleaseQuarantine,
-                    lockReason: !liveModel.canReleaseQuarantine ? Language.get("Stock_Perm_Required", alter: "صلاحية الفحص الطبي") : nil
+                    isLocked: !canUsePrimaryAction,
+                    lockReason: !canUsePrimaryAction
+                        ? (hasReturnCase
+                            ? Language.get("LivePet_Return_View_Perm_Required", alter: "صلاحية عرض ملفات الاسترجاع مطلوبة")
+                            : Language.get("Stock_Perm_Required", alter: "صلاحية الفحص الطبي"))
+                        : nil
                 ) {
                     triggerAction(.releaseQuarantine(unit))
                 }
@@ -9762,6 +9845,7 @@ private struct PPLivePetUnitProfileEditorSheet: View {
 private struct PPLivePetOperationSheet: View {
     let context: PPLivePetOperationContext
     @ObservedObject var model: PPLivePetOperationsViewModel
+    var onOpenReturnCase: ((String) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
@@ -9834,9 +9918,10 @@ private struct PPLivePetOperationSheet: View {
         return ""
     }
 
-    init(context: PPLivePetOperationContext, model: PPLivePetOperationsViewModel) {
+    init(context: PPLivePetOperationContext, model: PPLivePetOperationsViewModel, onOpenReturnCase: ((String) -> Void)? = nil) {
         self.context = context
         self.model = model
+        self.onOpenReturnCase = onOpenReturnCase
         _operationCommandID = State(initialValue: PPLivePetInventoryService.commandID(context.id))
         let standardPrice = model.item.standardSellingPrice?.doubleValue ?? model.item.price.doubleValue
         _standardPriceText = State(initialValue: standardPrice > 0 ? String(format: "%g", standardPrice) : "")
@@ -10100,8 +10185,11 @@ private struct PPLivePetOperationSheet: View {
             return AdminSurface.primary
         case .reserve, .reservation:
             return Color(uiColor: .ppWarning)
-        case .quarantine, .releaseQuarantine:
+        case .quarantine:
             return Color(uiColor: .ppInfo)
+        case .releaseQuarantine(let contextUnit):
+            let unit = currentLiveUnit ?? contextUnit
+            return !unit.activeReturnCaseID.isEmpty ? Color(uiColor: .systemPurple) : Color(uiColor: .ppInfo)
         case .mortality, .remove:
             return Color(uiColor: .ppError)
         case .price:
@@ -10339,20 +10427,61 @@ private struct PPLivePetOperationSheet: View {
             case .releaseQuarantine(let contextUnit):
                 let unit = currentLiveUnit ?? contextUnit
                 unitIdentity(unit)
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "checkmark.shield.fill")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(Color(uiColor: .ppSuccess))
-                        .frame(width: 32, height: 32)
-                        .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Circle())
-                    Text(Language.get("LivePet_Release_Medical_Clearance_Notice", alter: "سيُعاد الحيوان إلى المخزون المتاح للبيع ويُعاد حساب متوسطات أسعار العرض بالكتالوج."))
-                        .font(Font.custom("Beiruti-Regular", size: 12))
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .fixedSize(horizontal: false, vertical: true)
+                if !unit.activeReturnCaseID.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "doc.text.magnifyingglass")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(Color(uiColor: .systemPurple))
+                                .frame(width: 32, height: 32)
+                                .background(Color(uiColor: .systemPurple).opacity(0.12), in: Circle())
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(Language.get("LivePet_ReturnCase_Notice_Title", alter: "حيوان مسجل ضمن ملف استرجاع معتمد"))
+                                    .font(Font.custom("Beiruti-Bold", size: 14))
+                                    .foregroundStyle(AdminSurface.primaryText)
+                                Text(String(format: Language.get("LivePet_Release_ReturnCase_Notice", alter: "هذا الحيوان مسجل ضمن حالة استرجاع نشطة (%@). لا يمكن إخراجه مباشرة من المخزون، بل يجب استكمال الفحص البيطري واعتماد إعادة البيع من خلال ملف الاسترجاع."), unit.linkedReturnCaseReference))
+                                    .font(Font.custom("Beiruti-Regular", size: 12))
+                                    .foregroundStyle(AdminSurface.secondaryText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .padding(12)
+                        .background(Color(uiColor: .systemPurple).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color(uiColor: .systemPurple).opacity(0.20), lineWidth: 0.75))
+
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            let caseId = unit.activeReturnCaseID
+                            dismiss()
+                            onOpenReturnCase?(caseId)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.up.right.square.fill")
+                                Text(Language.get("LivePet_Open_ReturnCase_Action", alter: "فتح ملف الاسترجاع والفحص"))
+                            }
+                            .font(Font.custom("Beiruti-Bold", size: 14))
+                            .foregroundStyle(Color(uiColor: .systemPurple))
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .background(Color(uiColor: .systemPurple).opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(CatalogPressStyle())
+                    }
+                } else {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "checkmark.shield.fill")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(Color(uiColor: .ppSuccess))
+                            .frame(width: 32, height: 32)
+                            .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Circle())
+                        Text(Language.get("LivePet_Release_Medical_Clearance_Notice", alter: "سيُعاد الحيوان إلى المخزون المتاح للبيع ويُعاد حساب متوسطات أسعار العرض بالكتالوج."))
+                            .font(Font.custom("Beiruti-Regular", size: 12))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(12)
+                    .background(Color(uiColor: .ppSuccess).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    textField(Language.get("LivePet_Release_Quarantine_Reason_Prompt", alter: "تقرير وتفاصيل الإخراج من الحجر (مطلوب - ٣ أحرف على الأقل)"), text: $reason, icon: "checkmark.shield")
                 }
-                .padding(12)
-                .background(Color(uiColor: .ppSuccess).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                textField(Language.get("LivePet_Release_Quarantine_Reason_Prompt", alter: "تقرير وتفاصيل الإخراج من الحجر (مطلوب - ٣ أحرف على الأقل)"), text: $reason, icon: "checkmark.shield")
 
             case .remove(let contextUnit):
                 let unit = currentLiveUnit ?? contextUnit
@@ -10685,6 +10814,14 @@ private struct PPLivePetOperationSheet: View {
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    if case .releaseQuarantine(let contextUnit) = context,
+                       let unit = currentLiveUnit ?? contextUnit,
+                       !unit.activeReturnCaseID.isEmpty {
+                        let caseId = unit.activeReturnCaseID
+                        dismiss()
+                        onOpenReturnCase?(caseId)
+                        return
+                    }
                     performAction()
                 } label: {
                     HStack(spacing: 10) {
@@ -10727,7 +10864,9 @@ private struct PPLivePetOperationSheet: View {
         case .reserve: return "calendar.badge.plus"
         case .reservation: return "checkmark.seal.fill"
         case .quarantine: return "cross.case.fill"
-        case .releaseQuarantine: return "checkmark.shield.fill"
+        case .releaseQuarantine(let contextUnit):
+            let unit = currentLiveUnit ?? contextUnit
+            return !unit.activeReturnCaseID.isEmpty ? "doc.text.magnifyingglass" : "checkmark.shield.fill"
         case .mortality: return "heart.slash.fill"
         case .price: return "tag.fill"
         case .remove: return "minus.circle.fill"
@@ -12000,6 +12139,7 @@ private struct PPLivePetOperationSheet: View {
                 TextField(title, text: text)
                     .keyboardType(keyboard)
                     .font(Font.custom("Beiruti-Regular", size: 16))
+                    .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
 
                 if icon == "barcode.viewfinder" {
                     AdminBarcodeScanButton { scanned in
@@ -12031,7 +12171,8 @@ private struct PPLivePetOperationSheet: View {
                 TextField(title, text: text)
                     .englishNumericInput(text: text, allowsDecimal: true)
                     .font(PPBrandFont.bold(size: 16))
-                Text("ر.ق")
+                    .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                Text(Language.get("QAR", alter: "ر.ق"))
                     .font(Font.custom("Beiruti-Bold", size: 13))
                     .foregroundStyle(AdminSurface.primary)
                     .padding(.horizontal, 8)
@@ -12235,7 +12376,12 @@ private struct PPLivePetOperationSheet: View {
         case .reservation: return Language.get("LivePet_Reservation_Details_Title", alter: "تفاصيل الحجز")
         case .transfer: return Language.get("LivePet_Transfer_Title", alter: "نقل إلى فرع")
         case .quarantine: return Language.get("LivePet_Quarantine_Title", alter: "إدخال الحجر الصحي")
-        case .releaseQuarantine: return Language.get("LivePet_Release_Quarantine_Title", alter: "إخراج من الحجر الصحي")
+        case .releaseQuarantine(let contextUnit):
+            let unit = currentLiveUnit ?? contextUnit
+            if !unit.activeReturnCaseID.isEmpty {
+                return Language.get("LivePet_ReturnCase_Release_Title", alter: "ملف الاسترجاع والفحص البيطري")
+            }
+            return Language.get("LivePet_Release_Quarantine_Title", alter: "إخراج من الحجر الصحي")
         case .mortality: return Language.get("LivePet_Mortality_Title", alter: "تسجيل وفاة")
         case .price: return Language.get("LivePet_Edit_Price_Title", alter: "تعديل سعر البيع")
         case .remove: return Language.get("LivePet_Remove_Title", alter: "إزالة من المخزون")
@@ -12255,7 +12401,9 @@ private struct PPLivePetOperationSheet: View {
         case .reservation: return "creditcard.fill"
         case .transfer: return "arrow.left.arrow.right"
         case .quarantine: return "cross.case.fill"
-        case .releaseQuarantine: return "checkmark.shield.fill"
+        case .releaseQuarantine(let contextUnit):
+            let unit = currentLiveUnit ?? contextUnit
+            return !unit.activeReturnCaseID.isEmpty ? "doc.text.magnifyingglass" : "checkmark.shield.fill"
         case .mortality: return "heart.slash.fill"
         case .price: return "tag.fill"
         case .remove: return "minus.circle.fill"
@@ -12272,7 +12420,12 @@ private struct PPLivePetOperationSheet: View {
         case .reservation: return Language.get("LivePet_Reservation_Hint", alter: "متابعة بيانات الحجز والدفع أو تحرير الحيوان لإتاحته من جديد.")
         case .transfer: return Language.get("LivePet_Transfer_Hint", alter: "بتغيير فرع العهدة فقط، وتبقى هوية الحيوان وحالته وسجله محفوظة.")
         case .quarantine: return Language.get("LivePet_Quarantine_Hint", alter: "يُعزل الحيوان طبياً ويُمنع بيعه حتى يتم التأكد من سلامته.")
-        case .releaseQuarantine: return Language.get("LivePet_Release_Quarantine_Hint", alter: "يُعاد الحيوان إلى المخزون المتاح بعد انتهاء فترة الفحص.")
+        case .releaseQuarantine(let contextUnit):
+            let unit = currentLiveUnit ?? contextUnit
+            if !unit.activeReturnCaseID.isEmpty {
+                return Language.get("LivePet_ReturnCase_Release_Hint", alter: "هذا الحيوان مسجل ضمن حالة استرجاع نشطة، ويجب استكمال الفحص البيطري واعتماد إعادته للبيع عبر ملف الاسترجاع.")
+            }
+            return Language.get("LivePet_Release_Quarantine_Hint", alter: "يُعاد الحيوان إلى المخزون المتاح بعد انتهاء فترة الفحص.")
         case .mortality: return Language.get("LivePet_Mortality_Hint", alter: "يوثق سبب الوفاة رسمياً ويُسوى المخزون مع إلغاء أي حجز قائم.")
         case .price: return Language.get("LivePet_Price_Hint", alter: "يُحدث سعر البيع المعتمد لهذا الحيوان فقط ويُسجل التغيير في السجل.")
         case .remove: return Language.get("LivePet_Remove_Hint", alter: "تتم إزالة هذا السجل مع حفظ التدقيق لضبط المطابقة والعهدة.")
@@ -12292,7 +12445,12 @@ private struct PPLivePetOperationSheet: View {
         case .reservation: return Language.get("LivePet_Confirm_Sale", alter: "إتمام البيع الآن")
         case .transfer: return Language.get("LivePet_Confirm_Transfer", alter: "تأكيد النقل إلى الفرع")
         case .quarantine: return Language.get("LivePet_Confirm_Quarantine", alter: "تأكيد العزل الطبي")
-        case .releaseQuarantine: return Language.get("LivePet_Confirm_Release", alter: "تأكيد الإخراج من الحجر")
+        case .releaseQuarantine(let contextUnit):
+            let unit = currentLiveUnit ?? contextUnit
+            if !unit.activeReturnCaseID.isEmpty {
+                return Language.get("LivePet_Open_ReturnCase_Action", alter: "فتح ملف الاسترجاع والفحص")
+            }
+            return Language.get("LivePet_Confirm_Release", alter: "تأكيد الإخراج من الحجر")
         case .mortality: return Language.get("LivePet_Confirm_Mortality", alter: "تسجيل الوفاة رسمياً")
         case .price: return Language.get("LivePet_Confirm_Price", alter: "تحديث سعر البيع")
         case .remove: return Language.get("LivePet_Confirm_Remove", alter: "تأكيد الإزالة")
@@ -14033,4 +14191,3 @@ fileprivate extension View {
         )
     }
 }
-
