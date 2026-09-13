@@ -1,0 +1,55 @@
+name: Live pet return confirmation V2
+
+on:
+  push:
+    branches:
+      - design/live-pet-return-confirmation-v2
+    paths:
+      - PurePetsAdmin/Features/LivePetReturns/Views/ReturnConfirmationView.swift
+      - .github/workflows/live-pet-return-confirmation-v2.yml
+
+permissions:
+  contents: read
+
+jobs:
+  ios-build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: design/live-pet-return-confirmation-v2
+
+      - name: Xcode environment
+        run: |
+          xcodebuild -version
+          xcodebuild -list -workspace PurePetsAdmin.xcworkspace
+
+      - name: Source quality guard
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('PurePetsAdmin/Features/LivePetReturns/Views/ReturnConfirmationView.swift')
+          s = p.read_text()
+          required = [
+              'iPhoneReadyState', 'iPadReadyState', 'accessibilityReduceMotion',
+              'sensoryFeedback', 'ReturnConfirmationSurfaceState', 'AdminType.'
+          ]
+          missing = [x for x in required if x not in s]
+          if missing:
+              raise SystemExit(f'Missing confirmation architecture contracts: {missing}')
+          if 'UIFont(' in s:
+              raise SystemExit('Direct UIFont usage is forbidden in the confirmation surface')
+          print('source guard passed')
+          PY
+
+      - name: Build PurePetsAdmin
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace PurePetsAdmin.xcworkspace \
+            -scheme PurePetsAdmin \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            build | tee /tmp/live-pet-return-confirmation-v2.log
