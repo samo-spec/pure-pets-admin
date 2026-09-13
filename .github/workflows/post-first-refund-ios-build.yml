@@ -10,6 +10,7 @@ on:
 permissions:
   contents: read
 
+# Rerun after the reviewed progress-format fix.
 jobs:
   ios-build:
     runs-on: macos-15
