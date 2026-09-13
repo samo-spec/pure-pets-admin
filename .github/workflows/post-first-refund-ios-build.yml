@@ -1,0 +1,34 @@
+name: Post-first-refund iOS compile gate
+
+on:
+  push:
+    branches:
+      - fix/post-first-refund-multi-refund
+    paths:
+      - .github/workflows/post-first-refund-ios-build.yml
+
+permissions:
+  contents: read
+
+jobs:
+  ios-build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/post-first-refund-multi-refund
+      - name: Xcode environment
+        run: |
+          xcodebuild -version
+          xcodebuild -list -workspace PurePetsAdmin.xcworkspace
+      - name: Build PurePetsAdmin
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace PurePetsAdmin.xcworkspace \
+            -scheme PurePetsAdmin \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            build | tee /tmp/post-first-refund-xcodebuild.log
