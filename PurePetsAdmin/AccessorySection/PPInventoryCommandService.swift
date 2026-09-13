@@ -185,7 +185,8 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
             requestData["expectedRevision"] = rev
         }
 
-        functions.httpsCallable("validateInventoryChange").call(requestData) { result, error in
+        let boxed = PPSendableRequest(data: requestData)
+        functions.httpsCallable("validateInventoryChange").call(boxed.data) { result, error in
             if let error = error {
                 completion(nil, error)
                 return
@@ -245,7 +246,8 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
         if let nt = notes { payload["notes"] = nt }
         if let rev = expectedRevision { payload["expectedRevision"] = rev }
 
-        functions.httpsCallable("adjustBranchStock").call(["contractVersion": 2, "payload": payload]) { result, error in
+        let boxed = PPSendableRequest(data: ["contractVersion": 2, "payload": payload])
+        functions.httpsCallable("adjustBranchStock").call(boxed.data) { result, error in
             if let error = error {
                 completion(nil, error)
                 return
@@ -296,7 +298,8 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
             "payload": payload
         ]
         if let expectedRevision { requestData["expectedRevision"] = expectedRevision }
-        functions.httpsCallable("validateInventoryChange").call(requestData) { result, error in
+        let boxed = PPSendableRequest(data: requestData)
+        functions.httpsCallable("validateInventoryChange").call(boxed.data) { result, error in
             if let error = error {
                 completion(nil, error)
                 return
@@ -332,7 +335,8 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
         if let bid = branchId, !bid.isEmpty, bid != "main_store" {
             payload["branchId"] = bid
         }
-        functions.httpsCallable("getInventoryCostSummary").call(["payload": payload]) { result, error in
+        let boxed = PPSendableRequest(data: ["payload": payload])
+        functions.httpsCallable("getInventoryCostSummary").call(boxed.data) { result, error in
             if let error = error {
                 completion(nil, error)
                 return
@@ -408,4 +412,8 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
             completion(PetAccessory(dictionary: data, documentID: normalizedProductId), nil)
         }
     }
+}
+
+private struct PPSendableRequest: @unchecked Sendable {
+    let data: [String: Any]
 }

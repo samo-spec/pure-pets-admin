@@ -1514,7 +1514,8 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             "quantityGroups": groupsPayload
         ]
 
-        Functions.functions().httpsCallable("upsertProductCommerce").call(["payload": payload]) { [weak self] result, error in
+        let boxed = PPSendableCommercePayload(dict: ["payload": payload])
+        Functions.functions().httpsCallable("upsertProductCommerce").call(boxed.dict) { [weak self] result, error in
             if let err = error {
                 print("[PPAccessoryEditorView] upsertProductCommerce error:", err.localizedDescription)
                 DispatchQueue.main.async {
@@ -1529,6 +1530,10 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    private struct PPSendableCommercePayload: @unchecked Sendable {
+        let dict: [String: Any]
     }
 
     var groupCost: Double {

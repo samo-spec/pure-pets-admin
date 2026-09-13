@@ -18,6 +18,7 @@ on:
       - PurePetsAdmin/ThirdParty/PPStyles/PPHeroApex.swift
       - PurePetsAdmin/AccessorySection/PPInventoryListView.swift
       - PurePetsAdmin/AccessorySection/PPAccessoryEditorView.swift
+      - PurePetsAdmin/AccessorySection/PPInventoryCommandService.swift
       - PurePetsAdmin/Features/Fulfillment/FulfillmentListView.swift
       - PurePetsAdmin/Features/Delivery/DeliveryListView.swift
       - PurePetsAdmin/ThirdParty/PPImagePicker+Viewer/QBAssetsViewController.m
