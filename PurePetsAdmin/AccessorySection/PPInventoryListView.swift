@@ -906,7 +906,7 @@ enum PPLivePetInventoryService {
         guard let currentUser = Auth.auth().currentUser else {
             throw PPLivePetServiceError.notAuthenticated
         }
-        _ = try? await currentUser.getIDTokenResult(forcingRefresh: false)
+        _ = try? await currentUser.getIDToken(forcingRefresh: false)
         let callable = Functions.functions().httpsCallable(name)
         callable.timeoutInterval = callableTimeout
         do {
@@ -920,7 +920,7 @@ enum PPLivePetInventoryService {
             let isUnauth = (nsError.code == 16 || nsError.code == FunctionsErrorCode.unauthenticated.rawValue) ||
                 nsError.localizedDescription.lowercased().contains("unauthenticated")
             if isUnauth, let currentUser = Auth.auth().currentUser {
-                _ = try? await currentUser.getIDTokenResult(forcingRefresh: true)
+                _ = try? await currentUser.getIDToken(forcingRefresh: true)
                 let retryResult = try await callable.call(boxed.dict)
                 guard let data = retryResult.data as? [String: Any], data["ok"] as? Bool != false else {
                     throw PPLivePetServiceError.invalidResponse

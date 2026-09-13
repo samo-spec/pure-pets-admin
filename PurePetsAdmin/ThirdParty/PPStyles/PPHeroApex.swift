@@ -163,7 +163,6 @@ public final class PPHeroApexView: UIView, UIGestureRecognizerDelegate {
 
     deinit {
         NotificationCenter.default.removeObserver(self)
-        detachTouchTracker()
     }
 
     private func commonInit() {

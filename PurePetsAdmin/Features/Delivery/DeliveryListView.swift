@@ -2163,7 +2163,9 @@ private struct DeliveryDriverDetailSheet: View {
             confirmBlock: { _, didConfirm in
                 guard didConfirm else { return }
                 viewModel.disableDriver(driver.uid) { succeeded in
-                    if succeeded { onDismiss() }
+                    Task { @MainActor in
+                        if succeeded { onDismiss() }
+                    }
                 }
             },
             cancelBlock: nil
@@ -2365,7 +2367,9 @@ private struct DeliveryDriverDetailSheet: View {
 
     private func execute(_ pending: PendingDriverCommand) {
         viewModel.executeDriver(pending) { succeeded in
-            if succeeded { onDismiss() }
+            Task { @MainActor in
+                if succeeded { onDismiss() }
+            }
         }
     }
 
@@ -2530,7 +2534,9 @@ private struct DeliveryDriverInviteSheet: View {
         guard canSubmit else { return }
         identifierFocused = false
         viewModel.inviteDriver(identifier: identifier) { succeeded in
-            if succeeded { onDismiss() }
+            Task { @MainActor in
+                if succeeded { onDismiss() }
+            }
         }
     }
 }

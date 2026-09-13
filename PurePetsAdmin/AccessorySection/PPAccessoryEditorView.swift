@@ -668,7 +668,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.loadMainKinds(forceServer: true)
+            Task { @MainActor in
+                self?.loadMainKinds(forceServer: true)
+            }
         }
     }
 

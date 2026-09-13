@@ -15,6 +15,11 @@ on:
       - PurePetsAdmin/App/PPSessionRestorationGatewayView.swift
       - PurePetsAdmin/BranchSection/PPBranchInventory.swift
       - PurePetsAdmin/Features/Inventory/CycleCountStudioView.swift
+      - PurePetsAdmin/ThirdParty/PPStyles/PPHeroApex.swift
+      - PurePetsAdmin/AccessorySection/PPInventoryListView.swift
+      - PurePetsAdmin/AccessorySection/PPAccessoryEditorView.swift
+      - PurePetsAdmin/Features/Fulfillment/FulfillmentListView.swift
+      - PurePetsAdmin/Features/Delivery/DeliveryListView.swift
       - PurePetsAdmin/ar.lproj/Localizable.strings
       - PurePetsAdmin/en.lproj/Localizable.strings
       - .github/workflows/live-pet-return-confirmation-v2.yml
