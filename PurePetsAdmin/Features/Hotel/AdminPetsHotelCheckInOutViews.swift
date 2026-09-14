@@ -20,7 +20,8 @@ public struct AdminPetsHotelCheckInSheet: View {
     @State private var selectedRoom: AdminHotelAccommodation?
     @State private var verification = AdminHotelCheckInVerification()
     @State private var belongings: [AdminHotelBelongingItem] = []
-    @State private var availableRoomIDs: Set<String>?
+    @State private var availabilitySnapshot: AdminHotelAvailabilitySnapshot?
+    @State private var availabilityErrorMessage: String?
     @State private var isLoadingAvailability = false
     @State private var newBelongingName: String = ""
     @State private var internalNotes: String = ""
@@ -55,35 +56,32 @@ public struct AdminPetsHotelCheckInSheet: View {
         authoritativeCheckInStay?.medicationConfirmationRequired == true
     }
 
+    private var checkInReadiness: AdminHotelCheckInReadiness {
+        AdminHotelCheckInReadinessPolicy.evaluate(
+            hasAuthoritativeStay: authoritativeCheckInStay != nil,
+            petIdentityVerified: verification.petIdentityVerified,
+            vaccinationVerified: verification.vaccinationVerified,
+            healthInspectionCompleted: verification.healthInspectionCompleted,
+            dietConfirmed: verification.dietConfirmed,
+            emergencyContactConfirmed: verification.emergencyContactConfirmed,
+            agreementAcknowledged: verification.agreementAcknowledged,
+            medicationRequired: medicationConfirmationRequired,
+            medicationConfirmed: verification.medicationConfirmed,
+            depositRequired: (reservation.depositMinor ?? 0) > 0,
+            depositSettled: verification.depositSettled
+        )
+    }
+
     private var isCheckInVerificationComplete: Bool {
-        guard authoritativeCheckInStay != nil else { return false }
-        return verification.petIdentityVerified &&
-            verification.vaccinationVerified &&
-            verification.healthInspectionCompleted &&
-            verification.emergencyContactConfirmed &&
-            verification.agreementAcknowledged &&
-            (!medicationConfirmationRequired || verification.medicationConfirmed) &&
-            ((reservation.depositMinor ?? 0) == 0 || verification.depositSettled)
+        checkInReadiness.isComplete
     }
 
     private var completedVerificationCount: Int {
-        var count = 0
-        if verification.petIdentityVerified { count += 1 }
-        if verification.vaccinationVerified { count += 1 }
-        if verification.healthInspectionCompleted { count += 1 }
-        if verification.dietConfirmed { count += 1 }
-        if verification.emergencyContactConfirmed { count += 1 }
-        if verification.agreementAcknowledged { count += 1 }
-        if medicationConfirmationRequired && verification.medicationConfirmed { count += 1 }
-        if (reservation.depositMinor ?? 0) > 0 && verification.depositSettled { count += 1 }
-        return count
+        checkInReadiness.completedCount
     }
 
     private var totalVerificationCount: Int {
-        var total = 6
-        if medicationConfirmationRequired { total += 1 }
-        if (reservation.depositMinor ?? 0) > 0 { total += 1 }
-        return total
+        checkInReadiness.totalCount
     }
 
     public var body: some View {
@@ -98,7 +96,8 @@ public struct AdminPetsHotelCheckInSheet: View {
                     selectedRoom: $selectedRoom,
                     verification: $verification,
                     belongings: $belongings,
-                    availableRoomIDs: availableRoomIDs,
+                    availabilitySnapshot: availabilitySnapshot,
+                    availabilityErrorMessage: availabilityErrorMessage,
                     isLoadingAvailability: isLoadingAvailability,
                     newBelongingName: $newBelongingName,
                     internalNotes: $internalNotes,
@@ -119,7 +118,8 @@ public struct AdminPetsHotelCheckInSheet: View {
                     selectedRoom: $selectedRoom,
                     verification: $verification,
                     belongings: $belongings,
-                    availableRoomIDs: availableRoomIDs,
+                    availabilitySnapshot: availabilitySnapshot,
+                    availabilityErrorMessage: availabilityErrorMessage,
                     isLoadingAvailability: isLoadingAvailability,
                     newBelongingName: $newBelongingName,
                     internalNotes: $internalNotes,
@@ -144,26 +144,28 @@ public struct AdminPetsHotelCheckInSheet: View {
 
     private func loadAvailability() {
         isLoadingAvailability = true
-        availableRoomIDs = nil
+        availabilitySnapshot = nil
+        availabilityErrorMessage = nil
+        selectedRoom = nil
         Task {
             do {
-                availableRoomIDs = try await viewModel.availableAccommodationIDs(for: reservation)
+                availabilitySnapshot = try await viewModel.availabilitySnapshot(for: reservation)
                 autoSuggestAvailableRoom()
             } catch {
-                availableRoomIDs = []
-                viewModel.errorMessage = error.localizedDescription
+                availabilityErrorMessage = error.localizedDescription
             }
             isLoadingAvailability = false
         }
     }
 
     private func autoSuggestAvailableRoom() {
+        let assignableIds = availabilitySnapshot?.assignableIds ?? []
         if let assignedId = reservation.assignedAccommodationId,
-           availableRoomIDs?.contains(assignedId) == true,
+           assignableIds.contains(assignedId),
            let match = viewModel.accommodations.first(where: { $0.id == assignedId }) {
             selectedRoom = match
         } else if let match = viewModel.accommodations.first(where: {
-            availableRoomIDs?.contains($0.id) == true
+            assignableIds.contains($0.id)
         }) {
             selectedRoom = match
         }
@@ -194,7 +196,8 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
     @Binding var selectedRoom: AdminHotelAccommodation?
     @Binding var verification: AdminHotelCheckInVerification
     @Binding var belongings: [AdminHotelBelongingItem]
-    let availableRoomIDs: Set<String>?
+    let availabilitySnapshot: AdminHotelAvailabilitySnapshot?
+    let availabilityErrorMessage: String?
     let isLoadingAvailability: Bool
     @Binding var newBelongingName: String
     @Binding var internalNotes: String
@@ -233,35 +236,44 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
 
             // Scrollable Operational Canvas
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 16) {
+                LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
                     // Critical Error Banner (if any)
                     if let err = viewModel.errorMessage {
                         errorBanner(err)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 12)
                     }
 
                     // Pet Hero Dossier Card
                     iPhoneGuestHeroCard
+                        .padding(.horizontal, 16)
+                        .padding(.top, viewModel.errorMessage == nil ? 12 : 8)
+                        .padding(.bottom, 10)
 
-                    // Live Readiness Telemetry HUD
-                    iPhoneReadinessGaugeCard
+                    // Sticky Readiness Telemetry Section
+                    Section {
+                        VStack(spacing: 16) {
+                            // Room Selection Deck
+                            iPhoneRoomSelectionDeck
 
-                    // Room Selection Deck
-                    iPhoneRoomSelectionDeck
+                            // Clinical & Operational Verification Cockpit
+                            iPhoneVerificationCockpit
 
-                    // Clinical & Operational Verification Cockpit
-                    iPhoneVerificationCockpit
+                            // Belongings & Inventory Vault
+                            iPhoneBelongingsVault
 
-                    // Belongings & Inventory Vault
-                    iPhoneBelongingsVault
+                            // Arrival & Behavioral Notes
+                            iPhoneNotesStudio
 
-                    // Arrival & Behavioral Notes
-                    iPhoneNotesStudio
-
-                    // Visual spacer to clear the docked bottom bar
-                    Spacer(minLength: 92)
+                            // Visual spacer to clear the docked bottom bar
+                            Spacer(minLength: 92)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 6)
+                    } header: {
+                        stickyReadinessHeader
+                    }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
             }
 
             // Floating Glass Action Bar (Pinned above safe area)
@@ -474,6 +486,19 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    // MARK: - Sticky Readiness Telemetry Header
+    private var stickyReadinessHeader: some View {
+        VStack(spacing: 0) {
+            iPhoneReadinessGaugeCard
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+                .padding(.bottom, 8)
+        }
+        .frame(maxWidth: .infinity)
+        .background(AdminSurface.background)
+        .zIndex(10)
+    }
+
     // MARK: - iPhone Readiness Gauge Card
     private var iPhoneReadinessGaugeCard: some View {
         let progress = totalCount > 0 ? Double(completedCount) / Double(totalCount) : 0
@@ -548,6 +573,7 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.75)
         )
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.25 : 0.04), radius: 8, x: 0, y: 3)
     }
 
     private func statusPill(title: String, isComplete: Bool, icon: String) -> some View {
@@ -598,7 +624,7 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
             }
 
             let availableRooms = viewModel.accommodations.filter {
-                (availableRoomIDs?.contains($0.id) ?? false)
+                (availabilitySnapshot?.assignableIds.contains($0.id) ?? false)
             }
 
             if isLoadingAvailability {
@@ -610,8 +636,16 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
                     }
                     .padding(.vertical, 2)
                 }
+            } else if let availabilityErrorMessage {
+                AdminHotelAvailabilityDiagnosticsBanner(
+                    snapshot: availabilitySnapshot,
+                    errorMessage: availabilityErrorMessage
+                )
             } else if availableRooms.isEmpty {
-                AdminHotelEmptyRoomsBanner()
+                AdminHotelAvailabilityDiagnosticsBanner(
+                    snapshot: availabilitySnapshot,
+                    errorMessage: nil
+                )
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
@@ -1058,7 +1092,8 @@ private struct AdminPetsHotelCheckIn_iPad: View {
     @Binding var selectedRoom: AdminHotelAccommodation?
     @Binding var verification: AdminHotelCheckInVerification
     @Binding var belongings: [AdminHotelBelongingItem]
-    let availableRoomIDs: Set<String>?
+    let availabilitySnapshot: AdminHotelAvailabilitySnapshot?
+    let availabilityErrorMessage: String?
     let isLoadingAvailability: Bool
     @Binding var newBelongingName: String
     @Binding var internalNotes: String
@@ -1442,7 +1477,7 @@ private struct AdminPetsHotelCheckIn_iPad: View {
             }
 
             let availableRooms = viewModel.accommodations.filter {
-                (availableRoomIDs?.contains($0.id) ?? false)
+                (availabilitySnapshot?.assignableIds.contains($0.id) ?? false)
             }
 
             if isLoadingAvailability {
@@ -1451,8 +1486,16 @@ private struct AdminPetsHotelCheckIn_iPad: View {
                     AdminHotelShimmerRoomCard()
                     AdminHotelShimmerRoomCard()
                 }
+            } else if let availabilityErrorMessage {
+                AdminHotelAvailabilityDiagnosticsBanner(
+                    snapshot: availabilitySnapshot,
+                    errorMessage: availabilityErrorMessage
+                )
             } else if availableRooms.isEmpty {
-                AdminHotelEmptyRoomsBanner()
+                AdminHotelAvailabilityDiagnosticsBanner(
+                    snapshot: availabilitySnapshot,
+                    errorMessage: nil
+                )
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 140, maximum: 190), spacing: 10)], spacing: 10) {
                     ForEach(availableRooms) { room in
@@ -2023,29 +2066,113 @@ private struct AdminHotelShimmerRoomCard: View {
     }
 }
 
-private struct AdminHotelEmptyRoomsBanner: View {
+private struct AdminHotelAvailabilityDiagnosticsBanner: View {
+    let snapshot: AdminHotelAvailabilitySnapshot?
+    let errorMessage: String?
+
+    private var accent: Color { errorMessage == nil ? .orange : .red }
+
+    private var title: String {
+        if errorMessage != nil {
+            return Language.get("Hotel_Availability_LoadFailed", alter: "تعذر التحقق من توفر الغرف")
+        }
+        if snapshot?.units.isEmpty == true {
+            return Language.get("Hotel_Availability_NoMatchingType", alter: "لا توجد غرف مطابقة لفئة الحجز")
+        }
+        return Language.get("Hotel_NoAvailableRoomsInWing", alter: "لا توجد غرف قابلة للتسكين خلال الفترة المحددة")
+    }
+
+    private var subtitle: String {
+        if let errorMessage, !errorMessage.isEmpty { return errorMessage }
+        if snapshot?.units.isEmpty == true {
+            return Language.get(
+                "Hotel_Availability_NoMatchingType_Help",
+                alter: "راجع فئة الجناح المحجوز أو غيّر الفئة من إدارة الحجز قبل التسكين."
+            )
+        }
+        return Language.get(
+            "Hotel_Availability_Rejections_Help",
+            alter: "الغرف موجودة، لكن قواعد التسكين الحالية تمنع استخدامها لهذا النزيل. الأسباب موضحة أدناه."
+        )
+    }
+
+    private var rejectedUnits: [AdminHotelAvailabilityUnit] {
+        Array((snapshot?.rejectedUnits ?? []).prefix(4))
+    }
+
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(.orange)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(Language.get("Hotel_NoAvailableRoomsInWing", alter: "لا توجد غرف قابلة للتسكين في هذا الجناح خلال الفترة المحددة"))
-                    .font(Font.custom("Beiruti-Bold", size: 13.5))
-                    .foregroundStyle(AdminSurface.primaryText)
-                Text(Language.get("Hotel_EmptyRooms_Help", alter: "تأكد من عدم وجود تضارب في التواريخ أو قم بترقية الجناح من شاشة إدارة الغرف"))
-                    .font(Font.custom("Beiruti-Regular", size: 12))
-                    .foregroundStyle(AdminSurface.secondaryText)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: errorMessage == nil ? "exclamationmark.triangle.fill" : "wifi.exclamationmark")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(accent)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(Font.custom("Beiruti-Bold", size: 13.5))
+                        .foregroundStyle(AdminSurface.primaryText)
+                    Text(subtitle)
+                        .font(Font.custom("Beiruti-Regular", size: 12))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+
+            if errorMessage == nil {
+                ForEach(rejectedUnits) { unit in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "bed.double.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(accent)
+                            .frame(width: 16, height: 16)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(unit.code.isEmpty ? unit.name : unit.code)
+                                .font(Font.custom("Beiruti-Bold", size: 12.5))
+                                .foregroundStyle(AdminSurface.primaryText)
+                            Text(unit.rejections.map(reasonText).joined(separator: " • "))
+                                .font(Font.custom("Beiruti-Regular", size: 11.5))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(accent.opacity(0.09), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.orange.opacity(0.25), lineWidth: 0.75)
+                .strokeBorder(accent.opacity(0.24), lineWidth: 0.75)
         )
+        .accessibilityElement(children: .combine)
+    }
+
+    private func reasonText(_ code: String) -> String {
+        switch code {
+        case "unit_inactive":
+            return Language.get("Hotel_Availability_Reason_Inactive", alter: "الغرفة غير مفعلة")
+        case "unit_out_of_service":
+            return Language.get("Hotel_Availability_Reason_OutOfService", alter: "الغرفة خارج الخدمة")
+        case "unit_not_assignable":
+            return Language.get("Hotel_Availability_Reason_Status", alter: "حالة الغرفة لا تسمح بالتسكين")
+        case "species_not_allowed":
+            return Language.get("Hotel_Availability_Reason_Species", alter: "نوع الحيوان غير مسموح لهذه الغرفة")
+        case "branch_mismatch":
+            return Language.get("Hotel_Availability_Reason_Branch", alter: "الغرفة تابعة لفرع آخر")
+        case "capacity_exceeded":
+            return Language.get("Hotel_Availability_Reason_Capacity", alter: "السعة ممتلئة خلال الفترة")
+        case "sharing_not_allowed":
+            return Language.get("Hotel_Availability_Reason_Sharing", alter: "المشاركة غير مسموحة")
+        case "double_booked":
+            return Language.get("Hotel_Availability_Reason_Booking", alter: "يوجد حجز متعارض خلال الفترة")
+        case "unit_not_found":
+            return Language.get("Hotel_Availability_Reason_Missing", alter: "سجل الغرفة غير موجود")
+        default:
+            return code.replacingOccurrences(of: "_", with: " ")
+        }
     }
 }
 

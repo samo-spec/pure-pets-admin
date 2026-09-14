@@ -91,7 +91,7 @@ struct CommunityAdminRecord: Identifiable {
 
     var title: String {
         let resolved = string(
-            "pet.name", "pet.displayName", "name", "title", "organizationName",
+            "pet.name", "pet.displayName", "petName", "name", "title", "organizationName",
             "moderationCaseId", "alertType", "type", "action"
         )
         return resolved.isEmpty ? shortID : resolved
@@ -120,11 +120,27 @@ struct CommunityAdminRecord: Identifiable {
     }
 
     var primaryMediaURL: URL? {
-        let candidates = [
+        mediaURL(
             "media.0.thumbnailUrl", "media.0.previewUrl", "media.0.url",
             "pet.media.0.thumbnailUrl", "pet.media.0.url", "logo.thumbnailUrl", "logo.url"
-        ]
-        for path in candidates {
+        )
+    }
+
+    var missingComparisonMediaURL: URL? {
+        mediaURL(
+            "comparison.missing.media.0.thumbnailUrl", "comparison.missing.media.0.previewUrl", "comparison.missing.media.0.url",
+            "comparison.missing.pet.media.0.thumbnailUrl", "comparison.missing.pet.media.0.url"
+        )
+    }
+
+    var foundComparisonMediaURL: URL? {
+        mediaURL(
+            "comparison.found.media.0.thumbnailUrl", "comparison.found.media.0.previewUrl", "comparison.found.media.0.url"
+        )
+    }
+
+    private func mediaURL(_ paths: String...) -> URL? {
+        for path in paths {
             if let raw = indexedValue(path) as? String,
                let url = URL(string: raw),
                ["https", "http"].contains(url.scheme?.lowercased() ?? "") {
@@ -196,6 +212,70 @@ private enum CommunityAdminDateFormatter {
         }
         return nil
     }
+}
+
+struct CommunityAdminDossierEvidence: Identifiable {
+    let id: String
+    private let rawID: String
+    private let values: [String: Any]
+
+    init?(values: [String: Any], sectionID: String) {
+        guard let rawID = values["id"] as? String,
+              !rawID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        self.id = "\(sectionID):\(rawID)"
+        self.rawID = rawID
+        self.values = values
+    }
+
+    private func value(_ path: String) -> Any? {
+        var current: Any = values
+        for component in path.split(separator: ".").map(String.init) {
+            if let dictionary = current as? [String: Any], let next = dictionary[component] {
+                current = next
+            } else if let dictionary = current as? NSDictionary, let next = dictionary[component] {
+                current = next
+            } else {
+                return nil
+            }
+        }
+        return current
+    }
+
+    private func string(_ paths: String...) -> String {
+        for path in paths {
+            if let raw = value(path) as? String {
+                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { return trimmed }
+            }
+        }
+        return ""
+    }
+
+    var title: String {
+        let resolved = string("type", "action", "eventType", "contextType", "targetType", "pet.name", "organizationName", "name")
+        return resolved.isEmpty ? rawID : resolved
+    }
+
+    var subtitle: String {
+        let resolved = string("description", "latestReason", "reason", "statusReason", "contextId", "targetId", "actorUid", "userId")
+        return resolved.isEmpty ? rawID : resolved
+    }
+
+    var status: String { string("status", "verificationStatus", "moderationStatus").lowercased() }
+
+    var timestampText: String {
+        CommunityAdminDateFormatter.text(value("updatedAt") ?? value("createdAt") ?? value("timestamp") ?? value("lastMessageAt"))
+    }
+}
+
+struct CommunityAdminDossierSection: Identifiable {
+    let id: String
+    let titleKey: String
+    let fallbackTitle: String
+    let symbol: String
+    let evidence: [CommunityAdminDossierEvidence]
 }
 
 enum CommunityAdminLane: String, CaseIterable, Identifiable {
@@ -495,6 +575,8 @@ struct CommunityConfigurationDraft {
     var enabledRegions = ""
     var defaultMissingRadiusKM = 20.0
     var autoMatchThreshold = 0.58
+    var mediumMatchConfidenceThreshold = 0.68
+    var highMatchConfidenceThreshold = 0.82
     var rolloutStage = "internal"
     var listingExpirationDays = 90.0
     var caseExpirationDays = 90.0
@@ -540,6 +622,11 @@ struct CommunityConfigurationDraft {
         enabledRegions = (dictionary["enabledRegionCodes"] as? [String] ?? []).joined(separator: ", ")
         defaultMissingRadiusKM = number("defaultMissingRadiusKm", fallback: 20)
         autoMatchThreshold = number("autoMatchThreshold", fallback: 0.58)
+        let calibration = dictionary["matchConfidenceCalibration"] as? [String: Any] ?? [:]
+        let requestedMediumThreshold = (calibration["mediumMin"] as? NSNumber)?.doubleValue ?? (calibration["mediumMin"] as? Double) ?? 0.68
+        mediumMatchConfidenceThreshold = max(0.5, min(0.94, requestedMediumThreshold))
+        let requestedHighThreshold = (calibration["highMin"] as? NSNumber)?.doubleValue ?? (calibration["highMin"] as? Double) ?? 0.82
+        highMatchConfidenceThreshold = max(mediumMatchConfidenceThreshold + 0.01, min(0.99, requestedHighThreshold))
         rolloutStage = dictionary["rolloutStage"] as? String ?? "internal"
 
         let taxonomy = dictionary["taxonomy"] as? [String: Any] ?? [:]
@@ -572,16 +659,15 @@ struct CommunityConfigurationDraft {
         }.sorted { $0.key < $1.key }
     }
 
-    private func codeList(_ text: String, max: Int, uppercased: Bool = true) -> [String] {
+    private func codeList(_ text: String, max limit: Int, uppercased: Bool = true) -> [String] {
         var seen = Set<String>()
-        return text
+        let items = text
             .components(separatedBy: CharacterSet(charactersIn: ",\n;"))
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .map { uppercased ? $0.uppercased() : $0 }
             .filter { seen.insert($0).inserted }
-            .prefix(max)
-            .map(String.init)
+        return Array(items.prefix(limit))
     }
 
     func validationError() -> String? {
@@ -644,6 +730,10 @@ struct CommunityConfigurationDraft {
             "enabledRegionCodes": codeList(enabledRegions, max: 100),
             "defaultMissingRadiusKm": max(1, min(100, defaultMissingRadiusKM)),
             "autoMatchThreshold": max(0.5, min(0.95, autoMatchThreshold)),
+            "matchConfidenceCalibration": [
+                "mediumMin": max(0.5, min(0.94, mediumMatchConfidenceThreshold)),
+                "highMin": max(max(0.51, mediumMatchConfidenceThreshold + 0.01), min(0.99, highMatchConfidenceThreshold))
+            ],
             "rolloutStage": rolloutStage,
             "taxonomy": [
                 "species": species.compactMap { $0.payload(includesSpecies: false) },
@@ -720,7 +810,9 @@ final class AdminCommunityService {
         ownerUID: String = "",
         limit: Int = 60,
         includePreciseLocation: Bool = false,
-        includePrivateOrganization: Bool = false
+        includePrivateOrganization: Bool = false,
+        includeSensitiveMatchEvidence: Bool = false,
+        privateAccessReason: String = ""
     ) async throws -> [String: Any] {
         var payload: [String: Any] = ["action": action, "limit": max(1, min(200, limit))]
         if !status.isEmpty { payload["status"] = status }
@@ -728,6 +820,32 @@ final class AdminCommunityService {
         if !ownerUID.isEmpty { payload["ownerUid"] = ownerUID }
         if includePreciseLocation { payload["includePreciseLocation"] = true }
         if includePrivateOrganization { payload["includePrivateOrganization"] = true }
+        if includeSensitiveMatchEvidence { payload["includeSensitiveMatchEvidence"] = true }
+        if includePreciseLocation || includePrivateOrganization || includeSensitiveMatchEvidence {
+            payload["privateAccessReason"] = privateAccessReason
+        }
+        return try await call(name: "communityAdminRead", payload: payload)
+    }
+
+    func dossier(
+        targetType: String,
+        targetID: String,
+        includePreciseLocation: Bool,
+        includePrivateOrganization: Bool,
+        includeSensitiveMatchEvidence: Bool = false,
+        privateAccessReason: String = ""
+    ) async throws -> [String: Any] {
+        var payload: [String: Any] = [
+            "action": "dossier",
+            "targetType": targetType,
+            "targetId": targetID
+        ]
+        if includePreciseLocation { payload["includePreciseLocation"] = true }
+        if includePrivateOrganization { payload["includePrivateOrganization"] = true }
+        if includeSensitiveMatchEvidence { payload["includeSensitiveMatchEvidence"] = true }
+        if includePreciseLocation || includePrivateOrganization || includeSensitiveMatchEvidence {
+            payload["privateAccessReason"] = privateAccessReason
+        }
         return try await call(name: "communityAdminRead", payload: payload)
     }
 
@@ -750,11 +868,11 @@ final class AdminCommunityService {
         return try await mutation(name: "communityModerationCommand", action: "\(targetType):\(action)", payload: payload)
     }
 
-    func updateConfiguration(_ draft: CommunityConfigurationDraft) async throws -> [String: Any] {
+    func updateConfiguration(_ draft: CommunityConfigurationDraft, reason: String) async throws -> [String: Any] {
         try await mutation(
             name: "communityConfigurationCommand",
             action: "save",
-            payload: ["expectedVersion": draft.version, "configuration": draft.payload()]
+            payload: ["expectedVersion": draft.version, "configuration": draft.payload(), "reason": reason]
         )
     }
 
@@ -844,6 +962,8 @@ final class AdminCommunityWorkspaceStore: ObservableObject {
     @Published private(set) var selectedLane: CommunityAdminLane = .overview
     @Published private(set) var records: [CommunityAdminRecord] = []
     @Published var selectedRecord: CommunityAdminRecord?
+    @Published private(set) var dossierRecord: CommunityAdminRecord?
+    @Published private(set) var dossierSections: [CommunityAdminDossierSection] = []
     @Published private(set) var overview: [String: Int] = [:]
     @Published private(set) var attentionRecords: [CommunityAdminRecord] = []
     @Published private(set) var diagnostics: [String: Any] = [:]
@@ -852,19 +972,24 @@ final class AdminCommunityWorkspaceStore: ObservableObject {
     @Published var configuration = CommunityConfigurationDraft()
     @Published private(set) var isLoading = false
     @Published private(set) var isLoadingMore = false
+    @Published private(set) var isLoadingDossier = false
     @Published private(set) var isMutating = false
     @Published private(set) var hasMore = false
     @Published private(set) var errorMessage: String?
+    @Published private(set) var dossierErrorMessage: String?
     @Published private(set) var successMessage: String?
     @Published var statusFilter = ""
     @Published var searchText = ""
     @Published var includePreciseLocation = false
     @Published var includePrivateOrganization = false
+    @Published var includeSensitiveMatchEvidence = false
+    @Published var privateAccessReason = ""
 
     let session: AdminSession
     private let service: AdminCommunityService
     private var nextCursor: String?
     private var loadGeneration = UUID()
+    private var dossierGeneration = UUID()
 
     init(session: AdminSession, service: AdminCommunityService = .shared) {
         self.session = session
@@ -883,6 +1008,10 @@ final class AdminCommunityWorkspaceStore: ObservableObject {
 
     var canViewPreciseLocation: Bool {
         session.hasPermission("community.location.precise") && session.hasGlobalScope
+    }
+
+    var canViewSensitiveMatchEvidence: Bool {
+        session.hasPermission("community.match.sensitive_evidence") && session.hasGlobalScope
     }
 
     var canResolveModeration: Bool {
@@ -915,6 +1044,8 @@ final class AdminCommunityWorkspaceStore: ObservableObject {
         searchText = ""
         includePreciseLocation = false
         includePrivateOrganization = false
+        includeSensitiveMatchEvidence = false
+        privateAccessReason = ""
         Task { await load(reset: true) }
     }
 
@@ -933,8 +1064,14 @@ final class AdminCommunityWorkspaceStore: ObservableObject {
             errorMessage = AdminCommunityServiceError.permissionDenied.localizedDescription
             return
         }
+        guard !enabled || hasPrivateAccessReason else {
+            includePreciseLocation = false
+            errorMessage = privateAccessReasonRequiredMessage
+            return
+        }
         includePreciseLocation = enabled
         await load(reset: true)
+        refreshOpenDossierIfNeeded()
     }
 
     func setPrivateOrganization(_ enabled: Bool) async {
@@ -943,8 +1080,90 @@ final class AdminCommunityWorkspaceStore: ObservableObject {
             errorMessage = AdminCommunityServiceError.permissionDenied.localizedDescription
             return
         }
+        guard !enabled || hasPrivateAccessReason else {
+            includePrivateOrganization = false
+            errorMessage = privateAccessReasonRequiredMessage
+            return
+        }
         includePrivateOrganization = enabled
         await load(reset: true)
+        refreshOpenDossierIfNeeded()
+    }
+
+    func setSensitiveMatchEvidence(_ enabled: Bool) async {
+        guard canViewSensitiveMatchEvidence else {
+            includeSensitiveMatchEvidence = false
+            errorMessage = AdminCommunityServiceError.permissionDenied.localizedDescription
+            return
+        }
+        guard !enabled || hasPrivateAccessReason else {
+            includeSensitiveMatchEvidence = false
+            errorMessage = privateAccessReasonRequiredMessage
+            return
+        }
+        includeSensitiveMatchEvidence = enabled
+        if selectedLane == .matches { await load(reset: true) }
+        refreshOpenDossierIfNeeded()
+    }
+
+    private var hasPrivateAccessReason: Bool {
+        privateAccessReason.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3
+    }
+
+    private var privateAccessReasonRequiredMessage: String {
+        Language.get(
+            "Community_Admin_Private_Access_Reason_Required",
+            alter: "اكتب سببًا واضحًا قبل إظهار البيانات الخاصة."
+        )
+    }
+
+    private func refreshOpenDossierIfNeeded() {
+        if let selectedRecord { loadDossier(selectedRecord) }
+    }
+
+    func openDossier(_ record: CommunityAdminRecord) {
+        selectedRecord = record
+        loadDossier(record)
+    }
+
+    func loadDossier(_ record: CommunityAdminRecord) {
+        guard let targetType = dossierTargetType(for: record.source) else {
+            dossierErrorMessage = AdminCommunityServiceError.server(
+                Language.get("Community_Admin_Error_Unsupported", alter: "هذه العملية غير مدعومة لهذا السجل.")
+            ).localizedDescription
+            return
+        }
+        let generation = UUID()
+        dossierGeneration = generation
+        dossierRecord = nil
+        dossierSections = []
+        dossierErrorMessage = nil
+        isLoadingDossier = true
+        let shouldIncludePreciseLocation = includePreciseLocation && canViewPreciseLocation &&
+            [.missingCases, .foundReports, .sightings].contains(record.source)
+        let shouldIncludePrivateOrganization = includePrivateOrganization &&
+            session.hasPermission("community.organization.verify") && session.hasGlobalScope &&
+            record.source == .organizations
+        let shouldIncludeSensitiveMatchEvidence = includeSensitiveMatchEvidence &&
+            canViewSensitiveMatchEvidence && record.source == .matches
+        Task {
+            await fetchDossier(
+                record,
+                targetType: targetType,
+                includePreciseLocation: shouldIncludePreciseLocation,
+                includePrivateOrganization: shouldIncludePrivateOrganization,
+                includeSensitiveMatchEvidence: shouldIncludeSensitiveMatchEvidence,
+                generation: generation
+            )
+        }
+    }
+
+    func dismissDossier() {
+        dossierGeneration = UUID()
+        dossierRecord = nil
+        dossierSections = []
+        dossierErrorMessage = nil
+        isLoadingDossier = false
     }
 
     func perform(
@@ -984,6 +1203,7 @@ final class AdminCommunityWorkspaceStore: ObservableObject {
             }
             successMessage = Language.get("Community_Admin_Action_Succeeded", alter: "تم تنفيذ العملية وتسجيلها في سجل التدقيق.")
             selectedRecord = nil
+            dismissDossier()
             await load(reset: true)
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             return true
@@ -994,9 +1214,15 @@ final class AdminCommunityWorkspaceStore: ObservableObject {
         }
     }
 
-    func saveConfiguration() async -> Bool {
+    func saveConfiguration(reason: String) async -> Bool {
         if let validationError = configuration.validationError() {
             errorMessage = validationError
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return false
+        }
+        let normalizedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedReason.count >= 3 else {
+            errorMessage = Language.get("Community_Admin_Config_Reason_Required", alter: "اكتب سببًا واضحًا لتغيير إعدادات المجتمع.")
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             return false
         }
@@ -1005,7 +1231,7 @@ final class AdminCommunityWorkspaceStore: ObservableObject {
         successMessage = nil
         defer { isMutating = false }
         do {
-            _ = try await service.updateConfiguration(configuration)
+            _ = try await service.updateConfiguration(configuration, reason: normalizedReason)
             successMessage = Language.get("Community_Admin_Config_Saved", alter: "حُفظت إعدادات المجتمع بأمان.")
             await load(reset: true)
             UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -1096,7 +1322,9 @@ final class AdminCommunityWorkspaceStore: ObservableObject {
                     status: statusFilter,
                     cursor: reset ? nil : nextCursor,
                     includePreciseLocation: includePreciseLocation,
-                    includePrivateOrganization: includePrivateOrganization
+                    includePrivateOrganization: includePrivateOrganization,
+                    includeSensitiveMatchEvidence: includeSensitiveMatchEvidence && selectedLane == .matches,
+                    privateAccessReason: privateAccessReason.trimmingCharacters(in: .whitespacesAndNewlines)
                 )
                 guard generation == loadGeneration else { return }
                 let page = Self.recordArray(response["items"], source: selectedLane)
@@ -1110,15 +1338,51 @@ final class AdminCommunityWorkspaceStore: ObservableObject {
         }
     }
 
+    private func fetchDossier(
+        _ sourceRecord: CommunityAdminRecord,
+        targetType: String,
+        includePreciseLocation: Bool,
+        includePrivateOrganization: Bool,
+        includeSensitiveMatchEvidence: Bool,
+        generation: UUID
+    ) async {
+        defer {
+            if generation == dossierGeneration { isLoadingDossier = false }
+        }
+        do {
+            let response = try await service.dossier(
+                targetType: targetType,
+                targetID: sourceRecord.contextID,
+                includePreciseLocation: includePreciseLocation,
+                includePrivateOrganization: includePrivateOrganization,
+                includeSensitiveMatchEvidence: includeSensitiveMatchEvidence,
+                privateAccessReason: privateAccessReason.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            guard generation == dossierGeneration else { return }
+            guard let canonicalRecord = CommunityAdminRecord(
+                values: Self.dictionary(response["record"]),
+                source: sourceRecord.source
+            ) else {
+                throw AdminCommunityServiceError.invalidResponse
+            }
+            dossierRecord = canonicalRecord
+            dossierSections = Self.dossierSections(response["related"])
+        } catch {
+            guard generation == dossierGeneration else { return }
+            dossierErrorMessage = error.localizedDescription
+        }
+    }
+
     private func loadOperationsMap(generation: UUID) async throws {
         let precise = includePreciseLocation && canViewPreciseLocation
         let sightingsAllowed = canAccess(.sightings)
-        let missing = try await service.read(action: "missing_cases", limit: 200, includePreciseLocation: precise)
-        let found = try await service.read(action: "found_reports", limit: 200, includePreciseLocation: precise)
+        let reason = privateAccessReason.trimmingCharacters(in: .whitespacesAndNewlines)
+        let missing = try await service.read(action: "missing_cases", limit: 200, includePreciseLocation: precise, privateAccessReason: reason)
+        let found = try await service.read(action: "found_reports", limit: 200, includePreciseLocation: precise, privateAccessReason: reason)
         var all = Self.recordArray(missing["items"], source: .missingCases)
             + Self.recordArray(found["items"], source: .foundReports)
         if sightingsAllowed {
-            let sightings = try await service.read(action: "sightings", limit: 200, includePreciseLocation: precise)
+            let sightings = try await service.read(action: "sightings", limit: 200, includePreciseLocation: precise, privateAccessReason: reason)
             all += Self.recordArray(sightings["items"], source: .sightings)
         }
         guard generation == loadGeneration else { return }
@@ -1137,6 +1401,22 @@ final class AdminCommunityWorkspaceStore: ObservableObject {
         case .moderation: return "moderation_case"
         case .media: return "media_asset"
         case .organizations: return "organization"
+        default: return nil
+        }
+    }
+
+    private func dossierTargetType(for lane: CommunityAdminLane) -> String? {
+        switch lane {
+        case .adoptionListings: return "adoption_listing"
+        case .adoptionApplications: return "adoption_application"
+        case .missingCases: return "missing_case"
+        case .foundReports: return "found_report"
+        case .sightings: return "sighting"
+        case .matches: return "match"
+        case .moderation: return "moderation_case"
+        case .media: return "media_asset"
+        case .organizations: return "organization"
+        case .alerts: return "operational_alert"
         default: return nil
         }
     }
@@ -1164,6 +1444,45 @@ final class AdminCommunityWorkspaceStore: ObservableObject {
             dictionaries = []
         }
         return dictionaries.compactMap { CommunityAdminRecord(values: $0, source: source) }
+    }
+
+    private static func dossierSections(_ value: Any?) -> [CommunityAdminDossierSection] {
+        let related = dictionary(value)
+        let definitions: [(String, String, String, String)] = [
+            ("events", "Community_Admin_Dossier_Events", "سجل الأحداث", "clock.arrow.circlepath"),
+            ("applications", "Community_Admin_Dossier_Applications", "طلبات مرتبطة", "doc.text.fill"),
+            ("listing", "Community_Admin_Dossier_Listing", "إعلان مرتبط", "heart.fill"),
+            ("sightings", "Community_Admin_Dossier_Sightings", "مشاهدات مرتبطة", "eye.fill"),
+            ("matches", "Community_Admin_Dossier_Matches", "مطابقات مرتبطة", "sparkles"),
+            ("missingCase", "Community_Admin_Dossier_MissingCase", "حالة فقدان مرتبطة", "magnifyingglass"),
+            ("foundReport", "Community_Admin_Dossier_FoundReport", "بلاغ العثور المرتبط", "hand.raised.fill"),
+            ("reportedTarget", "Community_Admin_Dossier_ReportedTarget", "المحتوى المُبلّغ عنه", "exclamationmark.shield.fill"),
+            ("moderationCases", "Community_Admin_Dossier_Moderation", "سجل الإشراف", "shield.lefthalf.filled"),
+            ("userReports", "Community_Admin_Dossier_Reports", "بلاغات المستخدمين", "flag.fill"),
+            ("audit", "Community_Admin_Dossier_Audit", "أثر التدقيق", "checkmark.seal.fill"),
+            ("conversations", "Community_Admin_Dossier_Conversations", "بيانات المحادثات", "bubble.left.and.bubble.right.fill")
+        ]
+        return definitions.compactMap { definition in
+            let dictionaries: [[String: Any]]
+            if let typed = related[definition.0] as? [[String: Any]] {
+                dictionaries = typed
+            } else if let raw = related[definition.0] as? [NSDictionary] {
+                dictionaries = raw.compactMap { $0 as? [String: Any] }
+            } else {
+                dictionaries = []
+            }
+            let evidence = dictionaries.compactMap {
+                CommunityAdminDossierEvidence(values: $0, sectionID: definition.0)
+            }
+            guard !evidence.isEmpty else { return nil }
+            return CommunityAdminDossierSection(
+                id: definition.0,
+                titleKey: definition.1,
+                fallbackTitle: definition.2,
+                symbol: definition.3,
+                evidence: evidence
+            )
+        }
     }
 
     private static func deduplicated(_ records: [CommunityAdminRecord]) -> [CommunityAdminRecord] {
@@ -1322,9 +1641,13 @@ private enum CommunityAdminActionPolicy {
                     .init("request_changes", "Community_Admin_Action_RequestChanges", "طلب تعديلات", symbol: "pencil.and.list.clipboard", tone: .warning),
                     .init("restrict", "Community_Admin_Action_Restrict", "تقييد المحتوى", symbol: "lock.shield.fill", tone: .warning),
                     .init("hide", "Community_Admin_Action_Hide", "إخفاء المحتوى", symbol: "eye.slash.fill", tone: .warning),
-                    .init("remove", "Community_Admin_Action_Remove", "إزالة المحتوى", symbol: "trash.fill", tone: .destructive),
-                    .init("suspend_owner", "Community_Admin_Action_SuspendOwner", "تعليق صاحب المحتوى", symbol: "person.crop.circle.badge.xmark", tone: .destructive)
+                    .init("remove", "Community_Admin_Action_Remove", "إزالة المحتوى", symbol: "trash.fill", tone: .destructive)
                 ]
+                if session.hasPermission("users.restrictions.manage") {
+                    actions.append(
+                        .init("suspend_owner", "Community_Admin_Action_SuspendOwner", "تعليق صاحب المحتوى", symbol: "person.crop.circle.badge.xmark", tone: .destructive)
+                    )
+                }
                 if status != "escalated" {
                     actions.append(.init("escalate", "Community_Admin_Action_Escalate", "تصعيد", symbol: "exclamationmark.arrow.triangle.2.circlepath", tone: .warning))
                 }
@@ -1418,7 +1741,9 @@ struct AdminCommunityControlCenterView: View {
         .background(AdminSurface.background.ignoresSafeArea())
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .task { await store.start() }
-        .sheet(item: $store.selectedRecord) { record in
+        .sheet(item: $store.selectedRecord, onDismiss: {
+            store.dismissDossier()
+        }) { record in
             AdminCommunityRecordDetailView(record: record, store: store)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
@@ -1682,6 +2007,7 @@ private struct AdminCommunityOverviewView: View {
                 diagnosticChip("openAlerts", "Community_Admin_Diagnostic_OpenAlerts", "تنبيهات مفتوحة", .red)
                 diagnosticChip("failedNotifications", "Community_Admin_Diagnostic_Notifications", "إشعارات متعثرة", .orange)
                 diagnosticChip("stalledMedia", "Community_Admin_Diagnostic_Media", "وسائط عالقة", .purple)
+                diagnosticChip("processingMigrations", "Community_Admin_Diagnostic_Migrations", "عمليات ترحيل قيد التنفيذ", .indigo)
                 diagnosticChip("configurationVersion", "Community_Admin_Diagnostic_Config", "إصدار الإعدادات", .blue)
             }
             if let rollout = store.diagnostics["rolloutStage"] as? String {
@@ -1722,7 +2048,7 @@ private struct AdminCommunityOverviewView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 10) {
                         ForEach(store.attentionRecords) { record in
-                            Button { store.selectedRecord = record } label: {
+                            Button { store.openDossier(record) } label: {
                                 VStack(alignment: .leading, spacing: 8) {
                                     Label(record.title, systemImage: record.source.symbol)
                                         .font(AdminType.calloutBold)
@@ -1821,7 +2147,7 @@ private struct AdminCommunityQueueView: View {
                     ) {
                         ForEach(store.filteredRecords) { record in
                             AdminCommunityRecordCard(record: record) {
-                                store.selectedRecord = record
+                                store.openDossier(record)
                             }
                         }
                     }
@@ -1936,9 +2262,48 @@ private struct AdminCommunityQueueView: View {
                     .accessibilityHint(Language.get("Community_Admin_Precise_Audit_Hint", alter: "تُسجل هذه القراءة في سجل التدقيق"))
                 }
 
+                if store.selectedLane == .matches, store.canViewSensitiveMatchEvidence {
+                    Button {
+                        Task { await store.setSensitiveMatchEvidence(!store.includeSensitiveMatchEvidence) }
+                    } label: {
+                        filterChip(
+                            title: store.includeSensitiveMatchEvidence
+                                ? Language.get("Community_Admin_Sensitive_Evidence_On", alter: "الأدلة الحساسة ظاهرة")
+                                : Language.get("Community_Admin_Sensitive_Evidence_Off", alter: "إظهار أدلة المطابقة الحساسة"),
+                            symbol: store.includeSensitiveMatchEvidence ? "lock.open.fill" : "lock.fill"
+                        )
+                    }
+                    .accessibilityHint(Language.get("Community_Admin_Sensitive_Evidence_Audit_Hint", alter: "تتطلب هذه القراءة سببًا وتُسجل في سجل التدقيق"))
+                }
+
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            if ([.missingCases, .foundReports, .sightings].contains(store.selectedLane) && store.canViewPreciseLocation) ||
+                (store.selectedLane == .organizations && store.session.hasPermission("community.organization.verify")) ||
+                (store.selectedLane == .matches && store.canViewSensitiveMatchEvidence) {
+                VStack(alignment: .leading, spacing: 7) {
+                    Label(
+                        Language.get("Community_Admin_Private_Access_Reason", alter: "سبب الوصول الخاص"),
+                        systemImage: "checkmark.shield.fill"
+                    )
+                    .font(AdminType.captionBold)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    TextField(
+                        Language.get("Community_Admin_Private_Access_Reason_Placeholder", alter: "اشرح سبب الحاجة إلى هذه البيانات"),
+                        text: $store.privateAccessReason,
+                        axis: .vertical
+                    )
+                    .font(AdminType.callout)
+                    .lineLimit(1...3)
+                    .padding(.horizontal, 13)
+                    .frame(minHeight: 46)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
+                    .accessibilityHint(Language.get("Community_Admin_Sensitive_Evidence_Audit_Hint", alter: "تتطلب هذه القراءة سببًا وتُسجل في سجل التدقيق"))
+                }
+            }
         }
     }
 
@@ -2129,7 +2494,7 @@ private struct AdminCommunityOperationsMapView: View {
                     ForEach(clusters) { cluster in
                         Annotation("", coordinate: cluster.coordinate, anchor: .center) {
                             Button {
-                                if cluster.records.count == 1 { store.selectedRecord = cluster.records[0] }
+                                if cluster.records.count == 1 { store.openDossier(cluster.records[0]) }
                                 else { selectedCluster = cluster }
                             } label: {
                                 ZStack {
@@ -2229,6 +2594,28 @@ private struct AdminCommunityOperationsMapView: View {
                     }
                 }
             }
+            if store.canViewPreciseLocation {
+                VStack(alignment: .leading, spacing: 7) {
+                    Label(
+                        Language.get("Community_Admin_Private_Access_Reason", alter: "سبب الوصول الخاص"),
+                        systemImage: "checkmark.shield.fill"
+                    )
+                    .font(AdminType.captionBold)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    TextField(
+                        Language.get("Community_Admin_Private_Access_Reason_Placeholder", alter: "اشرح سبب الحاجة إلى هذه البيانات"),
+                        text: $store.privateAccessReason,
+                        axis: .vertical
+                    )
+                    .font(AdminType.callout)
+                    .lineLimit(1...3)
+                    .padding(.horizontal, 13)
+                    .frame(minHeight: 46)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
+                    .accessibilityHint(Language.get("Community_Admin_Sensitive_Evidence_Audit_Hint", alter: "تتطلب هذه القراءة سببًا وتُسجل في سجل التدقيق"))
+                }
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
@@ -2264,6 +2651,7 @@ private struct AdminCommunityMapClusterSheet: View {
                     ForEach(cluster.records) { record in
                         AdminCommunityRecordCard(record: record) {
                             selectedRecord = record
+                            store.loadDossier(record)
                         }
                     }
                 }
@@ -2279,7 +2667,9 @@ private struct AdminCommunityMapClusterSheet: View {
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .sheet(item: $selectedRecord) { record in
+        .sheet(item: $selectedRecord, onDismiss: {
+            store.dismissDossier()
+        }) { record in
             AdminCommunityRecordDetailView(record: record, store: store)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
@@ -2385,6 +2775,7 @@ private struct AdminCommunityConfigurationView: View {
     @ObservedObject var store: AdminCommunityWorkspaceStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showingSaveConfirmation = false
+    @State private var configurationReason = ""
 
     var body: some View {
         ScrollView {
@@ -2415,6 +2806,19 @@ private struct AdminCommunityConfigurationView: View {
                     notificationTemplatesEditor
                 }
 
+                configurationSection(Language.get("Community_Admin_Config_Reason", alter: "سبب التغيير"), symbol: "text.bubble") {
+                    TextField(
+                        Language.get("Community_Admin_Config_Reason_Placeholder", alter: "اشرح سبب هذا التغيير التشغيلي"),
+                        text: $configurationReason,
+                        axis: .vertical
+                    )
+                    .lineLimit(2...5)
+                    .textInputAutocapitalization(.sentences)
+                    .padding(13)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .accessibilityLabel(Language.get("Community_Admin_Config_Reason", alter: "سبب التغيير"))
+                }
+
                 Button {
                     showingSaveConfirmation = true
                 } label: {
@@ -2436,7 +2840,11 @@ private struct AdminCommunityConfigurationView: View {
         .alert(Language.get("Community_Admin_Config_Confirm_Title", alter: "تطبيق إعدادات جديدة؟"), isPresented: $showingSaveConfirmation) {
             Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
             Button(Language.get("Community_Admin_Config_Apply", alter: "تطبيق")) {
-                Task { _ = await store.saveConfiguration() }
+                Task {
+                    if await store.saveConfiguration(reason: configurationReason) {
+                        configurationReason = ""
+                    }
+                }
             }
         } message: {
             Text(Language.get("Community_Admin_Config_Confirm_Body", alter: "سيتم التحقق من الإصدار والقيم على الخادم ثم تسجيل التغيير في سجل التدقيق."))
@@ -2540,6 +2948,22 @@ private struct AdminCommunityConfigurationView: View {
                 Slider(value: $store.configuration.autoMatchThreshold, in: 0.5...0.95, step: 0.01)
                     .tint(AdminSurface.primary)
             }
+            confidenceThreshold(
+                Language.get("Community_Admin_Config_MatchMediumConfidence", alter: "حد الثقة المتوسط"),
+                value: $store.configuration.mediumMatchConfidenceThreshold,
+                range: 0.5...0.94
+            )
+            .onChange(of: store.configuration.mediumMatchConfidenceThreshold) { medium in
+                store.configuration.highMatchConfidenceThreshold = max(
+                    store.configuration.highMatchConfidenceThreshold,
+                    min(0.99, medium + 0.01)
+                )
+            }
+            confidenceThreshold(
+                Language.get("Community_Admin_Config_MatchHighConfidence", alter: "حد الثقة المرتفع"),
+                value: $store.configuration.highMatchConfidenceThreshold,
+                range: 0.51...0.99
+            )
             Picker(Language.get("Community_Admin_Config_ApplicationPolicy", alter: "سلطة اختيار المتبني"), selection: $store.configuration.applicationPolicy) {
                 Text(Language.get("Community_Admin_Config_OwnerManaged", alter: "صاحب الإعلان")).tag("owner_managed")
                 Text(Language.get("Community_Admin_Config_OrgManaged", alter: "المنظمة")).tag("organization_managed")
@@ -2795,6 +3219,20 @@ private struct AdminCommunityConfigurationView: View {
             }
         }
     }
+
+    private func confidenceThreshold(_ title: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(title)
+                    .font(AdminType.callout)
+                Spacer()
+                Text(value.wrappedValue.formatted(.percent.precision(.fractionLength(0))))
+                    .font(AdminType.calloutBold.monospacedDigit())
+            }
+            Slider(value: value, in: range, step: 0.01)
+                .tint(AdminSurface.primary)
+        }
+    }
 }
 
 // MARK: - Record dossier and mutation confirmation
@@ -2803,20 +3241,41 @@ private struct AdminCommunityRecordDetailView: View {
     let record: CommunityAdminRecord
     @ObservedObject var store: AdminCommunityWorkspaceStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var intent: CommunityAdminActionDescriptor?
+
+    private var currentRecord: CommunityAdminRecord {
+        guard let dossierRecord = store.dossierRecord,
+              dossierRecord.id == record.id,
+              dossierRecord.source == record.source else {
+            return record
+        }
+        return dossierRecord
+    }
 
     private var actions: [CommunityAdminActionDescriptor] {
         guard store.session.hasGlobalScope else { return [] }
-        return CommunityAdminActionPolicy.actions(for: record, session: store.session)
+        return CommunityAdminActionPolicy.actions(for: currentRecord, session: store.session)
     }
 
     var body: some View {
+        let record = currentRecord
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     identityCard
                     lifecycleCard
+                    if record.source == .matches {
+                        matchComparisonCard
+                    }
                     domainFacts
+                    if store.isLoadingDossier {
+                        dossierLoadingCard
+                    } else if let dossierErrorMessage = store.dossierErrorMessage {
+                        dossierErrorCard(dossierErrorMessage)
+                    } else if !store.dossierSections.isEmpty {
+                        dossierEvidence
+                    }
                     if record.source == .adoptionApplications, !applicationAnswerRows.isEmpty {
                         applicationAnswersCard
                     }
@@ -2861,7 +3320,9 @@ private struct AdminCommunityRecordDetailView: View {
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
+    @ViewBuilder
     private var identityCard: some View {
+        let record = currentRecord
         HStack(alignment: .top, spacing: 14) {
             Group {
                 if let url = record.primaryMediaURL {
@@ -2898,7 +3359,9 @@ private struct AdminCommunityRecordDetailView: View {
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
     }
 
+    @ViewBuilder
     private var dossierPlaceholder: some View {
+        let record = currentRecord
         ZStack {
             AdminSurface.primary.opacity(0.1)
             Image(systemName: record.source.symbol)
@@ -2907,7 +3370,9 @@ private struct AdminCommunityRecordDetailView: View {
         }
     }
 
+    @ViewBuilder
     private var lifecycleCard: some View {
+        let record = currentRecord
         VStack(alignment: .leading, spacing: 12) {
             Label(Language.get("Community_Admin_Lifecycle", alter: "الحالة ودقة التزامن"), systemImage: "arrow.triangle.2.circlepath")
                 .font(AdminType.headline)
@@ -2964,7 +3429,116 @@ private struct AdminCommunityRecordDetailView: View {
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
     }
 
+    private var matchComparisonCard: some View {
+        let record = currentRecord
+        return VStack(alignment: .leading, spacing: 14) {
+            Label(Language.get("Community_Admin_Match_Comparison", alter: "مقارنة التطابق"), systemImage: "rectangle.split.2x1.fill")
+                .font(AdminType.headline)
+                .foregroundStyle(AdminSurface.primaryText)
+            Text(Language.get("Community_Admin_Match_Comparison_Hint", alter: "قارن الصور والعلامات المميزة قبل اتخاذ القرار. تبقى المواقع والمعرّفات الخاصة محمية."))
+                .font(AdminType.caption)
+                .foregroundStyle(AdminSurface.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(spacing: 12) {
+                        comparisonSide(
+                            title: Language.get("Community_Admin_Match_MissingPet", alter: "الحيوان المفقود"),
+                            name: record.string("comparison.missing.pet.name", "comparison.missing.pet.displayName"),
+                            detail: record.string("comparison.missing.appearance.distinctiveMarks", "comparison.missing.description"),
+                            mediaURL: record.missingComparisonMediaURL,
+                            tint: .orange
+                        )
+                        comparisonSide(
+                            title: Language.get("Community_Admin_Match_FoundReport", alter: "بلاغ العثور"),
+                            name: record.string("comparison.found.appearance.breed", "comparison.found.appearance.speciesId"),
+                            detail: record.string("comparison.found.appearance.distinctiveMarks", "comparison.found.description"),
+                            mediaURL: record.foundComparisonMediaURL,
+                            tint: .teal
+                        )
+                    }
+                } else {
+                    HStack(alignment: .top, spacing: 12) {
+                        comparisonSide(
+                            title: Language.get("Community_Admin_Match_MissingPet", alter: "الحيوان المفقود"),
+                            name: record.string("comparison.missing.pet.name", "comparison.missing.pet.displayName"),
+                            detail: record.string("comparison.missing.appearance.distinctiveMarks", "comparison.missing.description"),
+                            mediaURL: record.missingComparisonMediaURL,
+                            tint: .orange
+                        )
+                        comparisonSide(
+                            title: Language.get("Community_Admin_Match_FoundReport", alter: "بلاغ العثور"),
+                            name: record.string("comparison.found.appearance.breed", "comparison.found.appearance.speciesId"),
+                            detail: record.string("comparison.found.appearance.distinctiveMarks", "comparison.found.description"),
+                            mediaURL: record.foundComparisonMediaURL,
+                            tint: .teal
+                        )
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
+    }
+
+    private func comparisonSide(
+        title: String,
+        name: String,
+        detail: String,
+        mediaURL: URL?,
+        tint: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Group {
+                if let mediaURL {
+                    AsyncImage(url: mediaURL) { phase in
+                        if case .success(let image) = phase {
+                            image.resizable().scaledToFill()
+                        } else if case .failure = phase {
+                            comparisonPlaceholder(tint: tint)
+                        } else {
+                            ProgressView().tint(tint)
+                        }
+                    }
+                } else {
+                    comparisonPlaceholder(tint: tint)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 150, maxHeight: 180)
+            .background(AdminSurface.control)
+            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+            Text(title)
+                .font(AdminType.captionBold)
+                .foregroundStyle(tint)
+            Text(name.isEmpty ? Language.get("Community_Admin_Value_Unknown", alter: "غير متاح") : name)
+                .font(AdminType.calloutBold)
+                .foregroundStyle(AdminSurface.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            if !detail.isEmpty {
+                Text(detail)
+                    .font(AdminType.caption)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func comparisonPlaceholder(tint: Color) -> some View {
+        ZStack {
+            tint.opacity(0.09)
+            Image(systemName: "photo.on.rectangle.angled")
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(tint)
+                .accessibilityHidden(true)
+        }
+    }
+
     private var detailFacts: [(String, String)] {
+        let record = currentRecord
         var facts: [(String, String)] = []
         func add(_ key: String, _ fallback: String, _ value: String) {
             guard !value.isEmpty else { return }
@@ -2988,6 +3562,9 @@ private struct AdminCommunityRecordDetailView: View {
         }
         if let distance = record.decimal("distanceKm") {
             add("Community_Admin_Field_Distance", "المسافة", "\(distance.formatted(.number.precision(.fractionLength(1)))) \(Language.get("Community_Admin_Kilometers", alter: "كم"))")
+        }
+        if let hours = record.decimal("timeDeltaHours") {
+            add("Community_Admin_Field_TimeDelta", "الفارق الزمني", "\(hours.formatted(.number.precision(.fractionLength(1)))) \(Language.get("Community_Admin_Hours", alter: "ساعة"))")
         }
         for (key, localization, fallback) in [
             ("applicationCount", "Community_Admin_Field_Applications", "الطلبات"),
@@ -3029,6 +3606,7 @@ private struct AdminCommunityRecordDetailView: View {
     }
 
     private var applicationAnswerRows: [(String, String)] {
+        let record = currentRecord
         func dictionary(_ value: Any?) -> [String: Any] {
             value as? [String: Any] ?? (value as? NSDictionary) as? [String: Any] ?? [:]
         }
@@ -3075,6 +3653,90 @@ private struct AdminCommunityRecordDetailView: View {
             if !label.isEmpty, !value.isEmpty { rows.append((label, value)) }
         }
         return rows
+    }
+
+    private var dossierLoadingCard: some View {
+        HStack(spacing: 12) {
+            ProgressView().tint(AdminSurface.primary)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(Language.get("Community_Admin_Dossier_Loading", alter: "جارٍ تحميل الأدلة المرتبطة…"))
+                    .font(AdminType.calloutBold)
+                    .foregroundStyle(AdminSurface.primaryText)
+                Text(Language.get("Community_Admin_Dossier_Loading_Hint", alter: "يطلب التطبيق ملفًا خادميًا محدودًا ومحميًا بالصلاحيات."))
+                    .font(AdminType.caption)
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .background(AdminSurface.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.primary.opacity(0.18), lineWidth: 0.8))
+        .accessibilityElement(children: .combine)
+    }
+
+    private func dossierErrorCard(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: 11) {
+            Label(Language.get("Community_Admin_Dossier_Unavailable", alter: "تعذر تحميل الأدلة المرتبطة"), systemImage: "exclamationmark.triangle.fill")
+                .font(AdminType.headline)
+                .foregroundStyle(AdminSurface.crimson)
+            Text(message)
+                .font(AdminType.callout)
+                .foregroundStyle(AdminSurface.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                store.loadDossier(currentRecord)
+            } label: {
+                Label(Language.get("Community_Admin_Dossier_Retry", alter: "إعادة المحاولة"), systemImage: "arrow.clockwise")
+                    .font(AdminType.captionBold)
+                    .foregroundStyle(AdminSurface.primary)
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(16)
+        .background(AdminSurface.crimson.opacity(0.06), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.crimson.opacity(0.2), lineWidth: 0.8))
+    }
+
+    private var dossierEvidence: some View {
+        ForEach(store.dossierSections) { section in
+            VStack(alignment: .leading, spacing: 12) {
+                Label(Language.get(section.titleKey, alter: section.fallbackTitle), systemImage: section.symbol)
+                    .font(AdminType.headline)
+                    .foregroundStyle(AdminSurface.primaryText)
+                ForEach(Array(section.evidence.enumerated()), id: \.element.id) { index, evidence in
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text(evidence.title)
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if !evidence.subtitle.isEmpty, evidence.subtitle != evidence.title {
+                            Text(evidence.subtitle)
+                                .font(AdminType.caption)
+                                .foregroundStyle(AdminSurface.secondaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
+                        HStack(spacing: 8) {
+                            if !evidence.status.isEmpty {
+                                AdminCommunityStatusBadge(status: evidence.status, compact: true)
+                            }
+                            if !evidence.timestampText.isEmpty {
+                                Label(evidence.timestampText, systemImage: "clock")
+                                    .font(AdminType.caption)
+                                    .foregroundStyle(AdminSurface.secondaryText)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .combine)
+                    if index < section.evidence.count - 1 { Divider().overlay(AdminSurface.hairline) }
+                }
+            }
+            .padding(16)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
+        }
     }
 
     private func locationCard(_ coordinate: CLLocationCoordinate2D) -> some View {
@@ -3402,8 +4064,15 @@ private struct AdminCommunityErrorBanner: View {
 private struct AdminCommunityEmptyState: View {
     let symbol: String
     let title: String
-    let body: String
+    let message: String
     let action: () -> Void
+
+    init(symbol: String, title: String, body message: String, action: @escaping () -> Void) {
+        self.symbol = symbol
+        self.title = title
+        self.message = message
+        self.action = action
+    }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -3416,7 +4085,7 @@ private struct AdminCommunityEmptyState: View {
                 .font(AdminType.headline)
                 .foregroundStyle(AdminSurface.primaryText)
                 .multilineTextAlignment(.center)
-            Text(body)
+            Text(message)
                 .font(AdminType.callout)
                 .foregroundStyle(AdminSurface.secondaryText)
                 .multilineTextAlignment(.center)
@@ -3523,6 +4192,10 @@ private enum CommunityAdminValueFormatter {
         append("Community_Admin_Field_Address2", "تكملة العنوان", address["line2"])
         append("Community_Admin_Field_City", "المدينة", address["city"])
         append("Community_Admin_Field_District", "المنطقة", address["district"])
+        append("Community_Admin_Field_MissingMicrochip", "شريحة الحيوان المفقود", dictionary["missingMicrochipId"])
+        append("Community_Admin_Field_MissingRingTag", "حلقة الحيوان المفقود", dictionary["missingRingTag"])
+        append("Community_Admin_Field_FoundMicrochip", "شريحة الحيوان الموجود", dictionary["foundMicrochipId"])
+        append("Community_Admin_Field_FoundRingTag", "حلقة الحيوان الموجود", dictionary["foundRingTag"])
         return output
     }
 }

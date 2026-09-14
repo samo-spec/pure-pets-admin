@@ -448,23 +448,19 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         }
     }
 
-    public func availableAccommodationIDs(for reservation: AdminHotelReservation) async throws -> Set<String> {
+    public func availabilitySnapshot(for reservation: AdminHotelReservation) async throws -> AdminHotelAvailabilitySnapshot {
         guard let branchId = currentBranchId else {
             throw AdminPetsHotelError.operationFailed(
                 Language.get("Hotel_Err_BranchRequired", alter: "اختر فرعاً لعرض عمليات الفندق.")
             )
         }
-        let units = try await AdminPetsHotelService.shared.fetchAvailability(
+        return try await AdminPetsHotelService.shared.fetchAvailability(
             branchId: branchId,
             arrivalAt: reservation.checkInDate,
             departureAt: reservation.checkOutDate,
             species: reservation.petSpecies,
             accommodationTypeId: reservation.accommodationTypeId.isEmpty ? nil : reservation.accommodationTypeId
         )
-        return Set(units.compactMap { unit in
-            guard unit["assignable"] as? Bool == true else { return nil }
-            return validIdentifier(unit["accommodationId"])
-        })
     }
 
     // MARK: - Authoritative Operations via Cloud Functions Callables
@@ -750,14 +746,29 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         isSubmitting = true
         errorMessage = nil
 
-        var effectiveCustomerUid = customerUid.trimmingCharacters(in: .whitespacesAndNewlines)
-        if effectiveCustomerUid.isEmpty || effectiveCustomerUid.hasPrefix("guest-") {
-            let cleanPhone = customerPhone.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !cleanPhone.isEmpty, let foundUid = await lookupCustomerUidByPhone(cleanPhone) {
-                effectiveCustomerUid = foundUid
-            } else {
-                effectiveCustomerUid = "PUIDPOFFICILAL20262214"
-            }
+        let cleanPhone = customerPhone.trimmingCharacters(in: .whitespacesAndNewlines)
+        let directUid = AdminHotelCustomerIdentityPolicy.resolvedCustomerUid(
+            providedUid: customerUid,
+            lookedUpUid: nil
+        )
+        let lookedUpUid: String?
+        if directUid == nil, !cleanPhone.isEmpty {
+            lookedUpUid = await lookupCustomerUidByPhone(cleanPhone)
+        } else {
+            lookedUpUid = nil
+        }
+
+        guard let effectiveCustomerUid = AdminHotelCustomerIdentityPolicy.resolvedCustomerUid(
+            providedUid: directUid,
+            lookedUpUid: lookedUpUid
+        ) else {
+            isSubmitting = false
+            errorMessage = Language.get(
+                "Hotel_Err_RegisteredCustomerRequired",
+                alter: "يجب اختيار ملف عميل مسجل قبل إنشاء حجز الفندق. لا يمكن ربط الحجز بحساب بديل."
+            )
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return false
         }
 
         let petsPayload: [[String: Any]] = pets.map { draft in

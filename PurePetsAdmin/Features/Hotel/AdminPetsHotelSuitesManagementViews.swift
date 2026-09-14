@@ -720,7 +720,7 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
             allowSharedOccupancy = room.allowSharedOccupancy
             active = room.active
             notes = room.notes ?? ""
-            selectedSpecies = Set(room.allowedSpecies.isEmpty ? [room.wing == .cats ? "cat" : "dog"] : room.allowedSpecies)
+            selectedSpecies = Set(room.allowedSpecies.isEmpty ? AdminHotelSpeciesPolicy.defaultSpecies(forWingRawValue: room.wing.rawValue) : room.allowedSpecies)
         } else {
             selectedWing = .dogs
             selectedTypeId = viewModel.accommodationTypes.first(where: { $0.wing == .dogs })?.id ?? viewModel.accommodationTypes.first?.id ?? ""
@@ -2189,7 +2189,7 @@ public struct AdminPetsHotelAccommodationTypeEditorSheet: View {
             nameAr = t.nameAr
             nameEn = t.nameEn
             selectedWing = t.wing
-            selectedSpecies = Set(t.allowedSpecies.isEmpty ? [t.wing == .cats ? "cat" : "dog"] : t.allowedSpecies)
+            selectedSpecies = Set(t.allowedSpecies.isEmpty ? AdminHotelSpeciesPolicy.defaultSpecies(forWingRawValue: t.wing.rawValue) : t.allowedSpecies)
             defaultCapacity = max(1, t.defaultCapacity)
             nightlyRateMajor = "\(t.nightlyRateMinor / 100)"
             allowSharedOccupancy = t.allowSharedOccupancy

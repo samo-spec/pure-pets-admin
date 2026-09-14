@@ -64,6 +64,7 @@
 		A6C0000A2FA9000100A6C00A /* Services/Session/PPAdminSessionBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = A6C0010B2FA9000100A6C00B /* Services/Session/PPAdminSessionBridge.m */; };
 		A6C0000B2FA9000100A6C00B /* Services/CommandCenter/PPAdminCommandCenterService.m in Sources */ = {isa = PBXBuildFile; fileRef = A6C0010D2FA9000100A6C00D /* Services/CommandCenter/PPAdminCommandCenterService.m */; };
 		A6C0000C2FA9000100A6C00C /* Shared/Routing/PPAdminRouteFactory.m in Sources */ = {isa = PBXBuildFile; fileRef = A6C0010F2FA9000100A6C00F /* Shared/Routing/PPAdminRouteFactory.m */; };
+		A6C0F0022FA9000100A6CF02 /* Features/Hotel/AdminHotelOperationalPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C0F1022FA9000100A6CF02 /* Features/Hotel/AdminHotelOperationalPolicy.swift */; };
 		A6C000312FA9000100A6C031 /* Features/Hotel/AdminPetsHotelModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001312FA9000100A6C031 /* Features/Hotel/AdminPetsHotelModels.swift */; };
 		A6C000322FA9000100A6C032 /* Features/Hotel/AdminPetsHotelViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001322FA9000100A6C032 /* Features/Hotel/AdminPetsHotelViewModel.swift */; };
 		A6C000332FA9000100A6C033 /* Features/Hotel/AdminPetsHotelStayDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001332FA9000100A6C033 /* Features/Hotel/AdminPetsHotelStayDetailSheet.swift */; };
@@ -176,6 +177,7 @@
 		F28AE1372E569026007279F5 /* AppManager.m in Sources */ = {isa = PBXBuildFile; fileRef = F28AE11D2E569026007279F5 /* AppManager.m */; };
 		F28AE1382E569026007279F5 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = F28AE1262E569026007279F5 /* main.m */; };
 		F28AE1392E569026007279F5 /* SceneDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = F28AE12B2E569026007279F5 /* SceneDelegate.m */; };
+		A6C0F0012FA9000100A6CF01 /* AdminPetsHotelDomainPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C0F1012FA9000100A6CF01 /* AdminPetsHotelDomainPolicyTests.swift */; };
 		F28AE13D2E569031007279F5 /* PurePetsAdminTests.m in Sources */ = {isa = PBXBuildFile; fileRef = F28AE13B2E569031007279F5 /* PurePetsAdminTests.m */; };
 		F28AE1412E56903C007279F5 /* PurePetsAdminUITests.m in Sources */ = {isa = PBXBuildFile; fileRef = F28AE13E2E56903C007279F5 /* PurePetsAdminUITests.m */; };
 		F28AE1422E56903C007279F5 /* PurePetsAdminUITestsLaunchTests.m in Sources */ = {isa = PBXBuildFile; fileRef = F28AE13F2E56903C007279F5 /* PurePetsAdminUITestsLaunchTests.m */; };
@@ -467,6 +469,7 @@
 		A6C0010D2FA9000100A6C00D /* Services/CommandCenter/PPAdminCommandCenterService.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Services/CommandCenter/PPAdminCommandCenterService.m; sourceTree = "<group>"; };
 		A6C0010E2FA9000100A6C00E /* Shared/Routing/PPAdminRouteFactory.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Shared/Routing/PPAdminRouteFactory.h; sourceTree = "<group>"; };
 		A6C0010F2FA9000100A6C00F /* Shared/Routing/PPAdminRouteFactory.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Shared/Routing/PPAdminRouteFactory.m; sourceTree = "<group>"; };
+		A6C0F1022FA9000100A6CF02 /* Features/Hotel/AdminHotelOperationalPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Hotel/AdminHotelOperationalPolicy.swift; sourceTree = "<group>"; };
 		A6C001312FA9000100A6C031 /* Features/Hotel/AdminPetsHotelModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Hotel/AdminPetsHotelModels.swift; sourceTree = "<group>"; };
 		A6C001322FA9000100A6C032 /* Features/Hotel/AdminPetsHotelViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Hotel/AdminPetsHotelViewModel.swift; sourceTree = "<group>"; };
 		A6C001332FA9000100A6C033 /* Features/Hotel/AdminPetsHotelStayDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Hotel/AdminPetsHotelStayDetailSheet.swift; sourceTree = "<group>"; };
@@ -643,6 +646,7 @@
 		F28AE1292E569026007279F5 /* PrefixHeader.pch */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PrefixHeader.pch; sourceTree = "<group>"; };
 		F28AE12A2E569026007279F5 /* SceneDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SceneDelegate.h; sourceTree = "<group>"; };
 		F28AE12B2E569026007279F5 /* SceneDelegate.m */ = {isa = PBXFileReference; indentWidth = 5; lastKnownFileType = sourcecode.c.objc; path = SceneDelegate.m; sourceTree = "<group>"; };
+		A6C0F1012FA9000100A6CF01 /* AdminPetsHotelDomainPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminPetsHotelDomainPolicyTests.swift; sourceTree = "<group>"; };
 		F28AE13B2E569031007279F5 /* PurePetsAdminTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PurePetsAdminTests.m; sourceTree = "<group>"; };
 		F28AE13E2E56903C007279F5 /* PurePetsAdminUITests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PurePetsAdminUITests.m; sourceTree = "<group>"; };
 		F28AE13F2E56903C007279F5 /* PurePetsAdminUITestsLaunchTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PurePetsAdminUITestsLaunchTests.m; sourceTree = "<group>"; };
@@ -1325,6 +1329,7 @@
 				A6C001082FA9000100A6C008 /* Features/CommandCenter/AdminCommandCenterScreen.swift */,
 				A6C001092FA9000100A6C009 /* Shared/Routing/AdminRoute.swift */,
 				C537C8DF3ED9402BAAC1B22E /* App/AdminRouteBridges.swift */,
+				A6C0F1022FA9000100A6CF02 /* Features/Hotel/AdminHotelOperationalPolicy.swift */,
 				A6C001312FA9000100A6C031 /* Features/Hotel/AdminPetsHotelModels.swift */,
 				A6C001322FA9000100A6C032 /* Features/Hotel/AdminPetsHotelViewModel.swift */,
 				A6C001332FA9000100A6C033 /* Features/Hotel/AdminPetsHotelStayDetailSheet.swift */,
@@ -1450,6 +1455,7 @@
 		F28AE13C2E569031007279F5 /* PurePetsAdminTests */ = {
 			isa = PBXGroup;
 			children = (
+				A6C0F1012FA9000100A6CF01 /* AdminPetsHotelDomainPolicyTests.swift */,
 				F28AE13B2E569031007279F5 /* PurePetsAdminTests.m */,
 			);
 			path = PurePetsAdminTests;
@@ -2336,6 +2342,7 @@
 				A6C0000A2FA9000100A6C00A /* Services/Session/PPAdminSessionBridge.m in Sources */,
 				A6C0000B2FA9000100A6C00B /* Services/CommandCenter/PPAdminCommandCenterService.m in Sources */,
 				A6C0000C2FA9000100A6C00C /* Shared/Routing/PPAdminRouteFactory.m in Sources */,
+				A6C0F0022FA9000100A6CF02 /* Features/Hotel/AdminHotelOperationalPolicy.swift in Sources */,
 				A6C000312FA9000100A6C031 /* Features/Hotel/AdminPetsHotelModels.swift in Sources */,
 				A6C000322FA9000100A6C032 /* Features/Hotel/AdminPetsHotelViewModel.swift in Sources */,
 				A6C000332FA9000100A6C033 /* Features/Hotel/AdminPetsHotelStayDetailSheet.swift in Sources */,
@@ -2651,6 +2658,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A6C0F0012FA9000100A6CF01 /* AdminPetsHotelDomainPolicyTests.swift in Sources */,
 				F28AE13D2E569031007279F5 /* PurePetsAdminTests.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

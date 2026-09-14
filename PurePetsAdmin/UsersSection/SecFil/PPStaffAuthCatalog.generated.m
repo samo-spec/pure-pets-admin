@@ -9,7 +9,7 @@
 
 NSString * const PPStaffIAMPolicyVersion = @"2.0.0-draft.1";
 NSString * const PPStaffIAMSchemaVersion = @"2.0.0";
-NSString * const PPStaffIAMPolicySHA256 = @"64a4681b3762497a8fe470a39d094e6f59fcefc2efc87d110d6ed4c370788174";
+NSString * const PPStaffIAMPolicySHA256 = @"fb1c9e9df848d08c1985ee846afbf503fb5af13f9e1cfa29c75ecb8f3ad970e7";
 
 #pragma mark - Role Definitions
 
@@ -181,6 +181,7 @@ NSString * const kStaffPermCommunityMissingModerate = @"community.missing.modera
 NSString * const kStaffPermCommunityLocationPrecise = @"community.location.precise";
 NSString * const kStaffPermCommunitySightingReview = @"community.sighting.review";
 NSString * const kStaffPermCommunityMatchReview = @"community.match.review";
+NSString * const kStaffPermCommunityMatchSensitiveEvidence = @"community.match.sensitive_evidence";
 NSString * const kStaffPermCommunityOrganizationVerify = @"community.organization.verify";
 NSString * const kStaffPermCommunityOrganizationSuspend = @"community.organization.suspend";
 NSString * const kStaffPermCommunityModerationReview = @"community.moderation.review";
@@ -371,6 +372,7 @@ NSArray<NSString *> * PPStaffAllPermissionKeys(void) {
             kStaffPermCommunityLocationPrecise,
             kStaffPermCommunitySightingReview,
             kStaffPermCommunityMatchReview,
+            kStaffPermCommunityMatchSensitiveEvidence,
             kStaffPermCommunityOrganizationVerify,
             kStaffPermCommunityOrganizationSuspend,
             kStaffPermCommunityModerationReview,
@@ -682,6 +684,7 @@ NSArray<NSDictionary<NSString *, id> *> * PPStaffPermissionModules(void) {
                    @{ @"key": @"community.location.precise", @"labelEn": @"View precise Community locations", @"labelAr": @"عرض المواقع الدقيقة للمجتمع", @"riskTier": @"T2", @"protected": @NO },
                    @{ @"key": @"community.sighting.review", @"labelEn": @"Review pet sightings", @"labelAr": @"مراجعة مشاهدات الحيوانات", @"riskTier": @"T1", @"protected": @NO },
                    @{ @"key": @"community.match.review", @"labelEn": @"Review possible pet matches", @"labelAr": @"مراجعة المطابقات المحتملة", @"riskTier": @"T1", @"protected": @NO },
+                   @{ @"key": @"community.match.sensitive_evidence", @"labelEn": @"View sensitive Community match evidence", @"labelAr": @"عرض أدلة المطابقة الحساسة في المجتمع", @"riskTier": @"T2", @"protected": @NO },
                    @{ @"key": @"community.organization.verify", @"labelEn": @"Verify Community organizations", @"labelAr": @"توثيق منظمات المجتمع", @"riskTier": @"T2", @"protected": @NO },
                    @{ @"key": @"community.organization.suspend", @"labelEn": @"Restrict or suspend Community organizations", @"labelAr": @"تقييد أو إيقاف منظمات المجتمع", @"riskTier": @"T2", @"protected": @NO },
                    @{ @"key": @"community.moderation.review", @"labelEn": @"View Community moderation", @"labelAr": @"عرض مراجعة المجتمع", @"riskTier": @"T0", @"protected": @NO },
@@ -905,6 +908,7 @@ NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role) {
             kStaffPermCommunityLocationPrecise,
             kStaffPermCommunitySightingReview,
             kStaffPermCommunityMatchReview,
+            kStaffPermCommunityMatchSensitiveEvidence,
             kStaffPermCommunityOrganizationVerify,
             kStaffPermCommunityOrganizationSuspend,
             kStaffPermCommunityModerationReview,
@@ -1000,6 +1004,7 @@ NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role) {
             kStaffPermCommunityLocationPrecise,
             kStaffPermCommunitySightingReview,
             kStaffPermCommunityMatchReview,
+            kStaffPermCommunityMatchSensitiveEvidence,
             kStaffPermCommunityOrganizationVerify,
             kStaffPermCommunityOrganizationSuspend,
             kStaffPermCommunityModerationReview,

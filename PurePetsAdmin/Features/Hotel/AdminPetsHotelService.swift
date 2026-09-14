@@ -744,7 +744,7 @@ public final class AdminPetsHotelService: @unchecked Sendable {
         departureAt: Date,
         species: String,
         accommodationTypeId: String? = nil
-    ) async throws -> [[String: Any]] {
+    ) async throws -> AdminHotelAvailabilitySnapshot {
         var payload: [String: Any] = [
             "branchId": branchId,
             "arrivalAt": ISO8601DateFormatter().string(from: arrivalAt),
@@ -754,8 +754,18 @@ public final class AdminPetsHotelService: @unchecked Sendable {
         if let accommodationTypeId, !accommodationTypeId.isEmpty {
             payload["accommodationTypeId"] = accommodationTypeId
         }
+
         let result = try await callHotelRead(view: "availability", payload: payload)
-        return result["units"] as? [[String: Any]] ?? []
+        guard let rawUnits = result["units"] as? [[String: Any]] else {
+            throw AdminPetsHotelError.invalidResponse
+        }
+        let units = rawUnits.compactMap(AdminHotelAvailabilityUnit.fromDictionary)
+        guard units.count == rawUnits.count else {
+            // Malformed availability must never be presented as "no rooms".
+            // Reception needs a transport/contract error instead of a false empty state.
+            throw AdminPetsHotelError.invalidResponse
+        }
+        return AdminHotelAvailabilitySnapshot(units: units)
     }
 
     @MainActor

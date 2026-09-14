@@ -7019,7 +7019,7 @@ private struct CommandQuickActionsDeck: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var isExpanded: Bool = false
 
-    private var spacing: CGFloat { isRegular ? 12 : 8 }
+    private var spacing: CGFloat { 12 }
 
     private var allDeckItems: [CommandQuickActionItem] {
         let fulfillmentSignal = signals.first { $0.id.contains("fulfillment") }
@@ -9365,7 +9365,7 @@ private struct CommandHotelQuickActionCard: View {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             onTap()
         }) {
-            VStack(alignment: .leading, spacing: isRegular ? 10 : 8) {
+            VStack(alignment: .leading, spacing: 12) {
                 // Header: Symbol Squircle + Counter Telemetry Pill
                 HStack(alignment: .center) {
                     ZStack {

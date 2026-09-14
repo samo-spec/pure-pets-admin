@@ -5010,6 +5010,8 @@ public struct PPInventoryItemDetailView: View {
     @State private var showHistoryUnits: Bool = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.colorScheme) private var colorScheme
 
     init(
@@ -5412,16 +5414,52 @@ public struct PPInventoryItemDetailView: View {
     }
 
     private var topNavigationBarFade: some View {
-        LinearGradient(
-            stops: [
-                .init(color: appForegroundColor, location: 0.0),
-                .init(color: appForegroundColor, location: 0.70),
-                .init(color: appForegroundColor.opacity(0.60), location: 0.85),
-                .init(color: appForegroundColor.opacity(0.0), location: 1.0)
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
+        Group {
+            if reduceTransparency || contrast == .increased {
+                LinearGradient(
+                    stops: [
+                        .init(color: appForegroundColor, location: 0.0),
+                        .init(color: appForegroundColor, location: 0.80),
+                        .init(color: appForegroundColor.opacity(0.0), location: 1.0)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            } else {
+                ZStack {
+                    // 1. Apple hardware-accelerated frosted glass backdrop blur
+                    Rectangle()
+                        .fill(.ultraThinMaterial)
+
+                    // 2. Translucent ambient light sheen (preserves specimen vibrancy underneath)
+                    LinearGradient(
+                        stops: [
+                            .init(color: appForegroundColor.opacity(colorScheme == .dark ? 0.35 : 0.55), location: 0.0),
+                            .init(color: appForegroundColor.opacity(colorScheme == .dark ? 0.18 : 0.30), location: 0.50),
+                            .init(color: appForegroundColor.opacity(0.0), location: 1.0)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                }
+                // 3. Apple optical ease curve mask (smooth quintic progressive fade)
+                .mask(
+                    LinearGradient(
+                        stops: [
+                            .init(color: .black, location: 0.0),
+                            .init(color: .black, location: 0.40),
+                            .init(color: .black.opacity(0.92), location: 0.55),
+                            .init(color: .black.opacity(0.70), location: 0.68),
+                            .init(color: .black.opacity(0.40), location: 0.80),
+                            .init(color: .black.opacity(0.14), location: 0.90),
+                            .init(color: .black.opacity(0.0), location: 1.0)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+            }
+        }
         .ignoresSafeArea(edges: .top)
         .allowsHitTesting(false)
     }
