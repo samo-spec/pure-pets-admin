@@ -14,6 +14,14 @@ struct AdminPetsHotelOperationalPolicyHarness {
         precondition(AdminHotelRatePolicy.resolvedNightlyRate(unitRateMinor: 4200, typeRateMinor: 3500) == 4200)
         precondition(AdminHotelRatePolicy.resolvedNightlyRate(unitRateMinor: nil, typeRateMinor: nil) == nil)
 
+        let billingProjection = AdminHotelBillingProjectionPolicy.resolve([
+            "pricing": ["quotedTotalMinor": NSNumber(value: 12500), "depositMinor": NSNumber(value: 2500)],
+            "billingSummary": ["grandTotalMinor": NSNumber(value: 13000), "settledMinor": NSNumber(value: 5000)]
+        ])
+        precondition(billingProjection.totalMinor == 13000)
+        precondition(billingProjection.settledMinor == 5000)
+        precondition(billingProjection.depositMinor == 2500)
+
         let missingDiet = AdminHotelCheckInReadinessPolicy.evaluate(
             hasAuthoritativeStay: true,
             petIdentityVerified: true,

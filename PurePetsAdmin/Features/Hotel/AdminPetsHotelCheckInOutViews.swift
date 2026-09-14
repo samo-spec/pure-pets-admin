@@ -414,7 +414,7 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
 
                 // Price Tag
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(reservation.formattedTotal)
+                    Text(displayedPriceText)
                         .font(Font.custom("Beiruti-Bold", size: 18))
                         .foregroundStyle(AdminSurface.primary)
                     Text(String(format: Language.get("Hotel_Nights_Format", alter: "%ld ليالٍ"), reservation.numberOfNights))
@@ -453,6 +453,22 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.55), lineWidth: 0.75)
         )
+    }
+
+    private var displayedPriceText: String {
+        if let total = reservation.totalAmountMinor, total > 0 {
+            return reservation.formattedTotal
+        }
+        let rateMinor = selectedRoom?.nightlyRateMinor
+            ?? viewModel.accommodations.first(where: { $0.id == reservation.assignedAccommodationId })?.nightlyRateMinor
+            ?? viewModel.accommodationTypes.first(where: { $0.id == reservation.accommodationTypeId })?.nightlyRateMinor
+            ?? viewModel.accommodationTypes.first(where: { $0.wing == reservation.wing })?.nightlyRateMinor
+
+        if let rateMinor, rateMinor > 0 {
+            let total = Double(rateMinor * max(1, reservation.numberOfNights)) / 100.0
+            return String(format: "%.0f %@", total, Language.get("Currency_QAR", alter: "ر.ق"))
+        }
+        return reservation.formattedTotal
     }
 
     private var petSubtitle: String {
@@ -1429,7 +1445,7 @@ private struct AdminPetsHotelCheckIn_iPad: View {
             }
 
             HStack {
-                Text(reservation.formattedTotal)
+                Text(displayedPriceText)
                     .font(Font.custom("Beiruti-Bold", size: 22))
                     .foregroundStyle(AdminSurface.primary)
                 Spacer()
@@ -1449,6 +1465,22 @@ private struct AdminPetsHotelCheckIn_iPad: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.75)
         )
+    }
+
+    private var displayedPriceText: String {
+        if let total = reservation.totalAmountMinor, total > 0 {
+            return reservation.formattedTotal
+        }
+        let rateMinor = selectedRoom?.nightlyRateMinor
+            ?? viewModel.accommodations.first(where: { $0.id == reservation.assignedAccommodationId })?.nightlyRateMinor
+            ?? viewModel.accommodationTypes.first(where: { $0.id == reservation.accommodationTypeId })?.nightlyRateMinor
+            ?? viewModel.accommodationTypes.first(where: { $0.wing == reservation.wing })?.nightlyRateMinor
+
+        if let rateMinor, rateMinor > 0 {
+            let total = Double(rateMinor * max(1, reservation.numberOfNights)) / 100.0
+            return String(format: "%.0f %@", total, Language.get("Currency_QAR", alter: "ر.ق"))
+        }
+        return reservation.formattedTotal
     }
 
     // MARK: - iPad Right Panel Components
@@ -2185,9 +2217,15 @@ public struct AdminPetsHotelCheckOutSheet: View {
 
     @State private var verification = AdminHotelCheckOutVerification()
     @State private var earlyReason: String = "early_departure_by_owner"
+    @State private var showSettlementSheet: Bool = false
+
+    private var currentStay: AdminHotelStay {
+        viewModel.stays.first(where: { $0.id == stay.id })
+            ?? (viewModel.checkOutModalStay?.id == stay.id ? (viewModel.checkOutModalStay ?? stay) : stay)
+    }
 
     private var isEarly: Bool {
-        Date() < stay.expectedCheckOutTime
+        Date() < currentStay.expectedCheckOutTime
     }
 
     public var body: some View {
@@ -2199,15 +2237,35 @@ public struct AdminPetsHotelCheckOutSheet: View {
                     // Stay Discharge Hero
                     stayDischargeHero
 
+                    // Outstanding Balance Notice Card
+                    if currentStay.outstandingMinor > 0 {
+                        outstandingBalanceCard
+                    }
+
                     // Error Alert Banner
                     if let err = viewModel.errorMessage {
-                        HStack(spacing: 8) {
+                        HStack(spacing: 10) {
                             Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 16))
                                 .foregroundStyle(.red)
                             Text(err)
-                                .font(Font.custom("Beiruti-Medium", size: 13))
+                                .font(Font.custom("Beiruti-Medium", size: 13.5))
                                 .foregroundStyle(.red)
-                            Spacer()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            if currentStay.outstandingMinor > 0 && viewModel.canViewBilling {
+                                Button {
+                                    showSettlementSheet = true
+                                } label: {
+                                    Text(Language.get("Hotel_Settle_Action", alter: "تسوية"))
+                                        .font(Font.custom("Beiruti-Bold", size: 12.5))
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 6)
+                                        .background(Color.red, in: Capsule())
+                                        .foregroundStyle(.white)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
                         }
                         .padding(12)
                         .background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -2246,26 +2304,29 @@ public struct AdminPetsHotelCheckOutSheet: View {
         .background(AdminSurface.background.ignoresSafeArea())
         .navigationBarHidden(true)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .sheet(isPresented: $showSettlementSheet) {
+            AdminHotelQuickSettlementSheet(stay: currentStay, viewModel: viewModel)
+        }
     }
 
     private var checkOutNavBar: some View {
         AdminSovereignNavigationBar(
             title: Language.get("Hotel_Checkout_Title", alter: "تسجيل مغادرة النزيل"),
-            subtitle: "\(stay.petName) • \(stay.roomNumber.isEmpty ? stay.wing.title : stay.roomNumber)",
+            subtitle: "\(currentStay.petName) • \(currentStay.roomNumber.isEmpty ? currentStay.wing.title : currentStay.roomNumber)",
             statusDotColor: Color(red: 0.82, green: 0.15, blue: 0.35),
             isModal: true,
             onBack: { dismiss() }
         ) {
             HStack(spacing: 4) {
-                Image(systemName: stay.wing.icon)
+                Image(systemName: currentStay.wing.icon)
                     .font(.system(size: 11, weight: .bold))
-                Text(stay.wing.title)
+                Text(currentStay.wing.title)
                     .font(Font.custom("Beiruti-Bold", size: 12))
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(stay.wing.tint.opacity(0.15), in: Capsule())
-            .foregroundStyle(stay.wing.tint)
+            .background(currentStay.wing.tint.opacity(0.15), in: Capsule())
+            .foregroundStyle(currentStay.wing.tint)
         }
     }
 
@@ -2281,7 +2342,7 @@ public struct AdminPetsHotelCheckOutSheet: View {
             }
 
             VStack(spacing: 4) {
-                Text(stay.petName)
+                Text(currentStay.petName)
                     .font(Font.custom("Beiruti-Bold", size: 24))
                     .foregroundStyle(AdminSurface.primaryText)
 
@@ -2298,9 +2359,79 @@ public struct AdminPetsHotelCheckOutSheet: View {
         .padding(.top, 12)
     }
 
+    private var outstandingBalanceCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Color.orange.opacity(0.16))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "creditcard.trianglebadge.exclamationmark")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(Color.orange)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(Language.get("Hotel_OutstandingBalance_Notice", alter: "رصيد مالي مستحق على الإقامة"))
+                        .font(Font.custom("Beiruti-Bold", size: 16))
+                        .foregroundStyle(AdminSurface.primaryText)
+                    Text(Language.get("Hotel_OutstandingBalance_ActionHint", alter: "يجب تسوية المبلغ المالي المتبقي قبل تسجيل المغادرة وتسليم النزيل."))
+                        .font(Font.custom("Beiruti-Medium", size: 12.5))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+                Spacer()
+            }
+
+            Divider()
+                .background(Color.orange.opacity(0.25))
+
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("Hotel_Ledger_Balance", alter: "المتبقي للدفع:"))
+                        .font(Font.custom("Beiruti-Medium", size: 12))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    Text(String(format: "%.0f %@", Double(currentStay.outstandingMinor) / 100.0, Language.get("Currency_QAR", alter: "ر.ق")))
+                        .font(Font.custom("Beiruti-Bold", size: 22))
+                        .foregroundStyle(Color.orange)
+                }
+
+                Spacer()
+
+                if viewModel.canViewBilling {
+                    Button {
+                        showSettlementSheet = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "creditcard.fill")
+                                .font(.system(size: 13, weight: .bold))
+                            Text(Language.get("Hotel_SettleBalance_Button", alter: "تسجيل تسوية الرصيد"))
+                                .font(Font.custom("Beiruti-Bold", size: 14))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(Color.orange, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .shadow(color: Color.orange.opacity(0.3), radius: 6, y: 3)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                } else {
+                    Text(Language.get("Hotel_SettleBalance_Restricted", alter: "يرجى مراجعة موظف الحسابات لتسوية الرصيد المتبقي."))
+                        .font(Font.custom("Beiruti-Medium", size: 12))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+            }
+        }
+        .padding(14)
+        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color.orange.opacity(0.35), lineWidth: 1)
+        )
+    }
+
     private var verificationChecklist: some View {
         VStack(spacing: 10) {
-            if stay.belongingCount > 0 {
+            if currentStay.belongingCount > 0 {
                 Toggle(isOn: $verification.belongingsReturned) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(Language.get("Hotel_BelongingsHandedBack", alter: "تسليم كافة الأغراض للمالك"))
@@ -2350,7 +2481,7 @@ public struct AdminPetsHotelCheckOutSheet: View {
 
             Divider()
 
-            if stay.criticalIncidentCount > 0 {
+            if currentStay.criticalIncidentCount > 0 {
                 Toggle(isOn: $verification.incidentsAcknowledged) {
                     Text(Language.get("Hotel_IncidentsAcknowledged", alter: "مراجعة الحوادث والملاحظات المفتوحة"))
                         .font(Font.custom("Beiruti-Bold", size: 15))
@@ -2362,7 +2493,7 @@ public struct AdminPetsHotelCheckOutSheet: View {
                 Divider()
             }
 
-            if stay.pendingMedicationCount > 0 {
+            if currentStay.pendingMedicationCount > 0 {
                 Toggle(isOn: $verification.medicationResolved) {
                     Text(Language.get("Hotel_MedicationResolved", alter: "تسوية جميع مهام الأدوية"))
                         .font(Font.custom("Beiruti-Bold", size: 15))
@@ -2399,46 +2530,60 @@ public struct AdminPetsHotelCheckOutSheet: View {
     }
 
     private var executeDepartureButton: some View {
-        Button {
-            Task {
-                await viewModel.executeCheckOut(
-                    stay: stay,
-                    verification: verification,
-                    earlyReason: isEarly ? earlyReason : nil
+        VStack(spacing: 8) {
+            Button {
+                Task {
+                    await viewModel.executeCheckOut(
+                        stay: currentStay,
+                        verification: verification,
+                        earlyReason: isEarly ? earlyReason : nil
+                    )
+                    if viewModel.errorMessage == nil {
+                        dismiss()
+                    }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    if viewModel.isSubmitting {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Image(systemName: Language.isRTL() ? "arrow.left.to.line" : "arrow.right.to.line")
+                            .font(.system(size: 16, weight: .bold))
+                    }
+                    Text(Language.get("Hotel_ConfirmCheckoutButton", alter: "إتمام المغادرة وتسليم النزيل"))
+                        .font(Font.custom("Beiruti-Bold", size: 16))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .background(
+                    viewModel.isSubmitting || !isCheckOutVerificationComplete || !viewModel.canCheckOut
+                        ? Color.gray.opacity(0.4)
+                        : Color(red: 0.82, green: 0.15, blue: 0.35),
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                 )
-                if viewModel.errorMessage == nil {
-                    dismiss()
-                }
+                .shadow(color: Color(red: 0.82, green: 0.15, blue: 0.35).opacity(0.3), radius: 10, y: 4)
             }
-        } label: {
-            HStack(spacing: 8) {
-                if viewModel.isSubmitting {
-                    ProgressView()
-                        .tint(.white)
-                } else {
-                    Image(systemName: Language.isRTL() ? "arrow.left.to.line" : "arrow.right.to.line")
-                        .font(.system(size: 16, weight: .bold))
+            .disabled(viewModel.isSubmitting || !isCheckOutVerificationComplete || !viewModel.canCheckOut)
+            .buttonStyle(PlainButtonStyle())
+
+            if currentStay.outstandingMinor > 0 {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.orange)
+                    Text(Language.get("Hotel_OutstandingBalance_ActionHint", alter: "يجب تسوية المبلغ المالي المتبقي قبل تسجيل المغادرة وتسليم النزيل."))
+                        .font(Font.custom("Beiruti-Medium", size: 12))
+                        .foregroundStyle(AdminSurface.secondaryText)
                 }
-                Text(Language.get("Hotel_ConfirmCheckoutButton", alter: "إتمام المغادرة وتسليم النزيل"))
-                    .font(Font.custom("Beiruti-Bold", size: 16))
+                .padding(.top, 2)
             }
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, minHeight: 52)
-            .background(
-                viewModel.isSubmitting || !isCheckOutVerificationComplete || !viewModel.canCheckOut
-                    ? Color.gray.opacity(0.4)
-                    : Color(red: 0.82, green: 0.15, blue: 0.35),
-                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-            )
-            .shadow(color: Color(red: 0.82, green: 0.15, blue: 0.35).opacity(0.3), radius: 10, y: 4)
         }
-        .disabled(viewModel.isSubmitting || !isCheckOutVerificationComplete || !viewModel.canCheckOut)
-        .buttonStyle(PlainButtonStyle())
     }
 
     private var localizedSpeciesAndBreed: String {
-        let breed = stay.petBreed.trimmingCharacters(in: .whitespacesAndNewlines)
-        let species = localizedSpecies(stay.petSpecies)
+        let breed = currentStay.petBreed.trimmingCharacters(in: .whitespacesAndNewlines)
+        let species = localizedSpecies(currentStay.petSpecies)
         if !breed.isEmpty && !species.isEmpty {
             return "\(species) • \(breed)"
         } else if !species.isEmpty {
@@ -2446,7 +2591,7 @@ public struct AdminPetsHotelCheckOutSheet: View {
         } else if !breed.isEmpty {
             return breed
         } else {
-            return stay.wing.title
+            return currentStay.wing.title
         }
     }
 
@@ -2470,9 +2615,210 @@ public struct AdminPetsHotelCheckOutSheet: View {
         verification.healthCheckCompleted &&
         verification.roomInspectionCompleted &&
         verification.handoverVerified &&
-        (stay.belongingCount == 0 || verification.belongingsReturned) &&
-        (stay.criticalIncidentCount == 0 || verification.incidentsAcknowledged) &&
-        (stay.pendingMedicationCount == 0 || verification.medicationResolved)
+        (currentStay.belongingCount == 0 || verification.belongingsReturned) &&
+        (currentStay.criticalIncidentCount == 0 || verification.incidentsAcknowledged) &&
+        (currentStay.pendingMedicationCount == 0 || verification.medicationResolved) &&
+        currentStay.outstandingMinor == 0
+    }
+}
+
+// MARK: - Quick Stay Settlement Sheet
+@MainActor
+public struct AdminHotelQuickSettlementSheet: View {
+    let stay: AdminHotelStay
+    @ObservedObject var viewModel: AdminPetsHotelViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var selectedMethod: String = "cash"
+    @State private var reference: String = ""
+    @State private var notes: String = ""
+    @State private var isProcessing: Bool = false
+
+    public var body: some View {
+        VStack(spacing: 0) {
+            // Navigation Bar
+            AdminSovereignNavigationBar(
+                title: Language.get("Hotel_Settlement_Title", alter: "تسجيل تسوية رصيد الإقامة"),
+                subtitle: "\(stay.petName) • \(String(format: "%.0f %@", Double(stay.outstandingMinor) / 100.0, Language.get("Currency_QAR", alter: "ر.ق")))",
+                statusDotColor: Color.orange,
+                isModal: true,
+                onBack: { dismiss() }
+            )
+
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 18) {
+                    // Hero amount card
+                    VStack(spacing: 8) {
+                        Text(Language.get("Hotel_Settlement_AmountToPay", alter: "المبلغ المطلوب تسويته:"))
+                            .font(Font.custom("Beiruti-Medium", size: 14))
+                            .foregroundStyle(AdminSurface.secondaryText)
+
+                        Text(String(format: "%.0f %@", Double(stay.outstandingMinor) / 100.0, Language.get("Currency_QAR", alter: "ر.ق")))
+                            .font(Font.custom("Beiruti-Bold", size: 32))
+                            .foregroundStyle(Color.orange)
+
+                        Text("\(stay.petName) • \(stay.customerName)")
+                            .font(Font.custom("Beiruti-Medium", size: 14))
+                            .foregroundStyle(AdminSurface.primaryText)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(20)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.55), lineWidth: 0.8)
+                    )
+
+                    // Error Alert Banner if any
+                    if let err = viewModel.errorMessage {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.red)
+                            Text(err)
+                                .font(Font.custom("Beiruti-Medium", size: 13))
+                                .foregroundStyle(.red)
+                            Spacer()
+                        }
+                        .padding(12)
+                        .background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+
+                    // Payment Method Selection
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(Language.get("Hotel_Settlement_Method", alter: "طريقة الدفع"))
+                            .font(Font.custom("Beiruti-Bold", size: 15))
+                            .foregroundStyle(AdminSurface.primaryText)
+
+                        HStack(spacing: 12) {
+                            methodCard(
+                                method: "cash",
+                                title: Language.get("Hotel_Settlement_Method_Cash", alter: "نقداً (كاش)"),
+                                icon: "banknote.fill"
+                            )
+
+                            methodCard(
+                                method: "card_terminal",
+                                title: Language.get("Hotel_Settlement_Method_Card", alter: "بطاقة / جهاز POS"),
+                                icon: "creditcard.fill"
+                            )
+                        }
+                    }
+                    .padding(16)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.55), lineWidth: 0.8)
+                    )
+
+                    // Reference & Notes Input
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(Language.get("Hotel_Settlement_Reference", alter: "الرقم المرجعي"))
+                            .font(Font.custom("Beiruti-Bold", size: 15))
+                            .foregroundStyle(AdminSurface.primaryText)
+
+                        TextField(Language.get("Hotel_Settlement_RefPlaceholder", alter: "رقم إيصال أو عملية السداد (اختياري)"), text: $reference)
+                            .font(Font.custom("Beiruti-Medium", size: 14))
+                            .padding(12)
+                            .background(AdminSurface.background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.8)
+                            )
+
+                        Text(Language.get("Hotel_Settlement_Notes", alter: "ملاحظات"))
+                            .font(Font.custom("Beiruti-Bold", size: 15))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .padding(.top, 4)
+
+                        TextField(Language.get("Hotel_Settlement_NotesPlaceholder", alter: "ملاحظات إضافية على السداد (اختياري)"), text: $notes)
+                            .font(Font.custom("Beiruti-Medium", size: 14))
+                            .padding(12)
+                            .background(AdminSurface.background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.8)
+                            )
+                    }
+                    .padding(16)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.55), lineWidth: 0.8)
+                    )
+
+                    // Confirm Settlement Button
+                    Button {
+                        Task {
+                            isProcessing = true
+                            let ok = await viewModel.recordSettlement(
+                                stayId: stay.id,
+                                method: selectedMethod,
+                                amountMinor: stay.outstandingMinor,
+                                reference: reference.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : reference,
+                                notes: notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : notes
+                            )
+                            isProcessing = false
+                            if ok {
+                                dismiss()
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            if isProcessing || viewModel.isSubmitting {
+                                ProgressView()
+                                    .tint(.white)
+                            } else {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 16, weight: .bold))
+                            }
+                            Text(Language.get("Hotel_Settlement_ConfirmButton", alter: "تأكيد تسجيل السداد والتسوية"))
+                                .font(Font.custom("Beiruti-Bold", size: 16))
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .background(
+                            isProcessing || viewModel.isSubmitting
+                                ? Color.gray.opacity(0.4)
+                                : Color(red: 0.16, green: 0.72, blue: 0.44),
+                            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        )
+                        .shadow(color: Color(red: 0.16, green: 0.72, blue: 0.44).opacity(0.35), radius: 10, y: 4)
+                    }
+                    .disabled(isProcessing || viewModel.isSubmitting)
+                    .buttonStyle(PlainButtonStyle())
+                }
+                .padding(18)
+            }
+        }
+        .background(AdminSurface.background.ignoresSafeArea())
+        .navigationBarHidden(true)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+
+    private func methodCard(method: String, title: String, icon: String) -> some View {
+        let isSelected = selectedMethod == method
+        return Button {
+            selectedMethod = method
+        } label: {
+            VStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(isSelected ? Color.orange : AdminSurface.secondaryText)
+                Text(title)
+                    .font(Font.custom("Beiruti-Bold", size: 14))
+                    .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminSurface.secondaryText)
+            }
+            .frame(maxWidth: .infinity, minHeight: 70)
+            .background(
+                isSelected ? Color.orange.opacity(0.12) : AdminSurface.background,
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(isSelected ? Color.orange : Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: isSelected ? 1.5 : 0.8)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 

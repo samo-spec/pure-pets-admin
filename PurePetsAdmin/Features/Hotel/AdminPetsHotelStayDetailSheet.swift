@@ -173,6 +173,213 @@ public enum CareFilter: String, CaseIterable, Identifiable {
 }
 
 // =================================================================
+// MARK: - Category-Defining Pet Category & Species Pill
+// =================================================================
+
+public struct AdminPetCategoryPill: View {
+    public enum Mode {
+        case hero       // Prominent, multi-horizon taxonomy card presentation
+        case compact    // Inline chip for lists, tables and summary bars
+        case filter(isSelected: Bool) // Dynamic filter pill with glowing ring and tactile selection
+    }
+
+    public let species: String
+    public let breed: String
+    public let wing: HotelWing
+    public var mode: Mode
+    public var onSelect: (() -> Void)?
+
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var isPressed: Bool = false
+
+    public init(
+        species: String,
+        breed: String = "",
+        wing: HotelWing,
+        mode: Mode = .hero,
+        onSelect: (() -> Void)? = nil
+    ) {
+        self.species = species
+        self.breed = breed
+        self.wing = wing
+        self.mode = mode
+        self.onSelect = onSelect
+    }
+
+    public var resolvedSpeciesText: String {
+        let s = species.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if s == "cat" || s == "قط" || s == "قطة" || s == "cats" {
+            return Language.get("Pet_Cat", alter: "قط")
+        } else if s == "dog" || s == "كلب" || s == "dogs" {
+            return Language.get("Pet_Dog", alter: "كلب")
+        } else if s == "bird" || s == "طير" || s == "طائر" || s == "birds" {
+            return Language.get("Pet_Bird", alter: "طائر")
+        } else if s == "rabbit" || s == "أرنب" || s == "rabbits" {
+            return Language.get("Pet_Rabbit", alter: "أرنب")
+        }
+        return species.isEmpty ? wing.title : species
+    }
+
+    public var resolvedSpeciesIcon: String {
+        let s = species.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if s.contains("cat") || s.contains("قط") { return "cat.fill" }
+        if s.contains("dog") || s.contains("كلب") { return "dog.fill" }
+        if s.contains("bird") || s.contains("طير") || s.contains("طائر") { return "bird.fill" }
+        if s.contains("rabbit") || s.contains("أرنب") || s.contains("hare") { return "hare.fill" }
+        return wing.icon
+    }
+
+    public var cleanBreedText: String {
+        breed.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    public var speciesTint: Color {
+        wing.tint
+    }
+
+    public var body: some View {
+        Group {
+            switch mode {
+            case .hero:
+                heroPillView
+            case .compact:
+                compactPillView
+            case .filter(let isSelected):
+                filterPillView(isSelected: isSelected)
+            }
+        }
+        .scaleEffect(isPressed ? 0.96 : 1.0)
+        .animation(.spring(response: 0.28, dampingFraction: 0.72), value: isPressed)
+    }
+
+    // MARK: - 1. Hero Mode (Multi-Horizon Taxonomic Specimen Capsule)
+    @ViewBuilder
+    private var heroPillView: some View {
+        HStack(spacing: 6) {
+            // Micro-Jewel Lens
+            ZStack {
+                Circle()
+                    .fill(speciesTint.opacity(colorScheme == .dark ? 0.32 : 0.18))
+                    .frame(width: 22, height: 22)
+                Image(systemName: resolvedSpeciesIcon)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(speciesTint)
+            }
+
+            // Primary Taxonomic Species Horizon
+            Text(resolvedSpeciesText)
+                .font(PPBrandFont.bold(size: 12))
+                .foregroundStyle(AdminSurface.primaryText)
+
+            // Dynamic Breed Horizon (if present)
+            if !cleanBreedText.isEmpty {
+                Circle()
+                    .fill(speciesTint.opacity(0.65))
+                    .frame(width: 3.5, height: 3.5)
+
+                Text(cleanBreedText)
+                    .font(PPBrandFont.medium(size: 12))
+                    .foregroundStyle(AdminSurface.primaryText.opacity(0.88))
+            }
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4.5)
+        .background(
+            Capsule()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            speciesTint.opacity(colorScheme == .dark ? 0.22 : 0.12),
+                            speciesTint.opacity(colorScheme == .dark ? 0.10 : 0.04)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(
+            Capsule()
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            speciesTint.opacity(0.48),
+                            speciesTint.opacity(0.18)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+        )
+        .shadow(color: speciesTint.opacity(colorScheme == .dark ? 0.25 : 0.07), radius: 4, y: 1.5)
+    }
+
+    // MARK: - 2. Compact Mode (Inline Taxonomy Tag)
+    @ViewBuilder
+    private var compactPillView: some View {
+        HStack(spacing: 4.5) {
+            Image(systemName: resolvedSpeciesIcon)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(speciesTint)
+
+            Text(cleanBreedText.isEmpty ? resolvedSpeciesText : "\(resolvedSpeciesText) • \(cleanBreedText)")
+                .font(PPBrandFont.bold(size: 11))
+                .foregroundStyle(AdminSurface.primaryText)
+        }
+        .padding(.horizontal, 7.5)
+        .padding(.vertical, 3.5)
+        .background(speciesTint.opacity(0.12), in: Capsule())
+        .overlay(
+            Capsule()
+                .strokeBorder(speciesTint.opacity(0.32), lineWidth: 0.8)
+        )
+    }
+
+    // MARK: - 3. Filter Mode (Tactile Interactive Multi-Deck Pill)
+    @ViewBuilder
+    private func filterPillView(isSelected: Bool) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            onSelect?()
+        } label: {
+            HStack(spacing: 5) {
+                ZStack {
+                    Circle()
+                        .fill(isSelected ? Color.white.opacity(0.24) : speciesTint.opacity(0.14))
+                        .frame(width: 20, height: 20)
+                    Image(systemName: resolvedSpeciesIcon)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(isSelected ? Color.white : speciesTint)
+                }
+
+                Text(wing.title)
+                    .font(PPBrandFont.bold(size: 12.5))
+                    .foregroundStyle(isSelected ? Color.white : AdminSurface.primaryText)
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 6)
+            .background(
+                Capsule()
+                    .fill(isSelected ? speciesTint : AdminSurface.control)
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(
+                        isSelected ? speciesTint.opacity(0.85) : Color(uiColor: .ppSurfaceBorder).opacity(0.55),
+                        lineWidth: isSelected ? 1.2 : 0.8
+                    )
+            )
+            .shadow(
+                color: isSelected ? speciesTint.opacity(0.36) : Color.black.opacity(colorScheme == .dark ? 0.2 : 0.03),
+                radius: isSelected ? 6 : 2,
+                y: isSelected ? 3 : 1
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+// =================================================================
 // MARK: - 1. iPhone Architecture (`iPhonePetsHotelStayDeck`)
 // =================================================================
 
@@ -188,6 +395,7 @@ private struct iPhonePetsHotelStayDeck: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @State private var isStayCopied: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -246,6 +454,7 @@ private struct iPhonePetsHotelStayDeck: View {
             subtitle: "\(activeStay.wing.title) • \(activeStay.roomNumber)",
             statusDotColor: activeStay.guestStatus.color,
             isModal: !isPushMode,
+            customTopSpacing: 0,
             onBack: onBack
         ) {
             HStack(spacing: 8) {
@@ -282,79 +491,208 @@ private struct iPhonePetsHotelStayDeck: View {
         }
     }
 
-    // MARK: - iPhone Species Aura Hero Deck
+    // MARK: - iPhone Species Aura Hero Deck (Reinvented Living Category Sanctuary)
     private var iPhoneSpeciesHeroDeck: some View {
         HStack(spacing: 14) {
-            // Pet Avatar Squircle with layered aura
-            ZStack {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(activeStay.wing.tint.opacity(0.16))
-                    .frame(width: 74, height: 74)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .strokeBorder(activeStay.wing.tint.opacity(0.38), lineWidth: 1.2)
+            // 1. Living Specimen Emblem (Pet Avatar & Status Pulse Gem)
+            ZStack(alignment: .bottomTrailing) {
+                // Ambient Radial Glow Backdrop
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [activeStay.wing.tint.opacity(0.32), Color.clear],
+                            center: .center,
+                            startRadius: 8,
+                            endRadius: 44
+                        )
                     )
+                    .frame(width: 82, height: 82)
+                    .blur(radius: 6)
 
-                Image(systemName: activeStay.wing.icon)
-                    .font(.system(size: 34, weight: .semibold))
-                    .foregroundStyle(activeStay.wing.tint)
-            }
+                // Sculpted Frosted Squircle
+                ZStack {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    activeStay.wing.tint.opacity(colorScheme == .dark ? 0.28 : 0.16),
+                                    activeStay.wing.tint.opacity(colorScheme == .dark ? 0.14 : 0.06)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 76, height: 76)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                .strokeBorder(
+                                    LinearGradient(
+                                        colors: [
+                                            activeStay.wing.tint.opacity(0.55),
+                                            activeStay.wing.tint.opacity(0.18)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1.2
+                                )
+                        )
+                        .shadow(color: activeStay.wing.tint.opacity(colorScheme == .dark ? 0.3 : 0.12), radius: 8, y: 3)
 
-            // Pet Info & Stay Tag
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(activeStay.petName)
-                        .font(PPBrandFont.bold(size: 24))
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(1)
-
-                    // Breed/Species Tag
-                    if !petBreedSpeciesText.isEmpty {
-                        Text(petBreedSpeciesText)
-                            .font(PPBrandFont.medium(size: 11.5))
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2.5)
-                            .background(AdminSurface.surface, in: Capsule())
-                            .foregroundStyle(AdminSurface.secondaryText)
-                    }
+                    // Species / Wing Glyph with micro-gradient
+                    Image(systemName: activeStay.wing.icon)
+                        .font(.system(size: 34, weight: .bold))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [activeStay.wing.tint, activeStay.wing.tint.opacity(0.85)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
                 }
 
-                // Stay Identifier with Tap-to-Copy
+                // Active Stay Living Status Gem
+                ZStack {
+                    Circle()
+                        .fill(AdminSurface.card)
+                        .frame(width: 20, height: 20)
+                        .shadow(color: Color.black.opacity(0.12), radius: 2, y: 1)
+
+                    Circle()
+                        .fill(activeStay.guestStatus.color)
+                        .frame(width: 12, height: 12)
+
+                    Circle()
+                        .fill(Color.white.opacity(0.7))
+                        .frame(width: 4, height: 4)
+                        .offset(x: -2, y: -2)
+                }
+                .offset(x: 3, y: 3)
+            }
+
+            // 2. Pet Identity, Category Pill & Stay Reference Token
+            VStack(alignment: .leading, spacing: 6) {
+                // Pet Name Headline
+                Text(activeStay.petName)
+                    .font(PPBrandFont.bold(size: 23))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+
+                // Reinvented Pet Category & Breed Pill
+                AdminPetCategoryPill(
+                    species: activeStay.petSpecies,
+                    breed: activeStay.petBreed,
+                    wing: activeStay.wing,
+                    mode: .hero
+                )
+
+                // Dossier Stay Identifier with Interactive Haptic Copy
                 Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     UIPasteboard.general.string = resolvedStayNumber
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        isStayCopied = true
+                    }
                     onCopy(Language.get("Hotel_StayCopied", alter: "تم نسخ رقم الإقامة"))
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            isStayCopied = false
+                        }
+                    }
                 } label: {
                     HStack(spacing: 5) {
+                        Image(systemName: isStayCopied ? "checkmark.circle.fill" : "doc.on.doc")
+                            .font(.system(size: 10.5, weight: .bold))
+                            .foregroundStyle(isStayCopied ? Color(red: 0.16, green: 0.72, blue: 0.44) : AdminSurface.secondaryText)
+
                         Text(Language.get("Hotel_StayNo", alter: "رقم الإقامة:"))
-                            .font(PPBrandFont.medium(size: 12))
+                            .font(PPBrandFont.medium(size: 11.5))
                             .foregroundStyle(AdminSurface.secondaryText)
 
                         Text(resolvedStayNumber)
-                            .font(PPBrandFont.bold(size: 12))
-                            .foregroundStyle(AdminSurface.primary)
-
-                        Image(systemName: "doc.on.doc")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(AdminSurface.secondaryText.opacity(0.8))
+                            .font(PPBrandFont.bold(size: 11.5))
+                            .foregroundStyle(isStayCopied ? Color(red: 0.16, green: 0.72, blue: 0.44) : AdminSurface.primary)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 3.5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(isStayCopied ? Color(red: 0.16, green: 0.72, blue: 0.44).opacity(0.12) : AdminSurface.surface)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(isStayCopied ? Color(red: 0.16, green: 0.72, blue: 0.44).opacity(0.3) : Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: 0.7)
+                    )
                 }
                 .buttonStyle(PlainButtonStyle())
             }
 
-            Spacer()
+            Spacer(minLength: 4)
+
+            // 3. Habitat & Room Quick Glance Dock (Eliminates the Dead Space!)
+            VStack(alignment: .trailing, spacing: 5) {
+                // Wing Habitat Badge
+                HStack(spacing: 4) {
+                    Image(systemName: activeStay.wing.icon)
+                        .font(.system(size: 9.5, weight: .bold))
+                    Text(activeStay.wing.title)
+                        .font(PPBrandFont.bold(size: 11))
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(activeStay.wing.tint.opacity(0.14), in: Capsule())
+                .foregroundStyle(activeStay.wing.tint)
+
+                // Room / Suite Key
+                HStack(spacing: 4) {
+                    Image(systemName: "bed.double.fill")
+                        .font(.system(size: 9.5, weight: .semibold))
+                    Text("\(Language.get("Hotel_Suite", alter: "جناح")) \(activeStay.roomNumber)")
+                        .font(PPBrandFont.bold(size: 11))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(AdminSurface.surface, in: Capsule())
+                .foregroundStyle(AdminSurface.secondaryText)
+                .overlay(
+                    Capsule()
+                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.7)
+                )
+            }
         }
         .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(AdminSurface.control)
-                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.22 : 0.04), radius: 8, y: 3)
+            ZStack {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(AdminSurface.control)
+
+                // Ambient chromatic species glow in corner
+                GeometryReader { proxy in
+                    RadialGradient(
+                        colors: [activeStay.wing.tint.opacity(0.08), Color.clear],
+                        center: Language.isRTL() ? .topLeading : .topTrailing,
+                        startRadius: 10,
+                        endRadius: proxy.size.width * 0.75
+                    )
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            }
+            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.22 : 0.04), radius: 8, y: 3)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.55), lineWidth: 0.8)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            Color(uiColor: .ppSurfaceBorder).opacity(0.7),
+                            activeStay.wing.tint.opacity(0.22)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 0.9
+                )
         )
     }
 
@@ -890,6 +1228,7 @@ private struct iPadPetsHotelStayCockpit: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @State private var isStayCopied: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1081,53 +1420,132 @@ private struct iPadPetsHotelStayCockpit: View {
         )
     }
 
-    // MARK: - iPad Left Column: Guest Hero Card
+    // MARK: - iPad Left Column: Guest Hero Card (Reinvented Category Sanctuary)
     private var iPadGuestHeroCard: some View {
         VStack(spacing: 14) {
-            ZStack {
+            // Living Specimen Avatar with glowing aura and status gem
+            ZStack(alignment: .bottomTrailing) {
                 Circle()
-                    .fill(activeStay.wing.tint.opacity(0.16))
-                    .frame(width: 88, height: 88)
-                    .overlay(
-                        Circle()
-                            .strokeBorder(activeStay.wing.tint.opacity(0.38), lineWidth: 1.5)
+                    .fill(
+                        RadialGradient(
+                            colors: [activeStay.wing.tint.opacity(0.32), Color.clear],
+                            center: .center,
+                            startRadius: 10,
+                            endRadius: 52
+                        )
                     )
+                    .frame(width: 96, height: 96)
+                    .blur(radius: 8)
 
-                Image(systemName: activeStay.wing.icon)
-                    .font(.system(size: 40, weight: .bold))
-                    .foregroundStyle(activeStay.wing.tint)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    activeStay.wing.tint.opacity(colorScheme == .dark ? 0.28 : 0.16),
+                                    activeStay.wing.tint.opacity(colorScheme == .dark ? 0.14 : 0.06)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 88, height: 88)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                                .strokeBorder(
+                                    LinearGradient(
+                                        colors: [
+                                            activeStay.wing.tint.opacity(0.55),
+                                            activeStay.wing.tint.opacity(0.18)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1.5
+                                )
+                        )
+                        .shadow(color: activeStay.wing.tint.opacity(colorScheme == .dark ? 0.3 : 0.12), radius: 10, y: 4)
+
+                    Image(systemName: activeStay.wing.icon)
+                        .font(.system(size: 40, weight: .bold))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [activeStay.wing.tint, activeStay.wing.tint.opacity(0.85)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                }
+
+                // Active Stay Living Status Gem
+                ZStack {
+                    Circle()
+                        .fill(AdminSurface.card)
+                        .frame(width: 22, height: 22)
+                        .shadow(color: Color.black.opacity(0.15), radius: 2, y: 1)
+
+                    Circle()
+                        .fill(activeStay.guestStatus.color)
+                        .frame(width: 14, height: 14)
+
+                    Circle()
+                        .fill(Color.white.opacity(0.7))
+                        .frame(width: 4.5, height: 4.5)
+                        .offset(x: -2, y: -2)
+                }
+                .offset(x: 4, y: 4)
             }
 
-            VStack(spacing: 4) {
+            VStack(spacing: 8) {
                 Text(activeStay.petName)
                     .font(PPBrandFont.bold(size: 26))
                     .foregroundStyle(AdminSurface.primaryText)
 
-                if !petBreedSpeciesText.isEmpty {
-                    Text(petBreedSpeciesText)
-                        .font(PPBrandFont.medium(size: 13.5))
-                        .foregroundStyle(AdminSurface.secondaryText)
-                }
+                // Category & Species Pill
+                AdminPetCategoryPill(
+                    species: activeStay.petSpecies,
+                    breed: activeStay.petBreed,
+                    wing: activeStay.wing,
+                    mode: .hero
+                )
 
-                // Stay ID Pill with Copy
+                // Stay ID Pill with Copy & Stateful Confirmation
                 Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     UIPasteboard.general.string = resolvedStayNumber
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        isStayCopied = true
+                    }
                     onCopy(Language.get("Hotel_StayCopied", alter: "تم نسخ رقم الإقامة"))
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            isStayCopied = false
+                        }
+                    }
                 } label: {
                     HStack(spacing: 6) {
+                        Image(systemName: isStayCopied ? "checkmark.circle.fill" : "doc.on.doc")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(isStayCopied ? Color(red: 0.16, green: 0.72, blue: 0.44) : AdminSurface.secondaryText)
+
                         Text(Language.get("Hotel_StayNo", alter: "رقم الإقامة:"))
                             .font(PPBrandFont.medium(size: 12))
                             .foregroundStyle(AdminSurface.secondaryText)
+
                         Text(resolvedStayNumber)
                             .font(PPBrandFont.bold(size: 12.5))
-                            .foregroundStyle(AdminSurface.primary)
-                        Image(systemName: "doc.on.doc")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(AdminSurface.secondaryText.opacity(0.8))
+                            .foregroundStyle(isStayCopied ? Color(red: 0.16, green: 0.72, blue: 0.44) : AdminSurface.primary)
                     }
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(isStayCopied ? Color(red: 0.16, green: 0.72, blue: 0.44).opacity(0.12) : AdminSurface.surface)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(isStayCopied ? Color(red: 0.16, green: 0.72, blue: 0.44).opacity(0.3) : Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.8)
+                    )
                 }
                 .buttonStyle(PlainButtonStyle())
                 .hoverEffect(.highlight)
@@ -1136,13 +1554,35 @@ private struct iPadPetsHotelStayCockpit: View {
         .frame(maxWidth: .infinity)
         .padding(20)
         .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(AdminSurface.control)
-                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.25 : 0.04), radius: 10, y: 3)
+            ZStack {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(AdminSurface.control)
+
+                GeometryReader { proxy in
+                    RadialGradient(
+                        colors: [activeStay.wing.tint.opacity(0.08), Color.clear],
+                        center: .top,
+                        startRadius: 10,
+                        endRadius: proxy.size.width * 0.8
+                    )
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            }
+            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.25 : 0.04), radius: 10, y: 3)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.55), lineWidth: 0.8)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            Color(uiColor: .ppSurfaceBorder).opacity(0.7),
+                            activeStay.wing.tint.opacity(0.22)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 0.9
+                )
         )
     }
 

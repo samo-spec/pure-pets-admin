@@ -158,3 +158,32 @@ public enum AdminHotelRatePolicy {
         return nil
     }
 }
+
+public struct AdminHotelBillingProjection: Hashable, Sendable {
+    public let totalMinor: Int?
+    public let settledMinor: Int?
+    public let depositMinor: Int?
+}
+
+public enum AdminHotelBillingProjectionPolicy {
+    public static func resolve(_ source: [String: Any]) -> AdminHotelBillingProjection {
+        let pricing = source["pricing"] as? [String: Any] ?? [:]
+        let billing = source["billingSummary"] as? [String: Any] ?? [:]
+        return AdminHotelBillingProjection(
+            totalMinor: integer(billing["grandTotalMinor"])
+                ?? integer(pricing["quotedTotalMinor"])
+                ?? integer(source["totalAmountMinor"]),
+            settledMinor: integer(billing["settledMinor"])
+                ?? integer(source["paidAmountMinor"]),
+            depositMinor: integer(billing["depositMinor"])
+                ?? integer(pricing["depositMinor"])
+        )
+    }
+
+    private static func integer(_ value: Any?) -> Int? {
+        if let value = value as? Int { return value }
+        if let value = value as? Int64 { return Int(exactly: value) }
+        if let value = value as? NSNumber { return value.intValue }
+        return nil
+    }
+}

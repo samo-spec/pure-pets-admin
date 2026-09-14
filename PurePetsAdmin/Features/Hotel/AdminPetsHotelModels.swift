@@ -731,11 +731,7 @@ public struct AdminHotelReservation: Identifiable, Hashable {
         let departureAt = parseHotelDate(dict["departureAt"]) ?? Date().addingTimeInterval(86400)
         let nights = dict["nights"] as? Int ?? max(1, Int(departureAt.timeIntervalSince(arrivalAt) / 86400))
 
-        let pricing = dict["pricing"] as? [String: Any] ?? [:]
-        let billing = dict["billingSummary"] as? [String: Any] ?? [:]
-        let totalMinor = (billing["grandTotalMinor"] as? Int) ?? (pricing["quotedTotalMinor"] as? Int)
-        let settledMinor = (billing["settledMinor"] as? Int) ?? (pricing["depositMinor"] as? Int)
-        let depositMinor = pricing["depositMinor"] as? Int
+        let billingProjection = AdminHotelBillingProjectionPolicy.resolve(dict)
 
         // A pet identifier is never a valid stay-command identifier. Keep only
         // the server-projected stay IDs and fail closed when none are available.
@@ -762,9 +758,9 @@ public struct AdminHotelReservation: Identifiable, Hashable {
             checkInDate: arrivalAt,
             checkOutDate: departureAt,
             numberOfNights: nights,
-            totalAmountMinor: totalMinor,
-            paidAmountMinor: settledMinor,
-            depositMinor: depositMinor,
+            totalAmountMinor: billingProjection.totalMinor,
+            paidAmountMinor: billingProjection.settledMinor,
+            depositMinor: billingProjection.depositMinor,
             branchId: dict["branchId"] as? String ?? "",
             specialInstructions: dict["notes"] as? String,
             feedingNotes: dict["specialInstructions"] as? String,

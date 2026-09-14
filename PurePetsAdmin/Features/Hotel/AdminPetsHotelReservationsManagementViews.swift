@@ -482,6 +482,7 @@ public struct AdminPetsHotelReservationDetailSheet: View {
     }
 
     @State private var isExtending: Bool = false
+    @State private var isEditingReservation: Bool = false
     @State private var isShowingReasonSheet: Bool = false
     @State private var pendingAction: String = ""
     @State private var showCopiedToast: Bool = false
@@ -529,6 +530,10 @@ public struct AdminPetsHotelReservationDetailSheet: View {
             AdminPetsHotelExtendStayDialog(reservation: reservation, viewModel: viewModel)
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
+        .fullScreenCover(isPresented: $isEditingReservation) {
+            AdminPetsHotelEditReservationDialog(reservation: reservation, viewModel: viewModel)
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
         .sheet(isPresented: $isShowingReasonSheet) {
             AdminPetsHotelReasonSheet(reservation: reservation, action: pendingAction, viewModel: viewModel)
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
@@ -554,18 +559,41 @@ public struct AdminPetsHotelReservationDetailSheet: View {
                     }
                 }
             ) {
-                // Status Capsule Header Pill
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(reservation.status.color)
-                        .frame(width: 7, height: 7)
-                    Text(reservation.status.title)
-                        .font(HotelBeiruti.bold(12))
+                HStack(spacing: 8) {
+                    // Edit Reservation Button
+                    if reservation.status != .completed && reservation.status != .cancelled {
+                        Button {
+                            isEditingReservation = true
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "square.and.pencil")
+                                    .font(.system(size: 11, weight: .bold))
+                                Text(Language.get("Edit", alter: "تعديل"))
+                                    .font(HotelBeiruti.bold(12))
+                            }
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(AdminSurface.control, in: Capsule())
+                            .foregroundStyle(AdminSurface.primary)
+                            .overlay(Capsule().strokeBorder(AdminSurface.primary.opacity(0.35), lineWidth: 0.8))
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .hoverEffect(.lift)
+                    }
+
+                    // Status Capsule Header Pill
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(reservation.status.color)
+                            .frame(width: 7, height: 7)
+                        Text(reservation.status.title)
+                            .font(HotelBeiruti.bold(12))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(reservation.status.color.opacity(0.12), in: Capsule())
+                    .foregroundStyle(reservation.status.color)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(reservation.status.color.opacity(0.12), in: Capsule())
-                .foregroundStyle(reservation.status.color)
             }
 
             // Scrollable Operational Feed

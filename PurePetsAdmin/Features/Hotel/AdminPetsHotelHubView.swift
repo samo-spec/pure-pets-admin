@@ -933,44 +933,65 @@ private struct HotelFilterDeckView: View {
             )
             .padding(.horizontal, 16)
 
-            // Wing Filter Pills
+            // Wing Filter Pills (Elevated Category-Defining Pills)
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        viewModel.selectedWing = nil
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                            viewModel.selectedWing = nil
+                        }
                     } label: {
-                        Text(Language.get("All", alter: "الكل"))
-                            .font(PPBrandFont.bold(size: 13))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 5)
-                            .background(viewModel.selectedWing == nil ? AdminSurface.primaryText : AdminSurface.control, in: Capsule())
-                            .foregroundStyle(viewModel.selectedWing == nil ? AdminSurface.surface : AdminSurface.secondaryText)
+                        HStack(spacing: 5) {
+                            ZStack {
+                                Circle()
+                                    .fill(viewModel.selectedWing == nil ? Color.white.opacity(0.24) : AdminSurface.primaryText.opacity(0.12))
+                                    .frame(width: 20, height: 20)
+                                Image(systemName: "square.grid.2x2.fill")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(viewModel.selectedWing == nil ? Color.white : AdminSurface.primaryText)
+                            }
+                            Text(Language.get("Common_All", alter: "الكل"))
+                                .font(PPBrandFont.bold(size: 12.5))
+                                .foregroundStyle(viewModel.selectedWing == nil ? Color.white : AdminSurface.primaryText)
+                        }
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule()
+                                .fill(viewModel.selectedWing == nil ? AdminSurface.primaryText : AdminSurface.control)
+                        )
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(
+                                    viewModel.selectedWing == nil ? AdminSurface.primaryText : Color(uiColor: .ppSurfaceBorder).opacity(0.55),
+                                    lineWidth: viewModel.selectedWing == nil ? 1.2 : 0.8
+                                )
+                        )
+                        .shadow(
+                            color: viewModel.selectedWing == nil ? Color.black.opacity(0.2) : Color.black.opacity(0.03),
+                            radius: viewModel.selectedWing == nil ? 5 : 2,
+                            y: viewModel.selectedWing == nil ? 2 : 1
+                        )
                     }
                     .buttonStyle(PlainButtonStyle())
 
                     ForEach(HotelWing.allCases) { wing in
                         let isSelected = viewModel.selectedWing == wing
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            viewModel.selectedWing = isSelected ? nil : wing
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: wing.icon)
-                                    .font(PPBrandFont.bold(size: 11))
-                                Text(wing.title)
-                                    .font(PPBrandFont.medium(size: 13))
+                        AdminPetCategoryPill(
+                            species: "",
+                            breed: "",
+                            wing: wing,
+                            mode: .filter(isSelected: isSelected)
+                        ) {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                                viewModel.selectedWing = isSelected ? nil : wing
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 5)
-                            .background(isSelected ? wing.tint : AdminSurface.control, in: Capsule())
-                            .foregroundStyle(isSelected ? .white : AdminSurface.primaryText)
                         }
-                        .buttonStyle(PlainButtonStyle())
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 2)
+                .padding(.vertical, 4)
             }
         }
         .padding(.bottom, 6)

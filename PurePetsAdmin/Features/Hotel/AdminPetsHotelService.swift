@@ -34,7 +34,7 @@ public enum AdminPetsHotelError: LocalizedError {
         case .invalidResponse:
             return Language.get("Hotel_Err_InvalidResponse", alter: "استجابة غير صالحة من خادم فندق الحيوانات.")
         case .operationFailed(let reason):
-            return reason
+            return AdminPetsHotelError.localizedReason(for: reason)
         case .unauthenticated:
             return Language.get("Hotel_Err_Unauthenticated", alter: "الجلسة غير مسجلة أو انتهت صلاحيتها.")
         case .permissionDenied:
@@ -42,9 +42,83 @@ public enum AdminPetsHotelError: LocalizedError {
         case .stayNotFound:
             return Language.get("Hotel_Err_StayNotFound", alter: "سجل الإقامة المطلوب غير موجود.")
         case .blockers(let list):
-            return list.joined(separator: "\n")
+            let formatted = list.map { AdminPetsHotelError.localizedReason(for: $0) }
+            if formatted.count <= 1 {
+                return formatted.first ?? Language.get("Hotel_Err_CommandFailed", alter: "تعذر تنفيذ أمر الفندق.")
+            }
+            return formatted.map { "• \($0)" }.joined(separator: "\n")
         case .transport(let reason):
             return reason
+        }
+    }
+
+    public static func localizedReason(for code: String) -> String {
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch trimmed {
+        // Checkout Blockers
+        case "outstanding_balance":
+            return Language.get("Hotel_Blocker_OutstandingBalance", alter: "يوجد رصيد مالي مستحق على الإقامة يجب تسويته قبل المغادرة.")
+        case "stay_not_in_house":
+            return Language.get("Hotel_Blocker_StayNotInHouse", alter: "النزيل ليس في حالة إقامة حالية داخل الفندق.")
+        case "belongings_not_returned":
+            return Language.get("Hotel_Blocker_BelongingsNotReturned", alter: "لم يتم تأكيد تسليم كافة مقتنيات وأغراض النزيل للمالك.")
+        case "health_check_missing":
+            return Language.get("Hotel_Blocker_HealthCheckMissing", alter: "فحص المؤشرات الصحية واللياقة قبل المغادرة غير مكتمل.")
+        case "room_inspection_missing":
+            return Language.get("Hotel_Blocker_RoomInspectionMissing", alter: "فحص الغرفة والجناح قبل التسليم غير مكتمل.")
+        case "open_critical_incident":
+            return Language.get("Hotel_Blocker_OpenCriticalIncident", alter: "توجد حوادث أو ملاحظات تشغيلية حرجة غير معتمدة.")
+        case "pending_medication":
+            return Language.get("Hotel_Blocker_PendingMedication", alter: "توجد مهام أدوية أو جرعات علاجية معلقة لم تسوَّ بعد.")
+        case "handover_unverified":
+            return Language.get("Hotel_Blocker_HandoverUnverified", alter: "لم يتم التحقق من هوية المستلم عند تسليم النزيل.")
+
+        // Checkin Blockers
+        case "stay_already_checked_in":
+            return Language.get("Hotel_Blocker_StayAlreadyCheckedIn", alter: "تم تسجيل دخول النزيل مسبقاً.")
+        case "stay_terminal":
+            return Language.get("Hotel_Blocker_StayTerminal", alter: "سجل الإقامة مغلق أو مكتمل مسبقاً.")
+        case "accommodation_missing":
+            return Language.get("Hotel_Blocker_AccommodationMissing", alter: "لم يتم تخصيص جناح أو غرفة للنزيل.")
+        case "vaccination_unverified":
+            return Language.get("Hotel_Blocker_VaccinationUnverified", alter: "لم يتم التحقق من شهادة التطعيمات.")
+        case "vaccination_expired":
+            return Language.get("Hotel_Blocker_VaccinationExpired", alter: "شهادة التطعيمات منتهية الصلاحية.")
+        case "health_inspection_missing":
+            return Language.get("Hotel_Blocker_HealthInspectionMissing", alter: "فحص اللياقة الصحية غير مكتمل.")
+        case "identity_unverified":
+            return Language.get("Hotel_Blocker_IdentityUnverified", alter: "لم يتم التحقق من هوية العميل أو المرافق.")
+        case "emergency_contact_missing":
+            return Language.get("Hotel_Blocker_EmergencyContactMissing", alter: "بيانات جهة الاتصال للطوارئ غير متوفرة.")
+        case "emergency_contact_unconfirmed":
+            return Language.get("Hotel_Blocker_EmergencyContactUnconfirmed", alter: "لم يتم تأكيد جهة الاتصال للطوارئ.")
+        case "medication_unconfirmed":
+            return Language.get("Hotel_Blocker_MedicationUnconfirmed", alter: "تعليمات الأدوية والعلاج لم يتم تأكيدها.")
+        case "agreement_not_acknowledged":
+            return Language.get("Hotel_Blocker_AgreementNotAcknowledged", alter: "لم يتم الإقرار بشروط وسياسة الإقامة.")
+        case "deposit_unsettled":
+            return Language.get("Hotel_Blocker_DepositUnsettled", alter: "مبلغ التأمين لم يتم تسويته بعد.")
+
+        // Domain codes
+        case "HOTEL_CHECKOUT_BLOCKED":
+            return Language.get("Hotel_Err_CheckoutBlocked", alter: "تعذر إتمام المغادرة لوجود متطلبات أو قيود معلقة.")
+        case "HOTEL_CHECKIN_BLOCKED":
+            return Language.get("Hotel_Err_CheckinBlocked", alter: "تعذر إتمام الدخول لوجود متطلبات أو قيود معلقة.")
+        case "HOTEL_OVERRIDE_REASON_REQUIRED":
+            return Language.get("Hotel_Err_OverrideReasonRequired", alter: "يلزم إدخال سبب التجاوز التشغيلي.")
+        case "HOTEL_OVERRIDE_FORBIDDEN":
+            return Language.get("Hotel_Err_OverrideForbidden", alter: "ليس لديك صلاحية التجاوز التشغيلي.")
+
+        default:
+            let key = "Hotel_Err_\(trimmed)"
+            let localized = Language.get(key, alter: trimmed)
+            if localized != trimmed {
+                return localized
+            }
+            if trimmed.contains("_") {
+                return trimmed.replacingOccurrences(of: "_", with: " ")
+            }
+            return trimmed
         }
     }
 }
@@ -147,10 +221,15 @@ public final class AdminPetsHotelService: @unchecked Sendable {
                 }
             }
             if let details = err.userInfo[FunctionsErrorDetailsKey] as? [String: Any] {
-                if let blockers = details["blockers"] as? [String], !blockers.isEmpty {
+                if let rawBlockers = details["blockers"] as? [Any], !rawBlockers.isEmpty {
+                    let blockers = rawBlockers.compactMap { $0 as? String }
+                    if !blockers.isEmpty {
+                        throw AdminPetsHotelError.blockers(blockers)
+                    }
+                } else if let blockers = details["blockers"] as? [String], !blockers.isEmpty {
                     throw AdminPetsHotelError.blockers(blockers)
                 }
-                if let domainCode = details["domainCode"] as? String {
+                if let domainCode = details["domainCode"] as? String, !domainCode.isEmpty {
                     throw AdminPetsHotelError.operationFailed(domainCode)
                 }
             }
@@ -551,6 +630,48 @@ public final class AdminPetsHotelService: @unchecked Sendable {
             payload["note"] = note
         }
         return try await callHotelCommand(name: "hotelReservationCommand", action: "extend_reservation", payload: payload)
+    }
+
+    @MainActor
+    public func updateReservation(
+        reservationId: String,
+        customerUid: String,
+        customerSnapshot: [String: Any],
+        arrivalAt: Date,
+        departureAt: Date,
+        pets: [[String: Any]],
+        emergencyContact: [String: String]? = nil,
+        arrivalTransport: String = "customer_dropoff",
+        departureTransport: String = "customer_pickup",
+        depositMinor: Int = 0,
+        notes: String? = nil,
+        overrideReason: String? = nil
+    ) async throws -> [String: Any] {
+        let formatter = ISO8601DateFormatter()
+        var reservationPayload: [String: Any] = [
+            "customerUid": customerUid,
+            "customerSnapshot": customerSnapshot,
+            "arrivalAt": formatter.string(from: arrivalAt),
+            "departureAt": formatter.string(from: departureAt),
+            "pets": pets,
+            "arrivalTransport": arrivalTransport,
+            "departureTransport": departureTransport,
+            "depositMinor": depositMinor
+        ]
+        if let contact = emergencyContact {
+            reservationPayload["emergencyContact"] = contact
+        }
+        if let notes, !notes.isEmpty {
+            reservationPayload["notes"] = notes
+        }
+        var payload: [String: Any] = [
+            "reservationId": reservationId,
+            "reservation": reservationPayload
+        ]
+        if let overrideReason, !overrideReason.isEmpty {
+            payload["overrideReason"] = overrideReason
+        }
+        return try await callHotelCommand(name: "hotelReservationCommand", action: "update_reservation", payload: payload)
     }
 
     @MainActor

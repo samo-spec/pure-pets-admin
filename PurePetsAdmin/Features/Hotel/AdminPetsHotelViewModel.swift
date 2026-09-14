@@ -585,6 +585,60 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         }
     }
 
+    public func recordSettlement(
+        stayId: String,
+        method: String,
+        amountMinor: Int,
+        reference: String? = nil,
+        notes: String? = nil
+    ) async -> Bool {
+        guard canViewBilling else {
+            errorMessage = AdminPetsHotelError.permissionDenied.localizedDescription
+            return false
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        isSubmitting = true
+        errorMessage = nil
+        do {
+            _ = try await AdminPetsHotelService.shared.recordStaySettlement(
+                stayId: stayId,
+                method: method,
+                amountMinor: amountMinor,
+                reference: reference,
+                notes: notes
+            )
+            isSubmitting = false
+            if let idx = stays.firstIndex(where: { $0.id == stayId }) {
+                var updated = stays[idx]
+                updated.outstandingMinor = max(0, updated.outstandingMinor - amountMinor)
+                if updated.outstandingMinor == 0 {
+                    updated.paymentStatus = "paid"
+                }
+                stays[idx] = updated
+            }
+            if checkOutModalStay?.id == stayId {
+                checkOutModalStay?.outstandingMinor = max(0, (checkOutModalStay?.outstandingMinor ?? 0) - amountMinor)
+                if checkOutModalStay?.outstandingMinor == 0 {
+                    checkOutModalStay?.paymentStatus = "paid"
+                }
+            }
+            if selectedStayDetail?.id == stayId {
+                selectedStayDetail?.outstandingMinor = max(0, (selectedStayDetail?.outstandingMinor ?? 0) - amountMinor)
+                if selectedStayDetail?.outstandingMinor == 0 {
+                    selectedStayDetail?.paymentStatus = "paid"
+                }
+            }
+            loadHotelOperations()
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            return true
+        } catch {
+            isSubmitting = false
+            errorMessage = error.localizedDescription
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return false
+        }
+    }
+
     public func setRoomStatus(room: AdminHotelAccommodation, newStatus: HotelAccommodationStatus) async -> Bool {
         guard canManageAccommodations else {
             errorMessage = AdminPetsHotelError.permissionDenied.localizedDescription
@@ -972,6 +1026,84 @@ public final class AdminPetsHotelViewModel: ObservableObject {
                 newDepartureAt: newDepartureAt,
                 reasonCode: reasonCode,
                 note: note
+            )
+            isSubmitting = false
+            loadHotelOperations()
+            return true
+        } catch {
+            isSubmitting = false
+            errorMessage = error.localizedDescription
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return false
+        }
+    }
+
+    public func updateReservation(
+        reservation: AdminHotelReservation,
+        customerName: String,
+        customerPhone: String,
+        customerEmail: String?,
+        petName: String,
+        petBreed: String,
+        specialDiet: String,
+        allergies: String,
+        requiresMedication: Bool,
+        arrivalAt: Date,
+        departureAt: Date,
+        emergencyName: String?,
+        emergencyPhone: String?,
+        notes: String?,
+        overrideReason: String? = "admin_update"
+    ) async -> Bool {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        isSubmitting = true
+        errorMessage = nil
+
+        let petId = reservation.petId.isEmpty ? "\(reservation.id)_pet" : reservation.petId
+        var petDict: [String: Any] = [
+            "petId": petId,
+            "petSnapshot": [
+                "name": petName,
+                "species": reservation.petSpecies.isEmpty ? "dog" : reservation.petSpecies,
+                "breed": petBreed,
+                "weightKg": 5.0
+            ],
+            "careRequirements": [
+                "diet": specialDiet,
+                "allergies": allergies.isEmpty ? [] : [allergies],
+                "requiresMedication": requiresMedication
+            ]
+        ]
+        if let typeId = reservation.accommodationTypeId, !typeId.isEmpty {
+            petDict["accommodationTypeId"] = typeId
+        }
+        let petsPayload: [[String: Any]] = [petDict]
+
+        var customerSnapshot: [String: Any] = [
+            "name": customerName,
+            "phone": customerPhone
+        ]
+        if let email = customerEmail, !email.isEmpty {
+            customerSnapshot["email"] = email
+        }
+
+        var emergencyContact: [String: String]? = nil
+        if let eName = emergencyName, !eName.isEmpty, let ePhone = emergencyPhone, !ePhone.isEmpty {
+            emergencyContact = ["name": eName, "phone": ePhone]
+        }
+
+        do {
+            _ = try await AdminPetsHotelService.shared.updateReservation(
+                reservationId: reservation.id,
+                customerUid: reservation.customerId,
+                customerSnapshot: customerSnapshot,
+                arrivalAt: arrivalAt,
+                departureAt: departureAt,
+                pets: petsPayload,
+                emergencyContact: emergencyContact,
+                depositMinor: reservation.depositMinor ?? 0,
+                notes: notes,
+                overrideReason: overrideReason
             )
             isSubmitting = false
             loadHotelOperations()
