@@ -29,6 +29,7 @@ enum AdminRoute: Hashable, Identifiable {
     case accounting
     case audit
     case moderation
+    case community
     case homeControl
     case services
     case veterinarians
@@ -68,6 +69,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .accounting: return "accounting"
         case .audit: return "audit"
         case .moderation: return "moderation"
+        case .community: return "community"
         case .homeControl: return "homeControl"
         case .services: return "services"
         case .veterinarians: return "vets"
@@ -111,6 +113,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .accounting: return "Accounting_Title"
         case .audit: return "Audit_Title"
         case .moderation: return "Moderation_Title"
+        case .community: return "Community_Admin_Title"
         case .homeControl: return "HomeControl_Title"
         case .services: return "Service_Manage_Title"
         case .veterinarians: return "Vet_Section_Title"
@@ -130,7 +133,7 @@ enum AdminRoute: Hashable, Identifiable {
              .accessories, .food, .livePets:
             return "CommandCenter_Work_Title"
         case .delivery, .providerApplications, .providerPlans, .providerFeatures, .providerAccounting,
-             .branches, .agents, .homeControl, .services, .veterinarians, .moderation, .hotel:
+             .branches, .agents, .homeControl, .services, .veterinarians, .moderation, .community, .hotel:
             return "CommandCenter_Operations_Title"
         case .users:
             return "CommandCenter_People_Title"
@@ -172,6 +175,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .accounting: return "dollarsign.circle"
         case .audit: return "doc.text.magnifyingglass"
         case .moderation: return "shield.lefthalf.filled"
+        case .community: return "pawprint.fill"
         case .homeControl: return "switch.2"
         case .services: return "cross.case"
         case .veterinarians: return "stethoscope"
@@ -208,6 +212,16 @@ enum AdminRoute: Hashable, Identifiable {
         case .accounting: return ["accounting.view", "accounting.manage"]
         case .audit: return ["audit.view"]
         case .moderation: return ["moderation.view", "moderation.manage", "listings.moderate"]
+        case .community: return [
+            "community.dashboard.view",
+            "community.application.view",
+            "community.sighting.review",
+            "community.match.review",
+            "community.moderation.review",
+            "community.configuration.manage",
+            "community.analytics.view",
+            "community.audit.view"
+        ]
         case .services: return ["services.view", "services.manage", "providers.manage", "veterinarians.manage"]
         case .veterinarians: return ["veterinarians.view", "veterinarians.manage", "providers.manage", "services.manage"]
         case .categories: return ["categories.view", "categories.manage"]
@@ -229,7 +243,7 @@ enum AdminRoute: Hashable, Identifiable {
               requiredAllPermissions.allSatisfy(session.hasPermission) else {
             return false
         }
-        return ![.audit, .providerAccounting].contains(self) || session.hasGlobalScope
+        return ![.audit, .providerAccounting, .community].contains(self) || session.hasGlobalScope
     }
 }
 

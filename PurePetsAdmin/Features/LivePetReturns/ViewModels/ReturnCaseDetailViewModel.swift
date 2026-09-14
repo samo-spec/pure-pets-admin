@@ -96,7 +96,15 @@ public final class ReturnCaseDetailViewModel: ObservableObject {
             actionSuccessMessage = Language.get("LivePet_Clearance_Success", alter: "تم اعتماد الحيوان بنجاح وأصبح متاحاً للبيع في المتجر.")
             return true
         } catch {
-            actionErrorMessage = error.localizedDescription
+            let errorText = error.localizedDescription
+            if errorText.contains("cannot release it for resale") || errorText.contains("cannot release that same quarantine") {
+                actionErrorMessage = Language.get(
+                    "LivePet_Error_QuarantineMakerChecker",
+                    alter: "الموظف الذي قام بنقل الحيوان للحجر الصحي لا يمكنه اعتماده وإتاحته للبيع بشكل منفرد (يتطلب اعتماد موظف آخر أو مسؤول النظام)."
+                )
+            } else {
+                actionErrorMessage = errorText
+            }
             return false
         }
     }

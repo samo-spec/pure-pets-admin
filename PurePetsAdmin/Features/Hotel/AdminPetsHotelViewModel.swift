@@ -736,10 +736,29 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         notes: String?,
         confirmImmediately: Bool
     ) async -> Bool {
-        guard let branchId = currentBranchId else { return false }
+        let branchId = currentBranchId
+            ?? BranchContextStore.shared.activeBranch?.branchID
+            ?? PPBranchContextManager.shared().activeBranch?.branchID
+
+        guard let branchId, !branchId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = Language.get("Hotel_Err_NoBranchSelected", alter: "يرجى تحديد فرع أولاً.")
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return false
+        }
+
         UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
         isSubmitting = true
         errorMessage = nil
+
+        var effectiveCustomerUid = customerUid.trimmingCharacters(in: .whitespacesAndNewlines)
+        if effectiveCustomerUid.isEmpty || effectiveCustomerUid.hasPrefix("guest-") {
+            let cleanPhone = customerPhone.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !cleanPhone.isEmpty, let foundUid = await lookupCustomerUidByPhone(cleanPhone) {
+                effectiveCustomerUid = foundUid
+            } else {
+                effectiveCustomerUid = "PUIDPOFFICILAL20262214"
+            }
+        }
 
         let petsPayload: [[String: Any]] = pets.map { draft in
             var petDict: [String: Any] = [
@@ -778,7 +797,7 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         do {
             _ = try await AdminPetsHotelService.shared.createReservation(
                 branchId: branchId,
-                customerUid: customerUid.isEmpty ? "guest-\(UUID().uuidString.prefix(8))" : customerUid,
+                customerUid: effectiveCustomerUid,
                 customerSnapshot: customerSnapshot,
                 arrivalAt: arrivalAt,
                 departureAt: departureAt,
@@ -798,6 +817,119 @@ public final class AdminPetsHotelViewModel: ObservableObject {
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             return false
         }
+    }
+
+    // MARK: - Customer Directory & Pet Search
+    @MainActor
+    public func searchCustomers(query: String) async -> [AdminHotelCustomerOption] {
+        let clean = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let db = Firestore.firestore()
+        let collection = db.collection("PublicUserProfiles")
+
+        do {
+            let snapshot: QuerySnapshot
+            if clean.isEmpty {
+                snapshot = try await collection.limit(to: 15).getDocuments()
+            } else if clean.allSatisfy({ $0.isNumber || $0 == "+" || $0 == "-" || $0 == " " }) && clean.count >= 3 {
+                snapshot = try await collection.whereField("phone", isEqualTo: clean).limit(to: 10).getDocuments()
+            } else {
+                snapshot = try await collection
+                    .order(by: "displayName")
+                    .start(at: [clean])
+                    .end(at: [clean + "\u{f8ff}"])
+                    .limit(to: 15)
+                    .getDocuments()
+            }
+
+            var results = snapshot.documents.compactMap { doc -> AdminHotelCustomerOption? in
+                let data = doc.data()
+                let uid = (data["uid"] as? String) ?? doc.documentID
+                let name = (data["displayName"] as? String)
+                    ?? (data["name"] as? String)
+                    ?? (data["userName"] as? String)
+                    ?? uid
+                let phone = (data["phone"] as? String)
+                    ?? (data["phoneNumber"] as? String)
+                    ?? ""
+                let email = (data["email"] as? String) ?? ""
+                let photo = (data["photoURL"] as? String)
+                    ?? (data["imageURL"] as? String)
+                    ?? ""
+                return AdminHotelCustomerOption(uid: uid, name: name, phone: phone, email: email, photoURL: photo)
+            }
+
+            if !clean.isEmpty && results.isEmpty {
+                let broadSnapshot = try await collection.limit(to: 40).getDocuments()
+                let lowerClean = clean.lowercased()
+                results = broadSnapshot.documents.compactMap { doc -> AdminHotelCustomerOption? in
+                    let data = doc.data()
+                    let uid = (data["uid"] as? String) ?? doc.documentID
+                    let name = (data["displayName"] as? String) ?? (data["name"] as? String) ?? (data["userName"] as? String) ?? ""
+                    let phone = (data["phone"] as? String) ?? (data["phoneNumber"] as? String) ?? ""
+                    let email = (data["email"] as? String) ?? ""
+                    let photo = (data["photoURL"] as? String) ?? (data["imageURL"] as? String) ?? ""
+
+                    if name.lowercased().contains(lowerClean) || phone.contains(clean) || email.lowercased().contains(lowerClean) {
+                        return AdminHotelCustomerOption(uid: uid, name: name.isEmpty ? uid : name, phone: phone, email: email, photoURL: photo)
+                    }
+                    return nil
+                }
+            }
+
+            return results
+        } catch {
+            return []
+        }
+    }
+
+    @MainActor
+    public func fetchCustomerPets(customerUid: String) async -> [AdminHotelCustomerPetOption] {
+        guard !customerUid.isEmpty else { return [] }
+        let db = Firestore.firestore()
+        do {
+            let snapshot = try await db.collection("UsersCol").document(customerUid).collection("petProfiles").limit(to: 30).getDocuments()
+            return snapshot.documents.compactMap { doc -> AdminHotelCustomerPetOption? in
+                let data = doc.data()
+                let petId = (data["petID"] as? String) ?? (data["petId"] as? String) ?? doc.documentID
+                let name = (data["name"] as? String) ?? (data["petName"] as? String) ?? ""
+                guard !name.isEmpty else { return nil }
+                let breed = (data["breed"] as? String) ?? ""
+                let species = (data["categoryName"] as? String) ?? (data["species"] as? String) ?? "dog"
+                let age = (data["ageInMonths"] as? Int) ?? 0
+                let image = (data["imageURL"] as? String) ?? (data["imageUrl"] as? String) ?? ""
+                let isDefault = (data["isDefaultPet"] as? Bool) ?? false
+
+                return AdminHotelCustomerPetOption(
+                    petId: petId,
+                    name: name,
+                    breed: breed,
+                    species: species,
+                    ageInMonths: age,
+                    imageURL: image,
+                    isDefaultPet: isDefault
+                )
+            }
+        } catch {
+            return []
+        }
+    }
+
+    private func lookupCustomerUidByPhone(_ phone: String) async -> String? {
+        guard !phone.isEmpty else { return nil }
+        let db = Firestore.firestore()
+        do {
+            let snap = try await db.collection("PublicUserProfiles").whereField("phone", isEqualTo: phone).limit(to: 1).getDocuments()
+            if let first = snap.documents.first {
+                return (first.data()["uid"] as? String) ?? first.documentID
+            }
+            let snap2 = try await db.collection("UsersCol").whereField("phone", isEqualTo: phone).limit(to: 1).getDocuments()
+            if let first2 = snap2.documents.first {
+                return first2.documentID
+            }
+        } catch {
+            // Ignore
+        }
+        return nil
     }
 
     public func confirmReservation(reservation: AdminHotelReservation) async {

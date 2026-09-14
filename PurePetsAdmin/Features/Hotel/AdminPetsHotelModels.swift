@@ -478,6 +478,54 @@ public struct AdminHotelPetDraft: Identifiable, Hashable {
     }
 }
 
+public struct AdminHotelCustomerOption: Identifiable, Hashable, Sendable {
+    public let id: String
+    public let uid: String
+    public let name: String
+    public let phone: String
+    public let email: String
+    public let photoURL: String
+
+    public init(uid: String, name: String, phone: String, email: String = "", photoURL: String = "") {
+        self.id = uid
+        self.uid = uid
+        self.name = name
+        self.phone = phone
+        self.email = email
+        self.photoURL = photoURL
+    }
+}
+
+public struct AdminHotelCustomerPetOption: Identifiable, Hashable, Sendable {
+    public let id: String
+    public let petId: String
+    public let name: String
+    public let breed: String
+    public let species: String
+    public let ageInMonths: Int
+    public let imageURL: String
+    public let isDefaultPet: Bool
+
+    public init(
+        petId: String,
+        name: String,
+        breed: String = "",
+        species: String = "dog",
+        ageInMonths: Int = 0,
+        imageURL: String = "",
+        isDefaultPet: Bool = false
+    ) {
+        self.id = petId
+        self.petId = petId
+        self.name = name
+        self.breed = breed
+        self.species = species
+        self.ageInMonths = ageInMonths
+        self.imageURL = imageURL
+        self.isDefaultPet = isDefaultPet
+    }
+}
+
 public struct AdminHotelAccommodation: Identifiable, Hashable {
     public let id: String
     public var accommodationNumber: String

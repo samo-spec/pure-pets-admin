@@ -627,51 +627,37 @@ struct AdminCommandCenterScreenView: View {
                 onRoute: { route($0) }
             )
 
-            // Deck 4: Telemetry Horizons (Accounting & Hotel)
+            // Deck 4: Financial & Treasury Horizon (Accounting)
             VStack(alignment: .leading, spacing: AdminSectionSpacing.headerToContent(isRegular: isRegular)) {
                 AdminSectionHeader(
-                    title: Language.get("AdminHorizons_SectionTitle", alter: "الأفق المالي والفندقي"),
-                    subtitle: Language.get("AdminHorizons_SectionDetail", alter: "تتبع مباشر للإيرادات، صافي الأرباح، ونزلاء الفندق والغرف"),
-                    eyebrow: Language.get("AdminHorizons_SectionEyebrow", alter: "المؤشرات والأفق التشغيلي"),
+                    title: Language.get("AdminAccounting_SectionTitle", alter: "الخزينة والمالية"),
+                    subtitle: Language.get("AdminAccounting_SectionDetail", alter: "تتبع مباشر للإيرادات التشغيلية، المصروفات، وصافي الأرباح"),
+                    eyebrow: Language.get("AdminAccounting_SectionEyebrow", alter: "المؤشرات المالية"),
                     symbol: "chart.line.uptrend.xyaxis",
                     themeColor: Color(red: 0.05, green: 0.65, blue: 0.95),
                     state: .normal,
                     isRegular: isRegular
                 )
 
-                if isRegular {
-                    // MARK: - iPad Multi-Horizon Flight Deck
-                    if store.canAccessHotel {
-                        HStack(alignment: .top, spacing: 14) {
-                            CommandAccountingSovereignCard(
-                                onRoute: { route("accounting") }
-                            )
-                            .frame(maxWidth: .infinity)
+                CommandAccountingSovereignCard(
+                    onRoute: { route("accounting") }
+                )
+            }
 
-                            CommandHotelSovereignCard(
-                                onRoute: { route("hotel") }
-                            )
-                            .frame(maxWidth: .infinity)
-                        }
-                    } else {
-                        CommandAccountingSovereignCard(
-                            onRoute: { route("accounting") }
-                        )
+            // Deck 4B: Sovereign Pets Hotel & Boarding Operations
+            if store.canAccessHotel {
+                CommandHotelDeck(
+                    isRegular: isRegular,
+                    onRoute: { route($0) },
+                    onOpenArrivals: {
+                        AdminPetsHotelViewModel.shared.selectedTab = .reservations
+                        route("hotel")
+                    },
+                    onOpenDepartures: {
+                        AdminPetsHotelViewModel.shared.selectedTab = .guests
+                        route("hotel")
                     }
-                } else {
-                    // MARK: - iPhone Single-Column High-Velocity Stack
-                    VStack(spacing: 12) {
-                        CommandAccountingSovereignCard(
-                            onRoute: { route("accounting") }
-                        )
-
-                        if store.canAccessHotel {
-                            CommandHotelSovereignCard(
-                                onRoute: { route("hotel") }
-                            )
-                        }
-                    }
-                }
+                )
             }
 
             // Deck 5: Panoramic Tactical Operational Beacon
@@ -8786,7 +8772,7 @@ private struct CommandAccountingSovereignCard: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.82)
                     Text(Language.isRTL() ? "ر.ق" : "QAR")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(AdminType.caption2Medium)
                         .foregroundStyle(AdminCommandInk.secondary)
                 }
 
@@ -8917,6 +8903,8 @@ private struct CommandAccountingSovereignCard: View {
 
 private struct CommandHotelSovereignCard: View {
     let onRoute: () -> Void
+    var onOpenArrivals: (() -> Void)? = nil
+    var onOpenDepartures: (() -> Void)? = nil
 
     @ObservedObject private var viewModel = AdminPetsHotelViewModel.shared
     @Environment(\.colorScheme) private var colorScheme
@@ -9101,7 +9089,8 @@ private struct CommandHotelSovereignCard: View {
                 count: viewModel.arrivalsTodayCount,
                 subtitle: Language.isRTL() ? "حجوزات مؤكدة" : "Confirmed bookings",
                 symbol: "arrow.down.right.and.arrow.up.left",
-                tint: Color(red: 0.20, green: 0.70, blue: 0.50)
+                tint: Color(red: 0.20, green: 0.70, blue: 0.50),
+                onTap: onOpenArrivals
             )
 
             // Departures Pillar
@@ -9110,48 +9099,66 @@ private struct CommandHotelSovereignCard: View {
                 count: viewModel.departuresTodayCount,
                 subtitle: Language.isRTL() ? "تسليم لأصحابها" : "Discharge & handover",
                 symbol: "arrow.up.left.and.arrow.down.right",
-                tint: Color(red: 0.30, green: 0.60, blue: 0.95)
+                tint: Color(red: 0.30, green: 0.60, blue: 0.95),
+                onTap: onOpenDepartures
             )
         }
     }
 
-    private func pillarCell(title: String, count: Int, subtitle: String, symbol: String, tint: Color) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: symbol)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(tint)
+    private func pillarCell(
+        title: String,
+        count: Int,
+        subtitle: String,
+        symbol: String,
+        tint: Color,
+        onTap: (() -> Void)? = nil
+    ) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            if let onTap {
+                onTap()
+            } else {
+                onRoute()
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(tint)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(AdminType.caption2)
-                    .foregroundStyle(AdminCommandInk.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminCommandInk.secondary)
 
-                HStack(spacing: 4) {
-                    Text("\(count)")
-                        .font(AdminType.calloutBold)
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .monospacedDigit()
-                    Text(Language.isRTL() ? "حالات" : "items")
-                        .font(.system(size: 10, weight: .medium))
+                    HStack(spacing: 4) {
+                        Text("\(count)")
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .monospacedDigit()
+                        Text(Language.isRTL() ? "حالات" : "items")
+                            .font(AdminType.caption2Medium)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                    }
+
+                    Text(subtitle)
+                        .font(AdminType.caption2)
                         .foregroundStyle(AdminCommandInk.secondary)
                 }
-
-                Text(subtitle)
-                    .font(AdminType.caption2)
-                    .foregroundStyle(AdminCommandInk.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 9)
+            .background(
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .fill(colorScheme == .dark ? Color.white.opacity(0.04) : Color.black.opacity(0.025))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .strokeBorder(tint.opacity(colorScheme == .dark ? 0.20 : 0.12), lineWidth: 0.5)
+            )
         }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 9)
-        .background(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .fill(colorScheme == .dark ? Color.white.opacity(0.04) : Color.black.opacity(0.025))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .strokeBorder(tint.opacity(colorScheme == .dark ? 0.20 : 0.12), lineWidth: 0.5)
-        )
+        .buttonStyle(PlainButtonStyle())
     }
 
     // MARK: - Multi-Wing Horizon Bar
@@ -9269,3 +9276,234 @@ private struct CommandHotelSovereignCard: View {
         return "\(title), \(rate), \(guests)"
     }
 }
+
+// MARK: - Command Hotel Deck
+
+private struct CommandHotelDeck: View {
+    let isRegular: Bool
+    let onRoute: (String) -> Void
+    let onOpenArrivals: () -> Void
+    let onOpenDepartures: () -> Void
+
+    @ObservedObject private var viewModel = AdminPetsHotelViewModel.shared
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AdminSectionSpacing.headerToContent(isRegular: isRegular)) {
+            // Dedicated Section Header
+            AdminSectionHeader(
+                title: Language.get("AdminHotel_SectionTitle", alter: "فندق ورعاية الحيوانات"),
+                subtitle: Language.get("AdminHotel_SectionDetail", alter: "الإشغال والنزلاء، الغرف، وعمليات الوصول والمغادرة اليومية"),
+                eyebrow: Language.get("AdminHotel_SectionEyebrow", alter: "الضيافة والرعاية الفندقية"),
+                symbol: "bed.double.fill",
+                themeColor: Color(red: 0.58, green: 0.35, blue: 0.95),
+                state: .normal,
+                isRegular: isRegular
+            )
+
+            VStack(spacing: 12) {
+                // Primary Sovereign Radar Card
+                CommandHotelSovereignCard(
+                    onRoute: { onRoute("hotel") },
+                    onOpenArrivals: onOpenArrivals,
+                    onOpenDepartures: onOpenDepartures
+                )
+
+                // Dedicated Quick Actions Below Card
+                HStack(spacing: isRegular ? 14 : 10) {
+                    // Quick Action 1: Arrived Today
+                    CommandHotelQuickActionCard(
+                        title: Language.get("AdminHotel_ArrivalsQuickAction", alter: "وصول اليوم"),
+                        subtitle: Language.get("AdminHotel_ArrivalsQuickAction_Subtitle", alter: "تسجيل الدخول والتسكين"),
+                        count: viewModel.arrivalsTodayCount,
+                        countUnit: Language.isRTL() ? "حالات" : "guests",
+                        actionTitle: Language.get("AdminHotel_ArrivalsQuickAction_Action", alter: "تسجيل الدخول"),
+                        symbol: "arrow.down.left.circle.fill",
+                        accent: Color(red: 0.16, green: 0.78, blue: 0.48),
+                        isRegular: isRegular,
+                        onTap: onOpenArrivals
+                    )
+
+                    // Quick Action 2: Leaves Today
+                    CommandHotelQuickActionCard(
+                        title: Language.get("AdminHotel_DeparturesQuickAction", alter: "مغادرة اليوم"),
+                        subtitle: Language.get("AdminHotel_DeparturesQuickAction_Subtitle", alter: "تسليم وإتمام الإقامة"),
+                        count: viewModel.departuresTodayCount,
+                        countUnit: Language.isRTL() ? "حالات" : "guests",
+                        actionTitle: Language.get("AdminHotel_DeparturesQuickAction_Action", alter: "إتمام المغادرة"),
+                        symbol: "arrow.up.right.circle.fill",
+                        accent: Color(red: 0.95, green: 0.55, blue: 0.20),
+                        isRegular: isRegular,
+                        onTap: onOpenDepartures
+                    )
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Command Hotel Quick Action Card
+
+private struct CommandHotelQuickActionCard: View {
+    let title: String
+    let subtitle: String
+    let count: Int
+    let countUnit: String
+    let actionTitle: String
+    let symbol: String
+    let accent: Color
+    let isRegular: Bool
+    let onTap: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var contrast
+    @State private var isPulsing: Bool = false
+    @State private var isPressed: Bool = false
+
+    var body: some View {
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onTap()
+        }) {
+            VStack(alignment: .leading, spacing: isRegular ? 10 : 8) {
+                // Header: Symbol Squircle + Counter Telemetry Pill
+                HStack(alignment: .center) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .fill(accent.opacity(colorScheme == .dark ? 0.22 : 0.12))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                    .strokeBorder(
+                                        accent.opacity(contrast == .increased ? 0.60 : (colorScheme == .dark ? 0.35 : 0.20)),
+                                        lineWidth: 0.75
+                                    )
+                            )
+
+                        Image(systemName: symbol)
+                            .font(.system(size: isRegular ? 16 : 14, weight: .bold))
+                            .foregroundStyle(accent)
+                    }
+                    .frame(width: isRegular ? 34 : 30, height: isRegular ? 34 : 30)
+
+                    Spacer(minLength: 4)
+
+                    // Live Counter Badge
+                    HStack(spacing: 3.5) {
+                        if count > 0 {
+                            Circle()
+                                .fill(accent)
+                                .frame(width: 5, height: 5)
+                                .scaleEffect(isPulsing ? 1.25 : 0.8)
+                        }
+
+                        Text("\(count)")
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(accent)
+                            .monospacedDigit()
+
+                        Text(countUnit)
+                            .font(AdminType.caption2Medium)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(
+                        accent.opacity(colorScheme == .dark ? 0.16 : 0.08),
+                        in: Capsule()
+                    )
+                    .overlay(
+                        Capsule().strokeBorder(accent.opacity(contrast == .increased ? 0.50 : 0.22), lineWidth: 0.5)
+                    )
+                }
+
+                // Title & Subtitle Stack
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+
+                    Text(subtitle)
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+
+                Spacer(minLength: 0)
+
+                // Bottom Action Strip with Directional Arrow
+                HStack(spacing: 4) {
+                    Text(actionTitle)
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(accent)
+
+                    Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(accent)
+                }
+                .padding(.top, 2)
+            }
+            .padding(isRegular ? 14 : 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(minHeight: isRegular ? 116 : 106)
+            .background(cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(cardBorder)
+            .shadow(
+                color: Color.black.opacity(colorScheme == .dark ? 0.25 : 0.04),
+                radius: 8,
+                x: 0,
+                y: 3
+            )
+            .scaleEffect(isPressed ? 0.98 : 1.0)
+            .animation(.spring(response: 0.28, dampingFraction: 0.8), value: isPressed)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .onLongPressGesture(minimumDuration: .infinity, maximumDistance: 50, pressing: { pressing in
+            isPressed = pressing
+        }, perform: {})
+        .onAppear {
+            if count > 0 {
+                withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                    isPulsing = true
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title), \(count) \(countUnit), \(subtitle)")
+        .accessibilityHint(Language.isRTL() ? "اضغط لفتح \(title)" : "Tap to open \(title)")
+    }
+
+    private var cardBackground: some View {
+        ZStack {
+            AdminSurface.control
+
+            LinearGradient(
+                colors: [
+                    accent.opacity(colorScheme == .dark ? 0.08 : 0.035),
+                    Color.clear
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+
+    private var cardBorder: some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .strokeBorder(
+                LinearGradient(
+                    colors: [
+                        accent.opacity(contrast == .increased ? 0.60 : (colorScheme == .dark ? 0.35 : 0.20)),
+                        accent.opacity(contrast == .increased ? 0.40 : (colorScheme == .dark ? 0.15 : 0.08))
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: contrast == .increased ? 1.2 : 0.8
+            )
+    }
+}
+

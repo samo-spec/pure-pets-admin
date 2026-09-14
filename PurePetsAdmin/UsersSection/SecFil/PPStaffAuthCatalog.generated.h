@@ -33,7 +33,7 @@ extern PPStaffRole const PPStaffRoleViewer;
 extern PPStaffRole const PPStaffRoleSecurityAdmin;
 extern PPStaffRole const PPStaffRoleComplianceAuditor;
 
-#pragma mark - Permission Keys Constants (143 Permissions)
+#pragma mark - Permission Keys Constants (157 Permissions)
 
 extern NSString * const kStaffPermDashboardView;
 extern NSString * const kStaffPermNovaView;
@@ -178,6 +178,20 @@ extern NSString * const kStaffPermReturnsLivePetCreate;
 extern NSString * const kStaffPermReturnsLivePetReceive;
 extern NSString * const kStaffPermReturnsLivePetInspect;
 extern NSString * const kStaffPermReturnsLivePetClearForResale;
+extern NSString * const kStaffPermCommunityDashboardView;
+extern NSString * const kStaffPermCommunityAdoptionModerate;
+extern NSString * const kStaffPermCommunityApplicationView;
+extern NSString * const kStaffPermCommunityMissingModerate;
+extern NSString * const kStaffPermCommunityLocationPrecise;
+extern NSString * const kStaffPermCommunitySightingReview;
+extern NSString * const kStaffPermCommunityMatchReview;
+extern NSString * const kStaffPermCommunityOrganizationVerify;
+extern NSString * const kStaffPermCommunityOrganizationSuspend;
+extern NSString * const kStaffPermCommunityModerationReview;
+extern NSString * const kStaffPermCommunityModerationResolve;
+extern NSString * const kStaffPermCommunityConfigurationManage;
+extern NSString * const kStaffPermCommunityAnalyticsView;
+extern NSString * const kStaffPermCommunityAuditView;
 
 #pragma mark - Catalog Accessors
 

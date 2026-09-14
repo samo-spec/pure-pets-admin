@@ -69,6 +69,7 @@
     if ([identifier isEqualToString:@"accounting"]) return [AdminAccountingHostingController new];
     if ([identifier isEqualToString:@"audit"]) return [PPAuditLogViewController new];
     if ([identifier isEqualToString:@"moderation"]) return [AdminModerationHostingController new];
+    if ([identifier isEqualToString:@"community"]) return [AdminCommunityHostingController new];
     if ([identifier isEqualToString:@"homeControl"]) return [AdminHomeControlHostingController new];
     if ([identifier isEqualToString:@"services"]) return [AdminServicesHostingController new];
     if ([identifier isEqualToString:@"vets"]) return [PPAdminRouteFactory makeSwiftUIHostingControllerForVets];

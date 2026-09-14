@@ -5047,7 +5047,7 @@ public struct PPInventoryItemDetailView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 16) {
                     // Top spacing clearance for floating apex bar
-                    Color.clear.frame(height: 52)
+                    Color.clear.frame(height: 58)
 
                     // Flagship Hero Specimen Stage (Expansive Vessel with Carousel / Lightbox / 3D Emblems)
                     heroSpecimenStage
@@ -5415,15 +5415,13 @@ public struct PPInventoryItemDetailView: View {
         LinearGradient(
             stops: [
                 .init(color: appForegroundColor, location: 0.0),
-                .init(color: appForegroundColor, location: 0.55),
-                .init(color: appForegroundColor.opacity(0.85), location: 0.72),
-                .init(color: appForegroundColor.opacity(0.35), location: 0.88),
+                .init(color: appForegroundColor, location: 0.70),
+                .init(color: appForegroundColor.opacity(0.60), location: 0.85),
                 .init(color: appForegroundColor.opacity(0.0), location: 1.0)
             ],
             startPoint: .top,
             endPoint: .bottom
         )
-        .padding(.bottom, -38)
         .ignoresSafeArea(edges: .top)
         .allowsHitTesting(false)
     }

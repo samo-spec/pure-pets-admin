@@ -3458,10 +3458,11 @@ private struct AdminOperationsDeckView: View {
     private var canServices: Bool { AdminRoute.services.isAuthorized(for: session) }
     private var canVeterinarians: Bool { AdminRoute.veterinarians.isAuthorized(for: session) }
     private var canModeration: Bool { AdminRoute.moderation.isAuthorized(for: session) }
+    private var canCommunity: Bool { AdminRoute.community.isAuthorized(for: session) }
     private var canHotel: Bool { AdminRoute.hotel.isAuthorized(for: session) }
 
     private var hasAnyAuthorizedRoute: Bool {
-        canDelivery || canProviderApplications || canProviderPlans || canProviderFeatures || canProviderAccounting || canBranches || canAgents || canHomeControl || canServices || canVeterinarians || canModeration || canHotel
+        canDelivery || canProviderApplications || canProviderPlans || canProviderFeatures || canProviderAccounting || canBranches || canAgents || canHomeControl || canServices || canVeterinarians || canModeration || canCommunity || canHotel
     }
 
     private var hasProvidersSection: Bool {
@@ -3477,7 +3478,7 @@ private struct AdminOperationsDeckView: View {
     }
 
     private var hasPlatformSection: Bool {
-        canHomeControl || canModeration
+        canHomeControl || canModeration || canCommunity
     }
 
     var body: some View {
@@ -4258,7 +4259,7 @@ private struct AdminOperationsDeckView: View {
                             subtitle: Language.get("Operations_HomeControl_Desc", alter: "تخصيص أرفف الشاشة الرئيسية وسلايدر الاستكشاف"),
                             symbol: "switch.2",
                             symbolColor: .indigo,
-                            showsDivider: canModeration
+                            showsDivider: canModeration || canCommunity
                         )
                     }
                     .buttonStyle(.plain)
@@ -4274,6 +4275,22 @@ private struct AdminOperationsDeckView: View {
                             subtitle: Language.get("Operations_Moderation_Desc", alter: "مراجعة المحتوى المبلغ عنه ومكافحة الانتهاكات"),
                             symbol: "shield.lefthalf.filled",
                             symbolColor: .purple,
+                            showsDivider: canCommunity
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if canCommunity {
+                    Button {
+                        triggerHaptic(.light)
+                        router.present(.community, session: session)
+                    } label: {
+                        deskActionRow(
+                            title: Language.get("Community_Admin_Title", alter: "مركز عمليات المجتمع"),
+                            subtitle: Language.get("Operations_Community_Desc", alter: "التبني والمفقودات والمطابقة والمنظمات والثقة والسلامة"),
+                            symbol: "pawprint.fill",
+                            symbolColor: AdminSurface.primary,
                             showsDivider: false
                         )
                     }

@@ -9,7 +9,7 @@
 
 NSString * const PPStaffIAMPolicyVersion = @"2.0.0-draft.1";
 NSString * const PPStaffIAMSchemaVersion = @"2.0.0";
-NSString * const PPStaffIAMPolicySHA256 = @"8e25da097faf871ec0b034ccdf2cf230ce13a2ae99a14dbbccdcd25b8647acbd";
+NSString * const PPStaffIAMPolicySHA256 = @"64a4681b3762497a8fe470a39d094e6f59fcefc2efc87d110d6ed4c370788174";
 
 #pragma mark - Role Definitions
 
@@ -174,6 +174,20 @@ NSString * const kStaffPermReturnsLivePetCreate = @"returns.live_pet.create";
 NSString * const kStaffPermReturnsLivePetReceive = @"returns.live_pet.receive";
 NSString * const kStaffPermReturnsLivePetInspect = @"returns.live_pet.inspect";
 NSString * const kStaffPermReturnsLivePetClearForResale = @"returns.live_pet.clear_for_resale";
+NSString * const kStaffPermCommunityDashboardView = @"community.dashboard.view";
+NSString * const kStaffPermCommunityAdoptionModerate = @"community.adoption.moderate";
+NSString * const kStaffPermCommunityApplicationView = @"community.application.view";
+NSString * const kStaffPermCommunityMissingModerate = @"community.missing.moderate";
+NSString * const kStaffPermCommunityLocationPrecise = @"community.location.precise";
+NSString * const kStaffPermCommunitySightingReview = @"community.sighting.review";
+NSString * const kStaffPermCommunityMatchReview = @"community.match.review";
+NSString * const kStaffPermCommunityOrganizationVerify = @"community.organization.verify";
+NSString * const kStaffPermCommunityOrganizationSuspend = @"community.organization.suspend";
+NSString * const kStaffPermCommunityModerationReview = @"community.moderation.review";
+NSString * const kStaffPermCommunityModerationResolve = @"community.moderation.resolve";
+NSString * const kStaffPermCommunityConfigurationManage = @"community.configuration.manage";
+NSString * const kStaffPermCommunityAnalyticsView = @"community.analytics.view";
+NSString * const kStaffPermCommunityAuditView = @"community.audit.view";
 
 #pragma mark - Catalog Accessor Implementations
 
@@ -350,6 +364,20 @@ NSArray<NSString *> * PPStaffAllPermissionKeys(void) {
             kStaffPermReturnsLivePetReceive,
             kStaffPermReturnsLivePetInspect,
             kStaffPermReturnsLivePetClearForResale,
+            kStaffPermCommunityDashboardView,
+            kStaffPermCommunityAdoptionModerate,
+            kStaffPermCommunityApplicationView,
+            kStaffPermCommunityMissingModerate,
+            kStaffPermCommunityLocationPrecise,
+            kStaffPermCommunitySightingReview,
+            kStaffPermCommunityMatchReview,
+            kStaffPermCommunityOrganizationVerify,
+            kStaffPermCommunityOrganizationSuspend,
+            kStaffPermCommunityModerationReview,
+            kStaffPermCommunityModerationResolve,
+            kStaffPermCommunityConfigurationManage,
+            kStaffPermCommunityAnalyticsView,
+            kStaffPermCommunityAuditView,
         ];
     });
     return keys;
@@ -643,6 +671,25 @@ NSArray<NSDictionary<NSString *, id> *> * PPStaffPermissionModules(void) {
                    @{ @"key": @"returns.live_pet.inspect", @"labelEn": @"Inspect returned live pet health and disposition", @"labelAr": @"فحص صحة الحيوان الحي المرتجع وتحديد مصيره", @"riskTier": @"T1", @"protected": @NO },
                    @{ @"key": @"returns.live_pet.clear_for_resale", @"labelEn": @"Clear quarantined live pet for resale", @"labelAr": @"إخلاء طرف الحيوان الحي من الحجر لإعادة البيع", @"riskTier": @"T2", @"protected": @YES },
                ] },
+            @{ @"key": @"community",
+               @"labelEn": @"Community",
+               @"labelAr": @"المجتمع",
+               @"actions": @[
+                   @{ @"key": @"community.dashboard.view", @"labelEn": @"View Community operations", @"labelAr": @"عرض عمليات المجتمع", @"riskTier": @"T0", @"protected": @NO },
+                   @{ @"key": @"community.adoption.moderate", @"labelEn": @"Moderate adoption listings", @"labelAr": @"مراجعة إعلانات التبني", @"riskTier": @"T1", @"protected": @NO },
+                   @{ @"key": @"community.application.view", @"labelEn": @"View adoption applications", @"labelAr": @"عرض طلبات التبني", @"riskTier": @"T0", @"protected": @NO },
+                   @{ @"key": @"community.missing.moderate", @"labelEn": @"Moderate missing and found cases", @"labelAr": @"مراجعة حالات المفقود والمعثور عليه", @"riskTier": @"T1", @"protected": @NO },
+                   @{ @"key": @"community.location.precise", @"labelEn": @"View precise Community locations", @"labelAr": @"عرض المواقع الدقيقة للمجتمع", @"riskTier": @"T2", @"protected": @NO },
+                   @{ @"key": @"community.sighting.review", @"labelEn": @"Review pet sightings", @"labelAr": @"مراجعة مشاهدات الحيوانات", @"riskTier": @"T1", @"protected": @NO },
+                   @{ @"key": @"community.match.review", @"labelEn": @"Review possible pet matches", @"labelAr": @"مراجعة المطابقات المحتملة", @"riskTier": @"T1", @"protected": @NO },
+                   @{ @"key": @"community.organization.verify", @"labelEn": @"Verify Community organizations", @"labelAr": @"توثيق منظمات المجتمع", @"riskTier": @"T2", @"protected": @NO },
+                   @{ @"key": @"community.organization.suspend", @"labelEn": @"Restrict or suspend Community organizations", @"labelAr": @"تقييد أو إيقاف منظمات المجتمع", @"riskTier": @"T2", @"protected": @NO },
+                   @{ @"key": @"community.moderation.review", @"labelEn": @"View Community moderation", @"labelAr": @"عرض مراجعة المجتمع", @"riskTier": @"T0", @"protected": @NO },
+                   @{ @"key": @"community.moderation.resolve", @"labelEn": @"Resolve Community moderation cases", @"labelAr": @"حسم حالات مراجعة المجتمع", @"riskTier": @"T2", @"protected": @NO },
+                   @{ @"key": @"community.configuration.manage", @"labelEn": @"Manage Community configuration", @"labelAr": @"إدارة إعدادات المجتمع", @"riskTier": @"T2", @"protected": @NO },
+                   @{ @"key": @"community.analytics.view", @"labelEn": @"View Community analytics", @"labelAr": @"عرض تحليلات المجتمع", @"riskTier": @"T0", @"protected": @NO },
+                   @{ @"key": @"community.audit.view", @"labelEn": @"View Community audit history", @"labelAr": @"عرض سجل تدقيق المجتمع", @"riskTier": @"T0", @"protected": @NO },
+               ] },
         ];
     });
     return modules;
@@ -851,6 +898,20 @@ NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role) {
             kStaffPermIamRoleRead,
             kStaffPermIamBindingRead,
             kStaffPermIamElevationRequest,
+            kStaffPermCommunityDashboardView,
+            kStaffPermCommunityAdoptionModerate,
+            kStaffPermCommunityApplicationView,
+            kStaffPermCommunityMissingModerate,
+            kStaffPermCommunityLocationPrecise,
+            kStaffPermCommunitySightingReview,
+            kStaffPermCommunityMatchReview,
+            kStaffPermCommunityOrganizationVerify,
+            kStaffPermCommunityOrganizationSuspend,
+            kStaffPermCommunityModerationReview,
+            kStaffPermCommunityModerationResolve,
+            kStaffPermCommunityConfigurationManage,
+            kStaffPermCommunityAnalyticsView,
+            kStaffPermCommunityAuditView,
         ];
     }
 
@@ -932,6 +993,20 @@ NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role) {
             kStaffPermReturnsLivePetClearForResale,
             kStaffPermBannersView,
             kStaffPermBannersManage,
+            kStaffPermCommunityDashboardView,
+            kStaffPermCommunityAdoptionModerate,
+            kStaffPermCommunityApplicationView,
+            kStaffPermCommunityMissingModerate,
+            kStaffPermCommunityLocationPrecise,
+            kStaffPermCommunitySightingReview,
+            kStaffPermCommunityMatchReview,
+            kStaffPermCommunityOrganizationVerify,
+            kStaffPermCommunityOrganizationSuspend,
+            kStaffPermCommunityModerationReview,
+            kStaffPermCommunityModerationResolve,
+            kStaffPermCommunityConfigurationManage,
+            kStaffPermCommunityAnalyticsView,
+            kStaffPermCommunityAuditView,
         ];
     }
 
@@ -966,6 +1041,10 @@ NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role) {
             kStaffPermReturnsLivePetClearForResale,
             kStaffPermNotificationsView,
             kStaffPermNotificationsInboxView,
+            kStaffPermCommunityDashboardView,
+            kStaffPermCommunityApplicationView,
+            kStaffPermCommunitySightingReview,
+            kStaffPermCommunityModerationReview,
         ];
     }
 

@@ -41,7 +41,11 @@ public struct AdminPetsHotelHubView: View {
                     isPushMode: true,
                     onBack: { viewModel.newReservationModalOpen = false }
                 )
-                .navigationBarHidden(true),
+                .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
+                .navigationBarBackButtonHidden(true)
+                .navigationBarHidden(true)
+                .toolbar(.hidden, for: .navigationBar),
                 isActive: $viewModel.newReservationModalOpen
             ) {
                 EmptyView()
@@ -113,15 +117,15 @@ public struct AdminPetsHotelHubView: View {
             .accessibilityHidden(true)
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .sheet(item: $viewModel.suiteEditorModalAccommodation) { acc in
+        .fullScreenCover(item: $viewModel.suiteEditorModalAccommodation) { acc in
             AdminPetsHotelSuiteEditorSheet(accommodation: acc, viewModel: viewModel)
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
-        .sheet(item: $viewModel.typeEditorModalType) { type in
+        .fullScreenCover(item: $viewModel.typeEditorModalType) { type in
             AdminPetsHotelAccommodationTypeEditorSheet(accommodationType: type, viewModel: viewModel)
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
-        .sheet(isPresented: $viewModel.isCreatingNewType) {
+        .fullScreenCover(isPresented: $viewModel.isCreatingNewType) {
             AdminPetsHotelAccommodationTypeEditorSheet(accommodationType: nil, viewModel: viewModel)
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }

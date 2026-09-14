@@ -683,7 +683,11 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
                 iPhoneTactileDeck
             }
         }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .navigationBarHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
             populateFields()
@@ -691,8 +695,9 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
                 morphicPulse = true
             }
         }
-        .sheet(isPresented: $showNewTypeSheet) {
+        .fullScreenCover(isPresented: $showNewTypeSheet) {
             AdminPetsHotelAccommodationTypeEditorSheet(accommodationType: nil, viewModel: viewModel)
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
     }
 
@@ -1134,6 +1139,8 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
                     TextField(Language.get("Hotel_Suites_CodePlaceholder", alter: "مثال: D-101"), text: $code)
                         .font(Font.custom("Beiruti-Bold", size: 16))
                         .foregroundStyle(AdminSurface.primaryText)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(12)
                         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .overlay(
@@ -1178,6 +1185,8 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
                     TextField(Language.get("Hotel_Suites_NamePlaceholder", alter: "مثال: الجناح الملكي للكلاب الكبيرة"), text: $name)
                         .font(Font.custom("Beiruti-Medium", size: 14))
                         .foregroundStyle(AdminSurface.primaryText)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(12)
                         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .overlay(
@@ -1640,6 +1649,8 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
                     TextField(Language.get("Optional", alter: "اختياري: إرشادات خاصة، حالة التكييف، متطلبات التسكين..."), text: $notes)
                         .font(Font.custom("Beiruti-Medium", size: 13))
                         .foregroundStyle(AdminSurface.primaryText)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(12)
                         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .overlay(
@@ -1797,9 +1808,13 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.top, 14)
+        .padding(.top, 8)
         .padding(.bottom, 10)
-        .background(AdminSurface.surface.overlay(Divider(), alignment: .bottom))
+        .background(
+            AdminSurface.surface
+                .ignoresSafeArea(edges: .top)
+                .overlay(Divider(), alignment: .bottom)
+        )
     }
 
     private var iPhoneFloatingActionBar: some View {
@@ -1959,9 +1974,13 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
             .keyboardShortcut(.cancelAction)
         }
         .padding(.horizontal, 28)
-        .padding(.top, 18)
+        .padding(.top, 14)
         .padding(.bottom, 16)
-        .background(AdminSurface.surface.overlay(Divider(), alignment: .bottom))
+        .background(
+            AdminSurface.surface
+                .ignoresSafeArea(edges: .top)
+                .overlay(Divider(), alignment: .bottom)
+        )
     }
 
     private var iPadSuiteSpecsInspectorCard: some View {
@@ -2153,6 +2172,12 @@ public struct AdminPetsHotelAccommodationTypeEditorSheet: View {
                 )
             }
         }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .navigationBarHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
             populateFields()
         }
@@ -2262,7 +2287,13 @@ private struct AdminHotelAccommodationTypePhoneView: View {
                 subtitle: Language.get("Hotel_Workspace", alter: "مساحة الفندق • مباشر"),
                 statusDotColor: Color(red: 0.16, green: 0.78, blue: 0.48),
                 isModal: true,
+                customTopSpacing: 0,
                 onBack: onDismiss
+            )
+            .background(
+                AdminSurface.card
+                    .ignoresSafeArea(edges: .top)
+                    .overlay(Divider(), alignment: .bottom)
             )
 
             ScrollView(.vertical, showsIndicators: false) {
@@ -2401,6 +2432,7 @@ private struct AdminHotelAccommodationTypePadView: View {
                 subtitle: Language.get("Hotel_Suites_StudioSubtitle", alter: "تصميم وإدارة معايير الإقامة والأجنحة الفاخرة"),
                 statusDotColor: Color(red: 0.16, green: 0.78, blue: 0.48),
                 isModal: true,
+                customTopSpacing: 0,
                 onBack: onDismiss
             ) {
                 // Trailing ⌘S Indicator
@@ -2414,6 +2446,11 @@ private struct AdminHotelAccommodationTypePadView: View {
                         .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: 0.8))
                 }
             }
+            .background(
+                AdminSurface.card
+                    .ignoresSafeArea(edges: .top)
+                    .overlay(Divider(), alignment: .bottom)
+            )
 
             HStack(alignment: .top, spacing: 20) {
                 // Leading Column: Configuration Cards (Fluid Scroll)
@@ -2842,6 +2879,7 @@ private struct AdminHotelTierIdentityCard: View {
                             TextField("VIP", text: $code)
                                 .font(PPBeirutiFont.bold(15, relativeTo: .body))
                                 .foregroundStyle(AdminSurface.primaryText)
+                                .multilineTextAlignment(.leading)
                                 .textInputAutocapitalization(.characters)
                                 .autocorrectionDisabled()
                         }
@@ -2894,6 +2932,7 @@ private struct AdminHotelTierIdentityCard: View {
                         TextField(Language.get("Hotel_Suites_NameArPlaceholder", alter: "مثال: جناح كبار الشخصيات VIP"), text: $nameAr)
                             .font(PPBeirutiFont.medium(14, relativeTo: .body))
                             .foregroundStyle(AdminSurface.primaryText)
+                            .multilineTextAlignment(.leading)
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 9)
@@ -2915,9 +2954,10 @@ private struct AdminHotelTierIdentityCard: View {
                             .font(PPBeirutiFont.bold(13, relativeTo: .caption))
                             .foregroundStyle(wing.tint)
 
-                        TextField("e.g. VIP Presidential Suite", text: $nameEn)
+                        TextField(Language.get("Hotel_Suites_NameEnPlaceholder", alter: "e.g. VIP Presidential Suite"), text: $nameEn)
                             .font(PPBeirutiFont.medium(14, relativeTo: .body))
                             .foregroundStyle(AdminSurface.primaryText)
+                            .multilineTextAlignment(.leading)
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 9)
@@ -3437,6 +3477,7 @@ private struct AdminHotelDescriptionCard: View {
                     TextEditor(text: $descriptionText)
                         .font(PPBeirutiFont.regular(13.5, relativeTo: .body))
                         .foregroundStyle(AdminSurface.primaryText)
+                        .multilineTextAlignment(.leading)
                         .padding(6)
                         .frame(minHeight: 74)
                 }
