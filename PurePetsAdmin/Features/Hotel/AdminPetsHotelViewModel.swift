@@ -187,6 +187,7 @@ public final class AdminPetsHotelViewModel: ObservableObject {
                 self.accommodationTypes = (documents ?? []).compactMap { doc in
                     AdminHotelAccommodationType.fromDictionary(doc.data(), id: doc.documentID)
                 }.sorted { $0.sortOrder < $1.sortOrder }
+                self.reconcileAccommodationMetadata()
             }
         }
 
@@ -1187,7 +1188,7 @@ public final class AdminPetsHotelViewModel: ObservableObject {
             currentStayId: d["currentStayId"] as? String,
             currentGuestName: d["currentGuestName"] as? String,
             currentGuestSpecies: d["currentGuestSpecies"] as? String,
-            nightlyRateMinor: d["nightlyRateMinor"] as? Int,
+            nightlyRateMinor: (d["nightlyRateMinor"] as? NSNumber)?.intValue ?? (d["nightlyRateMinor"] as? Int),
             branchId: expectedBranchId,
             notes: d["notes"] as? String,
             lastCleanedAt: lastCleanTs?.dateValue(),
@@ -1199,15 +1200,35 @@ public final class AdminPetsHotelViewModel: ObservableObject {
     }
 
     private func reconcileAccommodationMetadata() {
+        let typesById = Dictionary(uniqueKeysWithValues: accommodationTypes.map { ($0.id, $0) })
+        accommodations = accommodations.map { room in
+            var resolved = room
+            if (resolved.nightlyRateMinor == nil || resolved.nightlyRateMinor == 0),
+               let matchedType = typesById[resolved.accommodationTypeId],
+               matchedType.nightlyRateMinor > 0 {
+                resolved.nightlyRateMinor = matchedType.nightlyRateMinor
+            }
+            return resolved
+        }
+
         let roomsById = Dictionary(uniqueKeysWithValues: accommodations.map { ($0.id, $0) })
         stays = stays.map(reconciledStay)
         reservations = reservations.map { reservation in
-            guard let roomId = reservation.assignedAccommodationId,
-                  let room = roomsById[roomId] else { return reservation }
             var resolved = reservation
-            resolved.wing = room.wing
-            if resolved.assignedRoomNumber?.isEmpty != false {
-                resolved.assignedRoomNumber = room.accommodationNumber
+            if let roomId = reservation.assignedAccommodationId,
+               let room = roomsById[roomId] {
+                resolved.wing = room.wing
+                if resolved.assignedRoomNumber?.isEmpty != false {
+                    resolved.assignedRoomNumber = room.accommodationNumber
+                }
+                if (resolved.totalAmountMinor == nil || resolved.totalAmountMinor == 0),
+                   let rate = room.nightlyRateMinor, rate > 0 {
+                    resolved.totalAmountMinor = rate * max(1, resolved.numberOfNights)
+                }
+            } else if (resolved.totalAmountMinor == nil || resolved.totalAmountMinor == 0),
+                      let matchedType = typesById[reservation.accommodationTypeId],
+                      matchedType.nightlyRateMinor > 0 {
+                resolved.totalAmountMinor = matchedType.nightlyRateMinor * max(1, resolved.numberOfNights)
             }
             return resolved
         }

@@ -430,9 +430,10 @@ public struct AdminHotelAccommodationType: Identifiable, Hashable {
             nameEn: nameEn,
             wing: HotelWing(rawValue: wingRaw) ?? .dogs,
             allowedSpecies: dict["allowedSpecies"] as? [String] ?? [],
-            defaultCapacity: dict["defaultCapacity"] as? Int ?? 1,
-            nightlyRateMinor: dict["nightlyRateMinor"] as? Int ?? 0,
-            allowSharedOccupancy: dict["allowSharedOccupancy"] as? Bool ?? false,
+            nightlyRateMinor: (dict["nightlyRateMinor"] as? NSNumber)?.intValue
+                ?? (dict["nightlyRateMinor"] as? Int)
+                ?? (dict["nightlyRate"] as? NSNumber)?.intValue
+                ?? 0,
             sortOrder: dict["sortOrder"] as? Int ?? 0,
             active: dict["active"] as? Bool ?? true,
             description: dict["description"] as? String,
