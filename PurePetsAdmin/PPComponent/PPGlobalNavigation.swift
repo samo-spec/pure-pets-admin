@@ -2158,11 +2158,176 @@ public final class PPGlobalNavigationHostingController: UIViewController {
     }
 }
 
+// MARK: - Top fade
+
+/// The soft fade that backs the global navigation bar while content scrolls
+/// beneath it.
+///
+/// This carries the same optical recipe already shipped on the inventory item
+/// dossier: a hardware-accelerated frosted backdrop, a translucent ambient
+/// sheen, and a quintic progressive mask so scrolling content emerges from
+/// under the bar instead of colliding with it. Reduce Transparency and
+/// Increase Contrast swap the material for a flat surface gradient.
+///
+/// Geometry is expressed two ways:
+/// - `.proportional` reproduces the dossier blend stop-for-stop and lets the
+///   parent size the fade (typically as a `.background`).
+/// - `.anchored(solidHeight:bleed:)` pins a fully backed plateau behind the
+///   navigation controls and spends the remainder on the same quintic falloff.
+///   `hostGeometry(surface:hostHeight:safeAreaTop:)` derives that pair for a
+///   navigation host that reserves `hostHeight + safeAreaTop` above content.
+public struct PPGlobalNavigationTopFade: View {
+
+    /// Where the fade stops being fully opaque, and how deep the soft tail runs.
+    public enum MaskGeometry: Hashable, Sendable {
+        /// Fraction-based blend identical to the item dossier fade.
+        case proportional
+        /// Absolute plateau behind the navigation controls plus a soft tail.
+        case anchored(solidHeight: CGFloat, bleed: CGFloat)
+    }
+
+    public let surface: Color
+    public let maskGeometry: MaskGeometry
+
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.colorScheme) private var colorScheme
+
+    public init(surface: Color, maskGeometry: MaskGeometry = .proportional) {
+        self.surface = surface
+        self.maskGeometry = maskGeometry
+    }
+
+    /// Geometry for a host that reserves `hostHeight + safeAreaTop` above its
+    /// scrolled content. The plateau covers the status bar plus the control
+    /// row; the rest of the reserved area and a fixed soft tail carry the
+    /// quintic falloff, so the fade reads as a soft edge *below* the bar.
+    public static func hostGeometry(
+        surface: Color,
+        hostHeight: CGFloat,
+        safeAreaTop: CGFloat
+    ) -> PPGlobalNavigationTopFade {
+        let host = max(hostHeight, 0)
+        let safe = max(safeAreaTop, 0)
+        return PPGlobalNavigationTopFade(
+            surface: surface,
+            maskGeometry: .anchored(
+                solidHeight: safe + host * Metrics.plateauShare,
+                bleed: host * (1 - Metrics.plateauShare) + Metrics.contentBleed
+            )
+        )
+    }
+
+    private enum Metrics {
+        /// Share of the host height that stays fully opaque behind the controls.
+        static let plateauShare: CGFloat = 0.70
+        /// How far the soft tail reaches past the reserved host area.
+        static let contentBleed: CGFloat = 32
+        /// Plateau used by the dossier's fraction-based blend.
+        static let proportionalPlateau: Double = 0.40
+    }
+
+    /// The dossier's quintic optical falloff, expressed relative to the tail.
+    /// Position 0 is where the plateau ends; 1 is the last visible pixel.
+    private static let tailShape: [(position: Double, opacity: Double)] = [
+        (0.0, 1.0),
+        (0.25, 0.92),
+        (0.4667, 0.70),
+        (0.6667, 0.40),
+        (0.8333, 0.14),
+        (1.0, 0.0)
+    ]
+
+    public var body: some View {
+        Group {
+            if reduceTransparency || contrast == .increased {
+                LinearGradient(stops: solidStops, startPoint: .top, endPoint: .bottom)
+            } else {
+                ZStack {
+                    // 1. Hardware-accelerated frosted glass backdrop.
+                    Rectangle()
+                        .fill(.ultraThinMaterial)
+
+                    // 2. Translucent ambient sheen (keeps specimen vibrancy underneath).
+                    LinearGradient(
+                        stops: [
+                            .init(color: surface.opacity(colorScheme == .dark ? 0.35 : 0.55), location: 0.0),
+                            .init(color: surface.opacity(colorScheme == .dark ? 0.18 : 0.30), location: 0.50),
+                            .init(color: surface.opacity(0.0), location: 1.0)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                }
+                // 3. Apple optical ease curve mask (smooth quintic progressive fade).
+                .mask(
+                    LinearGradient(stops: maskStops, startPoint: .top, endPoint: .bottom)
+                )
+            }
+        }
+        .frame(height: resolvedHeight)
+        .ignoresSafeArea(edges: .top)
+        .allowsHitTesting(false)
+    }
+
+    private var resolvedHeight: CGFloat? {
+        switch maskGeometry {
+        case .proportional:
+            return nil
+        case .anchored(let solidHeight, let bleed):
+            return max(solidHeight, 0) + max(bleed, 0)
+        }
+    }
+
+    private var plateauFraction: Double {
+        switch maskGeometry {
+        case .proportional:
+            return Metrics.proportionalPlateau
+        case .anchored(let solidHeight, let bleed):
+            let total = max(solidHeight, 0) + max(bleed, 0)
+            guard total > 0 else { return 1 }
+            return min(max(Double(max(solidHeight, 0) / total), 0.05), 0.95)
+        }
+    }
+
+    private var tailFraction: Double {
+        max(1 - plateauFraction, 0.0001)
+    }
+
+    private var maskStops: [Gradient.Stop] {
+        let plateau = plateauFraction
+        let tail = tailFraction
+        var stops: [Gradient.Stop] = [
+            .init(color: .black, location: 0.0),
+            .init(color: .black, location: plateau)
+        ]
+        for step in Self.tailShape where step.position > 0 {
+            stops.append(.init(color: .black.opacity(step.opacity), location: plateau + tail * step.position))
+        }
+        return stops
+    }
+
+    private var solidStops: [Gradient.Stop] {
+        let plateau = plateauFraction
+        let tail = tailFraction
+        return [
+            .init(color: surface, location: 0.0),
+            .init(color: surface, location: plateau),
+            .init(color: surface, location: plateau + tail * 0.6667),
+            .init(color: surface.opacity(0.0), location: 1.0)
+        ]
+    }
+}
+
 // MARK: - Convenience scroll shell
 
 public struct PPGlobalNavigationScrollShell<Content: View>: View {
     public let configuration: PPGlobalNavigationConfiguration
     public let collapseDistance: CGFloat
+    /// When true the reserved navigation host area is backed by the soft top
+    /// fade, so scrolled content emerges from under the bar instead of
+    /// colliding with it. Off by default so existing hosts stay unchanged.
+    public let showsTopFade: Bool
     public let onAction: PPGlobalNavigationActionHandler
     private let content: Content
 
@@ -2173,11 +2338,13 @@ public struct PPGlobalNavigationScrollShell<Content: View>: View {
     public init(
         configuration: PPGlobalNavigationConfiguration,
         collapseDistance: CGFloat = 76,
+        showsTopFade: Bool = false,
         onAction: @escaping PPGlobalNavigationActionHandler,
         @ViewBuilder content: () -> Content
     ) {
         self.configuration = configuration
         self.collapseDistance = max(44, collapseDistance)
+        self.showsTopFade = showsTopFade
         self.onAction = onAction
         self.content = content()
     }
@@ -2212,6 +2379,16 @@ public struct PPGlobalNavigationScrollShell<Content: View>: View {
                 .coordinateSpace(name: PPNavScrollCoordinateSpace.name)
                 .onPreferenceChange(PPNavScrollOffsetPreferenceKey.self) { value in
                     scrollOffset = value
+                }
+
+                if showsTopFade {
+                    PPGlobalNavigationTopFade.hostGeometry(
+                        surface: PPNavPalette.canvas,
+                        hostHeight: reserveBase,
+                        safeAreaTop: safeTop
+                    )
+                    .frame(maxWidth: .infinity, alignment: .top)
+                    .zIndex(9)
                 }
 
                 PPGlobalNavigationBar(

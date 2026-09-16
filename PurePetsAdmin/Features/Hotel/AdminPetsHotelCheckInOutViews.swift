@@ -247,8 +247,12 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
             iPhoneNavBar
 
             // Scrollable Operational Canvas
+            // Keep this stack non-lazy: the check-in form contains dynamic-height
+            // verification and inventory sections. Lazy pinned headers can remeasure
+            // off-screen content and correct the scroll offset while the operator is
+            // reviewing actions near the bottom of the form.
             ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                VStack(spacing: 0) {
                     // Critical Error Banner (if any)
                     if let err = viewModel.errorMessage {
                         errorBanner(err)
@@ -262,29 +266,28 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
                         .padding(.top, viewModel.errorMessage == nil ? 12 : 8)
                         .padding(.bottom, 10)
 
-                    // Sticky Readiness Telemetry Section
-                    Section {
-                        VStack(spacing: 16) {
-                            // Room Selection Deck
-                            iPhoneRoomSelectionDeck
+                    // Readiness telemetry stays in normal document flow so reaching
+                    // the lower actions never changes the ScrollView's anchor.
+                    iPhoneReadinessHeader
 
-                            // Clinical & Operational Verification Cockpit
-                            iPhoneVerificationCockpit
+                    VStack(spacing: 16) {
+                        // Room Selection Deck
+                        iPhoneRoomSelectionDeck
 
-                            // Belongings & Inventory Vault
-                            iPhoneBelongingsVault
+                        // Clinical & Operational Verification Cockpit
+                        iPhoneVerificationCockpit
 
-                            // Arrival & Behavioral Notes
-                            iPhoneNotesStudio
+                        // Belongings & Inventory Vault
+                        iPhoneBelongingsVault
 
-                            // Visual spacer to clear the docked bottom bar
-                            Spacer(minLength: 92)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 6)
-                    } header: {
-                        stickyReadinessHeader
+                        // Arrival & Behavioral Notes
+                        iPhoneNotesStudio
+
+                        // Visual spacer to clear the docked bottom bar
+                        Spacer(minLength: 92)
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 6)
                 }
             }
 
@@ -579,8 +582,8 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // MARK: - Sticky Readiness Telemetry Header
-    private var stickyReadinessHeader: some View {
+    // MARK: - iPhone Readiness Telemetry Header
+    private var iPhoneReadinessHeader: some View {
         VStack(spacing: 0) {
             iPhoneReadinessGaugeCard
                 .padding(.horizontal, 16)
@@ -589,7 +592,6 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
         }
         .frame(maxWidth: .infinity)
         .background(AdminSurface.background)
-        .zIndex(10)
     }
 
     // MARK: - iPhone Readiness Gauge Card

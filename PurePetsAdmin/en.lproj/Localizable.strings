@@ -6014,6 +6014,8 @@
 
 "Hotel_OccupancySummary_Format" = "%ld of %ld suites occupied";
 
+"Hotel_OccupancyCapacitySummary_Format" = "%ld of %ld spaces occupied • %ld free";
+
 "Hotel_TapToViewStays" = "View in-house guests";
 
 "Hotel_TapToViewReservations" = "View upcoming reservations";
@@ -6170,9 +6172,9 @@
 
 "Hotel_Suites_SummaryFormat" = "%ld suites total • %ld vacant now";
 
-"Hotel_Suites_Types_Title" = "Suite Types & Rates";
+"Hotel_Suites_Types_Title" = "Accommodation Categories & Rates";
 
-"Hotel_Suites_NewType" = "Add Suite Type";
+"Hotel_Suites_NewType" = "Add Category";
 
 "Hotel_Suites_NoTypesYet" = "No suite types configured yet for this branch";
 
@@ -6190,15 +6192,15 @@
 
 "Hotel_Suites_NewTitle" = "New Suite";
 
-"Hotel_Suites_BasicInfo" = "Suite Details";
+"Hotel_Suites_BasicInfo" = "Physical Unit Details";
 
-"Hotel_Suites_CodeLabel" = "Suite Number / Code (e.g. D-101)";
+"Hotel_Suites_CodeLabel" = "Unit Code (e.g. B-102)";
 
-"Hotel_Suites_CodePlaceholder" = "e.g. D-101";
+"Hotel_Suites_CodePlaceholder" = "e.g. B-102";
 
-"Hotel_Suites_NameLabel" = "Suite Name";
+"Hotel_Suites_NameLabel" = "Unit Label";
 
-"Hotel_Suites_NamePlaceholder" = "e.g. Deluxe Suite for Large Dogs";
+"Hotel_Suites_NamePlaceholder" = "e.g. Small Birds Unit 1";
 
 "Hotel_Wing_Select" = "Assigned Wing:";
 
@@ -6226,37 +6228,39 @@
 
 "Hotel_Suites_SubmitNew" = "Create Suite";
 
-"Hotel_Err_CodeRequired" = "Enter suite number or code.";
+"Hotel_Err_CodeRequired" = "Enter a unit code.";
 
-"Hotel_Err_NameRequired" = "Enter suite name.";
+"Hotel_Err_NameRequired" = "Enter a unit label.";
 
-"Hotel_Err_TypeRequired" = "Select a suite type first.";
+"Hotel_Err_TypeRequired" = "Select an accommodation category first.";
 
-"Hotel_Suites_TierDetails" = "Suite Type Specifications";
+"Hotel_Suites_TierDetails" = "Accommodation Category";
 
-"Hotel_Suites_TypeCode" = "Type Code (e.g. DELUXE, VIP)";
+"Hotel_Suites_CategoryPurposeHelp" = "Name the category for the pets it serves, such as Small Dogs or Large Birds. Rate and capacity here are defaults; physical units such as B-102 are created separately.";
 
-"Hotel_Suites_NameAr" = "Arabic Name";
+"Hotel_Suites_TypeCode" = "Category Code (e.g. DOG-SM, BIRD-LG)";
 
-"Hotel_Suites_NameArPlaceholder" = "e.g. الجناح الفاخر VIP";
+"Hotel_Suites_NameAr" = "Category Name in Arabic";
 
-"Hotel_Suites_NameEn" = "English Name";
+"Hotel_Suites_NameArPlaceholder" = "مثال: كلاب صغيرة";
 
-"Hotel_Suites_NameEnPlaceholder" = "e.g. VIP Deluxe Suite";
+"Hotel_Suites_NameEn" = "Category Name in English";
+
+"Hotel_Suites_NameEnPlaceholder" = "e.g. Small Dogs";
 
 "Hotel_Suites_PriceAndCapacity" = "Rate & Capacity";
 
 "Hotel_Suites_NightlyRateQAR" = "Nightly Rate (QAR)";
 
-"Hotel_Suites_CreateTypeCTA" = "Create Suite Type";
+"Hotel_Suites_CreateTypeCTA" = "Create Accommodation Category";
 
-"Hotel_Suites_EditTypeTitle" = "Edit Suite Type";
+"Hotel_Suites_EditTypeTitle" = "Edit Accommodation Category";
 
-"Hotel_Suites_NewTypeTitle" = "New Suite Type";
+"Hotel_Suites_NewTypeTitle" = "New Accommodation Category";
 
-"Hotel_Err_TypeCodeRequired" = "Enter type code.";
+"Hotel_Err_TypeCodeRequired" = "Enter a category code.";
 
-"Hotel_Err_TypeNameRequired" = "Enter type name.";
+"Hotel_Err_TypeNameRequired" = "Enter an accommodation category name.";
 
 "Hotel_Suites_LivePreviewTitle" = "Suite Card Preview";
 
@@ -6780,20 +6784,20 @@
 
 "Hotel_Err_PetNameRequired" = "Enter guest name.";
 
-"Hotel_Name_Dog1" = "Standard Dog Suite";
-"Hotel_Name_Dog2" = "Classic Room";
-"Hotel_Name_Dog3" = "Deluxe Studio";
-"Hotel_Name_Dog4" = "Family Dog Suite";
-"Hotel_Name_Cat1" = "Standard Cat Suite";
-"Hotel_Name_Cat2" = "Classic Cat Room";
-"Hotel_Name_Cat3" = "Deluxe Cat Studio";
-"Hotel_Name_Cat4" = "Panoramic Cat Suite";
-"Hotel_Name_Bird1" = "Standard Aviary Suite";
-"Hotel_Name_Bird2" = "Panoramic Aviary Unit";
-"Hotel_Name_Bird3" = "Deluxe Aviary Unit";
-"Hotel_Name_Small1" = "Small Pet Suite";
-"Hotel_Name_Small2" = "Deluxe Small Pet Unit";
-"Hotel_Name_Small3" = "Small Pet Studio";
+"Hotel_Name_Dog1" = "Small Dogs Unit 1";
+"Hotel_Name_Dog2" = "Large Dogs Unit 1";
+"Hotel_Name_Dog3" = "Shared Dogs Unit 1";
+"Hotel_Name_Dog4" = "Solo Dog Unit 1";
+"Hotel_Name_Cat1" = "Small Cats Unit 1";
+"Hotel_Name_Cat2" = "Large Cats Unit 1";
+"Hotel_Name_Cat3" = "Shared Cats Unit 1";
+"Hotel_Name_Cat4" = "Solo Cat Unit 1";
+"Hotel_Name_Bird1" = "Small Birds Unit 1";
+"Hotel_Name_Bird2" = "Large Birds Unit 1";
+"Hotel_Name_Bird3" = "Falcon Unit 1";
+"Hotel_Name_Small1" = "Rabbit Unit 1";
+"Hotel_Name_Small2" = "Small Pets Unit 1";
+"Hotel_Name_Small3" = "Quiet Small Pets Unit 1";
 "Hotel_Name_Day1" = "Daycare Play Area";
 "Hotel_Name_Day2" = "Daycare Rest Zone";
 "Hotel_Name_Iso1" = "Preventive Isolation Unit";
@@ -9108,7 +9112,7 @@
 "Hotel_Availability_Reason_Status" = "Room status does not permit check-in";
 "Hotel_Availability_Rejections_Help" = "Rooms exist, but current allocation rules prevent their use for this guest. Reasons are listed below.";
 "Hotel_DefaultTier" = "Hotel Suite";
-"Hotel_Err_DuplicateCode" = "Room/suite code is already in use at this branch.";
+"Hotel_Err_DuplicateCode" = "Unit code is already in use at this branch.";
 "Hotel_Err_InactiveType" = "Selected accommodation tier is inactive.";
 "Hotel_Err_MainKindNotAllowed" = "Pet species is not permitted in this suite.";
 "Hotel_Err_NoBranchSelected" = "Please select a branch first.";
@@ -9131,8 +9135,8 @@
 "Hotel_QuickAction_NewReservation" = "New Reservation";
 "Hotel_SelectTier" = "No tier selected";
 "Hotel_SpecialNotesPlaceholder" = "Special notes and instructions for guest...";
-"Hotel_Suites_CreateTypeFirstDesc" = "Each room or suite must be linked to a tier (e.g., Standard Suite, Deluxe Room) to set base price and permitted species.";
-"Hotel_Suites_CreateTypeFirstTitle" = "Must create a suite tier first";
+"Hotel_Suites_CreateTypeFirstDesc" = "Categories describe who the space is for, such as Small Dogs or Large Birds, and set the default rate and capacity. Physical units such as D-101 or B-102 are created separately.";
+"Hotel_Suites_CreateTypeFirstTitle" = "Create an accommodation category first";
 "Hotel_Suites_EstimateNotice" = "2 nights stay: %@ • 5 nights stay: %@";
 "Hotel_Suites_UnassignedType" = "Unassigned Suites";
 "Hotel_TypeHeader_Stats" = "%ld total • %ld available • %ld occupied";

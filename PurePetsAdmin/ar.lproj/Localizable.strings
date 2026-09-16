@@ -6073,6 +6073,8 @@
 
 "Hotel_OccupancySummary_Format" = "%ld من أصل %ld جناح مشغول";
 
+"Hotel_OccupancyCapacitySummary_Format" = "%ld من أصل %ld مكان مشغول • %ld متاح";
+
 "Hotel_TapToViewStays" = "عرض النزلاء المقيمين";
 
 "Hotel_TapToViewReservations" = "عرض الحجوزات القادمة";
@@ -6229,9 +6231,9 @@
 
 "Hotel_Suites_SummaryFormat" = "%ld جناح إجمالي • %ld شاغر الآن";
 
-"Hotel_Suites_Types_Title" = "فئات وأسعار الأجنحة";
+"Hotel_Suites_Types_Title" = "فئات الإقامة والأسعار";
 
-"Hotel_Suites_NewType" = "إضافة فئة جناح";
+"Hotel_Suites_NewType" = "إضافة فئة إقامة";
 
 "Hotel_Suites_NoTypesYet" = "لم يتم تكوين فئات أجنحة بعد لهذا الفرع";
 
@@ -6249,15 +6251,15 @@
 
 "Hotel_Suites_NewTitle" = "جناح جديد";
 
-"Hotel_Suites_BasicInfo" = "بيانات الجناح";
+"Hotel_Suites_BasicInfo" = "بيانات الوحدة الفعلية";
 
-"Hotel_Suites_CodeLabel" = "رقم أو كود الجناح (مثال: D-101)";
+"Hotel_Suites_CodeLabel" = "كود الوحدة (مثال: B-102)";
 
-"Hotel_Suites_CodePlaceholder" = "مثال: D-101";
+"Hotel_Suites_CodePlaceholder" = "مثال: B-102";
 
-"Hotel_Suites_NameLabel" = "اسم الجناح";
+"Hotel_Suites_NameLabel" = "اسم الوحدة التشغيلي";
 
-"Hotel_Suites_NamePlaceholder" = "مثال: الجناح الفاخر للكلاب الكبيرة";
+"Hotel_Suites_NamePlaceholder" = "مثال: وحدة الطيور الصغيرة 1";
 
 "Hotel_Wing_Select" = "القسم أو الجناح:";
 
@@ -6285,37 +6287,39 @@
 
 "Hotel_Suites_SubmitNew" = "إنشاء الجناح";
 
-"Hotel_Err_CodeRequired" = "يرجى إدخال كود أو رقم الجناح.";
+"Hotel_Err_CodeRequired" = "يرجى إدخال كود الوحدة.";
 
-"Hotel_Err_NameRequired" = "يرجى إدخال اسم الجناح.";
+"Hotel_Err_NameRequired" = "يرجى إدخال اسم الوحدة التشغيلي.";
 
-"Hotel_Err_TypeRequired" = "يرجى اختيار فئة الجناح أولاً.";
+"Hotel_Err_TypeRequired" = "يرجى اختيار فئة إقامة أولاً.";
 
-"Hotel_Suites_TierDetails" = "مواصفات فئة الجناح";
+"Hotel_Suites_TierDetails" = "فئة الإقامة";
 
-"Hotel_Suites_TypeCode" = "رمز الفئة (مثال: DELUXE, VIP)";
+"Hotel_Suites_CategoryPurposeHelp" = "سمِّ الفئة حسب الحيوانات التي تستقبلها، مثل كلاب صغيرة أو طيور كبيرة. السعر والسعة هنا افتراضيان، والوحدات الفعلية مثل B-102 تُنشأ بشكل منفصل.";
 
-"Hotel_Suites_NameAr" = "الاسم بالعربية";
+"Hotel_Suites_TypeCode" = "رمز الفئة (مثال: DOG-SM أو BIRD-LG)";
 
-"Hotel_Suites_NameArPlaceholder" = "مثال: الجناح الفاخر VIP";
+"Hotel_Suites_NameAr" = "اسم فئة الإقامة بالعربية";
 
-"Hotel_Suites_NameEn" = "الاسم بالإنجليزية";
+"Hotel_Suites_NameArPlaceholder" = "مثال: كلاب صغيرة";
 
-"Hotel_Suites_NameEnPlaceholder" = "مثال: VIP Deluxe Suite";
+"Hotel_Suites_NameEn" = "اسم فئة الإقامة بالإنجليزية";
+
+"Hotel_Suites_NameEnPlaceholder" = "مثال: Small Dogs";
 
 "Hotel_Suites_PriceAndCapacity" = "السعر والسعة";
 
 "Hotel_Suites_NightlyRateQAR" = "سعر الليلة (ر.ق)";
 
-"Hotel_Suites_CreateTypeCTA" = "إنشاء فئة الجناح";
+"Hotel_Suites_CreateTypeCTA" = "إنشاء فئة إقامة";
 
-"Hotel_Suites_EditTypeTitle" = "تعديل فئة الجناح";
+"Hotel_Suites_EditTypeTitle" = "تعديل فئة الإقامة";
 
-"Hotel_Suites_NewTypeTitle" = "فئة جناح جديدة";
+"Hotel_Suites_NewTypeTitle" = "فئة إقامة جديدة";
 
-"Hotel_Err_TypeCodeRequired" = "يرجى إدخال رمز الفئة.";
+"Hotel_Err_TypeCodeRequired" = "يرجى إدخال رمز فئة الإقامة.";
 
-"Hotel_Err_TypeNameRequired" = "يرجى إدخال اسم الفئة.";
+"Hotel_Err_TypeNameRequired" = "يرجى إدخال اسم فئة الإقامة.";
 
 "Hotel_Suites_LivePreviewTitle" = "معاينة بطاقة الجناح";
 
@@ -6839,20 +6843,20 @@
 
 "Hotel_Err_PetNameRequired" = "يرجى إدخال اسم النزيل.";
 
-"Hotel_Name_Dog1" = "جناح الكلاب القياسي";
-"Hotel_Name_Dog2" = "غرفة كلاسيك";
-"Hotel_Name_Dog3" = "استوديو ديلوكس";
-"Hotel_Name_Dog4" = "جناح عائلي";
-"Hotel_Name_Cat1" = "جناح القطط القياسي";
-"Hotel_Name_Cat2" = "غرفة قطط كلاسيك";
-"Hotel_Name_Cat3" = "استوديو قطط ديلوكس";
-"Hotel_Name_Cat4" = "جناح قطط بانورامي";
-"Hotel_Name_Bird1" = "جناح طيور قياسي";
-"Hotel_Name_Bird2" = "وحدة طيور بانورامية";
-"Hotel_Name_Bird3" = "وحدة طيور ديلوكس";
-"Hotel_Name_Small1" = "جناح الحيوانات الصغيرة";
-"Hotel_Name_Small2" = "وحدة إقامة صغيرة ديلوكس";
-"Hotel_Name_Small3" = "استوديو حيوانات صغيرة";
+"Hotel_Name_Dog1" = "وحدة كلاب صغيرة 1";
+"Hotel_Name_Dog2" = "وحدة كلاب كبيرة 1";
+"Hotel_Name_Dog3" = "وحدة كلاب مشتركة 1";
+"Hotel_Name_Dog4" = "وحدة كلب فردية 1";
+"Hotel_Name_Cat1" = "وحدة قطط صغيرة 1";
+"Hotel_Name_Cat2" = "وحدة قطط كبيرة 1";
+"Hotel_Name_Cat3" = "وحدة قطط مشتركة 1";
+"Hotel_Name_Cat4" = "وحدة قطة فردية 1";
+"Hotel_Name_Bird1" = "وحدة طيور صغيرة 1";
+"Hotel_Name_Bird2" = "وحدة طيور كبيرة 1";
+"Hotel_Name_Bird3" = "وحدة صقور 1";
+"Hotel_Name_Small1" = "وحدة أرانب 1";
+"Hotel_Name_Small2" = "وحدة حيوانات صغيرة 1";
+"Hotel_Name_Small3" = "وحدة حيوانات صغيرة هادئة 1";
 "Hotel_Name_Day1" = "صالة الرعاية النهارية";
 "Hotel_Name_Day2" = "منطقة الاستراحة النهارية";
 "Hotel_Name_Iso1" = "وحدة عزل وقائي";
@@ -9169,7 +9173,7 @@
 "Hotel_Availability_Reason_Status" = "حالة الغرفة لا تسمح بالتسكين";
 "Hotel_Availability_Rejections_Help" = "الغرف موجودة، لكن قواعد التسكين الحالية تمنع استخدامها لهذا النزيل. الأسباب موضحة أدناه.";
 "Hotel_DefaultTier" = "جناح فندقي";
-"Hotel_Err_DuplicateCode" = "رمز الغرفة/الجناح مستخدم بالفعل في هذا الفرع.";
+"Hotel_Err_DuplicateCode" = "كود الوحدة مستخدم بالفعل في هذا الفرع.";
 "Hotel_Err_InactiveType" = "فئة الإقامة المحددة غير نشطة.";
 "Hotel_Err_MainKindNotAllowed" = "نوع أو فصيلة الحيوان غير مسموح بها في هذا الجناح.";
 "Hotel_Err_NoBranchSelected" = "يرجى تحديد فرع أولاً.";
@@ -9192,8 +9196,8 @@
 "Hotel_QuickAction_NewReservation" = "حجز جديد";
 "Hotel_SelectTier" = "لم تحدد فئة";
 "Hotel_SpecialNotesPlaceholder" = "ملاحظات وتعليمات خاصة بالنزيل...";
-"Hotel_Suites_CreateTypeFirstDesc" = "يجب ربط كل غرفة أو جناح بفئة محددة (مثل: جناح قياسي، غرفة ديلوكس) لتحديد السعر الأساسي ومطابقة الفصائل المصرح بها.";
-"Hotel_Suites_CreateTypeFirstTitle" = "يجب إنشاء فئة أجنحة أولاً";
+"Hotel_Suites_CreateTypeFirstDesc" = "فئة الإقامة توضّح لمن خُصصت المساحة، مثل كلاب صغيرة أو طيور كبيرة، وتحدد السعر والسعة الافتراضيين. بعدها تنشئ الوحدات الفعلية مثل D-101 أو B-102 بشكل منفصل.";
+"Hotel_Suites_CreateTypeFirstTitle" = "أنشئ فئة إقامة أولاً";
 "Hotel_Suites_EstimateNotice" = "إقامة ليلتين: %@ • إقامة ٥ ليالٍ: %@";
 "Hotel_Suites_UnassignedType" = "أجنحة غير مصنفة";
 "Hotel_TypeHeader_Stats" = "%ld إجمالي • %ld متاح • %ld مشغول";

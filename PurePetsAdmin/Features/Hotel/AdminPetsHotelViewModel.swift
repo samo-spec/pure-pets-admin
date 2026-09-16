@@ -424,28 +424,47 @@ public final class AdminPetsHotelViewModel: ObservableObject {
 
     public var attentionGuestsCount: Int { attentionGuests.count }
 
-    public var totalCapacity: Int {
-        let typesById = Dictionary(accommodationTypes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        return accommodations.reduce(0) { sum, room in
-            let cap = room.capacity > 0 ? room.capacity : (typesById[room.accommodationTypeId]?.defaultCapacity ?? 1)
-            return sum + max(1, cap)
+    private func resolvedCapacity(for room: AdminHotelAccommodation) -> Int {
+        let typeCapacity = accommodationTypes.first(where: { $0.id == room.accommodationTypeId })?.defaultCapacity ?? 1
+        return max(1, room.capacity > 0 ? room.capacity : typeCapacity)
+    }
+
+    /// One capacity calculation feeds both the hotel hero and every wing row.
+    /// This keeps physical suite count separate from usable pet positions.
+    private func capacityTelemetry(for rooms: [AdminHotelAccommodation]) -> (occupied: Int, total: Int, rate: Double) {
+        guard !rooms.isEmpty else { return (0, 0, 0.0) }
+        let roomIds = Set(rooms.map(\.id))
+        let total = rooms.reduce(0) { $0 + resolvedCapacity(for: $1) }
+        let assignedInHouse = inHouseGuests.filter { roomIds.contains($0.accommodationId) }.count
+        let projectedOccupancy = rooms.reduce(0) { partial, room in
+            partial + min(resolvedCapacity(for: room), max(0, room.currentOccupancy))
         }
+        // Older room documents may only expose `.occupied`; preserve one consumed
+        // position per such room until their occupancy projection is populated.
+        let legacyOccupiedFallback = rooms.filter { $0.status == .occupied }.count
+        let occupied = min(total, max(assignedInHouse, max(projectedOccupancy, legacyOccupiedFallback)))
+        let rate = total > 0 ? min(1.0, Double(occupied) / Double(total)) : 0.0
+        return (occupied, total, rate)
+    }
+
+    public var totalCapacity: Int { capacityTelemetry(for: accommodations).total }
+
+    /// Capacity telemetry is position-based, not physical-room based.
+    /// A shared suite with capacity 10 and 3 pets contributes 3 occupied and 7 free positions.
+    public var occupiedCapacityCount: Int { capacityTelemetry(for: accommodations).occupied }
+
+    public var availableCapacityCount: Int {
+        max(0, totalCapacity - occupiedCapacityCount)
+    }
+
+    public var capacityOccupancyRate: Double { capacityTelemetry(for: accommodations).rate }
+
+    public var capacityOccupancyPercentageString: String {
+        String(format: "%.0f%%", capacityOccupancyRate * 100.0)
     }
 
     public func wingCapacityTelemetry(wing: HotelWing) -> (occupied: Int, total: Int, rate: Double) {
-        let wingRooms = accommodations.filter { $0.wing == wing }
-        guard !wingRooms.isEmpty else { return (0, 0, 0.0) }
-        let typesById = Dictionary(accommodationTypes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let total = wingRooms.reduce(0) { sum, room in
-            let cap = room.capacity > 0 ? room.capacity : (typesById[room.accommodationTypeId]?.defaultCapacity ?? 1)
-            return sum + max(1, cap)
-        }
-        let inHouseInWing = inHouseGuests.filter { $0.wing == wing }.count
-        let roomOccupants = wingRooms.reduce(0) { $0 + max(0, $1.currentOccupancy) }
-        let occupiedRoomsCount = wingRooms.filter { $0.status == .occupied }.count
-        let occupied = max(inHouseInWing, max(roomOccupants, occupiedRoomsCount))
-        let rate = total > 0 ? min(1.0, Double(occupied) / Double(total)) : 0.0
-        return (occupied, total, rate)
+        capacityTelemetry(for: accommodations.filter { $0.wing == wing })
     }
 
     // MARK: - Filtered Views

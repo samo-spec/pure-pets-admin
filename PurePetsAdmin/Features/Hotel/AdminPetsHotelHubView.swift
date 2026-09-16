@@ -640,7 +640,7 @@ private struct HotelOccupancyRadarCard: View {
     @State private var isBreathing = false
 
     private var occupancyGradient: LinearGradient {
-        let rate = viewModel.occupancyRate
+        let rate = viewModel.capacityOccupancyRate
         if rate >= 0.90 {
             return LinearGradient(
                 colors: [Color(red: 0.88, green: 0.22, blue: 0.35), Color(red: 0.98, green: 0.40, blue: 0.45)],
@@ -677,14 +677,15 @@ private struct HotelOccupancyRadarCard: View {
                             .foregroundStyle(AdminSurface.secondaryText)
                     }
 
-                    Text(viewModel.occupancyPercentageString)
+                    Text(viewModel.capacityOccupancyPercentageString)
                         .font(PPBrandFont.bold(size: 38))
                         .foregroundStyle(AdminSurface.primaryText)
 
                     Text(String.localizedStringWithFormat(
-                        Language.get("Hotel_OccupancySummary_Format", alter: "%ld من أصل %ld أجنحة مشغولة"),
-                        viewModel.occupiedRoomsCount,
-                        viewModel.totalRoomsCount
+                        Language.get("Hotel_OccupancyCapacitySummary_Format", alter: "%ld من أصل %ld مكان مشغول • %ld متاح"),
+                        viewModel.occupiedCapacityCount,
+                        viewModel.totalCapacity,
+                        viewModel.availableCapacityCount
                     ))
                     .font(PPBrandFont.medium(size: 13))
                     .foregroundStyle(AdminSurface.secondaryText)
@@ -699,7 +700,7 @@ private struct HotelOccupancyRadarCard: View {
                         .frame(width: 80, height: 80)
 
                     Circle()
-                        .trim(from: 0, to: CGFloat(max(0.01, min(1.0, viewModel.occupancyRate))))
+                        .trim(from: 0, to: CGFloat(max(0.01, min(1.0, viewModel.capacityOccupancyRate))))
                         .stroke(
                             occupancyGradient,
                             style: StrokeStyle(lineWidth: 8, lineCap: .round)
@@ -718,12 +719,12 @@ private struct HotelOccupancyRadarCard: View {
             HStack(spacing: 8) {
                 HotelTelemetryTag(
                     title: Language.get("Hotel_Available", alter: "متاح"),
-                    count: viewModel.availableRoomsCount,
+                    count: viewModel.availableCapacityCount,
                     color: Color(red: 0.16, green: 0.72, blue: 0.44)
                 )
                 HotelTelemetryTag(
                     title: Language.get("Hotel_Occupied", alter: "مشغول"),
-                    count: viewModel.occupiedRoomsCount,
+                    count: viewModel.occupiedCapacityCount,
                     color: AdminSurface.primary
                 )
                 HotelTelemetryTag(

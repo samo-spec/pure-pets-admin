@@ -162,7 +162,7 @@ public struct AdminPetsHotelSuitesManagementView: View {
     private var accommodationTypesCarousel: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Label(Language.get("Hotel_Suites_Types_Title", alter: "فئات وأسعار الأجنحة"), systemImage: "sparkles.rectangle.stack.fill")
+                Label(Language.get("Hotel_Suites_Types_Title", alter: "فئات الإقامة والأسعار"), systemImage: "sparkles.rectangle.stack.fill")
                     .font(Font.custom("Beiruti-Bold", size: 14))
                     .foregroundStyle(AdminSurface.primaryText)
 
@@ -177,7 +177,7 @@ public struct AdminPetsHotelSuitesManagementView: View {
                         HStack(spacing: 3) {
                             Image(systemName: "plus.circle.fill")
                                 .font(.system(size: 12))
-                            Text(Language.get("Hotel_Suites_NewType", alter: "إضافة فئة"))
+                            Text(Language.get("Hotel_Suites_NewType", alter: "إضافة فئة إقامة"))
                                 .font(Font.custom("Beiruti-Bold", size: 12))
                         }
                         .foregroundStyle(AdminSurface.primary)
@@ -962,11 +962,11 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
                         .foregroundStyle(AdminSurface.primary)
                 }
 
-                Text(Language.get("Hotel_Suites_CreateTypeFirstTitle", alter: "يجب إنشاء فئة أجنحة أولاً"))
+                Text(Language.get("Hotel_Suites_CreateTypeFirstTitle", alter: "أنشئ فئة إقامة أولاً"))
                     .font(Font.custom("Beiruti-Bold", size: 22))
                     .foregroundStyle(AdminSurface.primaryText)
 
-                Text(Language.get("Hotel_Suites_CreateTypeFirstDesc", alter: "يجب ربط كل غرفة أو جناح بفئة محددة (مثل: جناح قياسي، غرفة ديلوكس) لتحديد السعر الأساسي ومطابقة الفصائل المصرح بها."))
+                Text(Language.get("Hotel_Suites_CreateTypeFirstDesc", alter: "فئة الإقامة توضّح لمن خُصصت المساحة، مثل كلاب صغيرة أو طيور كبيرة، وتحدد السعر والسعة الافتراضيين. بعدها تنشئ الوحدات الفعلية مثل D-101 أو B-102."))
                     .font(Font.custom("Beiruti-Medium", size: 14))
                     .foregroundStyle(AdminSurface.secondaryText)
                     .multilineTextAlignment(.center)
@@ -979,7 +979,7 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
                     HStack(spacing: 8) {
                         Image(systemName: "plus.circle.fill")
                             .font(.system(size: 15, weight: .bold))
-                        Text(Language.get("Hotel_Suites_CreateTypeCTA", alter: "إنشاء الفئة الفندقية الأولى"))
+                        Text(Language.get("Hotel_Suites_CreateTypeCTA", alter: "إنشاء فئة الإقامة الأولى"))
                             .font(Font.custom("Beiruti-Bold", size: 16))
                     }
                     .foregroundStyle(.white)
@@ -1076,7 +1076,7 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
             "\(prefix)102",
             "\(prefix)103",
             "\(prefix)201",
-            "\(prefix)VIP"
+            "\(prefix)301"
         ]
     }
 
@@ -1084,29 +1084,29 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
         switch selectedWing {
         case .dogs:
             return [
-                Language.get("Hotel_Name_Dog1", alter: "جناح الكلاب القياسي"),
-                Language.get("Hotel_Name_Dog2", alter: "غرفة كلاسيك"),
-                Language.get("Hotel_Name_Dog3", alter: "استوديو ديلوكس"),
-                Language.get("Hotel_Name_Dog4", alter: "جناح عائلي")
+                Language.get("Hotel_Name_Dog1", alter: "وحدة كلاب صغيرة 1"),
+                Language.get("Hotel_Name_Dog2", alter: "وحدة كلاب كبيرة 1"),
+                Language.get("Hotel_Name_Dog3", alter: "وحدة كلاب مشتركة 1"),
+                Language.get("Hotel_Name_Dog4", alter: "وحدة كلب فردية 1")
             ]
         case .cats:
             return [
-                Language.get("Hotel_Name_Cat1", alter: "جناح القطط القياسي"),
-                Language.get("Hotel_Name_Cat2", alter: "غرفة قطط كلاسيك"),
-                Language.get("Hotel_Name_Cat3", alter: "استوديو قطط ديلوكس"),
-                Language.get("Hotel_Name_Cat4", alter: "جناح قطط بانورامي")
+                Language.get("Hotel_Name_Cat1", alter: "وحدة قطط صغيرة 1"),
+                Language.get("Hotel_Name_Cat2", alter: "وحدة قطط كبيرة 1"),
+                Language.get("Hotel_Name_Cat3", alter: "وحدة قطط مشتركة 1"),
+                Language.get("Hotel_Name_Cat4", alter: "وحدة قطة فردية 1")
             ]
         case .birds:
             return [
-                Language.get("Hotel_Name_Bird1", alter: "جناح طيور قياسي"),
-                Language.get("Hotel_Name_Bird2", alter: "وحدة طيور بانورامية"),
-                Language.get("Hotel_Name_Bird3", alter: "وحدة طيور ديلوكس")
+                Language.get("Hotel_Name_Bird1", alter: "وحدة طيور صغيرة 1"),
+                Language.get("Hotel_Name_Bird2", alter: "وحدة طيور كبيرة 1"),
+                Language.get("Hotel_Name_Bird3", alter: "وحدة صقور 1")
             ]
         case .smallPets:
             return [
-                Language.get("Hotel_Name_Small1", alter: "جناح الحيوانات الصغيرة"),
-                Language.get("Hotel_Name_Small2", alter: "وحدة إقامة صغيرة ديلوكس"),
-                Language.get("Hotel_Name_Small3", alter: "استوديو حيوانات صغيرة")
+                Language.get("Hotel_Name_Small1", alter: "وحدة أرانب 1"),
+                Language.get("Hotel_Name_Small2", alter: "وحدة حيوانات صغيرة 1"),
+                Language.get("Hotel_Name_Small3", alter: "وحدة حيوانات صغيرة هادئة 1")
             ]
         case .daycare:
             return [
@@ -1152,20 +1152,20 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
 
         guard !cleanCode.isEmpty else {
             UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-            validationError = Language.get("Hotel_Err_CodeRequired", alter: "يرجى إدخال رقم أو كود الجناح.")
+            validationError = Language.get("Hotel_Err_CodeRequired", alter: "يرجى إدخال كود الوحدة.")
             return
         }
 
         guard !cleanName.isEmpty else {
             UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-            validationError = Language.get("Hotel_Err_NameRequired", alter: "يرجى إدخال اسم أو وصف الجناح.")
+            validationError = Language.get("Hotel_Err_NameRequired", alter: "يرجى إدخال اسم الوحدة التشغيلي.")
             return
         }
 
         let typeId = selectedTypeId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !typeId.isEmpty else {
             UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-            validationError = Language.get("Hotel_Err_TypeRequired", alter: "يرجى اختيار أو إنشاء فئة فندقية للجناح أولاً.")
+            validationError = Language.get("Hotel_Err_TypeRequired", alter: "يرجى اختيار أو إنشاء فئة إقامة للوحدة أولاً.")
             return
         }
 
@@ -1174,7 +1174,7 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
             $0.code.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(cleanCode) == .orderedSame && $0.id != accommodation?.id
         }) {
             UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-            validationError = Language.get("Hotel_Err_DuplicateCode", alter: "رمز الغرفة/الجناح مستخدم بالفعل في هذا الفرع.")
+            validationError = Language.get("Hotel_Err_DuplicateCode", alter: "كود الوحدة مستخدم بالفعل في هذا الفرع.")
             return
         }
 
@@ -1413,7 +1413,7 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
     // MARK: - Form Sections
     private var identitySection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(Language.get("Hotel_Suites_BasicInfo", alter: "المعلومات الأساسية والكود الفندقي"), systemImage: "number.circle.fill")
+            Label(Language.get("Hotel_Suites_BasicInfo", alter: "بيانات الوحدة الفعلية"), systemImage: "number.circle.fill")
                 .font(Font.custom("Beiruti-Bold", size: 15))
                 .foregroundStyle(AdminSurface.primaryText)
 
@@ -1421,7 +1421,7 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
                 // Room Code with Quick Presets
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text(Language.get("Hotel_Suites_CodeLabel", alter: "رقم أو كود الجناح (مثال: D-101)"))
+                        Text(Language.get("Hotel_Suites_CodeLabel", alter: "كود الوحدة (مثال: B-102)"))
                             .font(Font.custom("Beiruti-Medium", size: 12))
                             .foregroundStyle(AdminSurface.secondaryText)
                         Spacer()
@@ -1439,7 +1439,7 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
                         }
                     }
 
-                    TextField(Language.get("Hotel_Suites_CodePlaceholder", alter: "مثال: D-101 (جناح الملوك الأوفياء)"), text: $code)
+                    TextField(Language.get("Hotel_Suites_CodePlaceholder", alter: "مثال: B-102"), text: $code)
                         .font(Font.custom("Beiruti-Bold", size: 16))
                         .foregroundStyle(AdminSurface.primaryText)
                         .multilineTextAlignment(.leading)
@@ -1481,11 +1481,11 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
 
                 // Suite Name with Quick Presets
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(Language.get("Hotel_Suites_NameLabel", alter: "اسم الغرفة أو الجناح"))
+                    Text(Language.get("Hotel_Suites_NameLabel", alter: "اسم الوحدة التشغيلي"))
                         .font(Font.custom("Beiruti-Medium", size: 12))
                         .foregroundStyle(AdminSurface.secondaryText)
 
-                    TextField(Language.get("Hotel_Suites_NamePlaceholder", alter: "مثال: جناح الكلاب القياسي"), text: $name)
+                    TextField(Language.get("Hotel_Suites_NamePlaceholder", alter: "مثال: وحدة الطيور الصغيرة 1"), text: $name)
                         .font(Font.custom("Beiruti-Medium", size: 14))
                         .foregroundStyle(AdminSurface.primaryText)
                         .multilineTextAlignment(.leading)
@@ -1635,7 +1635,7 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
                     Button {
                         showNewTypeSheet = true
                     } label: {
-                        Text(Language.get("Hotel_Suites_CreateTypeCTA", alter: "إنشاء الفئة الفندقية الأولى"))
+                        Text(Language.get("Hotel_Suites_CreateTypeCTA", alter: "إنشاء فئة الإقامة الأولى"))
                             .font(Font.custom("Beiruti-Bold", size: 13))
                             .foregroundStyle(AdminSurface.primary)
                     }
@@ -2516,7 +2516,7 @@ public struct AdminPetsHotelAccommodationTypeEditorSheet: View {
             active = t.active
             descriptionText = t.description ?? ""
         } else {
-            code = "VIP"
+            code = "DOG-SM"
             nameAr = ""
             nameEn = ""
             selectedWing = .dogs
@@ -2606,7 +2606,7 @@ private struct AdminHotelAccommodationTypePhoneView: View {
     var body: some View {
         VStack(spacing: 0) {
             AdminSovereignNavigationBar(
-                title: isEditMode ? Language.get("Hotel_Suites_EditTypeTitle", alter: "تعديل الفئة الفندقية") : Language.get("Hotel_Suites_NewTypeTitle", alter: "فئة فندقية جديدة"),
+                title: isEditMode ? Language.get("Hotel_Suites_EditTypeTitle", alter: "تعديل فئة الإقامة") : Language.get("Hotel_Suites_NewTypeTitle", alter: "فئة إقامة جديدة"),
                 subtitle: Language.get("Hotel_Workspace", alter: "مساحة الفندق • مباشر"),
                 statusDotColor: Color(red: 0.16, green: 0.78, blue: 0.48),
                 isModal: true,
@@ -2712,7 +2712,7 @@ private struct AdminHotelAccommodationTypePhoneView: View {
                             .tint(.white)
                     }
 
-                    Text(isEditMode ? Language.get("Save_Changes", alter: "حفظ التغييرات") : Language.get("Hotel_Suites_CreateTypeCTA", alter: "إنشاء الفئة الفندقية"))
+                    Text(isEditMode ? Language.get("Save_Changes", alter: "حفظ التغييرات") : Language.get("Hotel_Suites_CreateTypeCTA", alter: "إنشاء فئة الإقامة"))
                         .font(PPBeirutiFont.bold(17, relativeTo: .headline))
                         .foregroundStyle(Color.white)
                 }
@@ -2761,7 +2761,7 @@ private struct AdminHotelAccommodationTypePadView: View {
     var body: some View {
         VStack(spacing: 0) {
             AdminSovereignNavigationBar(
-                title: isEditMode ? Language.get("Hotel_Suites_EditTypeTitle", alter: "تعديل الفئة الفندقية") : Language.get("Hotel_Suites_NewTypeTitle", alter: "فئة فندقية جديدة"),
+                title: isEditMode ? Language.get("Hotel_Suites_EditTypeTitle", alter: "تعديل فئة الإقامة") : Language.get("Hotel_Suites_NewTypeTitle", alter: "فئة إقامة جديدة"),
                 subtitle: Language.get("Hotel_Suites_StudioSubtitle", alter: "إدارة معايير وفئات الإقامة"),
                 statusDotColor: Color(red: 0.16, green: 0.78, blue: 0.48),
                 isModal: true,
@@ -2864,7 +2864,7 @@ private struct AdminHotelAccommodationTypePadView: View {
                                 ProgressView().tint(.white)
                             }
 
-                            Text(isEditMode ? Language.get("Save_Changes", alter: "حفظ التغييرات") : Language.get("Hotel_Suites_CreateTypeCTA", alter: "إنشاء الفئة الفندقية"))
+                            Text(isEditMode ? Language.get("Save_Changes", alter: "حفظ التغييرات") : Language.get("Hotel_Suites_CreateTypeCTA", alter: "إنشاء فئة الإقامة"))
                                 .font(PPBeirutiFont.bold(17, relativeTo: .headline))
                                 .foregroundStyle(Color.white)
                         }
@@ -2976,14 +2976,50 @@ private struct AdminHotelTierLivingVitrine: View {
         return trimmed.isEmpty ? "0" : trimmed
     }
 
+    private var sampleCategoryNameAr: String {
+        switch wing {
+        case .dogs: return "مثال: كلاب صغيرة"
+        case .cats: return "مثال: قطط صغيرة"
+        case .birds: return "مثال: طيور صغيرة"
+        case .smallPets: return "مثال: أرانب وحيوانات صغيرة"
+        case .isolation: return "مثال: عزل الطيور"
+        case .medicalObservation: return "مثال: ملاحظة طبية للكلاب"
+        case .daycare: return "مثال: رعاية نهارية للكلاب"
+        }
+    }
+
+    private var sampleCategoryNameEn: String {
+        switch wing {
+        case .dogs: return "e.g. Small Dogs"
+        case .cats: return "e.g. Small Cats"
+        case .birds: return "e.g. Small Birds"
+        case .smallPets: return "e.g. Rabbits & Small Pets"
+        case .isolation: return "e.g. Bird Isolation"
+        case .medicalObservation: return "e.g. Medical Observation - Dogs"
+        case .daycare: return "e.g. Dog Daycare"
+        }
+    }
+
+    private var sampleCategoryCode: String {
+        switch wing {
+        case .dogs: return "DOG-SM"
+        case .cats: return "CAT-SM"
+        case .birds: return "BIRD-SM"
+        case .smallPets: return "SMALL-PET"
+        case .isolation: return "ISOLATION"
+        case .medicalObservation: return "MED-OBS"
+        case .daycare: return "DAYCARE"
+        }
+    }
+
     private var displayNameAr: String {
         let trimmed = nameAr.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? Language.get("Hotel_Suites_NameArPlaceholder", alter: "مثال: جناح كبار الشخصيات VIP") : trimmed
+        return trimmed.isEmpty ? sampleCategoryNameAr : trimmed
     }
 
     private var displayNameEn: String {
         let trimmed = nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "e.g. VIP Presidential Suite" : trimmed
+        return trimmed.isEmpty ? sampleCategoryNameEn : trimmed
     }
 
     var body: some View {
@@ -3032,7 +3068,7 @@ private struct AdminHotelTierLivingVitrine: View {
                         .font(PPBeirutiFont.bold(10, relativeTo: .caption2))
                         .foregroundStyle(wing.tint)
 
-                    Text(code.isEmpty ? "VIP" : code.uppercased())
+                    Text(code.isEmpty ? sampleCategoryCode : code.uppercased())
                         .font(PPBeirutiFont.bold(13.5, relativeTo: .subheadline))
                         .foregroundStyle(AdminSurface.primaryText)
                         .monospacedDigit()
@@ -3197,18 +3233,60 @@ private struct AdminHotelTierIdentityCard: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
-    private let quickCodes: [String] = ["VIP", "STD", "DLX", "ROYAL", "SUITE", "POD"]
+    private var quickCodes: [String] {
+        switch wing {
+        case .dogs: return ["DOG-SM", "DOG-LG", "DOG-SOLO", "DOG-SHARED"]
+        case .cats: return ["CAT-SM", "CAT-LG", "CAT-SOLO", "CAT-SHARED"]
+        case .birds: return ["BIRD-SM", "BIRD-LG", "FALCON", "BIRD-SOLO"]
+        case .smallPets: return ["SMALL-PET", "RABBIT", "RODENT", "SMALL-SOLO"]
+        case .isolation: return ["ISOLATION", "ISO-DOG", "ISO-CAT", "ISO-BIRD"]
+        case .medicalObservation: return ["MED-OBS", "MED-DOG", "MED-CAT", "MED-BIRD"]
+        case .daycare: return ["DAYCARE", "DAY-DOG", "DAY-CAT", "DAY-SMALL"]
+        }
+    }
+
+    private var categoryNameArPlaceholder: String {
+        switch wing {
+        case .dogs: return "مثال: كلاب صغيرة"
+        case .cats: return "مثال: قطط صغيرة"
+        case .birds: return "مثال: طيور صغيرة"
+        case .smallPets: return "مثال: أرانب وحيوانات صغيرة"
+        case .isolation: return "مثال: عزل الطيور"
+        case .medicalObservation: return "مثال: ملاحظة طبية للكلاب"
+        case .daycare: return "مثال: رعاية نهارية للكلاب"
+        }
+    }
+
+    private var categoryNameEnPlaceholder: String {
+        switch wing {
+        case .dogs: return "e.g. Small Dogs"
+        case .cats: return "e.g. Small Cats"
+        case .birds: return "e.g. Small Birds"
+        case .smallPets: return "e.g. Rabbits & Small Pets"
+        case .isolation: return "e.g. Bird Isolation"
+        case .medicalObservation: return "e.g. Medical Observation - Dogs"
+        case .daycare: return "e.g. Dog Daycare"
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(Language.get("Hotel_Suites_TierDetails", alter: "تفاصيل الفئة الفندقية"), systemImage: "sparkles")
+            Label(Language.get("Hotel_Suites_TierDetails", alter: "فئة الإقامة"), systemImage: "sparkles")
                 .font(PPBeirutiFont.bold(15, relativeTo: .subheadline))
                 .foregroundStyle(AdminSurface.primaryText)
+
+            Text(Language.get(
+                "Hotel_Suites_CategoryPurposeHelp",
+                alter: "سمِّ الفئة حسب الحيوانات التي تستقبلها، مثل كلاب صغيرة أو طيور كبيرة. السعر والسعة هنا افتراضيان، والوحدات الفعلية مثل B-102 تُنشأ بشكل منفصل."
+            ))
+            .font(PPBeirutiFont.regular(11.5, relativeTo: .caption2))
+            .foregroundStyle(AdminSurface.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
 
             VStack(spacing: 12) {
                 // Code Input + Quick Preset Chips
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(Language.get("Hotel_Suites_TypeCode", alter: "رمز الفئة الفندقية (مثال: ROYAL, VIP, DELUXE)"))
+                    Text(Language.get("Hotel_Suites_TypeCode", alter: "رمز الفئة (مثال: DOG-SM أو BIRD-LG)"))
                         .font(PPBeirutiFont.medium(12, relativeTo: .caption))
                         .foregroundStyle(AdminSurface.secondaryText)
 
@@ -3218,7 +3296,7 @@ private struct AdminHotelTierIdentityCard: View {
                                 .font(PPBeirutiFont.bold(13, relativeTo: .caption))
                                 .foregroundStyle(wing.tint)
 
-                            TextField("VIP", text: $code)
+                            TextField(quickCodes.first ?? "DOG-SM", text: $code)
                                 .font(PPBeirutiFont.bold(15, relativeTo: .body))
                                 .foregroundStyle(AdminSurface.primaryText)
                                 .multilineTextAlignment(.leading)
@@ -3262,7 +3340,7 @@ private struct AdminHotelTierIdentityCard: View {
 
                 // Arabic Name
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(Language.get("Hotel_Suites_NameAr", alter: "اسم الفئة بالعربية"))
+                    Text(Language.get("Hotel_Suites_NameAr", alter: "اسم فئة الإقامة بالعربية"))
                         .font(PPBeirutiFont.medium(12, relativeTo: .caption))
                         .foregroundStyle(AdminSurface.secondaryText)
 
@@ -3271,7 +3349,7 @@ private struct AdminHotelTierIdentityCard: View {
                             .font(PPBeirutiFont.bold(13, relativeTo: .caption))
                             .foregroundStyle(wing.tint)
 
-                        TextField(Language.get("Hotel_Suites_NameArPlaceholder", alter: "مثال: جناح ديلوكس VIP"), text: $nameAr)
+                        TextField(categoryNameArPlaceholder, text: $nameAr)
                             .font(PPBeirutiFont.medium(14, relativeTo: .body))
                             .foregroundStyle(AdminSurface.primaryText)
                             .multilineTextAlignment(.leading)
@@ -3287,7 +3365,7 @@ private struct AdminHotelTierIdentityCard: View {
 
                 // English Name
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(Language.get("Hotel_Suites_NameEn", alter: "اسم الفئة بالإنجليزية"))
+                    Text(Language.get("Hotel_Suites_NameEn", alter: "اسم فئة الإقامة بالإنجليزية"))
                         .font(PPBeirutiFont.medium(12, relativeTo: .caption))
                         .foregroundStyle(AdminSurface.secondaryText)
 
@@ -3296,7 +3374,7 @@ private struct AdminHotelTierIdentityCard: View {
                             .font(PPBeirutiFont.bold(13, relativeTo: .caption))
                             .foregroundStyle(wing.tint)
 
-                        TextField(Language.get("Hotel_Suites_NameEnPlaceholder", alter: "e.g. Royal VIP Sanctuary"), text: $nameEn)
+                        TextField(categoryNameEnPlaceholder, text: $nameEn)
                             .font(PPBeirutiFont.medium(14, relativeTo: .body))
                             .foregroundStyle(AdminSurface.primaryText)
                             .multilineTextAlignment(.leading)

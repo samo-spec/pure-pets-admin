@@ -3482,7 +3482,11 @@ private struct AdminOperationsDeckView: View {
     }
 
     var body: some View {
-        PPGlobalNavigationScrollShell(configuration: navigationConfiguration, onAction: { _ in }) {
+        PPGlobalNavigationScrollShell(
+            configuration: navigationConfiguration,
+            showsTopFade: true,
+            onAction: { _ in }
+        ) {
             Group {
                 if !hasAnyAuthorizedRoute {
                     AdminEmptyRoutesView()
