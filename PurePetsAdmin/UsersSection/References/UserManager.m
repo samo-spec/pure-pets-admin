@@ -52,8 +52,10 @@ static UIViewController *PPAdminUserManagerTopViewController(void)
     return controller;
 }
 
+// UserManager owns only its own auth-state notification.
+// Language-change notifications are owned by ThirdParty/Language (Language.h/Language.m);
+// redefining LanguageDidChangeNotification here duplicated a global symbol at link time.
 NSString * const UserManagerAuthStateDidChangeNotification = @"UserManagerAuthStateDidChangeNotification";
-NSString * const LanguageDidChangeNotification = @"LanguageDidChangeNotification";
 
 @interface UserManager ()
 @property (nonatomic, strong) NSArray<UserModel *> *cachedUsers;
