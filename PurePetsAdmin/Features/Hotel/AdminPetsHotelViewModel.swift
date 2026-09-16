@@ -1022,63 +1022,187 @@ public final class AdminPetsHotelViewModel: ObservableObject {
     }
 
     // MARK: - Customer Directory & Pet Search
+
+    private func parseCustomerOption(from doc: DocumentSnapshot) -> AdminHotelCustomerOption {
+        let data = doc.data() ?? [:]
+        let uid = (data["uid"] as? String) ?? doc.documentID
+        let name = (data["UserName"] as? String)
+            ?? (data["displayName"] as? String)
+            ?? (data["FirstName"] as? String)
+            ?? (data["name"] as? String)
+            ?? (data["userName"] as? String)
+            ?? uid
+        let phone = (data["MobileNo"] as? String)
+            ?? (data["phone"] as? String)
+            ?? (data["phoneNumber"] as? String)
+            ?? (data["mobile"] as? String)
+            ?? ""
+        let email = (data["UserEmail"] as? String)
+            ?? (data["email"] as? String)
+            ?? ""
+        let photo = (data["photoURL"] as? String)
+            ?? (data["UserImageUrl"] as? String)
+            ?? (data["UserImageName"] as? String)
+            ?? (data["imageURL"] as? String)
+            ?? ""
+        return AdminHotelCustomerOption(uid: uid, name: name, phone: phone, email: email, photoURL: photo)
+    }
+
+    @MainActor
+    public func fetchCustomerProfile(uid: String) async -> AdminHotelCustomerOption? {
+        guard !uid.isEmpty else { return nil }
+        let db = Firestore.firestore()
+        do {
+            let doc = try await db.collection("UsersCol").document(uid).getDocument()
+            if doc.exists {
+                return parseCustomerOption(from: doc)
+            }
+            let pubDoc = try await db.collection("PublicUserProfiles").document(uid).getDocument()
+            if pubDoc.exists {
+                return parseCustomerOption(from: pubDoc)
+            }
+        } catch {
+            print("[AdminPetsHotelViewModel] fetchCustomerProfile error: \(error)")
+        }
+        return nil
+    }
+
     @MainActor
     public func searchCustomers(query: String) async -> [AdminHotelCustomerOption] {
         let clean = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let db = Firestore.firestore()
-        let collection = db.collection("PublicUserProfiles")
+        let usersCollection = db.collection("UsersCol")
+        let publicCollection = db.collection("PublicUserProfiles")
 
         do {
-            let snapshot: QuerySnapshot
+            var rawDocs: [DocumentSnapshot] = []
+
             if clean.isEmpty {
-                snapshot = try await collection.limit(to: 15).getDocuments()
+                // Return recent active customers from UsersCol
+                let snap = try await usersCollection.limit(to: 20).getDocuments()
+                rawDocs = snap.documents
+                if rawDocs.isEmpty {
+                    let pubSnap = try await publicCollection.limit(to: 20).getDocuments()
+                    rawDocs = pubSnap.documents
+                }
             } else if clean.allSatisfy({ $0.isNumber || $0 == "+" || $0 == "-" || $0 == " " }) && clean.count >= 3 {
-                snapshot = try await collection.whereField("phone", isEqualTo: clean).limit(to: 10).getDocuments()
+                // Phone search
+                let digits = clean.filter { $0.isNumber }
+                let snap1 = try await usersCollection.whereField("MobileNo", isEqualTo: clean).limit(to: 10).getDocuments()
+                rawDocs.append(contentsOf: snap1.documents)
+
+                if rawDocs.isEmpty && !digits.isEmpty && digits != clean {
+                    let snapDigits = try await usersCollection.whereField("MobileNo", isEqualTo: digits).limit(to: 10).getDocuments()
+                    rawDocs.append(contentsOf: snapDigits.documents)
+                }
+
+                if rawDocs.isEmpty {
+                    let snap2 = try await usersCollection.whereField("phone", isEqualTo: clean).limit(to: 10).getDocuments()
+                    rawDocs.append(contentsOf: snap2.documents)
+                }
+
+                if rawDocs.isEmpty {
+                    let pubSnap = try await publicCollection.whereField("phone", isEqualTo: clean).limit(to: 10).getDocuments()
+                    rawDocs.append(contentsOf: pubSnap.documents)
+                }
             } else {
-                snapshot = try await collection
-                    .order(by: "displayName")
+                // Text/Name prefix search in UsersCol
+                let snap1 = try await usersCollection
+                    .order(by: "UserName")
                     .start(at: [clean])
                     .end(at: [clean + "\u{f8ff}"])
                     .limit(to: 15)
                     .getDocuments()
-            }
+                rawDocs.append(contentsOf: snap1.documents)
 
-            var results = snapshot.documents.compactMap { doc -> AdminHotelCustomerOption? in
-                let data = doc.data()
-                let uid = (data["uid"] as? String) ?? doc.documentID
-                let name = (data["displayName"] as? String)
-                    ?? (data["name"] as? String)
-                    ?? (data["userName"] as? String)
-                    ?? uid
-                let phone = (data["phone"] as? String)
-                    ?? (data["phoneNumber"] as? String)
-                    ?? ""
-                let email = (data["email"] as? String) ?? ""
-                let photo = (data["photoURL"] as? String)
-                    ?? (data["imageURL"] as? String)
-                    ?? ""
-                return AdminHotelCustomerOption(uid: uid, name: name, phone: phone, email: email, photoURL: photo)
-            }
+                if rawDocs.isEmpty {
+                    let snap2 = try await usersCollection
+                        .order(by: "displayName")
+                        .start(at: [clean])
+                        .end(at: [clean + "\u{f8ff}"])
+                        .limit(to: 15)
+                        .getDocuments()
+                    rawDocs.append(contentsOf: snap2.documents)
+                }
 
-            if !clean.isEmpty && results.isEmpty {
-                let broadSnapshot = try await collection.limit(to: 40).getDocuments()
-                let lowerClean = clean.lowercased()
-                results = broadSnapshot.documents.compactMap { doc -> AdminHotelCustomerOption? in
-                    let data = doc.data()
-                    let uid = (data["uid"] as? String) ?? doc.documentID
-                    let name = (data["displayName"] as? String) ?? (data["name"] as? String) ?? (data["userName"] as? String) ?? ""
-                    let phone = (data["phone"] as? String) ?? (data["phoneNumber"] as? String) ?? ""
-                    let email = (data["email"] as? String) ?? ""
-                    let photo = (data["photoURL"] as? String) ?? (data["imageURL"] as? String) ?? ""
-
-                    if name.lowercased().contains(lowerClean) || phone.contains(clean) || email.lowercased().contains(lowerClean) {
-                        return AdminHotelCustomerOption(uid: uid, name: name.isEmpty ? uid : name, phone: phone, email: email, photoURL: photo)
-                    }
-                    return nil
+                if rawDocs.isEmpty {
+                    let pubSnap = try await publicCollection
+                        .order(by: "displayName")
+                        .start(at: [clean])
+                        .end(at: [clean + "\u{f8ff}"])
+                        .limit(to: 15)
+                        .getDocuments()
+                    rawDocs.append(contentsOf: pubSnap.documents)
                 }
             }
 
-            return results
+            var results: [AdminHotelCustomerOption] = []
+            var seenUids = Set<String>()
+
+            for doc in rawDocs {
+                let parsed = parseCustomerOption(from: doc)
+                if !seenUids.contains(parsed.uid) {
+                    seenUids.insert(parsed.uid)
+                    results.append(parsed)
+                }
+            }
+
+            // If query is specific and results are empty, perform broad in-memory match over recent records
+            if !clean.isEmpty && results.isEmpty {
+                let broadUsers = try await usersCollection.limit(to: 60).getDocuments()
+                let lowerClean = clean.lowercased()
+                for doc in broadUsers.documents {
+                    let parsed = parseCustomerOption(from: doc)
+                    if !seenUids.contains(parsed.uid) {
+                        let nameMatch = parsed.name.lowercased().contains(lowerClean)
+                        let phoneMatch = parsed.phone.contains(clean)
+                        let emailMatch = parsed.email.lowercased().contains(lowerClean)
+                        if nameMatch || phoneMatch || emailMatch {
+                            seenUids.insert(parsed.uid)
+                            results.append(parsed)
+                        }
+                    }
+                }
+
+                if results.isEmpty {
+                    let broadPublic = try await publicCollection.limit(to: 40).getDocuments()
+                    for doc in broadPublic.documents {
+                        let parsed = parseCustomerOption(from: doc)
+                        if !seenUids.contains(parsed.uid) {
+                            let nameMatch = parsed.name.lowercased().contains(lowerClean)
+                            let phoneMatch = parsed.phone.contains(clean)
+                            let emailMatch = parsed.email.lowercased().contains(lowerClean)
+                            if nameMatch || phoneMatch || emailMatch {
+                                seenUids.insert(parsed.uid)
+                                results.append(parsed)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // For any result lacking phone or email (e.g. from PublicUserProfiles), enrich from UsersCol
+            var enrichedResults: [AdminHotelCustomerOption] = []
+            for item in results {
+                if item.phone.isEmpty || item.email.isEmpty {
+                    if let full = try? await usersCollection.document(item.uid).getDocument(), full.exists {
+                        let fullOption = parseCustomerOption(from: full)
+                        enrichedResults.append(
+                            AdminHotelCustomerOption(
+                                uid: item.uid,
+                                name: !fullOption.name.isEmpty && fullOption.name != item.uid ? fullOption.name : item.name,
+                                phone: !fullOption.phone.isEmpty ? fullOption.phone : item.phone,
+                                email: !fullOption.email.isEmpty ? fullOption.email : item.email,
+                                photoURL: !fullOption.photoURL.isEmpty ? fullOption.photoURL : item.photoURL
+                            )
+                        )
+                        continue
+                    }
+                }
+                enrichedResults.append(item)
+            }
+
+            return enrichedResults
         } catch {
             return []
         }
@@ -1118,15 +1242,25 @@ public final class AdminPetsHotelViewModel: ObservableObject {
 
     private func lookupCustomerUidByPhone(_ phone: String) async -> String? {
         guard !phone.isEmpty else { return nil }
+        let clean = phone.trimmingCharacters(in: .whitespacesAndNewlines)
+        let digits = clean.filter { $0.isNumber }
         let db = Firestore.firestore()
         do {
-            let snap = try await db.collection("PublicUserProfiles").whereField("phone", isEqualTo: phone).limit(to: 1).getDocuments()
-            if let first = snap.documents.first {
-                return (first.data()["uid"] as? String) ?? first.documentID
+            for key in ["MobileNo", "phone", "phoneNumber"] {
+                let snap = try await db.collection("UsersCol").whereField(key, isEqualTo: clean).limit(to: 1).getDocuments()
+                if let first = snap.documents.first {
+                    return first.documentID
+                }
+                if !digits.isEmpty && digits != clean {
+                    let snapDigits = try await db.collection("UsersCol").whereField(key, isEqualTo: digits).limit(to: 1).getDocuments()
+                    if let firstDigits = snapDigits.documents.first {
+                        return firstDigits.documentID
+                    }
+                }
             }
-            let snap2 = try await db.collection("UsersCol").whereField("phone", isEqualTo: phone).limit(to: 1).getDocuments()
-            if let first2 = snap2.documents.first {
-                return first2.documentID
+            let snapPub = try await db.collection("PublicUserProfiles").whereField("phone", isEqualTo: clean).limit(to: 1).getDocuments()
+            if let first = snapPub.documents.first {
+                return (first.data()["uid"] as? String) ?? first.documentID
             }
         } catch {
             // Ignore

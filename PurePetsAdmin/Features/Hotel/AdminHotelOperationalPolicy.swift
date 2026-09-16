@@ -450,7 +450,10 @@ public struct AdminHotelDiagnostics: Hashable, Sendable {
     public let blockers: [String]
     public let warnings: [String]
 
-    public var needsSetup: Bool { !isReadyForOperations }
+    /// The setup assistant is onboarding-only. Once the branch has at least one
+    /// accommodation type and one physical unit, readiness blockers belong to
+    /// operational diagnostics instead of keeping setup permanently visible.
+    public var needsSetup: Bool { !hasAccommodationTypes || !hasPhysicalUnits }
     public var isReady: Bool { isReadyForOperations }
 
     public static func fromDictionary(_ dict: [String: Any]) -> AdminHotelDiagnostics? {

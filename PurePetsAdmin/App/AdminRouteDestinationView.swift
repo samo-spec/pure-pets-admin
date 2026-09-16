@@ -76,6 +76,10 @@ struct AdminRouteDestinationView: View {
             AdminCommunityControlCenterView(session: session) {
                 router.presentedRoute = nil
             }
+        case .adoptionManager:
+            AdminCommunityControlCenterView(session: session, initialLane: .adoptionListings) {
+                router.presentedRoute = nil
+            }
         case .notificationComposer:
             AdminNotificationComposerView {
                 router.presentedRoute = nil

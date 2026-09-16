@@ -7019,7 +7019,7 @@ private struct CommandQuickActionsDeck: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var isExpanded: Bool = false
 
-    private var spacing: CGFloat { 12 }
+    private var spacing: CGFloat { 10 }
 
     private var allDeckItems: [CommandQuickActionItem] {
         let fulfillmentSignal = signals.first { $0.id.contains("fulfillment") }

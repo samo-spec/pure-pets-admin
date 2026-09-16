@@ -30,6 +30,7 @@ enum AdminRoute: Hashable, Identifiable {
     case audit
     case moderation
     case community
+    case adoptionManager
     case homeControl
     case services
     case veterinarians
@@ -70,6 +71,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .audit: return "audit"
         case .moderation: return "moderation"
         case .community: return "community"
+        case .adoptionManager: return "adoptionManager"
         case .homeControl: return "homeControl"
         case .services: return "services"
         case .veterinarians: return "vets"
@@ -114,6 +116,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .audit: return "Audit_Title"
         case .moderation: return "Moderation_Title"
         case .community: return "Community_Admin_Title"
+        case .adoptionManager: return "Operations_AdoptionManager_Title"
         case .homeControl: return "HomeControl_Title"
         case .services: return "Service_Manage_Title"
         case .veterinarians: return "Vet_Section_Title"
@@ -133,7 +136,7 @@ enum AdminRoute: Hashable, Identifiable {
              .accessories, .food, .livePets:
             return "CommandCenter_Work_Title"
         case .delivery, .providerApplications, .providerPlans, .providerFeatures, .providerAccounting,
-             .branches, .agents, .homeControl, .services, .veterinarians, .moderation, .community, .hotel:
+             .branches, .agents, .homeControl, .services, .veterinarians, .moderation, .community, .adoptionManager, .hotel:
             return "CommandCenter_Operations_Title"
         case .users:
             return "CommandCenter_People_Title"
@@ -176,6 +179,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .audit: return "doc.text.magnifyingglass"
         case .moderation: return "shield.lefthalf.filled"
         case .community: return "pawprint.fill"
+        case .adoptionManager: return "heart.fill"
         case .homeControl: return "switch.2"
         case .services: return "cross.case"
         case .veterinarians: return "stethoscope"
@@ -212,16 +216,36 @@ enum AdminRoute: Hashable, Identifiable {
         case .accounting: return ["accounting.view", "accounting.manage"]
         case .audit: return ["audit.view"]
         case .moderation: return ["moderation.view", "moderation.manage", "listings.moderate"]
-        case .community: return [
-            "community.dashboard.view",
-            "community.application.view",
-            "community.sighting.review",
-            "community.match.review",
-            "community.moderation.review",
-            "community.configuration.manage",
-            "community.analytics.view",
-            "community.audit.view"
-        ]
+        case .adoptionManager:
+            return [
+                "community.dashboard.view",
+                "community.adoption.moderate",
+                "community.application.view",
+                "moderation.view",
+                "moderation.manage",
+                "listings.moderate",
+                "listings.view",
+                "listings.manage",
+                "Adoption"
+            ]
+        case .community:
+            return [
+                "community.dashboard.view",
+                "community.adoption.moderate",
+                "community.application.view",
+                "community.missing.moderate",
+                "community.sighting.review",
+                "community.match.review",
+                "community.organization.verify",
+                "community.moderation.review",
+                "community.configuration.manage",
+                "community.analytics.view",
+                "community.audit.view",
+                "moderation.view",
+                "moderation.manage",
+                "listings.moderate",
+                "Adoption"
+            ]
         case .services: return ["services.view", "services.manage", "providers.manage", "veterinarians.manage"]
         case .veterinarians: return ["veterinarians.view", "veterinarians.manage", "providers.manage", "services.manage"]
         case .categories: return ["categories.view", "categories.manage"]
@@ -239,11 +263,14 @@ enum AdminRoute: Hashable, Identifiable {
     }
 
     func isAuthorized(for session: AdminSession) -> Bool {
+        if session.isAdmin || session.grantsAllPermissions {
+            return true
+        }
         guard session.hasAnyPermission(requiredPermissions),
               requiredAllPermissions.allSatisfy(session.hasPermission) else {
             return false
         }
-        return ![.audit, .providerAccounting, .community].contains(self) || session.hasGlobalScope
+        return ![.audit, .providerAccounting].contains(self) || session.hasGlobalScope
     }
 }
 

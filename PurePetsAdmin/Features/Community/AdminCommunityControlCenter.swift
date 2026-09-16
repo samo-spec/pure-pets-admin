@@ -992,9 +992,14 @@ final class AdminCommunityWorkspaceStore: ObservableObject {
     private var loadGeneration = UUID()
     private var dossierGeneration = UUID()
 
-    init(session: AdminSession, service: AdminCommunityService = .shared) {
+    init(
+        session: AdminSession,
+        initialLane: CommunityAdminLane = .overview,
+        service: AdminCommunityService = .shared
+    ) {
         self.session = session
         self.service = service
+        self.selectedLane = initialLane
     }
 
     var availableLanes: [CommunityAdminLane] {
@@ -1004,19 +1009,57 @@ final class AdminCommunityWorkspaceStore: ObservableObject {
     }
 
     func canAccess(_ lane: CommunityAdminLane) -> Bool {
-        session.hasPermission(lane.permission) && session.hasGlobalScope
+        if session.isAdmin || session.grantsAllPermissions {
+            return true
+        }
+        let hasLanePermission: Bool
+        switch lane {
+        case .overview:
+            hasLanePermission = session.hasPermission("community.dashboard.view") ||
+                                session.hasPermission("community.adoption.moderate") ||
+                                session.hasPermission("moderation.view") ||
+                                session.hasPermission("moderation.manage") ||
+                                session.hasPermission("listings.moderate")
+        case .adoptionListings:
+            hasLanePermission = session.hasPermission("community.dashboard.view") ||
+                                session.hasPermission("community.adoption.moderate") ||
+                                session.hasPermission("moderation.view") ||
+                                session.hasPermission("moderation.manage") ||
+                                session.hasPermission("listings.moderate") ||
+                                session.hasPermission("listings.view") ||
+                                session.hasPermission("listings.manage") ||
+                                session.hasPermission("Adoption")
+        case .adoptionApplications:
+            hasLanePermission = session.hasPermission("community.application.view") ||
+                                session.hasPermission("community.adoption.moderate") ||
+                                session.hasPermission("moderation.view") ||
+                                session.hasPermission("moderation.manage")
+        case .missingCases, .foundReports:
+            hasLanePermission = session.hasPermission("community.dashboard.view") ||
+                                session.hasPermission("community.missing.moderate") ||
+                                session.hasPermission("moderation.view") ||
+                                session.hasPermission("moderation.manage")
+        case .moderation, .media:
+            hasLanePermission = session.hasPermission(lane.permission) ||
+                                session.hasPermission("moderation.view") ||
+                                session.hasPermission("moderation.manage") ||
+                                session.hasPermission("listings.moderate")
+        default:
+            hasLanePermission = session.hasPermission(lane.permission)
+        }
+        return hasLanePermission && (session.hasGlobalScope || session.isAdmin || lane == .adoptionListings)
     }
 
     var canViewPreciseLocation: Bool {
-        session.hasPermission("community.location.precise") && session.hasGlobalScope
+        session.isAdmin || session.grantsAllPermissions || (session.hasPermission("community.location.precise") && (session.hasGlobalScope || session.isAdmin))
     }
 
     var canViewSensitiveMatchEvidence: Bool {
-        session.hasPermission("community.match.sensitive_evidence") && session.hasGlobalScope
+        session.isAdmin || session.grantsAllPermissions || (session.hasPermission("community.match.sensitive_evidence") && (session.hasGlobalScope || session.isAdmin))
     }
 
     var canResolveModeration: Bool {
-        session.hasPermission("community.moderation.resolve") && session.hasGlobalScope
+        session.isAdmin || session.grantsAllPermissions || (session.hasPermission("community.moderation.resolve") && (session.hasGlobalScope || session.isAdmin)) || session.hasPermission("moderation.manage")
     }
 
     var filteredRecords: [CommunityAdminRecord] {
@@ -1526,7 +1569,7 @@ private enum CommunityAdminActionPolicy {
     static func actions(for record: CommunityAdminRecord, session: AdminSession) -> [CommunityAdminActionDescriptor] {
         let status = record.status
         switch record.source {
-        case .adoptionListings where session.hasPermission("community.adoption.moderate"):
+        case .adoptionListings where (session.isAdmin || session.grantsAllPermissions || session.hasPermission("community.adoption.moderate") || session.hasPermission("moderation.manage") || session.hasPermission("listings.moderate")):
             if ["pending_review", "needs_changes"].contains(status) {
                 return [
                     .init("approve", "Community_Admin_Action_Approve", "اعتماد", symbol: "checkmark.seal.fill"),
@@ -1713,9 +1756,15 @@ struct AdminCommunityControlCenterView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    init(session: AdminSession, onDismiss: @escaping () -> Void) {
+    init(
+        session: AdminSession,
+        initialLane: CommunityAdminLane = .overview,
+        onDismiss: @escaping () -> Void
+    ) {
         self.onDismiss = onDismiss
-        _store = StateObject(wrappedValue: AdminCommunityWorkspaceStore(session: session))
+        _store = StateObject(
+            wrappedValue: AdminCommunityWorkspaceStore(session: session, initialLane: initialLane)
+        )
     }
 
     private var isWide: Bool {
@@ -4243,7 +4292,7 @@ private enum CommunityAdminValueFormatter {
                     return
                 }
                 let session = AdminSession(source: snapshot)
-                guard AdminRoute.community.isAuthorized(for: session) else {
+                guard AdminRoute.community.isAuthorized(for: session) || AdminRoute.adoptionManager.isAuthorized(for: session) else {
                     self.showRestoreFailure(AdminCommunityServiceError.permissionDenied)
                     return
                 }

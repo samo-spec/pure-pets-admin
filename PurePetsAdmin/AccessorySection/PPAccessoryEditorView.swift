@@ -105,6 +105,15 @@ private struct PPLivePetMutationRecovery: Codable {
     let oldImageURLs: [String]
 }
 
+/// Prepared accessory/food image payload containing scaled pixel dimensions,
+/// optimized compressed data, and matching content type and file extension.
+struct PreparedAccessoryImagePayload {
+    let image: UIImage
+    let data: Data
+    let contentType: String
+    let fileExtension: String
+}
+
 /// Prepared, command-bound media for exactly one draft animal.
 ///
 /// Bytes are normalized before hashing so retries keep one immutable Storage
@@ -1335,6 +1344,14 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         return canManageStock || canManagePricing
     }
 
+    var canUsePuryAuthoring: Bool {
+        guard let staff = PPStaffAuth.shared().cachedCurrentStaff else { return false }
+        return staff.isAdmin() || staff.hasPermission("nova.view")
+    }
+
+    var brand: String { "" }
+    var price: String { priceText }
+
     func ensureDefaultSingleGroup() {
         if quantityGroups.isEmpty {
             let single = PPQuantityGroupDraft(
@@ -2133,10 +2150,12 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         let removedURL = existingImageURLs[index]
         if let uploadID = pendingUnsavedUploads.removeValue(forKey: removedURL) {
-            Storage.storage().reference()
-                .child("petAccessories")
-                .child("\(uploadID.uuidString).png")
-                .delete { _ in }
+            let storageRoot = Storage.storage().reference().child("petAccessories")
+            storageRoot.child("\(uploadID.uuidString).png").delete { _ in }
+            storageRoot.child("\(uploadID.uuidString).jpg").delete { _ in }
+            if let ref = try? Storage.storage().reference(forURL: removedURL) {
+                ref.delete { _ in }
+            }
         }
         if index < existingImageMetadata.count {
             existingImageMetadata.remove(at: index)
@@ -2149,10 +2168,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         if index < pickedImageUploadIDs.count {
             let uploadID = pickedImageUploadIDs.remove(at: index)
-            Storage.storage().reference()
-                .child("petAccessories")
-                .child("\(uploadID.uuidString).png")
-                .delete { _ in }
+            let storageRoot = Storage.storage().reference().child("petAccessories")
+            storageRoot.child("\(uploadID.uuidString).png").delete { _ in }
+            storageRoot.child("\(uploadID.uuidString).jpg").delete { _ in }
         }
         pickedImages.remove(at: index)
     }
@@ -2393,6 +2411,22 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         let trimmedNameEn = nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedName.isEmpty || basePrice <= 0 {
             return (false, Language.get("Name and price are required.", alter: "يرجى إدخال اسم وسعر المنتج بدقة."))
+        }
+        let nameArWords = trimmedName.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
+        if nameArWords.count > 4 {
+            return (false, Language.get(
+                "CatalogIntake_ValidationNameWordCount",
+                alter: "يجب ألا يتجاوز اسم المنتج 4 كلمات. الاسم الحالي يتكون من \(nameArWords.count) كلمات."
+            ))
+        }
+        if !trimmedNameEn.isEmpty {
+            let nameEnWords = trimmedNameEn.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
+            if nameEnWords.count > 4 {
+                return (false, Language.get(
+                    "CatalogIntake_ValidationNameWordCountEn",
+                    alter: "يجب ألا يتجاوز الاسم بالإنجليزية 4 كلمات. الاسم الحالي يتكون من \(nameEnWords.count) كلمات."
+                ))
+            }
         }
         if !isLivePet {
             if hasNoCategorySelected {
@@ -2744,150 +2778,267 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             pendingSavedAccessoryDraft = accessory
             finalizeAccessorySave(accessory: accessory, oldImageURLs: oldImageURLs)
         } else {
+            let imagesToUpload = pickedImages
             let uploadIDs = pickedImageUploadIDs
-            uploadNewImages(images: pickedImages, uploadIDs: uploadIDs) { [weak self] uploadedURLs, metaArray, uploadError in
+            Task { @MainActor [weak self] in
                 guard let self = self else { return }
-                if let err = uploadError {
+                do {
+                    let (uploadedURLs, uploadedMetadata) = try await self.uploadNewImages(
+                        images: imagesToUpload,
+                        uploadIDs: uploadIDs
+                    )
+                    let finalURLs = currentExistingURLs + uploadedURLs
+                    let finalMetadata = currentExistingMetadata + uploadedMetadata
+                    for (url, uploadID) in zip(uploadedURLs, uploadIDs) {
+                        self.pendingUnsavedUploads[url] = uploadID
+                    }
+                    // Promote uploaded media into retained state before the mutation.
+                    // A failed catalog save can retry the same uploads without leaks
+                    // or reordering the primary image and its metadata.
+                    self.existingImageURLs = finalURLs
+                    self.existingImageMetadata = finalMetadata
+                    self.pickedImages.removeAll()
+                    self.pickedImageUploadIDs.removeAll()
+                    accessory.imageURLsArray = finalURLs
+                    accessory.imageMeta = finalMetadata
+                    self.pendingSavedAccessoryDraft = accessory
+                    self.finalizeAccessorySave(accessory: accessory, oldImageURLs: oldImageURLs)
+                } catch {
                     self.isSubmitting = false
-                    self.errorMessage = err.localizedDescription
+                    self.errorMessage = self.localizedImageUploadError(error)
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
-                    return
                 }
-
-                let uploadedURLs = uploadedURLs ?? []
-                let uploadedMetadata = metaArray ?? []
-                let finalURLs = currentExistingURLs + uploadedURLs
-                let finalMetadata = currentExistingMetadata + uploadedMetadata
-                for (url, uploadID) in zip(uploadedURLs, uploadIDs) {
-                    self.pendingUnsavedUploads[url] = uploadID
-                }
-                // Promote uploaded media into retained state before the mutation.
-                // A failed catalog save can retry the same uploads without leaks
-                // or reordering the primary image and its metadata.
-                self.existingImageURLs = finalURLs
-                self.existingImageMetadata = finalMetadata
-                self.pickedImages.removeAll()
-                self.pickedImageUploadIDs.removeAll()
-                accessory.imageURLsArray = finalURLs
-                accessory.imageMeta = finalMetadata
-                self.pendingSavedAccessoryDraft = accessory
-                self.finalizeAccessorySave(accessory: accessory, oldImageURLs: oldImageURLs)
             }
         }
     }
 
+    private static func prepareAccessoryImageForUpload(_ source: UIImage) -> PreparedAccessoryImagePayload? {
+        guard source.size.width > 0, source.size.height > 0 else { return nil }
+
+        let longestEdge = max(source.size.width, source.size.height)
+        let maxAllowedDimension: CGFloat = 1_800
+        let scale = min(1.0, maxAllowedDimension / longestEdge)
+        let targetSize = CGSize(
+            width: max(1, (source.size.width * scale).rounded()),
+            height: max(1, (source.size.height * scale).rounded())
+        )
+
+        // Storage rules enforce maxFileSize(20) (< 20MB).
+        // Target an 8MB cap for high throughput and safe headroom under rule limits.
+        let maxBytes = 8 * 1_024 * 1_024
+
+        // Detect whether image contains an alpha channel (cutout / transparent PNG)
+        let hasAlpha: Bool = {
+            guard let cgImage = source.cgImage else { return false }
+            switch cgImage.alphaInfo {
+            case .first, .last, .premultipliedFirst, .premultipliedLast:
+                return true
+            case .none, .noneSkipFirst, .noneSkipLast:
+                return false
+            @unknown default:
+                return false
+            }
+        }()
+
+        if hasAlpha {
+            let transparentFormat = UIGraphicsImageRendererFormat()
+            transparentFormat.scale = 1.0
+            transparentFormat.opaque = false
+            let renderer = UIGraphicsImageRenderer(size: targetSize, format: transparentFormat)
+            let renderedImage = renderer.image { _ in
+                source.draw(in: CGRect(origin: .zero, size: targetSize))
+            }
+
+            if let pngData = renderedImage.pngData(), !pngData.isEmpty, pngData.count <= maxBytes {
+                return PreparedAccessoryImagePayload(
+                    image: renderedImage,
+                    data: pngData,
+                    contentType: "image/png",
+                    fileExtension: "png"
+                )
+            }
+        }
+
+        // Standard photographic image (or transparent graphic exceeding 8MB PNG):
+        // Normalize onto pure white backdrop and compress using high-quality JPEG
+        let opaqueFormat = UIGraphicsImageRendererFormat()
+        opaqueFormat.scale = 1.0
+        opaqueFormat.opaque = true
+        let renderer = UIGraphicsImageRenderer(size: targetSize, format: opaqueFormat)
+        let normalizedImage = renderer.image { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(origin: .zero, size: targetSize))
+            source.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+
+        let qualityLadder: [CGFloat] = [0.82, 0.72, 0.62, 0.52]
+        for quality in qualityLadder {
+            if let jpegData = normalizedImage.jpegData(compressionQuality: quality),
+               !jpegData.isEmpty,
+               jpegData.count <= maxBytes {
+                return PreparedAccessoryImagePayload(
+                    image: normalizedImage,
+                    data: jpegData,
+                    contentType: "image/jpeg",
+                    fileExtension: "jpg"
+                )
+            }
+        }
+
+        if let fallbackData = normalizedImage.jpegData(compressionQuality: 0.5), !fallbackData.isEmpty {
+            return PreparedAccessoryImagePayload(
+                image: normalizedImage,
+                data: fallbackData,
+                contentType: "image/jpeg",
+                fileExtension: "jpg"
+            )
+        }
+
+        return nil
+    }
+
+    private func localizedImageUploadError(_ error: Error) -> String {
+        let nsError = error as NSError
+
+        if nsError.domain == "PPAccessoryEditorImageUpload",
+           let message = nsError.userInfo[NSLocalizedDescriptionKey] as? String,
+           !message.isEmpty {
+            return message
+        }
+
+        let isUnauthorized = (nsError.domain == StorageErrorDomain && [StorageErrorCode.unauthenticated.rawValue, StorageErrorCode.unauthorized.rawValue].contains(nsError.code))
+            || (nsError.domain == "PPStorageError" && nsError.code == 401)
+            || nsError.localizedDescription.contains("permission")
+            || nsError.localizedDescription.contains("unauthorized")
+
+        if isUnauthorized {
+            return Language.get(
+                "CatalogIntake_StorageUploadUnauthorized",
+                alter: "تعذر رفع الصورة بسبب قيود الصلاحيات أو تجاوز الحجم المسموح. تأكد من صلاحيات الحساب ثم أعد المحاولة."
+            )
+        }
+
+        let isNetworkOrTimeout = (nsError.domain == StorageErrorDomain && nsError.code == StorageErrorCode.retryLimitExceeded.rawValue)
+            || nsError.domain == NSURLErrorDomain
+
+        if isNetworkOrTimeout {
+            return Language.get(
+                "CatalogIntake_StorageNetworkError",
+                alter: "تعذر الاتصال بخادم التخزين أثناء رفع الصور. تحقق من اتصالك بالإنترنت ثم أعد المحاولة."
+            )
+        }
+
+        return String(
+            format: Language.get(
+                "CatalogIntake_StorageUploadFailed_Format",
+                alter: "تعذر إكمال رفع الصور (%@). حاول مرة أخرى."
+            ),
+            nsError.localizedDescription
+        )
+    }
+
     private func uploadNewImages(
         images: [UIImage],
-        uploadIDs: [UUID],
-        completion: @escaping ([String]?, [[AnyHashable: Any]]?, Error?) -> Void
-    ) {
+        uploadIDs: [UUID]
+    ) async throws -> (urls: [String], metadata: [[AnyHashable: Any]]) {
+        guard let currentUID = Auth.auth().currentUser?.uid, !currentUID.isEmpty else {
+            throw NSError(
+                domain: "PPAccessoryEditorImageUpload",
+                code: 401,
+                userInfo: [
+                    NSLocalizedDescriptionKey: Language.get(
+                        "CatalogIntake_AuthRequired",
+                        alter: "يجب تسجيل الدخول بحساب مسؤول مصرح له للمتابعة."
+                    )
+                ]
+            )
+        }
+
         guard uploadIDs.count == images.count else {
-            completion(
-                nil,
-                nil,
-                NSError(
-                    domain: "PPAccessoryEditorImageUpload",
-                    code: 0,
-                    userInfo: [NSLocalizedDescriptionKey: Language.get(
-                        "CatalogIntake_PhotoUploadFailed",
-                        alter: "تعذر إكمال رفع الصور. حاول مرة أخرى."
-                    )]
-                )
+            throw NSError(
+                domain: "PPAccessoryEditorImageUpload",
+                code: 0,
+                userInfo: [NSLocalizedDescriptionKey: Language.get(
+                    "CatalogIntake_PhotoUploadFailed",
+                    alter: "تعذر إكمال رفع الصور. حاول مرة أخرى."
+                )]
             )
-            return
         }
-        let encodedImages: [(image: UIImage, data: Data)] = images.compactMap { image in
-            guard let data = image.pngData() else { return nil }
-            return (image, data)
+
+        let preparedPayloads: [PreparedAccessoryImagePayload] = images.compactMap { image in
+            Self.prepareAccessoryImageForUpload(image)
         }
-        guard encodedImages.count == images.count else {
-            completion(
-                nil,
-                nil,
-                NSError(
-                    domain: "PPAccessoryEditorImageUpload",
-                    code: 1,
-                    userInfo: [
-                        NSLocalizedDescriptionKey: Language.get(
-                            "CatalogIntake_PhotoEncodingFailed",
-                            alter: "تعذر تجهيز إحدى الصور للرفع. أعد اختيار الصورة وحاول مرة أخرى."
-                        )
-                    ]
-                )
+
+        guard preparedPayloads.count == images.count else {
+            throw NSError(
+                domain: "PPAccessoryEditorImageUpload",
+                code: 1,
+                userInfo: [
+                    NSLocalizedDescriptionKey: Language.get(
+                        "CatalogIntake_PhotoEncodingFailed",
+                        alter: "تعذر تجهيز إحدى الصور للرفع. أعد اختيار الصورة وحاول مرة أخرى."
+                    )
+                ]
             )
-            return
         }
 
         let storageRef = Storage.storage().reference()
-        let group = DispatchGroup()
-        var uploadedURLs = Array<String?>(repeating: nil, count: encodedImages.count)
-        var metaArray = Array<[AnyHashable: Any]?>(repeating: nil, count: encodedImages.count)
-        var firstError: Error?
-        let lock = NSLock()
+        var uploadedURLs: [String] = []
+        var metaArray: [[AnyHashable: Any]] = []
 
-        for (index, encodedImage) in encodedImages.enumerated() {
-            group.enter()
-            let image = encodedImage.image
-            let imgRef = storageRef.child("petAccessories").child("\(uploadIDs[index].uuidString).png")
-            
+        for (index, payload) in preparedPayloads.enumerated() {
+            let image = payload.image
+            let uploadID = uploadIDs[index]
+            let filename = "\(uploadID.uuidString).\(payload.fileExtension)"
+            let imgRef = storageRef.child("petAccessories").child(filename)
+
             let metadata = StorageMetadata()
-            metadata.contentType = "image/png"
+            metadata.contentType = payload.contentType
             metadata.customMetadata = [
-                "uploaded_by": Auth.auth().currentUser?.uid ?? "",
+                "uploaded_by": currentUID,
                 "entity_type": "accessory",
                 "media_type": "image"
             ]
 
-            imgRef.putData(encodedImage.data, metadata: metadata) { _, error in
-                if let err = error {
-                    lock.lock()
-                    if firstError == nil { firstError = err }
-                    lock.unlock()
-                    group.leave()
-                    return
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                imgRef.putData(payload.data, metadata: metadata) { _, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume(returning: ())
+                    }
                 }
+            }
 
+            let url: URL = try await withCheckedThrowingContinuation { continuation in
                 imgRef.downloadURL { url, downloadError in
-                    lock.lock()
-                    if let urlString = url?.absoluteString {
-                        uploadedURLs[index] = urlString
-                        metaArray[index] = [
-                            "url": urlString,
-                            "width": Double(image.size.width),
-                            "height": Double(image.size.height)
-                        ]
-                    } else if firstError == nil {
-                        firstError = downloadError ?? NSError(
+                    if let downloadError {
+                        continuation.resume(throwing: downloadError)
+                    } else if let url {
+                        continuation.resume(returning: url)
+                    } else {
+                        continuation.resume(throwing: NSError(
                             domain: "PPAccessoryEditorImageUpload",
                             code: 2,
                             userInfo: [NSLocalizedDescriptionKey: Language.get(
                                 "CatalogIntake_PhotoUploadFailed",
                                 alter: "تعذر إكمال رفع الصور. حاول مرة أخرى."
                             )]
-                        )
+                        ))
                     }
-                    lock.unlock()
-                    group.leave()
                 }
             }
+
+            let urlString = url.absoluteString
+            uploadedURLs.append(urlString)
+            metaArray.append([
+                "url": urlString,
+                "width": Double(image.size.width),
+                "height": Double(image.size.height)
+            ])
         }
 
-        group.notify(queue: .main) {
-            lock.lock()
-            let uploadError = firstError
-            let completedURLs = uploadedURLs
-            let completedMetadata = metaArray
-            lock.unlock()
-
-            if let uploadError {
-                // Keep stable per-selection object paths and the selected images.
-                // A retry overwrites/reuses these paths, so partial uploads never
-                // accumulate UUID-addressed orphan blobs across attempts.
-                completion(nil, nil, uploadError)
-            } else {
-                completion(completedURLs.compactMap { $0 }, completedMetadata.compactMap { $0 }, nil)
-            }
-        }
+        return (uploadedURLs, metaArray)
     }
 
     private func buildCommercePayload() -> [String: Any]? {
@@ -3417,6 +3568,12 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         let uploadIDs = Set(pickedImageUploadIDs).union(pendingUnsavedUploads.values)
         for uploadID in uploadIDs {
             storageRoot.child("\(uploadID.uuidString).png").delete { _ in }
+            storageRoot.child("\(uploadID.uuidString).jpg").delete { _ in }
+        }
+        for url in pendingUnsavedUploads.keys {
+            if let ref = try? Storage.storage().reference(forURL: url) {
+                ref.delete { _ in }
+            }
         }
         pickedImageUploadIDs.removeAll()
         pendingUnsavedUploads.removeAll()
@@ -3894,6 +4051,7 @@ struct PPBilingualInputField: View {
     let englishPlaceholder: String
     @Binding var selectedLanguage: PPBilingualLanguage
     let isFocused: Bool
+    var maxWordCount: Int? = nil
     var onFocusChange: ((Bool) -> Void)? = nil
     var onSubmit: (() -> Void)? = nil
 
@@ -4085,7 +4243,27 @@ struct PPBilingualInputField: View {
             }
             Spacer()
 
-            let currentCount = selectedLanguage == .arabic ? arabicText.count : englishText.count
+            let activeText = selectedLanguage == .arabic ? arabicText : englishText
+            let currentCount = activeText.count
+
+            if let maxWords = maxWordCount, currentCount > 0 {
+                let words = activeText
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .components(separatedBy: .whitespacesAndNewlines)
+                    .filter { !$0.isEmpty }
+                let wordCount = words.count
+                let isOverLimit = wordCount > maxWords
+                HStack(spacing: 3) {
+                    Image(systemName: isOverLimit ? "exclamationmark.triangle.fill" : "text.word.spacing")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(isOverLimit ? Color.red : AdminSurface.secondaryText.opacity(0.5))
+                    Text(verbatim: "\(wordCount.englishDigits)/\(maxWords.englishDigits) " + Language.get("Words", alter: "كلمات"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(isOverLimit ? Color.red : AdminSurface.secondaryText.opacity(0.6))
+                        .monospacedDigit()
+                }
+            }
+
             if currentCount > 0 {
                 Text(verbatim: "\(currentCount.englishDigits)/90")
                     .font(AdminType.caption2)
@@ -4345,6 +4523,10 @@ struct PPAccessoryEditorScreen: View {
     
     enum FormField: Hashable {
         case name, desc, price, discountPercent, discountAmount, quantity, passport, weight, wholesalePrice
+    }
+
+    private var canUsePuryAuthoring: Bool {
+        viewModel.canUsePuryAuthoring
     }
 
     var body: some View {
@@ -5092,9 +5274,26 @@ struct PPAccessoryEditorScreen: View {
 
     private var coreInformationDeck: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label(Language.get("CoreInfo", alter: "البيانات الأساسية للصنف"), systemImage: "pencil.and.outline")
-                .font(AdminType.headline)
-                .foregroundStyle(AdminSurface.primaryText)
+            HStack {
+                Label(Language.get("CoreInfo", alter: "البيانات الأساسية للصنف"), systemImage: "pencil.and.outline")
+                    .font(AdminType.headline)
+                    .foregroundStyle(AdminSurface.primaryText)
+                Spacer()
+            }
+
+            if viewModel.canUsePuryAuthoring {
+                PuryInlineAuthoringBar(
+                    itemType: viewModel.isLivePet ? "live_pet" : "accessory",
+                    arabicText: $viewModel.name,
+                    englishText: $viewModel.nameEn,
+                    targetField: "name",
+                    attributes: [
+                        "category": viewModel.selectedCategoryDisplayTitle ?? "",
+                        "brand": viewModel.brand,
+                        "price": viewModel.price
+                    ]
+                )
+            }
 
             PPBilingualInputField(
                 title: Language.get("ItemName", alter: "اسم الصنف أو الحيوان"),
@@ -5105,6 +5304,7 @@ struct PPAccessoryEditorScreen: View {
                 englishPlaceholder: Language.get("EnterItemNameEn", alter: "Enter item name in English..."),
                 selectedLanguage: $bilingualLanguage,
                 isFocused: focusedField == .name,
+                maxWordCount: 4,
                 onFocusChange: { focused in
                     if focused { focusedField = .name }
                     else if focusedField == .name { focusedField = nil }
@@ -5112,6 +5312,20 @@ struct PPAccessoryEditorScreen: View {
                 onSubmit: { focusedField = .desc }
             )
             .id(FormField.name)
+
+            if viewModel.canUsePuryAuthoring {
+                PuryInlineAuthoringBar(
+                    itemType: viewModel.isLivePet ? "live_pet" : "accessory",
+                    arabicText: $viewModel.desc,
+                    englishText: $viewModel.descEn,
+                    targetField: "description",
+                    attributes: [
+                        "category": viewModel.selectedCategoryDisplayTitle ?? "",
+                        "brand": viewModel.brand,
+                        "price": viewModel.price
+                    ]
+                )
+            }
 
             PPBilingualTextEditorField(
                 title: Language.get("Description", alter: "الوصف التفصيلي والمواصفات"),

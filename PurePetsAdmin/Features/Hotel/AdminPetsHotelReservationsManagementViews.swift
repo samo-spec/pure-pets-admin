@@ -450,15 +450,16 @@ public struct AdminPetsHotelReservationCard: View {
 
 private struct HotelBeiruti {
     static func bold(_ size: CGFloat) -> Font {
-        Font.custom("Beiruti-Bold", size: size)
+        PPBrandFont.bold(size: size)
     }
     static func medium(_ size: CGFloat) -> Font {
-        Font.custom("Beiruti-Medium", size: size)
+        PPBrandFont.medium(size: size)
     }
     static func regular(_ size: CGFloat) -> Font {
-        Font.custom("Beiruti-Regular", size: size)
+        PPBrandFont.regular(size: size)
     }
 }
+
 
 public struct AdminPetsHotelReservationDetailSheet: View {
     let reservation: AdminHotelReservation
@@ -1969,6 +1970,116 @@ public struct AdminPetsHotelReservationDetailSheet: View {
 }
 
 
+// MARK: - International Mobile Directory & Formatters
+
+public struct AdminCountryCodeItem: Identifiable, Hashable, Sendable {
+    public let id: String
+    public let code: String
+    public let flag: String
+    public let nameAr: String
+    public let nameEn: String
+    public let maxDigits: Int
+
+    public var displayName: String {
+        Language.isRTL() ? "\(flag) \(nameAr) (\(code))" : "\(flag) \(nameEn) (\(code))"
+    }
+}
+
+public enum AdminCountryCatalog {
+    public static let defaultCountry = AdminCountryCodeItem(id: "+974", code: "+974", flag: "🇶🇦", nameAr: "قطر", nameEn: "Qatar", maxDigits: 8)
+
+    public static let all: [AdminCountryCodeItem] = [
+        AdminCountryCodeItem(id: "+974", code: "+974", flag: "🇶🇦", nameAr: "قطر", nameEn: "Qatar", maxDigits: 8),
+        AdminCountryCodeItem(id: "+966", code: "+966", flag: "🇸🇦", nameAr: "السعودية", nameEn: "Saudi Arabia", maxDigits: 9),
+        AdminCountryCodeItem(id: "+971", code: "+971", flag: "🇦🇪", nameAr: "الإمارات", nameEn: "UAE", maxDigits: 9),
+        AdminCountryCodeItem(id: "+965", code: "+965", flag: "🇰🇼", nameAr: "الكويت", nameEn: "Kuwait", maxDigits: 8),
+        AdminCountryCodeItem(id: "+973", code: "+973", flag: "🇧🇭", nameAr: "البحرين", nameEn: "Bahrain", maxDigits: 8),
+        AdminCountryCodeItem(id: "+968", code: "+968", flag: "🇴🇲", nameAr: "عُمان", nameEn: "Oman", maxDigits: 8),
+        AdminCountryCodeItem(id: "+20", code: "+20", flag: "🇪🇬", nameAr: "مصر", nameEn: "Egypt", maxDigits: 10),
+        AdminCountryCodeItem(id: "+962", code: "+962", flag: "🇯🇴", nameAr: "الأردن", nameEn: "Jordan", maxDigits: 9),
+        AdminCountryCodeItem(id: "+961", code: "+961", flag: "🇱🇧", nameAr: "لبنان", nameEn: "Lebanon", maxDigits: 8),
+        AdminCountryCodeItem(id: "+44", code: "+44", flag: "🇬🇧", nameAr: "بريطانيا", nameEn: "UK", maxDigits: 10),
+        AdminCountryCodeItem(id: "+1", code: "+1", flag: "🇺🇸", nameAr: "أمريكا / كندا", nameEn: "USA/Canada", maxDigits: 10),
+        AdminCountryCodeItem(id: "+90", code: "+90", flag: "🇹🇷", nameAr: "تركيا", nameEn: "Turkey", maxDigits: 10)
+    ]
+
+    public static func find(byCode code: String) -> AdminCountryCodeItem {
+        all.first(where: { $0.code == code }) ?? defaultCountry
+    }
+
+    public static func parsePhone(_ raw: String) -> (country: AdminCountryCodeItem, localNumber: String) {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return (defaultCountry, "")
+        }
+
+        var normalized = trimmed
+        if normalized.hasPrefix("00") {
+            normalized = "+" + normalized.dropFirst(2)
+        }
+
+        let sorted = all.sorted(by: { $0.code.count > $1.code.count })
+        for item in sorted {
+            if normalized.hasPrefix(item.code) {
+                let remainder = String(normalized.dropFirst(item.code.count))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let digits = remainder.filter { $0.isNumber }
+                return (item, formatDigits(digits, for: item))
+            }
+            let rawCodeDigits = item.code.replacingOccurrences(of: "+", with: "")
+            if normalized.hasPrefix(rawCodeDigits) && normalized.count > rawCodeDigits.count + 4 {
+                let remainder = String(normalized.dropFirst(rawCodeDigits.count))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let digits = remainder.filter { $0.isNumber }
+                return (item, formatDigits(digits, for: item))
+            }
+        }
+
+        let onlyDigits = trimmed.filter { $0.isNumber }
+        if onlyDigits.count == 8 {
+            return (defaultCountry, formatDigits(onlyDigits, for: defaultCountry))
+        }
+
+        return (defaultCountry, formatDigits(onlyDigits, for: defaultCountry))
+    }
+
+    public static func formatDigits(_ raw: String, for country: AdminCountryCodeItem) -> String {
+        let digits = String(raw.filter { $0.isNumber }.prefix(country.maxDigits))
+        if country.code == "+974" {
+            if digits.count > 4 {
+                let p1 = digits.prefix(4)
+                let p2 = digits.dropFirst(4)
+                return "\(p1) \(p2)"
+            }
+            return digits
+        } else if country.code == "+966" || country.code == "+971" {
+            if digits.count > 5 {
+                let p1 = digits.prefix(2)
+                let p2 = digits.dropFirst(2).prefix(3)
+                let p3 = digits.dropFirst(5)
+                return "\(p1) \(p2) \(p3)"
+            } else if digits.count > 2 {
+                let p1 = digits.prefix(2)
+                let p2 = digits.dropFirst(2)
+                return "\(p1) \(p2)"
+            }
+            return digits
+        } else {
+            if digits.count > 6 {
+                let p1 = digits.prefix(3)
+                let p2 = digits.dropFirst(3).prefix(3)
+                let p3 = digits.dropFirst(6)
+                return "\(p1) \(p2) \(p3)"
+            } else if digits.count > 3 {
+                let p1 = digits.prefix(3)
+                let p2 = digits.dropFirst(3)
+                return "\(p1) \(p2)"
+            }
+            return digits
+        }
+    }
+}
+
 // MARK: - Sovereign Create Reservation Sheet (حجز فندقي جديد)
 // Category-defining, beyond-FAANG dual-architecture reservation studio.
 // First-principles dedicated iPadOS Observatory Console & iPhone Tactile Deck.
@@ -1991,6 +2102,8 @@ public struct AdminPetsHotelCreateReservationSheet: View {
     // Customer state
     @State private var customerName: String = ""
     @State private var customerPhone: String = ""
+    @State private var customerCountryCode: String = "+974"
+    @State private var customerCountryFlag: String = "🇶🇦"
     @State private var customerEmail: String = ""
     @State private var customerSearchQuery: String = ""
     @State private var customerSearchResults: [AdminHotelCustomerOption] = []
@@ -2135,6 +2248,23 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                 iPhoneTactileDeckLayout
             }
         }
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                hideKeyboard()
+            }
+        )
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button {
+                    hideKeyboard()
+                } label: {
+                    Text(Language.get("Common_Done", alter: "تم"))
+                        .font(PPBrandFont.bold(size: 14))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+            }
+        }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
@@ -2149,6 +2279,10 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                 morphicPulse = true
             }
         }
+    }
+
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     // MARK: - iPadOS Dedicated Architecture: Dual-Deck Command Observatory
@@ -2183,6 +2317,7 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                 }
                 .padding(28)
             }
+            .scrollDismissesKeyboard(.interactively)
         }
     }
 
@@ -2290,6 +2425,7 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 14)
                 }
+                .scrollDismissesKeyboard(.interactively)
 
                 iPhonePinnedBottomDock
             }
@@ -2391,7 +2527,7 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                 }
 
                 Text(Language.get("Customer_Details", alter: "بيانات العميل"))
-                    .font(Font.custom("Beiruti-Bold", size: 15))
+                    .font(PPBrandFont.bold(size: 15))
                     .foregroundStyle(AdminSurface.primaryText)
 
                 Spacer()
@@ -2401,7 +2537,7 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                         Image(systemName: "checkmark.seal.fill")
                             .font(.system(size: 11))
                         Text(Language.get("Hotel_Customer_VerifiedProfile", alter: "عميل مسجل ومعتمد"))
-                            .font(Font.custom("Beiruti-Bold", size: 11))
+                            .font(PPBrandFont.bold(size: 11))
                     }
                     .foregroundStyle(Color(uiColor: .systemGreen))
                     .padding(.horizontal, 8)
@@ -2409,7 +2545,7 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                     .background(Color(uiColor: .systemGreen).opacity(0.12), in: Capsule())
                 } else if !customerName.isEmpty && !customerPhone.isEmpty {
                     Text(Language.get("Hotel_Customer_WalkInBadge", alter: "عميل مباشر (حضور شخصي)"))
-                        .font(Font.custom("Beiruti-Bold", size: 11))
+                        .font(PPBrandFont.bold(size: 11))
                         .foregroundStyle(Color.orange)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
@@ -2425,7 +2561,7 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                         .foregroundStyle(AdminSurface.secondaryText)
 
                     TextField(Language.get("Hotel_SearchCustomerPlaceholder", alter: "ابحث بالاسم أو رقم الهاتف..."), text: $customerSearchQuery)
-                        .font(Font.custom("Beiruti-Medium", size: 13))
+                        .font(PPBrandFont.medium(size: 13))
                         .multilineTextAlignment(.leading)
                         .onChange(of: customerSearchQuery) { query in
                             performCustomerSearch(query)
@@ -2466,17 +2602,17 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                                             .fill(AdminSurface.primary.opacity(0.12))
                                             .frame(width: 32, height: 32)
                                         Text(String(option.name.prefix(1)).uppercased())
-                                            .font(Font.custom("Beiruti-Bold", size: 13))
+                                            .font(PPBrandFont.bold(size: 13))
                                             .foregroundStyle(AdminSurface.primary)
                                     }
 
                                     VStack(alignment: .leading, spacing: 1) {
                                         Text(option.name)
-                                            .font(Font.custom("Beiruti-Bold", size: 13))
+                                            .font(PPBrandFont.bold(size: 13))
                                             .foregroundStyle(AdminSurface.primaryText)
                                         if !option.phone.isEmpty {
                                             Text(option.phone)
-                                                .font(Font.custom("Beiruti-Medium", size: 11))
+                                                .font(PPBrandFont.medium(size: 11))
                                                 .foregroundStyle(AdminSurface.secondaryText)
                                                 .monospacedDigit()
                                         }
@@ -2485,7 +2621,7 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                                     Spacer()
 
                                     Text(Language.get("Hotel_Select_Action", alter: "اختيار"))
-                                        .font(Font.custom("Beiruti-Bold", size: 11))
+                                        .font(PPBrandFont.bold(size: 11))
                                         .foregroundStyle(AdminSurface.primary)
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 3)
@@ -2510,11 +2646,11 @@ public struct AdminPetsHotelCreateReservationSheet: View {
 
                         VStack(alignment: .leading, spacing: 1) {
                             Text(selected.name)
-                                .font(Font.custom("Beiruti-Bold", size: 13))
+                                .font(PPBrandFont.bold(size: 13))
                                 .foregroundStyle(AdminSurface.primaryText)
                             if !selected.phone.isEmpty {
                                 Text(selected.phone)
-                                    .font(Font.custom("Beiruti-Regular", size: 11))
+                                    .font(PPBrandFont.regular(size: 11))
                                     .foregroundStyle(AdminSurface.secondaryText)
                             }
                         }
@@ -2529,7 +2665,7 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                             }
                         } label: {
                             Text(Language.get("Hotel_ChangeCustomer", alter: "تغيير"))
-                                .font(Font.custom("Beiruti-Bold", size: 11))
+                                .font(PPBrandFont.bold(size: 11))
                                 .foregroundStyle(Color.red)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 3)
@@ -2555,7 +2691,7 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                         .foregroundStyle(AdminSurface.secondaryText)
                         .frame(width: 20)
                     TextField(Language.get("Customer_Name_Placeholder", alter: "اسم العميل بالكامل *"), text: $customerName)
-                        .font(Font.custom("Beiruti-Medium", size: 14))
+                        .font(PPBrandFont.medium(size: 14))
                         .multilineTextAlignment(.leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -2566,24 +2702,80 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                         .strokeBorder(customerName.isEmpty && validationError != nil ? Color.red.opacity(0.6) : AdminSurface.hairline.opacity(0.6), lineWidth: 0.8)
                 )
 
-                // Phone Field
-                HStack(spacing: 10) {
-                    Image(systemName: "phone.fill")
-                        .font(.system(size: 13))
-                        .foregroundStyle(AdminSurface.secondaryText)
-                        .frame(width: 20)
-                    TextField(Language.get("Customer_Phone_Placeholder", alter: "رقم هاتف العميل *"), text: $customerPhone)
-                        .keyboardType(.phonePad)
-                        .font(Font.custom("Beiruti-SemiBold", size: 14))
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                // Phone Field with ALWAYS-ON-THE-LEFT Country Code Picker
+                HStack(spacing: 8) {
+                    // Country Code Picker Menu (Pinned strictly to the left)
+                    Menu {
+                        ForEach(AdminCountryCatalog.all) { item in
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                customerCountryCode = item.code
+                                customerCountryFlag = item.flag
+                                customerPhone = AdminCountryCatalog.formatDigits(customerPhone, for: item)
+                            } label: {
+                                HStack {
+                                    Text(item.displayName)
+                                    if customerCountryCode == item.code {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Text(customerCountryFlag)
+                                .font(.system(size: 15))
+                            Text(customerCountryCode)
+                                .font(PPBrandFont.bold(size: 13.5))
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .monospacedDigit()
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                        }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 7)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .stroke(AdminSurface.hairline, lineWidth: 0.6)
+                        )
+                    }
+
+                    // Vertical Divider
+                    Rectangle()
+                        .fill(AdminSurface.hairline)
+                        .frame(width: 1, height: 22)
+
+                    // Phone Text Field (Left to right digit flow)
+                    TextField(
+                        "",
+                        text: Binding(
+                            get: { customerPhone },
+                            set: { newValue in
+                                let currentCountry = AdminCountryCatalog.find(byCode: customerCountryCode)
+                                customerPhone = AdminCountryCatalog.formatDigits(newValue, for: currentCountry)
+                            }
+                        ),
+                        prompt: Text(Language.get("Customer_Phone_Placeholder", alter: "رقم هاتف العميل *"))
+                            .font(PPBrandFont.medium(size: 14))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    )
+                    .keyboardType(.phonePad)
+                    .font(PPBrandFont.bold(size: 15))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .monospacedDigit()
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(12)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
                 .background(Color(uiColor: .ppForeground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .strokeBorder(customerPhone.isEmpty && validationError != nil ? Color.red.opacity(0.6) : AdminSurface.hairline.opacity(0.6), lineWidth: 0.8)
                 )
+                .environment(\.layoutDirection, .leftToRight)
 
                 // Email Field (Optional)
                 HStack(spacing: 10) {
@@ -2593,7 +2785,7 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                         .frame(width: 20)
                     TextField(Language.get("Email_Optional", alter: "البريد الإلكتروني (اختياري)"), text: $customerEmail)
                         .keyboardType(.emailAddress)
-                        .font(Font.custom("Beiruti-Regular", size: 14))
+                        .font(PPBrandFont.regular(size: 14))
                         .multilineTextAlignment(.leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -3517,7 +3709,7 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                         .frame(width: 20)
                     TextField(Language.get("Emergency_Phone", alter: "هاتف الطوارئ (اختياري)"), text: $emergencyPhone)
                         .keyboardType(.phonePad)
-                        .font(Font.custom("Beiruti-SemiBold", size: 13))
+                        .font(PPBrandFont.bold(size: 13))
                         .multilineTextAlignment(.leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -3531,7 +3723,7 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                         .foregroundStyle(AdminSurface.secondaryText)
                         .frame(width: 20)
                     TextField(Language.get("SpecialInstructions", alter: "ملاحظات وتعليمات خاصة..."), text: $notes)
-                        .font(Font.custom("Beiruti-Medium", size: 13))
+                        .font(PPBrandFont.medium(size: 13))
                         .multilineTextAlignment(.leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -3653,15 +3845,15 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                         .font(.system(size: 11))
                         .foregroundStyle(AdminSurface.secondaryText)
                     Text(customerName.isEmpty ? Language.get("Customer_Details", alter: "اسم العميل") : customerName)
-                        .font(Font.custom("Beiruti-Medium", size: 12))
+                        .font(PPBrandFont.medium(size: 12))
                         .foregroundStyle(AdminSurface.primaryText)
                 }
 
                 Spacer()
 
                 if !customerPhone.isEmpty {
-                    Text(customerPhone)
-                        .font(Font.custom("Beiruti-SemiBold", size: 12))
+                    Text(customerPhone.hasPrefix("+") ? customerPhone : "\(customerCountryCode) \(customerPhone)")
+                        .font(PPBrandFont.bold(size: 12))
                         .foregroundStyle(AdminSurface.secondaryText)
                         .monospacedDigit()
                 }
@@ -3907,12 +4099,19 @@ public struct AdminPetsHotelCreateReservationSheet: View {
         }
     }
 
+    private func setCustomerPhoneFromRaw(_ raw: String) {
+        let parsed = AdminCountryCatalog.parsePhone(raw)
+        self.customerCountryCode = parsed.country.code
+        self.customerCountryFlag = parsed.country.flag
+        self.customerPhone = parsed.localNumber
+    }
+
     private func selectCustomer(_ customer: AdminHotelCustomerOption) {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
             self.selectedCustomer = customer
             self.customerName = customer.name
-            self.customerPhone = customer.phone
+            self.setCustomerPhoneFromRaw(customer.phone)
             if !customer.email.isEmpty {
                 self.customerEmail = customer.email
             }
@@ -3920,6 +4119,21 @@ public struct AdminPetsHotelCreateReservationSheet: View {
             self.customerSearchQuery = ""
         }
         Task {
+            // Asynchronously fetch full profile (phone and email) from UsersCol if missing
+            if let fullProfile = await viewModel.fetchCustomerProfile(uid: customer.uid) {
+                await MainActor.run {
+                    if !fullProfile.name.isEmpty && (self.customerName.isEmpty || self.customerName == customer.uid) {
+                        self.customerName = fullProfile.name
+                    }
+                    if !fullProfile.phone.isEmpty {
+                        self.setCustomerPhoneFromRaw(fullProfile.phone)
+                    }
+                    if !fullProfile.email.isEmpty {
+                        self.customerEmail = fullProfile.email
+                    }
+                }
+            }
+
             let pets = await viewModel.fetchCustomerPets(customerUid: customer.uid)
             await MainActor.run {
                 self.customerPets = pets
@@ -3974,7 +4188,8 @@ public struct AdminPetsHotelCreateReservationSheet: View {
             return
         }
 
-        guard !cleanPhone.isEmpty else {
+        let phoneDigits = cleanPhone.filter { $0.isNumber }
+        guard !phoneDigits.isEmpty else {
             triggerValidationError(Language.get("Hotel_Err_CustomerPhoneRequired", alter: "يرجى إدخال رقم هاتف العميل."))
             return
         }
@@ -4022,12 +4237,18 @@ public struct AdminPetsHotelCreateReservationSheet: View {
         UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
 
         let customerUidToPass = selectedCustomer?.uid ?? ""
+        let canonicalPhone: String
+        if cleanPhone.hasPrefix("+") {
+            canonicalPhone = cleanPhone
+        } else {
+            canonicalPhone = "\(customerCountryCode) \(cleanPhone)"
+        }
 
         Task {
             let success = await viewModel.createReservation(
                 customerUid: customerUidToPass,
                 customerName: cleanCustomer,
-                customerPhone: cleanPhone,
+                customerPhone: canonicalPhone,
                 customerEmail: customerEmail.isEmpty ? nil : customerEmail,
                 pets: [draft],
                 wing: selectedWing,

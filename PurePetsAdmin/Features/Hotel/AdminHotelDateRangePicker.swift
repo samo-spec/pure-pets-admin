@@ -14,16 +14,16 @@ import UIKit
 
 private struct DatePickerBeiruti {
     static func bold(_ size: CGFloat) -> Font {
-        Font.custom("Beiruti-Bold", size: size)
+        PPBrandFont.bold(size: size)
     }
     static func semiBold(_ size: CGFloat) -> Font {
-        Font.custom("Beiruti-SemiBold", size: size)
+        PPBrandFont.bold(size: size)
     }
     static func medium(_ size: CGFloat) -> Font {
-        Font.custom("Beiruti-Medium", size: size)
+        PPBrandFont.medium(size: size)
     }
     static func regular(_ size: CGFloat) -> Font {
-        Font.custom("Beiruti-Regular", size: size)
+        PPBrandFont.regular(size: size)
     }
 }
 

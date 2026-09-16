@@ -109,8 +109,12 @@ static void PPAdminLogPermissionsAndSession(PPAdminSessionSnapshot *snapshot, PP
     return NO;
 }
 
+- (BOOL)isAdmin {
+    return [PPStaffAuth isAdminRole:self.roleIdentifier];
+}
+
 - (BOOL)hasGlobalScope {
-    return PPAdminSessionStrictGlobalScope(self.scope);
+    return PPAdminSessionStrictGlobalScope(self.scope) || [self isAdmin];
 }
 
 @end

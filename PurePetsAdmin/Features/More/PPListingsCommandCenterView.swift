@@ -280,23 +280,24 @@ public final class PPListingsCommandCenterViewModel: ObservableObject {
             self.mergeAndPublishListings()
         }
 
-        // 2. Adoption Listings Listener (adopt_pets)
-        let adoptionQuery = db.collection("adopt_pets")
-            .order(by: "createdAt", descending: true)
-            .limit(to: 350)
+        // 2. Community Adoption Listings (server-authorized Community API)
+        loadCommunityAdoptions()
+    }
 
-        adoptionListener?.remove()
-        adoptionListener = adoptionQuery.addSnapshotListener { [weak self] snapshot, error in
+    public func loadCommunityAdoptions() {
+        Task { [weak self] in
             guard let self = self else { return }
-            if let error = error {
-                self.errorMessage = error.localizedDescription
-                self.isLoading = false
-                return
+            do {
+                let response = try await AdminCommunityService.shared.read(action: "adoption_listings", limit: 350)
+                if let items = response["items"] as? [[String: Any]] {
+                    self.rawAdoptionItems = items.compactMap { self.parseCommunityAdoptionItem(dict: $0) }
+                    self.mergeAndPublishListings()
+                }
+            } catch {
+                #if DEBUG
+                print("[PPListingsCommandCenter] Community adoptions note: \(error.localizedDescription)")
+                #endif
             }
-            guard let docs = snapshot?.documents else { return }
-
-            self.rawAdoptionItems = docs.compactMap { self.parseAdoptionItem(doc: $0) }
-            self.mergeAndPublishListings()
         }
     }
 
@@ -414,6 +415,128 @@ public final class PPListingsCommandCenterViewModel: ObservableObject {
             location: location,
             petAge: "",
             rejectionReason: nil,
+            isInventoryProjection: false
+        )
+    }
+
+    private func parseCommunityAdoptionItem(dict: [String: Any]) -> PPListingModerationModel? {
+        guard let id = (dict["id"] as? String) ?? (dict["listingId"] as? String),
+              !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+
+        let pet = (dict["pet"] as? [String: Any]) ?? [:]
+        let owner = (dict["owner"] as? [String: Any]) ?? [:]
+        let area = (dict["area"] as? [String: Any]) ?? [:]
+
+        let title = (pet["name"] as? String)
+            ?? (pet["displayName"] as? String)
+            ?? (dict["title"] as? String)
+            ?? (dict["name"] as? String)
+            ?? ""
+
+        let desc = (dict["description"] as? String)
+            ?? (dict["details"] as? String)
+            ?? (pet["description"] as? String)
+            ?? ""
+
+        let category = (pet["species"] as? String)
+            ?? (dict["kindID"] as? String)
+            ?? ""
+
+        let subcategory = (pet["breed"] as? String) ?? ""
+
+        let ownerID = (dict["ownerUid"] as? String)
+            ?? (dict["ownerId"] as? String)
+            ?? (dict["ownerID"] as? String)
+            ?? ""
+
+        let ownerName = (owner["displayName"] as? String)
+            ?? (dict["ownerName"] as? String)
+            ?? ""
+
+        var imageUrl = ""
+        if let mediaList = dict["media"] as? [[String: Any]], let first = mediaList.first {
+            imageUrl = (first["thumbnailUrl"] as? String)
+                ?? (first["previewUrl"] as? String)
+                ?? (first["url"] as? String)
+                ?? ""
+        }
+        if imageUrl.isEmpty, let petMedia = pet["media"] as? [[String: Any]], let first = petMedia.first {
+            imageUrl = (first["thumbnailUrl"] as? String)
+                ?? (first["previewUrl"] as? String)
+                ?? (first["url"] as? String)
+                ?? ""
+        }
+        if imageUrl.isEmpty, let imageArray = dict["imageURLsArray"] as? [String] {
+            imageUrl = imageArray.first ?? ""
+        }
+        if imageUrl.isEmpty {
+            imageUrl = (dict["imageUrl"] as? String) ?? (dict["imageURL"] as? String) ?? ""
+        }
+
+        let rawStatus = (dict["status"] as? String)?.lowercased() ?? ""
+        let statusInt: Int
+        switch rawStatus {
+        case "published", "active":
+            statusInt = 1
+        case "pending_review", "under_review", "draft":
+            statusInt = 0
+        case "rejected":
+            statusInt = 2
+        case "archived", "closed", "completed":
+            statusInt = 3
+        default:
+            statusInt = (dict["status"] as? Int) ?? 1
+        }
+
+        let isBlocked = (dict["isBlocked"] as? Bool) ?? false
+        let isApproved = statusInt == 1
+
+        let location = [area["district"] as? String, area["city"] as? String]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: " - ")
+
+        let createdAt: Date?
+        if let ts = dict["createdAt"] as? Timestamp {
+            createdAt = ts.dateValue()
+        } else if let dateStr = dict["createdAt"] as? String {
+            createdAt = ISO8601DateFormatter().date(from: dateStr)
+        } else {
+            createdAt = Date()
+        }
+
+        let updatedAt: Date?
+        if let ts = dict["updatedAt"] as? Timestamp {
+            updatedAt = ts.dateValue()
+        } else if let dateStr = dict["updatedAt"] as? String {
+            updatedAt = ISO8601DateFormatter().date(from: dateStr)
+        } else {
+            updatedAt = createdAt
+        }
+
+        let petAge = (pet["ageText"] as? String) ?? ""
+
+        return PPListingModerationModel(
+            id: id,
+            source: "adopt_pets",
+            title: title,
+            desc: desc,
+            price: "0",
+            category: category,
+            subcategory: subcategory,
+            ownerID: ownerID,
+            ownerName: ownerName,
+            imageUrl: imageUrl,
+            status: statusInt,
+            visibility: true,
+            isApproved: isApproved,
+            isBlocked: isBlocked,
+            viewsCount: 0,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            location: location,
+            petAge: petAge,
+            rejectionReason: dict["rejectionReason"] as? String,
             isInventoryProjection: false
         )
     }

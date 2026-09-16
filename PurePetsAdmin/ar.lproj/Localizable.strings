@@ -5378,6 +5378,10 @@
 "CatalogIntake_PhotoImportFailureFormat" = "تعذر استيراد %ld من الصور المحددة. أعد المحاولة للصور الناقصة.";
 "CatalogIntake_PhotoEncodingFailed" = "تعذر تجهيز إحدى الصور للرفع. أعد اختيارها وحاول مرة أخرى.";
 "CatalogIntake_PhotoUploadFailed" = "تعذر إكمال رفع الصور. حاول مرة أخرى.";
+"CatalogIntake_AuthRequired" = "يجب تسجيل الدخول بحساب مسؤول مصرح له للمتابعة.";
+"CatalogIntake_StorageUploadUnauthorized" = "تعذر رفع الصورة بسبب قيود الصلاحيات أو تجاوز الحجم المسموح. تأكد من صلاحيات الحساب ثم أعد المحاولة.";
+"CatalogIntake_StorageNetworkError" = "تعذر الاتصال بخادم التخزين أثناء رفع الصور. تحقق من اتصالك بالإنترنت ثم أعد المحاولة.";
+"CatalogIntake_StorageUploadFailed_Format" = "تعذر إكمال رفع الصور (%@). حاول مرة أخرى.";
 "CatalogIntake_SelectCategory" = "اختر الفئة الرئيسية";
 "CatalogIntake_SelectCategorySub" = "ابحث في تصنيف الكتالوج المعتمد.";
 "CatalogIntake_SearchCategory" = "ابحث عن فئة";
@@ -8283,6 +8287,9 @@
 "Inventory_AdjustmentPendingDetail" = "انتظر تأكيد التعديل الحالي قبل إرسال تعديل آخر للصنف نفسه.";
 "Inventory_NegativeStockRejected" = "لا يمكن أن يصبح الرصيد المتاح أقل من صفر.";
 "CatalogIntake_ValidationCost" = "أدخل تكلفة استلام صالحة وبحد أقصى منزلتين عشريتين.";
+"CatalogIntake_ValidationNameWordCount" = "يجب ألا يتجاوز اسم المنتج 4 كلمات.";
+"CatalogIntake_ValidationNameWordCountEn" = "يجب ألا يتجاوز الاسم بالإنجليزية 4 كلمات.";
+"Words" = "كلمات";
 "CatalogIntake_CostRequiredForOpeningStock" = "أدخل تكلفة الاستلام للمخزون الافتتاحي، أو أنشئ الصنف بكمية صفر.";
 "Inventory_Projection_Badge" = "مخزون";
 "Listing_Projection_Cannot_Moderate" = "لا يمكن تعديل هذا الإعلان لأنه مُدار تلقائياً من مخزون الحيوانات الأليفة.";
@@ -8707,6 +8714,8 @@
 "Community_Admin_Title" = "مركز عمليات المجتمع";
 "Community_Admin_Subtitle" = "التبني · المفقودات · الثقة والسلامة";
 "Operations_Community_Desc" = "التبني والمفقودات والمطابقة والمنظمات والثقة والسلامة";
+"Operations_AdoptionManager_Title" = "إدارة التبني";
+"Operations_AdoptionManager_Desc" = "مراجعة إعلانات وطلبات التبني من مساحة عمليات المجتمع";
 "Community_Admin_Overview" = "نظرة عامة";
 "Community_Admin_Adoptions" = "التبني";
 "Community_Admin_Applications" = "طلبات التبني";
@@ -9225,3 +9234,92 @@
 "Hotel_Policy_Reason_OutOfService" = "الأجنحة قيد التنظيف أو الصيانة الدورية حالياً.";
 "Hotel_Policy_Reason_SharedForbidden" = "الجناح مشغول ولا يسمح بالإشغال المشترك لنزلاء مختلفين.";
 "Hotel_Policy_Reason_Default" = "لا توجد أجنحة مطابقة متاحة للشروط المدخلة.";
+
+/* ===================== Pets Hotel NextGen Discharge & Checkout Portal ===================== */
+"Hotel_Checkout_Reunion_Title"       = "بوابة لقاء ولمّ الشمل";
+"Hotel_Checkout_Reunion_Subtitle"    = "استكمال إجراءات المغادرة، تسليم الأمانات، وتحرير الجناح";
+"Hotel_Checkout_StayDuration_Format" = "%d ليالٍ إقامة";
+"Hotel_Checkout_SingleNight"         = "ليلة واحدة";
+"Hotel_Checkout_Health_VitalsNormal" = "المؤشرات الحيوية طبيعية • سليم ومستقر";
+"Hotel_Checkout_Belongings_Badge"    = "%d أمانات مسجلة";
+"Hotel_Checkout_NoBelongings"        = "لا توجد أمانات";
+
+"Hotel_Checkout_Pod_Guardian_Title"    = "إثبات هوية المستلم وتسليم النزيل";
+"Hotel_Checkout_Pod_Guardian_Sub"      = "المالك المعتمد المسجل: %@ • %@";
+"Hotel_Checkout_Pod_Guardian_Verified" = "تم التحقق من هوية المستلم الحاضر";
+"Hotel_Checkout_Pod_Guardian_Pending"  = "اضغط للتحقق من هوية المستلم الحاضر";
+
+"Hotel_Checkout_Pod_Belongings_Title"    = "تسليم الأمانات والمتعلقات الخاصة";
+"Hotel_Checkout_Pod_Belongings_Sub"      = "فحص وتطابق كافة العهد والمتعلقات الشخصية";
+"Hotel_Checkout_Pod_Belongings_Verified" = "تم تسليم كافة الأغراض والعهد للمستلم";
+"Hotel_Checkout_Pod_Belongings_Pending"  = "اضغط لتأكيد تسليم الأمانات للمستلم";
+
+"Hotel_Checkout_Pod_Health_Title"    = "الفحص الطبي والمؤشرات الحيوية";
+"Hotel_Checkout_Pod_Health_Sub"      = "تأكيد سلامة النزيل البدنية واستقرار مؤشراته";
+"Hotel_Checkout_Pod_Health_Verified" = "تم الفحص السريري: النزيل بحالة ممتازة";
+"Hotel_Checkout_Pod_Health_Pending"  = "اضغط لتأكيد السلامة والفحص السريري";
+
+"Hotel_Checkout_Pod_Suite_Title"    = "تحرير الجناح وتوجيه التعقيم الفوري";
+"Hotel_Checkout_Pod_Suite_Sub"      = "ينتقل الجناح تلقائياً إلى مسار التنظيف والتعقيم";
+"Hotel_Checkout_Pod_Suite_Verified" = "تم إخلاء الجناح وتوجيهه للتعقيم المباشر";
+"Hotel_Checkout_Pod_Suite_Pending"  = "اضغط لتأكيد إخلاء الجناح للتعقيم";
+
+"Hotel_Checkout_Slide_Title"        = "مرر لإتمام المغادرة وتسليم النزيل";
+"Hotel_Checkout_Slide_Processing"   = "جاري إتمام المغادرة وتحرير الجناح...";
+"Hotel_Checkout_Slide_Completed"    = "تم إتمام تسجيل المغادرة بنجاح";
+
+"Hotel_Checkout_Early_Title"        = "مغادرة مبكرة قبل الموعد المقرر";
+"Hotel_Checkout_Early_Detail"       = "الموعد الأصلي: %@ • الفعلي: %@ • تُعدل الليالي وفق سياسة الفندق";
+"Hotel_Checkout_Scheduled_Title"    = "مغادرة مجدولة في الموعد";
+"Hotel_Checkout_Scheduled_Detail"   = "اكتمال فترة الإقامة المقررة بالكامل";
+
+"Hotel_Checkout_Celebration_Title"  = "تم تسليم النزيل بنجاح!";
+"Hotel_Checkout_Celebration_Sub"    = "رافقتكم السلامة • تم تحرير الجناح للتعقيم وتحديث السجلات";
+"Hotel_Checkout_Close_Action"       = "إغلاق نافذة المغادرة";
+
+/* Pury Operational Agent */
+"Pury_AI_Assistant" = "مساعد بيوري الذكي";
+"Pury_SubTitle" = "المساعد التشغيلي الموثوق";
+"Pury_Clear_Chat" = "مسح المحادثة";
+"Pury_Context_Stay" = "إقامة فندقية: #%@";
+"Pury_Context_Reservation" = "حجز فندقي: #%@";
+"Pury_Context_Suite" = "جناح فندقي: #%@";
+"Pury_Context_Admin" = "لوحة الإدارة";
+"Pury_Context_Bound" = "سياق نشط";
+"Pury_Welcome_Title" = "مرحباً! أنا بيوري، مساعدك التشغيلي";
+"Pury_Welcome_Desc" = "اطرح أي سؤال حول المخزون، الطلبات، النزلاء في الفندق، أو تقارير المبيعات، وسأجيبك من واقع البيانات المحدثة مباشرة.";
+"Pury_Quick_Prompts" = "اقتراحات سريعة:";
+"Pury_View_Record" = "فتح السجل في لوحة الإدارة";
+"Pury_Confirm_Title" = "مطلوب تأكيد العملية";
+"Pury_Confirm_Subtitle" = "تعديل محمي يتطلب موافقتك الصريحة";
+"Pury_Proposed_Changes" = "التعديلات المقترحة:";
+"Pury_Confirm_Btn" = "تأكيد وتنفيذ";
+"Pury_Confirm_Prompt" = "تأكيد تنفيذ العملية";
+"Pury_Action_Cancelled" = "تم إلغاء العملية المقترحة دون أي تعديل.";
+"Pury_Thinking" = "بيوري يراجع البيانات المصرح بها...";
+"Pury_Input_Placeholder" = "اسأل بيوري عن أي تفاصيل تشغيلية...";
+"Pury_Err_Unauthenticated" = "يجب تسجيل الدخول كأحد موظفي بيور بيتس المعتمدين.";
+"Pury_Err_PermissionDenied" = "ليس لديك الصلاحية الكافية للوصول إلى مساعد بيوري أو تنفيذ هذا الأمر.";
+"Pury_Err_ConflictStale" = "تغيرت حالة السجل أثناء المعالجة. يرجى تحديث البيانات والمحاولة مجدداً.";
+"Pury_Err_Network" = "خطأ في الاتصال بالخادم";
+"Pury_Err_InvalidResponse" = "استجابة غير متوقعة من خادم بيوري.";
+"Pury_Tier0_Title" = "استعلام وقراءة";
+"Pury_Tier1_Title" = "معاينة واقتراح مسودة";
+"Pury_Tier2_Title" = "إجراء تشغيلي مباشر";
+"Pury_Tier3_Title" = "إجراء حساس يتطلب التأكيد";
+"Pury_Task_Translate" = "ترجمة فورية";
+"Pury_Task_ImproveName" = "تحسين الاسم";
+"Pury_Task_GenDesc" = "توليد وصف متكامل";
+"Pury_Task_Shorten" = "اختصار وإيجاز";
+"Pury_Task_ImproveBilingual" = "صياغة اللغتين معاً";
+"Pury_Authoring_Use" = "تطبيق";
+"Pury_Authoring_TryAgain" = "إعادة المحاولة";
+"Pury_Authoring_Comparing" = "مقارنة النص المقترح بالنص الحالي";
+"Pury_Prompt_Hotel" = "ما هي حالة الإشغال اليوم في فندق الحيوانات؟";
+"Pury_Prompt_LowStock" = "ابحث عن المنتجات التي أوشكت على النفاد في المستودع";
+"Pury_Prompt_PendingOrders" = "كم عدد الطلبات المعلقة بانتظار الشحن حالياً؟";
+"Pury_Prompt_KpiSummary" = "ملخص مؤشرات الأداء والمبيعات لهذا الأسبوع";
+"Pury_Prompt_ContextStay" = "ما هي المهام الطبية وحالة الرعاية لهذه الإقامة؟";
+"Pury_Prompt_ContextProduct" = "ما هي حالة المخزون والمبيعات لهذا المنتج؟";
+"Pury_Prompt_ContextOrder" = "ما هو ملخص حالة وسجل تتبع هذا الطلب؟";
+

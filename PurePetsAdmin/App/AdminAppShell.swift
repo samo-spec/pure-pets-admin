@@ -8,6 +8,7 @@ struct AdminAppShell: View {
 
     @State private var selectedTab: AdminTab = .command
     @State private var commandShowsNestedWorkflow = false
+    @State private var showingPurySheet = false
     @State private var scrollProgress: CGFloat = 0.0
     @State private var tabScrollProgress: [AdminTab: CGFloat] = [:]
     @StateObject private var commandState: CommandCenterState
@@ -79,7 +80,7 @@ struct AdminAppShell: View {
                 case .more:
                     AdminMoreView(
                         session: session,
-                        routes: available([.account, .notifications, .notificationComposer, .notificationSettings, .accounting, .audit, .categories, .banners, .listings]),
+                        routes: available([.account, .notifications, .notificationComposer, .notificationSettings, .accounting, .audit, .categories, .banners, .listings, .adoptionManager]),
                         router: router,
                         commandState: commandState,
                         isSigningOut: sessionStore.isSigningOut,
@@ -90,6 +91,13 @@ struct AdminAppShell: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if session.hasPermission("nova.view") && !(selectedTab == .command && commandShowsNestedWorkflow) {
+                puryFloatingAffordance
+                    .padding(.bottom, 84)
+                    .padding(.trailing, 16)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
 
             if !(selectedTab == .command && commandShowsNestedWorkflow) {
                 V6GlobalTabBar(
@@ -103,6 +111,13 @@ struct AdminAppShell: View {
         .ignoresSafeArea()
         .tint(AdminSurface.primary)
         .background(routePushLink)
+        .sheet(isPresented: $showingPurySheet) {
+            PuryAssistantSheetView(
+                session: session,
+                router: router,
+                screenContext: currentPuryScreenContext()
+            )
+        }
         .onPreferenceChange(PPNavScrollOffsetPreferenceKey.self) { offset in
             let progress = min(max(-offset / 70.0, 0.0), 1.0)
             tabScrollProgress[selectedTab] = progress
@@ -207,6 +222,69 @@ struct AdminAppShell: View {
 
     private func available(_ routes: [AdminRoute]) -> [AdminRoute] {
         routes.filter { $0.isAuthorized(for: session) }
+    }
+
+    // MARK: - Pury Operational Assistant
+
+    private var puryFloatingAffordance: some View {
+        Button {
+            showingPurySheet = true
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+
+                Text(Language.isRTL() ? "بيوري" : "Pury")
+                    .font(AdminType.caption1Bold)
+                    .foregroundStyle(.white)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                LinearGradient(
+                    colors: [Color(red: 16/255, green: 185/255, blue: 129/255), Color(red: 5/255, green: 150/255, blue: 105/255)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: Capsule()
+            )
+            .shadow(color: Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.4), radius: 8, x: 0, y: 4)
+            .overlay(
+                Capsule()
+                    .strokeBorder(Color.white.opacity(0.25), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Language.get("Pury_AI_Assistant", alter: "مساعد بيوري الذكي"))
+    }
+
+    private func currentPuryScreenContext() -> PuryScreenContext {
+        let branchId = (session.scope["branchId"] as? String) ?? (session.scope["branch"] as? String)
+        if let route = router.presentedRoute {
+            switch route {
+            case .hotel:
+                return PuryScreenContext(screen: "hotel", route: "hotel", branchId: branchId)
+            case .paymentOrder(let orderId):
+                return PuryScreenContext(screen: "paymentOrder", route: "paymentOrder", branchId: branchId, entityType: "Orders", entityId: orderId)
+            case .accessories:
+                return PuryScreenContext(screen: "accessories", route: "accessories", branchId: branchId, entityType: "petAccessories")
+            case .livePets:
+                return PuryScreenContext(screen: "livePets", route: "livePets", branchId: branchId, entityType: "petAccessories")
+            case .food:
+                return PuryScreenContext(screen: "food", route: "food", branchId: branchId, entityType: "petAccessories")
+            case .users:
+                return PuryScreenContext(screen: "users", route: "users", branchId: branchId, entityType: "UsersCol")
+            case .staff:
+                return PuryScreenContext(screen: "staff", route: "staff", branchId: branchId, entityType: "staff_users")
+            case .branches:
+                return PuryScreenContext(screen: "branches", route: "branches", branchId: branchId, entityType: "branches")
+            default:
+                return PuryScreenContext(screen: route.identifier, route: route.identifier, branchId: branchId)
+            }
+        }
+        return PuryScreenContext(screen: selectedTab.rawValue, route: selectedTab.rawValue, branchId: branchId)
     }
 
     // MARK: - Logout Confirmation (PPAlertHelper)
@@ -3459,10 +3537,11 @@ private struct AdminOperationsDeckView: View {
     private var canVeterinarians: Bool { AdminRoute.veterinarians.isAuthorized(for: session) }
     private var canModeration: Bool { AdminRoute.moderation.isAuthorized(for: session) }
     private var canCommunity: Bool { AdminRoute.community.isAuthorized(for: session) }
+    private var canAdoptionManager: Bool { AdminRoute.adoptionManager.isAuthorized(for: session) }
     private var canHotel: Bool { AdminRoute.hotel.isAuthorized(for: session) }
 
     private var hasAnyAuthorizedRoute: Bool {
-        canDelivery || canProviderApplications || canProviderPlans || canProviderFeatures || canProviderAccounting || canBranches || canAgents || canHomeControl || canServices || canVeterinarians || canModeration || canCommunity || canHotel
+        canDelivery || canProviderApplications || canProviderPlans || canProviderFeatures || canProviderAccounting || canBranches || canAgents || canHomeControl || canServices || canVeterinarians || canModeration || canCommunity || canAdoptionManager || canHotel
     }
 
     private var hasProvidersSection: Bool {
@@ -3478,7 +3557,7 @@ private struct AdminOperationsDeckView: View {
     }
 
     private var hasPlatformSection: Bool {
-        canHomeControl || canModeration || canCommunity
+        canHomeControl || canModeration || canCommunity || canAdoptionManager
     }
 
     var body: some View {
@@ -4263,7 +4342,7 @@ private struct AdminOperationsDeckView: View {
                             subtitle: Language.get("Operations_HomeControl_Desc", alter: "تخصيص أرفف الشاشة الرئيسية وسلايدر الاستكشاف"),
                             symbol: "switch.2",
                             symbolColor: .indigo,
-                            showsDivider: canModeration || canCommunity
+                            showsDivider: canModeration || canCommunity || canAdoptionManager
                         )
                     }
                     .buttonStyle(.plain)
@@ -4279,7 +4358,7 @@ private struct AdminOperationsDeckView: View {
                             subtitle: Language.get("Operations_Moderation_Desc", alter: "مراجعة المحتوى المبلغ عنه ومكافحة الانتهاكات"),
                             symbol: "shield.lefthalf.filled",
                             symbolColor: .purple,
-                            showsDivider: canCommunity
+                            showsDivider: canCommunity || canAdoptionManager
                         )
                     }
                     .buttonStyle(.plain)
@@ -4295,6 +4374,22 @@ private struct AdminOperationsDeckView: View {
                             subtitle: Language.get("Operations_Community_Desc", alter: "التبني والمفقودات والمطابقة والمنظمات والثقة والسلامة"),
                             symbol: "pawprint.fill",
                             symbolColor: AdminSurface.primary,
+                            showsDivider: canAdoptionManager
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if canAdoptionManager {
+                    Button {
+                        triggerHaptic(.light)
+                        router.present(.adoptionManager, session: session)
+                    } label: {
+                        deskActionRow(
+                            title: Language.get("Operations_AdoptionManager_Title", alter: "إدارة التبني"),
+                            subtitle: Language.get("Operations_AdoptionManager_Desc", alter: "مراجعة إعلانات وطلبات التبني من مساحة عمليات المجتمع"),
+                            symbol: "heart.fill",
+                            symbolColor: Color(uiColor: .ppAdoptionAccent),
                             showsDivider: false
                         )
                     }
@@ -4448,9 +4543,10 @@ private struct AdminMoreView: View {
     private var canCategories: Bool { AdminRoute.categories.isAuthorized(for: session) }
     private var canBanners: Bool { AdminRoute.banners.isAuthorized(for: session) }
     private var canListings: Bool { AdminRoute.listings.isAuthorized(for: session) }
+    private var canAdoptionManager: Bool { AdminRoute.adoptionManager.isAuthorized(for: session) }
 
     private var hasAnyAuthorizedRoute: Bool {
-        canAccount || canSettings || canNotifications || canNotificationComposer || canNotificationSettings || canAccounting || canAudit || canCategories || canBanners || canListings
+        canAccount || canSettings || canNotifications || canNotificationComposer || canNotificationSettings || canAccounting || canAudit || canCategories || canBanners || canListings || canAdoptionManager
     }
 
     private var hasBroadcastSection: Bool {
@@ -4462,7 +4558,7 @@ private struct AdminMoreView: View {
     }
 
     private var hasCommercialSection: Bool {
-        canCategories || canBanners || canListings
+        canCategories || canBanners || canListings || canAdoptionManager
     }
 
     var body: some View {
@@ -5273,7 +5369,7 @@ private struct AdminMoreView: View {
                             subtitle: Language.get("More_Categories_Desc", alter: "هيكلة الأقسام، فصائل الحيوانات، والأنواع"),
                             symbol: "square.grid.2x2.fill",
                             symbolColor: .teal,
-                            showsDivider: canBanners || canListings
+                            showsDivider: canBanners || canListings || canAdoptionManager
                         )
                     }
                     .buttonStyle(.plain)
@@ -5289,7 +5385,7 @@ private struct AdminMoreView: View {
                             subtitle: Language.get("More_Banners_Desc", alter: "إدارة سلايدر الشاشة الرئيسية وحملات التسويق"),
                             symbol: "square.3.layers.3d.middle.filled",
                             symbolColor: .pink,
-                            showsDivider: canListings
+                            showsDivider: canListings || canAdoptionManager
                         )
                     }
                     .buttonStyle(.plain)
@@ -5305,6 +5401,22 @@ private struct AdminMoreView: View {
                             subtitle: Language.get("More_Listings_Desc", alter: "مراجعة إعلانات المستخدمين والاعتماد الفوري"),
                             symbol: "list.bullet.clipboard.fill",
                             symbolColor: .mint,
+                            showsDivider: canAdoptionManager
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if canAdoptionManager {
+                    Button {
+                        triggerHaptic(.light)
+                        router.present(.adoptionManager, session: session)
+                    } label: {
+                        deskActionRow(
+                            title: Language.get("Operations_AdoptionManager_Title", alter: "إدارة التبني"),
+                            subtitle: Language.get("Operations_AdoptionManager_Desc", alter: "مراجعة إعلانات وطلبات التبني من مساحة عمليات المجتمع"),
+                            symbol: "heart.fill",
+                            symbolColor: Color(uiColor: .ppAdoptionAccent),
                             showsDivider: false
                         )
                     }

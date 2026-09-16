@@ -5319,6 +5319,10 @@
 "CatalogIntake_PhotoImportFailureFormat" = "%ld selected photos could not be imported. Retry the missing photos.";
 "CatalogIntake_PhotoEncodingFailed" = "One photo could not be prepared for upload. Select it again and retry.";
 "CatalogIntake_PhotoUploadFailed" = "The photo upload could not be completed. Try again.";
+"CatalogIntake_AuthRequired" = "You must be signed in with an authorized admin account to continue.";
+"CatalogIntake_StorageUploadUnauthorized" = "Unable to upload photo due to permission restrictions or file size limits. Check account access and try again.";
+"CatalogIntake_StorageNetworkError" = "Could not connect to storage server while uploading photos. Check your connection and try again.";
+"CatalogIntake_StorageUploadFailed_Format" = "Photo upload could not be completed (%@). Try again.";
 "CatalogIntake_SelectCategory" = "Select main category";
 "CatalogIntake_SelectCategorySub" = "Search the approved catalog taxonomy.";
 "CatalogIntake_SearchCategory" = "Search categories";
@@ -8221,6 +8225,9 @@
 "Inventory_AdjustmentPendingDetail" = "Wait for the current adjustment to be confirmed before submitting another change for this item.";
 "Inventory_NegativeStockRejected" = "Available stock cannot become negative.";
 "CatalogIntake_ValidationCost" = "Enter a valid acquisition cost with no more than two decimal places.";
+"CatalogIntake_ValidationNameWordCount" = "Product name must not exceed 4 words.";
+"CatalogIntake_ValidationNameWordCountEn" = "English name must not exceed 4 words.";
+"Words" = "Words";
 "CatalogIntake_CostRequiredForOpeningStock" = "Enter the acquisition cost for opening stock, or create the item with zero quantity.";
 "Inventory_Projection_Badge" = "Inventory";
 "Listing_Projection_Cannot_Moderate" = "This listing cannot be moderated directly because it is automatically managed by live pet inventory.";
@@ -8645,6 +8652,8 @@
 "Community_Admin_Title" = "Community Operations";
 "Community_Admin_Subtitle" = "Adoption · Lost & Found · Trust & Safety";
 "Operations_Community_Desc" = "Adoption, missing pets, matching, organizations, and trust & safety";
+"Operations_AdoptionManager_Title" = "Adoption Manager";
+"Operations_AdoptionManager_Desc" = "Review adoption listings and applications in the existing Community workspace";
 "Community_Admin_Overview" = "Overview";
 "Community_Admin_Adoptions" = "Adoptions";
 "Community_Admin_Applications" = "Applications";
@@ -9164,3 +9173,84 @@
 "Hotel_Policy_Reason_OutOfService" = "Suites are currently undergoing cleaning or maintenance.";
 "Hotel_Policy_Reason_SharedForbidden" = "Suite is occupied and does not allow shared boarding for different guests.";
 "Hotel_Policy_Reason_Default" = "No compatible suites available matching entered criteria.";
+
+/* ===================== Pets Hotel NextGen Discharge & Checkout Portal ===================== */
+"Hotel_Checkout_Pod_Guardian_Title"    = "Guest Handover & Guardian ID";
+"Hotel_Checkout_Pod_Guardian_Sub"      = "Registered Guardian: %@ • %@";
+"Hotel_Checkout_Pod_Guardian_Verified" = "Guardian identity verified and present";
+"Hotel_Checkout_Pod_Guardian_Pending"  = "Tap to verify guardian identity";
+
+"Hotel_Checkout_Pod_Belongings_Title"    = "Belongings & Inventory Return";
+"Hotel_Checkout_Pod_Belongings_Sub"      = "Cross-reference custody items and belongings";
+"Hotel_Checkout_Pod_Belongings_Verified" = "All items and belongings handed over";
+"Hotel_Checkout_Pod_Belongings_Pending"  = "Tap to confirm belongings handover";
+
+"Hotel_Checkout_Pod_Health_Title"    = "Clinical Assessment & Vitals Sign-off";
+"Hotel_Checkout_Pod_Health_Sub"      = "Confirm guest physical condition and vitality";
+"Hotel_Checkout_Pod_Health_Verified" = "Clinical check complete: guest in prime condition";
+"Hotel_Checkout_Pod_Health_Pending"  = "Tap to verify clinical health & vitality";
+
+"Hotel_Checkout_Pod_Suite_Title"    = "Release Suite & Dispatch Sanitization";
+"Hotel_Checkout_Pod_Suite_Sub"      = "Suite automatically moves to cleaning & disinfection";
+"Hotel_Checkout_Pod_Suite_Verified" = "Suite released and dispatched for sanitization";
+"Hotel_Checkout_Pod_Suite_Pending"  = "Tap to confirm suite release for sanitization";
+
+"Hotel_Checkout_Slide_Title"        = "Slide to complete checkout and handover";
+"Hotel_Checkout_Slide_Processing"   = "Processing checkout & suite release...";
+"Hotel_Checkout_Slide_Completed"    = "Discharge & handover completed successfully";
+
+"Hotel_Checkout_Early_Title"        = "Early Departure Before Scheduled Date";
+"Hotel_Checkout_Early_Detail"       = "Scheduled: %@ • Actual: %@ • Adjusted per hotel policy";
+"Hotel_Checkout_Scheduled_Title"    = "Scheduled Departure On Time";
+"Hotel_Checkout_Scheduled_Detail"   = "Boarding period completed as scheduled";
+
+"Hotel_Checkout_Celebration_Title"  = "Guest Handed Over Successfully!";
+"Hotel_Checkout_Celebration_Sub"    = "Safe travels • Suite dispatched for sanitization & logs updated";
+"Hotel_Checkout_Close_Action"       = "Close Checkout Window";
+
+/* Pury Operational Agent */
+"Pury_AI_Assistant" = "Pury AI Assistant";
+"Pury_SubTitle" = "Trusted Operational AI";
+"Pury_Clear_Chat" = "Clear Conversation";
+"Pury_Context_Stay" = "Hotel Stay: #%@";
+"Pury_Context_Reservation" = "Hotel Reservation: #%@";
+"Pury_Context_Suite" = "Hotel Suite: #%@";
+"Pury_Context_Admin" = "Admin Console";
+"Pury_Context_Bound" = "Active Context";
+"Pury_Welcome_Title" = "Hello! I'm Pury, your operational assistant";
+"Pury_Welcome_Desc" = "Ask any question regarding inventory, orders, hotel guests, or sales reports, and I will answer directly from live authorized data.";
+"Pury_Quick_Prompts" = "Quick suggestions:";
+"Pury_View_Record" = "View Record in Admin";
+"Pury_Confirm_Title" = "Action Confirmation Required";
+"Pury_Confirm_Subtitle" = "Protected mutation requiring your explicit approval";
+"Pury_Proposed_Changes" = "Proposed Changes:";
+"Pury_Confirm_Btn" = "Confirm & Execute";
+"Pury_Confirm_Prompt" = "Confirm and execute operation";
+"Pury_Action_Cancelled" = "Proposed operation cancelled without any modifications.";
+"Pury_Thinking" = "Pury is reviewing authorized records...";
+"Pury_Input_Placeholder" = "Ask Pury about any operational details...";
+"Pury_Err_Unauthenticated" = "You must be signed in as authorized Pure Pets staff.";
+"Pury_Err_PermissionDenied" = "You do not hold the required permissions to access Pury or execute this command.";
+"Pury_Err_ConflictStale" = "The record state changed during processing. Please refresh and try again.";
+"Pury_Err_Network" = "Network error communicating with server";
+"Pury_Err_InvalidResponse" = "Unexpected response from Pury backend.";
+"Pury_Tier0_Title" = "Query & Analysis";
+"Pury_Tier1_Title" = "Draft Preview & Suggestion";
+"Pury_Tier2_Title" = "Direct Operational Action";
+"Pury_Tier3_Title" = "Sensitive Action (Requires Confirmation)";
+"Pury_Task_Translate" = "Translate";
+"Pury_Task_ImproveName" = "Improve Name";
+"Pury_Task_GenDesc" = "Generate Description";
+"Pury_Task_Shorten" = "Shorten";
+"Pury_Task_ImproveBilingual" = "Align Both Languages";
+"Pury_Authoring_Use" = "Use";
+"Pury_Authoring_TryAgain" = "Try Again";
+"Pury_Authoring_Comparing" = "Comparing proposed draft with current text";
+"Pury_Prompt_Hotel" = "What is the occupancy status today at Pets Hotel?";
+"Pury_Prompt_LowStock" = "Search for products running low on warehouse stock";
+"Pury_Prompt_PendingOrders" = "How many pending orders are awaiting shipment?";
+"Pury_Prompt_KpiSummary" = "Summary of KPIs and revenue performance this week";
+"Pury_Prompt_ContextStay" = "What are the care tasks and medication status for this stay?";
+"Pury_Prompt_ContextProduct" = "What is the inventory and sales performance of this item?";
+"Pury_Prompt_ContextOrder" = "What is the tracking history and fulfillment status of this order?";
+

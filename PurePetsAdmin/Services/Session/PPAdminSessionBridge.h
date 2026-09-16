@@ -27,6 +27,7 @@ NS_SWIFT_SENDABLE
 - (BOOL)hasPermission:(NSString *)permission;
 - (BOOL)hasAnyPermission:(NSArray<NSString *> *)permissions;
 - (BOOL)hasGlobalScope;
+- (BOOL)isAdmin;
 
 @end
 

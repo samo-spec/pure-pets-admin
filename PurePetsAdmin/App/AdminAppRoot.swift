@@ -31,8 +31,12 @@ struct AdminSession: Equatable {
         required.isEmpty || source.hasAnyPermission(required)
     }
 
+    var isAdmin: Bool {
+        source.isAdmin()
+    }
+
     var hasGlobalScope: Bool {
-        grantsAllPermissions || (scope["global"] as? Bool == true)
+        grantsAllPermissions || source.hasGlobalScope() || (scope["global"] as? Bool == true) || isAdmin
     }
 
     var localizedRoleName: String {

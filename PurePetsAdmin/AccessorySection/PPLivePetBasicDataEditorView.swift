@@ -674,6 +674,17 @@ public struct PPLivePetBasicDataEditorView: View {
                         .foregroundStyle(currentText.count > 80 ? AdminSurface.crimson : AdminSurface.secondaryText.opacity(0.7))
                 }
 
+                PuryInlineAuthoringBar(
+                    itemType: "live_pet",
+                    arabicText: $nameAr,
+                    englishText: $nameEn,
+                    targetField: "name",
+                    attributes: [
+                        "species": selectedSpeciesID,
+                        "breed": selectedSubKindID
+                    ]
+                )
+
                 ZStack {
                     // Arabic Name Field (Aligned Right)
                     TextField(Language.get("EnterArabicName", alter: "مثال: زوج كروان هولندي أليف"), text: $nameAr)
@@ -729,6 +740,17 @@ public struct PPLivePetBasicDataEditorView: View {
                         .font(Font.custom("Beiruti-Regular", size: 12))
                         .foregroundStyle(currentText.count > 1000 ? AdminSurface.crimson : AdminSurface.secondaryText.opacity(0.7))
                 }
+
+                PuryInlineAuthoringBar(
+                    itemType: "live_pet",
+                    arabicText: $descAr,
+                    englishText: $descEn,
+                    targetField: "description",
+                    attributes: [
+                        "species": selectedSpeciesID,
+                        "breed": selectedSubKindID
+                    ]
+                )
 
                 ZStack {
                     // Arabic Description (Aligned Right)
@@ -1339,10 +1361,15 @@ public struct PPLivePetBasicDataEditorView: View {
         saveProgressText = Language.get("UploadingPhotosProgress", alter: "جاري رفع الصور الجديدة...")
 
         do {
-            // 1. Upload Local Images to Firebase Storage
             var finalImageURLs = remoteImageURLs
             if !localImages.isEmpty {
-                let adminUid = Auth.auth().currentUser?.uid ?? "system_admin"
+                guard let adminUid = Auth.auth().currentUser?.uid, !adminUid.isEmpty else {
+                    throw NSError(
+                        domain: "PPStorageError",
+                        code: 401,
+                        userInfo: [NSLocalizedDescriptionKey: Language.get("CatalogIntake_AuthRequired", alter: "يجب تسجيل الدخول بحساب مسؤول مصرح له للمتابعة.")]
+                    )
+                }
 
                 for (idx, local) in localImages.enumerated() {
                     saveProgressText = "\(Language.get("UploadingPhotoIndex", alter: "جاري رفع الصورة")) (\(idx + 1)/\(localImages.count))..."

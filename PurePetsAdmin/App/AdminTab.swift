@@ -88,7 +88,7 @@ extension AdminTab {
                 .delivery, .providerApplications, .providerPlans,
                 .providerFeatures, .providerAccounting, .branches,
                 .agents, .homeControl, .services, .veterinarians,
-                .moderation
+                .moderation, .community, .adoptionManager, .hotel
             ].filter { $0.isAuthorized(for: session) }
         case .customers:
             return [
@@ -98,7 +98,7 @@ extension AdminTab {
             return [
                 .account, .notifications, .notificationComposer,
                 .notificationSettings, .accounting, .audit,
-                .categories, .banners, .listings
+                .categories, .banners, .listings, .adoptionManager
             ].filter { $0.isAuthorized(for: session) }
         }
     }

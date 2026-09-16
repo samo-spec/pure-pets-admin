@@ -3387,6 +3387,7 @@ private struct AdminStaffPermissionsInspectorSheet: View {
         let usrDomain = Language.get("Staff_Domain_Customers", alter: "العملاء والدعم")
         let payDomain = Language.get("Staff_Domain_Payments", alter: "المدفوعات والمحاسبة")
         let invDomain = Language.get("Staff_Domain_Inventory", alter: "المخزون والمنتجات")
+        let comDomain = Language.get("Staff_Domain_Community", alter: "المجتمع والتبني والرقابة")
 
         return [
             // System Security & IAM
@@ -3394,6 +3395,14 @@ private struct AdminStaffPermissionsInspectorSheet: View {
             PermissionItem(id: "staff.manage", title: Language.get("StaffPermTitle_staff_manage", alter: "تعديل رتب وصلاحيات الموظفين"), domain: secDomain, domainIcon: "lock.shield.fill", isGranted: role == .owner || role == .superAdmin),
             PermissionItem(id: "audit.view", title: Language.get("StaffPermTitle_audit_view", alter: "سجل التدقيق الأمني الشامل"), domain: secDomain, domainIcon: "lock.shield.fill", isGranted: role == .owner || role == .superAdmin),
             PermissionItem(id: "notifications.manage", title: Language.get("StaffPermTitle_notifications_manage", alter: "إرسال الإشعارات الشاملة للمستخدمين"), domain: secDomain, domainIcon: "lock.shield.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager),
+
+            // Community, Adoption & Moderation
+            PermissionItem(id: "community.dashboard.view", title: Language.get("StaffPermTitle_community_dashboard_view", alter: "استعراض مساحة وعمليات المجتمع والتبني"), domain: comDomain, domainIcon: "pawprint.fill", isGranted: role != .viewer),
+            PermissionItem(id: "community.adoption.moderate", title: Language.get("StaffPermTitle_community_adoption_moderate", alter: "إدارة واعتماد إعلانات التبني"), domain: comDomain, domainIcon: "heart.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager),
+            PermissionItem(id: "community.application.view", title: Language.get("StaffPermTitle_community_application_view", alter: "استعراض ومراجعة طلبات التبني"), domain: comDomain, domainIcon: "doc.text.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager),
+            PermissionItem(id: "community.missing.moderate", title: Language.get("StaffPermTitle_community_missing_moderate", alter: "إدارة بلاغات الفقدان والعثور"), domain: comDomain, domainIcon: "magnifyingglass", isGranted: role == .owner || role == .superAdmin || role == .operationsManager),
+            PermissionItem(id: "moderation.manage", title: Language.get("StaffPermTitle_moderation_manage", alter: "الإشراف وحوكمة المحتوى والمخالفات"), domain: comDomain, domainIcon: "shield.lefthalf.filled", isGranted: role == .owner || role == .superAdmin || role == .operationsManager),
+            PermissionItem(id: "listings.moderate", title: Language.get("StaffPermTitle_listings_moderate", alter: "مراجعة واعتماد إعلانات الحيوانات"), domain: comDomain, domainIcon: "list.bullet.clipboard.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager),
 
             // Orders & Fulfillment
             PermissionItem(id: "orders.view", title: Language.get("StaffPermTitle_orders_view", alter: "استعراض طلبات الشراء والمبيعات"), domain: ordDomain, domainIcon: "shippingbox.fill", isGranted: role != .viewer),
