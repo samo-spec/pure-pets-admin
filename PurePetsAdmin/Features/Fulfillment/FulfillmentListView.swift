@@ -832,10 +832,12 @@ struct AdminFulfillmentListView: View {
                         note: note,
                         notify: notify
                     ) { result in
-                        if case .succeeded = result {
-                            recordForOverridePush = nil
+                        Task { @MainActor in
+                            if case .succeeded = result {
+                                recordForOverridePush = nil
+                            }
+                            completion(result)
                         }
-                        completion(result)
                     }
                 }
             )
@@ -3078,28 +3080,30 @@ struct FulfillmentOverrideView: View {
         errorMessage = nil
 
         onCommit(currentRecord.status, targetStatus, cleanReason, internalNote.isEmpty ? nil : internalNote, notifyCustomer) { result in
-            self.isSubmitting = false
-            switch result {
-            case .succeeded:
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-                onDismiss()
-                dismiss()
-            case .conflict(let requiresLiveRecordReload):
-                UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                if requiresLiveRecordReload {
-                    beginLiveRecordConflictRecovery()
-                } else {
-                    errorMessage = Language.get("Fulfillment_OverrideConflict", alter: "تغيرت حالة التنفيذ قبل تطبيق هذا الأمر. راجع الحالة المباشرة قبل المحاولة مرة أخرى.")
+            Task { @MainActor in
+                self.isSubmitting = false
+                switch result {
+                case .succeeded:
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    onDismiss()
+                    dismiss()
+                case .conflict(let requiresLiveRecordReload):
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    if requiresLiveRecordReload {
+                        beginLiveRecordConflictRecovery()
+                    } else {
+                        errorMessage = Language.get("Fulfillment_OverrideConflict", alter: "تغيرت حالة التنفيذ قبل تطبيق هذا الأمر. راجع الحالة المباشرة قبل المحاولة مرة أخرى.")
+                    }
+                case .denied:
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    errorMessage = Language.get("Fulfillment_OverridePermissionDenied", alter: "ليس لديك صلاحية لتنفيذ هذا التعديل الإداري.")
+                case .invalid:
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    errorMessage = Language.get("Fulfillment_OverrideInvalid", alter: "لم يعد أمر التنفيذ صالحاً. راجع الحالة المختارة والمعلومات المطلوبة.")
+                case .failed:
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    errorMessage = Language.get("Fulfillment_OverrideFailed", alter: "تعذر إكمال أمر التنفيذ. أبقِ هذا السجل مفتوحاً وتحقق من الحالة المباشرة قبل المحاولة مرة أخرى.")
                 }
-            case .denied:
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
-                errorMessage = Language.get("Fulfillment_OverridePermissionDenied", alter: "ليس لديك صلاحية لتنفيذ هذا التعديل الإداري.")
-            case .invalid:
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
-                errorMessage = Language.get("Fulfillment_OverrideInvalid", alter: "لم يعد أمر التنفيذ صالحاً. راجع الحالة المختارة والمعلومات المطلوبة.")
-            case .failed:
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
-                errorMessage = Language.get("Fulfillment_OverrideFailed", alter: "تعذر إكمال أمر التنفيذ. أبقِ هذا السجل مفتوحاً وتحقق من الحالة المباشرة قبل المحاولة مرة أخرى.")
             }
         }
     }

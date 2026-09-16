@@ -1,0 +1,88 @@
+name: Live pet return confirmation V2
+
+on:
+  push:
+    branches:
+      - design/live-pet-return-confirmation-v2
+    paths:
+      - PurePetsAdmin/Features/LivePetReturns/Views/ReturnConfirmationView.swift
+      - PurePetsAdmin/Features/LivePetReturns/Views/LivePetReturnCoordinatorView.swift
+      - PurePetsAdmin/Shared/Components/AdminSharedComponents.swift
+      - PurePetsAdmin/Features/POS/PPScannerView.swift
+      - PurePetsAdmin/Features/POS/POSHistoryView.swift
+      - PurePetsAdmin/Features/Providers/ProvidersView.swift
+      - PurePetsAdmin/Features/More/ListingsView.swift
+      - PurePetsAdmin/App/PPSessionRestorationGatewayView.swift
+      - PurePetsAdmin/BranchSection/PPBranchInventory.swift
+      - PurePetsAdmin/Features/Inventory/CycleCountStudioView.swift
+      - PurePetsAdmin/ThirdParty/PPStyles/PPHeroApex.swift
+      - PurePetsAdmin/AccessorySection/PPInventoryListView.swift
+      - PurePetsAdmin/AccessorySection/PPAccessoryEditorView.swift
+      - PurePetsAdmin/AccessorySection/PPInventoryCommandService.swift
+      - PurePetsAdmin/Features/Fulfillment/FulfillmentListView.swift
+      - PurePetsAdmin/Features/Delivery/DeliveryListView.swift
+      - PurePetsAdmin/ThirdParty/PPImagePicker+Viewer/QBAssetsViewController.m
+      - PurePetsAdmin/ThirdParty/PPStyles/PPNavigationController.m
+      - PurePetsAdmin/ar.lproj/Localizable.strings
+      - PurePetsAdmin/en.lproj/Localizable.strings
+      - .github/workflows/live-pet-return-confirmation-v2.yml
+
+permissions:
+  contents: read
+
+jobs:
+  ios-build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: design/live-pet-return-confirmation-v2
+
+      - name: Xcode environment
+        run: |
+          xcodebuild -version
+          xcodebuild -list -workspace PurePetsAdmin.xcworkspace
+
+      - name: Source quality guard
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          view = Path('PurePetsAdmin/Features/LivePetReturns/Views/ReturnConfirmationView.swift').read_text()
+          coordinator = Path('PurePetsAdmin/Features/LivePetReturns/Views/LivePetReturnCoordinatorView.swift').read_text()
+
+          required = [
+              'iPhoneReadyState', 'iPadReadyState', 'iPhoneActionDock',
+              'accessibilityReduceMotion', 'sensoryFeedback',
+              'ReturnConfirmationSurfaceState', 'case .loading:', 'case .empty:',
+              'case .failure(let message):', 'AdminType.', 'Language.get('
+          ]
+          missing = [item for item in required if item not in view]
+          if missing:
+              raise SystemExit(f'Missing confirmation architecture contracts: {missing}')
+
+          forbidden = ['UIFont(', 'UIImpactFeedbackGenerator(', '.font(.body)', '.font(.headline)', '.font(.title)']
+          present = [item for item in forbidden if item in view]
+          if present:
+              raise SystemExit(f'Forbidden confirmation typography/haptic APIs: {present}')
+
+          if 'case .confirmed(let returnCase):\n                confirmationSurface(returnCase)' not in coordinator:
+              raise SystemExit('Confirmed state must own its standalone confirmation surface')
+          if 'ScrollView(.vertical, showsIndicators: false) {\n                VStack(spacing: 16)' not in coordinator:
+              raise SystemExit('Wizard scroll architecture was unexpectedly changed')
+          if 'LivePetReturnService.shared.processLivePetReturn(' not in coordinator:
+              raise SystemExit('Existing live-pet return service path must remain intact')
+
+          print('source quality guard passed')
+          PY
+
+      - name: Build PurePetsAdmin
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace PurePetsAdmin.xcworkspace \
+            -scheme PurePetsAdmin \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            build | tee /tmp/live-pet-return-confirmation-v2.log

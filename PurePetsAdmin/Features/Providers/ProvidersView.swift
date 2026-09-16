@@ -2161,9 +2161,11 @@ private struct ProviderReviewDecisionSheet: View {
             decision: selectedDecision,
             notes: notesText.trimmingCharacters(in: .whitespacesAndNewlines)
         ) { success in
-            isSubmitting = false
-            if success {
-                dismiss()
+            Task { @MainActor in
+                isSubmitting = false
+                if success {
+                    dismiss()
+                }
             }
         }
     }

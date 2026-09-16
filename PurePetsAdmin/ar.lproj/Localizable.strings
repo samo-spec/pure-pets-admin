@@ -8188,7 +8188,7 @@
 "LivePet_UnitsCount" = "حيوان محدد";
 
 "LivePet_Confirm_SuccessTitle" = "تم تسجيل استرجاع الحيوان بنجاح";
-"LivePet_Confirm_SuccessSub" = "تم فتح ملف الاسترجاع ونقل الحيوان للعهدة المخصصة";
+"LivePet_Confirm_SuccessSub" = "اكتمل الاسترداد المالي وبدأت متابعة الحيوان ضمن مسار الفحص الآمن.";
 "LivePet_CaseNumberLabel" = "رقم ملف الاسترجاع";
 "LivePet_AnimalStateLabel" = "حالة الحيوان";
 "LivePet_RefundStateLabel" = "حالة الاسترداد";
@@ -9323,3 +9323,36 @@
 "Pury_Prompt_ContextProduct" = "ما هي حالة المخزون والمبيعات لهذا المنتج؟";
 "Pury_Prompt_ContextOrder" = "ما هو ملخص حالة وسجل تتبع هذا الطلب؟";
 
+// Live Pet Return Confirmation V2 (iPhone & iPadOS)
+"LivePet_Confirm_NoRefundRequiredSub" = "تم تسجيل الاسترجاع ولا يلزم استرداد مالي. بدأ مسار الفحص والمتابعة للحيوان.";
+"LivePet_Confirm_RefundProcessingSub" = "تم تسجيل الاسترجاع وطلب الاسترداد المالي قيد المعالجة. تستمر متابعة الحيوان بشكل مستقل.";
+"LivePet_Confirm_RefundAttentionSub" = "تم تسجيل الاسترجاع، لكن الاسترداد المالي يحتاج متابعة. افتح الملف لمراجعة الإجراء المطلوب.";
+"LivePet_Confirm_RefundPendingSub" = "تم تسجيل الاسترجاع، وما زالت التسوية المالية بانتظار البدء. مسار متابعة الحيوان محفوظ.";
+"LivePet_Confirm_WorkflowSupport" = "يبقى الحيوان خارج البيع حتى إغلاق الفحص";
+"LivePet_Confirm_NextStepTitle" = "ما الذي يحدث الآن؟";
+"LivePet_Confirm_FinalCaseNote" = "أُغلق مسار المتابعة لهذا الملف. يمكنك فتح الملف لمراجعة السجل الكامل.";
+"LivePet_Confirm_InspectionNote" = "يبقى الحيوان غير متاح للبيع حتى اكتمال الفحص واتخاذ قرار الحالة النهائية.";
+"LivePet_Confirm_Close" = "إغلاق";
+"LivePet_Confirm_ProtectedRecord" = "سجل استرجاع موثّق";
+"LivePet_Confirm_ProtectedCustody" = "مسجل ضمن عهدة الاسترجاع";
+"LivePet_Confirm_NoUnits" = "لا توجد بيانات حيوانات مرتبطة بهذا الملف حالياً.";
+"LivePet_Confirm_NextActions" = "الخطوة التالية";
+"LivePet_Confirm_ContinueCase" = "تابع ملف الحيوان";
+"LivePet_Confirm_ContinueCaseSub" = "الاسترداد المالي انتهى أو تم تسجيل حالته. افتح الملف لمتابعة الفحص والعهدة.";
+"LivePet_Confirm_ContinueSale" = "أكمل معالجة الفاتورة";
+"LivePet_Confirm_ContinueSaleSub" = "تم تسجيل استرجاع الحيوان. يمكنك الآن معالجة أي منتجات أخرى مؤهلة من نفس الفاتورة.";
+"LivePet_Confirm_RefundRemainingItems" = "استرداد بقية المنتجات";
+"LivePet_Confirm_RefundRemainingItemsSub" = "العودة للفاتورة واختيار العناصر المؤهلة المتبقية";
+"LivePet_Confirm_OpenDossierSub" = "متابعة الفحص والعهدة وسجل القرارات";
+"LivePet_Confirm_Done" = "تم";
+"LivePet_Confirm_Copy" = "نسخ";
+"LivePet_Confirm_Copied" = "تم النسخ";
+"LivePet_Confirm_CopyCaseA11y" = "نسخ رقم ملف الاسترجاع";
+"LivePet_Confirm_CopyCaseHint" = "ينسخ رقم الملف إلى الحافظة";
+"LivePet_Confirm_Loading" = "جارٍ تجهيز ملخص الاسترجاع";
+"LivePet_Confirm_EmptyTitle" = "لا توجد تفاصيل استرجاع لعرضها";
+"LivePet_Confirm_EmptyMessage" = "لم يتم العثور على ملف استرجاع مكتمل لهذه العملية. أغلق الشاشة وراجع الفاتورة مرة أخرى.";
+"LivePet_Confirm_ErrorTitle" = "تعذر تحميل ملخص الاسترجاع";
+"LivePet_Confirm_ErrorMessage" = "بيانات الاسترجاع محفوظة، لكن تعذر عرض الملخص الآن. حاول مرة أخرى.";
+"LivePet_Confirm_Retry" = "إعادة المحاولة";
+"POS_TransactionID" = "فاتورة";

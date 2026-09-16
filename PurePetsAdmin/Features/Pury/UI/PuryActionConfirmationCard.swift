@@ -64,7 +64,7 @@ public struct PuryActionConfirmationCard: View {
                         .foregroundStyle(AdminSurface.secondaryText)
 
                     Text(entityId)
-                        .font(PPBrandFont.medium(size: 11, relativeTo: .caption1))
+                        .font(PPBrandFont.medium(size: 11, relativeTo: .caption))
                         .foregroundStyle(AdminSurface.primaryText)
                         .environment(\.layoutDirection, .leftToRight)
                 }

@@ -1706,12 +1706,11 @@ private struct PPScannerAnalysisContext {
 
 // MARK: - Optical Scanner Vision & AVFoundation Engine
 
-@MainActor
-final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate, AVCapturePhotoCaptureDelegate {
+final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate, AVCapturePhotoCaptureDelegate, @unchecked Sendable {
     let session = AVCaptureSession()
     private let sessionQueue = DispatchQueue(label: "com.purepets.ppscanner.session", qos: .userInitiated)
     private let visionQueue = DispatchQueue(label: "com.purepets.ppscanner.vision", qos: .userInitiated)
-    private nonisolated(unsafe) let motionManager = CMMotionManager()
+    private let motionManager = CMMotionManager()
 
     private var videoDevice: AVCaptureDevice?
     private let photoOutput = AVCapturePhotoOutput()
@@ -1760,6 +1759,7 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
         analysisContextLock.unlock()
     }
 
+    @MainActor
     func updateScanGeometry(reticleFrame: CGRect, viewportSize: CGSize) {
         guard !reticleFrame.isEmpty, viewportSize.width > 0, viewportSize.height > 0 else { return }
 
@@ -1954,13 +1954,13 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
         case .authorized:
             configureAndStart()
         case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
-                DispatchQueue.main.async {
-                    if granted {
-                        self?.configureAndStart()
-                    } else {
-                        self?.onPermissionDenied?()
-                    }
+            Task { @MainActor [weak self] in
+                let granted = await AVCaptureDevice.requestAccess(for: .video)
+                guard let self else { return }
+                if granted {
+                    self.configureAndStart()
+                } else {
+                    self.onPermissionDenied?()
                 }
             }
         default:
@@ -2615,7 +2615,10 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
         completion: @escaping @MainActor @Sendable (PPScannedCheque) -> Void
     ) {
         guard let cgImage = image.cgImage else {
-            completion(PPScannedCheque(image: image))
+            nonisolated(unsafe) let safeImage = image
+            Task { @MainActor in
+                completion(PPScannedCheque(image: safeImage))
+            }
             return
         }
 

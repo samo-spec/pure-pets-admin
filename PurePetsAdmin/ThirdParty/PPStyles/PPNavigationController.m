@@ -54,14 +54,26 @@
                                        configType:(PPButtonConfigration)configType {
     UIButton *bgButton;
 
-    if (@available(iOS 26.0, *)) {
-        UIButtonConfiguration *cfg = configType == PPButtonConfigrationGlass ? [UIButtonConfiguration glassButtonConfiguration] :
-        configType == PPButtonConfigrationClearGlass ? [UIButtonConfiguration clearGlassButtonConfiguration] :
-        configType == PPButtonConfigrationFilled ? [UIButtonConfiguration filledButtonConfiguration] :
-        configType == PPButtonConfigrationPromp ? [UIButtonConfiguration prominentGlassButtonConfiguration] :
-        configType == PPButtonConfigrationClearPromp ? [UIButtonConfiguration prominentClearGlassButtonConfiguration] :
-        configType == PPButtonConfigrationTintedBorderd ? [UIButtonConfiguration borderedTintedButtonConfiguration] :
-        configType == PPButtonConfigrationTinted ? [UIButtonConfiguration tintedButtonConfiguration] : [UIButtonConfiguration plainButtonConfiguration];
+    if (@available(iOS 15.0, *)) {
+        UIButtonConfiguration *cfg;
+        switch (configType) {
+            case PPButtonConfigrationFilled:
+                cfg = [UIButtonConfiguration filledButtonConfiguration];
+                break;
+            case PPButtonConfigrationTinted:
+                cfg = [UIButtonConfiguration tintedButtonConfiguration];
+                break;
+            case PPButtonConfigrationTintedBorderd:
+            case PPButtonConfigrationGlass:
+            case PPButtonConfigrationPromp:
+                cfg = [UIButtonConfiguration borderedTintedButtonConfiguration];
+                break;
+            case PPButtonConfigrationClearGlass:
+            case PPButtonConfigrationClearPromp:
+            default:
+                cfg = [UIButtonConfiguration plainButtonConfiguration];
+                break;
+        }
 
         cfg.cornerStyle = style;
         cfg.contentInsets = NSDirectionalEdgeInsetsMake(12, 12, 12, 12);

@@ -217,12 +217,7 @@ static CGSize CGSizeScale(CGSize size, CGFloat scale) {
     
 
     // STEP 2 — Label inside pill
-    UIButtonConfiguration *config;
-    if (@available(iOS 26.0, *)) {
-        config = [UIButtonConfiguration glassButtonConfiguration];
-    } else {
-        config =    [UIButtonConfiguration filledButtonConfiguration];
-    }
+    UIButtonConfiguration *config = [UIButtonConfiguration filledButtonConfiguration];
     // STEP 1 — lbl pill container
     
     NSString  *lblTitle;
@@ -301,11 +296,7 @@ static CGSize CGSizeScale(CGSize size, CGFloat scale) {
     
     UIButtonConfiguration *cfg;
 
-    if (@available(iOS 26.0, *)) {
-        cfg = [UIButtonConfiguration glassButtonConfiguration];
-        cfg.background.backgroundColor = AppClearClr;
-        cfg.baseBackgroundColor = AppClearClr;
-    } else if (@available(iOS 15.0, *)) {
+    if (@available(iOS 15.0, *)) {
         cfg = [UIButtonConfiguration plainButtonConfiguration];
         cfg.background.backgroundColor = AppClearClr;
         cfg.baseBackgroundColor = AppClearClr;
