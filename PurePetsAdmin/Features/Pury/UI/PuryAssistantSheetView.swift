@@ -33,6 +33,7 @@ struct PuryAssistantSheetView: View {
         router: AdminRouter,
         screenContext: PuryScreenContext? = nil
     ) {
+        PPBrandFont.registerIfNeeded()
         self.session = session
         self.router = router
         self.screenContext = screenContext
@@ -96,6 +97,7 @@ struct PuryAssistantSheetView: View {
         }
         .environment(\.layoutDirection, isRTL ? .rightToLeft : .leftToRight)
         .onAppear {
+            PPBrandFont.registerIfNeeded()
             withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) {
                 ambientPulse = true
             }
@@ -160,11 +162,11 @@ struct PuryAssistantSheetView: View {
                 VStack(alignment: isRTL ? .trailing : .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(isRTL ? "بيوري" : "Pury")
-                            .font(.system(size: 17, weight: .bold, design: .rounded))
+                            .font(AdminType.headline)
                             .foregroundStyle(AdminSurface.primaryText)
 
                         Text("AI")
-                            .font(.system(size: 10, weight: .heavy, design: .rounded))
+                            .font(PPBrandFont.bold(size: 10, relativeTo: .caption2))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
@@ -336,7 +338,7 @@ struct PuryAssistantSheetView: View {
                     .frame(width: 6, height: 6)
 
                 Text(isRTL ? "سياق نشط" : "Active Context")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(AdminType.caption2Bold)
                     .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
             }
             .padding(.horizontal, 8)
@@ -383,7 +385,7 @@ struct PuryAssistantSheetView: View {
             // Warm Executive Greeting & Mission Banner
             VStack(spacing: 8) {
                 Text(executiveGreetingTitle)
-                    .font(.system(size: 23, weight: .bold, design: .rounded))
+                    .font(PPBrandFont.bold(size: 23, relativeTo: .title2))
                     .foregroundStyle(AdminSurface.primaryText)
                     .multilineTextAlignment(.center)
 
@@ -494,7 +496,7 @@ struct PuryAssistantSheetView: View {
                     Spacer()
 
                     Text(badge)
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
                         .foregroundStyle(accentGradient.first ?? AdminSurface.secondaryText)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
@@ -504,7 +506,7 @@ struct PuryAssistantSheetView: View {
                 // Title and Subtitle
                 VStack(alignment: isRTL ? .trailing : .leading, spacing: 3) {
                     Text(title)
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .font(PPBrandFont.bold(size: 15, relativeTo: .subheadline))
                         .foregroundStyle(AdminSurface.primaryText)
                         .multilineTextAlignment(isRTL ? .trailing : .leading)
                         .lineLimit(1)
@@ -555,7 +557,7 @@ struct PuryAssistantSheetView: View {
     private var quickTelemetryTray: some View {
         VStack(alignment: isRTL ? .trailing : .leading, spacing: 8) {
             Text(isRTL ? "استعلامات سريعة بنقرة واحدة" : "Instant Telemetry Accelerators")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .font(PPBrandFont.medium(size: 12, relativeTo: .caption))
                 .foregroundStyle(AdminSurface.secondaryText)
                 .padding(.horizontal, 6)
 
@@ -604,7 +606,7 @@ struct PuryAssistantSheetView: View {
                     .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
 
                 Text(title)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(PPBrandFont.medium(size: 12, relativeTo: .caption))
                     .foregroundStyle(AdminSurface.primaryText)
             }
             .padding(.horizontal, 12)
@@ -632,7 +634,7 @@ struct PuryAssistantSheetView: View {
             Spacer(minLength: 44)
 
             Text(message.text)
-                .font(.system(size: 15, weight: .medium, design: .rounded))
+                .font(PPBrandFont.medium(size: 15, relativeTo: .body))
                 .foregroundStyle(.white)
                 .multilineTextAlignment(isRTL ? .trailing : .leading)
                 .padding(.horizontal, 16)
@@ -659,7 +661,7 @@ struct PuryAssistantSheetView: View {
                 livingAvatarBeacon(size: 24)
 
                 Text(isRTL ? "بيوري" : "Pury")
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .font(PPBrandFont.bold(size: 13, relativeTo: .caption))
                     .foregroundStyle(AdminSurface.primaryText)
 
                 HStack(spacing: 4) {
@@ -667,7 +669,7 @@ struct PuryAssistantSheetView: View {
                         .fill(Color(red: 16/255, green: 185/255, blue: 129/255))
                         .frame(width: 5, height: 5)
                     Text(isRTL ? "بيانات حية" : "Live data")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(PPBrandFont.medium(size: 10, relativeTo: .caption2))
                         .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
                 }
                 .padding(.horizontal, 6)
@@ -734,7 +736,7 @@ struct PuryAssistantSheetView: View {
                 // Intro narrative if any
                 if let intro = parsed.introNarrative, !intro.isEmpty {
                     Text(intro)
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .font(PPBrandFont.bold(size: 15, relativeTo: .subheadline))
                         .foregroundStyle(AdminSurface.primaryText)
                         .lineSpacing(4)
                         .multilineTextAlignment(isRTL ? .trailing : .leading)
@@ -751,7 +753,7 @@ struct PuryAssistantSheetView: View {
             } else {
                 // Standard Conversational Text Bubble
                 Text(parsed.cleanFullText)
-                    .font(.system(size: 15, weight: .regular))
+                    .font(PPBrandFont.regular(size: 15, relativeTo: .body))
                     .foregroundStyle(AdminSurface.primaryText)
                     .lineSpacing(5)
                     .multilineTextAlignment(isRTL ? .trailing : .leading)
@@ -798,7 +800,7 @@ struct PuryAssistantSheetView: View {
                 // Title and Subtitle
                 VStack(alignment: isRTL ? .trailing : .leading, spacing: 2) {
                     Text(item.title)
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .font(PPBrandFont.bold(size: 15, relativeTo: .subheadline))
                         .foregroundStyle(AdminSurface.primaryText)
                         .multilineTextAlignment(isRTL ? .trailing : .leading)
                         .lineLimit(1)
@@ -817,7 +819,7 @@ struct PuryAssistantSheetView: View {
                 // High-Craft Metric Count Badge
                 HStack(spacing: 4) {
                     Text(item.count)
-                        .font(.system(size: 16, weight: .heavy, design: .rounded))
+                        .font(PPBrandFont.bold(size: 16, relativeTo: .callout))
                         .foregroundStyle(item.tint)
                 }
                 .padding(.horizontal, 12)
@@ -853,7 +855,7 @@ struct PuryAssistantSheetView: View {
                 .padding(.top, 1)
 
             Text(noticeText)
-                .font(.system(size: 13, weight: .regular))
+                .font(PPBrandFont.regular(size: 13, relativeTo: .footnote))
                 .foregroundStyle(AdminSurface.secondaryText)
                 .lineSpacing(3)
                 .multilineTextAlignment(isRTL ? .trailing : .leading)
@@ -888,7 +890,7 @@ struct PuryAssistantSheetView: View {
 
                 VStack(alignment: isRTL ? .trailing : .leading, spacing: 3) {
                     Text(card.cleanTitle)
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .font(PPBrandFont.bold(size: 15, relativeTo: .subheadline))
                         .foregroundStyle(AdminSurface.primaryText)
                         .multilineTextAlignment(isRTL ? .trailing : .leading)
                         .lineLimit(2)
@@ -922,7 +924,7 @@ struct PuryAssistantSheetView: View {
                                 .foregroundStyle(AdminSurface.secondaryText)
                             Spacer()
                             Text(field.cleanValue)
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                .font(PPBrandFont.medium(size: 13, relativeTo: .caption))
                                 .foregroundStyle(AdminSurface.primaryText)
                         }
                     }
@@ -1011,7 +1013,7 @@ struct PuryAssistantSheetView: View {
     private func statusPill(_ status: String) -> some View {
         let cleanStatus = PuryModelsSanitizer.cleanText(status)
         return Text(cleanStatus)
-            .font(.system(size: 11, weight: .bold, design: .rounded))
+            .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
             .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
@@ -1035,7 +1037,7 @@ struct PuryAssistantSheetView: View {
 
                 VStack(alignment: isRTL ? .trailing : .leading, spacing: 2) {
                     Text(isRTL ? "مطلوب تأكيد العملية" : "Confirmation Required")
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .font(PPBrandFont.bold(size: 15, relativeTo: .subheadline))
                         .foregroundStyle(AdminSurface.primaryText)
 
                     Text(isRTL ? "تعديل حساس يتطلب اعتمادك الصريح" : "Sensitive operation requires authorization")
@@ -1073,7 +1075,7 @@ struct PuryAssistantSheetView: View {
                     ForEach(Array(updates.keys.sorted()), id: \.self) { key in
                         HStack {
                             Text(key)
-                                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                .font(PPBrandFont.medium(size: 12, relativeTo: .caption))
                                 .foregroundStyle(AdminSurface.secondaryText)
                             Spacer()
                             Text(updates[key] ?? "")
@@ -1098,7 +1100,7 @@ struct PuryAssistantSheetView: View {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 14, weight: .bold))
                         Text(isRTL ? "تأكيد وتنفيذ" : "Confirm & Execute")
-                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .font(PPBrandFont.bold(size: 14, relativeTo: .footnote))
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
@@ -1119,7 +1121,7 @@ struct PuryAssistantSheetView: View {
                     store.cancelAction()
                 } label: {
                     Text(isRTL ? "إلغاء" : "Cancel")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(PPBrandFont.medium(size: 14, relativeTo: .footnote))
                         .foregroundStyle(AdminSurface.secondaryText)
                         .frame(maxWidth: 80)
                         .padding(.vertical, 13)
@@ -1150,7 +1152,7 @@ struct PuryAssistantSheetView: View {
                 .scaleEffect(0.9)
 
             Text(isRTL ? "بيوري يراجع البيانات المصرح بها ويجهز الإجابة..." : "Pury is analyzing authorized records...")
-                .font(.system(size: 13, weight: .medium))
+                .font(PPBrandFont.medium(size: 13, relativeTo: .caption))
                 .foregroundStyle(AdminSurface.secondaryText)
 
             Spacer()
@@ -1190,7 +1192,7 @@ struct PuryAssistantSheetView: View {
                     text: $store.currentInputText,
                     axis: .vertical
                 )
-                .font(.system(size: 15, weight: .regular))
+                .font(PPBrandFont.regular(size: 15, relativeTo: .body))
                 .multilineTextAlignment(isRTL ? .trailing : .leading)
                 .lineLimit(1...4)
                 .focused($isInputFocused)
@@ -1259,7 +1261,7 @@ struct PuryAssistantSheetView: View {
             submitInput()
         } label: {
             Text(label)
-                .font(.system(size: 12, weight: .semibold))
+                .font(PPBrandFont.medium(size: 12, relativeTo: .caption))
                 .foregroundStyle(AdminSurface.primaryText)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)

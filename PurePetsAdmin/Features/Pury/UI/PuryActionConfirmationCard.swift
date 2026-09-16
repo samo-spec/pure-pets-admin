@@ -47,7 +47,7 @@ public struct PuryActionConfirmationCard: View {
 
                 if let perm = action.permissionRequired {
                     Text(perm)
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .font(PPBrandFont.bold(size: 10, relativeTo: .caption2))
                         .foregroundStyle(AdminSurface.secondaryText)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
@@ -64,7 +64,7 @@ public struct PuryActionConfirmationCard: View {
                         .foregroundStyle(AdminSurface.secondaryText)
 
                     Text(entityId)
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(PPBrandFont.medium(size: 11, relativeTo: .caption1))
                         .foregroundStyle(AdminSurface.primaryText)
                         .environment(\.layoutDirection, .leftToRight)
                 }
@@ -79,7 +79,7 @@ public struct PuryActionConfirmationCard: View {
                     ForEach(warnings, id: \.self) { warning in
                         HStack(alignment: .top, spacing: 6) {
                             Text("•")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(AdminType.caption1Bold)
                                 .foregroundStyle(Color(red: 239/255, green: 68/255, blue: 68/255))
                             Text(warning)
                                 .font(AdminType.caption1)
@@ -103,7 +103,7 @@ public struct PuryActionConfirmationCard: View {
                         ForEach(Array(updates.keys.sorted()), id: \.self) { key in
                             HStack {
                                 Text(key)
-                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
                                     .foregroundStyle(AdminSurface.secondaryText)
                                     .environment(\.layoutDirection, .leftToRight)
 
