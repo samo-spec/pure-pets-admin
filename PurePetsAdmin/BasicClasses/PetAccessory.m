@@ -346,7 +346,11 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     }
     dict[@"isAllCategories"] = @(self.isAllCategories);
     dict[@"isAllSubCategories"] = @(self.isAllSubCategories);
-    if (self.AccessoryCategoryID) dict[@"AccessoryCategoryID"] = self.AccessoryCategoryID;
+    if (self.AccessoryCategoryID.length > 0) {
+        dict[@"AccessoryCategoryID"] = self.AccessoryCategoryID;
+    } else {
+        dict[@"AccessoryCategoryID"] = [NSNull null];
+    }
     if (self.relatedAccessories) dict[@"relatedAccessories"] = self.relatedAccessories;
     dict[@"cityID"] = @(self.cityID);
 
@@ -1131,6 +1135,24 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
 #pragma mark - Category Helpers
 
 - (NSString *)accessoryCategoryName {
+    if (self.AccessoryCategoryID.length > 0) {
+        MainKindsModel *model = [MainKindsModel mainKindModelForID:self.petMainCategoryID];
+        PPAccessoryCategoryModel *cat = [model accessoryCategoryForID:self.AccessoryCategoryID];
+        if (!cat) {
+            NSArray<PPAccessoryCategoryModel *> *canonical = [MainKindsModel canonicalAccessoryCategoriesForMainKindID:self.petMainCategoryID];
+            for (PPAccessoryCategoryModel *c in canonical) {
+                if ([c.categoryID isEqualToString:self.AccessoryCategoryID] || [c.documentID isEqualToString:self.AccessoryCategoryID]) {
+                    cat = c;
+                    break;
+                }
+            }
+        }
+        if (cat) {
+            NSString *disp = [cat displayName];
+            if (disp.length > 0) return disp;
+        }
+        return self.AccessoryCategoryID;
+    }
     if (self.petMainCategoryID > 0) {
         NSString *name = [MainKindsModel kindNameForID:self.petMainCategoryID];
         if (name.length > 0) return name;

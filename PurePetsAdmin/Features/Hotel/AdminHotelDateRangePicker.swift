@@ -50,11 +50,11 @@ public enum HotelStayDurationPreset: String, CaseIterable, Identifiable {
 
     public var localizedTitle: String {
         switch self {
-        case .weekend: return Language.get("Hotel_StayPreset_Weekend", alter: "عطلة نهاية الأسبوع (2)")
+        case .weekend: return Language.get("Hotel_StayPreset_Weekend", alter: "عطلة نهاية الأسبوع (ليلتان)")
         case .threeNights: return Language.get("Hotel_StayPreset_3Nights", alter: "3 ليالٍ")
-        case .week: return Language.get("Hotel_StayPreset_Week", alter: "أسبوع (7)")
-        case .twoWeeks: return Language.get("Hotel_StayPreset_2Weeks", alter: "أسبوعان (14)")
-        case .month: return Language.get("Hotel_StayPreset_Month", alter: "شهر (30)")
+        case .week: return Language.get("Hotel_StayPreset_Week", alter: "أسبوع (7 ليالٍ)")
+        case .twoWeeks: return Language.get("Hotel_StayPreset_2Weeks", alter: "أسبوعان (14 ليلة)")
+        case .month: return Language.get("Hotel_StayPreset_Month", alter: "شهر (30 ليلة)")
         }
     }
 }
@@ -397,7 +397,7 @@ public struct AdminHotelDateRangePicker: View {
                     Image(systemName: "clock.fill")
                         .font(.system(size: 12))
                         .foregroundStyle(AdminSurface.primary)
-                    Text(Language.get("Hotel_AdjustArrivalDepartureTimes", alter: "تعديل ساعات الوصول والمغادرة"))
+                    Text(Language.get("Hotel_AdjustArrivalDepartureTimes", alter: "تعديل أوقات الوصول والمغادرة"))
                         .font(DatePickerBeiruti.bold(12))
                         .foregroundStyle(AdminSurface.primary)
                     Spacer()
@@ -417,7 +417,7 @@ public struct AdminHotelDateRangePicker: View {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 4) {
                             Circle().fill(Color(uiColor: .systemGreen)).frame(width: 6, height: 6)
-                            Text(Language.get("Hotel_CheckinTime_Label", alter: "وقت الوصول"))
+                            Text(Language.get("Hotel_CheckinTime_Label", alter: "وقت تسجيل الوصول"))
                                 .font(DatePickerBeiruti.medium(11))
                                 .foregroundStyle(AdminSurface.secondaryText)
                         }
@@ -434,7 +434,7 @@ public struct AdminHotelDateRangePicker: View {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 4) {
                             Circle().fill(Color.orange).frame(width: 6, height: 6)
-                            Text(Language.get("Hotel_CheckoutTime_Label", alter: "وقت المغادرة"))
+                            Text(Language.get("Hotel_CheckoutTime_Label", alter: "وقت تسجيل المغادرة"))
                                 .font(DatePickerBeiruti.medium(11))
                                 .foregroundStyle(AdminSurface.secondaryText)
                         }

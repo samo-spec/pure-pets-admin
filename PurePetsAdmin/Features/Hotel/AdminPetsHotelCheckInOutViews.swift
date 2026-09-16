@@ -30,6 +30,12 @@ public struct AdminPetsHotelCheckInSheet: View {
     public init(reservation: AdminHotelReservation, viewModel: AdminPetsHotelViewModel) {
         self.reservation = reservation
         self.viewModel = viewModel
+        var initialVerification = AdminHotelCheckInVerification()
+        if (reservation.depositMinor ?? 0) > 0 &&
+           (reservation.paymentStatus == "deposit_held" || (reservation.paidAmountMinor ?? 0) >= (reservation.depositMinor ?? 0)) {
+            initialVerification.depositSettled = true
+        }
+        _verification = State(initialValue: initialVerification)
     }
 
     private var isPad: Bool {
@@ -138,6 +144,10 @@ public struct AdminPetsHotelCheckInSheet: View {
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
+            if (reservation.depositMinor ?? 0) > 0 &&
+               (reservation.paymentStatus == "deposit_held" || (reservation.paidAmountMinor ?? 0) >= (reservation.depositMinor ?? 0)) {
+                verification.depositSettled = true
+            }
             loadAvailability()
         }
     }
@@ -149,7 +159,7 @@ public struct AdminPetsHotelCheckInSheet: View {
         selectedRoom = nil
         Task {
             do {
-                availabilitySnapshot = try await viewModel.availabilitySnapshot(for: reservation)
+                availabilitySnapshot = try await viewModel.availabilitySnapshot(for: reservation, stay: authoritativeCheckInStay)
                 autoSuggestAvailableRoom()
             } catch {
                 availabilityErrorMessage = error.localizedDescription
@@ -160,13 +170,15 @@ public struct AdminPetsHotelCheckInSheet: View {
 
     private func autoSuggestAvailableRoom() {
         let assignableIds = availabilitySnapshot?.assignableIds ?? []
-        if let assignedId = reservation.assignedAccommodationId,
+        if let heldUnit = availabilitySnapshot?.units.first(where: { $0.isReservedForThisStay }),
+           let match = viewModel.accommodations.first(where: { $0.id == heldUnit.accommodationId }) {
+            selectedRoom = match
+        } else if let assignedId = reservation.assignedAccommodationId,
            assignableIds.contains(assignedId),
            let match = viewModel.accommodations.first(where: { $0.id == assignedId }) {
             selectedRoom = match
-        } else if let match = viewModel.accommodations.first(where: {
-            assignableIds.contains($0.id)
-        }) {
+        } else if let firstAssignableId = assignableIds.first,
+                  let match = viewModel.accommodations.first(where: { $0.id == firstAssignableId }) {
             selectedRoom = match
         }
     }
@@ -219,14 +231,14 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
         Language.get("Hotel_Chip_Medication", alter: "دواء مخصص"),
         Language.get("Hotel_Chip_Carrier", alter: "قفص نقل"),
         Language.get("Hotel_Chip_SpecialFood", alter: "طعام خاص"),
-        Language.get("Hotel_Chip_Toys", alter: "ألعاب النزيل")
+        Language.get("Hotel_Chip_Toys", alter: "ألعاب")
     ]
 
     private let quickNotePills: [String] = [
-        Language.get("Hotel_NoteTag_Calm", alter: "هادئ ومطيع"),
-        Language.get("Hotel_NoteTag_Anxious", alter: "متوتر من الغرباء"),
-        Language.get("Hotel_NoteTag_SpecialDiet", alter: "نظام غذائي دقيق"),
-        Language.get("Hotel_NoteTag_NeedsCare", alter: "عناية طبية خاصة")
+        Language.get("Hotel_NoteTag_Calm", alter: "هادئ / ودود"),
+        Language.get("Hotel_NoteTag_Anxious", alter: "خجول / متوتر"),
+        Language.get("Hotel_NoteTag_SpecialDiet", alter: "نظام غذائي خاص"),
+        Language.get("Hotel_NoteTag_NeedsCare", alter: "يحتاج دواء")
     ]
 
     var body: some View {
@@ -417,7 +429,7 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
                     Text(displayedPriceText)
                         .font(Font.custom("Beiruti-Bold", size: 18))
                         .foregroundStyle(AdminSurface.primary)
-                    Text(String(format: Language.get("Hotel_Nights_Format", alter: "%ld ليالٍ"), reservation.numberOfNights))
+                    Text(displayedPriceSubtext)
                         .font(Font.custom("Beiruti-Medium", size: 11.5))
                         .foregroundStyle(AdminSurface.secondaryText)
                 }
@@ -446,6 +458,46 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
                 )
             }
             .padding(.top, 4)
+
+            // Dedicated Financial Breakdown Strip when deposit exists
+            if let depositStr = reservation.formattedDeposit, (reservation.depositMinor ?? 0) > 0 {
+                HStack(spacing: 8) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Color(red: 0.16, green: 0.72, blue: 0.44))
+                        Text(Language.get("Hotel_DepositPaid_Label", alter: "عربون مسدد:"))
+                            .font(Font.custom("Beiruti-Medium", size: 12))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                        Text(depositStr)
+                            .font(Font.custom("Beiruti-Bold", size: 12))
+                            .foregroundStyle(Color(red: 0.16, green: 0.72, blue: 0.44))
+                    }
+
+                    Spacer()
+
+                    if let balanceStr = reservation.formattedBalanceDue {
+                        HStack(spacing: 4) {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(Color.orange)
+                            Text(Language.get("Hotel_BalanceRemaining_Label", alter: "المتبقي عند المغادرة:"))
+                                .font(Font.custom("Beiruti-Medium", size: 12))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                            Text(balanceStr)
+                                .font(Font.custom("Beiruti-Bold", size: 12))
+                                .foregroundStyle(Color.orange)
+                        }
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(AdminSurface.background.opacity(0.85), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: 0.75)
+                )
+            }
         }
         .padding(14)
         .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -456,10 +508,15 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
     }
 
     private var displayedPriceText: String {
+        if let bal = reservation.balanceDueMinor, (reservation.depositMinor ?? 0) > 0, bal < (reservation.totalAmountMinor ?? 0) {
+            let major = Double(bal) / 100.0
+            return String(format: "%.0f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
+        }
         if let total = reservation.totalAmountMinor, total > 0 {
             return reservation.formattedTotal
         }
         let rateMinor = selectedRoom?.nightlyRateMinor
+            ?? reservation.nightlyRateMinor
             ?? viewModel.accommodations.first(where: { $0.id == reservation.assignedAccommodationId })?.nightlyRateMinor
             ?? viewModel.accommodationTypes.first(where: { $0.id == reservation.accommodationTypeId })?.nightlyRateMinor
             ?? viewModel.accommodationTypes.first(where: { $0.wing == reservation.wing })?.nightlyRateMinor
@@ -469,6 +526,26 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
             return String(format: "%.0f %@", total, Language.get("Currency_QAR", alter: "ر.ق"))
         }
         return reservation.formattedTotal
+    }
+
+    private var displayedPriceSubtext: String {
+        let nightsFormat = String(format: Language.get("Hotel_Nights_Format", alter: "%ld ليالٍ"), reservation.numberOfNights)
+        if let bal = reservation.balanceDueMinor, (reservation.depositMinor ?? 0) > 0, bal < (reservation.totalAmountMinor ?? 0) {
+            return Language.get("Hotel_BalanceRemaining_Short", alter: "المتبقي للتحصيل") + " • " + reservation.formattedTotal
+        }
+        let rateMinor = selectedRoom?.nightlyRateMinor
+            ?? reservation.nightlyRateMinor
+            ?? viewModel.accommodations.first(where: { $0.id == reservation.assignedAccommodationId })?.nightlyRateMinor
+            ?? viewModel.accommodationTypes.first(where: { $0.id == reservation.accommodationTypeId })?.nightlyRateMinor
+            ?? viewModel.accommodationTypes.first(where: { $0.wing == reservation.wing })?.nightlyRateMinor
+
+        if let rateMinor, rateMinor > 0 {
+            let perNight = Double(rateMinor) / 100.0
+            let rateStr = String(format: "%.0f %@", perNight, Language.get("Currency_QAR", alter: "ر.ق"))
+            let perNightLabel = Language.get("Hotel_PerNight", alter: "/ ليلة")
+            return "\(nightsFormat) • \(rateStr) \(perNightLabel)"
+        }
+        return nightsFormat
     }
 
     private var petSubtitle: String {
@@ -616,71 +693,17 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
 
     // MARK: - iPhone Room Selection Deck
     private var iPhoneRoomSelectionDeck: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label {
-                    Text(Language.get("Hotel_SelectRoom", alter: "اختر الجناح أو الغرفة"))
-                        .font(Font.custom("Beiruti-Bold", size: 16))
-                        .foregroundStyle(AdminSurface.primaryText)
-                } icon: {
-                    Image(systemName: "bed.double.fill")
-                        .foregroundStyle(AdminSurface.primary)
-                }
-
-                Spacer()
-
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    onRefreshAvailability()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(AdminSurface.secondaryText)
-                }
-            }
-
-            let availableRooms = viewModel.accommodations.filter {
-                (availabilitySnapshot?.assignableIds.contains($0.id) ?? false)
-            }
-
-            if isLoadingAvailability {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        AdminHotelShimmerRoomCard()
-                        AdminHotelShimmerRoomCard()
-                        AdminHotelShimmerRoomCard()
-                    }
-                    .padding(.vertical, 2)
-                }
-            } else if let availabilityErrorMessage {
-                AdminHotelAvailabilityDiagnosticsBanner(
-                    snapshot: availabilitySnapshot,
-                    errorMessage: availabilityErrorMessage
-                )
-            } else if availableRooms.isEmpty {
-                AdminHotelAvailabilityDiagnosticsBanner(
-                    snapshot: availabilitySnapshot,
-                    errorMessage: nil
-                )
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(availableRooms) { room in
-                            let isSelected = selectedRoom?.id == room.id
-                            AdminHotelRoomTile(
-                                room: room,
-                                isSelected: isSelected
-                            ) {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                selectedRoom = room
-                            }
-                            .frame(width: 140)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-            }
-        }
+        AdminHotelCheckInRoomSelectionSection(
+            reservation: reservation,
+            authoritativeStay: authoritativeStay,
+            viewModel: viewModel,
+            selectedRoom: $selectedRoom,
+            availabilitySnapshot: availabilitySnapshot,
+            availabilityErrorMessage: availabilityErrorMessage,
+            isLoadingAvailability: isLoadingAvailability,
+            onRefreshAvailability: onRefreshAvailability,
+            isIPad: false
+        )
     }
 
     // MARK: - iPhone Verification Cockpit
@@ -790,9 +813,17 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
                     }
 
                     if (reservation.depositMinor ?? 0) > 0 {
+                        let isPrepaid = reservation.paymentStatus == "deposit_held" || (reservation.paidAmountMinor ?? 0) >= (reservation.depositMinor ?? 0)
+                        let depositSubtitle: String = {
+                            if let formattedDep = reservation.formattedDeposit, isPrepaid {
+                                return String(format: Language.get("Hotel_DepositVerified_Sub", alter: "تم استلام العربون مسبقاً بقيمة %@"), formattedDep)
+                            }
+                            return Language.get("Hotel_VerifyDeposit_Sub", alter: "التحقق من سداد العربون المسبق للحجز")
+                        }()
+
                         AdminHotelVerificationCard(
                             title: Language.get("Hotel_VerifyDeposit", alter: "تأكيد حالة العربون المستحق"),
-                            subtitle: Language.get("Hotel_VerifyDeposit_Sub", alter: "التحقق من سداد العربون المسبق للحجز"),
+                            subtitle: depositSubtitle,
                             icon: "creditcard.fill",
                             isVerified: $verification.depositSettled
                         ) {
@@ -891,7 +922,7 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
                 // Custom Add Row
                 HStack(spacing: 8) {
                     TextField(
-                        Language.get("Hotel_AddBelongingPrompt", alter: "أضف غرضاً مثل دواء أو بطانية"),
+                        Language.get("Hotel_AddBelongingPrompt", alter: "أضف غرضاً (مثل: حقيبة النقل، بطانية، طوق)..."),
                         text: $newBelongingName
                     )
                     .font(Font.custom("Beiruti-Medium", size: 13.5))
@@ -934,7 +965,7 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
     private var iPhoneNotesStudio: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label {
-                Text(Language.get("Hotel_IntakeNotes", alter: "ملاحظات الوصول"))
+                Text(Language.get("Hotel_IntakeNotes", alter: "ملاحظات تسجيل الوصول"))
                     .font(Font.custom("Beiruti-Bold", size: 16))
                     .foregroundStyle(AdminSurface.primaryText)
             } icon: {
@@ -965,7 +996,7 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
                 }
 
                 TextField(
-                    Language.get("Hotel_IntakeNotesPlaceholder", alter: "تعليمات الطعام أو الحساسية أو السلوك أو غيرها"),
+                    Language.get("Hotel_IntakeNotesPlaceholder", alter: "أدخل ملاحظات الاستقبال أو تعليمات التعامل..."),
                     text: $internalNotes
                 )
                 .font(Font.custom("Beiruti-Medium", size: 13.5))
@@ -1129,14 +1160,14 @@ private struct AdminPetsHotelCheckIn_iPad: View {
         Language.get("Hotel_Chip_Medication", alter: "دواء مخصص"),
         Language.get("Hotel_Chip_Carrier", alter: "قفص نقل"),
         Language.get("Hotel_Chip_SpecialFood", alter: "طعام خاص"),
-        Language.get("Hotel_Chip_Toys", alter: "ألعاب النزيل")
+        Language.get("Hotel_Chip_Toys", alter: "ألعاب")
     ]
 
     private let quickNotePills: [String] = [
-        Language.get("Hotel_NoteTag_Calm", alter: "هادئ ومطيع"),
-        Language.get("Hotel_NoteTag_Anxious", alter: "متوتر من الغرباء"),
-        Language.get("Hotel_NoteTag_SpecialDiet", alter: "نظام غذائي دقيق"),
-        Language.get("Hotel_NoteTag_NeedsCare", alter: "عناية طبية خاصة")
+        Language.get("Hotel_NoteTag_Calm", alter: "هادئ / ودود"),
+        Language.get("Hotel_NoteTag_Anxious", alter: "خجول / متوتر"),
+        Language.get("Hotel_NoteTag_SpecialDiet", alter: "نظام غذائي خاص"),
+        Language.get("Hotel_NoteTag_NeedsCare", alter: "يحتاج دواء")
     ]
 
     var body: some View {
@@ -1434,7 +1465,7 @@ private struct AdminPetsHotelCheckIn_iPad: View {
     }
 
     private var iPadFinancialLedgerCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Label {
                 Text(Language.get("Hotel_Ledger_Total", alter: "إجمالي الحساب:"))
                     .font(Font.custom("Beiruti-Bold", size: 14))
@@ -1445,18 +1476,45 @@ private struct AdminPetsHotelCheckIn_iPad: View {
             }
 
             HStack {
-                Text(displayedPriceText)
-                    .font(Font.custom("Beiruti-Bold", size: 22))
-                    .foregroundStyle(AdminSurface.primary)
-                Spacer()
-                if let bal = reservation.balanceDueMinor, bal > 0 {
-                    let formattedBal = String(format: "%.0f", Double(bal) / 100.0)
-                    let currency = Language.get("Currency_QAR", alter: "ر.ق")
-                    let pending = Language.get("Pending", alter: "متبقي")
-                    Text("\(formattedBal) \(currency) \(pending)")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(reservation.formattedTotal)
+                        .font(Font.custom("Beiruti-Bold", size: 22))
+                        .foregroundStyle(AdminSurface.primaryText)
+                    Text(displayedPriceSubtext)
                         .font(Font.custom("Beiruti-Medium", size: 12))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(AdminSurface.secondaryText)
                 }
+                Spacer()
+                if let bal = reservation.balanceDueMinor, (reservation.depositMinor ?? 0) > 0, bal > 0 {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        let formattedBal = String(format: "%.0f", Double(bal) / 100.0)
+                        let currency = Language.get("Currency_QAR", alter: "ر.ق")
+                        Text("\(formattedBal) \(currency)")
+                            .font(Font.custom("Beiruti-Bold", size: 18))
+                            .foregroundStyle(.orange)
+                        Text(Language.get("Hotel_BalanceRemaining_Label", alter: "المتبقي عند المغادرة"))
+                            .font(Font.custom("Beiruti-Medium", size: 11))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                }
+            }
+
+            if let depositStr = reservation.formattedDeposit, (reservation.depositMinor ?? 0) > 0 {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color(red: 0.16, green: 0.72, blue: 0.44))
+                    Text(Language.get("Hotel_DepositPaid_Label", alter: "عربون مسدد:"))
+                        .font(Font.custom("Beiruti-Medium", size: 12))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    Text(depositStr)
+                        .font(Font.custom("Beiruti-Bold", size: 12))
+                        .foregroundStyle(Color(red: 0.16, green: 0.72, blue: 0.44))
+                    Spacer()
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(AdminSurface.background, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
         }
         .padding(14)
@@ -1472,6 +1530,7 @@ private struct AdminPetsHotelCheckIn_iPad: View {
             return reservation.formattedTotal
         }
         let rateMinor = selectedRoom?.nightlyRateMinor
+            ?? reservation.nightlyRateMinor
             ?? viewModel.accommodations.first(where: { $0.id == reservation.assignedAccommodationId })?.nightlyRateMinor
             ?? viewModel.accommodationTypes.first(where: { $0.id == reservation.accommodationTypeId })?.nightlyRateMinor
             ?? viewModel.accommodationTypes.first(where: { $0.wing == reservation.wing })?.nightlyRateMinor
@@ -1483,66 +1542,39 @@ private struct AdminPetsHotelCheckIn_iPad: View {
         return reservation.formattedTotal
     }
 
+    private var displayedPriceSubtext: String {
+        let nightsFormat = String(format: Language.get("Hotel_Nights_Format", alter: "%ld ليالٍ"), reservation.numberOfNights)
+        if let bal = reservation.balanceDueMinor, (reservation.depositMinor ?? 0) > 0, bal < (reservation.totalAmountMinor ?? 0) {
+            return Language.get("Hotel_BalanceRemaining_Short", alter: "المتبقي للتحصيل") + " • " + reservation.formattedTotal
+        }
+        let rateMinor = selectedRoom?.nightlyRateMinor
+            ?? reservation.nightlyRateMinor
+            ?? viewModel.accommodations.first(where: { $0.id == reservation.assignedAccommodationId })?.nightlyRateMinor
+            ?? viewModel.accommodationTypes.first(where: { $0.id == reservation.accommodationTypeId })?.nightlyRateMinor
+            ?? viewModel.accommodationTypes.first(where: { $0.wing == reservation.wing })?.nightlyRateMinor
+
+        if let rateMinor, rateMinor > 0 {
+            let perNight = Double(rateMinor) / 100.0
+            let rateStr = String(format: "%.0f %@", perNight, Language.get("Currency_QAR", alter: "ر.ق"))
+            let perNightLabel = Language.get("Hotel_PerNight", alter: "/ ليلة")
+            return "\(rateStr) \(perNightLabel) • \(nightsFormat)"
+        }
+        return nightsFormat
+    }
+
     // MARK: - iPad Right Panel Components
     private var iPadRoomAllocationMatrix: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label {
-                    Text(Language.get("Hotel_SelectRoom", alter: "اختر الجناح أو الغرفة"))
-                        .font(Font.custom("Beiruti-Bold", size: 17))
-                        .foregroundStyle(AdminSurface.primaryText)
-                } icon: {
-                    Image(systemName: "bed.double.fill")
-                        .foregroundStyle(AdminSurface.primary)
-                }
-
-                Spacer()
-
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    onRefreshAvailability()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(AdminSurface.secondaryText)
-                }
-            }
-
-            let availableRooms = viewModel.accommodations.filter {
-                (availabilitySnapshot?.assignableIds.contains($0.id) ?? false)
-            }
-
-            if isLoadingAvailability {
-                HStack(spacing: 12) {
-                    AdminHotelShimmerRoomCard()
-                    AdminHotelShimmerRoomCard()
-                    AdminHotelShimmerRoomCard()
-                }
-            } else if let availabilityErrorMessage {
-                AdminHotelAvailabilityDiagnosticsBanner(
-                    snapshot: availabilitySnapshot,
-                    errorMessage: availabilityErrorMessage
-                )
-            } else if availableRooms.isEmpty {
-                AdminHotelAvailabilityDiagnosticsBanner(
-                    snapshot: availabilitySnapshot,
-                    errorMessage: nil
-                )
-            } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140, maximum: 190), spacing: 10)], spacing: 10) {
-                    ForEach(availableRooms) { room in
-                        let isSelected = selectedRoom?.id == room.id
-                        AdminHotelRoomTile(
-                            room: room,
-                            isSelected: isSelected
-                        ) {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            selectedRoom = room
-                        }
-                    }
-                }
-            }
-        }
+        AdminHotelCheckInRoomSelectionSection(
+            reservation: reservation,
+            authoritativeStay: authoritativeStay,
+            viewModel: viewModel,
+            selectedRoom: $selectedRoom,
+            availabilitySnapshot: availabilitySnapshot,
+            availabilityErrorMessage: availabilityErrorMessage,
+            isLoadingAvailability: isLoadingAvailability,
+            onRefreshAvailability: onRefreshAvailability,
+            isIPad: true
+        )
     }
 
     private var iPadVerificationMatrix: some View {
@@ -1623,9 +1655,17 @@ private struct AdminPetsHotelCheckIn_iPad: View {
                 }
 
                 if (reservation.depositMinor ?? 0) > 0 {
+                    let isPrepaid = reservation.paymentStatus == "deposit_held" || (reservation.paidAmountMinor ?? 0) >= (reservation.depositMinor ?? 0)
+                    let depositSubtitle: String = {
+                        if let formattedDep = reservation.formattedDeposit, isPrepaid {
+                            return String(format: Language.get("Hotel_DepositVerified_Sub", alter: "تم استلام العربون مسبقاً بقيمة %@"), formattedDep)
+                        }
+                        return Language.get("Hotel_VerifyDeposit_Sub", alter: "التحقق من سداد العربون المسبق للحجز")
+                    }()
+
                     AdminHotelVerificationCard(
                         title: Language.get("Hotel_VerifyDeposit", alter: "تأكيد حالة العربون المستحق"),
-                        subtitle: Language.get("Hotel_VerifyDeposit_Sub", alter: "التحقق من سداد العربون المسبق للحجز"),
+                        subtitle: depositSubtitle,
                         icon: "creditcard.fill",
                         isVerified: $verification.depositSettled
                     ) {
@@ -1715,7 +1755,7 @@ private struct AdminPetsHotelCheckIn_iPad: View {
                 // Input Bar
                 HStack(spacing: 10) {
                     TextField(
-                        Language.get("Hotel_AddBelongingPrompt", alter: "أضف غرضاً مثل دواء أو بطانية"),
+                        Language.get("Hotel_AddBelongingPrompt", alter: "أضف غرضاً (مثل: حقيبة النقل، بطانية، طوق)..."),
                         text: $newBelongingName
                     )
                     .font(Font.custom("Beiruti-Medium", size: 14))
@@ -1756,7 +1796,7 @@ private struct AdminPetsHotelCheckIn_iPad: View {
     private var iPadNotesStudio: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label {
-                Text(Language.get("Hotel_IntakeNotes", alter: "ملاحظات الوصول"))
+                Text(Language.get("Hotel_IntakeNotes", alter: "ملاحظات تسجيل الوصول"))
                     .font(Font.custom("Beiruti-Bold", size: 17))
                     .foregroundStyle(AdminSurface.primaryText)
             } icon: {
@@ -1787,7 +1827,7 @@ private struct AdminPetsHotelCheckIn_iPad: View {
                 }
 
                 TextField(
-                    Language.get("Hotel_IntakeNotesPlaceholder", alter: "تعليمات الطعام أو الحساسية أو السلوك أو غيرها"),
+                    Language.get("Hotel_IntakeNotesPlaceholder", alter: "أدخل ملاحظات الاستقبال أو تعليمات التعامل..."),
                     text: $internalNotes
                 )
                 .font(Font.custom("Beiruti-Medium", size: 14))
@@ -1941,12 +1981,35 @@ private struct AdminPetsHotelCheckIn_iPad: View {
 // MARK: - Category-Defining Shared Hotel Room & Verification Tiles
 private struct AdminHotelRoomTile: View {
     let room: AdminHotelAccommodation
+    var effectiveRateMinor: Int? = nil
+    var isReservedForThisStay: Bool = false
     let isSelected: Bool
     let onSelect: () -> Void
+
+    private var displayRateText: String {
+        if let rate = effectiveRateMinor ?? room.nightlyRateMinor, rate > 0 {
+            let qar = Double(rate) / 100.0
+            return String(format: "%.0f %@", qar, Language.get("Currency_QAR", alter: "ر.ق"))
+        }
+        return room.formattedRate
+    }
 
     var body: some View {
         Button(action: onSelect) {
             VStack(alignment: .leading, spacing: 4) {
+                if isReservedForThisStay {
+                    HStack(spacing: 3) {
+                        Image(systemName: "lock.shield.fill")
+                            .font(.system(size: 8, weight: .bold))
+                        Text(Language.get("Hotel_ReservedForThisGuest", alter: "محجوز لهذا الضيف"))
+                            .font(Font.custom("Beiruti-Bold", size: 9))
+                    }
+                    .foregroundStyle(isSelected ? Color.white : Color(uiColor: .systemGreen))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background((isSelected ? Color.white.opacity(0.2) : Color(uiColor: .systemGreen).opacity(0.15)), in: Capsule())
+                }
+
                 HStack {
                     Text(room.accommodationNumber)
                         .font(Font.custom("Beiruti-Bold", size: 16))
@@ -1964,7 +2027,7 @@ private struct AdminHotelRoomTile: View {
                     .foregroundStyle(isSelected ? .white.opacity(0.9) : AdminSurface.secondaryText)
                     .lineLimit(1)
 
-                Text(room.formattedRate)
+                Text(displayRateText)
                     .font(Font.custom("Beiruti-Bold", size: 12.5))
                     .foregroundStyle(isSelected ? .white : AdminSurface.primary)
             }
@@ -1976,15 +2039,402 @@ private struct AdminHotelRoomTile: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(isSelected ? AdminSurface.primary : Color(uiColor: .ppSurfaceBorder).opacity(0.45), lineWidth: isSelected ? 1.5 : 0.75)
+                    .strokeBorder(isSelected ? AdminSurface.primary : (isReservedForThisStay ? Color(uiColor: .systemGreen).opacity(0.6) : Color(uiColor: .ppSurfaceBorder).opacity(0.45)), lineWidth: isSelected ? 1.5 : (isReservedForThisStay ? 1.2 : 0.75))
             )
             .shadow(color: isSelected ? AdminSurface.primary.opacity(0.24) : Color.clear, radius: 6, y: 2)
         }
         .buttonStyle(PlainButtonStyle())
         .hoverEffect(.highlight)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(room.accommodationNumber), \(room.name), \(room.formattedRate)")
+        .accessibilityLabel("\(room.accommodationNumber), \(room.name), \(displayRateText)")
         .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : [.isButton])
+    }
+}
+
+private struct AdminHotelUnavailableRoomTile: View {
+    let room: AdminHotelAccommodation
+    let dominantRejectionCode: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(room.accommodationNumber)
+                    .font(Font.custom("Beiruti-Bold", size: 15))
+                    .foregroundStyle(AdminSurface.secondaryText.opacity(0.7))
+                Spacer()
+                Image(systemName: "slash.circle")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.red.opacity(0.6))
+            }
+
+            Text(room.name)
+                .font(Font.custom("Beiruti-Medium", size: 11))
+                .foregroundStyle(AdminSurface.secondaryText.opacity(0.6))
+                .lineLimit(1)
+
+            if let code = dominantRejectionCode {
+                Text(AdminHotelDominantReasonPolicy.localizedReason(for: code))
+                    .font(Font.custom("Beiruti-Medium", size: 10))
+                    .foregroundStyle(Color.red.opacity(0.85))
+                    .lineLimit(2)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AdminSurface.control.opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.red.opacity(0.2), lineWidth: 0.75)
+        )
+    }
+}
+
+private struct PendingRepriceAssignment: Identifiable {
+    let id = UUID()
+    let type: AdminHotelCompatibleAlternativeType
+    let unit: AdminHotelAvailabilityUnit
+}
+
+private struct AdminHotelCheckInRoomSelectionSection: View {
+    let reservation: AdminHotelReservation
+    let authoritativeStay: AdminHotelStay?
+    @ObservedObject var viewModel: AdminPetsHotelViewModel
+    @Binding var selectedRoom: AdminHotelAccommodation?
+    let availabilitySnapshot: AdminHotelAvailabilitySnapshot?
+    let availabilityErrorMessage: String?
+    let isLoadingAvailability: Bool
+    let onRefreshAvailability: () -> Void
+    let isIPad: Bool
+
+    @State private var isUnavailableExpanded: Bool = false
+    @State private var pendingReprice: PendingRepriceAssignment? = nil
+    @State private var isReassigning: Bool = false
+
+    private var heldUnitId: String? {
+        availabilitySnapshot?.units.first(where: { $0.isReservedForThisStay })?.accommodationId
+    }
+
+    private var assignableRooms: [AdminHotelAccommodation] {
+        let assignableIds = availabilitySnapshot?.assignableIds ?? []
+        return viewModel.accommodations
+            .filter { assignableIds.contains($0.id) }
+            .sorted { r1, r2 in
+                if r1.id == heldUnitId { return true }
+                if r2.id == heldUnitId { return false }
+                return r1.accommodationNumber < r2.accommodationNumber
+            }
+    }
+
+    private var rejectedUnits: [AdminHotelAvailabilityUnit] {
+        availabilitySnapshot?.rejectedUnits ?? []
+    }
+
+    private var compatibleAlternatives: [AdminHotelCompatibleAlternativeType] {
+        availabilitySnapshot?.compatibleAlternativeTypes ?? []
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header Row
+            HStack {
+                Label {
+                    Text(Language.get("Hotel_SelectRoom", alter: "اختر الجناح أو الغرفة"))
+                        .font(Font.custom("Beiruti-Bold", size: isIPad ? 17 : 16))
+                        .foregroundStyle(AdminSurface.primaryText)
+                } icon: {
+                    Image(systemName: "bed.double.fill")
+                        .foregroundStyle(AdminSurface.primary)
+                }
+
+                Spacer()
+
+                if isReassigning {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                } else {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onRefreshAvailability()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if isLoadingAvailability {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        AdminHotelShimmerRoomCard()
+                        AdminHotelShimmerRoomCard()
+                        AdminHotelShimmerRoomCard()
+                    }
+                    .padding(.vertical, 2)
+                }
+            } else if let availabilityErrorMessage {
+                AdminHotelAvailabilityDiagnosticsBanner(
+                    snapshot: availabilitySnapshot,
+                    errorMessage: availabilityErrorMessage
+                )
+            } else {
+                // Dominant Rejection Banner if 0 assignable rooms in exact type
+                if assignableRooms.isEmpty {
+                    let dominantCode = AdminHotelDominantReasonPolicy.dominantReason(from: rejectedUnits.flatMap(\.rejections))
+                    HStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(Color.orange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(Language.get("Hotel_NoExactRoomsAssignableTitle", alter: "لا توجد أجنحة شاغرة بالفئة الأصلية"))
+                                .font(Font.custom("Beiruti-Bold", size: 13.5))
+                                .foregroundStyle(AdminSurface.primaryText)
+                            Text(AdminHotelDominantReasonPolicy.localizedReason(for: dominantCode ?? ""))
+                                .font(Font.custom("Beiruti-Regular", size: 11.5))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                        }
+                        Spacer()
+                    }
+                    .padding(12)
+                    .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.orange.opacity(0.3), lineWidth: 1))
+                }
+
+                // TIER 1: Recommended / Assignable Rooms
+                if !assignableRooms.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(Color(uiColor: .systemGreen))
+                                .frame(width: 6, height: 6)
+                            Text(Language.get("Hotel_Tier1_MatchingSuites", alter: "الأجنحة المطابقة والمتاحة للتسكين"))
+                                .font(Font.custom("Beiruti-Bold", size: 13))
+                                .foregroundStyle(AdminSurface.primaryText)
+                            Spacer()
+                            Text("\(assignableRooms.count)")
+                                .font(Font.custom("Beiruti-Bold", size: 11))
+                                .foregroundStyle(Color(uiColor: .systemGreen))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1)
+                                .background(Color(uiColor: .systemGreen).opacity(0.12), in: Capsule())
+                        }
+
+                        if isIPad {
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140, maximum: 190), spacing: 10)], spacing: 10) {
+                                ForEach(assignableRooms) { room in
+                                    roomTile(for: room)
+                                }
+                            }
+                        } else {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 10) {
+                                    ForEach(assignableRooms) { room in
+                                        roomTile(for: room)
+                                            .frame(width: 145)
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                            }
+                        }
+                    }
+                }
+
+                // TIER 2: Compatible Alternative Tiers & Upgrades
+                if !compatibleAlternatives.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.up.right.and.arrow.down.left.rectangle.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(AdminSurface.primary)
+                            Text(Language.get("Hotel_Tier2_AlternativeTiers", alter: "فئات وترقيات بديلة متوافقة"))
+                                .font(Font.custom("Beiruti-Bold", size: 13))
+                                .foregroundStyle(AdminSurface.primaryText)
+                        }
+
+                        ForEach(compatibleAlternatives) { alt in
+                            alternativeTypeCard(alt)
+                        }
+                    }
+                }
+
+                // TIER 3: Unavailable Rooms with Exact Dominant Reasons
+                if !rejectedUnits.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Button {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                isUnavailableExpanded.toggle()
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: isUnavailableExpanded ? "chevron.down" : (Language.isRTL() ? "chevron.left" : "chevron.right"))
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(AdminSurface.secondaryText)
+                                Text(String(format: Language.get("Hotel_Tier3_UnavailableSuites", alter: "الأجنحة غير المتاحة مع أسباب الاستبعاد (%d)"), rejectedUnits.count))
+                                    .font(Font.custom("Beiruti-Bold", size: 12))
+                                    .foregroundStyle(AdminSurface.secondaryText)
+                                Spacer()
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.plain)
+
+                        if isUnavailableExpanded {
+                            let rejectedAccommodations: [(room: AdminHotelAccommodation, rejection: String?)] = rejectedUnits.compactMap { unit in
+                                guard let match = viewModel.accommodations.first(where: { $0.id == unit.accommodationId }) else { return nil }
+                                let dominantCode = AdminHotelDominantReasonPolicy.dominantReason(from: unit.rejections)
+                                return (match, dominantCode)
+                            }
+
+                            if isIPad {
+                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140, maximum: 190), spacing: 8)], spacing: 8) {
+                                    ForEach(rejectedAccommodations, id: \.room.id) { pair in
+                                        AdminHotelUnavailableRoomTile(room: pair.room, dominantRejectionCode: pair.rejection)
+                                    }
+                                }
+                            } else {
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 8) {
+                                        ForEach(rejectedAccommodations, id: \.room.id) { pair in
+                                            AdminHotelUnavailableRoomTile(room: pair.room, dominantRejectionCode: pair.rejection)
+                                                .frame(width: 140)
+                                        }
+                                    }
+                                    .padding(.vertical, 2)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.top, 4)
+                }
+            }
+        }
+        .alert(item: $pendingReprice) { pending in
+            let deltaText = AdminHotelRepricePolicy.formattedDelta(rateDeltaMinor: pending.type.rateDeltaMinor)
+            return Alert(
+                title: Text(Language.get("Hotel_RepriceConfirmTitle", alter: "تأكيد تغيير الفئة وإعادة التسعير")),
+                message: Text(String(format: Language.get("Hotel_RepriceConfirmMessage", alter: "سيتم تسكين النزيل في الجناح (%@) التابع للفئة (%@) مع تعديل السعر بمقدار (%@). هل تريد المتابعة؟"), pending.unit.code, pending.type.displayName, deltaText)),
+                primaryButton: .default(Text(Language.get("Confirm", alter: "تأكيد")), action: {
+                    guard let stayId = authoritativeStay?.id else { return }
+                    Task {
+                        isReassigning = true
+                        let success = await viewModel.reassignStayRoom(
+                            stayId: stayId,
+                            accommodationId: pending.unit.accommodationId,
+                            reasonCode: "tier_upgrade_at_checkin",
+                            confirmReprice: true,
+                            expectedNewRateMinor: pending.type.nightlyRateMinor
+                        )
+                        isReassigning = false
+                        if success {
+                            if let newAcc = viewModel.accommodations.first(where: { $0.id == pending.unit.accommodationId }) {
+                                selectedRoom = newAcc
+                            }
+                            onRefreshAvailability()
+                        }
+                    }
+                }),
+                secondaryButton: .cancel(Text(Language.get("Cancel", alter: "إلغاء")))
+            )
+        }
+    }
+
+    private func effectiveRateForRoom(_ room: AdminHotelAccommodation) -> Int? {
+        if let rate = room.nightlyRateMinor {
+            return rate
+        }
+        if !room.accommodationTypeId.isEmpty,
+           let typeRate = viewModel.accommodationTypes.first(where: { $0.id == room.accommodationTypeId })?.nightlyRateMinor {
+            return typeRate
+        }
+        if room.id == reservation.assignedAccommodationId, let resRate = reservation.nightlyRateMinor {
+            return resRate
+        }
+        if let wingRate = viewModel.accommodationTypes.first(where: { $0.wing == reservation.wing })?.nightlyRateMinor {
+            return wingRate
+        }
+        return reservation.nightlyRateMinor
+    }
+
+    private func roomTile(for room: AdminHotelAccommodation) -> some View {
+        let isSelected = selectedRoom?.id == room.id
+        let isHeld = (room.id == heldUnitId)
+        let effectiveRate = effectiveRateForRoom(room)
+        return AdminHotelRoomTile(
+            room: room,
+            effectiveRateMinor: effectiveRate,
+            isReservedForThisStay: isHeld,
+            isSelected: isSelected
+        ) {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            selectedRoom = room
+        }
+    }
+
+    private func alternativeTypeCard(_ alt: AdminHotelCompatibleAlternativeType) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(alt.displayName)
+                        .font(Font.custom("Beiruti-Bold", size: 13.5))
+                        .foregroundStyle(AdminSurface.primaryText)
+
+                    Text(String(format: Language.get("Hotel_Suite_AvailableUnits", alter: "%d أجنحة شاغرة"), alt.assignableUnits.count))
+                        .font(Font.custom("Beiruti-Regular", size: 11))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+
+                Spacer()
+
+                // Rate Delta Badge
+                Text(AdminHotelRepricePolicy.formattedDelta(rateDeltaMinor: alt.rateDeltaMinor))
+                    .font(Font.custom("Beiruti-Bold", size: 11))
+                    .foregroundStyle(alt.rateDeltaMinor > 0 ? AdminSurface.primary : (alt.rateDeltaMinor < 0 ? Color(uiColor: .systemGreen) : AdminSurface.secondaryText))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(
+                        (alt.rateDeltaMinor > 0 ? AdminSurface.primary : (alt.rateDeltaMinor < 0 ? Color(uiColor: .systemGreen) : AdminSurface.secondaryText)).opacity(0.12),
+                        in: Capsule()
+                    )
+            }
+
+            // Units under this alternative type
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(alt.assignableUnits) { unit in
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            pendingReprice = PendingRepriceAssignment(type: alt, unit: unit)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                    .font(.system(size: 10, weight: .bold))
+                                Text(unit.code)
+                                    .font(Font.custom("Beiruti-Bold", size: 12))
+                                Text("(\(Language.get("Hotel_ChangeAndAssign", alter: "تغيير وتسكين")))")
+                                    .font(Font.custom("Beiruti-Regular", size: 10))
+                                    .foregroundStyle(AdminSurface.secondaryText)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color(uiColor: .ppForeground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.8)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(AdminSurface.hairline.opacity(0.6), lineWidth: 0.8)
+        )
     }
 }
 
@@ -2712,11 +3162,11 @@ public struct AdminHotelQuickSettlementSheet: View {
 
                     // Reference & Notes Input
                     VStack(alignment: .leading, spacing: 12) {
-                        Text(Language.get("Hotel_Settlement_Reference", alter: "الرقم المرجعي"))
+                        Text(Language.get("Hotel_Settlement_Reference", alter: "رقم إيصال تسوية الإقامة الفندقية"))
                             .font(Font.custom("Beiruti-Bold", size: 15))
                             .foregroundStyle(AdminSurface.primaryText)
 
-                        TextField(Language.get("Hotel_Settlement_RefPlaceholder", alter: "رقم إيصال أو عملية السداد (اختياري)"), text: $reference)
+                        TextField(Language.get("Hotel_Settlement_RefPlaceholder", alter: "رقم إيصال أو عملية تسوية الإقامة الفندقية السعيدة..."), text: $reference)
                             .font(Font.custom("Beiruti-Medium", size: 14))
                             .padding(12)
                             .background(AdminSurface.background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -2725,12 +3175,12 @@ public struct AdminHotelQuickSettlementSheet: View {
                                     .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.8)
                             )
 
-                        Text(Language.get("Hotel_Settlement_Notes", alter: "ملاحظات"))
+                        Text(Language.get("Hotel_Settlement_Notes", alter: "ملاحظات تسوية الإجازة الفندقية"))
                             .font(Font.custom("Beiruti-Bold", size: 15))
                             .foregroundStyle(AdminSurface.primaryText)
                             .padding(.top, 4)
 
-                        TextField(Language.get("Hotel_Settlement_NotesPlaceholder", alter: "ملاحظات إضافية على السداد (اختياري)"), text: $notes)
+                        TextField(Language.get("Hotel_Settlement_NotesPlaceholder", alter: "ملاحظات إضافية على تسوية الإجازة السعيدة (اختياري)..."), text: $notes)
                             .font(Font.custom("Beiruti-Medium", size: 14))
                             .padding(12)
                             .background(AdminSurface.background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))

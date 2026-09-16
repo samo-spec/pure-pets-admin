@@ -21,6 +21,7 @@ import FirebaseFunctions
 
 extension MainKindsModel: @unchecked Sendable {}
 extension SubKindModel: @unchecked Sendable {}
+extension PPAccessoryCategoryModel: @unchecked Sendable {}
 
 // MARK: - Navigation Stages & Digital Twin Modes
 
@@ -443,6 +444,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 dynamicSubKinds = []
                 if let newMain = selectedMainKind {
                     fetchFreshSubKinds(for: newMain)
+                    refreshAccessoryCategories(forMainKindID: newMain.id)
+                } else {
+                    refreshAccessoryCategories(forMainKindID: 0)
                 }
             }
             updateUnsavedChanges()
@@ -479,6 +483,13 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 selectedSubKind = nil
                 isAllSubCategoriesSelected = false
                 fetchFreshSubKindsForSelectedCategories()
+                if let firstID = selectedMainKinds.first {
+                    refreshAccessoryCategories(forMainKindID: firstID)
+                } else if isAllCategoriesSelected {
+                    refreshAccessoryCategories(forMainKindID: 1)
+                } else {
+                    refreshAccessoryCategories(forMainKindID: 0)
+                }
             }
             updateUnsavedChanges()
         }
@@ -628,6 +639,53 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     @Published var previewUIImage: UIImage? = nil
     @Published var showDiscardConfirmation: Bool = false
 
+    // Accessory Category Selection
+    @Published var selectedAccessoryCategoryID: String? = nil { didSet { updateUnsavedChanges() } }
+    @Published var availableAccessoryCategories: [PPAccessoryCategoryModel] = []
+    @Published var showAccessoryCategoryPicker: Bool = false
+    @Published var isLoadingAccessoryCategories: Bool = false
+
+    var selectedAccessoryCategory: PPAccessoryCategoryModel? {
+        guard let id = selectedAccessoryCategoryID, !id.isEmpty else { return nil }
+        return availableAccessoryCategories.first { $0.categoryID == id || $0.documentID == id }
+    }
+
+    var selectedAccessoryCategoryDisplayTitle: String? {
+        if let cat = selectedAccessoryCategory {
+            return cat.displayName()
+        }
+        if let id = selectedAccessoryCategoryID, !id.isEmpty {
+            return id
+        }
+        return nil
+    }
+
+    func refreshAccessoryCategories(forMainKindID mainID: Int) {
+        guard mainID > 0 else {
+            self.availableAccessoryCategories = []
+            return
+        }
+        let cached = MainKindsArrayManager.shared().accessoryCategories(forMainKindID: mainID)
+        if !cached.isEmpty {
+            self.availableAccessoryCategories = cached
+        } else {
+            self.availableAccessoryCategories = MainKindsModel.canonicalAccessoryCategories(forMainKindID: mainID)
+        }
+
+        if let mainModel = availableMainKinds.first(where: { $0.id == mainID }) ?? MainKindsArrayManager.shared().mainKind(forID: mainID) {
+            self.isLoadingAccessoryCategories = true
+            MainKindsArrayManager.shared().loadAccessoryCategories(forMainKind: mainModel) { [weak self] categories, _ in
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    self.isLoadingAccessoryCategories = false
+                    if !categories.isEmpty {
+                        self.availableAccessoryCategories = categories
+                    }
+                }
+            }
+        }
+    }
+
     private var initialSetupComplete: Bool = false
     private var isPopulatingInitialValues: Bool = true
     private var isApplyingCategoryHydration: Bool = false
@@ -768,6 +826,10 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         } else if acc.petSubCategoryID > 0 {
             selectedSubKinds = [acc.petSubCategoryID]
             isAllSubCategoriesSelected = false
+        }
+
+        if let catID = acc.accessoryCategoryID, !catID.isEmpty {
+            selectedAccessoryCategoryID = catID
         }
 
         isPopulatingInitialValues = false
@@ -1228,6 +1290,14 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 self.selectedSubKind = subList.first(where: { $0.id == acc.petSubCategoryID })
             }
         }
+
+        if let catID = acc.accessoryCategoryID, !catID.isEmpty {
+            self.selectedAccessoryCategoryID = catID
+        }
+        let mainIDToLoad = self.selectedMainKind?.id ?? self.selectedMainKinds.first ?? acc.petMainCategoryID
+        if mainIDToLoad > 0 {
+            self.refreshAccessoryCategories(forMainKindID: mainIDToLoad)
+        }
     }
 
     // MARK: - Computed Properties
@@ -1244,10 +1314,12 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         preventsExplicitDismissal || !pickedImageUploadIDs.isEmpty || !pendingUnsavedUploads.isEmpty
     }
     var canManageStock: Bool {
-        PPStaffAuth.shared().cachedCurrentStaff?.hasPermission("stock.manage") ?? false
+        guard let staff = PPStaffAuth.shared().cachedCurrentStaff else { return false }
+        return staff.isAdmin() || staff.hasPermission("stock.manage") || staff.hasPermission("stock.create")
     }
     var canViewStockCosts: Bool {
-        canManageStock || (PPStaffAuth.shared().cachedCurrentStaff?.hasPermission("stock.view") ?? false) || (PPStaffAuth.shared().cachedCurrentStaff?.hasPermission("stock.cost.view") ?? false)
+        guard let staff = PPStaffAuth.shared().cachedCurrentStaff else { return false }
+        return staff.isAdmin() || canManageStock || staff.hasPermission("stock.view") || staff.hasPermission("stock.cost.view")
     }
 
     var canManagePricing: Bool {
@@ -2547,6 +2619,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             accessory.isAllSubCategories = false
             accessory.petMainCategoryIDs = nil
             accessory.petSubCategoryIDs = nil
+            accessory.accessoryCategoryID = nil
         } else {
             accessory.isAllCategories = isAllCategoriesSelected
             accessory.isAllSubCategories = isAllSubCategoriesSelected
@@ -2554,6 +2627,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             accessory.petSubCategoryIDs = isAllSubCategoriesSelected ? [] : Array(selectedSubKinds).map { NSNumber(value: $0) }
             accessory.petMainCategoryID = isAllCategoriesSelected ? 0 : (selectedMainKind?.id ?? selectedMainKinds.first ?? 0)
             accessory.petSubCategoryID = isAllSubCategoriesSelected ? 0 : (selectedSubKind?.id ?? selectedSubKinds.first ?? 0)
+            accessory.accessoryCategoryID = (selectedKind == .typeAccessory) ? selectedAccessoryCategoryID : nil
         }
         
         let defaultActiveBranch = BranchContextStore.shared.activeBranch?.branchID ?? "main_store"
@@ -2994,6 +3068,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         original.imageMeta = saved.imageMeta
         original.petMainCategoryID = saved.petMainCategoryID
         original.petSubCategoryID = saved.petSubCategoryID
+        original.accessoryCategoryID = saved.accessoryCategoryID
         original.condition = saved.condition
         original.accessKindType = saved.accessKindType
         original.expiryDate = saved.expiryDate
@@ -4376,6 +4451,16 @@ struct PPAccessoryEditorScreen: View {
                 }
             )
         }
+        .sheet(isPresented: $viewModel.showAccessoryCategoryPicker) {
+            PPAccessoryCategoryPickerSheet(
+                categories: viewModel.availableAccessoryCategories,
+                selectedCategoryID: viewModel.selectedAccessoryCategoryID,
+                onSelect: { cat in
+                    viewModel.selectedAccessoryCategoryID = cat.categoryID
+                    viewModel.showAccessoryCategoryPicker = false
+                }
+            )
+        }
         .sheet(isPresented: $viewModel.showStorePicker) {
             PPBranchSelectionGateView(
                 title: Language.isRTL() ? "اختر الفرع المالك" : "Select Owning Branch",
@@ -5112,6 +5197,35 @@ struct PPAccessoryEditorScreen: View {
                 }
                 .buttonStyle(EditorPressStyle())
                 .disabled(viewModel.selectedMainKind == nil)
+            }
+
+            if !viewModel.isFood && !viewModel.isLivePet {
+                Button {
+                    if viewModel.selectedMainKind != nil || !viewModel.selectedMainKinds.isEmpty {
+                        focusedField = nil
+                        viewModel.showAccessoryCategoryPicker = true
+                    }
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(Language.get("AccessoryCategory", alter: "تصنيف الإكسسوار"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(AdminCommandInk.secondary)
+                            Text(viewModel.selectedAccessoryCategoryDisplayTitle ?? Language.get("SelectAccessoryCategory", alter: "اختر تصنيف الإكسسوار..."))
+                                .font(AdminType.calloutBold)
+                                .foregroundStyle(viewModel.selectedAccessoryCategoryDisplayTitle != nil ? AdminSurface.primaryText : AdminCommandInk.tertiary)
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                        Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle((viewModel.selectedMainKind != nil || !viewModel.selectedMainKinds.isEmpty) ? AdminSurface.primary : AdminCommandInk.tertiary)
+                    }
+                    .padding(14)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(EditorPressStyle())
+                .disabled(viewModel.selectedMainKind == nil && viewModel.selectedMainKinds.isEmpty)
             }
         }
         .padding(16)
@@ -7778,6 +7892,186 @@ private struct iPadQuantityGroupInspector: View {
                 )
         }
         .buttonStyle(EditorPressStyle())
+    }
+}
+
+private struct PPAccessoryCategoryPickerSheet: View {
+    let categories: [PPAccessoryCategoryModel]
+    let selectedCategoryID: String?
+    let onSelect: (PPAccessoryCategoryModel) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var search = ""
+
+    var filtered: [PPAccessoryCategoryModel] {
+        if search.isEmpty { return categories }
+        let q = search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return categories.filter {
+            $0.displayName().localizedCaseInsensitiveContains(q) ||
+            $0.nameAr.localizedCaseInsensitiveContains(q) ||
+            $0.nameEn.localizedCaseInsensitiveContains(q) ||
+            $0.categoryID.localizedCaseInsensitiveContains(q)
+        }
+    }
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                AdminSurface.background
+                    .ignoresSafeArea()
+
+                VStack(spacing: 12) {
+                    // Search Field
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(AdminSurface.primary)
+                        TextField(Language.get("SearchAccessoryCategory", alter: "ابحث عن تصنيف الإكسسوار..."), text: $search)
+                            .font(AdminType.callout)
+                        if !search.isEmpty {
+                            Button {
+                                search = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(AdminCommandInk.secondary)
+                            }
+                        }
+                    }
+                    .padding(12)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+
+                    // Results List
+                    ScrollView {
+                        LazyVStack(spacing: 10) {
+                            if filtered.isEmpty {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "square.grid.2x2")
+                                        .font(.system(size: 40))
+                                        .foregroundStyle(AdminCommandInk.tertiary)
+                                    Text(Language.get("NoAccessoryCategoriesFound", alter: "لا توجد تصنيفات مطابقة للبحث"))
+                                        .font(AdminType.calloutBold)
+                                        .foregroundStyle(AdminCommandInk.secondary)
+                                }
+                                .padding(.top, 40)
+                            } else {
+                                ForEach(filtered, id: \.categoryID) { cat in
+                                    let isSelected = selectedCategoryID == cat.categoryID || selectedCategoryID == cat.documentID
+
+                                    Button {
+                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                        onSelect(cat)
+                                        dismiss()
+                                    } label: {
+                                        HStack(spacing: 12) {
+                                            ZStack {
+                                                Circle()
+                                                    .fill(isSelected ? AdminSurface.primary : AdminSurface.control)
+                                                    .frame(width: 42, height: 42)
+                                                Image(systemName: categoryIconName(for: cat.categoryID))
+                                                    .font(.system(size: 16, weight: .bold))
+                                                    .foregroundStyle(isSelected ? .white : AdminSurface.primary)
+                                            }
+
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(cat.displayName())
+                                                    .font(AdminType.calloutBold)
+                                                    .foregroundStyle(AdminSurface.primaryText)
+                                                HStack(spacing: 6) {
+                                                    if Language.isRTL() && !cat.nameEn.isEmpty {
+                                                        Text(cat.nameEn)
+                                                            .font(AdminType.caption2)
+                                                            .foregroundStyle(AdminCommandInk.secondary)
+                                                    } else if !Language.isRTL() && !cat.nameAr.isEmpty {
+                                                        Text(cat.nameAr)
+                                                            .font(AdminType.caption2)
+                                                            .foregroundStyle(AdminCommandInk.secondary)
+                                                    }
+                                                    Text(cat.categoryID)
+                                                        .font(Font.system(size: 10, weight: .medium, design: .monospaced))
+                                                        .foregroundStyle(AdminCommandInk.tertiary)
+                                                        .padding(.horizontal, 4)
+                                                        .padding(.vertical, 1)
+                                                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 4))
+                                                }
+                                            }
+
+                                            Spacer()
+
+                                            if isSelected {
+                                                Image(systemName: "checkmark.circle.fill")
+                                                    .font(.system(size: 20, weight: .bold))
+                                                    .foregroundStyle(AdminSurface.primary)
+                                            }
+                                        }
+                                        .padding(14)
+                                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                                .strokeBorder(
+                                                    isSelected ? AdminSurface.primary.opacity(0.8) : Color(uiColor: .ppSurfaceBorder).opacity(0.4),
+                                                    lineWidth: isSelected ? 1.5 : 0.5
+                                                )
+                                        )
+                                    }
+                                    .buttonStyle(EditorPressStyle())
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 24)
+                    }
+                }
+            }
+            .navigationTitle(Language.get("AccessoryCategory", alter: "تصنيف الإكسسوار"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(Language.get("Cancel", alter: "إلغاء")) {
+                        dismiss()
+                    }
+                    .font(AdminType.calloutBold)
+                    .foregroundStyle(AdminSurface.primary)
+                }
+            }
+        }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+
+    private func categoryIconName(for id: String) -> String {
+        switch id {
+        case "cages": return "shippingbox.fill"
+        case "feeders": return "cup.and.saucer.fill"
+        case "perches": return "tree.fill"
+        case "toys": return "gamecontroller.fill"
+        case "nests": return "house.fill"
+        case "clean": return "cross.case.fill"
+        case "saddles": return "shield.fill"
+        case "halters": return "link"
+        case "grooming": return "comb.fill"
+        case "covers": return "bed.double.fill"
+        case "nutrition": return "leaf.fill"
+        case "food_bowls": return "fork.knife"
+        case "carriers": return "bag.fill"
+        case "collars": return "bell.fill"
+        case "litter": return "trash.fill"
+        case "beds": return "bed.double.fill"
+        case "training": return "figure.walk"
+        case "aquariums": return "drop.fill"
+        case "filters": return "arrow.triangle.2.circlepath"
+        case "decorations": return "sparkles"
+        case "lighting": return "lightbulb.fill"
+        case "hoods": return "eye.fill"
+        case "gloves": return "hand.raised.fill"
+        case "stands": return "signpost.right.fill"
+        case "jesses": return "link"
+        case "tracking": return "location.fill"
+        default: return "square.grid.2x2.fill"
+        }
     }
 }
 
@@ -15943,6 +16237,16 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 )
             }
         }
+        .sheet(isPresented: $viewModel.showAccessoryCategoryPicker) {
+            PPAccessoryCategoryPickerSheet(
+                categories: viewModel.availableAccessoryCategories,
+                selectedCategoryID: viewModel.selectedAccessoryCategoryID,
+                onSelect: { cat in
+                    viewModel.selectedAccessoryCategoryID = cat.categoryID
+                    viewModel.showAccessoryCategoryPicker = false
+                }
+            )
+        }
         .fullScreenCover(item: $previewMedia) { media in
             PPLivePetMediaPreview(media: media)
         }
@@ -16522,6 +16826,21 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     disabled: viewModel.hasNoCategorySelected
                 ) {
                     viewModel.showBreedPicker = true
+                }
+
+                if !viewModel.isFood {
+                    taxonomyButton(
+                        title: Language.get("AccessoryCategory", alter: "تصنيف الإكسسوار"),
+                        value: viewModel.selectedAccessoryCategoryDisplayTitle,
+                        placeholder: viewModel.hasNoCategorySelected
+                            ? tr("CatalogIntake_SelectCategoryFirst", "اختر الفئة الرئيسية أولاً")
+                            : Language.get("SelectAccessoryCategory", alter: "اختر تصنيف الإكسسوار..."),
+                        symbol: "square.grid.2x2",
+                        required: false,
+                        disabled: viewModel.hasNoCategorySelected
+                    ) {
+                        viewModel.showAccessoryCategoryPicker = true
+                    }
                 }
 
                 if viewModel.isLoadingKinds {

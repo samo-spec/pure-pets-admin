@@ -108,6 +108,16 @@ public enum AdminPetsHotelError: LocalizedError {
             return Language.get("Hotel_Err_OverrideReasonRequired", alter: "يلزم إدخال سبب التجاوز التشغيلي.")
         case "HOTEL_OVERRIDE_FORBIDDEN":
             return Language.get("Hotel_Err_OverrideForbidden", alter: "ليس لديك صلاحية التجاوز التشغيلي.")
+        case "main_kind_not_allowed", "MAIN_KIND_NOT_ALLOWED":
+            return Language.get("Hotel_Err_MainKindNotAllowed", alter: "نوع أو فصيلة الحيوان غير مسموح بها في هذا الجناح.")
+        case "already-exists", "duplicate_code", "DUPLICATE_ACCOMMODATION_CODE":
+            return Language.get("Hotel_Err_DuplicateCode", alter: "رمز الغرفة/الجناح مستخدم بالفعل في هذا الفرع.")
+        case "INACTIVE_ACCOMMODATION_TYPE", "inactive_type":
+            return Language.get("Hotel_Err_InactiveType", alter: "فئة الإقامة المحددة غير نشطة.")
+        case "REPRICE_CONFIRMATION_REQUIRED":
+            return Language.get("Hotel_Err_RepriceRequired", alter: "يتطلب تغيير نوع الإقامة تأكيد تعديل سعر الليلة والتكلفة الإجمالية.")
+        case "PRICE_MISMATCH":
+            return Language.get("Hotel_Err_PriceMismatch", alter: "تغير سعر الإقامة. يرجى تحديث الصفحة والمحاولة مجدداً.")
 
         default:
             let key = "Hotel_Err_\(trimmed)"
@@ -366,7 +376,9 @@ public final class AdminPetsHotelService: @unchecked Sendable {
         reasonCode: String? = "reception_assignment",
         note: String? = nil,
         overrideReason: String? = nil,
-        isReassign: Bool = false
+        isReassign: Bool = false,
+        confirmReprice: Bool = false,
+        expectedNewRateMinor: Int? = nil
     ) async throws -> [String: Any] {
         var payload: [String: Any] = [
             "stayId": stayId,
@@ -380,6 +392,12 @@ public final class AdminPetsHotelService: @unchecked Sendable {
         }
         if let reason = overrideReason, !reason.isEmpty {
             payload["overrideReason"] = reason
+        }
+        if confirmReprice {
+            payload["confirmReprice"] = true
+        }
+        if let expectedRate = expectedNewRateMinor {
+            payload["expectedNewRateMinor"] = expectedRate
         }
 
         let action = isReassign ? "reassign_accommodation" : "assign_accommodation"
@@ -471,6 +489,7 @@ public final class AdminPetsHotelService: @unchecked Sendable {
         name: String,
         wing: String,
         allowedSpecies: [String],
+        allowedMainKindIds: [Int] = [],
         maxCapacity: Int = 1,
         allowSharedOccupancy: Bool = false,
         status: String? = nil,
@@ -488,6 +507,9 @@ public final class AdminPetsHotelService: @unchecked Sendable {
             "allowSharedOccupancy": allowSharedOccupancy,
             "active": active
         ]
+        if !allowedMainKindIds.isEmpty {
+            payload["allowedMainKindIds"] = allowedMainKindIds
+        }
         if let id = accommodationId, !id.isEmpty {
             payload["accommodationId"] = id
         }
@@ -509,6 +531,7 @@ public final class AdminPetsHotelService: @unchecked Sendable {
         nameEn: String,
         wing: String,
         allowedSpecies: [String],
+        allowedMainKindIds: [Int] = [],
         defaultCapacity: Int = 1,
         nightlyRateMinor: Int,
         allowSharedOccupancy: Bool = false,
@@ -531,6 +554,9 @@ public final class AdminPetsHotelService: @unchecked Sendable {
             "active": active,
             "currency": currency
         ]
+        if !allowedMainKindIds.isEmpty {
+            payload["allowedMainKindIds"] = allowedMainKindIds
+        }
         if let id = accommodationTypeId, !id.isEmpty {
             payload["accommodationTypeId"] = id
         }
@@ -664,10 +690,9 @@ public final class AdminPetsHotelService: @unchecked Sendable {
         if let notes, !notes.isEmpty {
             reservationPayload["notes"] = notes
         }
-        var payload: [String: Any] = [
-            "reservationId": reservationId,
-            "reservation": reservationPayload
-        ]
+        var payload: [String: Any] = reservationPayload
+        payload["reservationId"] = reservationId
+        payload["reservation"] = reservationPayload
         if let overrideReason, !overrideReason.isEmpty {
             payload["overrideReason"] = overrideReason
         }
@@ -864,7 +889,9 @@ public final class AdminPetsHotelService: @unchecked Sendable {
         arrivalAt: Date,
         departureAt: Date,
         species: String,
-        accommodationTypeId: String? = nil
+        accommodationTypeId: String? = nil,
+        stayId: String? = nil,
+        mainKindId: Int? = nil
     ) async throws -> AdminHotelAvailabilitySnapshot {
         var payload: [String: Any] = [
             "branchId": branchId,
@@ -875,8 +902,17 @@ public final class AdminPetsHotelService: @unchecked Sendable {
         if let accommodationTypeId, !accommodationTypeId.isEmpty {
             payload["accommodationTypeId"] = accommodationTypeId
         }
+        if let stayId, !stayId.isEmpty {
+            payload["stayId"] = stayId
+        }
+        if let mainKindId {
+            payload["mainKindId"] = mainKindId
+        }
 
         let result = try await callHotelRead(view: "availability", payload: payload)
+        if let snapshot = AdminHotelAvailabilitySnapshot.fromDictionary(result) {
+            return snapshot
+        }
         guard let rawUnits = result["units"] as? [[String: Any]] else {
             throw AdminPetsHotelError.invalidResponse
         }
@@ -887,6 +923,16 @@ public final class AdminPetsHotelService: @unchecked Sendable {
             throw AdminPetsHotelError.invalidResponse
         }
         return AdminHotelAvailabilitySnapshot(units: units)
+    }
+
+    @MainActor
+    public func fetchDiagnostics(branchId: String) async throws -> AdminHotelDiagnostics {
+        let payload: [String: Any] = ["branchId": branchId]
+        let result = try await callHotelRead(view: "diagnostics", payload: payload)
+        guard let diagnostics = AdminHotelDiagnostics.fromDictionary(result) else {
+            throw AdminPetsHotelError.invalidResponse
+        }
+        return diagnostics
     }
 
     @MainActor

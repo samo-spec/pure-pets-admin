@@ -71,14 +71,25 @@ public final class AdminPetsHotelViewModel: ObservableObject {
     @Published public var checkOutModalStay: AdminHotelStay? = nil
     @Published public var roomStatusModalAccommodation: AdminHotelAccommodation? = nil
     @Published public var commandCenterSnapshot: [String: Any]? = nil
+    @Published public var hotelDiagnostics: AdminHotelDiagnostics? = nil
+    @Published public var isLoadingDiagnostics: Bool = false
     @Published public private(set) var requiresBranchSelection = false
     @Published public private(set) var canViewHotel = false
+    @Published public private(set) var canManageReservations = false
     @Published public private(set) var canCheckIn = false
     @Published public private(set) var canCheckOut = false
     @Published public private(set) var canManageAccommodations = false
     @Published public private(set) var canViewCare = false
     @Published public private(set) var canExecuteCareTasks = false
     @Published public private(set) var canViewBilling = false
+    @Published public private(set) var canManageBilling = false
+
+    public var needsSetup: Bool {
+        if let diagnostics = hotelDiagnostics {
+            return diagnostics.needsSetup
+        }
+        return accommodationTypes.isEmpty || accommodations.isEmpty
+    }
 
     public enum RoomViewMode: String, CaseIterable, Identifiable {
         case grid = "grid"
@@ -269,6 +280,22 @@ public final class AdminPetsHotelViewModel: ObservableObject {
             self.reconcileAccommodationMetadata()
             self.refreshLoadErrorMessage()
             self.isLoading = false
+            self.loadDiagnostics()
+        }
+    }
+
+    public func loadDiagnostics() {
+        guard let branchId = currentBranchId else { return }
+        isLoadingDiagnostics = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let diag = try await AdminPetsHotelService.shared.fetchDiagnostics(branchId: branchId)
+                self.hotelDiagnostics = diag
+            } catch {
+                print("Failed to load hotel diagnostics: \(error)")
+            }
+            self.isLoadingDiagnostics = false
         }
     }
 
@@ -279,26 +306,31 @@ public final class AdminPetsHotelViewModel: ObservableObject {
     private func refreshAccess() {
         guard let staff = PPStaffAuth.shared().cachedCurrentStaff, staff.isActive() else {
             canViewHotel = false
+            canManageReservations = false
             canCheckIn = false
             canCheckOut = false
             canManageAccommodations = false
             canViewCare = false
             canExecuteCareTasks = false
             canViewBilling = false
+            canManageBilling = false
             if selectedTab == .care {
                 selectedTab = .overview
             }
             return
         }
         let branchId = currentBranchId
-        let canManageHotel = staff.hasPermission("hotel.manage", inBranch: branchId)
-        canViewHotel = staff.hasPermission(kStaffPermHotelView, inBranch: branchId) || canManageHotel
-        canCheckIn = staff.hasPermission(kStaffPermHotelCheckIn, inBranch: branchId) || canManageHotel
-        canCheckOut = staff.hasPermission(kStaffPermHotelCheckOut, inBranch: branchId) || staff.hasPermission(kStaffPermHotelCheckIn, inBranch: branchId) || canManageHotel
-        canManageAccommodations = staff.hasPermission(kStaffPermHotelAccommodationsManage, inBranch: branchId) || canManageHotel
-        canViewCare = staff.hasPermission(kStaffPermHotelCareView, inBranch: branchId) || canManageHotel || canViewHotel
-        canExecuteCareTasks = staff.hasPermission(kStaffPermHotelTaskExecute, inBranch: branchId) || canManageHotel
-        canViewBilling = staff.hasPermission(kStaffPermHotelBillingView, inBranch: branchId) || canManageHotel
+        canViewHotel = staff.hasPermission(kStaffPermHotelView, inBranch: branchId)
+        canManageReservations = staff.hasPermission(kStaffPermHotelReservationsManage, inBranch: branchId)
+        canCheckIn = staff.hasPermission(kStaffPermHotelCheckIn, inBranch: branchId)
+        canCheckOut = staff.hasPermission(kStaffPermHotelCheckOut, inBranch: branchId)
+        canManageAccommodations = staff.hasPermission(kStaffPermHotelAccommodationsManage, inBranch: branchId)
+        canViewCare = staff.hasPermission(kStaffPermHotelCareView, inBranch: branchId)
+        canExecuteCareTasks = staff.hasPermission(kStaffPermHotelTaskExecute, inBranch: branchId)
+        canViewBilling = staff.hasPermission(kStaffPermHotelBillingView, inBranch: branchId)
+            || staff.hasPermission(kStaffPermHotelBillingManage, inBranch: branchId)
+            || staff.hasPermission(kStaffPermHotelBillingAdjust, inBranch: branchId)
+        canManageBilling = staff.hasPermission(kStaffPermHotelBillingManage, inBranch: branchId)
         if !canViewCare, selectedTab == .care {
             selectedTab = .overview
         }
@@ -392,11 +424,27 @@ public final class AdminPetsHotelViewModel: ObservableObject {
 
     public var attentionGuestsCount: Int { attentionGuests.count }
 
+    public var totalCapacity: Int {
+        let typesById = Dictionary(accommodationTypes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return accommodations.reduce(0) { sum, room in
+            let cap = room.capacity > 0 ? room.capacity : (typesById[room.accommodationTypeId]?.defaultCapacity ?? 1)
+            return sum + max(1, cap)
+        }
+    }
+
     public func wingCapacityTelemetry(wing: HotelWing) -> (occupied: Int, total: Int, rate: Double) {
         let wingRooms = accommodations.filter { $0.wing == wing }
-        let total = wingRooms.count
-        let occupied = wingRooms.filter { $0.status == .occupied }.count
-        let rate = total > 0 ? Double(occupied) / Double(total) : 0.0
+        guard !wingRooms.isEmpty else { return (0, 0, 0.0) }
+        let typesById = Dictionary(accommodationTypes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let total = wingRooms.reduce(0) { sum, room in
+            let cap = room.capacity > 0 ? room.capacity : (typesById[room.accommodationTypeId]?.defaultCapacity ?? 1)
+            return sum + max(1, cap)
+        }
+        let inHouseInWing = inHouseGuests.filter { $0.wing == wing }.count
+        let roomOccupants = wingRooms.reduce(0) { $0 + max(0, $1.currentOccupancy) }
+        let occupiedRoomsCount = wingRooms.filter { $0.status == .occupied }.count
+        let occupied = max(inHouseInWing, max(roomOccupants, occupiedRoomsCount))
+        let rate = total > 0 ? min(1.0, Double(occupied) / Double(total)) : 0.0
         return (occupied, total, rate)
     }
 
@@ -449,18 +497,25 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         }
     }
 
-    public func availabilitySnapshot(for reservation: AdminHotelReservation) async throws -> AdminHotelAvailabilitySnapshot {
+    public func availabilitySnapshot(
+        for reservation: AdminHotelReservation,
+        stay: AdminHotelStay? = nil
+    ) async throws -> AdminHotelAvailabilitySnapshot {
         guard let branchId = currentBranchId else {
             throw AdminPetsHotelError.operationFailed(
                 Language.get("Hotel_Err_BranchRequired", alter: "اختر فرعاً لعرض عمليات الفندق.")
             )
         }
+        let resolvedStayId = stay?.id ?? reservation.stayIds.first
+        let resolvedMainKindId = reservation.mainKindId ?? stay?.mainKindId
         return try await AdminPetsHotelService.shared.fetchAvailability(
             branchId: branchId,
             arrivalAt: reservation.checkInDate,
             departureAt: reservation.checkOutDate,
             species: reservation.petSpecies,
-            accommodationTypeId: reservation.accommodationTypeId.isEmpty ? nil : reservation.accommodationTypeId
+            accommodationTypeId: reservation.accommodationTypeId.isEmpty ? nil : reservation.accommodationTypeId,
+            stayId: resolvedStayId,
+            mainKindId: resolvedMainKindId
         )
     }
 
@@ -592,7 +647,7 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         reference: String? = nil,
         notes: String? = nil
     ) async -> Bool {
-        guard canViewBilling else {
+        guard canManageBilling else {
             errorMessage = AdminPetsHotelError.permissionDenied.localizedDescription
             return false
         }
@@ -607,27 +662,10 @@ public final class AdminPetsHotelViewModel: ObservableObject {
                 reference: reference,
                 notes: notes
             )
+            // The billing command is authoritative. Never manufacture a paid
+            // balance locally; wait for the next server projection so reception
+            // cannot release a guest on optimistic settlement state.
             isSubmitting = false
-            if let idx = stays.firstIndex(where: { $0.id == stayId }) {
-                var updated = stays[idx]
-                updated.outstandingMinor = max(0, updated.outstandingMinor - amountMinor)
-                if updated.outstandingMinor == 0 {
-                    updated.paymentStatus = "paid"
-                }
-                stays[idx] = updated
-            }
-            if checkOutModalStay?.id == stayId {
-                checkOutModalStay?.outstandingMinor = max(0, (checkOutModalStay?.outstandingMinor ?? 0) - amountMinor)
-                if checkOutModalStay?.outstandingMinor == 0 {
-                    checkOutModalStay?.paymentStatus = "paid"
-                }
-            }
-            if selectedStayDetail?.id == stayId {
-                selectedStayDetail?.outstandingMinor = max(0, (selectedStayDetail?.outstandingMinor ?? 0) - amountMinor)
-                if selectedStayDetail?.outstandingMinor == 0 {
-                    selectedStayDetail?.paymentStatus = "paid"
-                }
-            }
             loadHotelOperations()
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             return true
@@ -671,6 +709,7 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         name: String,
         wing: HotelWing,
         allowedSpecies: [String],
+        allowedMainKindIds: [Int] = [],
         maxCapacity: Int,
         allowSharedOccupancy: Bool,
         notes: String?,
@@ -692,6 +731,7 @@ public final class AdminPetsHotelViewModel: ObservableObject {
                 name: name,
                 wing: wing.rawValue,
                 allowedSpecies: allowedSpecies,
+                allowedMainKindIds: allowedMainKindIds,
                 maxCapacity: maxCapacity,
                 allowSharedOccupancy: allowSharedOccupancy,
                 notes: notes,
@@ -717,6 +757,7 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         nameEn: String,
         wing: HotelWing,
         allowedSpecies: [String],
+        allowedMainKindIds: [Int] = [],
         defaultCapacity: Int,
         nightlyRateMinor: Int,
         allowSharedOccupancy: Bool,
@@ -739,6 +780,7 @@ public final class AdminPetsHotelViewModel: ObservableObject {
                 nameEn: nameEn,
                 wing: wing.rawValue,
                 allowedSpecies: allowedSpecies,
+                allowedMainKindIds: allowedMainKindIds,
                 defaultCapacity: defaultCapacity,
                 nightlyRateMinor: nightlyRateMinor,
                 allowSharedOccupancy: allowSharedOccupancy,
@@ -748,6 +790,42 @@ public final class AdminPetsHotelViewModel: ObservableObject {
             isSubmitting = false
             typeEditorModalType = nil
             isCreatingNewType = false
+            loadHotelOperations()
+            return true
+        } catch {
+            isSubmitting = false
+            errorMessage = error.localizedDescription
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return false
+        }
+    }
+
+    public func reassignStayRoom(
+        stayId: String,
+        accommodationId: String,
+        reasonCode: String = "operator_reassignment",
+        note: String? = nil,
+        confirmReprice: Bool = false,
+        expectedNewRateMinor: Int? = nil
+    ) async -> Bool {
+        guard canManageAccommodations else {
+            errorMessage = AdminPetsHotelError.permissionDenied.localizedDescription
+            return false
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        isSubmitting = true
+        errorMessage = nil
+        do {
+            _ = try await AdminPetsHotelService.shared.assignAccommodation(
+                stayId: stayId,
+                accommodationId: accommodationId,
+                reasonCode: reasonCode,
+                note: note,
+                isReassign: true,
+                confirmReprice: confirmReprice,
+                expectedNewRateMinor: expectedNewRateMinor
+            )
+            isSubmitting = false
             loadHotelOperations()
             return true
         } catch {
@@ -787,6 +865,10 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         notes: String?,
         confirmImmediately: Bool
     ) async -> Bool {
+        guard canManageReservations else {
+            errorMessage = AdminPetsHotelError.permissionDenied.localizedDescription
+            return false
+        }
         let branchId = currentBranchId
             ?? BranchContextStore.shared.activeBranch?.branchID
             ?? PPBranchContextManager.shared().activeBranch?.branchID
@@ -827,22 +909,57 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         }
 
         let petsPayload: [[String: Any]] = pets.map { draft in
+            var petSnapshot: [String: Any] = [
+                "name": draft.name,
+                "species": draft.categoryName,
+                "breed": draft.breed,
+                "weightKg": draft.weightKg
+            ]
+            if let mkId = draft.mainKindId {
+                petSnapshot["mainKindId"] = mkId
+            }
+            if let mkDoc = draft.mainKindDocumentId {
+                petSnapshot["mainKindDocumentId"] = mkDoc
+            }
+            if let ar = draft.mainKindNameAr {
+                petSnapshot["mainKindNameAr"] = ar
+            }
+            if let en = draft.mainKindNameEn {
+                petSnapshot["mainKindNameEn"] = en
+            }
+            if let skId = draft.subKindId {
+                petSnapshot["subKindId"] = skId
+            }
+            if let skDoc = draft.subKindDocumentId {
+                petSnapshot["subKindDocumentId"] = skDoc
+            }
+            if let sar = draft.subKindNameAr {
+                petSnapshot["subKindNameAr"] = sar
+            }
+            if let sen = draft.subKindNameEn {
+                petSnapshot["subKindNameEn"] = sen
+            }
+
             var petDict: [String: Any] = [
                 "petId": draft.id,
-                "petSnapshot": [
-                    "name": draft.name,
-                    "species": draft.categoryName,
-                    "breed": draft.breed,
-                    "weightKg": draft.weightKg
-                ],
+                "petSnapshot": petSnapshot,
                 "careRequirements": [
                     "diet": draft.specialDiet,
                     "allergies": draft.allergies.isEmpty ? [] : [draft.allergies],
                     "requiresMedication": draft.requiresMedication
                 ]
             ]
+            if let mkId = draft.mainKindId {
+                petDict["mainKindId"] = mkId
+            }
             if !draft.accommodationTypeId.isEmpty {
                 petDict["accommodationTypeId"] = draft.accommodationTypeId
+            }
+            if let accId = draft.accommodationId, !accId.isEmpty {
+                petDict["accommodationId"] = accId
+                if let code = accommodations.first(where: { $0.id == accId })?.accommodationNumber {
+                    petDict["accommodationCode"] = code
+                }
             }
             return petDict
         }
@@ -999,15 +1116,18 @@ public final class AdminPetsHotelViewModel: ObservableObject {
     }
 
     public func confirmReservation(reservation: AdminHotelReservation) async {
+        guard canManageReservations else {
+            errorMessage = AdminPetsHotelError.permissionDenied.localizedDescription
+            return
+        }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         isSubmitting = true
         errorMessage = nil
         do {
             _ = try await AdminPetsHotelService.shared.confirmReservation(reservationId: reservation.id)
+            // Do not fabricate a local lifecycle transition. The reservation
+            // operations projection confirms the committed server state.
             isSubmitting = false
-            if selectedReservationDetail?.id == reservation.id {
-                selectedReservationDetail?.status = .confirmed
-            }
             loadHotelOperations()
         } catch {
             isSubmitting = false
@@ -1017,6 +1137,10 @@ public final class AdminPetsHotelViewModel: ObservableObject {
     }
 
     public func extendReservation(reservation: AdminHotelReservation, newDepartureAt: Date, reasonCode: String = "operator_request", note: String? = nil) async -> Bool {
+        guard canManageReservations else {
+            errorMessage = AdminPetsHotelError.permissionDenied.localizedDescription
+            return false
+        }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         isSubmitting = true
         errorMessage = nil
@@ -1053,29 +1177,95 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         emergencyName: String?,
         emergencyPhone: String?,
         notes: String?,
-        overrideReason: String? = "admin_update"
+        overrideReason: String? = "admin_update",
+        petSpecies: String? = nil,
+        mainKindId: Int? = nil,
+        mainKindDocumentId: String? = nil,
+        mainKindNameAr: String? = nil,
+        mainKindNameEn: String? = nil,
+        subKindId: Int? = nil,
+        subKindDocumentId: String? = nil,
+        subKindNameAr: String? = nil,
+        subKindNameEn: String? = nil,
+        accommodationTypeId: String? = nil,
+        assignedAccommodationId: String? = nil,
+        medicationsText: String? = nil,
+        depositMinor: Int? = nil
     ) async -> Bool {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         isSubmitting = true
         errorMessage = nil
 
         let petId = reservation.petId.isEmpty ? "\(reservation.id)_pet" : reservation.petId
+        let effectiveSpecies = petSpecies ?? (reservation.petSpecies.isEmpty ? "dog" : reservation.petSpecies)
+
+        var petSnapshot: [String: Any] = [
+            "name": petName,
+            "species": effectiveSpecies,
+            "breed": petBreed,
+            "weightKg": 5.0
+        ]
+        let effectiveMainKindId = mainKindId ?? reservation.mainKindId
+        if let mkId = effectiveMainKindId {
+            petSnapshot["mainKindId"] = mkId
+        }
+        let effectiveMainKindDocId = mainKindDocumentId ?? reservation.mainKindDocumentId
+        if let mkDoc = effectiveMainKindDocId {
+            petSnapshot["mainKindDocumentId"] = mkDoc
+        }
+        let effectiveMainKindAr = mainKindNameAr ?? reservation.mainKindNameAr
+        if let ar = effectiveMainKindAr {
+            petSnapshot["mainKindNameAr"] = ar
+        }
+        let effectiveMainKindEn = mainKindNameEn ?? reservation.mainKindNameEn
+        if let en = effectiveMainKindEn {
+            petSnapshot["mainKindNameEn"] = en
+        }
+        let effectiveSubKindId = subKindId ?? reservation.subKindId
+        if let skId = effectiveSubKindId {
+            petSnapshot["subKindId"] = skId
+        }
+        let effectiveSubKindDocId = subKindDocumentId ?? reservation.subKindDocumentId
+        if let skDoc = effectiveSubKindDocId {
+            petSnapshot["subKindDocumentId"] = skDoc
+        }
+        let effectiveSubKindAr = subKindNameAr ?? reservation.subKindNameAr
+        if let sar = effectiveSubKindAr {
+            petSnapshot["subKindNameAr"] = sar
+        }
+        let effectiveSubKindEn = subKindNameEn ?? reservation.subKindNameEn
+        if let sen = effectiveSubKindEn {
+            petSnapshot["subKindNameEn"] = sen
+        }
+
+        var careRequirements: [String: Any] = [
+            "diet": specialDiet,
+            "allergies": allergies.isEmpty ? [] : [allergies],
+            "requiresMedication": requiresMedication
+        ]
+        if let medNotes = medicationsText, !medNotes.isEmpty {
+            careRequirements["medications"] = medNotes
+            careRequirements["medicationsText"] = medNotes
+        }
+
         var petDict: [String: Any] = [
             "petId": petId,
-            "petSnapshot": [
-                "name": petName,
-                "species": reservation.petSpecies.isEmpty ? "dog" : reservation.petSpecies,
-                "breed": petBreed,
-                "weightKg": 5.0
-            ],
-            "careRequirements": [
-                "diet": specialDiet,
-                "allergies": allergies.isEmpty ? [] : [allergies],
-                "requiresMedication": requiresMedication
-            ]
+            "petSnapshot": petSnapshot,
+            "careRequirements": careRequirements
         ]
-        if let typeId = reservation.accommodationTypeId, !typeId.isEmpty {
-            petDict["accommodationTypeId"] = typeId
+        if let mkId = effectiveMainKindId {
+            petDict["mainKindId"] = mkId
+        }
+        let effectiveAccommodationTypeId = accommodationTypeId ?? (!reservation.accommodationTypeId.isEmpty ? reservation.accommodationTypeId : nil)
+        if let accTypeId = effectiveAccommodationTypeId, !accTypeId.isEmpty {
+            petDict["accommodationTypeId"] = accTypeId
+        }
+        let effectiveAccommodationId = assignedAccommodationId ?? reservation.assignedAccommodationId
+        if let accId = effectiveAccommodationId, !accId.isEmpty {
+            petDict["accommodationId"] = accId
+            if let code = accommodations.first(where: { $0.id == accId })?.accommodationNumber {
+                petDict["accommodationCode"] = code
+            }
         }
         let petsPayload: [[String: Any]] = [petDict]
 
@@ -1092,6 +1282,8 @@ public final class AdminPetsHotelViewModel: ObservableObject {
             emergencyContact = ["name": eName, "phone": ePhone]
         }
 
+        let effectiveDepositMinor = depositMinor ?? reservation.depositMinor ?? 0
+
         do {
             _ = try await AdminPetsHotelService.shared.updateReservation(
                 reservationId: reservation.id,
@@ -1101,7 +1293,7 @@ public final class AdminPetsHotelViewModel: ObservableObject {
                 departureAt: departureAt,
                 pets: petsPayload,
                 emergencyContact: emergencyContact,
-                depositMinor: reservation.depositMinor ?? 0,
+                depositMinor: effectiveDepositMinor,
                 notes: notes,
                 overrideReason: overrideReason
             )
@@ -1308,6 +1500,15 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         }
         let lastCleanTs = d["lastCleanedAt"] as? Timestamp
 
+        let allowedKinds: [Int]
+        if let direct = d["allowedMainKindIds"] as? [Int] {
+            allowedKinds = direct
+        } else if let nsNumbers = d["allowedMainKindIds"] as? [NSNumber] {
+            allowedKinds = nsNumbers.map(\.intValue)
+        } else {
+            allowedKinds = []
+        }
+
         return AdminHotelAccommodation(
             id: doc.documentID,
             accommodationNumber: d["accommodationNumber"] as? String ?? d["code"] as? String ?? doc.documentID,
@@ -1315,8 +1516,8 @@ public final class AdminPetsHotelViewModel: ObservableObject {
             wing: wing,
             accommodationTypeId: d["accommodationTypeId"] as? String ?? "",
             status: status,
-            capacity: d["capacity"] as? Int ?? d["maxCapacity"] as? Int ?? 1,
-            currentOccupancy: d["currentOccupancy"] as? Int ?? 0,
+            capacity: (d["capacity"] as? NSNumber)?.intValue ?? (d["capacity"] as? Int) ?? (d["maxCapacity"] as? NSNumber)?.intValue ?? (d["maxCapacity"] as? Int) ?? 1,
+            currentOccupancy: (d["currentOccupancy"] as? NSNumber)?.intValue ?? (d["currentOccupancy"] as? Int) ?? (d["occupiedCount"] as? NSNumber)?.intValue ?? (d["occupiedCount"] as? Int) ?? 0,
             currentStayId: d["currentStayId"] as? String,
             currentGuestName: d["currentGuestName"] as? String,
             currentGuestSpecies: d["currentGuestSpecies"] as? String,
@@ -1327,41 +1528,120 @@ public final class AdminPetsHotelViewModel: ObservableObject {
             active: d["active"] as? Bool ?? true,
             code: d["code"] as? String ?? d["accommodationNumber"] as? String ?? doc.documentID,
             allowedSpecies: d["allowedSpecies"] as? [String] ?? [],
+            allowedMainKindIds: allowedKinds,
             allowSharedOccupancy: d["allowSharedOccupancy"] as? Bool ?? false
         )
     }
 
     private func reconcileAccommodationMetadata() {
-        let typesById = Dictionary(uniqueKeysWithValues: accommodationTypes.map { ($0.id, $0) })
-        accommodations = accommodations.map { room in
-            var resolved = room
-            if (resolved.nightlyRateMinor == nil || resolved.nightlyRateMinor == 0),
-               let matchedType = typesById[resolved.accommodationTypeId],
-               matchedType.nightlyRateMinor > 0 {
-                resolved.nightlyRateMinor = matchedType.nightlyRateMinor
+        accommodationTypes = accommodationTypes.map { type in
+            var resolved = type
+            let canonicalKindId: Int? = {
+                switch resolved.wing {
+                case .dogs: return 6
+                case .cats: return 5
+                case .birds: return 1
+                case .smallPets: return 8
+                default: return nil
+                }
+            }()
+            if let cid = canonicalKindId, !resolved.allowedMainKindIds.contains(cid) {
+                resolved.allowedMainKindIds.append(cid)
+            }
+            if resolved.allowedSpecies.isEmpty {
+                resolved.allowedSpecies = AdminHotelSpeciesPolicy.defaultSpecies(forWingRawValue: resolved.wing.rawValue)
             }
             return resolved
         }
 
-        let roomsById = Dictionary(uniqueKeysWithValues: accommodations.map { ($0.id, $0) })
+        let typesById = Dictionary(accommodationTypes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        accommodations = accommodations.map { room in
+            var resolved = room
+            if resolved.capacity <= 1, let matchedType = typesById[resolved.accommodationTypeId], matchedType.defaultCapacity > 1 {
+                resolved.capacity = matchedType.defaultCapacity
+            }
+            if resolved.nightlyRateMinor == nil || resolved.nightlyRateMinor == 0 {
+                if let matchedType = typesById[resolved.accommodationTypeId], matchedType.nightlyRateMinor > 0 {
+                    resolved.nightlyRateMinor = matchedType.nightlyRateMinor
+                } else if let wingMatch = accommodationTypes.first(where: { $0.wing == resolved.wing && $0.nightlyRateMinor > 0 }) {
+                    resolved.nightlyRateMinor = wingMatch.nightlyRateMinor
+                }
+            }
+            if resolved.allowedMainKindIds.isEmpty, let matchedType = typesById[resolved.accommodationTypeId] {
+                resolved.allowedMainKindIds = matchedType.allowedMainKindIds
+            }
+            // Reconcile current occupant & occupied status from in-house stays
+            if let activeStay = stays.first(where: { $0.accommodationId == room.id && ($0.status == .checkedIn || $0.status == .inStay) }) {
+                if resolved.currentGuestName == nil || resolved.currentGuestName?.isEmpty == true {
+                    resolved.currentGuestName = activeStay.petName
+                }
+                if resolved.status == .available {
+                    resolved.status = .occupied
+                }
+            }
+            return resolved
+        }
+
+        let roomsById = Dictionary(accommodations.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         stays = stays.map(reconciledStay)
         reservations = reservations.map { reservation in
             var resolved = reservation
-            if let roomId = reservation.assignedAccommodationId,
+
+            // Reconcile assigned room from reservation OR its matching stay
+            let matchingStay = stays.first {
+                $0.reservationId == reservation.id ||
+                (!reservation.stayIds.isEmpty && reservation.stayIds.contains($0.id))
+            }
+            let effectiveRoomId: String? = {
+                if let assigned = reservation.assignedAccommodationId, !assigned.isEmpty {
+                    return assigned
+                }
+                if let stayAccId = matchingStay?.accommodationId, !stayAccId.isEmpty {
+                    return stayAccId
+                }
+                return nil
+            }()
+
+            if let roomId = effectiveRoomId,
                let room = roomsById[roomId] {
+                resolved.assignedAccommodationId = roomId
                 resolved.wing = room.wing
                 if resolved.assignedRoomNumber?.isEmpty != false {
                     resolved.assignedRoomNumber = room.accommodationNumber
+                }
+                if (resolved.nightlyRateMinor == nil || resolved.nightlyRateMinor == 0),
+                   let rate = room.nightlyRateMinor, rate > 0 {
+                    resolved.nightlyRateMinor = rate
                 }
                 if (resolved.totalAmountMinor == nil || resolved.totalAmountMinor == 0),
                    let rate = room.nightlyRateMinor, rate > 0 {
                     resolved.totalAmountMinor = rate * max(1, resolved.numberOfNights)
                 }
-            } else if (resolved.totalAmountMinor == nil || resolved.totalAmountMinor == 0),
-                      let matchedType = typesById[reservation.accommodationTypeId],
-                      matchedType.nightlyRateMinor > 0 {
-                resolved.totalAmountMinor = matchedType.nightlyRateMinor * max(1, resolved.numberOfNights)
+            } else if let stayRoom = matchingStay?.roomNumber, !stayRoom.isEmpty {
+                if resolved.assignedRoomNumber?.isEmpty != false {
+                    resolved.assignedRoomNumber = stayRoom
+                }
+                if resolved.assignedAccommodationId == nil || resolved.assignedAccommodationId?.isEmpty == true {
+                    resolved.assignedAccommodationId = matchingStay?.accommodationId
+                }
+            } else if resolved.totalAmountMinor == nil || resolved.totalAmountMinor == 0 {
+                if let matchedType = typesById[reservation.accommodationTypeId], matchedType.nightlyRateMinor > 0 {
+                    resolved.totalAmountMinor = matchedType.nightlyRateMinor * max(1, resolved.numberOfNights)
+                } else if let rate = resolved.nightlyRateMinor, rate > 0 {
+                    resolved.totalAmountMinor = rate * max(1, resolved.numberOfNights)
+                } else if let wingMatch = accommodationTypes.first(where: { $0.wing == resolved.wing && $0.nightlyRateMinor > 0 }) {
+                    resolved.totalAmountMinor = wingMatch.nightlyRateMinor * max(1, resolved.numberOfNights)
+                }
             }
+
+            if resolved.nightlyRateMinor == nil || resolved.nightlyRateMinor == 0 {
+                if let typeRate = typesById[reservation.accommodationTypeId]?.nightlyRateMinor, typeRate > 0 {
+                    resolved.nightlyRateMinor = typeRate
+                } else if let wingRate = accommodationTypes.first(where: { $0.wing == resolved.wing && $0.nightlyRateMinor > 0 })?.nightlyRateMinor {
+                    resolved.nightlyRateMinor = wingRate
+                }
+            }
+
             return resolved
         }
     }
@@ -1374,6 +1654,13 @@ public final class AdminPetsHotelViewModel: ObservableObject {
             resolved.roomNumber = room.accommodationNumber
         }
         return resolved
+    }
+
+    public func activeStay(for room: AdminHotelAccommodation) -> AdminHotelStay? {
+        stays.first { stay in
+            (stay.status == .checkedIn || stay.status == .inStay) &&
+            (stay.accommodationId == room.id || (!room.accommodationNumber.isEmpty && stay.roomNumber == room.accommodationNumber))
+        }
     }
 
 }

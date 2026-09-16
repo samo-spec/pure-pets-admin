@@ -2180,6 +2180,13 @@
 "HomeControl_Section_BuyAgain_Description" = "Re-order shortcut from purchase history (only shown when items exist).";
 "HomeControl_Section_PetProfile_Label" = "Your pet context";
 "HomeControl_Section_PetProfile_Description" = "Profile of the current user's primary pet.";
+"HomeControl_Section_PureLens_Label" = "PureLens Vision";
+"HomeControl_Section_PureLens_Description" = "AI visual recognition lens on the consumer home screen.";
+"HomeControl_LiveStatus_Synced" = "Live & Synchronized";
+"HomeControl_LiveStatus_Unsaved" = "Unsaved Modifications";
+"HomeControl_LiveChannels" = "Live Content Channels";
+"HomeControl_Telemetry_Active" = "Active Sections";
+"HomeControl_Telemetry_Staged" = "Staged Changes";
 
 /* ===================== Fulfillment Section ===================== */
 "Fulfillment_Title" = "Fulfillment Orders";
@@ -5725,514 +5732,1074 @@
 "Staff_Self_Role_Locked" = "Your current account • Role is locked from self-mutation for security";
 
 /* ===================== Pets Hotel & Boarding Hub ===================== */
-"Hotel_Title" = "Pets Hotel & Resort";
-"Hotel_Subtitle" = "Occupancy, In-House Guests, Suites & Holistic Care";
-"Hotel_Tab_Overview" = "Operations Deck";
-"Hotel_Tab_Guests" = "Guests & Stays";
+"Hotel_Title" = "Pets Hotel";
+
+"Hotel_Subtitle" = "Occupancy & Operations";
+
+"Hotel_Tab_Overview" = "Overview";
+
+"Hotel_Tab_Guests" = "In-House Guests";
+
 "Hotel_Tab_Reservations" = "Reservations";
-"Hotel_Tab_Rooms" = "Rooms & Suites";
-"Hotel_Tab_Care" = "Care & Tasks";
-"Hotel_Occupancy" = "Occupancy Rate";
+
+"Hotel_Tab_Rooms" = "Suites & Rooms";
+
+"Hotel_Tab_Care" = "Daily Care";
+
+"Hotel_Occupancy" = "Occupancy";
+
 "Hotel_Occupied" = "Occupied";
-"Hotel_Available" = "Available";
-"Hotel_Cleaning" = "Sanitization";
+
+"Hotel_Available" = "Vacant";
+
+"Hotel_Cleaning" = "Cleaning";
+
 "Hotel_Maintenance" = "Maintenance";
-"Hotel_Blocked" = "Blocked";
-"Hotel_Inspection" = "Inspection";
-"Hotel_Wing_Dogs" = "Canine Wing";
-"Hotel_Wing_Cats" = "Feline Wing";
-"Hotel_Wing_Birds" = "Avian Wing";
-"Hotel_Wing_Daycare" = "Daycare Playpark";
-"Hotel_Wing_Isolation" = "Clinical Isolation";
-"Hotel_CheckIn" = "Express Check-In";
-"Hotel_CheckOut" = "Discharge & Handover";
+
+"Hotel_Blocked" = "Out of Order";
+
+"Hotel_Inspection" = "Inspected";
+
+"Hotel_Wing_Dogs" = "Dogs Wing";
+
+"Hotel_Wing_Cats" = "Cats Wing";
+
+"Hotel_Wing_Birds" = "Birds Wing";
+
+"Hotel_Wing_Daycare" = "Daycare Area";
+
+"Hotel_Wing_Isolation" = "Isolation Ward";
+
+"Hotel_CheckIn" = "Check In";
+
+"Hotel_CheckOut" = "Check Out";
+
 "Hotel_Room_Status_Update" = "Update Suite Status";
+
 "Hotel_Belongings" = "Guest Belongings";
-"Hotel_Care_Routine" = "Daily Care Routine";
-"Hotel_Special_Attention" = "Special Attention & Clinical Notes";
-"Hotel_VerificationTitle" = "Intake Requirements & Verification";
+
+"Hotel_Care_Routine" = "Daily Care Schedule";
+
+"Hotel_Special_Attention" = "Special Care & Medical Notes";
+
+"Hotel_VerificationTitle" = "Intake Checklist";
+
 "Hotel_VerifyIdentity" = "Verify Guest & Owner Identity";
-"Hotel_VerifyVaccination" = "Valid Vaccination Certificate";
-"Hotel_VerifyInspection" = "Initial Clinical Inspection Clear";
-"Hotel_VerifyDiet" = "Diet & Allergy Confirmation";
-"Hotel_VerifyEmergency" = "Emergency Contact Confirmed";
-"Hotel_VerifyAgreement" = "Boarding Terms & Policy Acknowledged";
-"Hotel_DischargeHealthCheck" = "Pre-Discharge Health Check Complete";
-"Hotel_DischargeHealthSub" = "Guest in stable & healthy condition";
-"Hotel_BelongingsVerifySub" = "All items matched and returned";
-"Hotel_EarlyCheckoutAlert" = "Early Departure Warning";
-"Hotel_EarlyCheckoutSub" = "Actual nights will be billed per platform policy";
-"Hotel_Task_PhotoUpdate" = "Update Guest Photo";
-"Hotel_Ledger_Total" = "Total Bill:";
-"Hotel_Ledger_Balance" = "Outstanding Balance:";
-"Hotel_Err_InvalidResponse" = "Invalid response from hotel server.";
-"Hotel_Err_Unauthenticated" = "Staff session expired or unauthenticated.";
-"Hotel_Err_PermissionDenied" = "You do not have permission for this hotel action.";
+
+"Hotel_VerifyVaccination" = "Vaccination Certificate";
+
+"Hotel_VerifyInspection" = "Clinical Inspection";
+
+"Hotel_VerifyDiet" = "Diet & Allergies";
+
+"Hotel_VerifyEmergency" = "Emergency Contact";
+
+"Hotel_VerifyAgreement" = "Boarding Agreement";
+
+"Hotel_DischargeHealthCheck" = "Departure Inspection";
+
+"Hotel_DischargeHealthSub" = "Physical condition and health confirmed";
+
+"Hotel_BelongingsVerifySub" = "All belongings verified and returned";
+
+"Hotel_EarlyCheckoutAlert" = "Early Check-Out";
+
+"Hotel_EarlyCheckoutSub" = "Billed nights adjusted per cancellation policy";
+
+"Hotel_Task_PhotoUpdate" = "Photo Update";
+
+"Hotel_Ledger_Total" = "Total Folio:";
+
+"Hotel_Ledger_Balance" = "Balance Due:";
+
+"Hotel_Err_InvalidResponse" = "Invalid server response.";
+
+"Hotel_Err_Unauthenticated" = "Session expired. Please sign in again.";
+
+"Hotel_Err_PermissionDenied" = "Permission denied.";
+
 "Hotel_Err_StayNotFound" = "Stay record not found.";
-"Hotel_Err_BranchRequired" = "Select a branch to view Hotel operations.";
-"Hotel_Err_CommandFailed" = "The Hotel command could not be completed.";
-"Hotel_Err_MedicationTaskAuthority" = "Medication tasks must be recorded through the dedicated medication administration action.";
-"Hotel_Err_StayRequired" = "This reservation has no stay record ready for check-in.";
-"Hotel_Err_CheckoutBlocked" = "Check-out blocked by unresolved requirements or restrictions.";
-"Hotel_Err_CheckinBlocked" = "Check-in blocked by unresolved requirements or restrictions.";
-"Hotel_Err_OverrideReasonRequired" = "An override reason is required.";
-"Hotel_Err_OverrideForbidden" = "You do not have permission to override.";
-"Hotel_Err_OutstandingBalance" = "There is an outstanding balance on this stay that must be settled before check-out.";
-"Hotel_Blocker_OutstandingBalance" = "There is an outstanding balance on this stay that must be settled before check-out.";
-"Hotel_Blocker_StayNotInHouse" = "The pet is not currently checked in.";
-"Hotel_Blocker_BelongingsNotReturned" = "Return of pet belongings has not been confirmed.";
-"Hotel_Blocker_HealthCheckMissing" = "Pre-departure health inspection is incomplete.";
-"Hotel_Blocker_RoomInspectionMissing" = "Room inspection is incomplete.";
-"Hotel_Blocker_OpenCriticalIncident" = "Open critical incidents must be acknowledged.";
-"Hotel_Blocker_PendingMedication" = "Pending medication tasks must be resolved.";
-"Hotel_Blocker_HandoverUnverified" = "Recipient handover identity is unverified.";
-"Hotel_Blocker_StayAlreadyCheckedIn" = "The pet is already checked in.";
-"Hotel_Blocker_StayTerminal" = "This stay record is completed or closed.";
-"Hotel_Blocker_AccommodationMissing" = "No room or suite assigned.";
+
+"Hotel_Err_BranchRequired" = "Select a branch to view operations.";
+
+"Hotel_Err_CommandFailed" = "Operation could not be completed.";
+
+"Hotel_Err_MedicationTaskAuthority" = "Medication tasks must be logged via the medication action.";
+
+"Hotel_Err_StayRequired" = "No active stay record found for intake.";
+
+"Hotel_Err_CheckoutBlocked" = "Check-out blocked by pending requirements.";
+
+"Hotel_Err_CheckinBlocked" = "Check-in blocked by pending requirements.";
+
+"Hotel_Err_OverrideReasonRequired" = "Override reason is required.";
+
+"Hotel_Err_OverrideForbidden" = "Permission denied to override stay protocols.";
+
+"Hotel_Err_OutstandingBalance" = "Outstanding balance must be settled before departure.";
+
+"Hotel_Blocker_OutstandingBalance" = "Outstanding balance must be settled before departure.";
+
+"Hotel_Blocker_StayNotInHouse" = "Guest is not currently checked in.";
+
+"Hotel_Blocker_BelongingsNotReturned" = "Return of belongings not confirmed.";
+
+"Hotel_Blocker_HealthCheckMissing" = "Pre-departure clinical check is incomplete.";
+
+"Hotel_Blocker_RoomInspectionMissing" = "Suite departure inspection is incomplete.";
+
+"Hotel_Blocker_OpenCriticalIncident" = "Open care incidents require acknowledgment.";
+
+"Hotel_Blocker_PendingMedication" = "Pending medication doses must be administered.";
+
+"Hotel_Blocker_HandoverUnverified" = "Recipient identity is unverified.";
+
+"Hotel_Blocker_StayAlreadyCheckedIn" = "Guest is already checked in.";
+
+"Hotel_Blocker_StayTerminal" = "Stay record is already closed.";
+
+"Hotel_Blocker_AccommodationMissing" = "No suite assigned to this guest.";
+
 "Hotel_Blocker_VaccinationUnverified" = "Vaccination records are unverified.";
+
 "Hotel_Blocker_VaccinationExpired" = "Vaccination certificate has expired.";
-"Hotel_Blocker_HealthInspectionMissing" = "Health inspection is incomplete.";
-"Hotel_Blocker_IdentityUnverified" = "Customer or companion identity is unverified.";
+
+"Hotel_Blocker_HealthInspectionMissing" = "Pre-intake clinical check is incomplete.";
+
+"Hotel_Blocker_IdentityUnverified" = "Guest or owner identity is unverified.";
+
 "Hotel_Blocker_EmergencyContactMissing" = "Emergency contact details are missing.";
+
 "Hotel_Blocker_EmergencyContactUnconfirmed" = "Emergency contact is unconfirmed.";
-"Hotel_Blocker_MedicationUnconfirmed" = "Medication instructions are unconfirmed.";
-"Hotel_Blocker_AgreementNotAcknowledged" = "Stay agreement has not been acknowledged.";
-"Hotel_Blocker_DepositUnsettled" = "Deposit has not been settled.";
-"Hotel_OutstandingBalance_Notice" = "Outstanding Balance on Stay";
-"Hotel_OutstandingBalance_ActionHint" = "The remaining balance must be settled before completing check-out and pet handover.";
-"Hotel_SettleBalance_Button" = "Record Settlement";
+
+"Hotel_Blocker_MedicationUnconfirmed" = "Medication schedule is unconfirmed.";
+
+"Hotel_Blocker_AgreementNotAcknowledged" = "Boarding agreement is not signed.";
+
+"Hotel_Blocker_DepositUnsettled" = "Required deposit is not paid.";
+
+"Hotel_OutstandingBalance_Notice" = "Outstanding Balance";
+
+"Hotel_OutstandingBalance_ActionHint" = "Outstanding balance must be settled before completing check-out.";
+
+"Hotel_SettleBalance_Button" = "Settle Balance";
+
 "Hotel_Settle_Action" = "Settle";
-"Hotel_SettleBalance_Restricted" = "Please contact accounting staff to settle the remaining balance.";
-"Hotel_Settlement_Title" = "Record Stay Settlement";
+
+"Hotel_SettleBalance_Restricted" = "Contact accounting staff to settle the remaining balance.";
+
+"Hotel_Settlement_Title" = "Record Payment";
+
 "Hotel_Settlement_Method_Cash" = "Cash";
-"Hotel_Settlement_Method_Card" = "Bank Card / POS Terminal";
+
+"Hotel_Settlement_Method_Card" = "Card / POS";
+
 "Hotel_Settlement_AmountToPay" = "Amount to Settle:";
-"Hotel_Settlement_RefPlaceholder" = "Receipt or transaction reference (optional)";
-"Hotel_Settlement_NotesPlaceholder" = "Additional settlement notes (optional)";
-"Hotel_Settlement_ConfirmButton" = "Confirm Settlement";
-"Hotel_Settlement_Success" = "Settlement recorded successfully.";
+
+"Hotel_Settlement_RefPlaceholder" = "Transaction or receipt reference...";
+
+"Hotel_Settlement_NotesPlaceholder" = "Settlement notes (optional)...";
+
+"Hotel_Settlement_ConfirmButton" = "Confirm Payment";
+
+"Hotel_Settlement_Success" = "Payment recorded successfully";
+
 "Hotel_Settlement_Method" = "Payment Method";
-"Hotel_Settlement_Reference" = "Reference";
-"Hotel_Settlement_Notes" = "Notes";
-"Hotel_BranchRequired_Title" = "Select a Hotel branch";
-"Hotel_Loading_Title" = "Syncing Hotel operations";
-"Hotel_LoadError_Title" = "Some Hotel data could not be refreshed";
-"Hotel_AvailabilityLoading" = "Checking availability for the selected stay window";
+
+"Hotel_Settlement_Reference" = "Receipt Reference";
+
+"Hotel_Settlement_Notes" = "Settlement Notes";
+
+"Hotel_BranchRequired_Title" = "Select Branch";
+
+"Hotel_Loading_Title" = "Syncing hotel data...";
+
+"Hotel_LoadError_Title" = "Failed to load hotel data";
+
+"Hotel_AvailabilityLoading" = "Checking suite availability...";
+
 "Hotel_RateUnavailable" = "Rate unavailable";
-"Hotel_BillingRestricted" = "Billing unavailable";
+
+"Hotel_BillingRestricted" = "Folio unavailable";
+
 "Hotel_TimeUnavailable" = "—";
+
 "Hotel_Wing_SmallPets" = "Small Pets Wing";
+
 "Hotel_Wing_MedicalObservation" = "Medical Observation";
-"Hotel_Room_Available" = "Available and ready";
+
+"Hotel_Room_Available" = "Vacant";
+
 "Hotel_Room_Reserved" = "Reserved";
+
 "Hotel_Room_Occupied" = "Occupied";
-"Hotel_Room_Cleaning" = "Cleaning and sanitization";
-"Hotel_Room_Inspection" = "Under inspection";
+
+"Hotel_Room_Cleaning" = "Cleaning";
+
+"Hotel_Room_Inspection" = "Inspected";
+
 "Hotel_Room_Maintenance" = "Maintenance";
-"Hotel_Room_Blocked" = "Temporarily blocked";
-"Hotel_Room_Isolation" = "Medical isolation";
+
+"Hotel_Room_Blocked" = "Out of Order";
+
+"Hotel_Room_Isolation" = "Isolation";
+
 "Hotel_Res_Draft" = "Draft";
-"Hotel_Res_Pending" = "Pending confirmation";
+
+"Hotel_Res_Pending" = "Pending";
+
 "Hotel_Res_Confirmed" = "Confirmed";
-"Hotel_Res_PreArrival" = "Pre-arrival";
-"Hotel_Res_ReadyCheckin" = "Ready for check-in";
-"Hotel_Res_InStay" = "In stay";
-"Hotel_Res_ReadyCheckout" = "Ready for checkout";
+
+"Hotel_Res_PreArrival" = "Pre-Arrival";
+
+"Hotel_Res_ReadyCheckin" = "Ready for Check-In";
+
+"Hotel_Res_InStay" = "In-House";
+
+"Hotel_Res_ReadyCheckout" = "Ready for Check-Out";
+
 "Hotel_Res_Completed" = "Completed";
+
 "Hotel_Res_Cancelled" = "Cancelled";
-"Hotel_Res_NoShow" = "No-show";
-"Hotel_Res_Rejected" = "Rejected";
-"Hotel_Res_EarlyCheckout" = "Early checkout";
-"Hotel_Guest_Normal" = "Stable";
-"Hotel_Guest_SpecialCare" = "Special care";
-"Hotel_Guest_Monitor" = "Under observation";
-"Hotel_Guest_Attention" = "Needs attention";
-"Hotel_Guest_Critical" = "Critical";
+
+"Hotel_Res_NoShow" = "No-Show";
+
+"Hotel_Res_Rejected" = "Declined";
+
+"Hotel_Res_EarlyCheckout" = "Early Departure";
+
+"Hotel_Guest_Normal" = "Normal / Stable";
+
+"Hotel_Guest_SpecialCare" = "Special Care";
+
+"Hotel_Guest_Monitor" = "Under Observation";
+
+"Hotel_Guest_Attention" = "Care Alert";
+
+"Hotel_Guest_Critical" = "Critical / Veterinary";
+
 "Hotel_Task_Feeding" = "Feeding";
-"Hotel_Task_Water" = "Refresh drinking water";
+
+"Hotel_Task_Water" = "Fresh Water";
+
 "Hotel_Task_Walk" = "Walk";
-"Hotel_Task_Play" = "Play time";
+
+"Hotel_Task_Play" = "Playtime";
+
 "Hotel_Task_Medication" = "Medication";
-"Hotel_Task_Cleaning" = "Room cleaning";
-"Hotel_Task_RoomInspection" = "Room inspection";
-"Hotel_Task_Grooming" = "Grooming";
-"Hotel_Task_HealthCheck" = "Health check";
-"Hotel_Task_CheckInPreparation" = "Check-in preparation";
-"Hotel_Task_CheckOutPreparation" = "Checkout preparation";
-"Hotel_Task_Transport" = "Guest transport";
-"Hotel_Task_Custom" = "Custom task";
-"Hotel_Task_CompletedByAdmin" = "Recorded through the Admin App";
-"Hotel_ArrivalsToday" = "Arrivals today";
-"Hotel_DeparturesToday" = "Departures today";
-"Hotel_Occupancy_Rate" = "Occupancy rate";
+
+"Hotel_Task_Cleaning" = "Suite Cleaning";
+
+"Hotel_Task_RoomInspection" = "Suite Inspection";
+
+"Hotel_Task_Grooming" = "Grooming / Brushing";
+
+"Hotel_Task_HealthCheck" = "Health Check";
+
+"Hotel_Task_CheckInPreparation" = "Check-In Prep";
+
+"Hotel_Task_CheckOutPreparation" = "Check-Out Prep";
+
+"Hotel_Task_Transport" = "Pet Transport";
+
+"Hotel_Task_Custom" = "Custom Task";
+
+"Hotel_Task_CompletedByAdmin" = "Logged via Admin App";
+
+"Hotel_ArrivalsToday" = "Arrivals Today";
+
+"Hotel_DeparturesToday" = "Departures Today";
+
+"Hotel_Occupancy_Rate" = "Occupancy Rate";
+
 "Hotel_OccupancySummary_Format" = "%ld of %ld suites occupied";
-"Hotel_TapToViewStays" = "Tap to view in-house stays";
-"Hotel_TapToViewReservations" = "Tap to view reservations";
+
+"Hotel_TapToViewStays" = "View in-house guests";
+
+"Hotel_TapToViewReservations" = "View upcoming reservations";
+
 "Hotel_Sentinel_AttentionGuests" = "Guests requiring attention";
+
 "Hotel_WingCapacityBreakdown" = "Capacity by wing";
+
 "Hotel_NoInHouseGuests" = "No in-house guests match this view";
-"Hotel_NoReservations" = "No reservations match this view";
+
+"Hotel_NoReservations" = "No reservations match current filters";
+
 "Hotel_Nights_Format" = "%ld nights";
-"Hotel_CheckOutButton" = "Check out";
-"Hotel_CheckInNow" = "Check in now";
-"Hotel_StayNo" = "Stay number:";
-"Hotel_Clinical_Alert" = "Special-care alert";
-"Hotel_AssignedRoom" = "Assigned suite";
-"Hotel_StayPeriod" = "Stay period";
-"Hotel_CareSchedule" = "Care schedule and daily tasks";
-"Hotel_NoTasksScheduled" = "No care tasks are available for this guest";
-"Hotel_CompletedBy" = "By:";
-"Hotel_BelongingsInventory" = "Guest belongings";
-"Hotel_NoBelongings" = "No belongings were recorded at intake";
-"Hotel_PetOwner" = "Pet owner";
-"Hotel_Execute_Checkout" = "Check out and hand over guest";
-"Hotel_CheckIn_Title" = "Guest check-in";
-"Hotel_SelectRoom" = "Select suite or room";
-"Hotel_NoAvailableRoomsInWing" = "No assignable rooms are available in this wing for the selected dates";
-"Hotel_VerifyMedication" = "Confirm the medication plan, if any";
-"Hotel_VerifyDeposit" = "Confirm the required deposit status";
-"Hotel_RecordBelongings" = "Record belongings received at intake";
-"Hotel_AddBelongingPrompt" = "Add an item, such as medication or a blanket";
-"Hotel_IntakeNotes" = "Check-in notes";
-"Hotel_IntakeNotesPlaceholder" = "Diet, allergy, behavior, or other intake instructions";
-"Hotel_ConfirmCheckIn" = "Confirm check-in and room assignment";
-"Hotel_Readiness_Title" = "Intake & Check-in Readiness";
-"Hotel_Readiness_MissingRequirements" = "Remaining requirements: %d";
-"Hotel_Readiness_SelectRoomFirst" = "Please select a suite first";
+
+"Hotel_CheckOutButton" = "Check Out";
+
+"Hotel_CheckInNow" = "Check In";
+
+"Hotel_StayNo" = "Stay ID:";
+
+"Hotel_Clinical_Alert" = "Clinical Alert";
+
+"Hotel_AssignedRoom" = "Assigned Suite";
+
+"Hotel_StayPeriod" = "Stay Period";
+
+"Hotel_CareSchedule" = "Daily Care Schedule";
+
+"Hotel_NoTasksScheduled" = "No tasks scheduled for this guest";
+
+"Hotel_CompletedBy" = "Completed by:";
+
+"Hotel_BelongingsInventory" = "Guest Belongings";
+
+"Hotel_NoBelongings" = "No belongings recorded at check-in";
+
+"Hotel_PetOwner" = "Owner";
+
+"Hotel_Execute_Checkout" = "Check Out";
+
+"Hotel_CheckIn_Title" = "Check In";
+
+"Hotel_SelectRoom" = "Assign Suite";
+
+"Hotel_NoAvailableRoomsInWing" = "No vacant suites in this wing for selected dates";
+
+"Hotel_VerifyMedication" = "Medication Schedule";
+
+"Hotel_VerifyDeposit" = "Deposit Status";
+
+"Hotel_RecordBelongings" = "Log Belongings";
+
+"Hotel_AddBelongingPrompt" = "Add item (e.g. carrier, blanket, collar)...";
+
+"Hotel_IntakeNotes" = "Intake Notes";
+
+"Hotel_IntakeNotesPlaceholder" = "Enter intake observations or handling instructions...";
+
+"Hotel_ConfirmCheckIn" = "Complete Check-In";
+
+"Hotel_Readiness_Title" = "Check-In Requirements";
+
+"Hotel_Readiness_MissingRequirements" = "Pending requirements: %d";
+
+"Hotel_Readiness_SelectRoomFirst" = "Select a suite to proceed";
+
 "Hotel_Chip_CollarLeash" = "Collar & Leash";
+
 "Hotel_Chip_BlanketBed" = "Blanket / Bed";
-"Hotel_Chip_Medication" = "Special Medication";
+
+"Hotel_Chip_Medication" = "Medication";
+
 "Hotel_Chip_Carrier" = "Pet Carrier";
-"Hotel_Chip_SpecialFood" = "Dietary Food";
-"Hotel_Chip_Toys" = "Pet Toys";
-"Hotel_NoteTag_Calm" = "Calm & obedient";
-"Hotel_NoteTag_Anxious" = "Anxious with strangers";
-"Hotel_NoteTag_SpecialDiet" = "Strict diet";
-"Hotel_NoteTag_NeedsCare" = "Special medical care";
+
+"Hotel_Chip_SpecialFood" = "Special Food";
+
+"Hotel_Chip_Toys" = "Toys";
+
+"Hotel_NoteTag_Calm" = "Calm / Friendly";
+
+"Hotel_NoteTag_Anxious" = "Timid / Anxious";
+
+"Hotel_NoteTag_SpecialDiet" = "Special Diet";
+
+"Hotel_NoteTag_NeedsCare" = "Medication Required";
+
 "Hotel_CallOwner" = "Call Owner";
-"Hotel_QuickChips_Title" = "Quick Item Suggestions:";
-"Hotel_VerifyIdentity_Sub" = "Match owner info and microchip ID";
-"Hotel_VerifyVaccination_Sub" = "Vaccine record approved with no alerts";
-"Hotel_VerifyInspection_Sub" = "General skin, eyes & activity check";
-"Hotel_VerifyDiet_Sub" = "Meal schedule and allergy review";
-"Hotel_VerifyEmergency_Sub" = "Active number for immediate emergency reach";
-"Hotel_VerifyAgreement_Sub" = "Hotel care and emergency policy consent";
-"Hotel_VerifyMedication_Sub" = "Medication dosage and schedule verification";
-"Hotel_VerifyDeposit_Sub" = "Verification of advance deposit payment";
-"Hotel_EmptyRooms_Help" = "Check for date conflicts or upgrade the suite in room management";
-"Hotel_KeyboardShortcut_Confirm" = "Confirm Check-in (⌘ + Return)";
+
+"Hotel_QuickChips_Title" = "Suggested Belongings:";
+
+"Hotel_VerifyIdentity_Sub" = "Verify guest microchip ID and owner details";
+
+"Hotel_VerifyVaccination_Sub" = "Vaccination record verified with no warnings";
+
+"Hotel_VerifyInspection_Sub" = "Physical examination and vitals clear";
+
+"Hotel_VerifyDiet_Sub" = "Review meal schedule and allergies";
+
+"Hotel_VerifyEmergency_Sub" = "Backup contact for emergencies";
+
+"Hotel_VerifyAgreement_Sub" = "Boarding agreement signed and accepted";
+
+"Hotel_VerifyMedication_Sub" = "Confirm medication dosage and timings";
+
+"Hotel_VerifyDeposit_Sub" = "Confirm advance reservation deposit";
+
+"Hotel_DepositPaid_Label" = "Deposit Paid:";
+"Hotel_DepositVerified_Sub" = "Advance deposit already received: %@";
+"Hotel_BalanceRemaining_Label" = "Balance Due on Departure:";
+"Hotel_BalanceRemaining_Short" = "Balance Due";
+"Hotel_EmptyRooms_Help" = "Check date conflicts or adjust suite configuration";
+
+"Hotel_KeyboardShortcut_Confirm" = "Confirm (⌘ + Return)";
+
 "Hotel_KeyboardShortcut_Dismiss" = "Dismiss (Esc)";
-"Hotel_Checkout_Title" = "Guest checkout";
-"Hotel_CheckoutPrompt" = "Complete discharge, belongings, handover, and room release";
-"Hotel_BelongingsHandedBack" = "Return all belongings to the recipient";
-"Hotel_RoomInspectionComplete" = "Room inspection completed";
-"Hotel_RoomInspectionDetail" = "Room condition and operational notes were reviewed";
-"Hotel_IncidentsAcknowledged" = "Review open incidents and observations";
-"Hotel_MedicationResolved" = "Resolve all medication tasks";
-"Hotel_HandoverVerified" = "Verify recipient identity and handover";
-"Hotel_RoomCleaningAutomatic" = "After checkout, the server automatically moves the released room to cleaning.";
-"Hotel_ConfirmCheckoutButton" = "Complete checkout and handover";
-"Hotel_RoomStatusTitle" = "Suite status";
-"Hotel_ChangeStatusPrompt" = "Update the suite’s operational status:";
-"LiveSync" = "Server synced";
-"Search" = "Search by guest, room, or customer";
+
+"Hotel_Checkout_Title" = "Check Out";
+
+"Hotel_CheckoutPrompt" = "Complete check-out, return belongings, and release suite";
+
+"Hotel_BelongingsHandedBack" = "Return all guest belongings to owner";
+
+"Hotel_RoomInspectionComplete" = "Suite inspection completed";
+
+"Hotel_RoomInspectionDetail" = "Suite released in good condition";
+
+"Hotel_IncidentsAcknowledged" = "Care and incident notes reviewed";
+
+"Hotel_MedicationResolved" = "All scheduled medications completed";
+
+"Hotel_HandoverVerified" = "Verify owner identity upon pickup";
+
+"Hotel_RoomCleaningAutomatic" = "Suite automatically transitions to Cleaning upon check-out.";
+
+"Hotel_ConfirmCheckoutButton" = "Complete Check-Out";
+
+"Hotel_RoomStatusTitle" = "Suite Status";
+
+"Hotel_ChangeStatusPrompt" = "Select operational status:";
+
+"LiveSync" = "Live";
+
+"Search" = "Search guest, suite, or owner...";
+
 "AdminBadge_Live" = "Live";
+
 "POS_RemainingStockFormat" = "Remaining: %d";
+
 "POS_OutOfStock" = "Out of stock";
 
-/* Hotel Suites & Reservations Sovereign Operations */
-"Hotel_Suites_SpatialHUD_Title" = "Hotel Occupancy & Housekeeping Telemetry";
-"Hotel_Suites_SummaryFormat" = "%ld total suites • %ld available now";
-"Hotel_Suites_Types_Title" = "Suite Categories & Rates";
-"Hotel_Suites_NewType" = "Add Category";
-"Hotel_Suites_NoTypesYet" = "No suite categories configured yet";
-"Hotel_Filter_AllRooms" = "All Suites";
-"Hotel_Suites_AddSuite" = "Add Suite";
-"Hotel_Suites_PetsLimit" = "pets";
-"Hotel_Suites_NoRoomsMatch" = "No suites match current filters";
-"Hotel_Suites_CreateFirst" = "Add New Suite";
-"Hotel_Suites_EditTitle" = "Edit Suite Details";
-"Hotel_Suites_NewTitle" = "Add New Suite";
-"Hotel_Suites_BasicInfo" = "Basic Information";
-"Hotel_Suites_CodeLabel" = "Suite Number or Code (e.g. D-101)";
-"Hotel_Suites_CodePlaceholder" = "e.g. D-101";
-"Hotel_Suites_NameLabel" = "Suite Name or Description";
-"Hotel_Suites_NamePlaceholder" = "e.g. Royal Suite for Large Dogs";
-"Hotel_Wing_Select" = "Assigned Wing:";
-"Hotel_Type_Select" = "Suite Category & Rate:";
-"Hotel_ChooseType" = "Choose suite category...";
-"Hotel_Suites_CapacitySettings" = "Capacity & Shared Occupancy";
-"Hotel_Suites_MaxCapacity" = "Max Pet Capacity";
-"Hotel_Suites_CapacityHint" = "Maximum number of allowed guests";
-"Hotel_Suites_AllowShared" = "Allow Shared Occupancy";
-"Hotel_Suites_AllowSharedHint" = "Same customer's pets only";
-"Hotel_Suites_AllowedSpecies" = "Allowed Species";
-"Hotel_Suites_NotesTitle" = "Notes & Suite Activation";
-"Hotel_Suites_ActiveStatus" = "Suite is active and ready";
-"Hotel_Suites_ActiveStatusHint" = "Inactive suites will not appear in bookings";
-"Hotel_Suites_SubmitNew" = "Create Hotel Suite";
-"Hotel_Err_CodeRequired" = "Please enter suite code/number.";
-"Hotel_Err_NameRequired" = "Please enter suite name or description.";
-"Hotel_Err_TypeRequired" = "Please select or create a suite category first.";
-"Hotel_Suites_TierDetails" = "Suite Category Details";
-"Hotel_Suites_TypeCode" = "Category Code (e.g. VIP / STD)";
-"Hotel_Suites_NameAr" = "Arabic Name";
-"Hotel_Suites_NameArPlaceholder" = "e.g. VIP Presidential Suite";
-"Hotel_Suites_NameEn" = "English Name";
-"Hotel_Suites_NameEnPlaceholder" = "e.g. VIP Presidential Suite";
-"Hotel_Suites_PriceAndCapacity" = "Price & Default Capacity";
-"Hotel_Suites_NightlyRateQAR" = "Nightly Rate (QAR)";
-"Hotel_Suites_CreateTypeCTA" = "Create Suite Category";
-"Hotel_Suites_EditTypeTitle" = "Edit Suite Category";
-"Hotel_Suites_NewTypeTitle" = "New Suite Category";
-"Hotel_Err_TypeCodeRequired" = "Please enter category code.";
-"Hotel_Err_TypeNameRequired" = "Please enter category name.";
-"Hotel_Suites_LivePreviewTitle" = "Live Tier Vitrine";
-"Hotel_Suites_LivePreviewSub" = "Real-time guest card & hotel catalog rendering";
-"Hotel_Suites_QuickCodesTitle" = "Quick Code Presets";
-"Hotel_Suites_AllowedSpeciesTitle" = "Allowed Guest Species";
-"Hotel_Suites_AllowedSpeciesDesc" = "Select permitted animal species authorized to stay in this tier";
-"Hotel_Suites_CapacityTitle" = "Default Pet Capacity";
-"Hotel_Suites_CapacityDesc" = "Maximum pet guests per individual accommodation";
-"Hotel_Suites_SharedOccupancyTitle" = "Allow Shared Occupancy";
-"Hotel_Suites_SharedOccupancyDesc" = "Permits multiple pets from the same household to share a single suite";
-"Hotel_Suites_ActiveStatusTitle" = "Tier Active & Bookable";
-"Hotel_Suites_ActiveStatusDesc" = "Inactive tiers will be hidden from customer booking choices";
-"Hotel_Suites_DescriptionTitle" = "Amenities & Luxury Features (Optional)";
-"Hotel_Suites_DescriptionPlaceholder" = "e.g. 24/7 web camera, climate control, private outdoor patio, gourmet meals...";
-"Hotel_Suites_StudioTitle" = "Hotel Tier Studio";
-"Hotel_Suites_StudioSubtitle" = "Architecting suite standards & luxury tiers";
-"Hotel_Suites_SaveShortcut" = "Save (⌘S)";
-"Hotel_Suites_CloseShortcut" = "Close (Esc)";
-"Hotel_Suites_PetsCountFormat" = "%d Pets";
-"Hotel_Suites_PetSingular" = "1 Pet";
-"Hotel_Suites_PetDual" = "2 Pets";
-"Hotel_Suites_PerNight" = "/ night";
-"Hotel_Suites_SharedAllowedBadge" = "Shared Allowed 🐾";
-"Hotel_Suites_PrivateOnlyBadge" = "Private Stay Only";
-"Hotel_Suites_ActiveBadge" = "Active & Ready";
-"Hotel_Suites_InactiveBadge" = "Temporarily Inactive";
-"Hotel_Suites_PricePresetTitle" = "Standard Price Rates (QAR)";
-"Hotel_Suites_PricePerNightFormula" = "Estimated 3-Night Stay:";
-"Hotel_Suites_StatusReady" = "Ready & Available";
-"Hotel_Suites_StatusMaint" = "Under Maintenance / Hold";
-"Hotel_SuggestCode" = "Suggest Code";
-"Hotel_Shared_Active" = "Shared Cohabitation Approved";
-"Hotel_Shared_Solo" = "Exclusive Single Occupancy";
-"Hotel_Suite_SpecsTitle" = "Suite Specifications & Telemetry";
-"Hotel_Housekeeping_Protocol" = "Housekeeping & Sanitization Protocol";
-"Hotel_ReadyForGuests" = "Ready for Immediate Guest Check-in";
-"Hotel_SanitizeCycleActive" = "Periodic sanitization and prep cycle certified";
-"Hotel_Keyboard_SaveHint" = "⌘S to Save • Esc to Dismiss";
-"Hotel_Allowed_Label" = "Permitted Guests:";
-"Hotel_PerNight" = "per night";
-"Hotel_Category" = "Category Tier";
-"Hotel_Rate" = "Nightly Rate";
-"Hotel_Capacity" = "Max Capacity";
-"Hotel_SharedOccupancy" = "Shared Occupancy";
-"Hotel_Suites_ActiveHint" = "Immediately available for bookings and front desk intake";
-"Hotel_NoTypeSelected" = "No category selected";
-"Hotel_Suite_Untitled" = "Untitled Suite";
-"Hotel_Err_SpeciesRequired" = "Please select at least one permitted animal species.";
-"Hotel_View_Grid" = "Grid";
-"Hotel_View_List" = "List";
-"Hotel_Room_SetStatus" = "Update Suite Status";
-"Hotel_Res_PipelineTitle" = "Reservations & Guest Flow Pipeline";
-"Hotel_Res_TotalCountFormat" = "%ld recorded reservations";
-"Hotel_Res_PendingTab" = "Pending Confirmation";
-"Hotel_Res_ConfirmedTab" = "Confirmed & Ready";
-"Hotel_Res_ArrivalsToday" = "Arrivals Today";
-"Hotel_Res_InStayTab" = "In Stay";
-"Hotel_Res_CompletedTab" = "Completed";
-"Hotel_Res_CancelledTab" = "Cancelled & Rejected";
-"Hotel_Res_ShowingFormat" = "Showing %ld reservations";
-"Hotel_Res_NewReservationCTA" = "New Hotel Booking";
-"Hotel_Res_NewReservationTitle" = "Create New Hotel Reservation";
-"Hotel_Res_NoReservationsMatch" = "No reservations match current filters";
-"Hotel_Res_CreateFirst" = "Create First Reservation";
-"Hotel_Nights_Short" = "nights";
-"Hotel_Room_Unassigned" = "Unassigned";
-"Hotel_Res_TotalQuoted" = "Total Quoted:";
-"Hotel_Res_ConfirmAction" = "Confirm Reservation";
-"Hotel_Res_DetailTitle" = "Reservation Details";
-"Hotel_Res_StayHorizon" = "Stay Horizon & Suite Assignment";
-"Hotel_Arrival" = "Arrival Date";
-"Hotel_Departure" = "Departure Date";
-"Hotel_AssignedRoom_Format" = "Suite: %@";
-"Hotel_Billing" = "Billing & Financial Ledger";
-"Hotel_QuotedTotal" = "Estimated Stay Total:";
-"Hotel_DepositPaid" = "Collected Deposit:";
-"Hotel_BalanceDue" = "Remaining Balance:";
-"Hotel_Res_ExtendStay" = "Extend Guest Stay";
-"Hotel_Res_CancelReservation" = "Cancel Reservation";
-"Hotel_DepositPaidNow" = "Deposit Paid (QAR)";
-"Hotel_TotalNights" = "Total Nights";
-"Hotel_ConfirmImmediately" = "Confirm immediately and prepare suite";
-"Hotel_ConfirmImmediatelyHint" = "Owner will be notified and arrival scheduled";
-"Hotel_CreateReservationSubmit" = "Confirm & Create Booking";
-"Hotel_ExtendStay_Title" = "Extend Hotel Stay Period";
-"Hotel_ExtendStay_Description" = "Select the new departure date and extension reason to automatically update operations.";
-"Hotel_NewDepartureDate" = "New Departure Date";
-"Hotel_ConfirmExtendStayCTA" = "Confirm Extension";
-"Hotel_Extend_QuickPresets" = "Quick Duration Presets";
-"Hotel_Extend_Preset_1D" = "+1 Day";
-"Hotel_Extend_Preset_2D" = "+2 Days";
-"Hotel_Extend_Preset_3D" = "+3 Days";
-"Hotel_Extend_Preset_7D" = "+1 Week";
-"Hotel_Extend_Preset_Custom" = "Custom Date";
-"Hotel_Extend_CurrentDeparture" = "Current Scheduled Departure";
-"Hotel_Extend_NewDeparture" = "New Target Departure";
-"Hotel_Extend_AdditionalNights" = "Additional Nights";
-"Hotel_Extend_TotalNightsAfter" = "Total Duration After Extension";
-"Hotel_Extend_NightlyRate" = "Estimated Nightly Rate";
-"Hotel_Extend_ProjectedAddAmount" = "Projected Additional Amount";
-"Hotel_Extend_ProjectedTotal" = "Projected New Total";
-"Hotel_Extend_Reason_Title" = "Operational Extension Reason";
-"Hotel_Extend_Reason_ClientRequest" = "Pet Owner Request";
-"Hotel_Extend_Reason_TravelDelay" = "Travel or Flight Delay";
-"Hotel_Extend_Reason_PetHealth" = "Veterinary Care & Observation";
-"Hotel_Extend_Reason_Emergency" = "Emergency or Late Pickup";
-"Hotel_Extend_Reason_Admin" = "Executive Operational Override";
-"Hotel_Extend_Notes_Title" = "Reception & Shift Handover Notes";
-"Hotel_Extend_Notes_Placeholder" = "Add any feeding notes, special care instructions, or billing agreements...";
-"Hotel_Extend_Notice_SuiteLocked" = "Suite Allocation Guaranteed: The assigned suite will remain reserved for the extended period.";
-"Hotel_Extend_Success_Toast" = "Reservation successfully extended";
-"Hotel_Extend_CTA_Confirm" = "Confirm Stay Extension";
-"Hotel_Extend_CTA_Submitting" = "Updating Stay Horizon...";
-"Hotel_Extend_Error_Title" = "Extension Failed";
-"Hotel_Extend_Keyboard_ConfirmHint" = "Press ⌘Return to confirm";
-"Hotel_Extend_Keyboard_CancelHint" = "Press Esc to cancel";
-"Hotel_Extend_PetDossier_Title" = "Guest & Reservation Dossier";
-"Hotel_Extend_Timeline_Initial" = "Initial Booking";
-"Hotel_Extend_Timeline_Extended" = "Extended Horizon";
-"Hotel_Extend_QuickTag_CashPaid" = "Paid in Cash";
-"Hotel_Extend_QuickTag_CheckoutCharge" = "Bill at Checkout";
-"Hotel_Extend_QuickTag_WhatsAppNotified" = "Owner Notified via WhatsApp";
-"Hotel_Extend_PlusNightsFormat" = "+%d Nights";
-"Hotel_Extend_TotalNightsFormat" = "%d Nights Total";
-"Hotel_Extend_PerNight" = "/ night";
-"Hotel_Reason_SheetTitle" = "Operational Action Reason";
-"Hotel_Reason_SheetHint" = "Please specify the rejection/cancellation reason for audit:";
-"Hotel_Reason_CustomerRequest" = "Customer Request";
-"Hotel_Reason_NoShow" = "No-Show";
-"Hotel_Reason_HealthIssue" = "Pet Health Issue";
-"Hotel_Reason_CapacityConflict" = "Capacity or Room Conflict";
-"Hotel_Reason_OperatorOverride" = "Administrative Override";
-"Hotel_ConfirmCancellationCTA" = "Confirm Cancellation";
-"Hotel_Err_CustomerNameRequired" = "Please enter customer name.";
-"Hotel_Err_CustomerPhoneRequired" = "Please enter customer phone.";
-"Hotel_Err_PetNameRequired" = "Please enter pet name.";
-"Hotel_Customer_SelectOrAdd" = "Select or Add Booking Customer";
-"Hotel_Customer_SelectHint" = "Pick a registered customer or create instant walk-in profile";
-"Hotel_Res_EditReservation" = "Edit Reservation Data";
-"Hotel_Edit_Success_Toast" = "Reservation data updated successfully";
-"Hotel_Keyboard_Edit" = "Edit Reservation (⌘+U)";
-"Hotel_Edit_SaveAction" = "Save Changes";
-"Hotel_Edit_GuestSection" = "Guest & Care Details";
-"Hotel_Edit_DatesSection" = "Stay Window & Dates";
-"Hotel_Edit_CustomerSection" = "Customer Dossier";
-"Hotel_Edit_EmergencySection" = "Emergency Contact";
-"Hotel_Edit_NotesSection" = "Special Instructions & Notes";
-"Hotel_Customer_BoundLabel" = "Bound Booking Customer";
-"Hotel_Err_CustomerRequired" = "Please select or register a customer for this reservation.";
-"Hotel_Deposit_Presets_Full" = "Full Amount";
-"Hotel_Telemetry_SuitesReady" = "%d Suites Ready";
-"Hotel_MedicationInstructions" = "Medication schedule and dosing instructions...";
-"Hotel_SpecialDietAndAllergies" = "Special diet or allergies if applicable...";
-"Hotel_WhatsApp_Chat" = "WhatsApp Chat";
-"Hotel_Copy_ReservationNumber" = "Copy Reservation ID";
-"Hotel_ReservationNumber_Copied" = "Reservation ID copied to clipboard";
-"Hotel_Care_NormalDiet" = "Standard Diet";
-"Hotel_Care_NoMedication" = "No medication required";
-"Hotel_Care_NoSpecialInstructions" = "No special instructions or behavioral notes recorded";
-"Hotel_Room_AllocateNow" = "Assign Suite Now";
-"Hotel_Room_Status_Assigned" = "Assigned";
-"Hotel_Room_Status_Pending" = "Pending Assignment";
-"Hotel_Stay_Countdown_Today" = "Arrival Today";
-"Hotel_Stay_Countdown_Tomorrow" = "Arrival Tomorrow";
-"Hotel_Stay_Countdown_Days" = "%d days until arrival";
-"Hotel_Stay_InHouse" = "Guest Currently In-House";
-"Hotel_Stay_Departed" = "Stay Completed & Checked Out";
-"Hotel_Keyboard_CheckIn" = "Check In (⌘+C)";
-"Hotel_Keyboard_Extend" = "Extend Stay (⌘+E)";
-"Hotel_Keyboard_Call" = "Call Customer (⌘+P)";
-"Hotel_Keyboard_Cancel" = "Cancel Reservation (⌘+⌫)";
-"Hotel_Audit_BookingID" = "Booking Reference:";
-"Hotel_Audit_Created" = "Booking Created:";
-"Hotel_Audit_Branch" = "Designated Branch:";
-"Hotel_Folio_PaidFull" = "Fully Paid";
-"Hotel_Folio_DepositPaid" = "Deposit Paid";
-"Hotel_Folio_Unpaid" = "Unpaid";
-"Hotel_MoreActions" = "Reservation Options";
-"Hotel_Emergency_Call" = "Emergency Call";
-"Hotel_Special_Instructions_Title" = "Care Protocol & Special Notes";
-"Hotel_RemainingBalance" = "Balance at Checkout:";
-"Hotel_Weight_Kg" = "Approximate Weight (KG)";
-"Hotel_Nights_Count" = "%ld Nights Stay";
-"Hotel_MedicationRequiredBadge" = "Requires Medication Plan";
-"Hotel_Res_NewReservationSub" = "Pure Pets Hotel • Boarding Stay";
-"Customer_Details" = "Customer Details";
-"Customer_Name_Placeholder" = "Full Customer Name *";
-"Customer_Phone_Placeholder" = "Customer Phone Number *";
-"Email_Optional" = "Email Address (Optional)";
-"Pet_Details" = "Pet & Guest Details";
-"Dog" = "Dog";
-"Cat" = "Cat";
-"Bird" = "Bird";
-"SmallPet" = "Small Pet";
-"Pet_Name_Placeholder" = "Pet Name *";
-"Breed_Optional" = "Breed / Type";
-"Hotel_MedicationPlanToggle" = "Requires medication plan during stay";
-"Hotel_WingAndTier" = "Suite & Hotel Category";
-"Hotel_NoAccommodationTypesWarning" = "No categories created yet. Standard rate will apply.";
-"Hotel_ArrivalDate" = "Arrival Date:";
-"Hotel_DepartureDate" = "Departure Date:";
-"Hotel_FinancialEstimation" = "Estimated Bill & Deposit";
-"EmergencyContact" = "Emergency Contact & Notes";
-"Emergency_Name" = "Emergency Contact Name (Optional)";
-"Emergency_Phone" = "Emergency Phone (Optional)";
-"SpecialInstructions" = "Any instructions or special guest requirements...";
-"Hotel_StayPreset_Weekend" = "Weekend (2 Nights)";
-"Hotel_StayPreset_3Nights" = "3 Nights";
-"Hotel_StayPreset_Week" = "Full Week (7 Nights)";
-"Hotel_StayPreset_2Weeks" = "2 Weeks (14 Nights)";
-"Hotel_DepositPreset_None" = "No Deposit";
-"Hotel_DepositPreset_25" = "25%";
-"Hotel_DepositPreset_50" = "50%";
-"Hotel_DepositPreset_100" = "Full Payment (100%)";
-"Hotel_BoardingPass_Title" = "Hotel Boarding Pass";
-"Hotel_BoardingPass_Subtitle" = "Live Booking & Folio Preview";
-"Hotel_Keyboard_SubmitHint" = "⌘↵ to Confirm • Esc to Cancel";
-"Hotel_Suite_AvailableUnits" = "%d Suites Available";
-"Hotel_Suite_PerNight" = "QAR / Night";
-"Hotel_SuiteCapacity_Format" = "Capacity: %d guests";
-"Hotel_Care_AllergiesDiet" = "Allergies & Dietary Needs";
-"Hotel_Care_MedicationTitle" = "Medication Schedule & Dosage";
-"Hotel_Client_QuickSearch" = "Quick Client Search";
-"Hotel_Res_ActiveBranchNotice" = "Active Receiving Branch";
-"Hotel_NightsShortUnit" = "night";
-"Hotel_NightsPluralUnit" = "nights";
-"Hotel_DaysLeftArriving" = "Arrives in %ld days";
-"Hotel_ArrivingToday" = "Arriving Today";
-"Hotel_StayPreset_Month" = "Full Month (30 Nights)";
-"Hotel_Arrival_Title" = "Arrival";
-"Hotel_Departure_Title" = "Departure";
-"Hotel_DaysPluralUnit" = "days";
-"Hotel_AdjustArrivalDepartureTimes" = "Adjust Arrival & Departure Times";
-"Hotel_CheckinTime_Label" = "Check-in Time";
-"Hotel_CheckoutTime_Label" = "Check-out Time";
-"Hotel_SearchCustomerPlaceholder" = "Quick search registered customers (by name or phone)...";
-"Hotel_Customer_VerifiedProfile" = "Verified Profile";
-"Hotel_Customer_WalkInBadge" = "Walk-in (Guest)";
-"Hotel_Select_Action" = "Select";
-"Hotel_ChangeCustomer" = "Change";
-"Hotel_CustomerSavedPets" = "Customer's Registered Pets:";
-"Hotel_Err_InvalidStayRange" = "Departure date must be after arrival date.";
-"Hotel_Err_CreateReservationFailed" = "Failed to confirm reservation, please try again.";
-"Hotel_Err_CustomerNameRequired" = "Please enter customer name.";
-"Hotel_Err_CustomerPhoneRequired" = "Please enter customer phone number.";
-"Hotel_Err_PetNameRequired" = "Please enter pet name.";
 
+/* Hotel Suites & Reservations Sovereign Operations */
+"Hotel_Suites_SpatialHUD_Title" = "Suites & Room Inventory";
+
+"Hotel_Suites_SummaryFormat" = "%ld suites total • %ld vacant now";
+
+"Hotel_Suites_Types_Title" = "Suite Types & Rates";
+
+"Hotel_Suites_NewType" = "Add Suite Type";
+
+"Hotel_Suites_NoTypesYet" = "No suite types configured yet for this branch";
+
+"Hotel_Filter_AllRooms" = "All Suites";
+
+"Hotel_Suites_AddSuite" = "Add Suite";
+
+"Hotel_Suites_PetsLimit" = "guests";
+
+"Hotel_Suites_NoRoomsMatch" = "No suites match current filters";
+
+"Hotel_Suites_CreateFirst" = "Add First Suite";
+
+"Hotel_Suites_EditTitle" = "Edit Suite";
+
+"Hotel_Suites_NewTitle" = "New Suite";
+
+"Hotel_Suites_BasicInfo" = "Suite Details";
+
+"Hotel_Suites_CodeLabel" = "Suite Number / Code (e.g. D-101)";
+
+"Hotel_Suites_CodePlaceholder" = "e.g. D-101";
+
+"Hotel_Suites_NameLabel" = "Suite Name";
+
+"Hotel_Suites_NamePlaceholder" = "e.g. Deluxe Suite for Large Dogs";
+
+"Hotel_Wing_Select" = "Assigned Wing:";
+
+"Hotel_Type_Select" = "Suite Type & Rate:";
+
+"Hotel_ChooseType" = "Select suite type...";
+
+"Hotel_Suites_CapacitySettings" = "Capacity & Cohabitation";
+
+"Hotel_Suites_MaxCapacity" = "Max Capacity";
+
+"Hotel_Suites_CapacityHint" = "Maximum guest capacity for this suite";
+
+"Hotel_Suites_AllowShared" = "Allow Shared Cohabitation";
+
+"Hotel_Suites_AllowSharedHint" = "Pets from the same owner only";
+
+"Hotel_Suites_AllowedSpecies" = "Permitted Species";
+
+"Hotel_Suites_NotesTitle" = "Features & Status:";
+
+"Hotel_Suites_ActiveStatus" = "Active and ready for reservations";
+
+"Hotel_Suites_ActiveStatusHint" = "Inactive suites will not appear in booking flows";
+
+"Hotel_Suites_SubmitNew" = "Create Suite";
+
+"Hotel_Err_CodeRequired" = "Enter suite number or code.";
+
+"Hotel_Err_NameRequired" = "Enter suite name.";
+
+"Hotel_Err_TypeRequired" = "Select a suite type first.";
+
+"Hotel_Suites_TierDetails" = "Suite Type Specifications";
+
+"Hotel_Suites_TypeCode" = "Type Code (e.g. DELUXE, VIP)";
+
+"Hotel_Suites_NameAr" = "Arabic Name";
+
+"Hotel_Suites_NameArPlaceholder" = "e.g. الجناح الفاخر VIP";
+
+"Hotel_Suites_NameEn" = "English Name";
+
+"Hotel_Suites_NameEnPlaceholder" = "e.g. VIP Deluxe Suite";
+
+"Hotel_Suites_PriceAndCapacity" = "Rate & Capacity";
+
+"Hotel_Suites_NightlyRateQAR" = "Nightly Rate (QAR)";
+
+"Hotel_Suites_CreateTypeCTA" = "Create Suite Type";
+
+"Hotel_Suites_EditTypeTitle" = "Edit Suite Type";
+
+"Hotel_Suites_NewTypeTitle" = "New Suite Type";
+
+"Hotel_Err_TypeCodeRequired" = "Enter type code.";
+
+"Hotel_Err_TypeNameRequired" = "Enter type name.";
+
+"Hotel_Suites_LivePreviewTitle" = "Suite Card Preview";
+
+"Hotel_Suites_LivePreviewSub" = "Live rendering of suite card";
+
+"Hotel_Suites_QuickCodesTitle" = "Quick Code Presets";
+
+"Hotel_Suites_AllowedSpeciesTitle" = "Permitted Species";
+
+"Hotel_Suites_AllowedSpeciesDesc" = "Select species authorized for this suite type";
+
+"Hotel_Suites_CapacityTitle" = "Default Capacity";
+
+"Hotel_Suites_CapacityDesc" = "Maximum guests per accommodation";
+
+"Hotel_Suites_SharedOccupancyTitle" = "Allow Shared Cohabitation";
+
+"Hotel_Suites_SharedOccupancyDesc" = "Host multiple pets from same owner in one suite";
+
+"Hotel_Suites_ActiveStatusTitle" = "Active for Bookings";
+
+"Hotel_Suites_ActiveStatusDesc" = "Inactive types will be hidden from booking flows";
+
+"Hotel_Suites_DescriptionTitle" = "Amenities & Description (Optional)";
+
+"Hotel_Suites_DescriptionPlaceholder" = "e.g. Web camera, orthopaedic bed, private patio...";
+
+"Hotel_Suites_StudioTitle" = "Suite Configuration";
+
+"Hotel_Suites_StudioSubtitle" = "Manage suite types, pricing, and room standards";
+
+"Hotel_Suites_SaveShortcut" = "Save (⌘S)";
+
+"Hotel_Suites_CloseShortcut" = "Close (Esc)";
+
+"Hotel_Suites_PetsCountFormat" = "%d Guests";
+
+"Hotel_Suites_PetSingular" = "1 Guest";
+
+"Hotel_Suites_PetDual" = "2 Guests";
+
+"Hotel_Suites_PerNight" = "/ night";
+
+"Hotel_Suites_SharedAllowedBadge" = "Shared Allowed";
+
+"Hotel_Suites_PrivateOnlyBadge" = "Single Occupancy";
+
+"Hotel_Suites_ActiveBadge" = "Active";
+
+"Hotel_Suites_InactiveBadge" = "Inactive";
+
+"Hotel_Suites_PricePresetTitle" = "Standard Rates (QAR)";
+
+"Hotel_Suites_PricePerNightFormula" = "Estimated 3-Night Stay:";
+
+"Hotel_Suites_StatusReady" = "Ready for Guests";
+
+"Hotel_Suites_StatusMaint" = "Under Maintenance";
+
+"Hotel_SuggestCode" = "Suggest Code";
+
+"Hotel_Shared_Active" = "Shared Cohabitation Approved";
+
+"Hotel_Shared_Solo" = "Single Occupancy Only";
+
+"Hotel_Suite_SpecsTitle" = "Suite Specifications";
+
+"Hotel_Housekeeping_Protocol" = "Housekeeping & Sanitation";
+
+"Hotel_ReadyForGuests" = "Ready for Immediate Check-In";
+
+"Hotel_SanitizeCycleActive" = "Cleaning cycle certified";
+
+"Hotel_Keyboard_SaveHint" = "⌘S to Save • Esc to Dismiss";
+
+"Hotel_Allowed_Label" = "Permitted Guests:";
+
+"Hotel_PerNight" = "per night";
+
+"Hotel_Category" = "Suite Type";
+
+"Hotel_Rate" = "Nightly Rate";
+
+"Hotel_Capacity" = "Max Capacity";
+
+"Hotel_SharedOccupancy" = "Shared Cohabitation";
+
+"Hotel_Suites_ActiveHint" = "Available for bookings and front desk allocation";
+
+"Hotel_NoTypeSelected" = "No type selected";
+
+"Hotel_Suite_Untitled" = "Untitled Suite";
+
+"Hotel_Err_SpeciesRequired" = "Select at least one permitted animal kind.";
+
+"Hotel_View_Grid" = "Grid";
+
+"Hotel_View_List" = "List";
+
+"Hotel_Room_SetStatus" = "Update Suite Status";
+
+"Hotel_Res_PipelineTitle" = "Reservations Pipeline";
+
+"Hotel_Res_TotalCountFormat" = "%ld total reservations";
+
+"Hotel_Res_PendingTab" = "Pending";
+
+"Hotel_Res_ConfirmedTab" = "Confirmed";
+
+"Hotel_Res_ArrivalsToday" = "Arrivals Today";
+
+"Hotel_Res_InStayTab" = "In-House";
+
+"Hotel_Res_CompletedTab" = "Completed";
+
+"Hotel_Res_CancelledTab" = "Cancelled";
+
+"Hotel_Res_ShowingFormat" = "Showing %ld reservations";
+
+"Hotel_Res_NewReservationCTA" = "New Reservation";
+
+"Hotel_Res_NewReservationTitle" = "New Reservation";
+
+"Hotel_Res_NoReservationsMatch" = "No reservations match current filters";
+
+"Hotel_Res_CreateFirst" = "Create First Reservation";
+
+"Hotel_Nights_Short" = "nights";
+
+"Hotel_Room_Unassigned" = "Unassigned";
+
+"Hotel_Res_TotalQuoted" = "Total Folio:";
+
+"Hotel_Res_ConfirmAction" = "Confirm Reservation";
+
+"Hotel_Res_DetailTitle" = "Reservation Details";
+
+"Hotel_Res_StayHorizon" = "Stay Period & Suite";
+
+"Hotel_Arrival" = "Arrival Date";
+
+"Hotel_Departure" = "Departure Date";
+
+"Hotel_AssignedRoom_Format" = "Suite: %@";
+
+"Hotel_Billing" = "Folio & Billing";
+
+"Hotel_QuotedTotal" = "Total Amount:";
+
+"Hotel_DepositPaid" = "Deposit Paid:";
+
+"Hotel_BalanceDue" = "Balance Due:";
+
+"Hotel_Res_ExtendStay" = "Extend Stay";
+
+"Hotel_Res_CancelReservation" = "Cancel Reservation";
+
+"Hotel_DepositPaidNow" = "Confirmation Deposit:";
+
+"Hotel_TotalNights" = "Total Nights";
+
+"Hotel_ConfirmImmediately" = "Confirm Reservation Immediately";
+
+"Hotel_ConfirmImmediatelyHint" = "Notifies client and locks room allocation immediately.";
+
+"Hotel_CreateReservationSubmit" = "Create Reservation";
+
+"Hotel_ExtendStay_Title" = "Extend Stay";
+
+"Hotel_ExtendStay_Description" = "Select the new departure date and reason for extending the stay.";
+
+"Hotel_NewDepartureDate" = "New Departure Date";
+
+"Hotel_ConfirmExtendStayCTA" = "Confirm Extension";
+
+"Hotel_Extend_QuickPresets" = "Quick Presets:";
+
+"Hotel_Extend_Preset_1D" = "+1 Day";
+
+"Hotel_Extend_Preset_2D" = "+2 Days";
+
+"Hotel_Extend_Preset_3D" = "+3 Days";
+
+"Hotel_Extend_Preset_7D" = "+7 Days";
+
+"Hotel_Extend_Preset_Custom" = "Custom Date";
+
+"Hotel_Extend_CurrentDeparture" = "Current Departure";
+
+"Hotel_Extend_NewDeparture" = "New Departure";
+
+"Hotel_Extend_AdditionalNights" = "Additional Nights";
+
+"Hotel_Extend_TotalNightsAfter" = "New Total Nights";
+
+"Hotel_Extend_NightlyRate" = "Nightly Rate";
+
+"Hotel_Extend_ProjectedAddAmount" = "Additional Charge";
+
+"Hotel_Extend_ProjectedTotal" = "Updated Total";
+
+"Hotel_Extend_Reason_Title" = "Extension Reason";
+
+"Hotel_Extend_Reason_ClientRequest" = "Client Request";
+
+"Hotel_Extend_Reason_TravelDelay" = "Travel Delay";
+
+"Hotel_Extend_Reason_PetHealth" = "Medical Observation";
+
+"Hotel_Extend_Reason_Emergency" = "Emergency Delay";
+
+"Hotel_Extend_Reason_Admin" = "Management Decision";
+
+"Hotel_Extend_Notes_Title" = "Extension Notes & Instructions";
+
+"Hotel_Extend_Notes_Placeholder" = "Add any dietary adjustments or handling notes...";
+
+"Hotel_Extend_Notice_SuiteLocked" = "Current suite allocation will be maintained for the extended period.";
+
+"Hotel_Extend_Success_Toast" = "Stay extended successfully";
+
+"Hotel_Extend_CTA_Confirm" = "Confirm Extension";
+
+"Hotel_Extend_CTA_Submitting" = "Extending stay...";
+
+"Hotel_Extend_Error_Title" = "Extension Failed";
+
+"Hotel_Extend_Keyboard_ConfirmHint" = "⌘Return to confirm";
+
+"Hotel_Extend_Keyboard_CancelHint" = "Esc to cancel";
+
+"Hotel_Extend_PetDossier_Title" = "Guest & Stay Dossier";
+
+"Hotel_Extend_Timeline_Initial" = "Initial Period";
+
+"Hotel_Extend_Timeline_Extended" = "Extended Horizon";
+
+"Hotel_Extend_QuickTag_CashPaid" = "Paid Cash";
+
+"Hotel_Extend_QuickTag_CheckoutCharge" = "Charge at Check-Out";
+
+"Hotel_Extend_QuickTag_WhatsAppNotified" = "Client Notified on WhatsApp";
+
+"Hotel_Extend_PlusNightsFormat" = "+%d Nights";
+
+"Hotel_Extend_TotalNightsFormat" = "%d Nights Total";
+
+"Hotel_Extend_PerNight" = "/ night";
+
+"Hotel_Reason_SheetTitle" = "Action Reason";
+
+"Hotel_Reason_SheetHint" = "Select reason for audit and records:";
+
+"Hotel_Reason_CustomerRequest" = "Client Request";
+
+"Hotel_Reason_NoShow" = "Guest No-Show";
+
+"Hotel_Reason_HealthIssue" = "Health / Medical Reason";
+
+"Hotel_Reason_CapacityConflict" = "Suite Capacity Conflict";
+
+"Hotel_Reason_OperatorOverride" = "Management Override";
+
+"Hotel_ConfirmCancellationCTA" = "Confirm Cancellation";
+
+"Hotel_Err_CustomerNameRequired" = "Enter owner full name.";
+
+"Hotel_Err_CustomerPhoneRequired" = "Enter owner phone number.";
+
+"Hotel_Err_PetNameRequired" = "Enter guest name.";
+
+"Hotel_Customer_SelectOrAdd" = "Select or Add Owner";
+
+"Hotel_Customer_SelectHint" = "Select registered owner or create new profile";
+
+"Hotel_Res_EditReservation" = "Edit Reservation";
+
+"Hotel_Edit_Success_Toast" = "Reservation updated successfully";
+
+"Hotel_Edit_PendingChangesBadge" = "Pending Changes";
+
+"Hotel_Edit_PendingReviewLabel" = "Edits Pending Confirmation";
+
+"Hotel_Edit_DossierSeamLabel" = "Reservation & Stay Record";
+
+"Hotel_Keyboard_Edit" = "Edit Reservation (⌘+U)";
+
+"Hotel_Edit_SaveAction" = "Save Reservation";
+
+"Hotel_Edit_GuestSection" = "Guest Information";
+
+"Hotel_Edit_DatesSection" = "Stay Dates & Times";
+
+"Hotel_Edit_CustomerSection" = "Owner Information";
+
+"Hotel_Edit_EmergencySection" = "Emergency Contact";
+
+"Hotel_Edit_NotesSection" = "Special Instructions & Notes";
+
+"Hotel_Edit_Error_Title" = "Failed to save reservation changes";
+
+"Hotel_Err_InvalidDates" = "Departure date must be after arrival date.";
+
+"Hotel_Care_MedicationToggle" = "Medication Required";
+
+"Hotel_Care_MedicationSub" = "Enrolls guest into daily medication administration";
+
+"Hotel_CustomerName" = "Owner Full Name *";
+
+"Hotel_CustomerPhone" = "Owner Phone *";
+
+"Hotel_CustomerEmail" = "Email Address (Optional)";
+
+"Hotel_Pet_Name" = "Pet / Guest Name *";
+
+"Hotel_Breed" = "Breed";
+
+"Hotel_SpecialDiet" = "Dietary Requirements";
+
+"Hotel_Allergies" = "Allergies (if any)";
+
+"Hotel_EmergencyContactName" = "Emergency Contact Name (Optional)";
+
+"Hotel_EmergencyContactPhone" = "Emergency Phone (Optional)";
+
+"Hotel_Customer_BoundLabel" = "Registered Owner";
+
+"Hotel_Err_CustomerRequired" = "Select or register an owner for this reservation.";
+
+"Hotel_Deposit_Presets_Full" = "Full Amount (100%)";
+
+"Hotel_Telemetry_SuitesReady" = "%d Suites Vacant";
+
+"Hotel_MedicationInstructions" = "Medication instructions, dosage, and frequency...";
+
+"Hotel_SpecialDietAndAllergies" = "Food preferences or allergies...";
+
+"Hotel_RemainingBalance" = "Balance Due at Check-Out:";
+
+"Hotel_WhatsApp_Chat" = "WhatsApp Chat";
+
+"Hotel_Copy_ReservationNumber" = "Copy Reservation ID";
+
+"Hotel_ReservationNumber_Copied" = "Reservation ID copied";
+
+"Hotel_Care_NormalDiet" = "Standard Diet";
+
+"Hotel_Care_NoMedication" = "No Medication";
+
+"Hotel_Care_NoSpecialInstructions" = "No Special Instructions";
+
+"Hotel_Room_AllocateNow" = "Assign Suite Now";
+
+"Hotel_Room_Status_Assigned" = "Suite Assigned";
+
+"Hotel_Room_Status_Pending" = "Pending Assignment";
+
+"Hotel_Stay_Countdown_Today" = "Arriving Today";
+
+"Hotel_Stay_Countdown_Tomorrow" = "Arriving Tomorrow";
+
+"Hotel_Stay_Countdown_Days" = "Arriving in %d days";
+
+"Hotel_Stay_InHouse" = "Currently In-House";
+
+"Hotel_Stay_Departed" = "Departed";
+
+"Hotel_Keyboard_CheckIn" = "Check In (⌘+C)";
+
+"Hotel_Keyboard_Extend" = "Extend Stay (⌘+E)";
+
+"Hotel_Keyboard_Call" = "Call Owner (⌘+P)";
+
+"Hotel_Keyboard_Cancel" = "Cancel Reservation (⌘+⌫)";
+
+"Hotel_Audit_BookingID" = "Reservation ID:";
+
+"Hotel_Audit_Created" = "Created On:";
+
+"Hotel_Audit_Branch" = "Branch:";
+
+"Hotel_Folio_PaidFull" = "Fully Settled";
+
+"Hotel_Folio_DepositPaid" = "Deposit Paid";
+
+"Hotel_Folio_Unpaid" = "Deposit Pending";
+
+"Hotel_MoreActions" = "More Actions";
+
+"Hotel_Emergency_Call" = "Emergency Call";
+
+"Hotel_Special_Instructions_Title" = "Special Instructions & Handling";
+
+"Hotel_Weight_Kg" = "Weight (KG)";
+
+"Hotel_Nights_Count" = "%ld Nights";
+
+"Hotel_MedicationRequiredBadge" = "Medication Required";
+
+"Hotel_Res_NewReservationSub" = "New Hotel Stay & Boarding";
+
+"Customer_Details" = "Owner Details";
+
+"Customer_Name_Placeholder" = "Owner Full Name *";
+
+"Customer_Phone_Placeholder" = "Owner Phone *";
+
+"Email_Optional" = "Email (Optional)";
+
+"Pet_Details" = "Guest Details";
+
+"Dog" = "Dog";
+
+"Cat" = "Cat";
+
+"Bird" = "Bird";
+
+"SmallPet" = "Small Pet";
+
+"Pet_Name_Placeholder" = "Pet Name *";
+
+"Breed_Optional" = "Breed (e.g. Golden Retriever, Persian)...";
+
+"Hotel_MedicationPlanToggle" = "Medication Required";
+
+"Hotel_WingAndTier" = "Suite Type & Wing";
+
+"Hotel_NoAccommodationTypesWarning" = "No suite types configured. Standard rates apply.";
+
+"Hotel_ArrivalDate" = "Arrival Date:";
+
+"Hotel_DepartureDate" = "Departure Date:";
+
+"Hotel_FinancialEstimation" = "Folio Estimate & Deposit";
+
+"EmergencyContact" = "Emergency Contact";
+
+"Emergency_Name" = "Emergency Contact Name (Optional)";
+
+"Emergency_Phone" = "Emergency Contact Phone (Optional)";
+
+"SpecialInstructions" = "Handling habits, special diet, instructions...";
+
+"Hotel_StayPreset_Weekend" = "Weekend (2 Nights)";
+
+"Hotel_StayPreset_3Nights" = "3 Nights";
+
+"Hotel_StayPreset_Week" = "1 Week (7 Nights)";
+
+"Hotel_StayPreset_2Weeks" = "2 Weeks (14 Nights)";
+
+"Hotel_DepositPreset_None" = "No Deposit";
+
+"Hotel_DepositPreset_25" = "25% Deposit";
+
+"Hotel_DepositPreset_50" = "50% Deposit";
+
+"Hotel_DepositPreset_100" = "Full Payment (100%)";
+
+"Hotel_BoardingPass_Title" = "Boarding Pass";
+
+"Hotel_BoardingPass_Subtitle" = "Stay Preview & Care Summary";
+
+"Hotel_Keyboard_SubmitHint" = "⌘↵ to Confirm • Esc to Cancel";
+
+"Hotel_Suite_AvailableUnits" = "%d Suites Vacant";
+
+"Hotel_Suite_PerNight" = "QAR / night";
+
+"Hotel_SuiteCapacity_Format" = "Capacity: %d guests";
+
+"Hotel_Care_AllergiesDiet" = "Diet & Allergies";
+
+"Hotel_Care_MedicationTitle" = "Medication & Dosage";
+
+"Hotel_Client_QuickSearch" = "Search Owners";
+
+"Hotel_Res_ActiveBranchNotice" = "Active Branch";
+
+"Hotel_NightsShortUnit" = "night";
+
+"Hotel_NightsPluralUnit" = "nights";
+
+"Hotel_DaysLeftArriving" = "Arrives in %ld days";
+
+"Hotel_ArrivingToday" = "Arriving Today";
+
+"Hotel_StayPreset_Month" = "1 Month (30 Nights)";
+
+"Hotel_Arrival_Title" = "Arrival";
+
+"Hotel_Departure_Title" = "Departure";
+
+"Hotel_DaysPluralUnit" = "days";
+
+"Hotel_AdjustArrivalDepartureTimes" = "Adjust Check-In & Check-Out Times";
+
+"Hotel_CheckinTime_Label" = "Check-In Time";
+
+"Hotel_CheckoutTime_Label" = "Check-Out Time";
+
+"Hotel_SearchCustomerPlaceholder" = "Search by owner, phone, or guest...";
+
+"Hotel_Customer_VerifiedProfile" = "Verified Owner";
+
+"Hotel_Customer_WalkInBadge" = "Walk-In";
+
+"Hotel_Select_Action" = "Select";
+
+"Hotel_ChangeCustomer" = "Change";
+
+"Hotel_CustomerSavedPets" = "Owner Registered Pets:";
+
+"Hotel_Err_InvalidStayRange" = "Departure date must be after arrival date.";
+
+"Hotel_Err_CreateReservationFailed" = "Failed to create reservation. Please try again.";
+
+"Hotel_Err_CustomerNameRequired" = "Enter owner full name.";
+
+"Hotel_Err_CustomerPhoneRequired" = "Enter owner phone number.";
+
+"Hotel_Err_PetNameRequired" = "Enter guest name.";
+
+"Hotel_Name_Dog1" = "Standard Dog Suite";
+"Hotel_Name_Dog2" = "Classic Room";
+"Hotel_Name_Dog3" = "Deluxe Studio";
+"Hotel_Name_Dog4" = "Family Dog Suite";
+"Hotel_Name_Cat1" = "Standard Cat Suite";
+"Hotel_Name_Cat2" = "Classic Cat Room";
+"Hotel_Name_Cat3" = "Deluxe Cat Studio";
+"Hotel_Name_Cat4" = "Panoramic Cat Suite";
+"Hotel_Name_Bird1" = "Standard Aviary Suite";
+"Hotel_Name_Bird2" = "Panoramic Aviary Unit";
+"Hotel_Name_Bird3" = "Deluxe Aviary Unit";
+"Hotel_Name_Small1" = "Small Pet Suite";
+"Hotel_Name_Small2" = "Deluxe Small Pet Unit";
+"Hotel_Name_Small3" = "Small Pet Studio";
+"Hotel_Name_Day1" = "Daycare Play Area";
+"Hotel_Name_Day2" = "Daycare Rest Zone";
+"Hotel_Name_Iso1" = "Preventive Isolation Unit";
+"Hotel_Name_Iso2" = "Veterinary Recovery Room";
+"Hotel_Name_Med1" = "Veterinary Observation Unit";
+"Hotel_Name_Med2" = "Medical Care Room";
 
 /* ===================== POS Deep Diagnostics ===================== */
 "POS_DeepLog_Title" = "POS Deep Diagnostics";
@@ -8097,6 +8664,7 @@
 "Community_Admin_Status_All" = "All Statuses";
 "Community_Admin_Status_Format" = "Status: %@";
 "Community_Admin_State_Unknown" = "Unknown";
+"Community_Admin_Value_Unknown" = "Unavailable";
 "Community_Admin_Queue_Subtitle" = "A bounded, paginated queue ordered by the latest server update.";
 "Community_Admin_Applications_Subtitle" = "Status and timing oversight; adopter selection remains with the listing owner or organization.";
 "Community_Admin_Audit_Subtitle" = "Server audit evidence for sensitive Community decisions.";
@@ -8424,3 +8992,171 @@
 "Community_Admin_State_yes_no" = "Yes or No";
 "Community_Admin_State_single_choice" = "Single Choice";
 "Community_Admin_State_multiple_choice" = "Multiple Choice";
+
+"AccessoryCategory" = "Accessory Category";
+"SelectAccessoryCategory" = "Select Accessory Category...";
+"SearchAccessoryCategory" = "Search Accessory Category";
+"NoAccessoryCategoriesFound" = "No matching accessory categories found";
+
+"Hotel_ReservedForThisGuest" = "Reserved for this guest";
+
+"Hotel_NoExactRoomsAssignableTitle" = "No vacant suites in original tier";
+
+"Hotel_Tier1_MatchingSuites" = "Matching & Assignable Suites";
+
+"Hotel_Tier2_AlternativeTiers" = "Compatible Alternative Tiers & Upgrades";
+
+"Hotel_Tier3_UnavailableSuites" = "Unavailable Suites (%d)";
+
+"Hotel_RepriceConfirmTitle" = "Confirm Tier Change & Repricing";
+
+"Hotel_RepriceConfirmMessage" = "Guest will be assigned to suite (%@) under tier (%@) with price delta (%@). Proceed?";
+
+"Hotel_ChangeAndAssign" = "Change & Assign";
+
+"Hotel_SetupAssistant_Title" = "Hotel Setup Assistant";
+
+"Hotel_SetupAssistant_Sub" = "Branch readiness steps for hotel operations";
+
+"Hotel_Step1_TypesTitle" = "Suite Types & Pricing";
+
+"Hotel_Step1_TypesDesc" = "Configure suite types, default capacity, and permitted species";
+
+"Hotel_Step1_CTA" = "Manage Types";
+
+"Hotel_Step2_RoomsTitle" = "Physical Suites & Rooms";
+
+"Hotel_Step2_RoomsDesc" = "Add room codes, link to types, and set capacity";
+
+"Hotel_Step2_CTA" = "Add Suite";
+
+"Hotel_Step3_DiagTitle" = "Diagnostics & Readiness";
+
+"Hotel_ReadyForOperationsNotice" = "Branch is fully operational for reservations and check-in";
+
+"Hotel_PendingReadinessNotice" = "Complete suite type and room setup to activate operations";
+
+"Hotel_RoomAssignmentPrefTitle" = "Suite Assignment Preference";
+
+"Hotel_RoomAssignmentPrefSub" = "Pre-assign specific suite or auto-assign at check-in";
+
+"Hotel_SpecificSuiteSelectedBadge" = "Specific Suite";
+
+"Hotel_AutoAssignBadge" = "Auto Assign";
+
+"Hotel_AssignAtCheckIn" = "Auto-Assign at Check-In";
+
+"Hotel_AssignAtCheckInDesc" = "Best vacant suite is assigned at check-in to prevent conflicts";
+
+"Hotel_AssignSpecificSuite" = "Pre-Assign Specific Suite";
+
+"Hotel_AssignSpecificSuiteDesc" = "Reserve a specific suite for this guest from currently vacant units";
+
+"Hotel_NoVacantSuitesRightNow" = "No vacant suites in this tier right now. Recommend auto-assign at check-in.";
+
+"Hotel_SelectSpecificSuiteHint" = "Select suite:";
+
+"Hotel_AutoAssignAtCheckInShort" = "Assign at check-in";
+
+"Hotel_AutoSelectedCompatibleTier" = "Auto-Selected Compatible Tier";
+
+"Hotel_NoCompatibleTierTitle" = "No compatible tiers for this species";
+
+"Hotel_NoCompatibleTierExpl" = "No suite type supports this animal kind in this branch. Configure a new type or adjust classification.";
+
+"Hotel_Err_MustSelectCompatibleTier" = "Select a compatible suite type for this guest.";
+
+"Hotel_TaxonomyKindTitle" = "Verified Species (MainKinds):";
+
+"Hotel_TaxonomySubKindTitle" = "Breed & Heritage:";
+
+"Hotel_CustomBreedOption" = "Other / Custom Breed";
+
+"Hotel_CustomBreedPrompt" = "Enter custom breed name...";
+
+
+/* Pets Hotel Alignment & Sovereign Translations */
+"Activate" = "Activate Suite";
+"Allergies_Optional" = "Allergies or Restrictions (Optional)";
+"Birds" = "Birds";
+"Cats" = "Cats";
+"Checked" = "Verified";
+"Common_All" = "All";
+"Common_Cancel" = "Cancel";
+"Common_Copied" = "Copied";
+"Common_Refresh" = "Refresh";
+"Completed" = "Completed";
+"Customer_Name" = "Customer Name";
+"Deactivate" = "Deactivate Suite";
+"Diet_Optional" = "Dietary Requirements (Optional)";
+"Dogs" = "Dogs";
+"DoubleTapToToggle" = "Double tap to toggle";
+"EmergencyName_Optional" = "Emergency Contact Name (Optional)";
+"EmergencyPhone_Optional" = "Emergency Phone (Optional)";
+"Guest" = "Reservation Customer";
+"Hotel_Availability_LoadFailed" = "Unable to verify room availability";
+"Hotel_Availability_NoMatchingType" = "No rooms matching the reservation category";
+"Hotel_Availability_NoMatchingType_Help" = "Check the booked suite category or change the category from reservation management before check-in.";
+"Hotel_Availability_Reason_Booking" = "Conflicting reservation during the selected period";
+"Hotel_Availability_Reason_Branch" = "Room belongs to another branch";
+"Hotel_Availability_Reason_Capacity" = "Capacity full during the selected period";
+"Hotel_Availability_Reason_Inactive" = "Room is not active";
+"Hotel_Availability_Reason_Missing" = "Room record not found";
+"Hotel_Availability_Reason_OutOfService" = "Room is out of service";
+"Hotel_Availability_Reason_Sharing" = "Sharing is not permitted";
+"Hotel_Availability_Reason_Species" = "Pet species not allowed in this room";
+"Hotel_Availability_Reason_Status" = "Room status does not permit check-in";
+"Hotel_Availability_Rejections_Help" = "Rooms exist, but current allocation rules prevent their use for this guest. Reasons are listed below.";
+"Hotel_DefaultTier" = "Hotel Suite";
+"Hotel_Err_DuplicateCode" = "Room/suite code is already in use at this branch.";
+"Hotel_Err_InactiveType" = "Selected accommodation tier is inactive.";
+"Hotel_Err_MainKindNotAllowed" = "Pet species is not permitted in this suite.";
+"Hotel_Err_NoBranchSelected" = "Please select a branch first.";
+"Hotel_Err_PriceMismatch" = "Accommodation price has changed. Please refresh and try again.";
+"Hotel_Err_RegisteredCustomerRequired" = "A registered customer profile must be selected before creating a hotel reservation. Cannot bind to a substitute account.";
+"Hotel_Err_RepriceRequired" = "Changing accommodation tier requires confirming adjusted nightly rate and total cost.";
+"Hotel_Extend_OriginalNights" = "%d nights";
+"Hotel_Extend_Room_Badge" = "Suite %@";
+"Hotel_Hub_SearchPlaceholder" = "Search for guest, suite, or pet parent...";
+"Hotel_Keyboard_StayDossier" = "Stay Dossier (⌘+S)";
+"Hotel_Maint_AC" = "AC Inspection";
+"Hotel_Maint_Bedding" = "Bedding Setup";
+"Hotel_Maint_Camera" = "Smart Camera Check";
+"Hotel_Maint_Door" = "Door Lock Check";
+"Hotel_Maint_Sanitize" = "Full Sanitization";
+"Hotel_Maint_Water" = "Smart Water Bowl Check";
+"Hotel_NoSuitesInType" = "No suites added to this tier yet.";
+"Hotel_QuickAction_AddSuite" = "Add Suite";
+"Hotel_QuickAction_ManageTypes" = "Suite Types";
+"Hotel_QuickAction_NewReservation" = "New Reservation";
+"Hotel_SelectTier" = "No tier selected";
+"Hotel_SpecialNotesPlaceholder" = "Special notes and instructions for guest...";
+"Hotel_Suites_CreateTypeFirstDesc" = "Each room or suite must be linked to a tier (e.g., Standard Suite, Deluxe Room) to set base price and permitted species.";
+"Hotel_Suites_CreateTypeFirstTitle" = "Must create a suite tier first";
+"Hotel_Suites_EstimateNotice" = "2 nights stay: %@ • 5 nights stay: %@";
+"Hotel_Suites_UnassignedType" = "Unassigned Suites";
+"Hotel_TypeHeader_Stats" = "%ld total • %ld available • %ld occupied";
+"Hotel_ViewActiveStayDossier" = "View stay card & guest tracking";
+"Hotel_Wing" = "Wing and Hotel Section";
+"Hotel_Workspace" = "Hotel Workspace • Live";
+"Nights" = "Nights";
+"No" = "No (Single)";
+"Notes" = "Unit Specifications & Notes:";
+"Optional" = "Unit specifications and equipment (optional)...";
+"Other" = "Other";
+"Payment_Status_Paid" = "Fully Paid";
+"Payment_Status_Unpaid" = "Payment Pending";
+"PetName" = "Guest Name";
+"Phone" = "Phone Number";
+"Recommended" = "Recommended";
+"SmallPets" = "Small Pets";
+"Status" = "Readiness Status";
+"Unchecked" = "Unverified";
+"Yes" = "Yes (Same Client)";
+"Hotel_Status_Live" = "Live";
+"Hotel_Status_Overview_Dashboard" = "Overview Dashboard";
+"Hotel_Policy_Reason_SpeciesNotAllowed" = "Pet species or breed is not permitted in available suites.";
+"Hotel_Policy_Reason_CapacityOrDates" = "All compatible suites are reserved or occupied during selected dates.";
+"Hotel_Policy_Reason_OutOfService" = "Suites are currently undergoing cleaning or maintenance.";
+"Hotel_Policy_Reason_SharedForbidden" = "Suite is occupied and does not allow shared boarding for different guests.";
+"Hotel_Policy_Reason_Default" = "No compatible suites available matching entered criteria.";

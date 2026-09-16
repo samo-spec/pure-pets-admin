@@ -149,6 +149,14 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
                                                    selector:@selector(pp_handlePaymentOrderRouteNotification:)
                                                        name:PPAdminRouteToPaymentOrderNotification
                                                      object:nil];
+          [[NSNotificationCenter defaultCenter] addObserver:self
+                                                   selector:@selector(reloadRootViewControllerForLanguageChange)
+                                                       name:LanguageDidChangeNotification
+                                                     object:nil];
+          [[NSNotificationCenter defaultCenter] addObserver:self
+                                                   selector:@selector(reloadRootViewControllerForLanguageChange)
+                                                       name:PPLanguageDidChangeNotification
+                                                     object:nil];
           if (pendingOrderID.length > 0) {
                [adminRoot routeToPaymentOrderID:pendingOrderID];
            }
@@ -451,16 +459,15 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
 #pragma mark - Language
 
 - (void)reloadRootViewControllerForLanguageChange {
+     UISemanticContentAttribute attr = [Language semanticAttributeForCurrentLanguage];
+     [UIView appearance].semanticContentAttribute = attr;
+     [UINavigationBar appearance].semanticContentAttribute = attr;
+     self.window.semanticContentAttribute = attr;
+
      if ([self.window.rootViewController isKindOfClass:AdminAppRootHostingController.class]) {
           [(AdminAppRootHostingController *)self.window.rootViewController refreshForLanguageChange];
           return;
      }
-     //UISemanticContentAttribute attr = [Language semanticAttributeForCurrentLanguage];
-     //[UIView appearance].semanticContentAttribute = attr;
-     //[UINavigationBar appearance].semanticContentAttribute = attr;
-     //self.window.semanticContentAttribute = attr;
-     
-     // [self pp_applyNavigationAppearance];
      [self updateRootForUser:[FIRAuth auth].currentUser animated:YES];
 }
 

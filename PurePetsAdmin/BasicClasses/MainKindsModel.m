@@ -6,12 +6,74 @@
 //
 
 #import "MainKindsArrayManager.h"
-
 #import "MainKindsModel.h"
 @import Firebase;
 @import FirebaseAuth;
 @import FirebaseMessaging;
-@import FirebaseAuth;
+
+@implementation PPAccessoryCategoryModel
+
+- (instancetype)initWithSnapshot:(FIRDocumentSnapshot *)snapshot mainKindID:(NSInteger)mainKindID {
+    NSMutableDictionary *data = [NSMutableDictionary dictionaryWithDictionary:snapshot.data ?: @{}];
+    data[@"documentID"] = snapshot.documentID ?: @"";
+    if (!data[@"id"]) data[@"id"] = snapshot.documentID ?: @"";
+    return [self initWithDict:data mainKindID:mainKindID];
+}
+
+- (instancetype)initWithDict:(NSDictionary *)dict mainKindID:(NSInteger)mainKindID {
+    self = [super init];
+    if (self) {
+        NSString *docID = [dict[@"documentID"] isKindOfClass:NSString.class] ? dict[@"documentID"] : @"";
+        NSString *catID = [dict[@"id"] isKindOfClass:NSString.class] ? dict[@"id"] : nil;
+        if (catID.length == 0 && [dict[@"categoryID"] isKindOfClass:NSString.class]) catID = dict[@"categoryID"];
+        if (catID.length == 0) catID = docID;
+
+        self.categoryID = catID ?: @"";
+        self.documentID = docID.length ? docID : self.categoryID;
+        self.nameAr = [dict[@"nameAr"] isKindOfClass:NSString.class] ? dict[@"nameAr"] : ([dict[@"name_ar"] isKindOfClass:NSString.class] ? dict[@"name_ar"] : @"");
+        self.nameEn = [dict[@"nameEn"] isKindOfClass:NSString.class] ? dict[@"nameEn"] : ([dict[@"name_en"] isKindOfClass:NSString.class] ? dict[@"name_en"] : @"");
+        self.mainKindID = mainKindID;
+        self.sortingKey = dict[@"sortingKey"] ? [dict[@"sortingKey"] integerValue] : [dict[@"order"] integerValue];
+        id enabledValue = dict[@"enabled"];
+        self.enabled = enabledValue == nil ? YES : [enabledValue boolValue];
+    }
+    return self;
+}
+
+- (NSDictionary *)toCacheDictionary {
+    NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+    dict[@"id"] = self.categoryID ?: @"";
+    dict[@"documentID"] = self.documentID ?: self.categoryID ?: @"";
+    dict[@"nameAr"] = self.nameAr ?: @"";
+    dict[@"nameEn"] = self.nameEn ?: @"";
+    dict[@"mainKindID"] = @(self.mainKindID);
+    dict[@"sortingKey"] = @(self.sortingKey);
+    dict[@"enabled"] = @(self.enabled);
+    return dict.copy;
+}
+
+- (NSString *)displayName {
+    NSString *primary = [Language languageVal] == 0 ? self.nameEn : self.nameAr;
+    NSString *fallback = [Language languageVal] == 0 ? self.nameAr : self.nameEn;
+    if (primary.length) return primary;
+    if (fallback.length) return fallback;
+    return self.categoryID.length ? self.categoryID : (self.documentID ?: @"");
+}
+
+- (id)formValue {
+    return self.categoryID ?: @"";
+}
+
+- (NSString *)formDisplayText {
+    return [self displayName];
+}
+
+- (NSString *)description {
+    return [self displayName];
+}
+
+@end
+
 @implementation MainKindsModel
 
 + (NSString *)kindNameForID:(NSInteger)kindID inArray:(NSArray<MainKindsModel *> *)kindsArray {
@@ -97,6 +159,8 @@
             SubKindModel *subKind = [[SubKindModel alloc] initWithDict:SubKind];
             [self.SubKindsArray addObject:subKind];
         }
+        self.accessoryCategories = [[MainKindsModel canonicalAccessoryCategoriesForMainKindID:self.ID] mutableCopy];
+        self.didSeedAccessoryCategories = YES;
     }
     return self;
 }
@@ -128,8 +192,8 @@
             SubKindModel *subKindModel = [[SubKindModel alloc] initWithDict:subKind];
             [self.SubKindsArray addObject:subKindModel];
         }
-        
-        
+        self.accessoryCategories = [[MainKindsModel canonicalAccessoryCategoriesForMainKindID:self.ID] mutableCopy];
+        self.didSeedAccessoryCategories = YES;
     }
     return self;
 }
@@ -161,8 +225,8 @@
             SubKindModel *subKindModel = [[SubKindModel alloc] initWithDict:subKind];
             [self.SubKindsArray addObject:subKindModel];
         }
-        
-        
+        self.accessoryCategories = [[MainKindsModel canonicalAccessoryCategoriesForMainKindID:self.ID] mutableCopy];
+        self.didSeedAccessoryCategories = YES;
     }
     return self;
 }
@@ -228,6 +292,149 @@
     return nil;
 }
 
+- (PPAccessoryCategoryModel *)accessoryCategoryForID:(NSString *)categoryID {
+    if (categoryID.length == 0) return nil;
+    for (PPAccessoryCategoryModel *category in self.accessoryCategories ?: @[]) {
+        if ([category.categoryID isEqualToString:categoryID] || [category.documentID isEqualToString:categoryID]) {
+            return category;
+        }
+    }
+    // Check canonical fallback
+    for (PPAccessoryCategoryModel *category in [MainKindsModel canonicalAccessoryCategoriesForMainKindID:self.ID]) {
+        if ([category.categoryID isEqualToString:categoryID] || [category.documentID isEqualToString:categoryID]) {
+            return category;
+        }
+    }
+    return nil;
+}
+
++ (NSArray<PPAccessoryCategoryModel *> *)canonicalAccessoryCategoriesForMainKindID:(NSInteger)mainKindID {
+    static NSDictionary<NSNumber *, NSArray<NSDictionary *> *> *sCanonicalTaxonomy = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        sCanonicalTaxonomy = @{
+            @(1): @[
+                @{@"id": @"cages", @"sortingKey": @10, @"nameEn": @"Cages & Aviaries", @"nameAr": @"أقفاص وطيارات"},
+                @{@"id": @"feeders", @"sortingKey": @20, @"nameEn": @"Feeders, Drinkers & Serving", @"nameAr": @"مآكل ومشارب وتغذية"},
+                @{@"id": @"perches", @"sortingKey": @30, @"nameEn": @"Perches & Stands", @"nameAr": @"مجاثم وحوامل"},
+                @{@"id": @"toys", @"sortingKey": @40, @"nameEn": @"Toys & Play", @"nameAr": @"ألعاب وتسلية"},
+                @{@"id": @"nests", @"sortingKey": @50, @"nameEn": @"Nests, Breeding & Incubation", @"nameAr": @"أعشاش وتفريخ وحضانات"},
+                @{@"id": @"clean", @"sortingKey": @60, @"nameEn": @"Care, Safety & Hand-Feeding", @"nameAr": @"عناية وأمان وتغذية يدوية"},
+                @{@"id": @"general", @"sortingKey": @70, @"nameEn": @"General Accessories", @"nameAr": @"إكسسوارات عامة"},
+            ],
+            @(2): @[
+                @{@"id": @"saddles", @"sortingKey": @10, @"nameEn": @"Saddles & Bridles", @"nameAr": @"سروج ولجام"},
+                @{@"id": @"halters", @"sortingKey": @20, @"nameEn": @"Halters & Ropes", @"nameAr": @"رسن وحبال"},
+                @{@"id": @"feeders", @"sortingKey": @30, @"nameEn": @"Feeders & Waterers", @"nameAr": @"معالف ومشارب"},
+                @{@"id": @"grooming", @"sortingKey": @40, @"nameEn": @"Grooming & Brushes", @"nameAr": @"تنظيف وفرش"},
+                @{@"id": @"covers", @"sortingKey": @50, @"nameEn": @"Covers & Sheets", @"nameAr": @"أغطية وجل"},
+                @{@"id": @"nutrition", @"sortingKey": @60, @"nameEn": @"Nutrition & Supplements", @"nameAr": @"تغذية ومكملات"},
+                @{@"id": @"general", @"sortingKey": @70, @"nameEn": @"General Accessories", @"nameAr": @"إكسسوارات عامة"},
+            ],
+            @(3): @[
+                @{@"id": @"saddles", @"sortingKey": @10, @"nameEn": @"Saddles & Bridles", @"nameAr": @"سروج ولجام"},
+                @{@"id": @"halters", @"sortingKey": @20, @"nameEn": @"Halters & Ropes", @"nameAr": @"رسن وحبال"},
+                @{@"id": @"feeders", @"sortingKey": @30, @"nameEn": @"Feeders & Waterers", @"nameAr": @"معالف ومشارب"},
+                @{@"id": @"grooming", @"sortingKey": @40, @"nameEn": @"Grooming & Brushes", @"nameAr": @"تنظيف وفرش"},
+                @{@"id": @"covers", @"sortingKey": @50, @"nameEn": @"Covers & Sheets", @"nameAr": @"أغطية وجل"},
+                @{@"id": @"nutrition", @"sortingKey": @60, @"nameEn": @"Nutrition & Supplements", @"nameAr": @"تغذية ومكملات"},
+                @{@"id": @"general", @"sortingKey": @70, @"nameEn": @"General Accessories", @"nameAr": @"إكسسوارات عامة"},
+            ],
+            @(4): @[
+                @{@"id": @"feeders", @"sortingKey": @10, @"nameEn": @"Feeders & Waterers", @"nameAr": @"معالف ومشارب"},
+                @{@"id": @"grooming", @"sortingKey": @20, @"nameEn": @"Grooming & Brushes", @"nameAr": @"تنظيف وفرش"},
+                @{@"id": @"covers", @"sortingKey": @30, @"nameEn": @"Covers & Sheets", @"nameAr": @"أغطية وجل"},
+                @{@"id": @"nutrition", @"sortingKey": @40, @"nameEn": @"Nutrition & Supplements", @"nameAr": @"تغذية ومكملات"},
+                @{@"id": @"care", @"sortingKey": @50, @"nameEn": @"Care Tools", @"nameAr": @"أدوات عناية"},
+                @{@"id": @"general", @"sortingKey": @60, @"nameEn": @"General Accessories", @"nameAr": @"إكسسوارات عامة"},
+            ],
+            @(5): @[
+                @{@"id": @"food_bowls", @"sortingKey": @10, @"nameEn": @"Food & Bowls", @"nameAr": @"طعام وأوعية"},
+                @{@"id": @"carriers", @"sortingKey": @20, @"nameEn": @"Carriers & Cages", @"nameAr": @"حقائب تنقل وأقفاص"},
+                @{@"id": @"collars", @"sortingKey": @30, @"nameEn": @"Collars & Harnesses", @"nameAr": @"أطواق وأحزمة"},
+                @{@"id": @"toys", @"sortingKey": @40, @"nameEn": @"Toys & Scratchers", @"nameAr": @"ألعاب وخدش"},
+                @{@"id": @"grooming", @"sortingKey": @50, @"nameEn": @"Grooming & Cleaning", @"nameAr": @"عناية ونظافة"},
+                @{@"id": @"litter", @"sortingKey": @60, @"nameEn": @"Litter & Toilet Tools", @"nameAr": @"رمل وأدوات نظافة"},
+                @{@"id": @"beds", @"sortingKey": @70, @"nameEn": @"Beds & Mats", @"nameAr": @"أسرة ومفارش"},
+                @{@"id": @"general", @"sortingKey": @80, @"nameEn": @"General Accessories", @"nameAr": @"إكسسوارات عامة"},
+            ],
+            @(6): @[
+                @{@"id": @"food_bowls", @"sortingKey": @10, @"nameEn": @"Food & Bowls", @"nameAr": @"طعام وأوعية"},
+                @{@"id": @"carriers", @"sortingKey": @20, @"nameEn": @"Carriers & Cages", @"nameAr": @"حقائب تنقل وأقفاص"},
+                @{@"id": @"collars", @"sortingKey": @30, @"nameEn": @"Collars, Leashes & Harnesses", @"nameAr": @"أطواق وسلاسل وأحزمة"},
+                @{@"id": @"toys", @"sortingKey": @40, @"nameEn": @"Toys & Chews", @"nameAr": @"ألعاب وعضاضات"},
+                @{@"id": @"grooming", @"sortingKey": @50, @"nameEn": @"Grooming & Cleaning", @"nameAr": @"عناية ونظافة"},
+                @{@"id": @"beds", @"sortingKey": @60, @"nameEn": @"Beds & Mats", @"nameAr": @"أسرة ومفارش"},
+                @{@"id": @"training", @"sortingKey": @70, @"nameEn": @"Training & Walking", @"nameAr": @"تدريب ومشي"},
+                @{@"id": @"general", @"sortingKey": @80, @"nameEn": @"General Accessories", @"nameAr": @"إكسسوارات عامة"},
+            ],
+            @(7): @[
+                @{@"id": @"aquariums", @"sortingKey": @10, @"nameEn": @"Aquariums", @"nameAr": @"أحواض"},
+                @{@"id": @"filters", @"sortingKey": @20, @"nameEn": @"Filters & Pumps", @"nameAr": @"فلاتر ومضخات"},
+                @{@"id": @"decorations", @"sortingKey": @30, @"nameEn": @"Decor & Substrate", @"nameAr": @"ديكور وأرضيات"},
+                @{@"id": @"lighting", @"sortingKey": @40, @"nameEn": @"Lighting", @"nameAr": @"إضاءة"},
+                @{@"id": @"general", @"sortingKey": @50, @"nameEn": @"General Accessories", @"nameAr": @"إكسسوارات عامة"},
+            ],
+            @(8): @[
+                @{@"id": @"cages", @"sortingKey": @10, @"nameEn": @"Cages & Hutches", @"nameAr": @"أقفاص وبيوت"},
+                @{@"id": @"feeders", @"sortingKey": @20, @"nameEn": @"Feeders & Waterers", @"nameAr": @"مآكل ومشارب"},
+                @{@"id": @"beds", @"sortingKey": @30, @"nameEn": @"Beds & Mats", @"nameAr": @"أسرة ومفارش"},
+                @{@"id": @"toys", @"sortingKey": @40, @"nameEn": @"Toys", @"nameAr": @"ألعاب"},
+                @{@"id": @"grooming", @"sortingKey": @50, @"nameEn": @"Grooming & Care", @"nameAr": @"عناية ونظافة"},
+                @{@"id": @"general", @"sortingKey": @60, @"nameEn": @"General Accessories", @"nameAr": @"إكسسوارات عامة"},
+            ],
+            @(9): @[
+                @{@"id": @"cages", @"sortingKey": @10, @"nameEn": @"Cages & Enclosures", @"nameAr": @"أقفاص وحظائر"},
+                @{@"id": @"feeders", @"sortingKey": @20, @"nameEn": @"Feeders & Waterers", @"nameAr": @"مآكل ومشارب"},
+                @{@"id": @"toys", @"sortingKey": @30, @"nameEn": @"Toys & Enrichment", @"nameAr": @"ألعاب وإثراء"},
+                @{@"id": @"grooming", @"sortingKey": @40, @"nameEn": @"Care & Cleaning", @"nameAr": @"عناية ونظافة"},
+                @{@"id": @"general", @"sortingKey": @50, @"nameEn": @"General Accessories", @"nameAr": @"إكسسوارات عامة"},
+            ],
+            @(10): @[
+                @{@"id": @"feeders", @"sortingKey": @10, @"nameEn": @"Feeders & Waterers", @"nameAr": @"معالف ومشارب"},
+                @{@"id": @"grooming", @"sortingKey": @20, @"nameEn": @"Grooming & Brushes", @"nameAr": @"تنظيف وفرش"},
+                @{@"id": @"covers", @"sortingKey": @30, @"nameEn": @"Covers & Sheets", @"nameAr": @"أغطية وجل"},
+                @{@"id": @"nutrition", @"sortingKey": @40, @"nameEn": @"Nutrition & Supplements", @"nameAr": @"تغذية ومكملات"},
+                @{@"id": @"care", @"sortingKey": @50, @"nameEn": @"Care Tools", @"nameAr": @"أدوات عناية"},
+                @{@"id": @"general", @"sortingKey": @60, @"nameEn": @"General Accessories", @"nameAr": @"إكسسوارات عامة"},
+            ],
+            @(11): @[
+                @{@"id": @"hoods", @"sortingKey": @10, @"nameEn": @"Hoods & Masks", @"nameAr": @"براقع وأقنعة"},
+                @{@"id": @"gloves", @"sortingKey": @20, @"nameEn": @"Gloves", @"nameAr": @"دسوس"},
+                @{@"id": @"stands", @"sortingKey": @30, @"nameEn": @"Stands & Perches", @"nameAr": @"حوامل ومجاثم"},
+                @{@"id": @"jesses", @"sortingKey": @40, @"nameEn": @"Jesses, Leashes & Leather Gear", @"nameAr": @"سبوق ومرسل ومعدات جلدية"},
+                @{@"id": @"tracking", @"sortingKey": @50, @"nameEn": @"Tracking & Telemetry", @"nameAr": @"تتبع وتليمترية"},
+                @{@"id": @"general", @"sortingKey": @60, @"nameEn": @"General Accessories", @"nameAr": @"إكسسوارات عامة"},
+            ],
+            @(12): @[
+                @{@"id": @"cages", @"sortingKey": @10, @"nameEn": @"Cages & Aviaries", @"nameAr": @"أقفاص وطيارات"},
+                @{@"id": @"feeders", @"sortingKey": @20, @"nameEn": @"Feeders, Drinkers & Serving", @"nameAr": @"مآكل ومشارب وتغذية"},
+                @{@"id": @"perches", @"sortingKey": @30, @"nameEn": @"Perches & Stands", @"nameAr": @"مجاثم وحوامل"},
+                @{@"id": @"toys", @"sortingKey": @40, @"nameEn": @"Toys & Play", @"nameAr": @"ألعاب وتسلية"},
+                @{@"id": @"nests", @"sortingKey": @50, @"nameEn": @"Nests, Breeding & Incubation", @"nameAr": @"أعشاش وتفريخ وحضانات"},
+                @{@"id": @"clean", @"sortingKey": @60, @"nameEn": @"Care & Safety", @"nameAr": @"عناية وأمان"},
+                @{@"id": @"general", @"sortingKey": @70, @"nameEn": @"General Accessories", @"nameAr": @"إكسسوارات عامة"},
+            ],
+        };
+    });
+
+    NSArray<NSDictionary *> *items = sCanonicalTaxonomy[@(mainKindID)];
+    if (!items && mainKindID == 12) {
+        items = sCanonicalTaxonomy[@(1)];
+    }
+    if (!items) {
+        items = @[
+            @{@"id": @"general", @"sortingKey": @10, @"nameEn": @"General Accessories", @"nameAr": @"إكسسوارات عامة"}
+        ];
+    }
+
+    NSMutableArray<PPAccessoryCategoryModel *> *models = [NSMutableArray arrayWithCapacity:items.count];
+    for (NSDictionary *raw in items) {
+        PPAccessoryCategoryModel *cat = [[PPAccessoryCategoryModel alloc] initWithDict:raw mainKindID:mainKindID];
+        if (cat) [models addObject:cat];
+    }
+    return models.copy;
+}
 
 + (MainKindsModel *)allKind
 {
@@ -241,6 +448,8 @@
     model.KindIconName = @"square-layout";
     model.KindImageFile = [UIImage imageNamed:@"square-layout"];
     model.SubKindsArray = [[NSMutableArray<SubKindModel *> alloc] init];
+    model.accessoryCategories = [NSMutableArray array];
+    model.didSeedAccessoryCategories = YES;
     return  model;
 }
 

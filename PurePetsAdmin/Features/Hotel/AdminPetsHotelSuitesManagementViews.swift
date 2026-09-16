@@ -343,25 +343,184 @@ public struct AdminPetsHotelSuitesManagementView: View {
         return viewModel.roomStatusFilter
     }
 
-    // MARK: - View 1: Spatial Architecture Grid (2 Columns)
-    private var spatialArchitectureGrid: some View {
-        let columns = [
-            GridItem(.flexible(), spacing: 12),
-            GridItem(.flexible(), spacing: 12)
-        ]
+    // MARK: - Accommodation Type Grouping
+    private struct AccommodationTypeGroup: Identifiable {
+        let type: AdminHotelAccommodationType?
+        let accommodations: [AdminHotelAccommodation]
+        var id: String { type?.id ?? "unassigned" }
+    }
 
-        return LazyVGrid(columns: columns, spacing: 12) {
-            ForEach(viewModel.filteredAccommodations) { room in
-                AdminPetsHotelSuiteCard(room: room, viewModel: viewModel)
+    private var groupedAccommodations: [AccommodationTypeGroup] {
+        var groups: [AccommodationTypeGroup] = []
+        let allRooms = viewModel.filteredAccommodations
+        if !viewModel.accommodationTypes.isEmpty {
+            for type in viewModel.accommodationTypes {
+                let roomsForType = allRooms.filter { $0.accommodationTypeId == type.id }
+                if !roomsForType.isEmpty || viewModel.roomStatusFilter == "all" {
+                    groups.append(AccommodationTypeGroup(type: type, accommodations: roomsForType))
+                }
+            }
+            let unassigned = allRooms.filter { room in
+                !viewModel.accommodationTypes.contains(where: { $0.id == room.accommodationTypeId })
+            }
+            if !unassigned.isEmpty {
+                groups.append(AccommodationTypeGroup(type: nil, accommodations: unassigned))
+            }
+        } else {
+            groups.append(AccommodationTypeGroup(type: nil, accommodations: allRooms))
+        }
+        return groups
+    }
+
+    private func typeSectionHeader(type: AdminHotelAccommodationType?, rooms: [AdminHotelAccommodation]) -> some View {
+        let title = type?.displayName ?? Language.get("Hotel_Suites_UnassignedType", alter: "أجنحة غير مصنفة")
+        let rateText = type?.formattedRate ?? ""
+        let totalCount = rooms.count
+        let availCount = rooms.filter { $0.status == .available }.count
+        let occCount = rooms.filter { $0.status == .occupied }.count
+        let wing = type?.wing ?? .dogs
+
+        return HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(wing.tint.opacity(0.15))
+                    .frame(width: 32, height: 32)
+                Image(systemName: wing.icon)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(wing.tint)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(Font.custom("Beiruti-Bold", size: 15))
+                        .foregroundStyle(AdminSurface.primaryText)
+
+                    if let t = type {
+                        Text(t.code)
+                            .font(Font.custom("Beiruti-Bold", size: 10))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(AdminSurface.control, in: Capsule())
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                }
+
+                HStack(spacing: 6) {
+                    Text(String.localizedStringWithFormat(
+                        Language.get("Hotel_TypeHeader_Stats", alter: "%ld إجمالي • %ld متاح • %ld مشغول"),
+                        totalCount,
+                        availCount,
+                        occCount
+                    ))
+                    .font(Font.custom("Beiruti-Medium", size: 11))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                }
+            }
+
+            Spacer()
+
+            if !rateText.isEmpty {
+                HStack(spacing: 2) {
+                    Text(rateText)
+                        .font(Font.custom("Beiruti-Bold", size: 14))
+                        .foregroundStyle(Color(red: 0.16, green: 0.72, blue: 0.44))
+                    Text(Language.get("Hotel_PerNight", alter: "/ ليلة"))
+                        .font(Font.custom("Beiruti-Regular", size: 10))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+            }
+
+            if let t = type, viewModel.canManageAccommodations {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    viewModel.typeEditorModalType = t
+                    viewModel.isCreatingNewType = false
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .padding(6)
+                        .background(AdminSurface.control, in: Circle())
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(AdminSurface.control.opacity(0.7), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func emptyTypeAccommodationsRow(type: AdminHotelAccommodationType?) -> some View {
+        HStack {
+            Text(Language.get("Hotel_NoSuitesInType", alter: "لا توجد أجنحة مضافة لهذه الفئة بعد."))
+                .font(Font.custom("Beiruti-Regular", size: 12))
+                .foregroundStyle(AdminSurface.secondaryText)
+            Spacer()
+            if viewModel.canManageAccommodations {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    viewModel.suiteEditorModalAccommodation = nil
+                    viewModel.isCreatingNewSuite = true
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 10, weight: .bold))
+                        Text(Language.get("Hotel_Suites_AddSuite", alter: "إضافة جناح"))
+                            .font(Font.custom("Beiruti-Bold", size: 11))
+                    }
+                    .foregroundStyle(AdminSurface.primary)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(AdminSurface.control.opacity(0.3), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    // MARK: - View 1: Spatial Architecture Grid (Grouped by Type)
+    private var spatialArchitectureGrid: some View {
+        VStack(spacing: 20) {
+            ForEach(groupedAccommodations) { group in
+                VStack(alignment: .leading, spacing: 10) {
+                    typeSectionHeader(type: group.type, rooms: group.accommodations)
+
+                    if group.accommodations.isEmpty {
+                        emptyTypeAccommodationsRow(type: group.type)
+                    } else {
+                        let columns = [
+                            GridItem(.flexible(), spacing: 12),
+                            GridItem(.flexible(), spacing: 12)
+                        ]
+                        LazyVGrid(columns: columns, spacing: 12) {
+                            ForEach(group.accommodations) { room in
+                                AdminPetsHotelSuiteCard(room: room, viewModel: viewModel)
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 
-    // MARK: - View 2: Tactical Operations List
+    // MARK: - View 2: Tactical Operations List (Grouped by Type)
     private var tacticalOperationsList: some View {
-        VStack(spacing: 10) {
-            ForEach(viewModel.filteredAccommodations) { room in
-                tacticalRow(room: room)
+        VStack(spacing: 20) {
+            ForEach(groupedAccommodations) { group in
+                VStack(alignment: .leading, spacing: 10) {
+                    typeSectionHeader(type: group.type, rooms: group.accommodations)
+
+                    if group.accommodations.isEmpty {
+                        emptyTypeAccommodationsRow(type: group.type)
+                    } else {
+                        VStack(spacing: 10) {
+                            ForEach(group.accommodations) { room in
+                                tacticalRow(room: room)
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -385,13 +544,26 @@ public struct AdminPetsHotelSuitesManagementView: View {
                         .foregroundStyle(AdminSurface.primaryText)
 
                     if let guest = room.currentGuestName {
-                        HStack(spacing: 3) {
-                            Image(systemName: "pawprint.fill")
-                                .font(.system(size: 9))
-                            Text(guest)
-                                .font(Font.custom("Beiruti-Bold", size: 12))
+                        Button {
+                            if let stay = viewModel.activeStay(for: room) {
+                                viewModel.selectedStayDetail = stay
+                            }
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: "pawprint.fill")
+                                    .font(.system(size: 9))
+                                Text(guest)
+                                    .font(Font.custom("Beiruti-Bold", size: 12))
+                                Image(systemName: "arrow.up.left.square")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .opacity(0.8)
+                            }
+                            .foregroundStyle(AdminSurface.primary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(AdminSurface.primary.opacity(0.12), in: Capsule())
                         }
-                        .foregroundStyle(AdminSurface.primary)
+                        .buttonStyle(PlainButtonStyle())
                     }
                 }
 
@@ -517,24 +689,37 @@ public struct AdminPetsHotelSuiteCard: View {
 
             // Occupant or Rate Snapshot
             if let guest = room.currentGuestName {
-                HStack(spacing: 6) {
-                    ZStack {
-                        Circle()
-                            .fill(AdminSurface.primary.opacity(0.15))
-                            .frame(width: 22, height: 22)
-                        Image(systemName: "pawprint.fill")
-                            .font(.system(size: 10))
-                            .foregroundStyle(AdminSurface.primary)
+                Button {
+                    if let stay = viewModel.activeStay(for: room) {
+                        viewModel.selectedStayDetail = stay
                     }
+                } label: {
+                    HStack(spacing: 6) {
+                        ZStack {
+                            Circle()
+                                .fill(AdminSurface.primary.opacity(0.15))
+                                .frame(width: 22, height: 22)
+                            Image(systemName: "pawprint.fill")
+                                .font(.system(size: 10))
+                                .foregroundStyle(AdminSurface.primary)
+                        }
 
-                    Text(guest)
-                        .font(Font.custom("Beiruti-Bold", size: 13))
-                        .foregroundStyle(AdminSurface.primary)
-                        .lineLimit(1)
+                        Text(guest)
+                            .font(Font.custom("Beiruti-Bold", size: 13))
+                            .foregroundStyle(AdminSurface.primary)
+                            .lineLimit(1)
+
+                        Spacer(minLength: 4)
+
+                        Image(systemName: "arrow.up.left.square")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(AdminSurface.primary.opacity(0.7))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .buttonStyle(PlainButtonStyle())
             } else {
                 HStack {
                     Text(room.formattedRate)
@@ -630,6 +815,63 @@ public struct AdminPetsHotelSuiteCard: View {
     }
 }
 
+// MARK: - Helper: Ambient Keyboard Dismissal Background
+private struct AdminKeyboardDismissalBackground: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> DismissController {
+        DismissController()
+    }
+
+    func updateUIViewController(_ uiViewController: DismissController, context: Context) {}
+
+    final class DismissController: UIViewController, UIGestureRecognizerDelegate {
+        private var tapGesture: UITapGestureRecognizer?
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            view.backgroundColor = .clear
+            view.isUserInteractionEnabled = false
+        }
+
+        override func didMove(toParent parent: UIViewController?) {
+            super.didMove(toParent: parent)
+            setupTapGesture()
+        }
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            setupTapGesture()
+        }
+
+        private func setupTapGesture() {
+            guard tapGesture == nil, let hostView = parent?.view ?? view.window else { return }
+            let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
+            tap.cancelsTouchesInView = false
+            tap.delegate = self
+            hostView.addGestureRecognizer(tap)
+            tapGesture = tap
+        }
+
+        @objc private func handleTap() {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            var current: UIView? = touch.view
+            while let v = current {
+                if v is UITextField || v is UITextView || v is UIControl {
+                    return false
+                }
+                current = v.superview
+            }
+            return true
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            return true
+        }
+    }
+}
+
 // MARK: - Sovereign Suite Editor Sheet (إضافة / تعديل جناح أو غرفة)
 public struct AdminPetsHotelSuiteEditorSheet: View {
     let accommodation: AdminHotelAccommodation?
@@ -677,12 +919,15 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
         ZStack {
             AdminSurface.background.ignoresSafeArea()
 
-            if isIPad {
+            if viewModel.accommodationTypes.isEmpty {
+                noAccommodationTypesBlocker
+            } else if isIPad {
                 iPadStudioFlightDeck
             } else {
                 iPhoneTactileDeck
             }
         }
+        .background(AdminKeyboardDismissalBackground())
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
@@ -698,6 +943,54 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
         .fullScreenCover(isPresented: $showNewTypeSheet) {
             AdminPetsHotelAccommodationTypeEditorSheet(accommodationType: nil, viewModel: viewModel)
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
+    }
+
+    private var noAccommodationTypesBlocker: some View {
+        VStack(spacing: 20) {
+            iPhoneTopBar
+
+            Spacer()
+
+            VStack(spacing: 16) {
+                ZStack {
+                    Circle()
+                        .fill(AdminSurface.primary.opacity(0.12))
+                        .frame(width: 80, height: 80)
+                    Image(systemName: "sparkles.rectangle.stack.fill")
+                        .font(.system(size: 36))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+
+                Text(Language.get("Hotel_Suites_CreateTypeFirstTitle", alter: "يجب إنشاء فئة أجنحة أولاً"))
+                    .font(Font.custom("Beiruti-Bold", size: 22))
+                    .foregroundStyle(AdminSurface.primaryText)
+
+                Text(Language.get("Hotel_Suites_CreateTypeFirstDesc", alter: "يجب ربط كل غرفة أو جناح بفئة محددة (مثل: جناح قياسي، غرفة ديلوكس) لتحديد السعر الأساسي ومطابقة الفصائل المصرح بها."))
+                    .font(Font.custom("Beiruti-Medium", size: 14))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    showNewTypeSheet = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 15, weight: .bold))
+                        Text(Language.get("Hotel_Suites_CreateTypeCTA", alter: "إنشاء الفئة الفندقية الأولى"))
+                            .font(Font.custom("Beiruti-Bold", size: 16))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 14)
+                    .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .shadow(color: AdminSurface.primary.opacity(0.35), radius: 8, y: 4)
+                }
+            }
+
+            Spacer()
         }
     }
 
@@ -722,22 +1015,39 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
             notes = room.notes ?? ""
             selectedSpecies = Set(room.allowedSpecies.isEmpty ? AdminHotelSpeciesPolicy.defaultSpecies(forWingRawValue: room.wing.rawValue) : room.allowedSpecies)
         } else {
-            selectedWing = .dogs
-            selectedTypeId = viewModel.accommodationTypes.first(where: { $0.wing == .dogs })?.id ?? viewModel.accommodationTypes.first?.id ?? ""
-            capacity = 1
-            allowSharedOccupancy = false
+            if let firstType = viewModel.accommodationTypes.first {
+                selectedTypeId = firstType.id
+                selectedWing = firstType.wing
+                capacity = max(1, firstType.defaultCapacity)
+                allowSharedOccupancy = firstType.allowSharedOccupancy
+                selectedSpecies = Set(firstType.allowedSpecies)
+            } else {
+                selectedWing = .dogs
+                selectedTypeId = ""
+                capacity = 1
+                allowSharedOccupancy = false
+                selectedSpecies = ["dog"]
+            }
             active = true
-            selectedSpecies = ["dog"]
             code = suggestedNextCode
         }
     }
 
     // MARK: - Smart Helpers & Presets
     private var selectedType: AdminHotelAccommodationType? {
-        if let found = viewModel.accommodationTypes.first(where: { $0.id == selectedTypeId }) {
-            return found
+        viewModel.accommodationTypes.first(where: { $0.id == selectedTypeId })
+    }
+
+    private func handleTypeSelection(_ type: AdminHotelAccommodationType) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        selectedTypeId = type.id
+        selectedWing = type.wing
+        selectedSpecies = Set(type.allowedSpecies)
+        capacity = max(1, type.defaultCapacity)
+        allowSharedOccupancy = type.allowSharedOccupancy
+        if !isEditMode {
+            code = suggestedNextCode
         }
-        return viewModel.accommodationTypes.first(where: { $0.wing == selectedWing }) ?? viewModel.accommodationTypes.first
     }
 
     private var wingPrefix: String {
@@ -774,44 +1084,44 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
         switch selectedWing {
         case .dogs:
             return [
-                Language.get("Hotel_Name_Dog1", alter: "الجناح الملكي للكلاب"),
-                Language.get("Hotel_Name_Dog2", alter: "غرفة كلاسيك مريحة"),
-                Language.get("Hotel_Name_Dog3", alter: "استوديو ديلوكس فندقي"),
-                Language.get("Hotel_Name_Dog4", alter: "جناح الكلاب العائلي")
+                Language.get("Hotel_Name_Dog1", alter: "جناح الكلاب القياسي"),
+                Language.get("Hotel_Name_Dog2", alter: "غرفة كلاسيك"),
+                Language.get("Hotel_Name_Dog3", alter: "استوديو ديلوكس"),
+                Language.get("Hotel_Name_Dog4", alter: "جناح عائلي")
             ]
         case .cats:
             return [
-                Language.get("Hotel_Name_Cat1", alter: "واحة القطط الملكية"),
-                Language.get("Hotel_Name_Cat2", alter: "جناح الهدوء والاسترخاء"),
-                Language.get("Hotel_Name_Cat3", alter: "استوديو القطط الفاخر"),
-                Language.get("Hotel_Name_Cat4", alter: "جناح بانورامي للقطط")
+                Language.get("Hotel_Name_Cat1", alter: "جناح القطط القياسي"),
+                Language.get("Hotel_Name_Cat2", alter: "غرفة قطط كلاسيك"),
+                Language.get("Hotel_Name_Cat3", alter: "استوديو قطط ديلوكس"),
+                Language.get("Hotel_Name_Cat4", alter: "جناح قطط بانورامي")
             ]
         case .birds:
             return [
-                Language.get("Hotel_Name_Bird1", alter: "ملاذ الطيور الاستوائي"),
-                Language.get("Hotel_Name_Bird2", alter: "قفص ملكي بانورامي"),
-                Language.get("Hotel_Name_Bird3", alter: "جناح التغريد الطبيعي")
+                Language.get("Hotel_Name_Bird1", alter: "جناح طيور قياسي"),
+                Language.get("Hotel_Name_Bird2", alter: "وحدة طيور بانورامية"),
+                Language.get("Hotel_Name_Bird3", alter: "وحدة طيور ديلوكس")
             ]
         case .smallPets:
             return [
-                Language.get("Hotel_Name_Small1", alter: "جناح الأرانب والحيوانات الصغيرة"),
-                Language.get("Hotel_Name_Small2", alter: "مساحة النشاط والمرح"),
-                Language.get("Hotel_Name_Small3", alter: "استوديو مريح مخصص")
+                Language.get("Hotel_Name_Small1", alter: "جناح الحيوانات الصغيرة"),
+                Language.get("Hotel_Name_Small2", alter: "وحدة إقامة صغيرة ديلوكس"),
+                Language.get("Hotel_Name_Small3", alter: "استوديو حيوانات صغيرة")
             ]
         case .daycare:
             return [
-                Language.get("Hotel_Name_Day1", alter: "صالة اللعب والتفاعل النهارية"),
-                Language.get("Hotel_Name_Day2", alter: "منطقة الراحة والاسترخاء")
+                Language.get("Hotel_Name_Day1", alter: "صالة الرعاية النهارية"),
+                Language.get("Hotel_Name_Day2", alter: "منطقة الاستراحة النهارية")
             ]
         case .isolation:
             return [
-                Language.get("Hotel_Name_Iso1", alter: "جناح العزل الوقائي المجهز"),
-                Language.get("Hotel_Name_Iso2", alter: "غرفة النقاهة الطبية")
+                Language.get("Hotel_Name_Iso1", alter: "وحدة عزل وقائي"),
+                Language.get("Hotel_Name_Iso2", alter: "غرفة نقاهة بيطرية")
             ]
         case .medicalObservation:
             return [
-                Language.get("Hotel_Name_Med1", alter: "جناح الملاحظة البيطرية المركزة"),
-                Language.get("Hotel_Name_Med2", alter: "غرفة الرعاية الخاصة")
+                Language.get("Hotel_Name_Med1", alter: "وحدة ملاحظة بيطرية"),
+                Language.get("Hotel_Name_Med2", alter: "غرفة رعاية طبية")
             ]
         }
     }
@@ -833,23 +1143,6 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
         if code.isEmpty || code.hasPrefix("D-") || code.hasPrefix("C-") || code.hasPrefix("B-") || code.hasPrefix("S-") || code.hasPrefix("ISO-") || code.hasPrefix("MED-") || code.hasPrefix("DAY-") {
             code = suggestedNextCode
         }
-        // Auto-align default species if not yet customized
-        switch wing {
-        case .dogs:
-            if !selectedSpecies.contains("dog") { selectedSpecies = ["dog"] }
-        case .cats:
-            if !selectedSpecies.contains("cat") { selectedSpecies = ["cat"] }
-        case .birds:
-            if !selectedSpecies.contains("bird") { selectedSpecies = ["bird"] }
-        case .smallPets:
-            if !selectedSpecies.contains("small_pets") { selectedSpecies = ["small_pets"] }
-        default:
-            break
-        }
-        // Auto-select type for this wing if available
-        if let match = viewModel.accommodationTypes.first(where: { $0.wing == wing }) {
-            selectedTypeId = match.id
-        }
     }
 
     // MARK: - Validation & Persistence
@@ -869,10 +1162,19 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
             return
         }
 
-        let typeId = selectedTypeId.isEmpty ? (viewModel.accommodationTypes.first?.id ?? "") : selectedTypeId
+        let typeId = selectedTypeId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !typeId.isEmpty else {
             UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
             validationError = Language.get("Hotel_Err_TypeRequired", alter: "يرجى اختيار أو إنشاء فئة فندقية للجناح أولاً.")
+            return
+        }
+
+        // Duplicate code validation within branch
+        if viewModel.accommodations.contains(where: {
+            $0.code.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(cleanCode) == .orderedSame && $0.id != accommodation?.id
+        }) {
+            UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+            validationError = Language.get("Hotel_Err_DuplicateCode", alter: "رمز الغرفة/الجناح مستخدم بالفعل في هذا الفرع.")
             return
         }
 
@@ -893,6 +1195,7 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
                 name: cleanName,
                 wing: selectedWing,
                 allowedSpecies: Array(selectedSpecies),
+                allowedMainKindIds: selectedType?.allowedMainKindIds ?? [],
                 maxCapacity: capacity,
                 allowSharedOccupancy: allowSharedOccupancy,
                 notes: notes.isEmpty ? nil : notes,
@@ -1136,7 +1439,7 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
                         }
                     }
 
-                    TextField(Language.get("Hotel_Suites_CodePlaceholder", alter: "مثال: D-101"), text: $code)
+                    TextField(Language.get("Hotel_Suites_CodePlaceholder", alter: "مثال: D-101 (جناح الملوك الأوفياء)"), text: $code)
                         .font(Font.custom("Beiruti-Bold", size: 16))
                         .foregroundStyle(AdminSurface.primaryText)
                         .multilineTextAlignment(.leading)
@@ -1178,11 +1481,11 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
 
                 // Suite Name with Quick Presets
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(Language.get("Hotel_Suites_NameLabel", alter: "اسم الجناح أو التوصيف الفندقي"))
+                    Text(Language.get("Hotel_Suites_NameLabel", alter: "اسم الغرفة أو الجناح"))
                         .font(Font.custom("Beiruti-Medium", size: 12))
                         .foregroundStyle(AdminSurface.secondaryText)
 
-                    TextField(Language.get("Hotel_Suites_NamePlaceholder", alter: "مثال: الجناح الملكي للكلاب الكبيرة"), text: $name)
+                    TextField(Language.get("Hotel_Suites_NamePlaceholder", alter: "مثال: جناح الكلاب القياسي"), text: $name)
                         .font(Font.custom("Beiruti-Medium", size: 14))
                         .foregroundStyle(AdminSurface.primaryText)
                         .multilineTextAlignment(.leading)
@@ -1370,11 +1673,7 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
     private func tierCard(type: AdminHotelAccommodationType) -> some View {
         let isSelected = selectedTypeId == type.id
         return Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            selectedTypeId = type.id
-            if capacity == 1 && type.defaultCapacity > 1 {
-                capacity = type.defaultCapacity
-            }
+            handleTypeSelection(type)
         } label: {
             HStack(spacing: 12) {
                 ZStack {
@@ -1488,7 +1787,7 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
                             .frame(minWidth: 32)
 
                         Button {
-                            if capacity < 10 {
+                            if capacity < 50 {
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
                                     capacity += 1
@@ -1497,14 +1796,14 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
                         } label: {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(capacity < 10 ? AdminSurface.primary : AdminSurface.surface.opacity(0.4))
+                                    .fill(capacity < 50 ? AdminSurface.primary : AdminSurface.surface.opacity(0.4))
                                 Image(systemName: "plus")
                                     .font(.system(size: 14, weight: .bold))
-                                    .foregroundStyle(capacity < 10 ? Color.white : AdminSurface.secondaryText.opacity(0.3))
+                                    .foregroundStyle(capacity < 50 ? Color.white : AdminSurface.secondaryText.opacity(0.3))
                             }
                             .frame(width: 38, height: 38)
                         }
-                        .disabled(capacity >= 10)
+                        .disabled(capacity >= 50)
                     }
                 }
 
@@ -1642,11 +1941,11 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
 
                 // Operational Notes & Maintenance Presets
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(Language.get("Notes", alter: "ملاحظات تشغيلية أو توجيهات الصيانة:"))
+                    Text(Language.get("Notes", alter: "مواصفات وملاحظات الوحدة:"))
                         .font(Font.custom("Beiruti-Medium", size: 12))
                         .foregroundStyle(AdminSurface.secondaryText)
 
-                    TextField(Language.get("Optional", alter: "اختياري: إرشادات خاصة، حالة التكييف، متطلبات التسكين..."), text: $notes)
+                    TextField(Language.get("Optional", alter: "مواصفات الوحدة وتجهيزاتها (اختياري)..."), text: $notes)
                         .font(Font.custom("Beiruti-Medium", size: 13))
                         .foregroundStyle(AdminSurface.primaryText)
                         .multilineTextAlignment(.leading)
@@ -1740,10 +2039,10 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
                         // Live Specimen Twin
                         suiteDigitalTwinCard(isCompact: true)
 
-                        // Config Deck
+                        // Config Deck (Tier first, properties inherited)
+                        tierSelectorSection
                         identitySection
                         wingSelectorSection
-                        tierSelectorSection
                         capacitySection
                         speciesSection
                         notesSection
@@ -1753,6 +2052,7 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 14)
                 }
+                .scrollDismissesKeyboard(.interactively)
 
                 iPhoneFloatingActionBar
             }
@@ -1861,9 +2161,10 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
                             errorBanner(error)
                         }
 
+                        // Tier first, properties inherited
+                        tierSelectorSection
                         identitySection
                         wingSelectorSection
-                        tierSelectorSection
                         capacitySection
                         speciesSection
                         notesSection
@@ -1881,6 +2182,7 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
                 }
                 .padding(28)
             }
+            .scrollDismissesKeyboard(.interactively)
         }
     }
 
@@ -2115,6 +2417,7 @@ public struct AdminPetsHotelAccommodationTypeEditorSheet: View {
     @State private var nameEn: String = ""
     @State private var selectedWing: HotelWing = .dogs
     @State private var selectedSpecies: Set<String> = ["dog"]
+    @State private var selectedMainKindIds: Set<Int> = [1]
     @State private var defaultCapacity: Int = 1
     @State private var nightlyRateMajor: String = "150"
     @State private var allowSharedOccupancy: Bool = false
@@ -2142,6 +2445,7 @@ public struct AdminPetsHotelAccommodationTypeEditorSheet: View {
                     nameEn: $nameEn,
                     selectedWing: $selectedWing,
                     selectedSpecies: $selectedSpecies,
+                    selectedMainKindIds: $selectedMainKindIds,
                     defaultCapacity: $defaultCapacity,
                     nightlyRateMajor: $nightlyRateMajor,
                     allowSharedOccupancy: $allowSharedOccupancy,
@@ -2160,6 +2464,7 @@ public struct AdminPetsHotelAccommodationTypeEditorSheet: View {
                     nameEn: $nameEn,
                     selectedWing: $selectedWing,
                     selectedSpecies: $selectedSpecies,
+                    selectedMainKindIds: $selectedMainKindIds,
                     defaultCapacity: $defaultCapacity,
                     nightlyRateMajor: $nightlyRateMajor,
                     allowSharedOccupancy: $allowSharedOccupancy,
@@ -2172,6 +2477,7 @@ public struct AdminPetsHotelAccommodationTypeEditorSheet: View {
                 )
             }
         }
+        .background(AdminKeyboardDismissalBackground())
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
@@ -2190,6 +2496,20 @@ public struct AdminPetsHotelAccommodationTypeEditorSheet: View {
             nameEn = t.nameEn
             selectedWing = t.wing
             selectedSpecies = Set(t.allowedSpecies.isEmpty ? AdminHotelSpeciesPolicy.defaultSpecies(forWingRawValue: t.wing.rawValue) : t.allowedSpecies)
+            let defaultKindIds: [Int] = {
+                let species = t.allowedSpecies.first ?? (t.wing == .cats ? "cat" : (t.wing == .birds ? "bird" : (t.wing == .smallPets ? "small_pets" : "dog")))
+                if let match = PPAnimalTaxonomyStore.shared.kind(forSpecies: species) {
+                    return [match.id]
+                }
+                switch t.wing {
+                case .dogs: return [6]
+                case .cats: return [5]
+                case .birds: return [1]
+                case .smallPets: return [8]
+                default: return [6]
+                }
+            }()
+            selectedMainKindIds = Set(t.allowedMainKindIds.isEmpty ? defaultKindIds : t.allowedMainKindIds)
             defaultCapacity = max(1, t.defaultCapacity)
             nightlyRateMajor = "\(t.nightlyRateMinor / 100)"
             allowSharedOccupancy = t.allowSharedOccupancy
@@ -2201,6 +2521,7 @@ public struct AdminPetsHotelAccommodationTypeEditorSheet: View {
             nameEn = ""
             selectedWing = .dogs
             selectedSpecies = ["dog"]
+            selectedMainKindIds = [6]
             defaultCapacity = 1
             nightlyRateMajor = "150"
             allowSharedOccupancy = false
@@ -2242,6 +2563,7 @@ public struct AdminPetsHotelAccommodationTypeEditorSheet: View {
                 nameEn: cleanNameEn.isEmpty ? cleanNameAr : cleanNameEn,
                 wing: selectedWing,
                 allowedSpecies: finalSpecies,
+                allowedMainKindIds: Array(selectedMainKindIds),
                 defaultCapacity: defaultCapacity,
                 nightlyRateMinor: rateMinor,
                 allowSharedOccupancy: allowSharedOccupancy,
@@ -2268,6 +2590,7 @@ private struct AdminHotelAccommodationTypePhoneView: View {
     @Binding var nameEn: String
     @Binding var selectedWing: HotelWing
     @Binding var selectedSpecies: Set<String>
+    @Binding var selectedMainKindIds: Set<Int>
     @Binding var defaultCapacity: Int
     @Binding var nightlyRateMajor: String
     @Binding var allowSharedOccupancy: Bool
@@ -2323,7 +2646,8 @@ private struct AdminHotelAccommodationTypePhoneView: View {
                     // 3. Section: Wing & Species Matrix
                     AdminHotelWingAndSpeciesCard(
                         selectedWing: $selectedWing,
-                        selectedSpecies: $selectedSpecies
+                        selectedSpecies: $selectedSpecies,
+                        selectedMainKindIds: $selectedMainKindIds
                     )
 
                     // 4. Section: Pricing Engine
@@ -2350,11 +2674,19 @@ private struct AdminHotelAccommodationTypePhoneView: View {
                 .padding(.top, 14)
                 .padding(.bottom, 120) // Bottom breathing room for sticky bar
             }
+            .scrollDismissesKeyboard(.interactively)
 
             // Sticky Bottom Action Bar
             stickyBottomBar
         }
-        .background(AdminSurface.background.ignoresSafeArea())
+        .background(
+            AdminSurface.background
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+        )
     }
 
     private var stickyBottomBar: some View {
@@ -2413,6 +2745,7 @@ private struct AdminHotelAccommodationTypePadView: View {
     @Binding var nameEn: String
     @Binding var selectedWing: HotelWing
     @Binding var selectedSpecies: Set<String>
+    @Binding var selectedMainKindIds: Set<Int>
     @Binding var defaultCapacity: Int
     @Binding var nightlyRateMajor: String
     @Binding var allowSharedOccupancy: Bool
@@ -2429,7 +2762,7 @@ private struct AdminHotelAccommodationTypePadView: View {
         VStack(spacing: 0) {
             AdminSovereignNavigationBar(
                 title: isEditMode ? Language.get("Hotel_Suites_EditTypeTitle", alter: "تعديل الفئة الفندقية") : Language.get("Hotel_Suites_NewTypeTitle", alter: "فئة فندقية جديدة"),
-                subtitle: Language.get("Hotel_Suites_StudioSubtitle", alter: "تصميم وإدارة معايير الإقامة والأجنحة الفاخرة"),
+                subtitle: Language.get("Hotel_Suites_StudioSubtitle", alter: "إدارة معايير وفئات الإقامة"),
                 statusDotColor: Color(red: 0.16, green: 0.78, blue: 0.48),
                 isModal: true,
                 customTopSpacing: 0,
@@ -2465,7 +2798,8 @@ private struct AdminHotelAccommodationTypePadView: View {
 
                         AdminHotelWingAndSpeciesCard(
                             selectedWing: $selectedWing,
-                            selectedSpecies: $selectedSpecies
+                            selectedSpecies: $selectedSpecies,
+                            selectedMainKindIds: $selectedMainKindIds
                         )
 
                         AdminHotelPricingEngineCard(
@@ -2488,6 +2822,7 @@ private struct AdminHotelAccommodationTypePadView: View {
                     .padding(.vertical, 16)
                     .padding(.leading, 20)
                 }
+                .scrollDismissesKeyboard(.interactively)
                 .frame(maxWidth: .infinity)
 
                 // Trailing Column: Studio Vitrine + Operational Telemetry Deck
@@ -2552,7 +2887,14 @@ private struct AdminHotelAccommodationTypePadView: View {
                 .padding(.trailing, 20)
             }
         }
-        .background(AdminSurface.background.ignoresSafeArea())
+        .background(
+            AdminSurface.background
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+        )
     }
 
     private var studioTelemetryCard: some View {
@@ -2748,7 +3090,7 @@ private struct AdminHotelTierLivingVitrine: View {
                             .foregroundStyle(AdminSurface.primaryText)
                     }
 
-                    Text(allowSharedOccupancy ? Language.get("Hotel_Suites_SharedAllowedBadge", alter: "إقامة مشتركة 🐾") : Language.get("Hotel_Suites_PrivateOnlyBadge", alter: "إقامة فردية حصراً"))
+                    Text(allowSharedOccupancy ? Language.get("Hotel_Suites_SharedAllowedBadge", alter: "إقامة مشتركة") : Language.get("Hotel_Suites_PrivateOnlyBadge", alter: "إقامة فردية"))
                         .font(PPBeirutiFont.regular(10.5, relativeTo: .caption2))
                         .foregroundStyle(allowSharedOccupancy ? Color(uiColor: .ppSuccess) : AdminSurface.secondaryText)
                 }
@@ -2866,7 +3208,7 @@ private struct AdminHotelTierIdentityCard: View {
             VStack(spacing: 12) {
                 // Code Input + Quick Preset Chips
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(Language.get("Hotel_Suites_TypeCode", alter: "كود الفئة (مثال: VIP / STD)"))
+                    Text(Language.get("Hotel_Suites_TypeCode", alter: "رمز الفئة الفندقية (مثال: ROYAL, VIP, DELUXE)"))
                         .font(PPBeirutiFont.medium(12, relativeTo: .caption))
                         .foregroundStyle(AdminSurface.secondaryText)
 
@@ -2920,7 +3262,7 @@ private struct AdminHotelTierIdentityCard: View {
 
                 // Arabic Name
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(Language.get("Hotel_Suites_NameAr", alter: "الاسم بالعربية"))
+                    Text(Language.get("Hotel_Suites_NameAr", alter: "اسم الفئة بالعربية"))
                         .font(PPBeirutiFont.medium(12, relativeTo: .caption))
                         .foregroundStyle(AdminSurface.secondaryText)
 
@@ -2929,7 +3271,7 @@ private struct AdminHotelTierIdentityCard: View {
                             .font(PPBeirutiFont.bold(13, relativeTo: .caption))
                             .foregroundStyle(wing.tint)
 
-                        TextField(Language.get("Hotel_Suites_NameArPlaceholder", alter: "مثال: جناح كبار الشخصيات VIP"), text: $nameAr)
+                        TextField(Language.get("Hotel_Suites_NameArPlaceholder", alter: "مثال: جناح ديلوكس VIP"), text: $nameAr)
                             .font(PPBeirutiFont.medium(14, relativeTo: .body))
                             .foregroundStyle(AdminSurface.primaryText)
                             .multilineTextAlignment(.leading)
@@ -2945,7 +3287,7 @@ private struct AdminHotelTierIdentityCard: View {
 
                 // English Name
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(Language.get("Hotel_Suites_NameEn", alter: "الاسم بالإنجليزية"))
+                    Text(Language.get("Hotel_Suites_NameEn", alter: "اسم الفئة بالإنجليزية"))
                         .font(PPBeirutiFont.medium(12, relativeTo: .caption))
                         .foregroundStyle(AdminSurface.secondaryText)
 
@@ -2954,7 +3296,7 @@ private struct AdminHotelTierIdentityCard: View {
                             .font(PPBeirutiFont.bold(13, relativeTo: .caption))
                             .foregroundStyle(wing.tint)
 
-                        TextField(Language.get("Hotel_Suites_NameEnPlaceholder", alter: "e.g. VIP Presidential Suite"), text: $nameEn)
+                        TextField(Language.get("Hotel_Suites_NameEnPlaceholder", alter: "e.g. Royal VIP Sanctuary"), text: $nameEn)
                             .font(PPBeirutiFont.medium(14, relativeTo: .body))
                             .foregroundStyle(AdminSurface.primaryText)
                             .multilineTextAlignment(.leading)
@@ -2978,16 +3320,23 @@ private struct AdminHotelTierIdentityCard: View {
 private struct AdminHotelWingAndSpeciesCard: View {
     @Binding var selectedWing: HotelWing
     @Binding var selectedSpecies: Set<String>
+    @Binding var selectedMainKindIds: Set<Int>
 
     @Environment(\.colorScheme) private var colorScheme
 
-    private let allSpeciesList: [(id: String, title: String, icon: String)] = [
-        ("dog", Language.get("Dogs", alter: "كلاب"), "dog.fill"),
-        ("cat", Language.get("Cats", alter: "قطط"), "cat.fill"),
-        ("bird", Language.get("Birds", alter: "طيور"), "bird.fill"),
-        ("small_pets", Language.get("SmallPets", alter: "حيوانات صغيرة"), "hare.fill"),
-        ("other", Language.get("Other", alter: "أخرى"), "pawprint.fill")
-    ]
+    private var allSpeciesOptions: [(id: String, mainKindId: Int?, title: String, icon: String)] {
+        let dogId = PPAnimalTaxonomyStore.shared.kind(forSpecies: "dog")?.id ?? 6
+        let catId = PPAnimalTaxonomyStore.shared.kind(forSpecies: "cat")?.id ?? 5
+        let birdId = PPAnimalTaxonomyStore.shared.kind(forSpecies: "bird")?.id ?? 1
+        let smallId = PPAnimalTaxonomyStore.shared.kind(forSpecies: "small_pets")?.id ?? 8
+        return [
+            ("dog", dogId, Language.get("Dogs", alter: "كلاب"), "dog.fill"),
+            ("cat", catId, Language.get("Cats", alter: "قطط"), "cat.fill"),
+            ("bird", birdId, Language.get("Birds", alter: "طيور"), "bird.fill"),
+            ("small_pets", smallId, Language.get("SmallPets", alter: "حيوانات صغيرة"), "hare.fill"),
+            ("other", nil, Language.get("Other", alter: "أخرى"), "pawprint.fill")
+        ]
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -2999,59 +3348,38 @@ private struct AdminHotelWingAndSpeciesCard: View {
                 // Wing Selection Grid
                 AdminHotelWingSelectorGrid(
                     selectedWing: $selectedWing,
-                    selectedSpecies: $selectedSpecies
+                    selectedSpecies: $selectedSpecies,
+                    selectedMainKindIds: $selectedMainKindIds
                 )
 
                 Divider()
 
-                // Allowed Species Multi-Select
+                // Unified Allowed Species & Taxonomy Multi-Select
                 VStack(alignment: .leading, spacing: 6) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(Language.get("Hotel_Suites_AllowedSpeciesTitle", alter: "فصائل النزلاء المصرح بها"))
+                        Text(Language.get("Hotel_Suites_AllowedSpeciesTitle", alter: "فصائل النزلاء والتصنيف المعتمد"))
                             .font(PPBeirutiFont.bold(13.5, relativeTo: .subheadline))
                             .foregroundStyle(AdminSurface.primaryText)
 
-                        Text(Language.get("Hotel_Suites_AllowedSpeciesDesc", alter: "حدد أنواع وفصائل الحيوانات المصرح بإقامتها في هذه الفئة"))
+                        Text(Language.get("Hotel_Suites_AllowedSpeciesDesc", alter: "حدد الفئات المصرح بإقامتها في هذه الفئة (تتم مزامنة التصنيف تلقائياً مع الجناح)"))
                             .font(PPBeirutiFont.regular(11, relativeTo: .caption2))
                             .foregroundStyle(AdminSurface.secondaryText)
                     }
 
-                    HStack(spacing: 6) {
-                        ForEach(allSpeciesList, id: \.id) { spec in
-                            let isSelected = selectedSpecies.contains(spec.id)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(allSpeciesOptions, id: \.id) { opt in
+                                let isSelected = selectedSpecies.contains(opt.id) || (opt.mainKindId != nil && selectedMainKindIds.contains(opt.mainKindId!))
 
-                            Button {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                if isSelected {
-                                    if selectedSpecies.count > 1 {
-                                        selectedSpecies.remove(spec.id)
-                                    }
-                                } else {
-                                    selectedSpecies.insert(spec.id)
+                                Button {
+                                    toggleOption(opt)
+                                } label: {
+                                    speciesOptionPill(opt: opt, isSelected: isSelected)
                                 }
-                            } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: spec.icon)
-                                        .font(PPBeirutiFont.bold(11, relativeTo: .caption2))
-                                    Text(spec.title)
-                                        .font(PPBeirutiFont.bold(11.5, relativeTo: .caption2))
-                                }
-                                .padding(.horizontal, 9)
-                                .padding(.vertical, 5.5)
-                                .background(
-                                    isSelected
-                                        ? selectedWing.tint
-                                        : (colorScheme == .dark ? Color.white.opacity(0.06) : Color.white),
-                                    in: Capsule()
-                                )
-                                .overlay(
-                                    Capsule()
-                                        .strokeBorder(isSelected ? selectedWing.tint : Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: 0.8)
-                                )
-                                .foregroundStyle(isSelected ? Color.white : AdminSurface.primaryText)
+                                .buttonStyle(PlainButtonStyle())
                             }
-                            .buttonStyle(PlainButtonStyle())
                         }
+                        .padding(.vertical, 2)
                     }
                 }
             }
@@ -3059,12 +3387,61 @@ private struct AdminHotelWingAndSpeciesCard: View {
             .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
     }
+
+    private func toggleOption(_ opt: (id: String, mainKindId: Int?, title: String, icon: String)) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let isSelected = selectedSpecies.contains(opt.id) || (opt.mainKindId != nil && selectedMainKindIds.contains(opt.mainKindId!))
+
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+            if isSelected {
+                if selectedSpecies.count > 1 || selectedMainKindIds.count > 1 {
+                    selectedSpecies.remove(opt.id)
+                    if let mid = opt.mainKindId {
+                        selectedMainKindIds.remove(mid)
+                    }
+                }
+            } else {
+                selectedSpecies.insert(opt.id)
+                if let mid = opt.mainKindId {
+                    selectedMainKindIds.insert(mid)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func speciesOptionPill(opt: (id: String, mainKindId: Int?, title: String, icon: String), isSelected: Bool) -> some View {
+        let bg = isSelected ? selectedWing.tint : (colorScheme == .dark ? Color.white.opacity(0.06) : Color.white)
+        let stroke = isSelected ? selectedWing.tint : Color(uiColor: .ppSurfaceBorder).opacity(0.4)
+        let fg = isSelected ? Color.white : AdminSurface.primaryText
+
+        HStack(spacing: 5) {
+            Image(systemName: opt.icon)
+                .font(PPBeirutiFont.bold(11.5, relativeTo: .caption2))
+
+            Text(opt.title)
+                .font(PPBeirutiFont.bold(12, relativeTo: .caption2))
+
+            if isSelected {
+                Image(systemName: "checkmark")
+                    .font(PPBeirutiFont.bold(9.5, relativeTo: .caption2))
+                    .foregroundStyle(Color.white.opacity(0.9))
+            }
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 7)
+        .background(bg, in: Capsule())
+        .overlay(Capsule().strokeBorder(stroke, lineWidth: 0.8))
+        .shadow(color: isSelected ? selectedWing.tint.opacity(0.25) : Color.clear, radius: 4, y: 1.5)
+        .foregroundStyle(fg)
+    }
 }
 
 // MARK: - Component: Tactile Wing Selector Grid
 private struct AdminHotelWingSelectorGrid: View {
     @Binding var selectedWing: HotelWing
     @Binding var selectedSpecies: Set<String>
+    @Binding var selectedMainKindIds: Set<Int>
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -3128,25 +3505,29 @@ private struct AdminHotelWingSelectorGrid: View {
     }
 
     private func syncDefaultSpecies(for wing: HotelWing) {
+        let dogId = PPAnimalTaxonomyStore.shared.kind(forSpecies: "dog")?.id ?? 6
+        let catId = PPAnimalTaxonomyStore.shared.kind(forSpecies: "cat")?.id ?? 5
+        let birdId = PPAnimalTaxonomyStore.shared.kind(forSpecies: "bird")?.id ?? 1
+        let smallId = PPAnimalTaxonomyStore.shared.kind(forSpecies: "small_pets")?.id ?? 8
+
         switch wing {
         case .dogs:
-            if selectedSpecies.isEmpty || selectedSpecies == ["cat"] || selectedSpecies == ["bird"] {
-                selectedSpecies = ["dog"]
-            }
+            selectedSpecies = ["dog"]
+            selectedMainKindIds = [dogId]
         case .cats:
-            if selectedSpecies.isEmpty || selectedSpecies == ["dog"] || selectedSpecies == ["bird"] {
-                selectedSpecies = ["cat"]
-            }
+            selectedSpecies = ["cat"]
+            selectedMainKindIds = [catId]
         case .birds:
-            if selectedSpecies.isEmpty || selectedSpecies == ["dog"] || selectedSpecies == ["cat"] {
-                selectedSpecies = ["bird"]
-            }
+            selectedSpecies = ["bird"]
+            selectedMainKindIds = [birdId]
         case .smallPets:
+            selectedSpecies = ["small_pets"]
+            selectedMainKindIds = [smallId]
+        case .isolation, .medicalObservation, .daycare:
             if selectedSpecies.isEmpty {
-                selectedSpecies = ["small_pets"]
+                selectedSpecies = ["dog", "cat", "bird", "small_pets"]
+                selectedMainKindIds = [dogId, catId, birdId, smallId]
             }
-        default:
-            break
         }
     }
 }
@@ -3339,6 +3720,9 @@ private struct AdminHotelCapacityAndRulesCard: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
+    private let maxAllowedCapacity: Int = 50
+    private let quickCapacityPresets: [Int] = [1, 2, 4, 8, 15, 30, 50]
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label(Language.get("Hotel_Suites_CapacitySettings", alter: "السعة وقواعد التشغيل"), systemImage: "slider.horizontal.3")
@@ -3346,58 +3730,90 @@ private struct AdminHotelCapacityAndRulesCard: View {
                 .foregroundStyle(AdminSurface.primaryText)
 
             VStack(spacing: 14) {
-                // Capacity Stepper
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(Language.get("Hotel_Suites_CapacityTitle", alter: "السعة الافتراضية للحيوانات"))
-                            .font(PPBeirutiFont.bold(14, relativeTo: .subheadline))
-                            .foregroundStyle(AdminSurface.primaryText)
+                // Capacity Stepper & Presets
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(Language.get("Hotel_Suites_CapacityTitle", alter: "السعة الافتراضية للحيوانات"))
+                                .font(PPBeirutiFont.bold(14, relativeTo: .subheadline))
+                                .foregroundStyle(AdminSurface.primaryText)
 
-                        Text(Language.get("Hotel_Suites_CapacityDesc", alter: "أقصى عدد حيوانات أليفة في الجناح الواحد"))
-                            .font(PPBeirutiFont.regular(11, relativeTo: .caption2))
-                            .foregroundStyle(AdminSurface.secondaryText)
+                            Text(Language.get("Hotel_Suites_CapacityDesc", alter: "أقصى عدد حيوانات أليفة في الجناح الواحد (حتى 50)"))
+                                .font(PPBeirutiFont.regular(11, relativeTo: .caption2))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                        }
+
+                        Spacer(minLength: 8)
+
+                        HStack(spacing: 10) {
+                            Button {
+                                if defaultCapacity > 1 {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    defaultCapacity -= 1
+                                }
+                            } label: {
+                                Image(systemName: "minus")
+                                    .font(PPBeirutiFont.bold(13, relativeTo: .caption))
+                                    .frame(width: 32, height: 32)
+                                    .background(colorScheme == .dark ? Color.white.opacity(0.08) : Color.white, in: Circle())
+                                    .overlay(Circle().strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: 0.8))
+                                    .foregroundStyle(defaultCapacity > 1 ? AdminSurface.primaryText : AdminSurface.secondaryText.opacity(0.4))
+                            }
+                            .disabled(defaultCapacity <= 1)
+                            .buttonStyle(PlainButtonStyle())
+
+                            Text("\(defaultCapacity)")
+                                .font(PPBeirutiFont.bold(18, relativeTo: .title3))
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .frame(minWidth: 28)
+                                .monospacedDigit()
+
+                            Button {
+                                if defaultCapacity < maxAllowedCapacity {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    defaultCapacity += 1
+                                }
+                            } label: {
+                                Image(systemName: "plus")
+                                    .font(PPBeirutiFont.bold(13, relativeTo: .caption))
+                                    .frame(width: 32, height: 32)
+                                    .background(colorScheme == .dark ? Color.white.opacity(0.08) : Color.white, in: Circle())
+                                    .overlay(Circle().strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: 0.8))
+                                    .foregroundStyle(defaultCapacity < maxAllowedCapacity ? AdminSurface.primaryText : AdminSurface.secondaryText.opacity(0.4))
+                            }
+                            .disabled(defaultCapacity >= maxAllowedCapacity)
+                            .buttonStyle(PlainButtonStyle())
+                        }
                     }
 
-                    Spacer(minLength: 8)
-
-                    HStack(spacing: 10) {
-                        Button {
-                            if defaultCapacity > 1 {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                defaultCapacity -= 1
+                    // Quick capacity presets
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(quickCapacityPresets, id: \.self) { preset in
+                                let isSelected = defaultCapacity == preset
+                                Button {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                                        defaultCapacity = preset
+                                    }
+                                } label: {
+                                    Text("\(preset)")
+                                        .font(PPBeirutiFont.bold(12, relativeTo: .caption2))
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 5)
+                                        .background(
+                                            isSelected ? wing.tint : (colorScheme == .dark ? Color.white.opacity(0.08) : Color.white),
+                                            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        )
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                .strokeBorder(isSelected ? wing.tint : Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: 0.8)
+                                        )
+                                        .foregroundStyle(isSelected ? Color.white : AdminSurface.primaryText)
+                                }
+                                .buttonStyle(PlainButtonStyle())
                             }
-                        } label: {
-                            Image(systemName: "minus")
-                                .font(PPBeirutiFont.bold(13, relativeTo: .caption))
-                                .frame(width: 32, height: 32)
-                                .background(colorScheme == .dark ? Color.white.opacity(0.08) : Color.white, in: Circle())
-                                .overlay(Circle().strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: 0.8))
-                                .foregroundStyle(defaultCapacity > 1 ? AdminSurface.primaryText : AdminSurface.secondaryText.opacity(0.4))
                         }
-                        .disabled(defaultCapacity <= 1)
-                        .buttonStyle(PlainButtonStyle())
-
-                        Text("\(defaultCapacity)")
-                            .font(PPBeirutiFont.bold(18, relativeTo: .title3))
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .frame(minWidth: 24)
-                            .monospacedDigit()
-
-                        Button {
-                            if defaultCapacity < 8 {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                defaultCapacity += 1
-                            }
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(PPBeirutiFont.bold(13, relativeTo: .caption))
-                                .frame(width: 32, height: 32)
-                                .background(colorScheme == .dark ? Color.white.opacity(0.08) : Color.white, in: Circle())
-                                .overlay(Circle().strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: 0.8))
-                                .foregroundStyle(defaultCapacity < 8 ? AdminSurface.primaryText : AdminSurface.secondaryText.opacity(0.4))
-                        }
-                        .disabled(defaultCapacity >= 8)
-                        .buttonStyle(PlainButtonStyle())
                     }
                 }
 
@@ -3459,14 +3875,14 @@ private struct AdminHotelDescriptionCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label(Language.get("Hotel_Suites_DescriptionTitle", alter: "المزايا والتجهيزات الفاخرة (اختياري)"), systemImage: "text.quote")
+            Label(Language.get("Hotel_Suites_DescriptionTitle", alter: "الوصف والتجهيزات (اختياري)"), systemImage: "text.quote")
                 .font(PPBeirutiFont.bold(15, relativeTo: .subheadline))
                 .foregroundStyle(AdminSurface.primaryText)
 
             VStack(alignment: .trailing, spacing: 4) {
                 ZStack(alignment: .topLeading) {
                     if descriptionText.isEmpty {
-                        Text(Language.get("Hotel_Suites_DescriptionPlaceholder", alter: "مثال: كاميرا بث مباشر 24/7، تكييف مستقل، حديقة خاصة، وجبات فاخرة..."))
+                        Text(Language.get("Hotel_Suites_DescriptionPlaceholder", alter: "مثال: كاميرا بث مباشر، سرير مخصص، فناء خارجي، تكييف مركزي..."))
                             .font(PPBeirutiFont.regular(13, relativeTo: .callout))
                             .foregroundStyle(AdminSurface.secondaryText.opacity(0.6))
                             .padding(.horizontal, 12)

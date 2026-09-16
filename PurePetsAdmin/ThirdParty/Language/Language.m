@@ -7,8 +7,8 @@
 
 static NSBundle *bundle = nil;
 NSString *const LanguageCodeIdIndentifier = @"AppLanguage";
-// You already use this in your app:
-static NSString * const kLanguageDidChangeNotification = @"LanguageDidChangeNotification";
+NSString * const LanguageDidChangeNotification = @"LanguageDidChangeNotification";
+NSString * const PPLanguageDidChangeNotification = @"PPLanguageDidChangeNotification";
 
 @implementation Language
 
@@ -38,8 +38,9 @@ static NSString * const kLanguageDidChangeNotification = @"LanguageDidChangeNoti
     [[NSUserDefaults standardUserDefaults] synchronize];
 
     // Notify app
-    [[NSNotificationCenter defaultCenter] postNotificationName:kLanguageDidChangeNotification object:nil];
-    DLog(@"[Language] posted %@ (isRTL=%d)", kLanguageDidChangeNotification, (int)[self isRTL]);
+    [[NSNotificationCenter defaultCenter] postNotificationName:LanguageDidChangeNotification object:nil];
+    [[NSNotificationCenter defaultCenter] postNotificationName:PPLanguageDidChangeNotification object:nil];
+    DLog(@"[Language] posted %@ & %@ (isRTL=%d)", LanguageDidChangeNotification, PPLanguageDidChangeNotification, (int)[self isRTL]);
 }
 
 + (NSString *)currentLanguageCode {
@@ -76,20 +77,16 @@ static NSString * const kLanguageDidChangeNotification = @"LanguageDidChangeNoti
             for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
                 if (![scene isKindOfClass:[UIWindowScene class]]) continue;
                 UIWindowScene *ws = (UIWindowScene *)scene;
+                for (UIWindow *w in ws.windows) {
+                    w.semanticContentAttribute = attr;
+                    [w setNeedsLayout];
+                    [w layoutIfNeeded];
+                }
                 id delegate = ws.delegate;
 
                 if ([delegate respondsToSelector:@selector(reloadRootViewControllerForLanguageChange)]) {
                     DLog(@"[Language] asking SceneDelegate to reload UI for %@", ws);
-                    // Call your method you already implemented in SceneDelegate
                     [delegate reloadRootViewControllerForLanguageChange];
-                } else {
-                    // Soft fallback (no full rebuild, just flip window direction)
-                    DLog(@"[Language] fallback reload for %@", ws);
-                    for (UIWindow *w in ws.windows) {
-                        w.semanticContentAttribute = attr;
-                        [w setNeedsLayout];
-                        [w layoutIfNeeded];
-                    }
                 }
             }
         } else {

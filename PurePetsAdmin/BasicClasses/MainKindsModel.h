@@ -12,10 +12,25 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+@interface PPAccessoryCategoryModel : NSObject<XLFormOptionObject>
+@property (nonatomic, copy) NSString *categoryID;
+@property (nonatomic, copy) NSString *documentID;
+@property (nonatomic, copy) NSString *nameAr;
+@property (nonatomic, copy) NSString *nameEn;
+@property (nonatomic, assign) NSInteger mainKindID;
+@property (nonatomic, assign) NSInteger sortingKey;
+@property (nonatomic, assign) BOOL enabled;
+- (instancetype)initWithSnapshot:(FIRDocumentSnapshot *)snapshot mainKindID:(NSInteger)mainKindID;
+- (instancetype)initWithDict:(NSDictionary *)dict mainKindID:(NSInteger)mainKindID;
+- (NSDictionary *)toCacheDictionary;
+- (NSString *)displayName;
+@end
+
 @interface MainKindsModel : NSObject<XLFormOptionObject>
 @property (nonatomic, strong) NSArray<UIColor *> *cachedGradientColors;
 
 @property (nonatomic) BOOL didSeedSubKinds;
+@property (nonatomic) BOOL didSeedAccessoryCategories;
 @property (nonatomic) NSInteger ID;
 @property (nonatomic) NSInteger sortingKey;
 @property (nonatomic, strong) NSString *documentID;
@@ -23,6 +38,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSString *KindNameEn;
 @property (nonatomic, strong) NSString *KindImageNamed;
 @property (nonatomic, strong) NSMutableArray<SubKindModel *> *SubKindsArray;
+@property (nonatomic, strong) NSMutableArray<PPAccessoryCategoryModel *> *accessoryCategories;
 @property (nonatomic, strong) NSString *KindName;
 - (instancetype)initWithSnapshot:(FIRDocumentSnapshot *)snapshot;
 - (instancetype)initWithId:(NSString *)mainKindID dictionary:(NSDictionary *)dictionary;
@@ -41,6 +57,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSDictionary *)toFirestoreDictionary;  // Helper to convert model to Firestore data
 - (SubKindModel *)subKindForID:(NSInteger)subID;
 + (MainKindsModel *)mainKindModelForID:(NSInteger)kindID;
+- (nullable PPAccessoryCategoryModel *)accessoryCategoryForID:(NSString *)categoryID;
++ (NSArray<PPAccessoryCategoryModel *> *)canonicalAccessoryCategoriesForMainKindID:(NSInteger)mainKindID;
 @property (nonatomic, assign) BOOL is_visible_in_user_app;
 @property (nonatomic, strong) UIImage *image;
 //LightenAmount:(float)LightenAmount IconName:(NSString *)iconName

@@ -104,8 +104,8 @@ public struct PPBranchSelectionGateView: View {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             dismiss()
                         } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 20))
+                            Image(systemName: "xmark")
+                                .font(.system(size: 16, weight: .medium))
                                 .foregroundStyle(Color(uiColor: .tertiaryLabel))
                         }
                     }

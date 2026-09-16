@@ -732,7 +732,7 @@ private struct InventoryItemRow: View {
                     .lineLimit(1)
 
                 HStack(spacing: 6) {
-                    if let category = item.accessoryCategoryID, !category.isEmpty {
+                    if let category = item.accessoryCategoryName ?? item.accessoryCategoryID, !category.isEmpty {
                         Text(category)
                             .font(AdminType.caption2)
                             .foregroundColor(AdminSurface.secondaryText)

@@ -143,6 +143,7 @@ public struct AdminPetsHotelHubView: View {
         }
         .onAppear {
             viewModel.loadHotelOperations()
+            viewModel.loadDiagnostics()
         }
     }
 }
@@ -176,6 +177,7 @@ private struct iPhoneHotelHubView: View {
                     accessibilityLabel: Language.get("Refresh", alter: "تحديث")
                 ) {
                     viewModel.loadHotelOperations()
+                    viewModel.loadDiagnostics()
                 }
             }
 
@@ -228,6 +230,10 @@ private struct iPhoneOverviewFlightDeck: View {
 
     var body: some View {
         VStack(spacing: 16) {
+            if viewModel.needsSetup {
+                AdminHotelSetupAssistantCard(viewModel: viewModel)
+            }
+
             // Live Spatial Occupancy Radar Card
             HotelOccupancyRadarCard(viewModel: viewModel)
 
@@ -278,6 +284,7 @@ private struct iPadHotelConsoleView: View {
                         accessibilityLabel: Language.get("Refresh", alter: "تحديث")
                     ) {
                         viewModel.loadHotelOperations()
+                        viewModel.loadDiagnostics()
                     }
                 }
             }
@@ -293,6 +300,10 @@ private struct iPadHotelConsoleView: View {
                 // Leading Command Column (380pt fixed width)
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 16) {
+                        if viewModel.needsSetup {
+                            AdminHotelSetupAssistantCard(viewModel: viewModel)
+                        }
+
                         HotelOccupancyRadarCard(viewModel: viewModel)
 
                         HotelOperationalHorizonTwinPillars(viewModel: viewModel)
@@ -403,6 +414,220 @@ private struct iPadGuestsGridWorkspace: View {
                     }
                 }
             }
+        }
+    }
+}
+
+// MARK: - Component: Setup Assistant & Diagnostics Cockpit
+private struct AdminHotelSetupAssistantCard: View {
+    @ObservedObject var viewModel: AdminPetsHotelViewModel
+
+    private var hasTypes: Bool { !viewModel.accommodationTypes.isEmpty }
+    private var hasUnits: Bool { !viewModel.accommodations.isEmpty }
+    private var isReady: Bool { viewModel.hotelDiagnostics?.isReadyForOperations ?? (hasTypes && hasUnits) }
+
+    private var completedStepsCount: Int {
+        var count = 0
+        if hasTypes { count += 1 }
+        if hasUnits { count += 1 }
+        if isReady { count += 1 }
+        return count
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(AdminSurface.primary.opacity(0.12))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("Hotel_SetupAssistant_Title", alter: "مساعد تهيئة الفندق"))
+                        .font(PPBrandFont.bold(size: 15))
+                        .foregroundStyle(AdminSurface.primaryText)
+
+                    Text(Language.get("Hotel_SetupAssistant_Sub", alter: "خطوات جاهزية الفرع للتشغيل الفندقي المباشر"))
+                        .font(PPBrandFont.regular(size: 11))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+
+                Spacer()
+
+                HStack(spacing: 4) {
+                    Text("\(completedStepsCount)/3")
+                        .font(PPBrandFont.bold(size: 12))
+                        .foregroundStyle(completedStepsCount == 3 ? Color(uiColor: .systemGreen) : Color.orange)
+                    Text(Language.get("Completed", alter: "مكتمل"))
+                        .font(PPBrandFont.medium(size: 10))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background((completedStepsCount == 3 ? Color(uiColor: .systemGreen) : Color.orange).opacity(0.12), in: Capsule())
+            }
+
+            // Step 1: Types
+            stepRow(
+                stepNumber: 1,
+                title: Language.get("Hotel_Step1_TypesTitle", alter: "فئات الإقامة والأسعار"),
+                desc: Language.get("Hotel_Step1_TypesDesc", alter: "تهيئة الفئات والأجنحة المخصصة والحيوانات المسموح بها"),
+                isDone: hasTypes,
+                ctaTitle: Language.get("Hotel_Step1_CTA", alter: "تهيئة الفئات"),
+                onAction: {
+                    viewModel.selectedTab = .rooms
+                }
+            )
+
+            Divider()
+                .padding(.horizontal, 4)
+
+            // Step 2: Physical Suites
+            stepRow(
+                stepNumber: 2,
+                title: Language.get("Hotel_Step2_RoomsTitle", alter: "الأجنحة والغرف الفعلية"),
+                desc: Language.get("Hotel_Step2_RoomsDesc", alter: "إضافة أرقام الأجنحة وربطها بالفئات وتعيين السعة"),
+                isDone: hasUnits,
+                ctaTitle: Language.get("Hotel_Step2_CTA", alter: "إضافة جناح"),
+                onAction: {
+                    viewModel.selectedTab = .rooms
+                    viewModel.isCreatingNewSuite = true
+                }
+            )
+
+            Divider()
+                .padding(.horizontal, 4)
+
+            // Step 3: Diagnostics & Readiness
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top, spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill((isReady ? Color(uiColor: .systemGreen) : Color.orange).opacity(0.15))
+                            .frame(width: 24, height: 24)
+                        Image(systemName: isReady ? "checkmark" : "exclamationmark")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(isReady ? Color(uiColor: .systemGreen) : Color.orange)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("Hotel_Step3_DiagTitle", alter: "جاهزية التشخيص والتشغيل"))
+                            .font(PPBrandFont.bold(size: 13))
+                            .foregroundStyle(AdminSurface.primaryText)
+
+                        if let diag = viewModel.hotelDiagnostics, !diag.blockers.isEmpty {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ForEach(diag.blockers, id: \.self) { blocker in
+                                    HStack(spacing: 4) {
+                                        Circle()
+                                            .fill(Color.red)
+                                            .frame(width: 4, height: 4)
+                                        Text(blocker)
+                                            .font(PPBrandFont.regular(size: 11))
+                                            .foregroundStyle(Color.red)
+                                    }
+                                }
+                            }
+                            .padding(.top, 2)
+                        } else if let diag = viewModel.hotelDiagnostics, !diag.warnings.isEmpty {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ForEach(diag.warnings, id: \.self) { warning in
+                                    HStack(spacing: 4) {
+                                        Circle()
+                                            .fill(Color.orange)
+                                            .frame(width: 4, height: 4)
+                                        Text(warning)
+                                            .font(PPBrandFont.regular(size: 11))
+                                            .foregroundStyle(Color.orange)
+                                    }
+                                }
+                            }
+                            .padding(.top, 2)
+                        } else {
+                            Text(isReady
+                                 ? Language.get("Hotel_ReadyForOperationsNotice", alter: "الفرع مهيأ بالكامل لاستقبال الحجوزات والنزلاء")
+                                 : Language.get("Hotel_PendingReadinessNotice", alter: "يرجى استكمال تهيئة الفئات والأجنحة للوصول للجاهزية التشغيلية"))
+                                .font(PPBrandFont.regular(size: 11))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                        }
+                    }
+
+                    Spacer()
+
+                    Button {
+                        viewModel.loadDiagnostics()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .padding(6)
+                            .background(AdminSurface.control, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 0.8)
+        )
+    }
+
+    private func stepRow(
+        stepNumber: Int,
+        title: String,
+        desc: String,
+        isDone: Bool,
+        ctaTitle: String,
+        onAction: @escaping () -> Void
+    ) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill((isDone ? Color(uiColor: .systemGreen) : Color.orange).opacity(0.15))
+                    .frame(width: 24, height: 24)
+                if isDone {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color(uiColor: .systemGreen))
+                } else {
+                    Text("\(stepNumber)")
+                        .font(PPBrandFont.bold(size: 11))
+                        .foregroundStyle(Color.orange)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(PPBrandFont.bold(size: 13))
+                    .foregroundStyle(AdminSurface.primaryText)
+
+                Text(desc)
+                    .font(PPBrandFont.regular(size: 11))
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+
+            Spacer()
+
+            Button(action: onAction) {
+                Text(ctaTitle)
+                    .font(PPBrandFont.bold(size: 11))
+                    .foregroundStyle(isDone ? AdminSurface.primaryText : Color.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(
+                        isDone ? AdminSurface.control : AdminSurface.primary,
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    )
+            }
+            .buttonStyle(.plain)
         }
     }
 }
@@ -836,6 +1061,7 @@ private struct HotelWingCapacitySection: View {
                                     Text("\(telemetry.occupied) / \(telemetry.total)")
                                         .font(PPBrandFont.bold(size: 12))
                                         .foregroundStyle(AdminSurface.secondaryText)
+                                        .environment(\.layoutDirection, .leftToRight)
                                 }
 
                                 ProgressView(value: telemetry.rate)
@@ -911,7 +1137,7 @@ private struct HotelFilterDeckView: View {
                     .font(PPBrandFont.medium(size: 14))
                     .foregroundStyle(AdminSurface.secondaryText)
 
-                TextField(Language.get("Search", alter: "البحث بالاسم، الغرفة، أو العميل..."), text: $viewModel.searchQuery)
+                TextField(Language.get("Hotel_Hub_SearchPlaceholder", alter: "ابحث عن نزيل، جناح، أو مالك..."), text: $viewModel.searchQuery)
                     .font(PPBrandFont.medium(size: 14))
 
                 if !viewModel.searchQuery.isEmpty {
@@ -1124,24 +1350,44 @@ private struct HotelCareOperationsView: View {
                 ForEach(viewModel.inHouseGuests) { stay in
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
-                            ZStack {
-                                Circle()
-                                    .fill(stay.wing.tint.opacity(0.15))
-                                    .frame(width: 32, height: 32)
-                                Image(systemName: stay.wing.icon)
-                                    .font(PPBrandFont.bold(size: 14))
-                                    .foregroundStyle(stay.wing.tint)
+                            Button {
+                                viewModel.selectedStayDetail = stay
+                            } label: {
+                                HStack(spacing: 8) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(stay.wing.tint.opacity(0.15))
+                                            .frame(width: 32, height: 32)
+                                        Image(systemName: stay.wing.icon)
+                                            .font(PPBrandFont.bold(size: 14))
+                                            .foregroundStyle(stay.wing.tint)
+                                    }
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(stay.petName)
+                                            .font(PPBrandFont.bold(size: 16))
+                                            .foregroundStyle(AdminSurface.primaryText)
+
+                                        Text(stay.roomNumber.isEmpty ? stay.wing.title : "\(stay.wing.title) • \(stay.roomNumber)")
+                                            .font(PPBrandFont.medium(size: 12))
+                                            .foregroundStyle(AdminSurface.secondaryText)
+                                    }
+                                }
                             }
-
-                            Text(stay.petName)
-                                .font(PPBrandFont.bold(size: 16))
-                                .foregroundStyle(AdminSurface.primaryText)
-
-                            Text("(\(stay.roomNumber))")
-                                .font(PPBrandFont.medium(size: 13))
-                                .foregroundStyle(AdminSurface.secondaryText)
+                            .buttonStyle(PlainButtonStyle())
 
                             Spacer()
+
+                            Button {
+                                viewModel.selectedStayDetail = stay
+                            } label: {
+                                Image(systemName: "arrow.up.left.square")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(AdminSurface.primary)
+                                    .padding(6)
+                                    .background(AdminSurface.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            }
+                            .buttonStyle(PlainButtonStyle())
                         }
 
                         // Tasks for this pet

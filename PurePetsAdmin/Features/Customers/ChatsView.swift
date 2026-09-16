@@ -2223,8 +2223,8 @@ private struct SupportContextDetailSheet: View {
                     Button {
                         dismiss()
                     } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 20, weight: .medium))
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .medium))
                             .foregroundColor(AdminSurface.secondaryText)
                     }
                     .accessibilityLabel(supportText("Close", "إغلاق"))

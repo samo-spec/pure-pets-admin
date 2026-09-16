@@ -13,6 +13,9 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+FOUNDATION_EXPORT NSString * const LanguageDidChangeNotification;
+FOUNDATION_EXPORT NSString * const PPLanguageDidChangeNotification;
+
 @interface Language : NSObject
 
 + (void)setLanguage:(NSString *)language; // "en" or "ar"

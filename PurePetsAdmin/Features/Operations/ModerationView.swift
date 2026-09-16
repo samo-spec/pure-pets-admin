@@ -2280,8 +2280,8 @@ private struct ModerationLightboxView: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         onDismiss()
                     } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 30))
+                        Image(systemName: "xmark")
+                            .font(.system(size: 20, weight: .bold))
                             .foregroundStyle(.white.opacity(0.85))
                             .padding(16)
                     }

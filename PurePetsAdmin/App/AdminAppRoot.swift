@@ -182,6 +182,14 @@ final class AdminSessionStore: ObservableObject {
 
     func clearAccessMessage() { accessMessage = nil }
 
+    func updateLanguageCode(_ code: String) {
+        let normalized = code.lowercased().hasPrefix("ar") ? "ar" : "en"
+        if languageCode != normalized {
+            languageCode = normalized
+        }
+        objectWillChange.send()
+    }
+
     private func localizedRestoreError(_ error: Error) -> String {
         let message = error.localizedDescription.lowercased()
         if message.contains("app check") || message.contains("appcheck") || message.contains("attest") {
@@ -326,9 +334,16 @@ final class AdminSessionStore: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.languageCode = Language.currentLanguageCode() }
+            self?.updateLanguageCode(Language.currentLanguageCode())
         }
-        observers = [authObserver, languageObserver]
+        let ppLanguageObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name("PPLanguageDidChangeNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.updateLanguageCode(Language.currentLanguageCode())
+        }
+        observers = [authObserver, languageObserver, ppLanguageObserver]
     }
 }
 
@@ -357,8 +372,9 @@ struct AdminAppRoot: View {
                     }
             }
         }
+        .id(sessionStore.languageCode)
         .ignoresSafeArea()
-        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .environment(\.layoutDirection, sessionStore.languageCode == "ar" ? .rightToLeft : .leftToRight)
         .environment(\.locale, Locale(identifier: sessionStore.languageCode == "ar" ? "ar_QA" : "en_QA"))
         .onChange(of: sessionStore.languageCode) { _ in
             authenticationState.refreshLanguage()
@@ -439,8 +455,29 @@ final class AdminAppRootHostingController: UIViewController {
     }
 
     func refreshForLanguageChange() {
+        let isRTL = Language.isRTL()
+        let attr: UISemanticContentAttribute = isRTL ? .forceRightToLeft : .forceLeftToRight
+
+        UIView.appearance().semanticContentAttribute = attr
+        UINavigationBar.appearance().semanticContentAttribute = attr
+        view.window?.semanticContentAttribute = attr
+        view.semanticContentAttribute = attr
+
         authenticationState?.refreshLanguage()
-        sessionStore.objectWillChange.send()
+        sessionStore.updateLanguageCode(Language.currentLanguageCode())
+
+        if let host = hostingController {
+            host.view.semanticContentAttribute = attr
+            host.rootView = AdminAppRoot(
+                sessionStore: sessionStore,
+                authenticationState: authenticationState ?? AuthenticationState(service: authenticationService, onAuthenticated: { [weak sessionStore] in sessionStore?.restoreCurrentSession() }),
+                router: router
+            )
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+        }
+        view.setNeedsLayout()
+        view.layoutIfNeeded()
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle { .default }

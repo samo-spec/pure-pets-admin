@@ -2621,6 +2621,13 @@
 "HomeControl_Section_BuyAgain_Description" = "اختصار إعادة الطلب من السجل (يظهر فقط عند توفر عناصر).";
 "HomeControl_Section_PetProfile_Label" = "سياق حيوانك";
 "HomeControl_Section_PetProfile_Description" = "ملف الحيوان الرئيسي للمستخدم الحالي.";
+"HomeControl_Section_PureLens_Label" = "استكشاف PureLens";
+"HomeControl_Section_PureLens_Description" = "ماسح الذكاء الاصطناعي للحيوانات الأليفة في أعلى الصفحة الرئيسية.";
+"HomeControl_LiveStatus_Synced" = "مباشر ومزامن";
+"HomeControl_LiveStatus_Unsaved" = "تعديلات غير محفوظة";
+"HomeControl_LiveChannels" = "قنوات البث المباشر";
+"HomeControl_Telemetry_Active" = "أقسام مفعلة";
+"HomeControl_Telemetry_Staged" = "تعديلات مؤقتة";
 
 /* ===================== Delivery Section ===================== */
 "Delivery_Title" = "إدارة التوصيل";
@@ -5784,514 +5791,1074 @@
 "Staff_Self_Role_Locked" = "حسابك الحالي • محمي من التعديل الذاتي للحفاظ على الأمان";
 
 /* ===================== Pets Hotel & Boarding Hub ===================== */
-"Hotel_Title" = "فندق ورعاية الحيوانات";
-"Hotel_Subtitle" = "الإشغال والنزلاء • الغرف والأجنحة والرعاية المتكاملة";
-"Hotel_Tab_Overview" = "لوحة العمليات";
-"Hotel_Tab_Guests" = "النزلاء والإقامة";
+"Hotel_Title" = "فندق الحيوانات";
+
+"Hotel_Subtitle" = "نسبة الإشغال والعمليات";
+
+"Hotel_Tab_Overview" = "نظرة عامة";
+
+"Hotel_Tab_Guests" = "النزلاء المقيمون";
+
 "Hotel_Tab_Reservations" = "الحجوزات";
-"Hotel_Tab_Rooms" = "الغرف والأجنحة";
-"Hotel_Tab_Care" = "الرعاية والمهام";
-"Hotel_Occupancy" = "معدل الإشغال";
+
+"Hotel_Tab_Rooms" = "الأجنحة والغرف";
+
+"Hotel_Tab_Care" = "الرعاية اليومية";
+
+"Hotel_Occupancy" = "نسبة الإشغال";
+
 "Hotel_Occupied" = "مشغول";
-"Hotel_Available" = "متاح";
-"Hotel_Cleaning" = "تعقيم وتنظيف";
+
+"Hotel_Available" = "شاغر";
+
+"Hotel_Cleaning" = "تنظيف";
+
 "Hotel_Maintenance" = "صيانة";
-"Hotel_Blocked" = "محجوب";
-"Hotel_Inspection" = "فحص جاهزية";
+
+"Hotel_Blocked" = "خارج الخدمة";
+
+"Hotel_Inspection" = "تم الفحص";
+
 "Hotel_Wing_Dogs" = "جناح الكلاب";
+
 "Hotel_Wing_Cats" = "جناح القطط";
+
 "Hotel_Wing_Birds" = "جناح الطيور";
-"Hotel_Wing_Daycare" = "الرعاية النهارية";
-"Hotel_Wing_Isolation" = "العزل الطبي";
-"Hotel_CheckIn" = "تسجيل وصول النزيل";
-"Hotel_CheckOut" = "تسليم ومغادرة";
-"Hotel_Room_Status_Update" = "تحديث حالة الغرفة";
-"Hotel_Belongings" = "مقتنيات النزيل";
-"Hotel_Care_Routine" = "الجدول اليومي للرعاية";
-"Hotel_Special_Attention" = "عناية خاصة وملاحظات طبية";
-"Hotel_VerificationTitle" = "متطلبات الدخول والتحقق الإلزامي";
-"Hotel_VerifyIdentity" = "التحقق من هوية الحيوان والمالك";
-"Hotel_VerifyVaccination" = "شهادة التطعيمات سارية وموثقة";
-"Hotel_VerifyInspection" = "الفحص السريري الأولي سليم";
-"Hotel_VerifyDiet" = "تأكيد النظام الغذائي والحساسيات";
-"Hotel_VerifyEmergency" = "تأكيد رقم الطوارئ البديل";
-"Hotel_VerifyAgreement" = "الموافقة على شروط الرعاية الفندقية";
-"Hotel_DischargeHealthCheck" = "فحص المؤشرات الصحية قبل المغادرة";
-"Hotel_DischargeHealthSub" = "النزيل بحالة طبيعية ومستقرة";
-"Hotel_BelongingsVerifySub" = "تم التحقق من تطابق العهدة ومحتوياتها";
-"Hotel_EarlyCheckoutAlert" = "مغادرة مبكرة قبل الموعد المقرر";
-"Hotel_EarlyCheckoutSub" = "سيتم احتساب الليالي الفعلية وفق السياسة التشغيلية";
-"Hotel_Task_PhotoUpdate" = "تحديث صورة النزيل";
-"Hotel_Ledger_Total" = "إجمالي الحساب:";
-"Hotel_Ledger_Balance" = "المتبقي للدفع:";
-"Hotel_Err_InvalidResponse" = "استجابة غير صالحة من خادم فندق الحيوانات.";
-"Hotel_Err_Unauthenticated" = "الجلسة غير مسجلة أو انتهت صلاحيتها.";
-"Hotel_Err_PermissionDenied" = "ليس لديك صلاحية لتنفيذ هذه العملية الفندقية.";
-"Hotel_Err_StayNotFound" = "سجل الإقامة المطلوب غير موجود.";
-"Hotel_Err_BranchRequired" = "اختر فرعاً لعرض عمليات الفندق.";
-"Hotel_Err_CommandFailed" = "تعذر تنفيذ أمر الفندق.";
-"Hotel_Err_MedicationTaskAuthority" = "يجب تسجيل مهام الدواء عبر إجراء إعطاء الدواء المخصص.";
-"Hotel_Err_StayRequired" = "لا يوجد سجل إقامة جاهز لتسجيل وصول هذا الحجز.";
-"Hotel_Err_CheckoutBlocked" = "تعذر إتمام المغادرة لوجود متطلبات أو قيود معلقة.";
-"Hotel_Err_CheckinBlocked" = "تعذر إتمام الدخول لوجود متطلبات أو قيود معلقة.";
-"Hotel_Err_OverrideReasonRequired" = "يلزم إدخال سبب التجاوز التشغيلي.";
-"Hotel_Err_OverrideForbidden" = "ليس لديك صلاحية التجاوز التشغيلي.";
-"Hotel_Err_OutstandingBalance" = "يوجد رصيد مالي مستحق على الإقامة يجب تسويته قبل المغادرة.";
-"Hotel_Blocker_OutstandingBalance" = "يوجد رصيد مالي مستحق على الإقامة يجب تسويته قبل المغادرة.";
-"Hotel_Blocker_StayNotInHouse" = "النزيل ليس في حالة إقامة حالية داخل الفندق.";
-"Hotel_Blocker_BelongingsNotReturned" = "لم يتم تأكيد تسليم كافة مقتنيات وأغراض النزيل للمالك.";
-"Hotel_Blocker_HealthCheckMissing" = "فحص المؤشرات الصحية واللياقة قبل المغادرة غير مكتمل.";
-"Hotel_Blocker_RoomInspectionMissing" = "فحص الغرفة والجناح قبل التسليم غير مكتمل.";
-"Hotel_Blocker_OpenCriticalIncident" = "توجد حوادث أو ملاحظات تشغيلية حرجة غير معتمدة.";
-"Hotel_Blocker_PendingMedication" = "توجد مهام أدوية أو جرعات علاجية معلقة لم تسوَّ بعد.";
-"Hotel_Blocker_HandoverUnverified" = "لم يتم التحقق من هوية المستلم عند تسليم النزيل.";
-"Hotel_Blocker_StayAlreadyCheckedIn" = "تم تسجيل دخول النزيل مسبقاً.";
-"Hotel_Blocker_StayTerminal" = "سجل الإقامة مغلق أو مكتمل مسبقاً.";
-"Hotel_Blocker_AccommodationMissing" = "لم يتم تخصيص جناح أو غرفة للنزيل.";
+
+"Hotel_Wing_Daycare" = "قسم الرعاية النهارية";
+
+"Hotel_Wing_Isolation" = "قسم العزل";
+
+"Hotel_CheckIn" = "تسجيل الوصول";
+
+"Hotel_CheckOut" = "تسجيل المغادرة";
+
+"Hotel_Room_Status_Update" = "تحديث حالة الجناح";
+
+"Hotel_Belongings" = "أمتعة النزيل";
+
+"Hotel_Care_Routine" = "جدول الرعاية اليومية";
+
+"Hotel_Special_Attention" = "ملاحظات الرعاية والتعليمات الطبية";
+
+"Hotel_VerificationTitle" = "قائمة التحقق من النزيل";
+
+"Hotel_VerifyIdentity" = "التحقق من هوية النزيل والمالك";
+
+"Hotel_VerifyVaccination" = "شهادة التطعيمات";
+
+"Hotel_VerifyInspection" = "الفحص السريري";
+
+"Hotel_VerifyDiet" = "النظام الغذائي والحساسية";
+
+"Hotel_VerifyEmergency" = "جهة الاتصال للطوارئ";
+
+"Hotel_VerifyAgreement" = "اتفاقية الإيواء";
+
+"Hotel_DischargeHealthCheck" = "فحص المغادرة";
+
+"Hotel_DischargeHealthSub" = "تم تأكيد الحالة الصحية والبدنية للنزيل";
+
+"Hotel_BelongingsVerifySub" = "تم التحقق وتسليم كافة الأمتعة";
+
+"Hotel_EarlyCheckoutAlert" = "مغادرة مبكرة";
+
+"Hotel_EarlyCheckoutSub" = "تُعدل الليالي المحتسبة وفق سياسة الإلغاء";
+
+"Hotel_Task_PhotoUpdate" = "إرسال صورة للعميل";
+
+"Hotel_Ledger_Total" = "إجمالي الفاتورة:";
+
+"Hotel_Ledger_Balance" = "الرصيد المستحق:";
+
+"Hotel_Err_InvalidResponse" = "استجابة غير صالحة من الخادم.";
+
+"Hotel_Err_Unauthenticated" = "انتهت الجلسة. يرجى تسجيل الدخول مجدداً.";
+
+"Hotel_Err_PermissionDenied" = "لا تملك الصلاحية لتنفيذ هذا الإجراء.";
+
+"Hotel_Err_StayNotFound" = "سجل الإقامة غير موجود.";
+
+"Hotel_Err_BranchRequired" = "اختر الفرع لعرض العمليات الفندقية.";
+
+"Hotel_Err_CommandFailed" = "تعذر إتمام العملية.";
+
+"Hotel_Err_MedicationTaskAuthority" = "يجب توثيق جرعات الدواء عبر إجراء إعطاء الدواء المخصص.";
+
+"Hotel_Err_StayRequired" = "لا يوجد سجل إقامة جاهز لتسجيل الوصول.";
+
+"Hotel_Err_CheckoutBlocked" = "تعذر تسجيل المغادرة لوجود متطلبات معلقة.";
+
+"Hotel_Err_CheckinBlocked" = "تعذر تسجيل الوصول لوجود متطلبات معلقة.";
+
+"Hotel_Err_OverrideReasonRequired" = "يلزم إدخال سبب التجاوز.";
+
+"Hotel_Err_OverrideForbidden" = "لا تملك صلاحية التجاوز التشغيلي.";
+
+"Hotel_Err_OutstandingBalance" = "يجب تسوية الرصيد المستحق قبل المغادرة.";
+
+"Hotel_Blocker_OutstandingBalance" = "يوجد رصيد مالي مستحق يجب تسويته قبل المغادرة.";
+
+"Hotel_Blocker_StayNotInHouse" = "النزيل غير مقيم حالياً.";
+
+"Hotel_Blocker_BelongingsNotReturned" = "لم يتم تأكيد تسليم أمتعة النزيل.";
+
+"Hotel_Blocker_HealthCheckMissing" = "فحص المغادرة الطبي غير مكتمل.";
+
+"Hotel_Blocker_RoomInspectionMissing" = "فحص الجناح قبل المغادرة غير مكتمل.";
+
+"Hotel_Blocker_OpenCriticalIncident" = "توجد ملاحظات حرجة تتطلب الاعتماد.";
+
+"Hotel_Blocker_PendingMedication" = "توجد جرعات أدوية معلقة لم تُعطَ بعد.";
+
+"Hotel_Blocker_HandoverUnverified" = "لم يتم التحقق من هوية المستلم.";
+
+"Hotel_Blocker_StayAlreadyCheckedIn" = "تم تسجيل وصول النزيل مسبقاً.";
+
+"Hotel_Blocker_StayTerminal" = "سجل الإقامة مغلق بالفعل.";
+
+"Hotel_Blocker_AccommodationMissing" = "لم يتم تخصيص جناح لهذا النزيل.";
+
 "Hotel_Blocker_VaccinationUnverified" = "لم يتم التحقق من شهادة التطعيمات.";
+
 "Hotel_Blocker_VaccinationExpired" = "شهادة التطعيمات منتهية الصلاحية.";
-"Hotel_Blocker_HealthInspectionMissing" = "فحص اللياقة الصحية غير مكتمل.";
-"Hotel_Blocker_IdentityUnverified" = "لم يتم التحقق من هوية العميل أو المرافق.";
-"Hotel_Blocker_EmergencyContactMissing" = "بيانات جهة الاتصال للطوارئ غير متوفرة.";
+
+"Hotel_Blocker_HealthInspectionMissing" = "الفحص السريري قبل الدخول غير مكتمل.";
+
+"Hotel_Blocker_IdentityUnverified" = "لم يتم التحقق من هوية النزيل أو المالك.";
+
+"Hotel_Blocker_EmergencyContactMissing" = "بيانات جهة الاتصال للطوارئ غير مسجلة.";
+
 "Hotel_Blocker_EmergencyContactUnconfirmed" = "لم يتم تأكيد جهة الاتصال للطوارئ.";
-"Hotel_Blocker_MedicationUnconfirmed" = "تعليمات الأدوية والعلاج لم يتم تأكيدها.";
-"Hotel_Blocker_AgreementNotAcknowledged" = "لم يتم الإقرار بشروط وسياسة الإقامة.";
-"Hotel_Blocker_DepositUnsettled" = "مبلغ التأمين لم يتم تسويته بعد.";
-"Hotel_OutstandingBalance_Notice" = "رصيد مالي مستحق على الإقامة";
-"Hotel_OutstandingBalance_ActionHint" = "يجب تسوية المبلغ المالي المتبقي قبل تسجيل المغادرة وتسليم النزيل.";
-"Hotel_SettleBalance_Button" = "تسجيل تسوية الرصيد";
+
+"Hotel_Blocker_MedicationUnconfirmed" = "جدول الأدوية غير معتمد.";
+
+"Hotel_Blocker_AgreementNotAcknowledged" = "لم يتم توقيع اتفاقية الإيواء.";
+
+"Hotel_Blocker_DepositUnsettled" = "عربون الحجز غير مسدد.";
+
+"Hotel_OutstandingBalance_Notice" = "رصيد مستحق";
+
+"Hotel_OutstandingBalance_ActionHint" = "يجب تسوية الرصيد المستحق قبل إتمام تسجيل المغادرة.";
+
+"Hotel_SettleBalance_Button" = "تسوية الرصيد";
+
 "Hotel_Settle_Action" = "تسوية";
-"Hotel_SettleBalance_Restricted" = "يرجى مراجعة موظف الحسابات لتسوية الرصيد المتبقي.";
-"Hotel_Settlement_Title" = "تسجيل تسوية رصيد الإقامة";
-"Hotel_Settlement_Method_Cash" = "نقداً (كاش)";
-"Hotel_Settlement_Method_Card" = "بطاقة بنكية / جهاز الشبكة (POS)";
-"Hotel_Settlement_AmountToPay" = "المبلغ المطلوب تسويته:";
-"Hotel_Settlement_RefPlaceholder" = "رقم إيصال أو عملية السداد (اختياري)";
-"Hotel_Settlement_NotesPlaceholder" = "ملاحظات إضافية على السداد (اختياري)";
-"Hotel_Settlement_ConfirmButton" = "تأكيد تسجيل السداد والتسوية";
-"Hotel_Settlement_Success" = "تم تسجيل السداد وتسوية الرصيد بنجاح.";
-"Hotel_Settlement_Method" = "طريقة الدفع";
-"Hotel_Settlement_Reference" = "الرقم المرجعي";
-"Hotel_Settlement_Notes" = "ملاحظات";
-"Hotel_BranchRequired_Title" = "اختر فرع الفندق";
-"Hotel_Loading_Title" = "جاري مزامنة عمليات الفندق";
+
+"Hotel_SettleBalance_Restricted" = "يرجى مراجعة المحاسبة لتسوية الرصيد المتبقي.";
+
+"Hotel_Settlement_Title" = "تسجيل السداد";
+
+"Hotel_Settlement_Method_Cash" = "نقداً";
+
+"Hotel_Settlement_Method_Card" = "بطاقة بنكية / POS";
+
+"Hotel_Settlement_AmountToPay" = "المبلغ المطلوب:";
+
+"Hotel_Settlement_RefPlaceholder" = "الرقم المرجعي للإيصال أو المعاملة...";
+
+"Hotel_Settlement_NotesPlaceholder" = "ملاحظات السداد (اختياري)...";
+
+"Hotel_Settlement_ConfirmButton" = "تأكيد السداد";
+
+"Hotel_Settlement_Success" = "تم تسجيل السداد بنجاح";
+
+"Hotel_Settlement_Method" = "طريقة السداد";
+
+"Hotel_Settlement_Reference" = "الرقم المرجعي للإيصال";
+
+"Hotel_Settlement_Notes" = "ملاحظات السداد";
+
+"Hotel_BranchRequired_Title" = "اختر الفرع";
+
+"Hotel_Loading_Title" = "جاري مزامنة بيانات الفندق...";
+
 "Hotel_LoadError_Title" = "تعذر تحديث بعض بيانات الفندق";
-"Hotel_AvailabilityLoading" = "جاري التحقق من التوفر للفترة المحددة";
+
+"Hotel_AvailabilityLoading" = "جاري التحقق من توفر الأجنحة...";
+
 "Hotel_RateUnavailable" = "السعر غير متاح";
-"Hotel_BillingRestricted" = "الحساب غير متاح";
+
+"Hotel_BillingRestricted" = "الفاتورة غير متاحة";
+
 "Hotel_TimeUnavailable" = "—";
+
 "Hotel_Wing_SmallPets" = "جناح الحيوانات الصغيرة";
+
 "Hotel_Wing_MedicalObservation" = "الملاحظة الطبية";
-"Hotel_Room_Available" = "متاح وجاهز";
+
+"Hotel_Room_Available" = "شاغر";
+
 "Hotel_Room_Reserved" = "محجوز";
+
 "Hotel_Room_Occupied" = "مشغول";
-"Hotel_Room_Cleaning" = "قيد التنظيف والتعقيم";
-"Hotel_Room_Inspection" = "قيد الفحص";
-"Hotel_Room_Maintenance" = "صيانة وتجهيز";
-"Hotel_Room_Blocked" = "معطل مؤقتاً";
-"Hotel_Room_Isolation" = "عزل طبي";
+
+"Hotel_Room_Cleaning" = "تنظيف";
+
+"Hotel_Room_Inspection" = "تم الفحص";
+
+"Hotel_Room_Maintenance" = "صيانة";
+
+"Hotel_Room_Blocked" = "خارج الخدمة";
+
+"Hotel_Room_Isolation" = "عزل صحي";
+
 "Hotel_Res_Draft" = "مسودة";
-"Hotel_Res_Pending" = "بانتظار التأكيد";
+
+"Hotel_Res_Pending" = "معلق";
+
 "Hotel_Res_Confirmed" = "مؤكد";
-"Hotel_Res_PreArrival" = "استعداد للوصول";
+
+"Hotel_Res_PreArrival" = "قبل الوصول";
+
 "Hotel_Res_ReadyCheckin" = "جاهز لتسجيل الوصول";
-"Hotel_Res_InStay" = "في الإقامة";
+
+"Hotel_Res_InStay" = "مقيم";
+
 "Hotel_Res_ReadyCheckout" = "جاهز للمغادرة";
+
 "Hotel_Res_Completed" = "مكتمل";
+
 "Hotel_Res_Cancelled" = "ملغي";
-"Hotel_Res_NoShow" = "لم يحضر";
+
+"Hotel_Res_NoShow" = "عدم حضور";
+
 "Hotel_Res_Rejected" = "مرفوض";
+
 "Hotel_Res_EarlyCheckout" = "مغادرة مبكرة";
-"Hotel_Guest_Normal" = "مستقر";
+
+"Hotel_Guest_Normal" = "طبيعي / مستقر";
+
 "Hotel_Guest_SpecialCare" = "رعاية خاصة";
+
 "Hotel_Guest_Monitor" = "تحت الملاحظة";
-"Hotel_Guest_Attention" = "يتطلب الانتباه";
-"Hotel_Guest_Critical" = "حالة حرجة";
-"Hotel_Task_Feeding" = "وجبة طعام";
-"Hotel_Task_Water" = "تجديد مياه الشرب";
-"Hotel_Task_Walk" = "نزهة ومشي";
+
+"Hotel_Guest_Attention" = "تنبيه رعاية";
+
+"Hotel_Guest_Critical" = "حرج / رعاية بيطرية";
+
+"Hotel_Task_Feeding" = "تقديم الوجبة";
+
+"Hotel_Task_Water" = "تجديد المياه";
+
+"Hotel_Task_Walk" = "تمشية";
+
 "Hotel_Task_Play" = "وقت اللعب";
-"Hotel_Task_Medication" = "إعطاء دواء";
-"Hotel_Task_Cleaning" = "تنظيف الغرفة";
-"Hotel_Task_RoomInspection" = "فحص الغرفة";
-"Hotel_Task_Grooming" = "عناية وتمشيط";
-"Hotel_Task_HealthCheck" = "فحص صحي";
+
+"Hotel_Task_Medication" = "إعطاء الدواء";
+
+"Hotel_Task_Cleaning" = "تنظيف الجناح";
+
+"Hotel_Task_RoomInspection" = "فحص الجناح";
+
+"Hotel_Task_Grooming" = "تمشيط وعناية";
+
+"Hotel_Task_HealthCheck" = "فحص المؤشرات الحيوية";
+
 "Hotel_Task_CheckInPreparation" = "تجهيز الوصول";
+
 "Hotel_Task_CheckOutPreparation" = "تجهيز المغادرة";
+
 "Hotel_Task_Transport" = "نقل النزيل";
+
 "Hotel_Task_Custom" = "مهمة مخصصة";
+
 "Hotel_Task_CompletedByAdmin" = "تم التوثيق عبر تطبيق الإدارة";
+
 "Hotel_ArrivalsToday" = "وصول اليوم";
+
 "Hotel_DeparturesToday" = "مغادرة اليوم";
+
 "Hotel_Occupancy_Rate" = "معدل الإشغال";
-"Hotel_OccupancySummary_Format" = "%ld من أصل %ld أجنحة مشغولة";
-"Hotel_TapToViewStays" = "اضغط لعرض النزلاء المقيمين";
-"Hotel_TapToViewReservations" = "اضغط لعرض الحجوزات";
-"Hotel_Sentinel_AttentionGuests" = "نزلاء يتطلبون عناية أو متابعة";
-"Hotel_WingCapacityBreakdown" = "توزيع السعة حسب الأجنحة";
-"Hotel_NoInHouseGuests" = "لا يوجد نزلاء مطابقون لهذا العرض";
-"Hotel_NoReservations" = "لا توجد حجوزات مطابقة لهذا العرض";
+
+"Hotel_OccupancySummary_Format" = "%ld من أصل %ld جناح مشغول";
+
+"Hotel_TapToViewStays" = "عرض النزلاء المقيمين";
+
+"Hotel_TapToViewReservations" = "عرض الحجوزات القادمة";
+
+"Hotel_Sentinel_AttentionGuests" = "نزلاء يتطلبون متابعة خاصة";
+
+"Hotel_WingCapacityBreakdown" = "السعة حسب الأجنحة";
+
+"Hotel_NoInHouseGuests" = "لا يوجد نزلاء مقيمون يطابقون هذا العرض";
+
+"Hotel_NoReservations" = "لا توجد حجوزات تطابق البحث";
+
 "Hotel_Nights_Format" = "%ld ليلة";
-"Hotel_CheckOutButton" = "مغادرة";
-"Hotel_CheckInNow" = "تسجيل الوصول الآن";
+
+"Hotel_CheckOutButton" = "تسجيل المغادرة";
+
+"Hotel_CheckInNow" = "تسجيل الوصول";
+
 "Hotel_StayNo" = "رقم الإقامة:";
-"Hotel_Clinical_Alert" = "تنبيه رعاية خاصة";
-"Hotel_AssignedRoom" = "الغرفة المخصصة";
+
+"Hotel_Clinical_Alert" = "تنبيه سريري";
+
+"Hotel_AssignedRoom" = "الجناح المخصص";
+
 "Hotel_StayPeriod" = "فترة الإقامة";
-"Hotel_CareSchedule" = "جدول الرعاية والمهام اليومية";
-"Hotel_NoTasksScheduled" = "لا توجد مهام رعاية متاحة لهذا النزيل";
-"Hotel_CompletedBy" = "بواسطة:";
-"Hotel_BelongingsInventory" = "مقتنيات النزيل";
-"Hotel_NoBelongings" = "لا توجد مقتنيات مسجلة عند الوصول";
-"Hotel_PetOwner" = "مالك الحيوان";
-"Hotel_Execute_Checkout" = "تسجيل المغادرة وتسليم النزيل";
-"Hotel_CheckIn_Title" = "تسجيل وصول النزيل";
-"Hotel_SelectRoom" = "اختر الجناح أو الغرفة";
-"Hotel_NoAvailableRoomsInWing" = "لا توجد غرف قابلة للتسكين في هذا الجناح خلال الفترة المحددة";
-"Hotel_VerifyMedication" = "تأكيد خطة الأدوية إن وجدت";
-"Hotel_VerifyDeposit" = "تأكيد حالة العربون المستحق";
-"Hotel_RecordBelongings" = "تسجيل المقتنيات المستلمة عند الوصول";
-"Hotel_AddBelongingPrompt" = "أضف غرضاً مثل دواء أو بطانية";
-"Hotel_IntakeNotes" = "ملاحظات الوصول";
-"Hotel_IntakeNotesPlaceholder" = "تعليمات الطعام أو الحساسية أو السلوك أو غيرها";
-"Hotel_ConfirmCheckIn" = "تأكيد الوصول وتسكين النزيل";
-"Hotel_Readiness_Title" = "جاهزية الاستقبال والتسكين";
-"Hotel_Readiness_MissingRequirements" = "متطلبات متبقية: %d";
-"Hotel_Readiness_SelectRoomFirst" = "يرجى تحديد الغرفة أولاً";
+
+"Hotel_CareSchedule" = "جدول الرعاية اليومية";
+
+"Hotel_NoTasksScheduled" = "لا توجد مهام مجدولة لهذا النزيل";
+
+"Hotel_CompletedBy" = "تمت بواسطة:";
+
+"Hotel_BelongingsInventory" = "أمتعة النزيل";
+
+"Hotel_NoBelongings" = "لم تُسجل أمتعة عند الدخول";
+
+"Hotel_PetOwner" = "المالك";
+
+"Hotel_Execute_Checkout" = "تسجيل المغادرة";
+
+"Hotel_CheckIn_Title" = "تسجيل الوصول";
+
+"Hotel_SelectRoom" = "تخصيص الجناح";
+
+"Hotel_NoAvailableRoomsInWing" = "لا توجد أجنحة شاغرة في هذا القسم للفترة المحددة";
+
+"Hotel_VerifyMedication" = "جدول الأدوية";
+
+"Hotel_VerifyDeposit" = "حالة العربون";
+
+"Hotel_RecordBelongings" = "تسجيل الأمتعة";
+
+"Hotel_AddBelongingPrompt" = "أضف غرضاً (مثل: حقيبة النقل، بطانية، طوق)...";
+
+"Hotel_IntakeNotes" = "ملاحظات تسجيل الوصول";
+
+"Hotel_IntakeNotesPlaceholder" = "أدخل ملاحظات الاستقبال أو تعليمات التعامل...";
+
+"Hotel_ConfirmCheckIn" = "إتمام تسجيل الوصول";
+
+"Hotel_Readiness_Title" = "اشتراطات تسجيل الوصول";
+
+"Hotel_Readiness_MissingRequirements" = "المتطلبات المتبقية: %d";
+
+"Hotel_Readiness_SelectRoomFirst" = "اختر جناحاً للمتابعة";
+
 "Hotel_Chip_CollarLeash" = "طوق ومقود";
-"Hotel_Chip_BlanketBed" = "بطانية / فراش";
-"Hotel_Chip_Medication" = "دواء مخصص";
-"Hotel_Chip_Carrier" = "قفص نقل";
-"Hotel_Chip_SpecialFood" = "طعام خاص";
-"Hotel_Chip_Toys" = "ألعاب النزيل";
-"Hotel_NoteTag_Calm" = "هادئ ومطيع";
-"Hotel_NoteTag_Anxious" = "متوتر من الغرباء";
-"Hotel_NoteTag_SpecialDiet" = "نظام غذائي دقيق";
-"Hotel_NoteTag_NeedsCare" = "عناية طبية خاصة";
+
+"Hotel_Chip_BlanketBed" = "بطانية / سرير";
+
+"Hotel_Chip_Medication" = "دواء";
+
+"Hotel_Chip_Carrier" = "حقيبة النقل";
+
+"Hotel_Chip_SpecialFood" = "طعام مخصص";
+
+"Hotel_Chip_Toys" = "ألعاب";
+
+"Hotel_NoteTag_Calm" = "هادئ / ودود";
+
+"Hotel_NoteTag_Anxious" = "خجول / متوتر";
+
+"Hotel_NoteTag_SpecialDiet" = "نظام غذائي خاص";
+
+"Hotel_NoteTag_NeedsCare" = "يحتاج دواء";
+
 "Hotel_CallOwner" = "اتصال بالمالك";
-"Hotel_QuickChips_Title" = "اقتراحات سريعة للمقتنيات:";
-"Hotel_VerifyIdentity_Sub" = "مطابقة بيانات المالك والشريحة الإلكترونية";
-"Hotel_VerifyVaccination_Sub" = "دفتر التطعيمات معتمد وخالي من التحذيرات";
-"Hotel_VerifyInspection_Sub" = "فحص الجلد والعيون والنشاط السريري العام";
-"Hotel_VerifyDiet_Sub" = "مراجعة مواعيد الوجبات ومسببات الحساسية";
-"Hotel_VerifyEmergency_Sub" = "رقم فعال للتواصل الفوري في الطوارئ";
-"Hotel_VerifyAgreement_Sub" = "الموافقة على سياسة الرعاية والطوارئ الفندقية";
-"Hotel_VerifyMedication_Sub" = "مطابقة الجرعات ومواعيد إعطاء الدواء";
-"Hotel_VerifyDeposit_Sub" = "التحقق من سداد العربون المسبق للحجز";
-"Hotel_EmptyRooms_Help" = "تأكد من عدم وجود تضارب في التواريخ أو قم بترقية الجناح من شاشة إدارة الغرف";
-"Hotel_KeyboardShortcut_Confirm" = "تأكيد الوصول (⌘ + Return)";
+
+"Hotel_QuickChips_Title" = "أمتعة مقترحة:";
+
+"Hotel_VerifyIdentity_Sub" = "التحقق من رقم الشريحة وبيانات المالك";
+
+"Hotel_VerifyVaccination_Sub" = "شهادة التطعيمات معتمدة وسارية";
+
+"Hotel_VerifyInspection_Sub" = "الفحص البدني والمؤشرات الحيوية سليمة";
+
+"Hotel_VerifyDiet_Sub" = "مراجعة جدول الوجبات والحساسية";
+
+"Hotel_VerifyEmergency_Sub" = "رقم اتصال بديل للطوارئ";
+
+"Hotel_VerifyAgreement_Sub" = "اتفاقية الإيواء موقعة ومعتمدة";
+
+"Hotel_VerifyMedication_Sub" = "تأكيد جرعات ومواعيد الأدوية";
+
+"Hotel_VerifyDeposit_Sub" = "تأكيد سداد عربون الحجز";
+
+"Hotel_DepositPaid_Label" = "عربون مسدد:";
+"Hotel_DepositVerified_Sub" = "تم استلام العربون مسبقاً بقيمة %@";
+"Hotel_BalanceRemaining_Label" = "المتبقي عند المغادرة:";
+"Hotel_BalanceRemaining_Short" = "المتبقي للتحصيل";
+"Hotel_EmptyRooms_Help" = "تحقق من تعارض المواعيد أو عدّل إعدادات الأجنحة";
+
+"Hotel_KeyboardShortcut_Confirm" = "تأكيد (⌘ + Return)";
+
 "Hotel_KeyboardShortcut_Dismiss" = "إلغاء (Esc)";
-"Hotel_Checkout_Title" = "تسجيل مغادرة النزيل";
-"Hotel_CheckoutPrompt" = "استكمال المغادرة والمقتنيات والتسليم وتحرير الغرفة";
-"Hotel_BelongingsHandedBack" = "تسليم جميع المقتنيات للمستلم";
-"Hotel_RoomInspectionComplete" = "اكتمال فحص الغرفة";
-"Hotel_RoomInspectionDetail" = "تمت مراجعة حالة الغرفة والملاحظات التشغيلية";
-"Hotel_IncidentsAcknowledged" = "مراجعة الحوادث والملاحظات المفتوحة";
-"Hotel_MedicationResolved" = "تسوية جميع مهام الأدوية";
-"Hotel_HandoverVerified" = "التحقق من هوية المستلم وتسليم النزيل";
-"Hotel_RoomCleaningAutomatic" = "بعد المغادرة ينقل الخادم الغرفة المحررة تلقائياً إلى حالة التنظيف.";
-"Hotel_ConfirmCheckoutButton" = "إتمام المغادرة والتسليم";
-"Hotel_RoomStatusTitle" = "حالة الغرفة";
-"Hotel_ChangeStatusPrompt" = "تحديث الحالة التشغيلية للغرفة:";
-"LiveSync" = "متزامن مع الخادم";
-"Search" = "البحث بالنزيل أو الغرفة أو العميل";
+
+"Hotel_Checkout_Title" = "تسجيل المغادرة";
+
+"Hotel_CheckoutPrompt" = "استكمال المغادرة، تسليم الأمتعة، وتحرير الجناح";
+
+"Hotel_BelongingsHandedBack" = "تسليم كافة الأمتعة للمالك";
+
+"Hotel_RoomInspectionComplete" = "تم فحص الجناح";
+
+"Hotel_RoomInspectionDetail" = "تم تسليم الجناح بحالة جيدة";
+
+"Hotel_IncidentsAcknowledged" = "تمت مراجعة سجل الملاحظات والحوادث";
+
+"Hotel_MedicationResolved" = "اكتملت كافة جرعات الأدوية المجدولة";
+
+"Hotel_HandoverVerified" = "التحقق من هوية المستلم عند التسليم";
+
+"Hotel_RoomCleaningAutomatic" = "ينتقل الجناح تلقائياً إلى حالة التنظيف بعد المغادرة.";
+
+"Hotel_ConfirmCheckoutButton" = "إتمام تسجيل المغادرة";
+
+"Hotel_RoomStatusTitle" = "حالة الجناح";
+
+"Hotel_ChangeStatusPrompt" = "حدد الحالة التشغيلية:";
+
+"LiveSync" = "مباشر";
+
+"Search" = "ابحث عن نزيل، جناح، أو مالك...";
+
 "AdminBadge_Live" = "مباشر";
+
 "POS_RemainingStockFormat" = "المتبقي: %d";
+
 "POS_OutOfStock" = "نفد المخزون";
 
-/* Hotel Suites & Reservations Sovereign Operations */
-"Hotel_Suites_SpatialHUD_Title" = "حالة الإشغال والتجهيز الفندقي";
-"Hotel_Suites_SummaryFormat" = "%ld جناح إجمالي • %ld متاح للاستقبال الآن";
-"Hotel_Suites_Types_Title" = "فئات وأسعار الأجنحة";
-"Hotel_Suites_NewType" = "إضافة فئة";
-"Hotel_Suites_NoTypesYet" = "لم يتم تكوين فئات أجنحة بعد لهذا الفرع";
-"Hotel_Filter_AllRooms" = "كل الأجنحة";
-"Hotel_Suites_AddSuite" = "إضافة جناح";
-"Hotel_Suites_PetsLimit" = "حيوانات";
-"Hotel_Suites_NoRoomsMatch" = "لا توجد أجنحة تطابق معايير التصفية الحالية";
-"Hotel_Suites_CreateFirst" = "إضافة جناح جديد";
-"Hotel_Suites_EditTitle" = "تعديل بيانات الجناح";
-"Hotel_Suites_NewTitle" = "إضافة جناح جديد";
-"Hotel_Suites_BasicInfo" = "المعلومات الأساسية";
-"Hotel_Suites_CodeLabel" = "رقم أو كود الجناح (مثال: D-101)";
-"Hotel_Suites_CodePlaceholder" = "مثال: D-101";
-"Hotel_Suites_NameLabel" = "اسم الجناح أو الوصف";
-"Hotel_Suites_NamePlaceholder" = "مثال: الجناح الملكي للكلاب الكبيرة";
-"Hotel_Wing_Select" = "الجناح التابع له:";
-"Hotel_Type_Select" = "الفئة الفندقية ومعدل السعر:";
-"Hotel_ChooseType" = "اختر فئة الجناح...";
-"Hotel_Suites_CapacitySettings" = "السعة والإشغال المشترك";
-"Hotel_Suites_MaxCapacity" = "الحد الأقصى للحيوانات";
-"Hotel_Suites_CapacityHint" = "عدد النزلاء المسموح بتسكينهم";
-"Hotel_Suites_AllowShared" = "السماح بالإشغال المشترك";
-"Hotel_Suites_AllowSharedHint" = "لحيوانات نفس العميل فقط";
-"Hotel_Suites_AllowedSpecies" = "الأنواع المسموح باستضافتها";
-"Hotel_Suites_NotesTitle" = "ملاحظات وتفعيل الجناح";
-"Hotel_Suites_ActiveStatus" = "الجناح مفعل وجاهز للخدمة";
-"Hotel_Suites_ActiveStatusHint" = "الأجنحة المعطلة لا تظهر في الحجوزات";
-"Hotel_Suites_SubmitNew" = "إضافة الجناح الفندقي";
-"Hotel_Err_CodeRequired" = "يرجى إدخال رقم أو كود الجناح.";
-"Hotel_Err_NameRequired" = "يرجى إدخال اسم أو وصف الجناح.";
-"Hotel_Err_TypeRequired" = "يرجى اختيار أو إنشاء فئة فندقية للجناح أولاً.";
-"Hotel_Suites_TierDetails" = "تفاصيل الفئة الفندقية";
-"Hotel_Suites_TypeCode" = "كود الفئة (مثال: VIP / STD)";
-"Hotel_Suites_NameAr" = "الاسم بالعربية";
-"Hotel_Suites_NameArPlaceholder" = "مثال: جناح كبار الشخصيات VIP";
-"Hotel_Suites_NameEn" = "الاسم بالإنجليزية";
-"Hotel_Suites_NameEnPlaceholder" = "مثال: VIP Presidential Suite";
-"Hotel_Suites_PriceAndCapacity" = "السعر والسعة الافتراضية";
-"Hotel_Suites_NightlyRateQAR" = "سعر الليلة الواحدة (ر.ق)";
-"Hotel_Suites_CreateTypeCTA" = "إنشاء الفئة الفندقية";
-"Hotel_Suites_EditTypeTitle" = "تعديل الفئة الفندقية";
-"Hotel_Suites_NewTypeTitle" = "فئة فندقية جديدة";
-"Hotel_Err_TypeCodeRequired" = "يرجى إدخال كود الفئة.";
-"Hotel_Err_TypeNameRequired" = "يرجى إدخال اسم الفئة بالعربية أو الإنجليزية.";
-"Hotel_Suites_LivePreviewTitle" = "المعاينة الحية لبطاقة الفئة";
-"Hotel_Suites_LivePreviewSub" = "تحديث فوري لبطاقة النزيل والعرض الفندقي";
-"Hotel_Suites_QuickCodesTitle" = "أكواد مقترحة سريعة";
-"Hotel_Suites_AllowedSpeciesTitle" = "فصائل النزلاء المصرح بها";
-"Hotel_Suites_AllowedSpeciesDesc" = "حدد أنواع وفصائل الحيوانات المصرح بإقامتها في هذه الفئة";
-"Hotel_Suites_CapacityTitle" = "السعة الافتراضية للحيوانات";
-"Hotel_Suites_CapacityDesc" = "أقصى عدد حيوانات أليفة في الجناح الواحد";
-"Hotel_Suites_SharedOccupancyTitle" = "السماح بالإقامة المشتركة";
-"Hotel_Suites_SharedOccupancyDesc" = "استضافة حيوانات متعددة من نفس العائلة في جناح واحد";
-"Hotel_Suites_ActiveStatusTitle" = "تفعيل الفئة وجاهزيتها للحجز";
-"Hotel_Suites_ActiveStatusDesc" = "الفئات المعطلة لن تظهر في اختيارات الحجز للعملاء";
-"Hotel_Suites_DescriptionTitle" = "المزايا والتجهيزات الفاخرة (اختياري)";
-"Hotel_Suites_DescriptionPlaceholder" = "مثال: كاميرا بث مباشر 24/7، تكييف مستقل، حديقة خاصة، وجبات فاخرة...";
-"Hotel_Suites_StudioTitle" = "استوديو الفئات الفندقية";
-"Hotel_Suites_StudioSubtitle" = "تصميم وإدارة معايير الإقامة والأجنحة الفاخرة";
-"Hotel_Suites_SaveShortcut" = "حفظ (⌘S)";
-"Hotel_Suites_CloseShortcut" = "إغلاق (Esc)";
-"Hotel_Suites_PetsCountFormat" = "%d حيوانات";
-"Hotel_Suites_PetSingular" = "حيوان أليف واحد";
-"Hotel_Suites_PetDual" = "حيوانين أليفين";
-"Hotel_Suites_PerNight" = "/ ليلة";
-"Hotel_Suites_SharedAllowedBadge" = "إقامة مشتركة 🐾";
-"Hotel_Suites_PrivateOnlyBadge" = "إقامة فردية حصراً";
-"Hotel_Suites_ActiveBadge" = "نشطة ومتاحة";
-"Hotel_Suites_InactiveBadge" = "معطلة مؤقتاً";
-"Hotel_Suites_PricePresetTitle" = "معدلات الأسعار الشائعة (ر.ق)";
-"Hotel_Suites_PricePerNightFormula" = "معدل الإقامة لـ ٣ ليالٍ:";
-"Hotel_Suites_StatusReady" = "جاهز ومتاح للحجز";
-"Hotel_Suites_StatusMaint" = "قيد الصيانة / معطل";
-"Hotel_SuggestCode" = "كود مقترح";
-"Hotel_Shared_Active" = "إشغال مشترك معتمد";
-"Hotel_Shared_Solo" = "إشغال فردي حصري";
-"Hotel_Suite_SpecsTitle" = "المواصفات الفندقية والتشغيلية";
-"Hotel_Housekeeping_Protocol" = "بروتوكول النظافة والتعقيم";
-"Hotel_ReadyForGuests" = "جاهز فوراً للتسكين والاستقبال";
-"Hotel_SanitizeCycleActive" = "دورة التعقيم والتجهيز الدوري معتمدة";
-"Hotel_Keyboard_SaveHint" = "⌘S للحفظ • Esc للإلغاء";
-"Hotel_Allowed_Label" = "النزلاء المسموحين:";
-"Hotel_PerNight" = "لكل ليلة";
-"Hotel_Category" = "الفئة";
-"Hotel_Rate" = "سعر الليلة";
-"Hotel_Capacity" = "أقصى سعة";
-"Hotel_SharedOccupancy" = "الإشغال المشترك";
-"Hotel_Suites_ActiveHint" = "متاح فوراً للاستقبال وظاهر في شاشة الحجوزات";
-"Hotel_NoTypeSelected" = "لم يتم اختيار فئة";
-"Hotel_Suite_Untitled" = "جناح بدون اسم محدد";
-"Hotel_Err_SpeciesRequired" = "يرجى تحديد نوع حيوان واحد على الأقل مسموح باستضافته.";
-"Hotel_View_Grid" = "شبكة";
-"Hotel_View_List" = "قائمة";
-"Hotel_Room_SetStatus" = "تحديث حالة الجناح";
-"Hotel_Res_PipelineTitle" = "مؤشرات تدفق الحجوزات والنزلاء";
-"Hotel_Res_TotalCountFormat" = "%ld حجز مسجل";
-"Hotel_Res_PendingTab" = "بانتظار التأكيد";
-"Hotel_Res_ConfirmedTab" = "مؤكد وجاهز";
-"Hotel_Res_ArrivalsToday" = "وصول اليوم";
-"Hotel_Res_InStayTab" = "في الإقامة";
-"Hotel_Res_CompletedTab" = "المكتملة";
-"Hotel_Res_CancelledTab" = "الملغاة والمرفوضة";
-"Hotel_Res_ShowingFormat" = "عرض %ld حجز";
-"Hotel_Res_NewReservationCTA" = "حجز فندقي جديد";
-"Hotel_Res_NewReservationTitle" = "تسجيل حجز فندقي جديد";
-"Hotel_Res_NoReservationsMatch" = "لا توجد حجوزات مسجلة تطابق التصفية الحالية";
-"Hotel_Res_CreateFirst" = "تسجيل حجز فندقي جديد";
-"Hotel_Nights_Short" = "ليالي";
-"Hotel_Room_Unassigned" = "غير مخصص";
-"Hotel_Res_TotalQuoted" = "إجمالي الحساب:";
-"Hotel_Res_ConfirmAction" = "تأكيد الحجز";
-"Hotel_Res_DetailTitle" = "تفاصيل الحجز";
-"Hotel_Res_StayHorizon" = "فترة الإقامة وتخصيص الجناح";
-"Hotel_Arrival" = "تاريخ الوصول";
-"Hotel_Departure" = "تاريخ المغادرة";
-"Hotel_AssignedRoom_Format" = "جناح رقم: %@";
-"Hotel_Billing" = "الحساب المالي والفواتير";
-"Hotel_QuotedTotal" = "إجمالي الإقامة التقديري:";
-"Hotel_DepositPaid" = "العربون المحصل:";
-"Hotel_BalanceDue" = "المتبقي للدفع:";
-"Hotel_Res_ExtendStay" = "تمديد فترة الإقامة";
-"Hotel_Res_CancelReservation" = "إلغاء الحجز الفندقي";
-"Hotel_DepositPaidNow" = "العربون المدفوع مقدماً (ر.ق)";
-"Hotel_TotalNights" = "إجمالي عدد الليالي";
-"Hotel_ConfirmImmediately" = "تأكيد الحجز فوراً وتجهيز الغرفة";
-"Hotel_ConfirmImmediatelyHint" = "سيتم إرسال إشعار للمالك وجدولة الوصول";
-"Hotel_CreateReservationSubmit" = "تأكيد وإنشاء الحجز";
-"Hotel_ExtendStay_Title" = "تمديد فترة الإقامة الفندقية";
-"Hotel_ExtendStay_Description" = "حدد موعد المغادرة الجديد وسبب التمديد ليتم تحديث السجلات التشغيلية تلقائياً.";
-"Hotel_NewDepartureDate" = "موعد المغادرة الجديد";
-"Hotel_ConfirmExtendStayCTA" = "تأكيد تمديد الإقامة";
-"Hotel_Extend_QuickPresets" = "المدد السريعة للإقامة";
-"Hotel_Extend_Preset_1D" = "+يوم واحد";
-"Hotel_Extend_Preset_2D" = "+يومان";
-"Hotel_Extend_Preset_3D" = "+3 أيام";
-"Hotel_Extend_Preset_7D" = "+أسبوع كامل";
-"Hotel_Extend_Preset_Custom" = "موعد مخصص";
-"Hotel_Extend_CurrentDeparture" = "موعد المغادرة المجدول حالياً";
-"Hotel_Extend_NewDeparture" = "موعد المغادرة الجديد المستهدف";
-"Hotel_Extend_AdditionalNights" = "الليالي الإضافية";
-"Hotel_Extend_TotalNightsAfter" = "إجمالي فترة الإقامة بعد التمديد";
-"Hotel_Extend_NightlyRate" = "السعر التقديري لليلة";
-"Hotel_Extend_ProjectedAddAmount" = "المبلغ الإضافي التقديري";
-"Hotel_Extend_ProjectedTotal" = "الإجمالي التقديري الجديد";
-"Hotel_Extend_Reason_Title" = "سبب التمديد التشغيلي";
-"Hotel_Extend_Reason_ClientRequest" = "طلب مالك الأليف";
-"Hotel_Extend_Reason_TravelDelay" = "تأخر سفر أو رحلة طيران";
-"Hotel_Extend_Reason_PetHealth" = "ملاحظة بيطرية ورعاية صحية";
-"Hotel_Extend_Reason_Emergency" = "ظرف طارئ أو تعذر الاستلام";
-"Hotel_Extend_Reason_Admin" = "قرار إداري / تشغيلي استثنائي";
-"Hotel_Extend_Notes_Title" = "ملاحظات الاستقبال وتسليم الوردية";
-"Hotel_Extend_Notes_Placeholder" = "أضف أي ملاحظات خاصة بالتغذية أو الرعاية أو الاتفاق المالي...";
-"Hotel_Extend_Notice_SuiteLocked" = "تأمين الجناح: سيظل الجناح الفندقي محجوزاً للأليف طوال فترة التمديد.";
-"Hotel_Extend_Success_Toast" = "تم تمديد فترة الإقامة بنجاح";
-"Hotel_Extend_CTA_Confirm" = "تأكيد تمديد الإقامة";
-"Hotel_Extend_CTA_Submitting" = "جاري تمديد الإقامة وتحديث السجلات...";
-"Hotel_Extend_Error_Title" = "تعذر تمديد الإقامة";
-"Hotel_Extend_Keyboard_ConfirmHint" = "اضغط ⌘Return للتأكيد";
-"Hotel_Extend_Keyboard_CancelHint" = "اضغط Esc للإلغاء";
-"Hotel_Extend_PetDossier_Title" = "ملف النزيل وبيانات الحجز";
-"Hotel_Extend_Timeline_Initial" = "الحجز الأساسي";
-"Hotel_Extend_Timeline_Extended" = "الأفق بعد التمديد";
-"Hotel_Extend_QuickTag_CashPaid" = "دفع نقداً بالاستقبال";
-"Hotel_Extend_QuickTag_CheckoutCharge" = "تضاف عند الخروج";
-"Hotel_Extend_QuickTag_WhatsAppNotified" = "تم إشعار المالك واتساب";
-"Hotel_Extend_PlusNightsFormat" = "+%d ليالٍ";
-"Hotel_Extend_TotalNightsFormat" = "إجمالي %d ليالٍ";
-"Hotel_Extend_PerNight" = "/ ليلة";
-"Hotel_Reason_SheetTitle" = "سبب الإجراء التشغيلي";
-"Hotel_Reason_SheetHint" = "يرجى تحديد سبب الرفض أو الإلغاء للتوثيق والتدقيق:";
-"Hotel_Reason_CustomerRequest" = "طلب العميل";
-"Hotel_Reason_NoShow" = "عدم حضور العميل (No-Show)";
-"Hotel_Reason_HealthIssue" = "حالة صحية للحيوان";
-"Hotel_Reason_CapacityConflict" = "تعارض في السعة أو التسكين";
-"Hotel_Reason_OperatorOverride" = "قرار إداري استثنائي";
-"Hotel_ConfirmCancellationCTA" = "تأكيد الإلغاء";
-"Hotel_Err_CustomerNameRequired" = "يرجى إدخال اسم العميل.";
-"Hotel_Err_CustomerPhoneRequired" = "يرجى إدخال رقم هاتف العميل.";
-"Hotel_Err_PetNameRequired" = "يرجى إدخال اسم الحيوان الأليف.";
-"Hotel_Customer_SelectOrAdd" = "تحديد أو إضافة عميل للحجز";
-"Hotel_Customer_SelectHint" = "اختر عميلاً مسجلاً أو أنشئ ملفاً جديداً فورياً من دليل العملاء";
-"Hotel_Res_EditReservation" = "تعديل بيانات الحجز";
-"Hotel_Edit_Success_Toast" = "تم حفظ تعديلات بيانات الحجز بنجاح";
-"Hotel_Keyboard_Edit" = "تعديل الحجز (⌘+U)";
-"Hotel_Edit_SaveAction" = "حفظ التعديلات";
-"Hotel_Edit_GuestSection" = "بيانات النزيل والرعاية";
-"Hotel_Edit_DatesSection" = "فترة ومواعيد الإقامة";
-"Hotel_Edit_CustomerSection" = "بيانات العميل المعتمد";
-"Hotel_Edit_EmergencySection" = "جهة الاتصال في حالات الطوارئ";
-"Hotel_Edit_NotesSection" = "التعليمات والملاحظات الخاصة";
-"Hotel_Customer_BoundLabel" = "عميل الحجز المعتمد";
-"Hotel_Err_CustomerRequired" = "يرجى تحديد أو إضافة عميل للحجز من الدليل.";
-"Hotel_Deposit_Presets_Full" = "كامل المبلغ";
-"Hotel_Telemetry_SuitesReady" = "متاح %d جناح";
-"Hotel_MedicationInstructions" = "تعليمات الأدوية والجرعات بالتفصيل...";
-"Hotel_SpecialDietAndAllergies" = "النظام الغذائي الخاص أو الحساسية إن وجدت...";
-"Hotel_RemainingBalance" = "المتبقي عند تسجيل المغادرة:";
-"Hotel_WhatsApp_Chat" = "محادثة واتساب";
-"Hotel_Copy_ReservationNumber" = "نسخ رقم الحجز";
-"Hotel_ReservationNumber_Copied" = "تم نسخ رقم الحجز بنجاح";
-"Hotel_Care_NormalDiet" = "نظام غذائي اعتيادي";
-"Hotel_Care_NoMedication" = "لا توجد أدوية مقررة";
-"Hotel_Care_NoSpecialInstructions" = "لا توجد توجيهات أو تعليمات خاصة مسجلة للنزيل";
-"Hotel_Room_AllocateNow" = "تخصيص جناح الآن";
-"Hotel_Room_Status_Assigned" = "تم التخصيص";
-"Hotel_Room_Status_Pending" = "بانتظار التسكين";
-"Hotel_Stay_Countdown_Today" = "الوصول اليوم";
-"Hotel_Stay_Countdown_Tomorrow" = "الوصول غداً";
-"Hotel_Stay_Countdown_Days" = "متبقي %d أيام";
-"Hotel_Stay_InHouse" = "النزيل مقيم حالياً بالفندق";
-"Hotel_Stay_Departed" = "اكتملت الإقامة وغادر النزيل";
-"Hotel_Keyboard_CheckIn" = "تسجيل الوصول (⌘+C)";
-"Hotel_Keyboard_Extend" = "تمديد الإقامة (⌘+E)";
-"Hotel_Keyboard_Call" = "اتصال بالعميل (⌘+P)";
-"Hotel_Keyboard_Cancel" = "إلغاء الحجز (⌘+⌫)";
-"Hotel_Audit_BookingID" = "معرف الحجز المرجعي:";
-"Hotel_Audit_Created" = "تاريخ إنشاء الحجز:";
-"Hotel_Audit_Branch" = "الفرع المخصص للاستقبال:";
-"Hotel_Folio_PaidFull" = "مدفوع بالكامل";
-"Hotel_Folio_DepositPaid" = "تم دفع العربون";
-"Hotel_Folio_Unpaid" = "غير مسدد";
-"Hotel_MoreActions" = "خيارات الحجز";
-"Hotel_Emergency_Call" = "اتصال طوارئ";
-"Hotel_Special_Instructions_Title" = "توجيهات الرعاية والتعليمات الخاصة";
-"Hotel_Weight_Kg" = "الوزن التقريبي (كجم)";
-"Hotel_Nights_Count" = "%ld ليالي إقامة";
-"Hotel_MedicationRequiredBadge" = "يتطلب خطة أدوية مسجلة";
-"Hotel_Res_NewReservationSub" = "فندق بيور بيتس • حجز إقامة";
-"Customer_Details" = "بيانات العميل";
-"Customer_Name_Placeholder" = "اسم العميل بالكامل *";
-"Customer_Phone_Placeholder" = "رقم هاتف العميل للتواصل *";
-"Email_Optional" = "البريد الإلكتروني (اختياري)";
-"Pet_Details" = "بيانات الحيوان الأليف والنزيل";
-"Dog" = "كلب";
-"Cat" = "قط";
-"Bird" = "طائر";
-"SmallPet" = "أليف صغير";
-"Pet_Name_Placeholder" = "اسم الحيوان الأليف *";
-"Breed_Optional" = "السلالة / النوع";
-"Hotel_MedicationPlanToggle" = "يتطلب جدول أو خطة أدوية أثناء الإقامة";
-"Hotel_WingAndTier" = "الجناح والفئة الفندقية";
-"Hotel_NoAccommodationTypesWarning" = "لم يتم إنشاء فئات بعد. سيتم استخدام السعر القياسي.";
-"Hotel_ArrivalDate" = "تاريخ الوصول:";
-"Hotel_DepartureDate" = "تاريخ المغادرة:";
-"Hotel_FinancialEstimation" = "الحساب التقديري والعربون";
-"EmergencyContact" = "جهة اتصال الطوارئ والملاحظات";
-"Emergency_Name" = "اسم شخص للطوارئ (اختياري)";
-"Emergency_Phone" = "هاتف الطوارئ (اختياري)";
-"SpecialInstructions" = "أي تعليمات أو متطلبات خاصة بالنزيل...";
-"Hotel_StayPreset_Weekend" = "عطلة نهاية الأسبوع (ليلتان)";
-"Hotel_StayPreset_3Nights" = "3 ليالٍ";
-"Hotel_StayPreset_Week" = "أسبوع كامل (7 ليالٍ)";
-"Hotel_StayPreset_2Weeks" = "أسبوعان (14 ليلة)";
-"Hotel_DepositPreset_None" = "بدون عربون";
-"Hotel_DepositPreset_25" = "25%";
-"Hotel_DepositPreset_50" = "50%";
-"Hotel_DepositPreset_100" = "سداد كامل (100%)";
-"Hotel_BoardingPass_Title" = "بطاقة الإقامة الفندقية";
-"Hotel_BoardingPass_Subtitle" = "معاينة مباشرة للحجز والتكاليف";
-"Hotel_Keyboard_SubmitHint" = "⌘↵ للتأكيد • Esc للإلغاء";
-"Hotel_Suite_AvailableUnits" = "%d أجنحة متاحة";
-"Hotel_Suite_PerNight" = "ر.ق / ليلة";
-"Hotel_SuiteCapacity_Format" = "سعة: %d نزيل";
-"Hotel_Care_AllergiesDiet" = "الحساسية والنظام الغذائي";
-"Hotel_Care_MedicationTitle" = "جدول الأدوية والجرعات";
-"Hotel_Client_QuickSearch" = "بحث سريع في العملاء";
-"Hotel_Res_ActiveBranchNotice" = "الفرع النشط للاستقبال";
-"Hotel_NightsShortUnit" = "ليلة";
-"Hotel_NightsPluralUnit" = "ليالٍ";
-"Hotel_DaysLeftArriving" = "يصل خلال %ld يوم";
-"Hotel_ArrivingToday" = "يصل اليوم";
-"Hotel_StayPreset_Month" = "شهر كامل (30 ليلة)";
-"Hotel_Arrival_Title" = "الوصول";
-"Hotel_Departure_Title" = "المغادرة";
-"Hotel_DaysPluralUnit" = "أيام";
-"Hotel_AdjustArrivalDepartureTimes" = "تعديل ساعات الوصول والمغادرة";
-"Hotel_CheckinTime_Label" = "وقت الوصول";
-"Hotel_CheckoutTime_Label" = "وقت المغادرة";
-"Hotel_SearchCustomerPlaceholder" = "بحث سريع في العملاء المسجلين (بالاسم أو الهاتف)...";
-"Hotel_Customer_VerifiedProfile" = "ملف مسجل";
-"Hotel_Customer_WalkInBadge" = "نزيل مباشر (ضيف)";
-"Hotel_Select_Action" = "اختيار";
-"Hotel_ChangeCustomer" = "تغيير";
-"Hotel_CustomerSavedPets" = "حيوانات العميل المسجلة:";
-"Hotel_Err_InvalidStayRange" = "تاريخ المغادرة يجب أن يكون بعد تاريخ الوصول.";
-"Hotel_Err_CreateReservationFailed" = "تعذر تأكيد الحجز، يرجى المحاولة مرة أخرى.";
-"Hotel_Err_CustomerNameRequired" = "يرجى إدخال اسم العميل.";
-"Hotel_Err_CustomerPhoneRequired" = "يرجى إدخال رقم هاتف العميل.";
-"Hotel_Err_PetNameRequired" = "يرجى إدخال اسم الحيوان الأليف.";
 
+/* Hotel Suites & Reservations Sovereign Operations */
+"Hotel_Suites_SpatialHUD_Title" = "حالة وتجهيز الأجنحة";
+
+"Hotel_Suites_SummaryFormat" = "%ld جناح إجمالي • %ld شاغر الآن";
+
+"Hotel_Suites_Types_Title" = "فئات وأسعار الأجنحة";
+
+"Hotel_Suites_NewType" = "إضافة فئة جناح";
+
+"Hotel_Suites_NoTypesYet" = "لم يتم تكوين فئات أجنحة بعد لهذا الفرع";
+
+"Hotel_Filter_AllRooms" = "كل الأجنحة";
+
+"Hotel_Suites_AddSuite" = "إضافة جناح";
+
+"Hotel_Suites_PetsLimit" = "نزلاء";
+
+"Hotel_Suites_NoRoomsMatch" = "لا توجد أجنحة تطابق البحث";
+
+"Hotel_Suites_CreateFirst" = "إضافة أول جناح";
+
+"Hotel_Suites_EditTitle" = "تعديل الجناح";
+
+"Hotel_Suites_NewTitle" = "جناح جديد";
+
+"Hotel_Suites_BasicInfo" = "بيانات الجناح";
+
+"Hotel_Suites_CodeLabel" = "رقم أو كود الجناح (مثال: D-101)";
+
+"Hotel_Suites_CodePlaceholder" = "مثال: D-101";
+
+"Hotel_Suites_NameLabel" = "اسم الجناح";
+
+"Hotel_Suites_NamePlaceholder" = "مثال: الجناح الفاخر للكلاب الكبيرة";
+
+"Hotel_Wing_Select" = "القسم أو الجناح:";
+
+"Hotel_Type_Select" = "فئة الجناح والسعر:";
+
+"Hotel_ChooseType" = "اختر فئة الجناح...";
+
+"Hotel_Suites_CapacitySettings" = "السعة والإقامة المشتركة";
+
+"Hotel_Suites_MaxCapacity" = "أقصى سعة";
+
+"Hotel_Suites_CapacityHint" = "الحد الأقصى للنزلاء في هذا الجناح";
+
+"Hotel_Suites_AllowShared" = "السماح بالإقامة المشتركة";
+
+"Hotel_Suites_AllowSharedHint" = "لحيوانات نفس المالك فقط";
+
+"Hotel_Suites_AllowedSpecies" = "الفصائل المسموح بها";
+
+"Hotel_Suites_NotesTitle" = "المزايا والحالة:";
+
+"Hotel_Suites_ActiveStatus" = "مفعل وجاهز للحجوزات";
+
+"Hotel_Suites_ActiveStatusHint" = "الأجنحة المعطلة لن تظهر في الحجوزات";
+
+"Hotel_Suites_SubmitNew" = "إنشاء الجناح";
+
+"Hotel_Err_CodeRequired" = "يرجى إدخال كود أو رقم الجناح.";
+
+"Hotel_Err_NameRequired" = "يرجى إدخال اسم الجناح.";
+
+"Hotel_Err_TypeRequired" = "يرجى اختيار فئة الجناح أولاً.";
+
+"Hotel_Suites_TierDetails" = "مواصفات فئة الجناح";
+
+"Hotel_Suites_TypeCode" = "رمز الفئة (مثال: DELUXE, VIP)";
+
+"Hotel_Suites_NameAr" = "الاسم بالعربية";
+
+"Hotel_Suites_NameArPlaceholder" = "مثال: الجناح الفاخر VIP";
+
+"Hotel_Suites_NameEn" = "الاسم بالإنجليزية";
+
+"Hotel_Suites_NameEnPlaceholder" = "مثال: VIP Deluxe Suite";
+
+"Hotel_Suites_PriceAndCapacity" = "السعر والسعة";
+
+"Hotel_Suites_NightlyRateQAR" = "سعر الليلة (ر.ق)";
+
+"Hotel_Suites_CreateTypeCTA" = "إنشاء فئة الجناح";
+
+"Hotel_Suites_EditTypeTitle" = "تعديل فئة الجناح";
+
+"Hotel_Suites_NewTypeTitle" = "فئة جناح جديدة";
+
+"Hotel_Err_TypeCodeRequired" = "يرجى إدخال رمز الفئة.";
+
+"Hotel_Err_TypeNameRequired" = "يرجى إدخال اسم الفئة.";
+
+"Hotel_Suites_LivePreviewTitle" = "معاينة بطاقة الجناح";
+
+"Hotel_Suites_LivePreviewSub" = "عرض مباشر لبطاقة الجناح";
+
+"Hotel_Suites_QuickCodesTitle" = "رموز مقترحة";
+
+"Hotel_Suites_AllowedSpeciesTitle" = "الفصائل المسموح بها";
+
+"Hotel_Suites_AllowedSpeciesDesc" = "حدد الفصائل المصرح بها في هذه الفئة";
+
+"Hotel_Suites_CapacityTitle" = "السعة الافتراضية";
+
+"Hotel_Suites_CapacityDesc" = "أقصى عدد للنزلاء في الوحدة";
+
+"Hotel_Suites_SharedOccupancyTitle" = "السماح بالإقامة المشتركة";
+
+"Hotel_Suites_SharedOccupancyDesc" = "استضافة حيوانات من نفس المالك معاً";
+
+"Hotel_Suites_ActiveStatusTitle" = "مفعل للحجوزات";
+
+"Hotel_Suites_ActiveStatusDesc" = "الفئات غير المفعلة لن تظهر في الحجوزات";
+
+"Hotel_Suites_DescriptionTitle" = "المزايا والوصف (اختياري)";
+
+"Hotel_Suites_DescriptionPlaceholder" = "مثال: كاميرا مراقبة، سرير طبي، فناء خاص...";
+
+"Hotel_Suites_StudioTitle" = "تهيئة الأجنحة";
+
+"Hotel_Suites_StudioSubtitle" = "إدارة فئات الأجنحة والأسعار ومعايير الغرف";
+
+"Hotel_Suites_SaveShortcut" = "حفظ (⌘S)";
+
+"Hotel_Suites_CloseShortcut" = "إغلاق (Esc)";
+
+"Hotel_Suites_PetsCountFormat" = "%d نزلاء";
+
+"Hotel_Suites_PetSingular" = "نزيل واحد";
+
+"Hotel_Suites_PetDual" = "نزيلان";
+
+"Hotel_Suites_PerNight" = "/ ليلة";
+
+"Hotel_Suites_SharedAllowedBadge" = "إقامة مشتركة";
+
+"Hotel_Suites_PrivateOnlyBadge" = "إقامة فردية";
+
+"Hotel_Suites_ActiveBadge" = "مفعل";
+
+"Hotel_Suites_InactiveBadge" = "معطل";
+
+"Hotel_Suites_PricePresetTitle" = "الأسعار القياسية (ر.ق)";
+
+"Hotel_Suites_PricePerNightFormula" = "تقدير إقامة 3 ليالٍ:";
+
+"Hotel_Suites_StatusReady" = "جاهز للنزلاء";
+
+"Hotel_Suites_StatusMaint" = "قيد الصيانة";
+
+"Hotel_SuggestCode" = "رمز مقترح";
+
+"Hotel_Shared_Active" = "إقامة مشتركة معتمدة";
+
+"Hotel_Shared_Solo" = "إقامة فردية فقط";
+
+"Hotel_Suite_SpecsTitle" = "مواصفات الجناح";
+
+"Hotel_Housekeeping_Protocol" = "النظافة والتعقيم";
+
+"Hotel_ReadyForGuests" = "جاهز للتسكين فوراً";
+
+"Hotel_SanitizeCycleActive" = "دورة التنظيف والتعقيم معتمدة";
+
+"Hotel_Keyboard_SaveHint" = "⌘S للحفظ • Esc للإلغاء";
+
+"Hotel_Allowed_Label" = "النزلاء المصرح بهم:";
+
+"Hotel_PerNight" = "لكل ليلة";
+
+"Hotel_Category" = "فئة الجناح";
+
+"Hotel_Rate" = "سعر الليلة";
+
+"Hotel_Capacity" = "أقصى سعة";
+
+"Hotel_SharedOccupancy" = "الإشغال المشترك";
+
+"Hotel_Suites_ActiveHint" = "متاح للحجوزات والتخصيص في الاستقبال";
+
+"Hotel_NoTypeSelected" = "لم يتم اختيار فئة";
+
+"Hotel_Suite_Untitled" = "جناح بدون اسم";
+
+"Hotel_Err_SpeciesRequired" = "يرجى تحديد فصيلة واحدة على الأقل.";
+
+"Hotel_View_Grid" = "شبكة";
+
+"Hotel_View_List" = "قائمة";
+
+"Hotel_Room_SetStatus" = "تحديث حالة الجناح";
+
+"Hotel_Res_PipelineTitle" = "سجل الحجوزات";
+
+"Hotel_Res_TotalCountFormat" = "%ld حجز إجمالي";
+
+"Hotel_Res_PendingTab" = "معلق";
+
+"Hotel_Res_ConfirmedTab" = "مؤكد";
+
+"Hotel_Res_ArrivalsToday" = "وصول اليوم";
+
+"Hotel_Res_InStayTab" = "مقيم";
+
+"Hotel_Res_CompletedTab" = "مكتمل";
+
+"Hotel_Res_CancelledTab" = "ملغي";
+
+"Hotel_Res_ShowingFormat" = "عرض %ld حجز";
+
+"Hotel_Res_NewReservationCTA" = "حجز جديد";
+
+"Hotel_Res_NewReservationTitle" = "حجز فندقي جديد";
+
+"Hotel_Res_NoReservationsMatch" = "لا توجد حجوزات تطابق البحث";
+
+"Hotel_Res_CreateFirst" = "إنشاء أول حجز";
+
+"Hotel_Nights_Short" = "ليالٍ";
+
+"Hotel_Room_Unassigned" = "غير مخصص";
+
+"Hotel_Res_TotalQuoted" = "إجمالي الفاتورة:";
+
+"Hotel_Res_ConfirmAction" = "تأكيد الحجز";
+
+"Hotel_Res_DetailTitle" = "تفاصيل الحجز";
+
+"Hotel_Res_StayHorizon" = "فترة الإقامة والجناح";
+
+"Hotel_Arrival" = "تاريخ الوصول";
+
+"Hotel_Departure" = "تاريخ المغادرة";
+
+"Hotel_AssignedRoom_Format" = "جناح: %@";
+
+"Hotel_Billing" = "الفاتورة والحساب";
+
+"Hotel_QuotedTotal" = "إجمالي الحساب:";
+
+"Hotel_DepositPaid" = "العربون المدفوع:";
+
+"Hotel_BalanceDue" = "الرصيد المستحق:";
+
+"Hotel_Res_ExtendStay" = "تمديد الإقامة";
+
+"Hotel_Res_CancelReservation" = "إلغاء الحجز";
+
+"Hotel_DepositPaidNow" = "عربون التأكيد:";
+
+"Hotel_TotalNights" = "إجمالي الليالي";
+
+"Hotel_ConfirmImmediately" = "تأكيد فوري للحجز";
+
+"Hotel_ConfirmImmediatelyHint" = "إشعار العميل وحجز الجناح فوراً.";
+
+"Hotel_CreateReservationSubmit" = "إنشاء الحجز";
+
+"Hotel_ExtendStay_Title" = "تمديد الإقامة";
+
+"Hotel_ExtendStay_Description" = "حدد تاريخ المغادرة الجديد وسبب تمديد الإقامة.";
+
+"Hotel_NewDepartureDate" = "تاريخ المغادرة الجديد";
+
+"Hotel_ConfirmExtendStayCTA" = "تأكيد التمديد";
+
+"Hotel_Extend_QuickPresets" = "فترات سريعة:";
+
+"Hotel_Extend_Preset_1D" = "+1 يوم";
+
+"Hotel_Extend_Preset_2D" = "+2 يوم";
+
+"Hotel_Extend_Preset_3D" = "+3 أيام";
+
+"Hotel_Extend_Preset_7D" = "+7 أيام";
+
+"Hotel_Extend_Preset_Custom" = "تاريخ مخصص";
+
+"Hotel_Extend_CurrentDeparture" = "المغادرة الحالية";
+
+"Hotel_Extend_NewDeparture" = "المغادرة الجديدة";
+
+"Hotel_Extend_AdditionalNights" = "الليالي الإضافية";
+
+"Hotel_Extend_TotalNightsAfter" = "إجمالي الليالي بعد التمديد";
+
+"Hotel_Extend_NightlyRate" = "سعر الليلة";
+
+"Hotel_Extend_ProjectedAddAmount" = "المبلغ الإضافي";
+
+"Hotel_Extend_ProjectedTotal" = "الإجمالي الجديد";
+
+"Hotel_Extend_Reason_Title" = "سبب التمديد";
+
+"Hotel_Extend_Reason_ClientRequest" = "طلب العميل";
+
+"Hotel_Extend_Reason_TravelDelay" = "تأخر السفر";
+
+"Hotel_Extend_Reason_PetHealth" = "ملاحظة طبية";
+
+"Hotel_Extend_Reason_Emergency" = "ظرف طارئ";
+
+"Hotel_Extend_Reason_Admin" = "قرار إدارة";
+
+"Hotel_Extend_Notes_Title" = "ملاحظات التمديد والتعليمات";
+
+"Hotel_Extend_Notes_Placeholder" = "أضف أي تعديلات على الوجبات أو التعليمات...";
+
+"Hotel_Extend_Notice_SuiteLocked" = "سيتم الاحتفاظ بنفس الجناح طوال فترة التمديد.";
+
+"Hotel_Extend_Success_Toast" = "تم تمديد الإقامة بنجاح";
+
+"Hotel_Extend_CTA_Confirm" = "تأكيد التمديد";
+
+"Hotel_Extend_CTA_Submitting" = "جاري تمديد الإقامة...";
+
+"Hotel_Extend_Error_Title" = "تعذر تمديد الإقامة";
+
+"Hotel_Extend_Keyboard_ConfirmHint" = "⌘Return للتأكيد";
+
+"Hotel_Extend_Keyboard_CancelHint" = "Esc للإلغاء";
+
+"Hotel_Extend_PetDossier_Title" = "ملف النزيل والإقامة";
+
+"Hotel_Extend_Timeline_Initial" = "الفترة الأساسية";
+
+"Hotel_Extend_Timeline_Extended" = "الفترة الممتدة";
+
+"Hotel_Extend_QuickTag_CashPaid" = "دفع نقداً";
+
+"Hotel_Extend_QuickTag_CheckoutCharge" = "تسوية عند المغادرة";
+
+"Hotel_Extend_QuickTag_WhatsAppNotified" = "تم إشعار العميل عبر واتساب";
+
+"Hotel_Extend_PlusNightsFormat" = "+%d ليالٍ";
+
+"Hotel_Extend_TotalNightsFormat" = "إجمالي %d ليالٍ";
+
+"Hotel_Extend_PerNight" = "/ ليلة";
+
+"Hotel_Reason_SheetTitle" = "سبب الإجراء";
+
+"Hotel_Reason_SheetHint" = "حدد السبب للتوثيق والتدقيق:";
+
+"Hotel_Reason_CustomerRequest" = "طلب العميل";
+
+"Hotel_Reason_NoShow" = "عدم حضور النزيل";
+
+"Hotel_Reason_HealthIssue" = "أسباب صحية وطبية";
+
+"Hotel_Reason_CapacityConflict" = "تعارض في سعة الأجنحة";
+
+"Hotel_Reason_OperatorOverride" = "تجاوز إداري";
+
+"Hotel_ConfirmCancellationCTA" = "تأكيد الإلغاء";
+
+"Hotel_Err_CustomerNameRequired" = "يرجى إدخال اسم المالك بالكامل.";
+
+"Hotel_Err_CustomerPhoneRequired" = "يرجى إدخال رقم هاتف المالك.";
+
+"Hotel_Err_PetNameRequired" = "يرجى إدخال اسم النزيل.";
+
+"Hotel_Customer_SelectOrAdd" = "تحديد أو إضافة المالك";
+
+"Hotel_Customer_SelectHint" = "اختر مالكاً مسجلاً أو أنشئ ملفاً جديداً";
+
+"Hotel_Res_EditReservation" = "تعديل الحجز";
+
+"Hotel_Edit_Success_Toast" = "تم حفظ تعديلات الحجز بنجاح";
+
+"Hotel_Edit_PendingChangesBadge" = "تعديلات معلقة";
+
+"Hotel_Edit_PendingReviewLabel" = "تعديلات بانتظار التأكيد";
+
+"Hotel_Edit_DossierSeamLabel" = "سجل الحجز والإقامة";
+
+"Hotel_Keyboard_Edit" = "تعديل الحجز (⌘+U)";
+
+"Hotel_Edit_SaveAction" = "حفظ تفاصيل الحجز";
+
+"Hotel_Edit_GuestSection" = "بيانات النزيل";
+
+"Hotel_Edit_DatesSection" = "مواعيد الإقامة";
+
+"Hotel_Edit_CustomerSection" = "بيانات المالك";
+
+"Hotel_Edit_EmergencySection" = "جهة الاتصال للطوارئ";
+
+"Hotel_Edit_NotesSection" = "تعليمات وملاحظات خاصة";
+
+"Hotel_Edit_Error_Title" = "تعذر حفظ تعديلات الحجز";
+
+"Hotel_Err_InvalidDates" = "تاريخ المغادرة يجب أن يكون بعد تاريخ الوصول.";
+
+"Hotel_Care_MedicationToggle" = "يتطلب أدوية مجدولة";
+
+"Hotel_Care_MedicationSub" = "إدراج النزيل ضمن جدول إعطاء الأدوية اليومي";
+
+"Hotel_CustomerName" = "اسم المالك بالكامل *";
+
+"Hotel_CustomerPhone" = "رقم هاتف المالك *";
+
+"Hotel_CustomerEmail" = "البريد الإلكتروني (اختياري)";
+
+"Hotel_Pet_Name" = "اسم الحيوان / النزيل *";
+
+"Hotel_Breed" = "السلالة";
+
+"Hotel_SpecialDiet" = "النظام الغذائي المخصص";
+
+"Hotel_Allergies" = "مسببات الحساسية (إن وجدت)";
+
+"Hotel_EmergencyContactName" = "اسم جهة اتصال الطوارئ (اختياري)";
+
+"Hotel_EmergencyContactPhone" = "هاتف الطوارئ (اختياري)";
+
+"Hotel_Customer_BoundLabel" = "المالك المسجل";
+
+"Hotel_Err_CustomerRequired" = "يرجى تحديد أو تسجيل مالك لهذا الحجز.";
+
+"Hotel_Deposit_Presets_Full" = "المبلغ بالكامل (100%)";
+
+"Hotel_Telemetry_SuitesReady" = "%d أجنحة شاغرة";
+
+"Hotel_MedicationInstructions" = "تعليمات وجرعات ومواعيد الأدوية...";
+
+"Hotel_SpecialDietAndAllergies" = "تفضيلات الطعام ومسببات الحساسية...";
+
+"Hotel_RemainingBalance" = "الرصيد المستحق عند المغادرة:";
+
+"Hotel_WhatsApp_Chat" = "محادثة واتساب";
+
+"Hotel_Copy_ReservationNumber" = "نسخ رقم الحجز";
+
+"Hotel_ReservationNumber_Copied" = "تم نسخ رقم الحجز";
+
+"Hotel_Care_NormalDiet" = "وجبات اعتيادية";
+
+"Hotel_Care_NoMedication" = "بدون أدوية";
+
+"Hotel_Care_NoSpecialInstructions" = "لا توجد تعليمات خاصة";
+
+"Hotel_Room_AllocateNow" = "تخصيص جناح الآن";
+
+"Hotel_Room_Status_Assigned" = "تم تخصيص الجناح";
+
+"Hotel_Room_Status_Pending" = "بانتظار التخصيص";
+
+"Hotel_Stay_Countdown_Today" = "يصل اليوم";
+
+"Hotel_Stay_Countdown_Tomorrow" = "يصل غداً";
+
+"Hotel_Stay_Countdown_Days" = "يصل خلال %d أيام";
+
+"Hotel_Stay_InHouse" = "مقيم حالياً";
+
+"Hotel_Stay_Departed" = "غادر";
+
+"Hotel_Keyboard_CheckIn" = "تسجيل الوصول (⌘+C)";
+
+"Hotel_Keyboard_Extend" = "تمديد الإقامة (⌘+E)";
+
+"Hotel_Keyboard_Call" = "اتصال بالمالك (⌘+P)";
+
+"Hotel_Keyboard_Cancel" = "إلغاء الحجز (⌘+⌫)";
+
+"Hotel_Audit_BookingID" = "رقم الحجز:";
+
+"Hotel_Audit_Created" = "تاريخ الحجز:";
+
+"Hotel_Audit_Branch" = "الفرع:";
+
+"Hotel_Folio_PaidFull" = "مسدد بالكامل";
+
+"Hotel_Folio_DepositPaid" = "تم سداد العربون";
+
+"Hotel_Folio_Unpaid" = "بانتظار سداد العربون";
+
+"Hotel_MoreActions" = "خيارات إضافية";
+
+"Hotel_Emergency_Call" = "اتصال طوارئ";
+
+"Hotel_Special_Instructions_Title" = "التعليمات الخاصة وإرشادات التعامل";
+
+"Hotel_Weight_Kg" = "الوزن (كجم)";
+
+"Hotel_Nights_Count" = "%ld ليالٍ";
+
+"Hotel_MedicationRequiredBadge" = "يتطلب أدوية";
+
+"Hotel_Res_NewReservationSub" = "حجز إقامة فندقية جديدة";
+
+"Customer_Details" = "بيانات المالك";
+
+"Customer_Name_Placeholder" = "اسم المالك بالكامل *";
+
+"Customer_Phone_Placeholder" = "رقم هاتف المالك *";
+
+"Email_Optional" = "البريد الإلكتروني (اختياري)";
+
+"Pet_Details" = "بيانات النزيل";
+
+"Dog" = "كلب";
+
+"Cat" = "قط";
+
+"Bird" = "طائر";
+
+"SmallPet" = "حيوان صغير";
+
+"Pet_Name_Placeholder" = "اسم الحيوان *";
+
+"Breed_Optional" = "السلالة (مثال: جولدن، شيرازي)...";
+
+"Hotel_MedicationPlanToggle" = "يتطلب أدوية";
+
+"Hotel_WingAndTier" = "فئة الجناح والقسم";
+
+"Hotel_NoAccommodationTypesWarning" = "لم تُنشأ فئات بعد. ينطبق السعر القياسي.";
+
+"Hotel_ArrivalDate" = "تاريخ الوصول:";
+
+"Hotel_DepartureDate" = "تاريخ المغادرة:";
+
+"Hotel_FinancialEstimation" = "الحساب التقديري والعربون";
+
+"EmergencyContact" = "جهة الاتصال للطوارئ";
+
+"Emergency_Name" = "اسم جهة اتصال الطوارئ (اختياري)";
+
+"Emergency_Phone" = "هاتف الطوارئ (اختياري)";
+
+"SpecialInstructions" = "عادات التعامل، نظام الوجبات، التعليمات...";
+
+"Hotel_StayPreset_Weekend" = "عطلة نهاية الأسبوع (ليلتان)";
+
+"Hotel_StayPreset_3Nights" = "3 ليالٍ";
+
+"Hotel_StayPreset_Week" = "أسبوع (7 ليالٍ)";
+
+"Hotel_StayPreset_2Weeks" = "أسبوعان (14 ليلة)";
+
+"Hotel_DepositPreset_None" = "بدون عربون";
+
+"Hotel_DepositPreset_25" = "25% من الإجمالي";
+
+"Hotel_DepositPreset_50" = "50% نصف التكلفة";
+
+"Hotel_DepositPreset_100" = "سداد كامل (100%)";
+
+"Hotel_BoardingPass_Title" = "بطاقة الإقامة";
+
+"Hotel_BoardingPass_Subtitle" = "معاينة الإقامة وملخص الرعاية";
+
+"Hotel_Keyboard_SubmitHint" = "⌘↵ للتأكيد • Esc للإلغاء";
+
+"Hotel_Suite_AvailableUnits" = "%d أجنحة شاغرة";
+
+"Hotel_Suite_PerNight" = "ر.ق / ليلة";
+
+"Hotel_SuiteCapacity_Format" = "السعة: %d نزلاء";
+
+"Hotel_Care_AllergiesDiet" = "النظام الغذائي والحساسية";
+
+"Hotel_Care_MedicationTitle" = "الأدوية والجرعات";
+
+"Hotel_Client_QuickSearch" = "بحث في الملاك";
+
+"Hotel_Res_ActiveBranchNotice" = "الفرع النشط";
+
+"Hotel_NightsShortUnit" = "ليلة";
+
+"Hotel_NightsPluralUnit" = "ليالٍ";
+
+"Hotel_DaysLeftArriving" = "يصل خلال %ld يوم";
+
+"Hotel_ArrivingToday" = "يصل اليوم";
+
+"Hotel_StayPreset_Month" = "شهر (30 ليلة)";
+
+"Hotel_Arrival_Title" = "الوصول";
+
+"Hotel_Departure_Title" = "المغادرة";
+
+"Hotel_DaysPluralUnit" = "أيام";
+
+"Hotel_AdjustArrivalDepartureTimes" = "تعديل أوقات الوصول والمغادرة";
+
+"Hotel_CheckinTime_Label" = "وقت تسجيل الوصول";
+
+"Hotel_CheckoutTime_Label" = "وقت تسجيل المغادرة";
+
+"Hotel_SearchCustomerPlaceholder" = "ابحث بالمالك، الهاتف، أو النزيل...";
+
+"Hotel_Customer_VerifiedProfile" = "مالك موثق";
+
+"Hotel_Customer_WalkInBadge" = "حجز مباشر";
+
+"Hotel_Select_Action" = "اختيار";
+
+"Hotel_ChangeCustomer" = "تغيير";
+
+"Hotel_CustomerSavedPets" = "حيوانات المالك المسجلة:";
+
+"Hotel_Err_InvalidStayRange" = "تاريخ المغادرة يجب أن يكون بعد تاريخ الوصول.";
+
+"Hotel_Err_CreateReservationFailed" = "تعذر إنشاء الحجز، يرجى المحاولة مجدداً.";
+
+"Hotel_Err_CustomerNameRequired" = "يرجى إدخال اسم المالك بالكامل.";
+
+"Hotel_Err_CustomerPhoneRequired" = "يرجى إدخال رقم هاتف المالك.";
+
+"Hotel_Err_PetNameRequired" = "يرجى إدخال اسم النزيل.";
+
+"Hotel_Name_Dog1" = "جناح الكلاب القياسي";
+"Hotel_Name_Dog2" = "غرفة كلاسيك";
+"Hotel_Name_Dog3" = "استوديو ديلوكس";
+"Hotel_Name_Dog4" = "جناح عائلي";
+"Hotel_Name_Cat1" = "جناح القطط القياسي";
+"Hotel_Name_Cat2" = "غرفة قطط كلاسيك";
+"Hotel_Name_Cat3" = "استوديو قطط ديلوكس";
+"Hotel_Name_Cat4" = "جناح قطط بانورامي";
+"Hotel_Name_Bird1" = "جناح طيور قياسي";
+"Hotel_Name_Bird2" = "وحدة طيور بانورامية";
+"Hotel_Name_Bird3" = "وحدة طيور ديلوكس";
+"Hotel_Name_Small1" = "جناح الحيوانات الصغيرة";
+"Hotel_Name_Small2" = "وحدة إقامة صغيرة ديلوكس";
+"Hotel_Name_Small3" = "استوديو حيوانات صغيرة";
+"Hotel_Name_Day1" = "صالة الرعاية النهارية";
+"Hotel_Name_Day2" = "منطقة الاستراحة النهارية";
+"Hotel_Name_Iso1" = "وحدة عزل وقائي";
+"Hotel_Name_Iso2" = "غرفة نقاهة بيطرية";
+"Hotel_Name_Med1" = "وحدة ملاحظة بيطرية";
+"Hotel_Name_Med2" = "غرفة رعاية طبية";
 
 /* ===================== POS Deep Diagnostics ===================== */
 "POS_DeepLog_Title" = "سجل التشخيص المباشر";
@@ -8159,6 +8726,7 @@
 "Community_Admin_Status_All" = "كل الحالات";
 "Community_Admin_Status_Format" = "الحالة: %@";
 "Community_Admin_State_Unknown" = "غير معروف";
+"Community_Admin_Value_Unknown" = "غير متاح";
 "Community_Admin_Queue_Subtitle" = "قائمة محدودة ومقسّمة إلى صفحات، مرتبة حسب آخر تحديث من الخادم.";
 "Community_Admin_Applications_Subtitle" = "إشراف زمني وحالة الطلب؛ اختيار المتبني يبقى لصاحب الإعلان أو المنظمة.";
 "Community_Admin_Audit_Subtitle" = "أثر خادمي موثق لقرارات المجتمع الحساسة.";
@@ -8486,3 +9054,170 @@
 "Community_Admin_State_yes_no" = "نعم أو لا";
 "Community_Admin_State_single_choice" = "اختيار واحد";
 "Community_Admin_State_multiple_choice" = "اختيارات متعددة";
+
+"AccessoryCategory" = "تصنيف الإكسسوار";
+"SelectAccessoryCategory" = "اختر تصنيف الإكسسوار...";
+"SearchAccessoryCategory" = "ابحث عن تصنيف الإكسسوار";
+"NoAccessoryCategoriesFound" = "لا توجد تصنيفات مطابقة للبحث";
+
+"Hotel_ReservedForThisGuest" = "محجوز لهذا النزيل";
+
+"Hotel_NoExactRoomsAssignableTitle" = "لا توجد أجنحة شاغرة بالفئة الأصلية";
+
+"Hotel_Tier1_MatchingSuites" = "الأجنحة المطابقة والمتاحة للتسكين";
+
+"Hotel_Tier2_AlternativeTiers" = "فئات وترقيات بديلة متوافقة";
+
+"Hotel_Tier3_UnavailableSuites" = "الأجنحة غير المتاحة (%d)";
+
+"Hotel_RepriceConfirmTitle" = "تأكيد تغيير الفئة وإعادة التسعير";
+
+"Hotel_RepriceConfirmMessage" = "سيتم تسكين النزيل في الجناح (%@) بالفئة (%@) مع تعديل السعر بمقدار (%@). هل تريد المتابعة؟";
+
+"Hotel_ChangeAndAssign" = "تغيير وتسكين";
+
+"Hotel_SetupAssistant_Title" = "مساعد تهيئة الفندق";
+
+"Hotel_SetupAssistant_Sub" = "خطوات جاهزية الفرع للتشغيل الفندقي";
+
+"Hotel_Step1_TypesTitle" = "فئات الأجنحة والأسعار";
+
+"Hotel_Step1_TypesDesc" = "تهيئة فئات الأجنحة والسعة الافتراضية والفصائل المصرح بها";
+
+"Hotel_Step1_CTA" = "إدارة الفئات";
+
+"Hotel_Step2_RoomsTitle" = "الأجنحة والغرف";
+
+"Hotel_Step2_RoomsDesc" = "إضافة أرقام الأجنحة وربطها بالفئات وتعيين السعة";
+
+"Hotel_Step2_CTA" = "إضافة جناح";
+
+"Hotel_Step3_DiagTitle" = "جاهزية التشغيل";
+
+"Hotel_ReadyForOperationsNotice" = "الفرع مهيأ بالكامل لاستقبال الحجوزات والتسكين";
+
+"Hotel_PendingReadinessNotice" = "يرجى استكمال تهيئة الفئات والأجنحة للوصول للجاهزية التشغيلية";
+
+"Hotel_RoomAssignmentPrefTitle" = "طريقة تخصيص الجناح";
+
+"Hotel_RoomAssignmentPrefSub" = "تخصيص جناح محدد مسبقاً أو تعيين تلقائي عند الوصول";
+
+"Hotel_SpecificSuiteSelectedBadge" = "جناح محدد";
+
+"Hotel_AutoAssignBadge" = "تخصيص تلقائي";
+
+"Hotel_AssignAtCheckIn" = "التعيين التلقائي عند الوصول";
+
+"Hotel_AssignAtCheckInDesc" = "يتم تحديد أفضل جناح شاغر عند وصول النزيل لمنع التعارض";
+
+"Hotel_AssignSpecificSuite" = "تخصيص جناح محدد مسبقاً";
+
+"Hotel_AssignSpecificSuiteDesc" = "حجز جناح محدد بعينه لهذا النزيل من بين الأجنحة الشاغرة";
+
+"Hotel_NoVacantSuitesRightNow" = "لا توجد أجنحة شاغرة حالياً من هذه الفئة. نوصي باختيار التعيين عند الوصول.";
+
+"Hotel_SelectSpecificSuiteHint" = "اختر الجناح:";
+
+"Hotel_AutoAssignAtCheckInShort" = "تعيين عند الوصول";
+
+"Hotel_AutoSelectedCompatibleTier" = "الفئة المتوافقة المختارة تلقائياً";
+
+"Hotel_NoCompatibleTierTitle" = "لا توجد فئات متوافقة مع هذه الفصيلة";
+
+"Hotel_NoCompatibleTierExpl" = "لا توجد فئة أجنحة تدعم هذه الفصيلة في هذا الفرع. يرجى تهيئة فئة تدعمها أو تعديل التصنيف.";
+
+"Hotel_Err_MustSelectCompatibleTier" = "يرجى اختيار فئة إقامة متوافقة مع هذا النزيل.";
+
+"Hotel_TaxonomyKindTitle" = "فصيلة النزيل المعتمدة (MainKinds):";
+
+"Hotel_TaxonomySubKindTitle" = "السلالة المعتمدة:";
+
+"Hotel_CustomBreedOption" = "سلالة أخرى (غير مدرجة)";
+
+"Hotel_CustomBreedPrompt" = "اكتب اسم السلالة المخصصة...";
+
+
+/* Pets Hotel Alignment & Sovereign Translations */
+"Activate" = "تفعيل الجناح";
+"Allergies_Optional" = "الحساسية أو الموانع (اختياري)";
+"Birds" = "طيور";
+"Cats" = "قطط";
+"Checked" = "تم التحقق";
+"Common_All" = "الكل";
+"Common_Copied" = "تم النسخ";
+"Common_Refresh" = "تحديث";
+"Completed" = "مكتمل";
+"Customer_Name" = "اسم العميل";
+"Deactivate" = "تعطيل الجناح";
+"Diet_Optional" = "النظام الغذائي (اختياري)";
+"Dogs" = "كلاب";
+"DoubleTapToToggle" = "اضغط مرتين للتبديل";
+"EmergencyName_Optional" = "اسم جهة الاتصال (اختياري)";
+"EmergencyPhone_Optional" = "هاتف الطوارئ (اختياري)";
+"Guest" = "عميل الحجز";
+"Hotel_Availability_LoadFailed" = "تعذر التحقق من توفر الغرف";
+"Hotel_Availability_NoMatchingType" = "لا توجد غرف مطابقة لفئة الحجز";
+"Hotel_Availability_NoMatchingType_Help" = "راجع فئة الجناح المحجوز أو غيّر الفئة من إدارة الحجز قبل التسكين.";
+"Hotel_Availability_Reason_Booking" = "يوجد حجز متعارض خلال الفترة";
+"Hotel_Availability_Reason_Branch" = "الغرفة تابعة لفرع آخر";
+"Hotel_Availability_Reason_Capacity" = "السعة ممتلئة خلال الفترة";
+"Hotel_Availability_Reason_Inactive" = "الغرفة غير مفعلة";
+"Hotel_Availability_Reason_Missing" = "سجل الغرفة غير موجود";
+"Hotel_Availability_Reason_OutOfService" = "الغرفة خارج الخدمة";
+"Hotel_Availability_Reason_Sharing" = "المشاركة غير مسموحة";
+"Hotel_Availability_Reason_Species" = "نوع الحيوان غير مسموح لهذه الغرفة";
+"Hotel_Availability_Reason_Status" = "حالة الغرفة لا تسمح بالتسكين";
+"Hotel_Availability_Rejections_Help" = "الغرف موجودة، لكن قواعد التسكين الحالية تمنع استخدامها لهذا النزيل. الأسباب موضحة أدناه.";
+"Hotel_DefaultTier" = "جناح فندقي";
+"Hotel_Err_DuplicateCode" = "رمز الغرفة/الجناح مستخدم بالفعل في هذا الفرع.";
+"Hotel_Err_InactiveType" = "فئة الإقامة المحددة غير نشطة.";
+"Hotel_Err_MainKindNotAllowed" = "نوع أو فصيلة الحيوان غير مسموح بها في هذا الجناح.";
+"Hotel_Err_NoBranchSelected" = "يرجى تحديد فرع أولاً.";
+"Hotel_Err_PriceMismatch" = "تغير سعر الإقامة. يرجى تحديث الصفحة والمحاولة مجدداً.";
+"Hotel_Err_RegisteredCustomerRequired" = "يجب اختيار ملف عميل مسجل قبل إنشاء حجز الفندق. لا يمكن ربط الحجز بحساب بديل.";
+"Hotel_Err_RepriceRequired" = "يتطلب تغيير نوع الإقامة تأكيد تعديل سعر الليلة والتكلفة الإجمالية.";
+"Hotel_Extend_OriginalNights" = "%d ليالٍ";
+"Hotel_Extend_Room_Badge" = "جناح %@";
+"Hotel_Hub_SearchPlaceholder" = "ابحث عن نزيل، جناح، أو مالك...";
+"Hotel_Keyboard_StayDossier" = "ملف الإقامة (⌘+S)";
+"Hotel_Maint_AC" = "فحص التكييف";
+"Hotel_Maint_Bedding" = "تجهيز السرير الإسفنجي";
+"Hotel_Maint_Camera" = "فحص الكاميرا الذكية";
+"Hotel_Maint_Door" = "فحص قفل الباب";
+"Hotel_Maint_Sanitize" = "تعقيم شامل";
+"Hotel_Maint_Water" = "فحص حوض المياه الذكي";
+"Hotel_NoSuitesInType" = "لا توجد أجنحة مضافة لهذه الفئة بعد.";
+"Hotel_QuickAction_AddSuite" = "إضافة جناح";
+"Hotel_QuickAction_ManageTypes" = "الأنواع";
+"Hotel_QuickAction_NewReservation" = "حجز جديد";
+"Hotel_SelectTier" = "لم تحدد فئة";
+"Hotel_SpecialNotesPlaceholder" = "ملاحظات وتعليمات خاصة بالنزيل...";
+"Hotel_Suites_CreateTypeFirstDesc" = "يجب ربط كل غرفة أو جناح بفئة محددة (مثل: جناح قياسي، غرفة ديلوكس) لتحديد السعر الأساسي ومطابقة الفصائل المصرح بها.";
+"Hotel_Suites_CreateTypeFirstTitle" = "يجب إنشاء فئة أجنحة أولاً";
+"Hotel_Suites_EstimateNotice" = "إقامة ليلتين: %@ • إقامة ٥ ليالٍ: %@";
+"Hotel_Suites_UnassignedType" = "أجنحة غير مصنفة";
+"Hotel_TypeHeader_Stats" = "%ld إجمالي • %ld متاح • %ld مشغول";
+"Hotel_ViewActiveStayDossier" = "عرض بطاقة الإقامة ومتابعة النزيل";
+"Hotel_Wing" = "الجناح التابع له والقسم الفندقي";
+"Hotel_Workspace" = "مساحة الفندق • مباشر";
+"Nights" = "ليالٍ";
+"No" = "لا (فردي)";
+"Notes" = "مواصفات وملاحظات الوحدة:";
+"Optional" = "مواصفات الوحدة وتجهيزاتها (اختياري)...";
+"Other" = "أخرى";
+"Payment_Status_Paid" = "مسدد بالكامل";
+"Payment_Status_Unpaid" = "متبقي للدفع";
+"PetName" = "اسم النزيل";
+"Phone" = "رقم الهاتف";
+"Recommended" = "موصى به";
+"SmallPets" = "حيوانات صغيرة";
+"Status" = "حالة الجاهزية";
+"Unchecked" = "لم يتم التحقق";
+"Yes" = "نعم (نفس العميل)";
+"Hotel_Status_Live" = "مباشر";
+"Hotel_Status_Overview_Dashboard" = "لوحة التحكم الشاملة";
+"Hotel_Policy_Reason_SpeciesNotAllowed" = "نوع أو فصيلة الحيوان غير مسموح بها في الأجنحة المتاحة.";
+"Hotel_Policy_Reason_CapacityOrDates" = "جميع الأجنحة المتوافقة محجوزة أو مشغولة خلال التواريخ المحددة.";
+"Hotel_Policy_Reason_OutOfService" = "الأجنحة قيد التنظيف أو الصيانة الدورية حالياً.";
+"Hotel_Policy_Reason_SharedForbidden" = "الجناح مشغول ولا يسمح بالإشغال المشترك لنزلاء مختلفين.";
+"Hotel_Policy_Reason_Default" = "لا توجد أجنحة مطابقة متاحة للشروط المدخلة.";

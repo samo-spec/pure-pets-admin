@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import UIKit
 import FirebaseFirestore
 import FirebaseAuth
 
@@ -40,6 +41,7 @@ struct HomeSectionStateItem: Identifiable, Hashable {
 // MARK: - Catalog Definition
 
 private let kHomeCatalog: [HomeSectionCatalogItem] = [
+    HomeSectionCatalogItem(sectionID: 20, type: "PPHomeSectionPureLens", labelKey: "HomeControl_Section_PureLens_Label", descKey: "HomeControl_Section_PureLens_Description", defaultVisible: true, critical: false, conditional: false, symbol: "viewfinder.circle.fill"),
     HomeSectionCatalogItem(sectionID: 15, type: "PPHomeSectionPremiumSearch", labelKey: "HomeControl_Section_PremiumSearch_Label", descKey: "HomeControl_Section_PremiumSearch_Description", defaultVisible: true, critical: false, conditional: false, symbol: "magnifyingglass"),
     HomeSectionCatalogItem(sectionID: 17, type: "PPHomeSectionMarketplaceHero", labelKey: "HomeControl_Section_MarketplaceHero_Label", descKey: "HomeControl_Section_MarketplaceHero_Description", defaultVisible: false, critical: false, conditional: false, symbol: "bag.fill"),
     HomeSectionCatalogItem(sectionID: 16, type: "PPHomeSectionProviderCategoryNav", labelKey: "HomeControl_Section_ProviderCategoryNav_Label", descKey: "HomeControl_Section_ProviderCategoryNav_Description", defaultVisible: false, critical: false, conditional: false, symbol: "rectangle.grid.1x2.fill"),
@@ -235,7 +237,7 @@ final class AdminHomeControlViewModel: ObservableObject {
 
         let premiumCareVisible = sections.first(where: { $0.sectionID == 9 })?.visible ?? true
 
-        var payload: [String: Any] = [
+        let payload: [String: Any] = [
             "sections": sectionsPayload,
             "titleViewMode": globalSettings.titleViewMode,
             "premiumCareVisible": premiumCareVisible,
@@ -284,6 +286,405 @@ final class AdminHomeControlViewModel: ObservableObject {
     }
 }
 
+// MARK: - Sovereign Top Deck (Command Background & Tactile Control)
+
+@MainActor
+struct PPSovereignHomeControlDeck: View {
+    @ObservedObject var viewModel: AdminHomeControlViewModel
+    let onSave: () -> Void
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var beaconPulse: Bool = false
+
+    private var isPad: Bool {
+        horizontalSizeClass == .regular || UIDevice.current.userInterfaceIdiom == .pad
+    }
+
+    var body: some View {
+        ZStack {
+            // Tier 1: Living Multi-Layered Atmospheric Substrate
+            deckAtmosphericBackground
+
+            // Tier 2: Specular Chamfer Light Edge & State Sheen
+            RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.75),
+                            Color.white.opacity(0.20),
+                            (viewModel.isDirty ? AdminSurface.amber : AdminSurface.primary).opacity(0.18)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 0.85
+                )
+
+            // Tier 3: Inner Sovereign Chambers (Adaptive iPad vs iPhone)
+            Group {
+                if isPad {
+                    iPadCockpitLayout
+                } else {
+                    iPhoneCompactLayout
+                }
+            }
+            .padding(AdminSpacing.cardPadding + 4)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous))
+        .shadow(color: Color.black.opacity(0.04), radius: 14, x: 0, y: 4)
+        .shadow(
+            color: (viewModel.isDirty ? AdminSurface.amber : AdminSurface.primary).opacity(viewModel.isDirty ? 0.09 : 0.02),
+            radius: 8,
+            x: 0,
+            y: 2
+        )
+        .onAppear {
+            if !reduceMotion {
+                withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
+                    beaconPulse = true
+                }
+            }
+        }
+    }
+
+    // MARK: - Background Atmosphere
+
+    private var deckAtmosphericBackground: some View {
+        ZStack {
+            // Base Surface Material
+            AdminSurface.surface
+
+            // Frosted Micro-Material
+            Rectangle()
+                .fill(.ultraThinMaterial.opacity(0.85))
+
+            // Ambient Radiant Glow Mesh
+            GeometryReader { geo in
+                // Dynamic Aurora Bloom
+                RadialGradient(
+                    colors: [
+                        (viewModel.isDirty ? AdminSurface.amber : AdminSurface.primary).opacity(viewModel.isDirty ? 0.12 : 0.08),
+                        (viewModel.isDirty ? AdminSurface.amber.opacity(0.04) : AdminSurface.primarySoft.opacity(0.03)),
+                        Color.clear
+                    ],
+                    center: .topTrailing,
+                    startRadius: 10,
+                    endRadius: geo.size.width * 0.75
+                )
+
+                // Secondary Warm Specular Reflection
+                LinearGradient(
+                    stops: [
+                        .init(color: Color.white.opacity(0.25), location: 0.0),
+                        .init(color: Color.white.opacity(0.05), location: 0.35),
+                        .init(color: Color.clear, location: 1.0)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+        }
+    }
+
+    // MARK: - iPhone Layout
+
+    private var iPhoneCompactLayout: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.md) {
+            // Zone 1: Identity Pod & Emblem
+            HStack(alignment: .top, spacing: AdminSpacing.md) {
+                // Typographic Identity & Live State Beacon
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Text(Language.get("HomeControl_Title", alter: "التحكم في الصفحة الرئيسية"))
+                            .font(AdminType.title2)
+                            .foregroundColor(AdminSurface.primaryText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.9)
+
+                        liveStatusBadge
+                    }
+
+                    Text(Language.get("HomeControl_Subtitle", alter: "التحكم في أقسام الصفحة الرئيسية والرؤية وتبديل الميزات"))
+                        .font(AdminType.subheadline)
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                // Sovereign Tactile Emblem Squircle
+                tactileEmblemSquircle
+            }
+
+            // Zone 2: Telemetry Radar & Tactical Command Runway
+            HStack(spacing: AdminSpacing.sm) {
+                // Telemetry Capacity Meter
+                telemetryMeterChip
+
+                Spacer(minLength: 4)
+
+                // Tactical Action Controls
+                actionControlsCapsule
+            }
+        }
+    }
+
+    // MARK: - iPad Cockpit Layout
+
+    private var iPadCockpitLayout: some View {
+        HStack(alignment: .center, spacing: AdminSpacing.lg) {
+            // Leading Identity & Status Pod
+            HStack(alignment: .center, spacing: AdminSpacing.md) {
+                tactileEmblemSquircle
+
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 10) {
+                        Text(Language.get("HomeControl_Title", alter: "التحكم في الصفحة الرئيسية"))
+                            .font(AdminType.title)
+                            .foregroundColor(AdminSurface.primaryText)
+
+                        liveStatusBadge
+                    }
+
+                    Text(Language.get("HomeControl_Subtitle", alter: "التحكم في أقسام الصفحة الرئيسية والرؤية وتبديل الميزات"))
+                        .font(AdminType.body)
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(2)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Trailing Cockpit Telemetry & Actions
+            HStack(spacing: AdminSpacing.md) {
+                telemetryMeterChip
+
+                actionControlsCapsule
+            }
+        }
+    }
+
+    // MARK: - Subcomponents
+
+    private var tactileEmblemSquircle: some View {
+        ZStack {
+            // Squircle Body with State Tint
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill((viewModel.isDirty ? AdminSurface.amber : AdminSurface.primary).opacity(0.12))
+                .frame(width: 52, height: 52)
+
+            // Specular Inner Border
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(
+                    (viewModel.isDirty ? AdminSurface.amber : AdminSurface.primary).opacity(0.25),
+                    lineWidth: 0.8
+                )
+                .frame(width: 52, height: 52)
+
+            // Icon Glyph
+            Image(systemName: "slider.horizontal.3")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundColor(viewModel.isDirty ? AdminSurface.amber : AdminSurface.primary)
+                .scaleEffect(viewModel.isDirty ? 1.05 : 1.0)
+                .animation(reduceMotion ? nil : AdminAnimation.standard, value: viewModel.isDirty)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private var liveStatusBadge: some View {
+        HStack(spacing: 5) {
+            ZStack {
+                if !reduceMotion && beaconPulse {
+                    Circle()
+                        .stroke((viewModel.isDirty ? AdminSurface.amber : Color.green).opacity(0.4), lineWidth: 1.5)
+                        .frame(width: 12, height: 12)
+                        .scaleEffect(1.4)
+                }
+
+                Circle()
+                    .fill(viewModel.isDirty ? AdminSurface.amber : Color.green)
+                    .frame(width: 7, height: 7)
+            }
+            .frame(width: 14, height: 14)
+
+            Text(viewModel.isDirty
+                 ? Language.get("HomeControl_LiveStatus_Unsaved", alter: "تعديلات غير محفوظة")
+                 : Language.get("HomeControl_LiveStatus_Synced", alter: "مباشر ومزامن"))
+                .font(AdminType.caption2Bold)
+                .foregroundColor(viewModel.isDirty ? AdminSurface.amber : Color.green)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background((viewModel.isDirty ? AdminSurface.amber : Color.green).opacity(0.08), in: Capsule())
+        .overlay(
+            Capsule()
+                .strokeBorder((viewModel.isDirty ? AdminSurface.amber : Color.green).opacity(0.22), lineWidth: 0.75)
+        )
+    }
+
+    private var telemetryMeterChip: some View {
+        HStack(spacing: 7) {
+            // Micro Circular Telemetry Gauge
+            ZStack {
+                Circle()
+                    .stroke(AdminSurface.primary.opacity(0.15), lineWidth: 2.2)
+                    .frame(width: 16, height: 16)
+
+                let total = max(viewModel.totalSectionsCount, 1)
+                let progress = Double(viewModel.enabledSectionsCount) / Double(total)
+                Circle()
+                    .trim(from: 0, to: CGFloat(progress))
+                    .stroke(
+                        AdminSurface.primary,
+                        style: StrokeStyle(lineWidth: 2.2, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .frame(width: 16, height: 16)
+            }
+
+            let format = Language.get("HomeControl_EnabledCount_Format", alter: "%@ / %@ مفعّل")
+            Text(String(format: format, "\(viewModel.enabledSectionsCount)", "\(viewModel.totalSectionsCount)"))
+                .font(AdminType.captionBold)
+                .foregroundColor(AdminSurface.primary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(AdminSurface.primary.opacity(0.08), in: Capsule())
+        .overlay(
+            Capsule()
+                .strokeBorder(AdminSurface.primary.opacity(0.20), lineWidth: 0.75)
+        )
+    }
+
+    private var actionControlsCapsule: some View {
+        HStack(spacing: 8) {
+            if viewModel.isDirty {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(reduceMotion ? nil : AdminAnimation.standard) {
+                        viewModel.revertChanges()
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.uturn.backward")
+                            .font(.system(size: 11, weight: .bold))
+                        Text(Language.get("HomeControl_Revert", alter: "تراجع"))
+                            .font(AdminType.captionBold)
+                    }
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 34)
+                    .background(AdminSurface.control, in: Capsule())
+                    .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+                }
+                .buttonStyle(.plain)
+                .transition(.scale.combined(with: .opacity))
+            }
+
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onSave()
+            } label: {
+                HStack(spacing: 6) {
+                    if viewModel.isSaving {
+                        ProgressView().tint(.white)
+                            .scaleEffect(0.8)
+                    } else {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 12, weight: .bold))
+                    }
+
+                    Text(Language.get("Save", alter: "حفظ"))
+                        .font(AdminType.captionBold)
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 16)
+                .frame(minHeight: 34)
+                .background(
+                    viewModel.isDirty ? AdminSurface.primary : AdminSurface.primary.opacity(0.55),
+                    in: Capsule()
+                )
+                .overlay(
+                    Capsule()
+                        .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.75)
+                )
+                .shadow(
+                    color: viewModel.isDirty ? AdminSurface.primary.opacity(0.35) : Color.clear,
+                    radius: 6,
+                    x: 0,
+                    y: 2
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(viewModel.isSaving || viewModel.isLoading)
+        }
+    }
+}
+
+// MARK: - Precision Horizon Energy Separator
+
+struct PPHomeControlEnergySeparator: View {
+    let isDirty: Bool
+    @Environment(\.layoutDirection) private var layoutDirection
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Micro-Chamber 1: Directional Occlusion Drop Shadow
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(0.04),
+                    Color.clear
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 6)
+
+            // Micro-Chamber 2: Dual-Tone Luminous Hairline with Centered Architectural Gem
+            ZStack {
+                // Continuous Hairline with Reading-Flow Falloff
+                GeometryReader { geo in
+                    let isRTL = layoutDirection == .rightToLeft
+                    let tint = isDirty ? AdminSurface.amber : AdminSurface.primary
+                    LinearGradient(
+                        stops: [
+                            .init(color: tint.opacity(isRTL ? 0.35 : 0.08), location: 0.0),
+                            .init(color: tint.opacity(0.45), location: 0.5),
+                            .init(color: tint.opacity(isRTL ? 0.08 : 0.35), location: 1.0)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(height: 0.85)
+                    .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                }
+                .frame(height: 18)
+
+                // Micro-Chamber 3: Architectural Status Bridge Gem
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles.rectangle.stack")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(isDirty ? AdminSurface.amber : AdminSurface.primary)
+
+                    Text(Language.get("HomeControl_LiveChannels", alter: "قنوات البث المباشر"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                .background(AdminSurface.surface, in: Capsule())
+                .overlay(
+                    Capsule()
+                        .strokeBorder(
+                            (isDirty ? AdminSurface.amber : AdminSurface.primary).opacity(0.20),
+                            lineWidth: 0.8
+                        )
+                )
+                .shadow(color: Color.black.opacity(0.03), radius: 4, x: 0, y: 1)
+            }
+        }
+    }
+}
+
 // MARK: - Main Home Control View
 
 @MainActor
@@ -307,16 +708,28 @@ struct AdminHomeControlView: View {
                 dossierHeaderView
 
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: AdminSpacing.sectionSpacing) {
-                        heroHeader
-                        topSearchField
-                        generalSettingsAccordion
-                        sectionsOrderingCard
-                        livePreviewCard
+                    VStack(spacing: 0) {
+                        PPSovereignHomeControlDeck(
+                            viewModel: viewModel,
+                            onSave: { validateAndSave() }
+                        )
+                        .padding(.horizontal, AdminSpacing.screenMargin)
+                        .padding(.top, AdminSpacing.xs)
+
+                        PPHomeControlEnergySeparator(isDirty: viewModel.isDirty)
+                            .padding(.horizontal, AdminSpacing.screenMargin)
+                            .padding(.top, 14)
+                            .padding(.bottom, 16)
+
+                        VStack(spacing: AdminSpacing.sectionSpacing) {
+                            topSearchField
+                            generalSettingsAccordion
+                            sectionsOrderingCard
+                            livePreviewCard
+                        }
+                        .padding(.horizontal, AdminSpacing.screenMargin)
+                        .padding(.bottom, AdminSpacing.xxl)
                     }
-                    .padding(.horizontal, AdminSpacing.screenMargin)
-                    .padding(.top, AdminSpacing.xs)
-                    .padding(.bottom, AdminSpacing.xxl)
                 }
                 .refreshable {
                     viewModel.loadConfig()
@@ -400,97 +813,6 @@ struct AdminHomeControlView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    // MARK: - Hero Header
-
-    private var heroHeader: some View {
-        AdminCard {
-            VStack(alignment: .leading, spacing: AdminSpacing.base) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-                        Text(Language.get("HomeControl_Title", alter: nil))
-                            .font(AdminType.title2)
-                            .foregroundColor(AdminSurface.primaryText)
-
-                        Text(Language.get("HomeControl_Subtitle", alter: nil))
-                            .font(AdminType.subheadline)
-                            .foregroundColor(AdminSurface.secondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    ZStack {
-                        RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                            .fill(AdminSurface.primary.opacity(0.12))
-                            .frame(width: 52, height: 52)
-                        Image(systemName: "slider.horizontal.3")
-                            .font(.system(size: 24, weight: .semibold))
-                            .foregroundColor(AdminSurface.primary)
-                    }
-                    .accessibilityHidden(true)
-                }
-
-                HStack {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(Color.green)
-                            .frame(width: 8, height: 8)
-                        let format = Language.get("HomeControl_EnabledCount_Format", alter: "%@ / %@ enabled")
-                        Text(String(format: format, "\(viewModel.enabledSectionsCount)", "\(viewModel.totalSectionsCount)"))
-                            .font(AdminType.captionBold)
-                            .foregroundColor(AdminSurface.primary)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(AdminSurface.primary.opacity(0.08), in: Capsule())
-
-                    Spacer()
-
-                    actionButtonsBar
-                }
-            }
-            .padding(AdminSpacing.cardPadding)
-        }
-    }
-
-    // MARK: - Action Buttons Bar
-
-    private var actionButtonsBar: some View {
-        HStack(spacing: 8) {
-            if viewModel.isDirty {
-                Button {
-                    viewModel.revertChanges()
-                } label: {
-                    Text(Language.get("HomeControl_Revert", alter: nil))
-                        .font(AdminType.captionBold)
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .padding(.horizontal, 12)
-                        .frame(minHeight: 34)
-                        .background(AdminSurface.control, in: Capsule())
-                }
-            }
-
-            Button {
-                validateAndSave()
-            } label: {
-                HStack(spacing: 6) {
-                    if viewModel.isSaving {
-                        ProgressView().tint(.white)
-                    } else {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 13, weight: .bold))
-                    }
-                    Text(Language.get("Save", alter: nil))
-                        .font(AdminType.captionBold)
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 14)
-                .frame(minHeight: 34)
-                .background(viewModel.isDirty ? AdminSurface.primary : AdminSurface.primary.opacity(0.60), in: Capsule())
-            }
-            .disabled(viewModel.isSaving || viewModel.isLoading)
-        }
     }
 
     // MARK: - Search Field

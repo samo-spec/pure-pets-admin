@@ -35,12 +35,12 @@ public enum HotelWing: String, CaseIterable, Identifiable, Codable {
     public var title: String {
         switch self {
         case .dogs: return Language.get("Hotel_Wing_Dogs", alter: "جناح الكلاب")
-        case .cats: return Language.get("Hotel_Wing_Cats", alter: "واحة القطط")
-        case .birds: return Language.get("Hotel_Wing_Birds", alter: "ملاذ الطيور")
-        case .smallPets: return Language.get("Hotel_Wing_SmallPets", alter: "الحيوانات الأليفة الصغيرة")
-        case .isolation: return Language.get("Hotel_Wing_Isolation", alter: "العزل والرعاية الخاصة")
+        case .cats: return Language.get("Hotel_Wing_Cats", alter: "جناح القطط")
+        case .birds: return Language.get("Hotel_Wing_Birds", alter: "جناح الطيور")
+        case .smallPets: return Language.get("Hotel_Wing_SmallPets", alter: "جناح الحيوانات الصغيرة")
+        case .isolation: return Language.get("Hotel_Wing_Isolation", alter: "قسم العزل")
         case .medicalObservation: return Language.get("Hotel_Wing_MedicalObservation", alter: "الملاحظة الطبية")
-        case .daycare: return Language.get("Hotel_Wing_Daycare", alter: "الرعاية النهارية")
+        case .daycare: return Language.get("Hotel_Wing_Daycare", alter: "قسم الرعاية النهارية")
         }
     }
 
@@ -69,6 +69,22 @@ public enum HotelWing: String, CaseIterable, Identifiable, Codable {
         case .daycare: return Color(red: 0.95, green: 0.70, blue: 0.10)
         }
     }
+
+    public static func wing(forSpecies species: String) -> HotelWing? {
+        if let direct = HotelWing(rawValue: species) {
+            return direct
+        }
+        switch species.lowercased() {
+        case "dog", "dogs": return .dogs
+        case "cat", "cats": return .cats
+        case "bird", "birds": return .birds
+        case "small_pet", "small_pets": return .smallPets
+        case "isolation": return .isolation
+        case "medical_observation": return .medicalObservation
+        case "daycare": return .daycare
+        default: return nil
+        }
+    }
 }
 
 // MARK: - Accommodation / Room Status
@@ -86,14 +102,14 @@ public enum HotelAccommodationStatus: String, CaseIterable, Identifiable, Codabl
 
     public var title: String {
         switch self {
-        case .available: return Language.get("Hotel_Room_Available", alter: "متاح وجاهز")
+        case .available: return Language.get("Hotel_Room_Available", alter: "شاغر")
         case .reserved: return Language.get("Hotel_Room_Reserved", alter: "محجوز")
         case .occupied: return Language.get("Hotel_Room_Occupied", alter: "مشغول")
-        case .cleaning: return Language.get("Hotel_Room_Cleaning", alter: "قيد التنظيف والتعقيم")
-        case .inspection: return Language.get("Hotel_Room_Inspection", alter: "قيد الفحص الدوري")
-        case .maintenance: return Language.get("Hotel_Room_Maintenance", alter: "صيانة وتجهيز")
-        case .blocked: return Language.get("Hotel_Room_Blocked", alter: "معطل مؤقتاً")
-        case .isolation: return Language.get("Hotel_Room_Isolation", alter: "عزل طبي")
+        case .cleaning: return Language.get("Hotel_Room_Cleaning", alter: "تنظيف")
+        case .inspection: return Language.get("Hotel_Room_Inspection", alter: "تم الفحص")
+        case .maintenance: return Language.get("Hotel_Room_Maintenance", alter: "صيانة")
+        case .blocked: return Language.get("Hotel_Room_Blocked", alter: "خارج الخدمة")
+        case .isolation: return Language.get("Hotel_Room_Isolation", alter: "عزل صحي")
         }
     }
 
@@ -145,16 +161,16 @@ public enum HotelReservationStatus: String, CaseIterable, Identifiable, Codable 
 
     public var title: String {
         switch self {
-        case .draft: return Language.get("Hotel_Res_Draft", alter: "مسودة حجز")
-        case .pendingConfirmation: return Language.get("Hotel_Res_Pending", alter: "بانتظار التأكيد")
+        case .draft: return Language.get("Hotel_Res_Draft", alter: "مسودة")
+        case .pendingConfirmation: return Language.get("Hotel_Res_Pending", alter: "معلق")
         case .confirmed: return Language.get("Hotel_Res_Confirmed", alter: "مؤكد")
-        case .preArrival: return Language.get("Hotel_Res_PreArrival", alter: "استعداد للوصول")
-        case .readyForCheckin: return Language.get("Hotel_Res_ReadyCheckin", alter: "جاهز لتسجيل الدخول")
-        case .checkedIn, .inStay: return Language.get("Hotel_Res_InStay", alter: "في الإقامة")
+        case .preArrival: return Language.get("Hotel_Res_PreArrival", alter: "قبل الوصول")
+        case .readyForCheckin: return Language.get("Hotel_Res_ReadyCheckin", alter: "جاهز لتسجيل الوصول")
+        case .checkedIn, .inStay: return Language.get("Hotel_Res_InStay", alter: "مقيم")
         case .readyForCheckout: return Language.get("Hotel_Res_ReadyCheckout", alter: "جاهز للمغادرة")
         case .checkedOut, .completed: return Language.get("Hotel_Res_Completed", alter: "مكتمل")
         case .cancelled: return Language.get("Hotel_Res_Cancelled", alter: "ملغي")
-        case .noShow: return Language.get("Hotel_Res_NoShow", alter: "لم يحضر")
+        case .noShow: return Language.get("Hotel_Res_NoShow", alter: "عدم حضور")
         case .rejected: return Language.get("Hotel_Res_Rejected", alter: "مرفوض")
         case .earlyCheckout: return Language.get("Hotel_Res_EarlyCheckout", alter: "مغادرة مبكرة")
         }
@@ -172,6 +188,8 @@ public enum HotelReservationStatus: String, CaseIterable, Identifiable, Codable 
         case .draft, .pendingConfirmation, .preArrival: return Color(red: 0.95, green: 0.55, blue: 0.15)
         }
     }
+
+    public var badgeColor: Color { color }
 }
 
 // MARK: - Guest Clinical & Behavioral Status
@@ -186,11 +204,11 @@ public enum HotelGuestStatus: String, CaseIterable, Identifiable, Codable {
 
     public var title: String {
         switch self {
-        case .normal: return Language.get("Hotel_Guest_Normal", alter: "مستقر وطبيعي")
-        case .specialCare: return Language.get("Hotel_Guest_SpecialCare", alter: "عناية ورعاية خاصة")
-        case .monitor: return Language.get("Hotel_Guest_Monitor", alter: "تحت الملاحظة الدقيقة")
-        case .attention: return Language.get("Hotel_Guest_Attention", alter: "تنبيه صحي/سلوكي")
-        case .critical: return Language.get("Hotel_Guest_Critical", alter: "حرج - رعاية بيطرية")
+        case .normal: return Language.get("Hotel_Guest_Normal", alter: "طبيعي / مستقر")
+        case .specialCare: return Language.get("Hotel_Guest_SpecialCare", alter: "رعاية خاصة")
+        case .monitor: return Language.get("Hotel_Guest_Monitor", alter: "تحت الملاحظة")
+        case .attention: return Language.get("Hotel_Guest_Attention", alter: "تنبيه رعاية")
+        case .critical: return Language.get("Hotel_Guest_Critical", alter: "حرج / رعاية بيطرية")
         }
     }
 
@@ -236,16 +254,16 @@ public enum HotelCareTaskType: String, CaseIterable, Identifiable, Codable {
 
     public var title: String {
         switch self {
-        case .feeding: return Language.get("Hotel_Task_Feeding", alter: "وجبة طعام")
-        case .water: return Language.get("Hotel_Task_Water", alter: "تجديد مياه الشرب")
-        case .walk: return Language.get("Hotel_Task_Walk", alter: "نزهة ومشي خارجي")
-        case .play: return Language.get("Hotel_Task_Play", alter: "وقت اللعب والترفيه")
-        case .medication: return Language.get("Hotel_Task_Medication", alter: "إعطاء دواء/علاج")
-        case .cleaning: return Language.get("Hotel_Task_Cleaning", alter: "تنظيف وتعقيم الجناح")
+        case .feeding: return Language.get("Hotel_Task_Feeding", alter: "تقديم الوجبة")
+        case .water: return Language.get("Hotel_Task_Water", alter: "تجديد المياه")
+        case .walk: return Language.get("Hotel_Task_Walk", alter: "تمشية")
+        case .play: return Language.get("Hotel_Task_Play", alter: "وقت اللعب")
+        case .medication: return Language.get("Hotel_Task_Medication", alter: "إعطاء الدواء")
+        case .cleaning: return Language.get("Hotel_Task_Cleaning", alter: "تنظيف الجناح")
         case .roomInspection: return Language.get("Hotel_Task_RoomInspection", alter: "فحص الجناح")
-        case .grooming: return Language.get("Hotel_Task_Grooming", alter: "تمشيط وعناية بالفرو")
+        case .grooming: return Language.get("Hotel_Task_Grooming", alter: "تمشيط وعناية")
         case .healthCheck: return Language.get("Hotel_Task_HealthCheck", alter: "فحص المؤشرات الحيوية")
-        case .photoUpdate: return Language.get("Hotel_Task_PhotoUpdate", alter: "تحديث صورة النزيل")
+        case .photoUpdate: return Language.get("Hotel_Task_PhotoUpdate", alter: "إرسال صورة للعميل")
         case .checkInPreparation: return Language.get("Hotel_Task_CheckInPreparation", alter: "تجهيز الوصول")
         case .checkOutPreparation: return Language.get("Hotel_Task_CheckOutPreparation", alter: "تجهيز المغادرة")
         case .transport: return Language.get("Hotel_Task_Transport", alter: "نقل النزيل")
@@ -370,6 +388,7 @@ public struct AdminHotelAccommodationType: Identifiable, Hashable {
     public var nameEn: String
     public var wing: HotelWing
     public var allowedSpecies: [String]
+    public var allowedMainKindIds: [Int]
     public var defaultCapacity: Int
     public var nightlyRateMinor: Int
     public var allowSharedOccupancy: Bool
@@ -385,6 +404,7 @@ public struct AdminHotelAccommodationType: Identifiable, Hashable {
         nameEn: String,
         wing: HotelWing,
         allowedSpecies: [String] = [],
+        allowedMainKindIds: [Int] = [],
         defaultCapacity: Int = 1,
         nightlyRateMinor: Int = 0,
         allowSharedOccupancy: Bool = false,
@@ -399,6 +419,7 @@ public struct AdminHotelAccommodationType: Identifiable, Hashable {
         self.nameEn = nameEn
         self.wing = wing
         self.allowedSpecies = allowedSpecies
+        self.allowedMainKindIds = allowedMainKindIds
         self.defaultCapacity = defaultCapacity
         self.nightlyRateMinor = nightlyRateMinor
         self.allowSharedOccupancy = allowSharedOccupancy
@@ -423,6 +444,15 @@ public struct AdminHotelAccommodationType: Identifiable, Hashable {
         let nameEn = dict["nameEn"] as? String ?? names["en"] ?? ""
         let wingRaw = dict["wing"] as? String ?? "dogs"
 
+        let allowedMainKinds: [Int]
+        if let direct = dict["allowedMainKindIds"] as? [Int] {
+            allowedMainKinds = direct
+        } else if let nsNumbers = dict["allowedMainKindIds"] as? [NSNumber] {
+            allowedMainKinds = nsNumbers.map(\.intValue)
+        } else {
+            allowedMainKinds = []
+        }
+
         return AdminHotelAccommodationType(
             id: id,
             code: dict["code"] as? String ?? "",
@@ -430,6 +460,7 @@ public struct AdminHotelAccommodationType: Identifiable, Hashable {
             nameEn: nameEn,
             wing: HotelWing(rawValue: wingRaw) ?? .dogs,
             allowedSpecies: dict["allowedSpecies"] as? [String] ?? [],
+            allowedMainKindIds: allowedMainKinds,
             nightlyRateMinor: (dict["nightlyRateMinor"] as? NSNumber)?.intValue
                 ?? (dict["nightlyRateMinor"] as? Int)
                 ?? (dict["nightlyRate"] as? NSNumber)?.intValue
@@ -453,6 +484,15 @@ public struct AdminHotelPetDraft: Identifiable, Hashable {
     public var allergies: String
     public var requiresMedication: Bool
     public var medicationsText: String
+    public var accommodationId: String?
+    public var mainKindId: Int?
+    public var mainKindDocumentId: String?
+    public var mainKindNameAr: String?
+    public var mainKindNameEn: String?
+    public var subKindId: Int?
+    public var subKindDocumentId: String?
+    public var subKindNameAr: String?
+    public var subKindNameEn: String?
 
     public init(
         id: String = UUID().uuidString,
@@ -461,10 +501,19 @@ public struct AdminHotelPetDraft: Identifiable, Hashable {
         breed: String = "",
         weightKg: Double = 5.0,
         accommodationTypeId: String = "",
+        accommodationId: String? = nil,
         specialDiet: String = "",
         allergies: String = "",
         requiresMedication: Bool = false,
-        medicationsText: String = ""
+        medicationsText: String = "",
+        mainKindId: Int? = nil,
+        mainKindDocumentId: String? = nil,
+        mainKindNameAr: String? = nil,
+        mainKindNameEn: String? = nil,
+        subKindId: Int? = nil,
+        subKindDocumentId: String? = nil,
+        subKindNameAr: String? = nil,
+        subKindNameEn: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -472,10 +521,19 @@ public struct AdminHotelPetDraft: Identifiable, Hashable {
         self.breed = breed
         self.weightKg = weightKg
         self.accommodationTypeId = accommodationTypeId
+        self.accommodationId = accommodationId
         self.specialDiet = specialDiet
         self.allergies = allergies
         self.requiresMedication = requiresMedication
         self.medicationsText = medicationsText
+        self.mainKindId = mainKindId
+        self.mainKindDocumentId = mainKindDocumentId
+        self.mainKindNameAr = mainKindNameAr
+        self.mainKindNameEn = mainKindNameEn
+        self.subKindId = subKindId
+        self.subKindDocumentId = subKindDocumentId
+        self.subKindNameAr = subKindNameAr
+        self.subKindNameEn = subKindNameEn
     }
 }
 
@@ -506,6 +564,14 @@ public struct AdminHotelCustomerPetOption: Identifiable, Hashable, Sendable {
     public let ageInMonths: Int
     public let imageURL: String
     public let isDefaultPet: Bool
+    public let mainKindId: Int?
+    public let mainKindDocumentId: String?
+    public let mainKindNameAr: String?
+    public let mainKindNameEn: String?
+    public let subKindId: Int?
+    public let subKindDocumentId: String?
+    public let subKindNameAr: String?
+    public let subKindNameEn: String?
 
     public init(
         petId: String,
@@ -514,7 +580,15 @@ public struct AdminHotelCustomerPetOption: Identifiable, Hashable, Sendable {
         species: String = "dog",
         ageInMonths: Int = 0,
         imageURL: String = "",
-        isDefaultPet: Bool = false
+        isDefaultPet: Bool = false,
+        mainKindId: Int? = nil,
+        mainKindDocumentId: String? = nil,
+        mainKindNameAr: String? = nil,
+        mainKindNameEn: String? = nil,
+        subKindId: Int? = nil,
+        subKindDocumentId: String? = nil,
+        subKindNameAr: String? = nil,
+        subKindNameEn: String? = nil
     ) {
         self.id = petId
         self.petId = petId
@@ -524,6 +598,14 @@ public struct AdminHotelCustomerPetOption: Identifiable, Hashable, Sendable {
         self.ageInMonths = ageInMonths
         self.imageURL = imageURL
         self.isDefaultPet = isDefaultPet
+        self.mainKindId = mainKindId
+        self.mainKindDocumentId = mainKindDocumentId
+        self.mainKindNameAr = mainKindNameAr
+        self.mainKindNameEn = mainKindNameEn
+        self.subKindId = subKindId
+        self.subKindDocumentId = subKindDocumentId
+        self.subKindNameAr = subKindNameAr
+        self.subKindNameEn = subKindNameEn
     }
 }
 
@@ -546,7 +628,14 @@ public struct AdminHotelAccommodation: Identifiable, Hashable {
     public var active: Bool
     public var code: String
     public var allowedSpecies: [String]
+    public var allowedMainKindIds: [Int]
     public var allowSharedOccupancy: Bool
+    public var unitCode: String {
+        accommodationNumber.isEmpty ? code : accommodationNumber
+    }
+    public var floor: String? {
+        nil
+    }
 
     public init(
         id: String,
@@ -567,6 +656,7 @@ public struct AdminHotelAccommodation: Identifiable, Hashable {
         active: Bool = true,
         code: String = "",
         allowedSpecies: [String] = [],
+        allowedMainKindIds: [Int] = [],
         allowSharedOccupancy: Bool = false
     ) {
         self.id = id
@@ -587,6 +677,7 @@ public struct AdminHotelAccommodation: Identifiable, Hashable {
         self.active = active
         self.code = code.isEmpty ? accommodationNumber : code
         self.allowedSpecies = allowedSpecies
+        self.allowedMainKindIds = allowedMainKindIds
         self.allowSharedOccupancy = allowSharedOccupancy
     }
 
@@ -610,6 +701,14 @@ public struct AdminHotelReservation: Identifiable, Hashable {
     public var petName: String
     public var petBreed: String
     public var petSpecies: String
+    public var mainKindId: Int?
+    public var mainKindDocumentId: String?
+    public var mainKindNameAr: String?
+    public var mainKindNameEn: String?
+    public var subKindId: Int?
+    public var subKindDocumentId: String?
+    public var subKindNameAr: String?
+    public var subKindNameEn: String?
     public var wing: HotelWing
     public var accommodationTypeId: String
     public var assignedAccommodationId: String?
@@ -618,10 +717,12 @@ public struct AdminHotelReservation: Identifiable, Hashable {
     public var checkInDate: Date
     public var checkOutDate: Date
     public var numberOfNights: Int
+    public var nightlyRateMinor: Int?
     public var totalAmountMinor: Int?
     public var paidAmountMinor: Int?
     /// Present only when the billing projection permits it; nil means redacted.
     public var depositMinor: Int?
+    public var paymentStatus: String
     public var branchId: String
     public var specialInstructions: String?
     public var feedingNotes: String?
@@ -643,14 +744,24 @@ public struct AdminHotelReservation: Identifiable, Hashable {
         petName: String,
         petBreed: String,
         petSpecies: String,
+        mainKindId: Int? = nil,
+        mainKindDocumentId: String? = nil,
+        mainKindNameAr: String? = nil,
+        mainKindNameEn: String? = nil,
+        subKindId: Int? = nil,
+        subKindDocumentId: String? = nil,
+        subKindNameAr: String? = nil,
+        subKindNameEn: String? = nil,
         wing: HotelWing,
         accommodationTypeId: String = "",
         assignedAccommodationId: String? = nil,
         assignedRoomNumber: String? = nil,
         status: HotelReservationStatus,
+        paymentStatus: String = "",
         checkInDate: Date,
         checkOutDate: Date,
         numberOfNights: Int = 1,
+        nightlyRateMinor: Int? = nil,
         totalAmountMinor: Int? = nil,
         paidAmountMinor: Int? = nil,
         depositMinor: Int? = nil,
@@ -674,14 +785,24 @@ public struct AdminHotelReservation: Identifiable, Hashable {
         self.petName = petName
         self.petBreed = petBreed
         self.petSpecies = petSpecies
+        self.mainKindId = mainKindId
+        self.mainKindDocumentId = mainKindDocumentId
+        self.mainKindNameAr = mainKindNameAr
+        self.mainKindNameEn = mainKindNameEn
+        self.subKindId = subKindId
+        self.subKindDocumentId = subKindDocumentId
+        self.subKindNameAr = subKindNameAr
+        self.subKindNameEn = subKindNameEn
         self.wing = wing
         self.accommodationTypeId = accommodationTypeId
         self.assignedAccommodationId = assignedAccommodationId
         self.assignedRoomNumber = assignedRoomNumber
         self.status = status
+        self.paymentStatus = paymentStatus
         self.checkInDate = checkInDate
         self.checkOutDate = checkOutDate
         self.numberOfNights = numberOfNights
+        self.nightlyRateMinor = nightlyRateMinor
         self.totalAmountMinor = totalAmountMinor
         self.paidAmountMinor = paidAmountMinor
         self.depositMinor = depositMinor
@@ -712,9 +833,34 @@ public struct AdminHotelReservation: Identifiable, Hashable {
         return String(format: "%.0f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
     }
 
+    public var formattedNightlyRate: String? {
+        guard let nightlyRateMinor, nightlyRateMinor > 0 else { return nil }
+        let major = Double(nightlyRateMinor) / 100.0
+        return String(format: "%.0f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
+    }
+
     public var balanceDueMinor: Int? {
-        guard let totalAmountMinor, let paidAmountMinor else { return nil }
-        return max(0, totalAmountMinor - paidAmountMinor)
+        guard let total = totalAmountMinor, total > 0 else { return nil }
+        let paid = max(paidAmountMinor ?? 0, depositMinor ?? 0)
+        return max(0, total - paid)
+    }
+
+    public var formattedDeposit: String? {
+        guard let depositMinor, depositMinor > 0 else { return nil }
+        let major = Double(depositMinor) / 100.0
+        return String(format: "%.0f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
+    }
+
+    public var formattedPaidAmount: String? {
+        guard let paidAmountMinor, paidAmountMinor > 0 else { return nil }
+        let major = Double(paidAmountMinor) / 100.0
+        return String(format: "%.0f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
+    }
+
+    public var formattedBalanceDue: String? {
+        guard let balanceDueMinor else { return nil }
+        let major = Double(balanceDueMinor) / 100.0
+        return String(format: "%.0f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
     }
 
     public static func fromDictionary(_ dict: [String: Any], id: String) -> AdminHotelReservation {
@@ -731,13 +877,50 @@ public struct AdminHotelReservation: Identifiable, Hashable {
         let departureAt = parseHotelDate(dict["departureAt"]) ?? Date().addingTimeInterval(86400)
         let nights = dict["nights"] as? Int ?? max(1, Int(departureAt.timeIntervalSince(arrivalAt) / 86400))
 
+        let pricing = dict["pricing"] as? [String: Any] ?? [:]
+        let quoteLines = pricing["quoteLines"] as? [[String: Any]] ?? []
+        let firstQuoteLine = quoteLines.first ?? [:]
+
+        let nightlyRate = (firstPetLine["nightlyRateMinor"] as? NSNumber)?.intValue
+            ?? (firstPetLine["nightlyRateMinor"] as? Int)
+            ?? (firstQuoteLine["nightlyRateMinor"] as? NSNumber)?.intValue
+            ?? (firstQuoteLine["nightlyRateMinor"] as? Int)
+            ?? (dict["nightlyRateMinor"] as? NSNumber)?.intValue
+            ?? (dict["nightlyRate"] as? NSNumber)?.intValue
+
         let billingProjection = AdminHotelBillingProjectionPolicy.resolve(dict)
+
+        var resolvedTotal = billingProjection.totalMinor
+        if (resolvedTotal == nil || resolvedTotal == 0), let rate = nightlyRate, rate > 0 {
+            resolvedTotal = rate * nights
+        }
 
         // A pet identifier is never a valid stay-command identifier. Keep only
         // the server-projected stay IDs and fail closed when none are available.
         let stayIds = ((dict["stayIds"] as? [String]) ?? [])
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+
+        let mainKindId = (petSnapshot["mainKindId"] as? NSNumber)?.intValue
+            ?? (petSnapshot["mainKindId"] as? Int)
+            ?? (firstPetLine["mainKindId"] as? NSNumber)?.intValue
+            ?? (firstPetLine["mainKindId"] as? Int)
+        let mainKindDocId = petSnapshot["mainKindDocumentId"] as? String
+            ?? firstPetLine["mainKindDocumentId"] as? String
+        let mainKindAr = petSnapshot["mainKindNameAr"] as? String
+            ?? firstPetLine["mainKindNameAr"] as? String
+        let mainKindEn = petSnapshot["mainKindNameEn"] as? String
+            ?? firstPetLine["mainKindNameEn"] as? String
+        let subKindId = (petSnapshot["subKindId"] as? NSNumber)?.intValue
+            ?? (petSnapshot["subKindId"] as? Int)
+            ?? (firstPetLine["subKindId"] as? NSNumber)?.intValue
+            ?? (firstPetLine["subKindId"] as? Int)
+        let subKindDocId = petSnapshot["subKindDocumentId"] as? String
+            ?? firstPetLine["subKindDocumentId"] as? String
+        let subKindAr = petSnapshot["subKindNameAr"] as? String
+            ?? firstPetLine["subKindNameAr"] as? String
+        let subKindEn = petSnapshot["subKindNameEn"] as? String
+            ?? firstPetLine["subKindNameEn"] as? String
 
         return AdminHotelReservation(
             id: id,
@@ -750,15 +933,30 @@ public struct AdminHotelReservation: Identifiable, Hashable {
             petName: petSnapshot["name"] as? String ?? "",
             petBreed: petSnapshot["breed"] as? String ?? "",
             petSpecies: petSnapshot["species"] as? String ?? "",
+            mainKindId: mainKindId,
+            mainKindDocumentId: mainKindDocId,
+            mainKindNameAr: mainKindAr,
+            mainKindNameEn: mainKindEn,
+            subKindId: subKindId,
+            subKindDocumentId: subKindDocId,
+            subKindNameAr: subKindAr,
+            subKindNameEn: subKindEn,
             wing: resolvedHotelWing(rawValue: wingRaw, species: petSnapshot["species"] as? String),
             accommodationTypeId: firstPetLine["accommodationTypeId"] as? String ?? "",
-            assignedAccommodationId: firstPetLine["accommodationId"] as? String,
-            assignedRoomNumber: firstPetLine["accommodationCode"] as? String,
+            assignedAccommodationId: (firstPetLine["accommodationId"] as? String)
+                ?? (dict["assignedAccommodationId"] as? String)
+                ?? (dict["accommodationId"] as? String),
+            assignedRoomNumber: (firstPetLine["accommodationCode"] as? String)
+                ?? (dict["assignedRoomNumber"] as? String)
+                ?? (dict["accommodationCode"] as? String)
+                ?? (dict["roomNumber"] as? String),
             status: HotelReservationStatus(rawValue: statusRaw) ?? .draft,
+            paymentStatus: dict["paymentStatus"] as? String ?? "",
             checkInDate: arrivalAt,
             checkOutDate: departureAt,
             numberOfNights: nights,
-            totalAmountMinor: billingProjection.totalMinor,
+            nightlyRateMinor: nightlyRate,
+            totalAmountMinor: resolvedTotal,
             paidAmountMinor: billingProjection.settledMinor,
             depositMinor: billingProjection.depositMinor,
             branchId: dict["branchId"] as? String ?? "",
@@ -785,6 +983,14 @@ public struct AdminHotelStay: Identifiable, Hashable {
     public var petName: String
     public var petBreed: String
     public var petSpecies: String
+    public var mainKindId: Int?
+    public var mainKindDocumentId: String?
+    public var mainKindNameAr: String?
+    public var mainKindNameEn: String?
+    public var subKindId: Int?
+    public var subKindDocumentId: String?
+    public var subKindNameAr: String?
+    public var subKindNameEn: String?
     public var petPhotoUrl: String?
     public var wing: HotelWing
     public var accommodationId: String
@@ -819,6 +1025,14 @@ public struct AdminHotelStay: Identifiable, Hashable {
         petName: String,
         petBreed: String,
         petSpecies: String,
+        mainKindId: Int? = nil,
+        mainKindDocumentId: String? = nil,
+        mainKindNameAr: String? = nil,
+        mainKindNameEn: String? = nil,
+        subKindId: Int? = nil,
+        subKindDocumentId: String? = nil,
+        subKindNameAr: String? = nil,
+        subKindNameEn: String? = nil,
         petPhotoUrl: String? = nil,
         wing: HotelWing,
         accommodationId: String,
@@ -852,6 +1066,14 @@ public struct AdminHotelStay: Identifiable, Hashable {
         self.petName = petName
         self.petBreed = petBreed
         self.petSpecies = petSpecies
+        self.mainKindId = mainKindId
+        self.mainKindDocumentId = mainKindDocumentId
+        self.mainKindNameAr = mainKindNameAr
+        self.mainKindNameEn = mainKindNameEn
+        self.subKindId = subKindId
+        self.subKindDocumentId = subKindDocumentId
+        self.subKindNameAr = subKindNameAr
+        self.subKindNameEn = subKindNameEn
         self.petPhotoUrl = petPhotoUrl
         self.wing = wing
         self.accommodationId = accommodationId
@@ -928,6 +1150,27 @@ public struct AdminHotelStay: Identifiable, Hashable {
             ?? dict["roomName"] as? String
             ?? ""
 
+        let mainKindId = (pet["mainKindId"] as? NSNumber)?.intValue
+            ?? (pet["mainKindId"] as? Int)
+            ?? (dict["mainKindId"] as? NSNumber)?.intValue
+            ?? (dict["mainKindId"] as? Int)
+        let mainKindDocId = pet["mainKindDocumentId"] as? String
+            ?? dict["mainKindDocumentId"] as? String
+        let mainKindAr = pet["mainKindNameAr"] as? String
+            ?? dict["mainKindNameAr"] as? String
+        let mainKindEn = pet["mainKindNameEn"] as? String
+            ?? dict["mainKindNameEn"] as? String
+        let subKindId = (pet["subKindId"] as? NSNumber)?.intValue
+            ?? (pet["subKindId"] as? Int)
+            ?? (dict["subKindId"] as? NSNumber)?.intValue
+            ?? (dict["subKindId"] as? Int)
+        let subKindDocId = pet["subKindDocumentId"] as? String
+            ?? dict["subKindDocumentId"] as? String
+        let subKindAr = pet["subKindNameAr"] as? String
+            ?? dict["subKindNameAr"] as? String
+        let subKindEn = pet["subKindNameEn"] as? String
+            ?? dict["subKindNameEn"] as? String
+
         return AdminHotelStay(
             id: id,
             stayNumber: resolvedStayNumber,
@@ -939,6 +1182,14 @@ public struct AdminHotelStay: Identifiable, Hashable {
             petName: pet["name"] as? String ?? dict["petName"] as? String ?? "",
             petBreed: pet["breed"] as? String ?? dict["petBreed"] as? String ?? "",
             petSpecies: pet["species"] as? String ?? dict["petSpecies"] as? String ?? "",
+            mainKindId: mainKindId,
+            mainKindDocumentId: mainKindDocId,
+            mainKindNameAr: mainKindAr,
+            mainKindNameEn: mainKindEn,
+            subKindId: subKindId,
+            subKindDocumentId: subKindDocId,
+            subKindNameAr: subKindAr,
+            subKindNameEn: subKindEn,
             petPhotoUrl: pet["imageURL"] as? String ?? dict["petPhotoUrl"] as? String,
             wing: resolvedHotelWing(rawValue: wingRaw, species: pet["species"] as? String ?? dict["petSpecies"] as? String),
             accommodationId: dict["accommodationId"] as? String ?? "",
@@ -961,7 +1212,15 @@ public struct AdminHotelStay: Identifiable, Hashable {
             pendingMedicationCount: dict["pendingMedicationCount"] as? Int ?? 0,
             criticalIncidentCount: dict["criticalIncidentCount"] as? Int ?? 0,
             grandTotalMinor: ledger["grandTotalMinor"] as? Int ?? 0,
-            outstandingMinor: ledger["outstandingMinor"] as? Int ?? 0,
+            outstandingMinor: {
+                let gt = ledger["grandTotalMinor"] as? Int ?? 0
+                let out = ledger["outstandingMinor"] as? Int ?? 0
+                let dep = (ledger["depositMinor"] as? Int) ?? (dict["depositMinor"] as? Int) ?? 0
+                if out == gt && dep > 0 && gt > 0 {
+                    return max(0, gt - dep)
+                }
+                return out
+            }(),
             paymentStatus: dict["paymentStatus"] as? String ?? "unpaid"
         )
     }
@@ -1038,5 +1297,401 @@ public struct AdminHotelCareTask: Identifiable, Hashable {
             notes: dict["instructions"] as? String ?? dict["notes"] as? String,
             status: statusRaw
         )
+    }
+}
+
+// MARK: - Animal Taxonomy Store (MainKinds Bridge)
+
+public struct PPAnimalTaxonomySubKind: Identifiable, Hashable, Sendable {
+    public let id: Int
+    public let documentID: String
+    public let nameAr: String
+    public let nameEn: String
+    public let mainKindID: Int
+
+    public var displayName: String {
+        Language.isRTL() ? (nameAr.isEmpty ? nameEn : nameAr) : (nameEn.isEmpty ? nameAr : nameEn)
+    }
+
+    public var localizedName: String {
+        displayName
+    }
+
+    public var documentId: String {
+        documentID
+    }
+}
+
+public struct PPAnimalTaxonomyKind: Identifiable, Hashable, Sendable {
+    public let id: Int
+    public let documentID: String
+    public let nameAr: String
+    public let nameEn: String
+    public let subKinds: [PPAnimalTaxonomySubKind]
+
+    public var displayName: String {
+        Language.isRTL() ? (nameAr.isEmpty ? nameEn : nameAr) : (nameEn.isEmpty ? nameAr : nameEn)
+    }
+
+    public var localizedName: String {
+        displayName
+    }
+
+    public var documentId: String {
+        documentID
+    }
+
+    public var iconName: String {
+        switch speciesEquivalent {
+        case "dog": return "dog.fill"
+        case "cat": return "cat.fill"
+        case "bird": return "bird.fill"
+        case "small_pets": return "hare.fill"
+        default:
+            let lowerAr = nameAr.lowercased()
+            let lowerEn = nameEn.lowercased()
+            if lowerAr.contains("صقر") || lowerAr.contains("صقور") || lowerEn.contains("falcon") {
+                return "bird.fill"
+            } else if lowerAr.contains("خيل") || lowerAr.contains("خيول") || lowerEn.contains("horse") {
+                return "figure.equestrian.sports"
+            } else if lowerAr.contains("إبل") || lowerEn.contains("camel") {
+                return "pawprint.fill"
+            }
+            return "pawprint.fill"
+        }
+    }
+
+    public var speciesEquivalent: String {
+        let lowerEn = nameEn.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let lowerAr = nameAr.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let lowerDoc = documentID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+        if id == 6 || lowerEn.contains("dog") || lowerAr.contains("كلاب") || lowerAr.contains("كلب") || lowerDoc == "dogs" || lowerDoc == "dog" {
+            return "dog"
+        }
+        if id == 5 || lowerEn.contains("cat") || lowerAr.contains("قطط") || lowerAr.contains("قط") || lowerDoc == "cats" || lowerDoc == "cat" {
+            return "cat"
+        }
+        if id == 1 || id == 11 || id == 12 || lowerEn.contains("bird") || lowerEn.contains("parrot") || lowerEn.contains("falcon") || lowerAr.contains("طيور") || lowerAr.contains("طير") || lowerAr.contains("صقور") || lowerDoc == "birds" || lowerDoc == "bird" {
+            return "bird"
+        }
+        if id == 8 || id == 4 || id == 7 || id == 9 || id == 10 || lowerEn.contains("rabbit") || lowerEn.contains("small") || lowerAr.contains("أرانب") || lowerAr.contains("حيوانات صغيرة") || lowerDoc.contains("small") {
+            return "small_pets"
+        }
+        if !lowerDoc.isEmpty && lowerDoc != "\(id)" {
+            return lowerDoc
+        }
+        return lowerEn.isEmpty ? (lowerAr.isEmpty ? "other" : lowerAr) : lowerEn
+    }
+}
+
+@MainActor
+public final class PPAnimalTaxonomyStore: ObservableObject {
+    public static let shared = PPAnimalTaxonomyStore()
+
+    @Published public private(set) var kinds: [PPAnimalTaxonomyKind] = []
+
+    private var mainKindsListener: ListenerRegistration?
+    private var subKindListeners: [String: ListenerRegistration] = [:]
+
+    private init() {
+        // Start immediately with canonical taxonomy matching PurePets Firestore
+        self.kinds = Self.defaultFallbackKinds
+
+        // Hydrate from existing memory managers if available
+        loadFromManagers()
+
+        // Kick off asynchronous hydration from MainKindsArrayManager and live Firestore
+        loadTaxonomy()
+
+        // Observe notifications from MainKindsArrayManager
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("MainKindsUpdatedNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.loadFromManagers()
+        }
+
+        // Attach live Firestore listener to MainKindsCollection + SubKinds subcollections
+        attachFirestoreListeners()
+    }
+
+    public func loadFromManagers() {
+        let rawArray: [MainKindsModel] = {
+            if let arr = MainKindsArrayManager.shared().mainKindsArray as? [MainKindsModel], !arr.isEmpty {
+                return arr
+            }
+            if let arr = AppManager.shared().mainKindsArray as? [MainKindsModel], !arr.isEmpty {
+                return arr
+            }
+            return []
+        }()
+
+        guard !rawArray.isEmpty else { return }
+
+        var updatedKinds: [PPAnimalTaxonomyKind] = []
+        for m in rawArray {
+            let mainID = Int(m.id)
+            let docID = m.documentID ?? "\(mainID)"
+            let ar = m.kindNameAr ?? ""
+            let en = m.kindNameEn ?? ""
+
+            var subKinds: [PPAnimalTaxonomySubKind] = []
+            if let subs = m.subKindsArray as? [SubKindModel] {
+                for s in subs {
+                    subKinds.append(PPAnimalTaxonomySubKind(
+                        id: Int(s.id),
+                        documentID: s.documentID ?? "\(s.id)",
+                        nameAr: s.subKindNameAr ?? "",
+                        nameEn: s.subKindNameEn ?? "",
+                        mainKindID: mainID
+                    ))
+                }
+            }
+
+            // If manager model has no subkinds yet, preserve existing subkinds if any
+            if subKinds.isEmpty, let existing = self.kinds.first(where: { $0.id == mainID || $0.documentID == docID }), !existing.subKinds.isEmpty {
+                subKinds = existing.subKinds
+            }
+
+            updatedKinds.append(PPAnimalTaxonomyKind(
+                id: mainID,
+                documentID: docID,
+                nameAr: ar,
+                nameEn: en,
+                subKinds: subKinds
+            ))
+        }
+
+        if !updatedKinds.isEmpty {
+            self.kinds = updatedKinds
+        }
+    }
+
+    public func loadTaxonomy() {
+        loadFromManagers()
+
+        // Request MainKindsArrayManager to hydrate if needed
+        MainKindsArrayManager.shared().loadMainDataCompletionHandler { [weak self] _ in
+            Task { @MainActor in
+                self?.loadFromManagers()
+            }
+        }
+    }
+
+    private func attachFirestoreListeners() {
+        guard mainKindsListener == nil else { return }
+        let db = Firestore.firestore()
+        mainKindsListener = db.collection("MainKindsCollection").order(by: "sortingKey").addSnapshotListener { [weak self] snapshot, error in
+            guard let self = self, let docs = snapshot?.documents, !docs.isEmpty else { return }
+            Task { @MainActor in
+                self.processMainKindsSnapshot(docs)
+            }
+        }
+    }
+
+    private func processMainKindsSnapshot(_ docs: [QueryDocumentSnapshot]) {
+        var newKinds: [PPAnimalTaxonomyKind] = []
+
+        for doc in docs {
+            let data = doc.data()
+            let mainID = (data["ID"] as? NSNumber)?.intValue ?? Int(doc.documentID) ?? 0
+            let docID = doc.documentID
+            let ar = (data["KindNameAr"] as? String) ?? ""
+            let en = (data["KindNameEn"] as? String) ?? ""
+
+            // Check embedded SubKindsArray
+            var subKinds: [PPAnimalTaxonomySubKind] = []
+            if let rawSubs = data["SubKindsArray"] as? [[String: Any]] {
+                for sDict in rawSubs {
+                    let sId = (sDict["ID"] as? NSNumber)?.intValue ?? 0
+                    let sDocId = (sDict["documentID"] as? String) ?? "\(sId)"
+                    let sAr = (sDict["SubKindNameAr"] as? String) ?? (sDict["nameAr"] as? String) ?? ""
+                    let sEn = (sDict["SubKindNameEn"] as? String) ?? (sDict["nameEn"] as? String) ?? ""
+                    if !sAr.isEmpty || !sEn.isEmpty {
+                        subKinds.append(PPAnimalTaxonomySubKind(
+                            id: sId,
+                            documentID: sDocId,
+                            nameAr: sAr,
+                            nameEn: sEn,
+                            mainKindID: mainID
+                        ))
+                    }
+                }
+            }
+
+            // If empty, preserve current known subkinds
+            if subKinds.isEmpty, let existing = self.kinds.first(where: { $0.id == mainID || $0.documentID == docID }), !existing.subKinds.isEmpty {
+                subKinds = existing.subKinds
+            }
+
+            newKinds.append(PPAnimalTaxonomyKind(
+                id: mainID,
+                documentID: docID,
+                nameAr: ar,
+                nameEn: en,
+                subKinds: subKinds
+            ))
+
+            // Attach listener to SubKinds subcollection for this document
+            attachSubKindsListener(for: doc)
+        }
+
+        if !newKinds.isEmpty {
+            self.kinds = newKinds
+        }
+    }
+
+    private func attachSubKindsListener(for doc: QueryDocumentSnapshot) {
+        let docID = doc.documentID
+        guard subKindListeners[docID] == nil else { return }
+
+        let mainID = (doc.data()["ID"] as? NSNumber)?.intValue ?? Int(docID) ?? 0
+        let listener = doc.reference.collection("SubKinds").order(by: "ID").addSnapshotListener { [weak self] subSnapshot, error in
+            guard let self = self, let subDocs = subSnapshot?.documents, !subDocs.isEmpty else { return }
+            Task { @MainActor in
+                self.processSubKindsSnapshot(mainKindDocID: docID, mainKindID: mainID, subDocs: subDocs)
+            }
+        }
+        subKindListeners[docID] = listener
+    }
+
+    private func processSubKindsSnapshot(mainKindDocID: String, mainKindID: Int, subDocs: [QueryDocumentSnapshot]) {
+        var fetchedSubKinds: [PPAnimalTaxonomySubKind] = []
+        for sDoc in subDocs {
+            let data = sDoc.data()
+            let sId = (data["ID"] as? NSNumber)?.intValue ?? Int(sDoc.documentID) ?? 0
+            let sAr = (data["SubKindNameAr"] as? String) ?? (data["nameAr"] as? String) ?? ""
+            let sEn = (data["SubKindNameEn"] as? String) ?? (data["nameEn"] as? String) ?? ""
+            let mId = (data["MainKindID"] as? NSNumber)?.intValue ?? mainKindID
+
+            if !sAr.isEmpty || !sEn.isEmpty {
+                fetchedSubKinds.append(PPAnimalTaxonomySubKind(
+                    id: sId,
+                    documentID: sDoc.documentID,
+                    nameAr: sAr,
+                    nameEn: sEn,
+                    mainKindID: mId
+                ))
+            }
+        }
+
+        guard !fetchedSubKinds.isEmpty else { return }
+
+        // Update the kind in kinds array
+        if let idx = self.kinds.firstIndex(where: { $0.documentID == mainKindDocID || $0.id == mainKindID }) {
+            let current = self.kinds[idx]
+            // Merge subkinds keeping uniqueness by id or documentID
+            var mergedMap: [String: PPAnimalTaxonomySubKind] = [:]
+            for s in current.subKinds {
+                mergedMap[s.documentID] = s
+            }
+            for s in fetchedSubKinds {
+                mergedMap[s.documentID] = s
+            }
+            let sortedSubKinds = Array(mergedMap.values).sorted(by: { $0.id < $1.id })
+            self.kinds[idx] = PPAnimalTaxonomyKind(
+                id: current.id,
+                documentID: current.documentID,
+                nameAr: current.nameAr,
+                nameEn: current.nameEn,
+                subKinds: sortedSubKinds
+            )
+        }
+    }
+
+    public static let defaultFallbackKinds: [PPAnimalTaxonomyKind] = [
+        PPAnimalTaxonomyKind(id: 6, documentID: "6", nameAr: "كلاب", nameEn: "Dogs", subKinds: [
+            PPAnimalTaxonomySubKind(id: 28, documentID: "28", nameAr: "جولدن ريتريفر", nameEn: "Golden Retriever", mainKindID: 6),
+            PPAnimalTaxonomySubKind(id: 22, documentID: "22", nameAr: "جيرمان شيبرد", nameEn: "German Shepherd", mainKindID: 6),
+            PPAnimalTaxonomySubKind(id: 27, documentID: "27", nameAr: "بومرينيان", nameEn: "Pomeranian", mainKindID: 6),
+            PPAnimalTaxonomySubKind(id: 23, documentID: "23", nameAr: "مالينو", nameEn: "Malinois", mainKindID: 6),
+            PPAnimalTaxonomySubKind(id: 25, documentID: "25", nameAr: "الدوبرمان", nameEn: "Doberman", mainKindID: 6),
+            PPAnimalTaxonomySubKind(id: 26, documentID: "26", nameAr: "الروت وايلر", nameEn: "Rottweiler", mainKindID: 6),
+            PPAnimalTaxonomySubKind(id: 24, documentID: "24", nameAr: "البول ماستيف", nameEn: "Bullmastiff", mainKindID: 6),
+            PPAnimalTaxonomySubKind(id: 29, documentID: "29", nameAr: "بيتبول", nameEn: "Pitbull", mainKindID: 6),
+            PPAnimalTaxonomySubKind(id: 102, documentID: "husky", nameAr: "هاسكي سيبيري", nameEn: "Siberian Husky", mainKindID: 6),
+            PPAnimalTaxonomySubKind(id: 104, documentID: "mixed_dog", nameAr: "سلالة مختلطة", nameEn: "Mixed Breed", mainKindID: 6)
+        ]),
+        PPAnimalTaxonomyKind(id: 5, documentID: "5", nameAr: "قطط", nameEn: "Cats", subKinds: [
+            PPAnimalTaxonomySubKind(id: 16, documentID: "16", nameAr: "شيرازي", nameEn: "Persian", mainKindID: 5),
+            PPAnimalTaxonomySubKind(id: 17, documentID: "17", nameAr: "سيامي", nameEn: "Siamese", mainKindID: 5),
+            PPAnimalTaxonomySubKind(id: 18, documentID: "18", nameAr: "سكوتش فولد", nameEn: "Scottish Fold", mainKindID: 5),
+            PPAnimalTaxonomySubKind(id: 19, documentID: "19", nameAr: "هيمالايا", nameEn: "Himalayan", mainKindID: 5),
+            PPAnimalTaxonomySubKind(id: 20, documentID: "20", nameAr: "البيرمان", nameEn: "Birman", mainKindID: 5),
+            PPAnimalTaxonomySubKind(id: 21, documentID: "21", nameAr: "فرعوني", nameEn: "Sphynx", mainKindID: 5),
+            PPAnimalTaxonomySubKind(id: 202, documentID: "british", nameAr: "بريطاني قصير الشعر", nameEn: "British Shorthair", mainKindID: 5),
+            PPAnimalTaxonomySubKind(id: 204, documentID: "mixed_cat", nameAr: "سلالة مختلطة / بلدي", nameEn: "Domestic / Mixed", mainKindID: 5)
+        ]),
+        PPAnimalTaxonomyKind(id: 1, documentID: "1", nameAr: "طيور", nameEn: "Birds", subKinds: [
+            PPAnimalTaxonomySubKind(id: 1, documentID: "1", nameAr: "كاسكو", nameEn: "African grey", mainKindID: 1),
+            PPAnimalTaxonomySubKind(id: 6, documentID: "6", nameAr: "الكوكاتيل", nameEn: "Cockatiel", mainKindID: 1),
+            PPAnimalTaxonomySubKind(id: 3, documentID: "3", nameAr: "الدره", nameEn: "Ringneck", mainKindID: 1),
+            PPAnimalTaxonomySubKind(id: 32, documentID: "32", nameAr: "كانيور", nameEn: "Conure", mainKindID: 1),
+            PPAnimalTaxonomySubKind(id: 4, documentID: "4", nameAr: "كوكاتو", nameEn: "Cockatoo", mainKindID: 1),
+            PPAnimalTaxonomySubKind(id: 5, documentID: "5", nameAr: "بادجي", nameEn: "Budgie", mainKindID: 1),
+            PPAnimalTaxonomySubKind(id: 7, documentID: "7", nameAr: "طيور الحب", nameEn: "Love bird", mainKindID: 1),
+            PPAnimalTaxonomySubKind(id: 8, documentID: "8", nameAr: "ماكاو", nameEn: "Macaws", mainKindID: 1),
+            PPAnimalTaxonomySubKind(id: 9, documentID: "9", nameAr: "الأمازون", nameEn: "Amazon", mainKindID: 1),
+            PPAnimalTaxonomySubKind(id: 2, documentID: "2", nameAr: "كناري", nameEn: "canary", mainKindID: 1)
+        ]),
+        PPAnimalTaxonomyKind(id: 8, documentID: "8", nameAr: "أرانب وحيوانات أليفة صغيرة", nameEn: "Small Pets & Rabbits", subKinds: [
+            PPAnimalTaxonomySubKind(id: 401, documentID: "rabbit", nameAr: "أرنب هولندي / قزم", nameEn: "Holland Lop / Dwarf Rabbit", mainKindID: 8),
+            PPAnimalTaxonomySubKind(id: 402, documentID: "hamster", nameAr: "هامستر سوري / قزم", nameEn: "Syrian / Dwarf Hamster", mainKindID: 8),
+            PPAnimalTaxonomySubKind(id: 403, documentID: "guinea_pig", nameAr: "خنزير غينيا (كابياء)", nameEn: "Guinea Pig", mainKindID: 8),
+            PPAnimalTaxonomySubKind(id: 404, documentID: "chinchilla", nameAr: "شنشيلا", nameEn: "Chinchilla", mainKindID: 8)
+        ])
+    ]
+
+    public func kind(forID id: Int) -> PPAnimalTaxonomyKind? {
+        kinds.first(where: { $0.id == id })
+    }
+
+    public func kind(forSpecies species: String) -> PPAnimalTaxonomyKind? {
+        let trimmed = species.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return kinds.first(where: {
+            $0.speciesEquivalent.lowercased() == trimmed
+            || $0.documentID.lowercased() == trimmed
+            || $0.nameEn.lowercased() == trimmed
+            || $0.nameAr == species
+            || ($0.id == 6 && (trimmed == "dog" || trimmed == "dogs"))
+            || ($0.id == 5 && (trimmed == "cat" || trimmed == "cats"))
+            || ($0.id == 1 && (trimmed == "bird" || trimmed == "birds" || trimmed == "parrot"))
+            || ($0.id == 8 && (trimmed == "small_pets" || trimmed == "smallpet" || trimmed == "rabbit" || trimmed == "small_pet"))
+        })
+    }
+
+    public func subKind(forID id: Int, mainKindID: Int) -> PPAnimalTaxonomySubKind? {
+        kind(forID: mainKindID)?.subKinds.first(where: { $0.id == id })
+    }
+
+    public func subKinds(for mainKindID: Int) -> [PPAnimalTaxonomySubKind] {
+        kind(forID: mainKindID)?.subKinds ?? []
+    }
+
+    public func subKind(forBreedName name: String, mainKindID: Int? = nil) -> PPAnimalTaxonomySubKind? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return nil }
+
+        let searchKinds: [PPAnimalTaxonomyKind] = {
+            if let mainKindID, let specific = kind(forID: mainKindID) {
+                return [specific]
+            }
+            return kinds
+        }()
+
+        for k in searchKinds {
+            if let match = k.subKinds.first(where: {
+                $0.nameAr.lowercased() == trimmed
+                || $0.nameEn.lowercased() == trimmed
+                || $0.localizedName.lowercased() == trimmed
+                || $0.nameAr.contains(name)
+                || trimmed.contains($0.nameAr.lowercased())
+            }) {
+                return match
+            }
+        }
+        return nil
     }
 }

@@ -2192,19 +2192,19 @@ struct PPInventoryListView: View {
     private var staff: PPStaffDoc? { PPStaffAuth.shared().cachedCurrentStaff }
     private var canManageStock: Bool {
         if let session {
-            return session.hasPermission("stock.manage") || session.grantsAllPermissions || session.roleIdentifier == "admin" || session.roleIdentifier == "super_admin"
+            return session.hasPermission("stock.manage") || session.grantsAllPermissions || session.roleIdentifier == "admin" || session.roleIdentifier == "super_admin" || session.roleIdentifier == "owner"
         }
         return (staff?.hasPermission(kStaffPermStockManage) ?? false) || (staff?.isAdmin() ?? false)
     }
     private var canCreateStock: Bool {
         if let session {
-            return session.hasPermission("stock.create") || session.grantsAllPermissions || session.roleIdentifier == "admin" || session.roleIdentifier == "super_admin"
+            return session.hasPermission("stock.create") || session.grantsAllPermissions || session.roleIdentifier == "admin" || session.roleIdentifier == "super_admin" || session.roleIdentifier == "owner"
         }
         return (staff?.hasPermission("stock.create") ?? false) || (staff?.isAdmin() ?? false)
     }
     private var canDeleteStock: Bool {
         if let session {
-            return session.hasPermission("stock.delete") || session.grantsAllPermissions || session.roleIdentifier == "admin" || session.roleIdentifier == "super_admin"
+            return session.hasPermission("stock.delete") || session.grantsAllPermissions || session.roleIdentifier == "admin" || session.roleIdentifier == "super_admin" || session.roleIdentifier == "owner"
         }
         return (staff?.hasPermission("stock.delete") ?? false) || (staff?.isAdmin() ?? false)
     }
@@ -2216,7 +2216,7 @@ struct PPInventoryListView: View {
     }
     private var canViewCosts: Bool {
         if let session {
-            return session.hasPermission("stock.cost.view") || session.grantsAllPermissions || session.roleIdentifier == "admin" || session.roleIdentifier == "super_admin"
+            return session.hasPermission("stock.cost.view") || session.grantsAllPermissions || session.roleIdentifier == "admin" || session.roleIdentifier == "super_admin" || session.roleIdentifier == "owner"
         }
         return (staff?.hasPermission("stock.cost.view") ?? false) || (staff?.isAdmin() ?? false)
     }
@@ -6085,7 +6085,7 @@ public struct PPInventoryItemDetailView: View {
                 )
                 telemetryTile(
                     title: Language.get("Category", alter: "القسم والتصنيف"),
-                    value: item.accessoryCategoryID?.isEmpty == false ? item.accessoryCategoryID! : PetAccessory.typeText(for: item),
+                    value: item.accessoryCategoryName ?? (item.accessoryCategoryID?.isEmpty == false ? item.accessoryCategoryID! : PetAccessory.typeText(for: item)),
                     icon: "folder.fill",
                     tint: AdminSurface.primary
                 )

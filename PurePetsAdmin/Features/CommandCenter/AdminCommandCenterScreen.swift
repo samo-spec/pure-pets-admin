@@ -4518,7 +4518,7 @@ private struct CommandPOSQuickExpenseView_iPad: View {
                         dismiss()
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: "xmark.circle.fill")
+                            Image(systemName: "xmark")
                                 .font(.system(size: 13, weight: .bold))
                             Text(Language.get("Cancel", alter: "إلغاء"))
                                 .font(PPBeirutiFont.bold(14, relativeTo: .headline))

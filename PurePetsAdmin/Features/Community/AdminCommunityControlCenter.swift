@@ -929,11 +929,12 @@ final class AdminCommunityService {
             guard let response = result.data as? [String: Any] else {
                 throw AdminCommunityServiceError.invalidResponse
             }
-            if response["ok"] as? Bool == false {
-                throw AdminCommunityServiceError.server(
-                    response["message"] as? String
-                        ?? Language.get("Community_Admin_Error_Command", alter: "تعذر تنفيذ أمر المجتمع.")
-                )
+            guard response["ok"] as? Bool == true else {
+                if let message = response["message"] as? String,
+                   !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    throw AdminCommunityServiceError.server(message)
+                }
+                throw AdminCommunityServiceError.invalidResponse
             }
             return response
         } catch let known as AdminCommunityServiceError {

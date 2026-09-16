@@ -700,4 +700,148 @@ static NSString * const kCachedMainKindsKey = @"cachedMainKinds";
         }
     }
 }
+
+- (NSArray<PPAccessoryCategoryModel *> *)accessoryCategoriesForMainKindID:(NSInteger)mainKindID {
+    MainKindsModel *mainKind = [self mainKindForID:mainKindID];
+    if (mainKind.accessoryCategories.count > 0) {
+        return mainKind.accessoryCategories;
+    }
+    return [MainKindsModel canonicalAccessoryCategoriesForMainKindID:mainKindID];
+}
+
+- (void)loadAccessoryCategoriesForMainKind:(MainKindsModel *)mainKind
+                                completion:(void (^)(NSArray<PPAccessoryCategoryModel *> *categories, NSError * _Nullable error))completion
+{
+    if (!mainKind) {
+        if (completion) completion(@[], [NSError errorWithDomain:@"arg" code:400 userInfo:@{NSLocalizedDescriptionKey:@"MainKind is missing"}]);
+        return;
+    }
+
+    // Ensure fallback is seeded immediately so UI never has an empty state
+    if (mainKind.accessoryCategories.count == 0) {
+        mainKind.accessoryCategories = [[MainKindsModel canonicalAccessoryCategoriesForMainKindID:mainKind.ID] mutableCopy];
+        mainKind.didSeedAccessoryCategories = YES;
+    }
+
+    FIRFirestore *db = [FIRFirestore firestore];
+    NSString *numericDocID = mainKind.ID > 0 ? [NSString stringWithFormat:@"%ld", (long)mainKind.ID] : @"";
+    NSMutableArray<NSString *> *candidateDocIDs = [NSMutableArray array];
+    void (^addCandidateDocID)(NSString *) = ^(NSString *docID) {
+        if (docID.length == 0) return;
+        if ([candidateDocIDs containsObject:docID]) return;
+        [candidateDocIDs addObject:docID];
+    };
+    addCandidateDocID(mainKind.documentID);
+    addCandidateDocID(numericDocID);
+
+    NSArray<PPAccessoryCategoryModel *> *(^categoriesFromSnapshot)(FIRQuerySnapshot *) =
+    ^NSArray<PPAccessoryCategoryModel *> *(FIRQuerySnapshot *snapshot) {
+        NSArray<FIRDocumentSnapshot *> *documents = snapshot.documents ?: @[];
+        NSMutableArray<PPAccessoryCategoryModel *> *categories = [NSMutableArray arrayWithCapacity:documents.count];
+        for (FIRDocumentSnapshot *doc in documents) {
+            PPAccessoryCategoryModel *category = [[PPAccessoryCategoryModel alloc] initWithSnapshot:doc mainKindID:mainKind.ID];
+            if (category.categoryID.length > 0 && category.enabled) {
+                [categories addObject:category];
+            }
+        }
+
+        [categories sortUsingComparator:^NSComparisonResult(PPAccessoryCategoryModel *a, PPAccessoryCategoryModel *b) {
+            if (a.sortingKey != b.sortingKey) {
+                return a.sortingKey < b.sortingKey ? NSOrderedAscending : NSOrderedDescending;
+            }
+            return [[a displayName] localizedCaseInsensitiveCompare:[b displayName]];
+        }];
+
+        return categories.copy;
+    };
+
+    void (^completeWithCategories)(NSString *, NSArray<PPAccessoryCategoryModel *> *, NSError *) =
+    ^(NSString *documentID, NSArray<PPAccessoryCategoryModel *> *categories, NSError *error) {
+        if (!error && categories.count > 0) {
+            if (documentID.length > 0) {
+                mainKind.documentID = documentID;
+            }
+            mainKind.accessoryCategories = categories.mutableCopy;
+            mainKind.didSeedAccessoryCategories = YES;
+        }
+        NSArray<PPAccessoryCategoryModel *> *result = mainKind.accessoryCategories.count > 0
+            ? mainKind.accessoryCategories
+            : [MainKindsModel canonicalAccessoryCategoriesForMainKindID:mainKind.ID];
+        if (completion) completion(result, error);
+    };
+
+    __block NSError *lastReadError = nil;
+    __block void (^finishAfterDocumentAttempts)(void);
+    __block void (^attemptDocumentAtIndex)(NSUInteger);
+
+    void (^completeEmptyOrError)(void) = ^{
+        NSArray<PPAccessoryCategoryModel *> *fallback = mainKind.accessoryCategories.count > 0
+            ? mainKind.accessoryCategories
+            : [MainKindsModel canonicalAccessoryCategoriesForMainKindID:mainKind.ID];
+        completeWithCategories(nil, fallback, lastReadError);
+    };
+
+    finishAfterDocumentAttempts = ^{
+        if (mainKind.ID <= 0) {
+            completeEmptyOrError();
+            return;
+        }
+
+        FIRQuery *query = [[[[db collectionWithPath:@"MainKindsCollection"]
+                             queryWhereField:@"ID" isEqualTo:@(mainKind.ID)]
+                            queryWhereField:@"is_visible_in_user_app" isEqualTo:@YES]
+                           queryLimitedTo:3];
+        [query getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
+            if (error) {
+                lastReadError = error;
+                completeEmptyOrError();
+                return;
+            }
+
+            NSUInteger originalCount = candidateDocIDs.count;
+            for (FIRDocumentSnapshot *doc in snapshot.documents ?: @[]) {
+                addCandidateDocID(doc.documentID);
+            }
+
+            if (candidateDocIDs.count > originalCount) {
+                attemptDocumentAtIndex(originalCount);
+            } else {
+                completeEmptyOrError();
+            }
+        }];
+    };
+
+    attemptDocumentAtIndex = ^(NSUInteger index) {
+        if (index >= candidateDocIDs.count) {
+            finishAfterDocumentAttempts();
+            return;
+        }
+
+        NSString *documentID = candidateDocIDs[index];
+        FIRDocumentReference *mainDoc = [[db collectionWithPath:@"MainKindsCollection"] documentWithPath:documentID];
+        FIRCollectionReference *collection = [mainDoc collectionWithPath:@"accessoryCategoriesSubCollection"];
+        [collection getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
+            if (error) {
+                lastReadError = error;
+                attemptDocumentAtIndex(index + 1);
+                return;
+            }
+
+            NSArray<PPAccessoryCategoryModel *> *categories = categoriesFromSnapshot(snapshot);
+            if (categories.count > 0) {
+                completeWithCategories(documentID, categories, nil);
+                return;
+            }
+
+            attemptDocumentAtIndex(index + 1);
+        }];
+    };
+
+    if (candidateDocIDs.count == 0) {
+        finishAfterDocumentAttempts();
+        return;
+    }
+    attemptDocumentAtIndex(0);
+}
+
 @end
