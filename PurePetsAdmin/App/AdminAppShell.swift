@@ -111,7 +111,7 @@ struct AdminAppShell: View {
         .ignoresSafeArea()
         .tint(AdminSurface.primary)
         .background(routePushLink)
-        .sheet(isPresented: $showingPurySheet) {
+        .fullScreenCover(isPresented: $showingPurySheet) {
             PuryAssistantSheetView(
                 session: session,
                 router: router,

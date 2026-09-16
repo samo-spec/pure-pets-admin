@@ -14,6 +14,34 @@ import MapKit
 import SwiftUI
 import UIKit
 
+// MARK: - Color Utilities
+
+fileprivate extension Color {
+    init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3: // RGB (12-bit)
+            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6: // RGB (24-bit)
+            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8: // ARGB (32-bit)
+            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default:
+            (a, r, g, b) = (255, 0, 0, 0)
+        }
+        self.init(
+            .sRGB,
+            red: Double(r) / 255,
+            green: Double(g) / 255,
+            blue: Double(b) / 255,
+            opacity: Double(a) / 255
+        )
+    }
+}
+
 // MARK: - Backend value model
 
 struct CommunityAdminRecord: Identifiable {
@@ -393,6 +421,24 @@ enum CommunityAdminLane: String, CaseIterable, Identifiable {
 
     var supportsStatusFilter: Bool {
         ![.overview, .operationsMap, .configuration, .analytics, .audit].contains(self)
+    }
+
+    var accentColor: Color {
+        switch self {
+        case .adoptionListings: return Color(hex: "#E11D48")
+        case .missingCases: return Color(hex: "#F59E0B")
+        case .foundReports: return Color(hex: "#0D9488")
+        case .sightings: return Color(hex: "#06B6D4")
+        case .matches: return Color(hex: "#6366F1")
+        case .adoptionApplications: return Color(hex: "#8B5CF6")
+        case .moderation, .alerts: return Color(hex: "#DC2626")
+        case .organizations: return Color(hex: "#2563EB")
+        case .media: return Color(hex: "#EC4899")
+        case .operationsMap: return Color(hex: "#10B981")
+        case .analytics: return Color(hex: "#3B82F6")
+        case .audit: return Color(hex: "#64748B")
+        default: return AdminSurface.primary
+        }
     }
 }
 
@@ -784,7 +830,17 @@ enum AdminCommunityServiceError: LocalizedError {
         case .invalidResponse:
             return Language.get("Community_Admin_Error_Response", alter: "وصلت استجابة غير صالحة من خادم المجتمع.")
         case .server(let message), .transport(let message):
-            return message
+            let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.caseInsensitiveCompare("INTERNAL") == .orderedSame ||
+               trimmed.localizedCaseInsensitiveContains("internal") ||
+               trimmed.contains("FIRFunctionsErrorDomain") {
+                return Language.get("Community_Admin_Error_ServerSync", alter: "تعذرت المزامنة مع الخادم مؤقتاً. يجري تجهيز البيانات.")
+            }
+            if trimmed.caseInsensitiveCompare("UNAVAILABLE") == .orderedSame ||
+               trimmed.localizedCaseInsensitiveContains("unavailable") {
+                return Language.get("Community_Admin_Error_Unavailable", alter: "الخدمة غير متوفرة حالياً. يرجى المحاولة بعد قليل.")
+            }
+            return trimmed.isEmpty ? Language.get("Community_Admin_Error_Generic", alter: "حدث خطأ غير متوقع. أعد المحاولة.") : trimmed
         }
     }
 }
@@ -1252,7 +1308,7 @@ final class AdminCommunityWorkspaceStore: ObservableObject {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = humanizedMessage(for: error)
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             return false
         }
@@ -1281,7 +1337,7 @@ final class AdminCommunityWorkspaceStore: ObservableObject {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = humanizedMessage(for: error)
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             return false
         }
@@ -1290,6 +1346,20 @@ final class AdminCommunityWorkspaceStore: ObservableObject {
     func clearMessages() {
         errorMessage = nil
         successMessage = nil
+    }
+
+    private func humanizedMessage(for error: Error) -> String {
+        let message = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        if message.caseInsensitiveCompare("INTERNAL") == .orderedSame ||
+           message.localizedCaseInsensitiveContains("internal") ||
+           message.contains("FIRFunctionsErrorDomain") {
+            return Language.get("Community_Admin_Error_ServerSync", alter: "تعذرت المزامنة مع الخادم مؤقتاً. يجري تجهيز البيانات.")
+        }
+        if message.caseInsensitiveCompare("UNAVAILABLE") == .orderedSame ||
+           message.localizedCaseInsensitiveContains("unavailable") {
+            return Language.get("Community_Admin_Error_Unavailable", alter: "الخدمة غير متوفرة حالياً. يرجى المحاولة بعد قليل.")
+        }
+        return message.isEmpty ? Language.get("Community_Admin_Error_Generic", alter: "حدث خطأ غير متوقع. أعد المحاولة.") : message
     }
 
     private func load(reset: Bool) async {
@@ -1378,7 +1448,7 @@ final class AdminCommunityWorkspaceStore: ObservableObject {
             }
         } catch {
             guard generation == loadGeneration else { return }
-            errorMessage = error.localizedDescription
+            errorMessage = humanizedMessage(for: error)
         }
     }
 
@@ -1413,7 +1483,7 @@ final class AdminCommunityWorkspaceStore: ObservableObject {
             dossierSections = Self.dossierSections(response["related"])
         } catch {
             guard generation == dossierGeneration else { return }
-            dossierErrorMessage = error.localizedDescription
+            dossierErrorMessage = humanizedMessage(for: error)
         }
     }
 
@@ -1771,24 +1841,49 @@ struct AdminCommunityControlCenterView: View {
         UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact
     }
 
+    private var activeLaneColor: Color {
+        store.selectedLane.accentColor
+    }
+
+    private func laneColor(for lane: CommunityAdminLane) -> Color {
+        lane.accentColor
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider().overlay(AdminSurface.hairline)
-            if isWide {
-                HStack(spacing: 0) {
-                    laneSidebar
-                        .frame(width: 246)
-                    Divider().overlay(AdminSurface.hairline)
+        GeometryReader { geometry in
+            // Strictly compute safe area top to ensure the navigation bar starts below the status bar
+            let safeTop = max(geometry.safeAreaInsets.top, PPStatusBarHelper.statusBarHeight, 47)
+            VStack(spacing: 0) {
+                header(safeTop: safeTop)
+                
+                if isWide {
+                    HStack(spacing: 0) {
+                        laneSidebar
+                            .frame(width: 260)
+                        Divider().overlay(AdminSurface.hairline)
+                        workspace
+                    }
+                } else {
+                    laneRail
                     workspace
                 }
-            } else {
-                laneRail
-                Divider().overlay(AdminSurface.hairline)
-                workspace
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(
+                ZStack {
+                    AdminSurface.background
+                    // Subtle dynamic ambient atmosphere
+                    RadialGradient(
+                        colors: [activeLaneColor.opacity(0.045), Color.clear],
+                        center: .top,
+                        startRadius: 20,
+                        endRadius: 520
+                    )
+                }
+                .ignoresSafeArea()
+            )
         }
-        .background(AdminSurface.background.ignoresSafeArea())
+        .ignoresSafeArea()
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .task { await store.start() }
         .sheet(item: $store.selectedRecord, onDismiss: {
@@ -1811,62 +1906,140 @@ struct AdminCommunityControlCenterView: View {
         }
     }
 
-    private var header: some View {
-        HStack(spacing: 14) {
-            Button(action: onDismiss) {
-                Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .frame(width: 42, height: 42)
-                    .background(AdminSurface.control, in: Circle())
-                    .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: 0.8))
-            }
-            .accessibilityLabel(Language.get("Back", alter: "رجوع"))
+    private func header(safeTop: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            // Status bar clearance spacer - guarantees navigation bar begins below status bar
+            Color.clear.frame(height: safeTop)
 
-            ZStack {
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .fill(AdminSurface.primary.opacity(0.13))
-                Image(systemName: "pawprint.fill")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(AdminSurface.primary)
-            }
-            .frame(width: 42, height: 42)
-            .accessibilityHidden(true)
+            HStack(spacing: 12) {
+                Button(action: onDismiss) {
+                    Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .frame(width: 40, height: 40)
+                        .background(AdminSurface.surface, in: Circle())
+                        .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: 0.8))
+                        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Language.get("Back", alter: "رجوع"))
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(Language.get("Community_Admin_Title", alter: "مركز عمليات المجتمع"))
-                    .font(AdminType.title3)
-                    .foregroundStyle(AdminSurface.primaryText)
-                Text(Language.get("Community_Admin_Subtitle", alter: "التبني · المفقودات · الثقة والسلامة"))
-                    .font(AdminType.caption)
-                    .foregroundStyle(AdminSurface.secondaryText)
-                    .lineLimit(1)
-            }
+                ZStack(alignment: .bottomTrailing) {
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [activeLaneColor.opacity(0.18), AdminSurface.primary.opacity(0.10)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 40, height: 40)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                .stroke(activeLaneColor.opacity(0.25), lineWidth: 0.8)
+                        )
+                    Image(systemName: "pawprint.fill")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(activeLaneColor)
+                        .frame(width: 40, height: 40)
 
-            Spacer(minLength: 8)
+                    Circle()
+                        .fill(store.isLoading ? Color.orange : AdminSurface.emerald)
+                        .frame(width: 9, height: 9)
+                        .overlay(Circle().stroke(AdminSurface.surface, lineWidth: 1.8))
+                        .offset(x: 2, y: 2)
+                }
+                .accessibilityHidden(true)
 
-            if store.isMutating {
-                ProgressView()
-                    .tint(AdminSurface.primary)
-                    .accessibilityLabel(Language.get("Community_Admin_Working", alter: "جارٍ تنفيذ العملية"))
-            }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("Community_Admin_Title", alter: "مركز عمليات المجتمع"))
+                        .font(PPBrandFont.bold(size: 17))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
 
-            Button {
-                Task { await store.refresh() }
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .frame(width: 42, height: 42)
-                    .background(AdminSurface.control, in: Circle())
-                    .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: 0.8))
+                    HStack(spacing: 4) {
+                        Text(laneSubtitle)
+                            .font(PPBrandFont.medium(size: 11.5))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .lineLimit(1)
+                        if store.isLoading {
+                            Text("· " + Language.get("Community_Admin_Syncing", alter: "جارٍ المزامنة…"))
+                                .font(PPBrandFont.regular(size: 11))
+                                .foregroundStyle(Color.orange)
+                        }
+                    }
+                }
+
+                Spacer(minLength: 6)
+
+                if store.isMutating {
+                    ProgressView()
+                        .tint(activeLaneColor)
+                        .scaleEffect(0.85)
+                        .accessibilityLabel(Language.get("Community_Admin_Working", alter: "جارٍ تنفيذ العملية"))
+                }
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    Task { await store.refresh() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(store.isLoading ? activeLaneColor : AdminSurface.primaryText)
+                        .frame(width: 40, height: 40)
+                        .background(AdminSurface.surface, in: Circle())
+                        .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: 0.8))
+                        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+                        .rotationEffect(.degrees(store.isLoading ? 360 : 0))
+                        .animation(store.isLoading ? .linear(duration: 0.9).repeatForever(autoreverses: false) : .default, value: store.isLoading)
+                }
+                .buttonStyle(.plain)
+                .disabled(store.isLoading || store.isMutating)
+                .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
             }
-            .disabled(store.isLoading || store.isMutating)
-            .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
+            .padding(.horizontal, isWide ? 24 : 16)
+            .padding(.bottom, 12)
+            .padding(.top, 6)
         }
-        .padding(.horizontal, isWide ? 24 : 16)
-        .padding(.vertical, 12)
-        .background(AdminSurface.surface)
+        .background(
+            AdminSurface.surface
+                .overlay(
+                    LinearGradient(
+                        colors: [activeLaneColor.opacity(0.04), Color.clear],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .shadow(color: Color.black.opacity(0.03), radius: 8, x: 0, y: 3)
+                .ignoresSafeArea(edges: .top)
+        )
+    }
+
+    private var laneSubtitle: String {
+        switch store.selectedLane {
+        case .overview:
+            return Language.get("Community_Admin_Overview_Subtitle_Short", alter: "نبض المجتمع والعمليات الحية")
+        case .adoptionListings:
+            let count = store.overview["activeAdoptions", default: store.records.count]
+            return String(format: Language.get("Community_Admin_Adoption_Subtitle_Short", alter: "التبني ورعاية الألياف · %d إعلان نشط"), count)
+        case .adoptionApplications:
+            return Language.get("Community_Admin_Applications_Subtitle_Short", alter: "طلبات التبني ومطابقة الأسر")
+        case .missingCases:
+            let count = store.overview["activeMissing", default: 0]
+            return String(format: Language.get("Community_Admin_Missing_Subtitle_Short", alter: "رادار المفقودات · %d بلاغ نشط"), count)
+        case .foundReports:
+            return Language.get("Community_Admin_Found_Subtitle_Short", alter: "بلاغات العثور على ألياف")
+        case .matches:
+            return Language.get("Community_Admin_Matches_Subtitle_Short", alter: "المطابقات الذكية للمفقودات")
+        case .moderation:
+            return Language.get("Community_Admin_Moderation_Subtitle_Short", alter: "الثقة والسلامة وحماية المحتوى")
+        case .organizations:
+            return Language.get("Community_Admin_Org_Subtitle_Short", alter: "توثيق واعتماد الملاجئ والجمعيات")
+        case .alerts:
+            return Language.get("Community_Admin_Alerts_Subtitle_Short", alter: "التنبيهات التشغيلية الحرجة")
+        default:
+            return Language.get("Community_Admin_Subtitle", alter: "التبني · المفقودات · الثقة والسلامة")
+        }
     }
 
     private var laneRail: some View {
@@ -1879,7 +2052,8 @@ struct AdminCommunityControlCenterView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
         }
-        .background(AdminSurface.surface)
+        .background(AdminSurface.surface.opacity(0.75))
+        .overlay(Divider().overlay(AdminSurface.hairline), alignment: .bottom)
     }
 
     private var laneSidebar: some View {
@@ -1894,31 +2068,67 @@ struct AdminCommunityControlCenterView: View {
         .background(AdminSurface.surface)
     }
 
+    private func laneBadgeCount(for lane: CommunityAdminLane) -> Int {
+        switch lane {
+        case .adoptionListings: return store.overview["activeAdoptions", default: 0]
+        case .missingCases: return store.overview["activeMissing", default: 0]
+        case .foundReports: return store.overview["activeFoundReports", default: 0]
+        case .matches: return store.overview["pendingMatches", default: 0]
+        case .moderation: return store.overview["pendingModeration", default: 0]
+        case .organizations: return store.overview["pendingOrganizations", default: 0]
+        case .alerts: return (store.diagnostics["openAlerts"] as? NSNumber)?.intValue ?? 0
+        default: return 0
+        }
+    }
+
     private func laneButton(_ lane: CommunityAdminLane, compact: Bool) -> some View {
         let selected = store.selectedLane == lane
+        let badgeCount = laneBadgeCount(for: lane)
+        let color = laneColor(for: lane)
         return Button {
             UISelectionFeedbackGenerator().selectionChanged()
-            withAnimation(reduceMotion ? nil : .snappy(duration: 0.24)) {
+            withAnimation(reduceMotion ? nil : .snappy(duration: 0.26)) {
                 store.select(lane)
             }
         } label: {
-            HStack(spacing: 9) {
+            HStack(spacing: 8) {
                 Image(systemName: lane.symbol)
                     .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(selected ? Color.white : color)
                 Text(Language.get(lane.titleKey, alter: lane.fallbackTitle))
-                    .font(selected ? AdminType.captionBold : AdminType.caption)
+                    .font(selected ? PPBrandFont.bold(size: 13) : PPBrandFont.medium(size: 13))
                     .lineLimit(1)
+                if badgeCount > 0 {
+                    Text("\(badgeCount)")
+                        .font(PPBrandFont.bold(size: 11).monospacedDigit())
+                        .foregroundStyle(selected ? color : Color.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(selected ? Color.white : color, in: Capsule())
+                }
                 if !compact { Spacer(minLength: 0) }
             }
-            .foregroundStyle(selected ? Color.white : AdminSurface.secondaryText)
-            .padding(.horizontal, compact ? 13 : 12)
+            .foregroundStyle(selected ? Color.white : AdminSurface.primaryText)
+            .padding(.horizontal, compact ? 14 : 12)
             .frame(minHeight: 38)
             .frame(maxWidth: compact ? nil : .infinity, alignment: .leading)
-            .background(selected ? AdminSurface.primary : AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(
+                selected
+                    ? AnyShapeStyle(
+                        LinearGradient(
+                            colors: [color, color.opacity(0.85)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    : AnyShapeStyle(AdminSurface.surface),
+                in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+            )
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
                     .stroke(selected ? Color.clear : AdminSurface.hairline, lineWidth: 0.8)
             )
+            .shadow(color: selected ? color.opacity(0.28) : Color.black.opacity(0.03), radius: selected ? 6 : 2, x: 0, y: selected ? 3 : 1)
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
@@ -1929,17 +2139,20 @@ struct AdminCommunityControlCenterView: View {
         ZStack {
             AdminSurface.background
             if store.isLoading {
-                VStack(spacing: 12) {
-                    ProgressView().tint(AdminSurface.primary)
+                VStack(spacing: 14) {
+                    ProgressView().tint(activeLaneColor).scaleEffect(1.1)
                     Text(Language.get("Community_Admin_Loading", alter: "جارٍ تحميل بيانات المجتمع الآمنة…"))
-                        .font(AdminType.callout)
+                        .font(PPBrandFont.medium(size: 14))
                         .foregroundStyle(AdminSurface.secondaryText)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .accessibilityElement(children: .combine)
             } else {
                 switch store.selectedLane {
                 case .overview:
                     AdminCommunityOverviewView(store: store)
+                case .adoptionListings:
+                    AdminCommunityAdoptionWorkspace(store: store)
                 case .operationsMap:
                     AdminCommunityOperationsMapView(store: store)
                 case .configuration:
@@ -1967,53 +2180,20 @@ struct AdminCommunityControlCenterView: View {
     }
 }
 
-// MARK: - Overview
+// MARK: - Overview (Living Operational Cockpit)
 
 private struct AdminCommunityOverviewView: View {
     @ObservedObject var store: AdminCommunityWorkspaceStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    private struct Metric: Identifiable {
-        let id: String
-        let titleKey: String
-        let fallback: String
-        let symbol: String
-        let color: Color
-    }
-
-    private let metrics: [Metric] = [
-        .init(id: "activeAdoptions", titleKey: "Community_Admin_Metric_ActiveAdoptions", fallback: "إعلانات تبني نشطة", symbol: "heart.fill", color: .pink),
-        .init(id: "activeMissing", titleKey: "Community_Admin_Metric_ActiveMissing", fallback: "حالات فقدان نشطة", symbol: "magnifyingglass", color: .orange),
-        .init(id: "reunited", titleKey: "Community_Admin_Metric_Reunited", fallback: "تم لمّ شملها هذا الشهر", symbol: "house.and.flag.fill", color: .green),
-        .init(id: "activeFoundReports", titleKey: "Community_Admin_Metric_Found", fallback: "بلاغات عثور نشطة", symbol: "hand.raised.fill", color: .teal),
-        .init(id: "pendingMatches", titleKey: "Community_Admin_Metric_Matches", fallback: "مطابقات تنتظر المراجعة", symbol: "sparkles", color: .indigo),
-        .init(id: "pendingModeration", titleKey: "Community_Admin_Metric_Moderation", fallback: "حالات رقابة معلّقة", symbol: "shield.lefthalf.filled", color: .purple),
-        .init(id: "pendingOrganizations", titleKey: "Community_Admin_Metric_Organizations", fallback: "منظمات تنتظر التوثيق", symbol: "building.2.fill", color: .blue),
-        .init(id: "highRiskReports", titleKey: "Community_Admin_Metric_HighRisk", fallback: "بلاغات عالية الخطورة", symbol: "exclamationmark.shield.fill", color: .red)
-    ]
-
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 18) {
-                AdminCommunitySectionHeader(
-                    title: Language.get("Community_Admin_Overview_Title", alter: "نبض المجتمع الآن"),
-                    subtitle: Language.get("Community_Admin_Overview_Subtitle", alter: "مؤشرات تشغيلية مباشرة من الخادم، دون قراءات عميل غير موثوقة."),
-                    symbol: "waveform.path.ecg"
-                )
-
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: horizontalSizeClass == .regular ? 190 : 148), spacing: 12)], spacing: 12) {
-                    ForEach(metrics) { metric in
-                        metricCard(metric)
-                    }
-                }
-
-                if !store.diagnostics.isEmpty {
-                    diagnosticsPanel
-                }
-
-                attentionPanel
-
-                privacyPanel
+                pulseHeroHUD
+                domainCommandClusters
+                operationalSafetyMatrix
+                attentionHorizon
+                governanceAndPrivacyVault
             }
             .padding(horizontalSizeClass == .regular ? 24 : 16)
             .padding(.vertical, 20)
@@ -2021,32 +2201,213 @@ private struct AdminCommunityOverviewView: View {
         .refreshable { await store.refresh() }
     }
 
-    private func metricCard(_ metric: Metric) -> some View {
-        VStack(alignment: .leading, spacing: 13) {
-            HStack {
-                Image(systemName: metric.symbol)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(metric.color)
-                    .frame(width: 34, height: 34)
-                    .background(metric.color.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                Spacer()
-                Text(store.overview[metric.id, default: 0].formatted())
-                    .font(AdminType.title2.monospacedDigit())
-                    .foregroundStyle(AdminSurface.primaryText)
+    private var pulseHeroHUD: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(AdminSurface.emerald)
+                            .frame(width: 9, height: 9)
+                            .overlay(
+                                Circle()
+                                    .stroke(AdminSurface.emerald.opacity(0.4), lineWidth: 3)
+                                    .scaleEffect(1.4)
+                            )
+                        Text(Language.get("Community_Admin_Pulse_Live", alter: "نبض المجتمع المباشر"))
+                            .font(AdminType.title3)
+                            .foregroundStyle(AdminSurface.primaryText)
+                    }
+                    Text(Language.get("Community_Admin_Pulse_Subtitle", alter: "مؤشرات تشغيلية حية من الخادم، بدون حسابات عميل محلية."))
+                        .font(AdminType.caption)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+                Spacer(minLength: 8)
+                HStack(spacing: 6) {
+                    Image(systemName: "waveform.path.ecg")
+                        .font(.system(size: 13, weight: .bold))
+                    Text(Language.get("Community_Admin_Status_Healthy", alter: "الأنظمة نشطة"))
+                        .font(AdminType.caption2Bold)
+                }
+                .foregroundStyle(AdminSurface.emerald)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(AdminSurface.emerald.opacity(0.12), in: Capsule())
             }
-            Text(Language.get(metric.titleKey, alter: metric.fallback))
-                .font(AdminType.captionBold)
-                .foregroundStyle(AdminSurface.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 12) {
+                quickTelemetryPill(
+                    title: Language.get("Community_Admin_Metric_ActiveAdoptions", alter: "إعلانات تبني نشطة"),
+                    value: store.overview["activeAdoptions", default: 0],
+                    symbol: "heart.fill",
+                    color: .pink
+                ) {
+                    store.select(.adoptionListings)
+                }
+
+                quickTelemetryPill(
+                    title: Language.get("Community_Admin_Metric_ActiveMissing", alter: "حالات فقدان نشطة"),
+                    value: store.overview["activeMissing", default: 0],
+                    symbol: "magnifyingglass",
+                    color: .orange
+                ) {
+                    store.select(.missingCases)
+                }
+            }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, minHeight: 116, alignment: .leading)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
-        .accessibilityElement(children: .combine)
+        .padding(18)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
+        .shadow(color: Color.black.opacity(0.03), radius: 8, x: 0, y: 3)
     }
 
-    private var diagnosticsPanel: some View {
+    private func quickTelemetryPill(title: String, value: Int, symbol: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: symbol)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(color)
+                    .frame(width: 32, height: 32)
+                    .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(value)")
+                        .font(AdminType.title3.monospacedDigit())
+                        .foregroundStyle(AdminSurface.primaryText)
+                    Text(title)
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+            .padding(12)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var domainCommandClusters: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: horizontalSizeClass == .regular ? 260 : 158), spacing: 12)], spacing: 12) {
+            domainCard(
+                title: Language.get("Community_Admin_Metric_ActiveAdoptions", alter: "إعلانات التبني"),
+                count: store.overview["activeAdoptions", default: 0],
+                subtitle: Language.get("Community_Admin_Adoption_Focus", alter: "عائلات تبحث عن أليف"),
+                symbol: "heart.fill",
+                accent: .pink
+            ) {
+                store.select(.adoptionListings)
+            }
+
+            domainCard(
+                title: Language.get("Community_Admin_Metric_ActiveMissing", alter: "حالات الفقدان"),
+                count: store.overview["activeMissing", default: 0],
+                subtitle: Language.get("Community_Admin_Missing_Focus", alter: "بلاغات عاجلة قيد البحث"),
+                symbol: "magnifyingglass",
+                accent: .orange
+            ) {
+                store.select(.missingCases)
+            }
+
+            domainCard(
+                title: Language.get("Community_Admin_Metric_Reunited", alter: "تم لمّ شملها"),
+                count: store.overview["reunited", default: 0],
+                subtitle: Language.get("Community_Admin_Reunited_Focus", alter: "هذا الشهر بنجاح"),
+                symbol: "house.and.flag.fill",
+                accent: .green
+            ) {
+                store.select(.overview)
+            }
+
+            domainCard(
+                title: Language.get("Community_Admin_Metric_Found", alter: "بلاغات العثور"),
+                count: store.overview["activeFoundReports", default: 0],
+                subtitle: Language.get("Community_Admin_Found_Focus", alter: "ألياف تم العثور عليها"),
+                symbol: "hand.raised.fill",
+                accent: .teal
+            ) {
+                store.select(.foundReports)
+            }
+
+            domainCard(
+                title: Language.get("Community_Admin_Metric_Matches", alter: "المطابقات الذكية"),
+                count: store.overview["pendingMatches", default: 0],
+                subtitle: Language.get("Community_Admin_Matches_Focus", alter: "تنتظر مراجعة المشرف"),
+                symbol: "sparkles",
+                accent: .indigo
+            ) {
+                store.select(.matches)
+            }
+
+            domainCard(
+                title: Language.get("Community_Admin_Metric_Moderation", alter: "حالات الرقابة"),
+                count: store.overview["pendingModeration", default: 0],
+                subtitle: Language.get("Community_Admin_Moderation_Focus", alter: "محتوى معلق للتدقيق"),
+                symbol: "shield.lefthalf.filled",
+                accent: .purple
+            ) {
+                store.select(.moderation)
+            }
+
+            domainCard(
+                title: Language.get("Community_Admin_Metric_Organizations", alter: "توثيق المنظمات"),
+                count: store.overview["pendingOrganizations", default: 0],
+                subtitle: Language.get("Community_Admin_Org_Focus", alter: "جمعيات وملاجئ تنتظر الاعتماد"),
+                symbol: "building.2.fill",
+                accent: .blue
+            ) {
+                store.select(.organizations)
+            }
+
+            domainCard(
+                title: Language.get("Community_Admin_Metric_HighRisk", alter: "بلاغات عالية الخطورة"),
+                count: store.overview["highRiskReports", default: 0],
+                subtitle: Language.get("Community_Admin_HighRisk_Focus", alter: "تتطلب استجابة فورية"),
+                symbol: "exclamationmark.shield.fill",
+                accent: .red
+            ) {
+                store.select(.alerts)
+            }
+        }
+    }
+
+    private func domainCard(title: String, count: Int, subtitle: String, symbol: String, accent: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top) {
+                    Image(systemName: symbol)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(accent)
+                        .frame(width: 36, height: 36)
+                        .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    Spacer(minLength: 4)
+                    Text("\(count)")
+                        .font(AdminType.title2.monospacedDigit())
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(AdminType.captionBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+                    Text(subtitle)
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                }
+            }
+            .padding(15)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var operationalSafetyMatrix: some View {
         VStack(alignment: .leading, spacing: 14) {
             AdminCommunitySectionHeader(
                 title: Language.get("Community_Admin_Diagnostics", alter: "سلامة التشغيل"),
@@ -2077,7 +2438,7 @@ private struct AdminCommunityOverviewView: View {
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
     }
 
-    private var attentionPanel: some View {
+    private var attentionHorizon: some View {
         VStack(alignment: .leading, spacing: 13) {
             AdminCommunitySectionHeader(
                 title: Language.get("Community_Admin_Attention", alter: "يحتاج انتباهك"),
@@ -2142,7 +2503,7 @@ private struct AdminCommunityOverviewView: View {
         .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 
-    private var privacyPanel: some View {
+    private var governanceAndPrivacyVault: some View {
         HStack(alignment: .top, spacing: 13) {
             Image(systemName: "lock.shield.fill")
                 .font(.system(size: 19, weight: .bold))
@@ -2167,6 +2528,521 @@ private struct AdminCommunityOverviewView: View {
     }
 }
 
+// MARK: - Dedicated Adoption Workspace
+
+private struct AdminCommunityAdoptionWorkspace: View {
+    @ObservedObject var store: AdminCommunityWorkspaceStore
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var selectedSpecies: String = ""
+
+    private struct StatusOption: Identifiable {
+        let id: String
+        let titleKey: String
+        let fallback: String
+        let symbol: String
+        let tone: Color
+    }
+
+    private let statusOptions: [StatusOption] = [
+        .init(id: "", titleKey: "Community_Admin_Status_All", fallback: "كل الحالات", symbol: "square.grid.2x2", tone: AdminSurface.primary),
+        .init(id: "pending_review", titleKey: "Community_Admin_Status_Pending", fallback: "بانتظار الاعتماد", symbol: "clock.badge.exclamationmark.fill", tone: .orange),
+        .init(id: "published", titleKey: "Community_Admin_Status_Published", fallback: "منشور نشط", symbol: "checkmark.seal.fill", tone: .green),
+        .init(id: "needs_changes", titleKey: "Community_Admin_Status_NeedsChanges", fallback: "يتطلب تعديل", symbol: "pencil.and.list.clipboard", tone: .purple),
+        .init(id: "applications_closed", titleKey: "Community_Admin_Status_Closed", fallback: "مكتمل / مغلق", symbol: "lock.fill", tone: .blue),
+        .init(id: "paused", titleKey: "Community_Admin_Status_Paused", fallback: "موقوف مؤقتًا", symbol: "pause.circle.fill", tone: .secondary)
+    ]
+
+    private let speciesOptions: [(id: String, title: String, symbol: String)] = [
+        ("", "الكل", "pawprint.fill"),
+        ("dog", "كلاب", "pawprint"),
+        ("cat", "قطط", "pawprint"),
+        ("bird", "طيور", "bird.fill"),
+        ("other", "أخرى", "ellipsis.circle.fill")
+    ]
+
+    private var adoptionRecords: [CommunityAdminRecord] {
+        let base = store.filteredRecords
+        guard !selectedSpecies.isEmpty else { return base }
+        return base.filter { record in
+            let species = record.string("pet.species", "species", "kind").lowercased()
+            if selectedSpecies == "other" {
+                return !["dog", "cat", "bird", "كلب", "قطة", "طير"].contains(where: { species.contains($0) })
+            }
+            return species.contains(selectedSpecies) ||
+                (selectedSpecies == "dog" && (species.contains("dog") || species.contains("كلب"))) ||
+                (selectedSpecies == "cat" && (species.contains("cat") || species.contains("قط"))) ||
+                (selectedSpecies == "bird" && (species.contains("bird") || species.contains("طير")))
+        }
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 18) {
+                heroSanctuaryHeader
+                statusRibbon
+                searchAndSpeciesBar
+
+                if adoptionRecords.isEmpty {
+                    emptyState
+                } else {
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: horizontalSizeClass == .regular ? 340 : 300), spacing: 16)],
+                        spacing: 16
+                    ) {
+                        ForEach(adoptionRecords) { record in
+                            AdminAdoptionPetCard(record: record, store: store) {
+                                store.openDossier(record)
+                            }
+                        }
+                    }
+                }
+
+                if store.hasMore {
+                    loadMoreButton
+                }
+            }
+            .padding(horizontalSizeClass == .regular ? 24 : 16)
+            .padding(.vertical, 20)
+        }
+        .refreshable { await store.refresh() }
+    }
+
+    private var heroSanctuaryHeader: some View {
+        HStack(spacing: 16) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(hex: "#E11D48").opacity(0.20), AdminSurface.primary.opacity(0.08)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 52, height: 52)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color(hex: "#E11D48").opacity(0.28), lineWidth: 0.8)
+                    .frame(width: 52, height: 52)
+                Image(systemName: "heart.text.square.fill")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(Color(hex: "#E11D48"))
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text(Language.get("Community_Admin_Adoption_Sanctuary", alter: "محراب التبني ورعاية الألياف"))
+                        .font(PPBrandFont.bold(size: 19))
+                        .foregroundStyle(AdminSurface.primaryText)
+                    
+                    Text("\(store.overview["activeAdoptions", default: store.records.count])")
+                        .font(PPBrandFont.bold(size: 12).monospacedDigit())
+                        .foregroundStyle(Color(hex: "#E11D48"))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3)
+                        .background(Color(hex: "#E11D48").opacity(0.12), in: Capsule())
+                }
+
+                Text(Language.get("Community_Admin_Adoption_Subtitle", alter: "إدارة إعلانات التبني وتدقيق الهوية والتحقق من الشروط قبل إتاحتها للأسر الراغبة."))
+                    .font(PPBrandFont.regular(size: 13))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(18)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
+        .shadow(color: Color.black.opacity(0.02), radius: 8, x: 0, y: 3)
+    }
+
+    private var statusRibbon: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(statusOptions) { option in
+                    let isSelected = store.statusFilter == option.id
+                    Button {
+                        UISelectionFeedbackGenerator().selectionChanged()
+                        store.statusFilter = option.id
+                        Task { await store.applyFilters() }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: option.symbol)
+                                .font(.system(size: 11, weight: .semibold))
+                            Text(Language.get(option.titleKey, alter: option.fallback))
+                                .font(isSelected ? PPBrandFont.bold(size: 13) : PPBrandFont.medium(size: 13))
+                        }
+                        .foregroundStyle(isSelected ? Color.white : AdminSurface.secondaryText)
+                        .padding(.horizontal, 13)
+                        .frame(height: 36)
+                        .background(
+                            isSelected
+                                ? AnyShapeStyle(
+                                    LinearGradient(
+                                        colors: [option.tone, option.tone.opacity(0.85)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                : AnyShapeStyle(AdminSurface.surface),
+                            in: Capsule()
+                        )
+                        .overlay(
+                            Capsule().stroke(isSelected ? Color.clear : AdminSurface.hairline, lineWidth: 0.8)
+                        )
+                        .shadow(color: isSelected ? option.tone.opacity(0.25) : Color.clear, radius: 4, x: 0, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    private var searchAndSpeciesBar: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                TextField(
+                    Language.get("Community_Admin_Adoption_SearchPlaceholder", alter: "ابحث باسم الأليف، السلالة، أو الناشر…"),
+                    text: $store.searchText
+                )
+                .font(PPBrandFont.regular(size: 14))
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+                if !store.searchText.isEmpty {
+                    Button { store.searchText = "" } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(AdminSurface.secondaryText)
+                    }
+                    .accessibilityLabel(Language.get("Clear", alter: "مسح"))
+                }
+            }
+            .padding(.horizontal, 14)
+            .frame(minHeight: 46)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    ForEach(speciesOptions, id: \.id) { item in
+                        let isSelected = selectedSpecies == item.id
+                        Button {
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            selectedSpecies = item.id
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: item.symbol)
+                                    .font(.system(size: 11, weight: .semibold))
+                                Text(item.title)
+                                    .font(isSelected ? PPBrandFont.bold(size: 12.5) : PPBrandFont.medium(size: 12.5))
+                            }
+                            .foregroundStyle(isSelected ? Color.white : AdminSurface.secondaryText)
+                            .padding(.horizontal, 12)
+                            .frame(height: 32)
+                            .background(
+                                isSelected
+                                    ? AnyShapeStyle(Color(hex: "#E11D48"))
+                                    : AnyShapeStyle(AdminSurface.surface),
+                                in: Capsule()
+                            )
+                            .overlay(
+                                Capsule().stroke(isSelected ? Color.clear : AdminSurface.hairline, lineWidth: 0.8)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        AdminCommunityEmptyState(
+            symbol: "heart.slash.fill",
+            title: Language.get("Community_Admin_Adoption_Empty_Title", alter: "لا توجد إعلانات تبني مطابقة"),
+            body: Language.get("Community_Admin_Adoption_Empty_Body", alter: "جرّب تغيير مرشح الحالة أو فئة الحيوان أو مسح نص البحث لعرض المزيد."),
+            accentColor: Color(hex: "#E11D48"),
+            resetAction: (!store.statusFilter.isEmpty || !selectedSpecies.isEmpty || !store.searchText.isEmpty) ? {
+                store.statusFilter = ""
+                selectedSpecies = ""
+                store.searchText = ""
+                Task { await store.applyFilters() }
+            } : nil,
+            action: { Task { await store.refresh() } }
+        )
+    }
+
+    private var loadMoreButton: some View {
+        Button {
+            Task { await store.loadMore() }
+        } label: {
+            HStack(spacing: 9) {
+                if store.isLoadingMore { ProgressView().tint(.white) }
+                Text(Language.get("Community_Admin_LoadMore_Adoptions", alter: "تحميل المزيد من إعلانات التبني"))
+                    .font(PPBrandFont.bold(size: 15))
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .background(
+                LinearGradient(
+                    colors: [Color(hex: "#E11D48"), Color(hex: "#BE123C")],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+            )
+            .shadow(color: Color(hex: "#E11D48").opacity(0.28), radius: 8, x: 0, y: 4)
+        }
+        .disabled(store.isLoadingMore)
+    }
+}
+
+// MARK: - Dedicated Adoption Pet Card
+
+private struct AdminAdoptionPetCard: View {
+    let record: CommunityAdminRecord
+    @ObservedObject var store: AdminCommunityWorkspaceStore
+    let onOpen: () -> Void
+
+    private var petBreed: String {
+        let breed = record.string("pet.breed", "breed")
+        if !breed.isEmpty { return breed }
+        let species = record.string("pet.species", "species")
+        return species.isEmpty ? Language.get("Community_Admin_Pet_General", alter: "أليف لطيف") : species
+    }
+
+    private var petGender: String {
+        let raw = record.string("pet.gender", "gender").lowercased()
+        if raw.contains("male") || raw.contains("ذكر") {
+            return Language.get("Community_Admin_Gender_Male", alter: "ذكر ♂")
+        }
+        if raw.contains("female") || raw.contains("أنثى") {
+            return Language.get("Community_Admin_Gender_Female", alter: "أنثى ♀")
+        }
+        return ""
+    }
+
+    private var petAge: String {
+        record.string("pet.age", "age")
+    }
+
+    private var locationText: String {
+        let city = record.string("area.city", "city")
+        let district = record.string("area.district", "district")
+        if !city.isEmpty && !district.isEmpty {
+            return "\(city) · \(district)"
+        }
+        return city.isEmpty ? district : city
+    }
+
+    private var applicationsCount: Int {
+        record.integer("applicationCount")
+    }
+
+    private var isFeatured: Bool {
+        record.boolean("featured")
+    }
+
+    var body: some View {
+        Button(action: onOpen) {
+            VStack(alignment: .leading, spacing: 0) {
+                mediaCover
+                contentBody
+                Divider().overlay(AdminSurface.hairline)
+                cardFooter
+            }
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(isFeatured ? Color.orange.opacity(0.4) : AdminSurface.hairline, lineWidth: isFeatured ? 1.4 : 0.8)
+            )
+            .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 4)
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var mediaCover: some View {
+        ZStack(alignment: .topTrailing) {
+            ZStack(alignment: .bottomLeading) {
+                if let url = record.primaryMediaURL {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image.resizable().scaledToFill()
+                        case .failure:
+                            mediaPlaceholder
+                        default:
+                            ProgressView().tint(AdminSurface.primary)
+                        }
+                    }
+                    .frame(height: 164)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                } else {
+                    mediaPlaceholder
+                        .frame(height: 164)
+                        .frame(maxWidth: .infinity)
+                }
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.65), Color.clear],
+                    startPoint: .bottom,
+                    endPoint: .top
+                )
+                .frame(height: 64)
+
+                if !locationText.isEmpty {
+                    HStack(spacing: 5) {
+                        Image(systemName: "mappin.circle.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text(locationText)
+                            .font(AdminType.captionBold)
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(Color.white)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
+                }
+            }
+
+            HStack {
+                AdminCommunityStatusBadge(status: record.status)
+                Spacer()
+                if isFeatured {
+                    HStack(spacing: 4) {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 10, weight: .bold))
+                        Text(Language.get("Community_Admin_Featured", alter: "مميز"))
+                            .font(AdminType.caption2Bold)
+                    }
+                    .foregroundStyle(Color.white)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Color.orange, in: Capsule())
+                    .shadow(color: Color.orange.opacity(0.3), radius: 4, x: 0, y: 2)
+                }
+            }
+            .padding(12)
+        }
+    }
+
+    private var mediaPlaceholder: some View {
+        ZStack {
+            LinearGradient(
+                colors: [AdminSurface.primary.opacity(0.12), Color.pink.opacity(0.08)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            VStack(spacing: 6) {
+                Image(systemName: "pawprint.fill")
+                    .font(.system(size: 32, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primary.opacity(0.6))
+                Text(Language.get("Community_Admin_Adoption_Photo", alter: "صورة الأليف"))
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+        }
+    }
+
+    private var contentBody: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(record.title)
+                    .font(AdminType.headline)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                if !record.lastUpdatedText.isEmpty {
+                    Text(record.lastUpdatedText)
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+            }
+
+            HStack(spacing: 6) {
+                chip(petBreed, symbol: "tag.fill", color: AdminSurface.primary)
+                if !petGender.isEmpty {
+                    chip(petGender, symbol: nil, color: petGender.contains("ذكر") ? .blue : .pink)
+                }
+                if !petAge.isEmpty {
+                    chip(petAge, symbol: "calendar", color: .purple)
+                }
+            }
+
+            if !record.subtitle.isEmpty && record.subtitle != locationText {
+                Text(record.subtitle)
+                    .font(AdminType.caption)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+            }
+
+            if applicationsCount > 0 {
+                HStack(spacing: 7) {
+                    Image(systemName: "doc.text.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Color.indigo)
+                    Text("\(applicationsCount) " + Language.get("Community_Admin_Applications_Count", alter: "طلبات تبني مسجلة"))
+                        .font(AdminType.captionBold)
+                        .foregroundStyle(Color.indigo)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Color.indigo.opacity(0.1), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            }
+        }
+        .padding(14)
+    }
+
+    private var cardFooter: some View {
+        HStack(spacing: 12) {
+            let publisher = record.string("organizationName", "ownerName", "publisherType")
+            if !publisher.isEmpty {
+                HStack(spacing: 5) {
+                    Image(systemName: record.string("organizationName").isEmpty ? "person.fill" : "building.2.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    Text(publisher)
+                        .font(AdminType.caption)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 8)
+            HStack(spacing: 4) {
+                Text(Language.get("Community_Admin_ViewDossier", alter: "الملف الكامل"))
+                    .font(AdminType.captionBold)
+                    .foregroundStyle(AdminSurface.primary)
+                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .background(AdminSurface.control.opacity(0.4))
+    }
+
+    private func chip(_ text: String, symbol: String?, color: Color) -> some View {
+        HStack(spacing: 4) {
+            if let symbol {
+                Image(systemName: symbol)
+                    .font(.system(size: 10, weight: .bold))
+            }
+            Text(text)
+                .font(AdminType.caption2Bold)
+                .lineLimit(1)
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(color.opacity(0.1), in: Capsule())
+    }
+}
+
 // MARK: - Queue
 
 private struct AdminCommunityQueueView: View {
@@ -2175,11 +3051,12 @@ private struct AdminCommunityQueueView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 14) {
+            LazyVStack(alignment: .leading, spacing: 16) {
                 AdminCommunitySectionHeader(
                     title: Language.get(store.selectedLane.titleKey, alter: store.selectedLane.fallbackTitle),
                     subtitle: subtitle,
-                    symbol: store.selectedLane.symbol
+                    symbol: store.selectedLane.symbol,
+                    accentColor: store.selectedLane.accentColor
                 )
                 filters
 
@@ -2188,6 +3065,12 @@ private struct AdminCommunityQueueView: View {
                         symbol: store.selectedLane.symbol,
                         title: Language.get("Community_Admin_Empty_Title", alter: "لا توجد عناصر في هذه القائمة"),
                         body: Language.get("Community_Admin_Empty_Body", alter: "غيّر المرشحات أو حدّث القائمة. لا توجد بيانات تجريبية أو عناصر وهمية."),
+                        accentColor: store.selectedLane.accentColor,
+                        resetAction: (!store.statusFilter.isEmpty || !store.searchText.isEmpty) ? {
+                            store.statusFilter = ""
+                            store.searchText = ""
+                            Task { await store.applyFilters() }
+                        } : nil,
                         action: { Task { await store.refresh() } }
                     )
                 } else {
@@ -2210,11 +3093,19 @@ private struct AdminCommunityQueueView: View {
                         HStack(spacing: 9) {
                             if store.isLoadingMore { ProgressView().tint(.white) }
                             Text(Language.get("Community_Admin_LoadMore", alter: "تحميل المزيد"))
-                                .font(AdminType.calloutBold)
+                                .font(PPBrandFont.bold(size: 15))
                         }
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, minHeight: 48)
-                        .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                        .background(
+                            LinearGradient(
+                                colors: [store.selectedLane.accentColor, store.selectedLane.accentColor.opacity(0.85)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            in: RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        )
+                        .shadow(color: store.selectedLane.accentColor.opacity(0.25), radius: 6, x: 0, y: 3)
                     }
                     .disabled(store.isLoadingMore)
                 }
@@ -2240,12 +3131,13 @@ private struct AdminCommunityQueueView: View {
 
     @ViewBuilder
     private var filters: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(AdminSurface.secondaryText)
                 TextField(Language.get("Community_Admin_Search", alter: "بحث داخل الصفحة المحمّلة"), text: $store.searchText)
-                    .font(AdminType.callout)
+                    .font(PPBrandFont.regular(size: 14))
                     .textInputAutocapitalization(.never)
                     .disableAutocorrection(true)
                 if !store.searchText.isEmpty {
@@ -2255,43 +3147,97 @@ private struct AdminCommunityQueueView: View {
                     .accessibilityLabel(Language.get("Clear", alter: "مسح"))
                 }
             }
-            .padding(.horizontal, 13)
+            .padding(.horizontal, 14)
             .frame(minHeight: 46)
             .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
 
-            HStack(spacing: 10) {
-                if store.selectedLane.supportsStatusFilter {
-                    Menu {
-                        Button(Language.get("Community_Admin_Status_All", alter: "كل الحالات")) {
+            if store.selectedLane.supportsStatusFilter {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        let isAll = store.statusFilter.isEmpty
+                        Button {
+                            UISelectionFeedbackGenerator().selectionChanged()
                             store.statusFilter = ""
                             Task { await store.applyFilters() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "square.grid.2x2")
+                                    .font(.system(size: 11, weight: .semibold))
+                                Text(Language.get("Community_Admin_Status_All", alter: "كل الحالات"))
+                                    .font(isAll ? PPBrandFont.bold(size: 13) : PPBrandFont.medium(size: 13))
+                            }
+                            .foregroundStyle(isAll ? Color.white : AdminSurface.secondaryText)
+                            .padding(.horizontal, 13)
+                            .frame(height: 36)
+                            .background(
+                                isAll
+                                    ? AnyShapeStyle(
+                                        LinearGradient(
+                                            colors: [store.selectedLane.accentColor, store.selectedLane.accentColor.opacity(0.85)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    : AnyShapeStyle(AdminSurface.surface),
+                                in: Capsule()
+                            )
+                            .overlay(
+                                Capsule().stroke(isAll ? Color.clear : AdminSurface.hairline, lineWidth: 0.8)
+                            )
+                            .shadow(color: isAll ? store.selectedLane.accentColor.opacity(0.25) : Color.clear, radius: 4, x: 0, y: 2)
                         }
+                        .buttonStyle(.plain)
+
                         ForEach(CommunityAdminLocalization.statuses(for: store.selectedLane), id: \.self) { status in
-                            Button(CommunityAdminLocalization.state(status)) {
+                            let isSelected = store.statusFilter == status
+                            Button {
+                                UISelectionFeedbackGenerator().selectionChanged()
                                 store.statusFilter = status
                                 Task { await store.applyFilters() }
+                            } label: {
+                                Text(CommunityAdminLocalization.state(status))
+                                    .font(isSelected ? PPBrandFont.bold(size: 13) : PPBrandFont.medium(size: 13))
+                                    .foregroundStyle(isSelected ? Color.white : AdminSurface.primaryText)
+                                    .padding(.horizontal, 13)
+                                    .frame(height: 36)
+                                    .background(
+                                        isSelected
+                                            ? AnyShapeStyle(
+                                                LinearGradient(
+                                                    colors: [store.selectedLane.accentColor, store.selectedLane.accentColor.opacity(0.85)],
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                )
+                                            )
+                                            : AnyShapeStyle(AdminSurface.surface),
+                                        in: Capsule()
+                                    )
+                                    .overlay(
+                                        Capsule().stroke(isSelected ? Color.clear : AdminSurface.hairline, lineWidth: 0.8)
+                                    )
+                                    .shadow(color: isSelected ? store.selectedLane.accentColor.opacity(0.25) : Color.clear, radius: 4, x: 0, y: 2)
                             }
+                            .buttonStyle(.plain)
                         }
-                    } label: {
-                        filterChip(
-                            title: store.statusFilter.isEmpty
-                                ? Language.get("Community_Admin_Status_All", alter: "كل الحالات")
-                                : CommunityAdminLocalization.state(store.statusFilter),
-                            symbol: "line.3.horizontal.decrease.circle"
-                        )
                     }
+                    .padding(.vertical, 2)
                 }
+            }
 
+            HStack(spacing: 8) {
                 if [.missingCases, .foundReports, .sightings].contains(store.selectedLane), store.canViewPreciseLocation {
                     Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         Task { await store.setPreciseLocation(!store.includePreciseLocation) }
                     } label: {
-                        filterChip(
+                        filterToggleChip(
                             title: store.includePreciseLocation
                                 ? Language.get("Community_Admin_Precise_On", alter: "الموقع الدقيق ظاهر")
                                 : Language.get("Community_Admin_Precise_Off", alter: "إظهار الموقع الدقيق"),
-                            symbol: store.includePreciseLocation ? "location.fill" : "location.slash"
+                            symbol: store.includePreciseLocation ? "location.fill" : "location.slash",
+                            isActive: store.includePreciseLocation,
+                            activeColor: AdminSurface.emerald
                         )
                     }
                     .accessibilityHint(Language.get("Community_Admin_Precise_Audit_Hint", alter: "تُسجل هذه القراءة في سجل التدقيق"))
@@ -2300,13 +3246,16 @@ private struct AdminCommunityQueueView: View {
                 if store.selectedLane == .organizations,
                    store.session.hasPermission("community.organization.verify") {
                     Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         Task { await store.setPrivateOrganization(!store.includePrivateOrganization) }
                     } label: {
-                        filterChip(
+                        filterToggleChip(
                             title: store.includePrivateOrganization
                                 ? Language.get("Community_Admin_Private_On", alter: "البيانات الخاصة ظاهرة")
                                 : Language.get("Community_Admin_Private_Off", alter: "إظهار بيانات التحقق"),
-                            symbol: store.includePrivateOrganization ? "lock.open.fill" : "lock.fill"
+                            symbol: store.includePrivateOrganization ? "lock.open.fill" : "lock.fill",
+                            isActive: store.includePrivateOrganization,
+                            activeColor: AdminSurface.emerald
                         )
                     }
                     .accessibilityHint(Language.get("Community_Admin_Precise_Audit_Hint", alter: "تُسجل هذه القراءة في سجل التدقيق"))
@@ -2314,13 +3263,16 @@ private struct AdminCommunityQueueView: View {
 
                 if store.selectedLane == .matches, store.canViewSensitiveMatchEvidence {
                     Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         Task { await store.setSensitiveMatchEvidence(!store.includeSensitiveMatchEvidence) }
                     } label: {
-                        filterChip(
+                        filterToggleChip(
                             title: store.includeSensitiveMatchEvidence
                                 ? Language.get("Community_Admin_Sensitive_Evidence_On", alter: "الأدلة الحساسة ظاهرة")
                                 : Language.get("Community_Admin_Sensitive_Evidence_Off", alter: "إظهار أدلة المطابقة الحساسة"),
-                            symbol: store.includeSensitiveMatchEvidence ? "lock.open.fill" : "lock.fill"
+                            symbol: store.includeSensitiveMatchEvidence ? "lock.open.fill" : "lock.fill",
+                            isActive: store.includeSensitiveMatchEvidence,
+                            activeColor: Color(hex: "#6366F1")
                         )
                     }
                     .accessibilityHint(Language.get("Community_Admin_Sensitive_Evidence_Audit_Hint", alter: "تتطلب هذه القراءة سببًا وتُسجل في سجل التدقيق"))
@@ -2338,16 +3290,16 @@ private struct AdminCommunityQueueView: View {
                         Language.get("Community_Admin_Private_Access_Reason", alter: "سبب الوصول الخاص"),
                         systemImage: "checkmark.shield.fill"
                     )
-                    .font(AdminType.captionBold)
+                    .font(PPBrandFont.bold(size: 13))
                     .foregroundStyle(AdminSurface.secondaryText)
                     TextField(
                         Language.get("Community_Admin_Private_Access_Reason_Placeholder", alter: "اشرح سبب الحاجة إلى هذه البيانات"),
                         text: $store.privateAccessReason,
                         axis: .vertical
                     )
-                    .font(AdminType.callout)
+                    .font(PPBrandFont.regular(size: 14))
                     .lineLimit(1...3)
-                    .padding(.horizontal, 13)
+                    .padding(.horizontal, 14)
                     .frame(minHeight: 46)
                     .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
@@ -2357,18 +3309,23 @@ private struct AdminCommunityQueueView: View {
         }
     }
 
-    private func filterChip(title: String, symbol: String) -> some View {
+    private func filterToggleChip(title: String, symbol: String, isActive: Bool, activeColor: Color) -> some View {
         HStack(spacing: 7) {
             Image(systemName: symbol)
+                .font(.system(size: 11, weight: .bold))
             Text(title).lineLimit(1)
-            Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
         }
-        .font(AdminType.captionBold)
-        .foregroundStyle(AdminSurface.primaryText)
-        .padding(.horizontal, 12)
-        .frame(minHeight: 38)
-        .background(AdminSurface.control, in: Capsule())
-        .overlay(Capsule().stroke(AdminSurface.hairline, lineWidth: 0.8))
+        .font(PPBrandFont.bold(size: 12.5))
+        .foregroundStyle(isActive ? activeColor : AdminSurface.secondaryText)
+        .padding(.horizontal, 13)
+        .frame(minHeight: 36)
+        .background(
+            isActive ? activeColor.opacity(0.12) : AdminSurface.surface,
+            in: Capsule()
+        )
+        .overlay(
+            Capsule().stroke(isActive ? activeColor.opacity(0.35) : AdminSurface.hairline, lineWidth: 0.8)
+        )
     }
 }
 
@@ -2383,12 +3340,12 @@ private struct AdminCommunityRecordCard: View {
                     media
                     VStack(alignment: .leading, spacing: 5) {
                         Text(record.title)
-                            .font(AdminType.headline)
+                            .font(PPBrandFont.bold(size: 15))
                             .foregroundStyle(AdminSurface.primaryText)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
                         Text(record.subtitle)
-                            .font(AdminType.caption)
+                            .font(PPBrandFont.regular(size: 13))
                             .foregroundStyle(AdminSurface.secondaryText)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
@@ -2407,7 +3364,7 @@ private struct AdminCommunityRecordCard: View {
                     Spacer(minLength: 0)
                     if !record.lastUpdatedText.isEmpty {
                         Text(record.lastUpdatedText)
-                            .font(AdminType.caption2)
+                            .font(PPBrandFont.regular(size: 11))
                             .foregroundStyle(AdminSurface.secondaryText)
                     }
                 }
@@ -2424,12 +3381,12 @@ private struct AdminCommunityRecordCard: View {
                     }
                     if let score = record.decimal("score") {
                         Label(score.formatted(.percent.precision(.fractionLength(0))), systemImage: "gauge.with.dots.needle.67percent")
-                            .font(AdminType.captionBold)
+                            .font(PPBrandFont.bold(size: 11.5).monospacedDigit())
                             .foregroundStyle(AdminSurface.primary)
                     }
                     Spacer(minLength: 0)
                     Text("v\(record.version)")
-                        .font(AdminType.caption2.monospaced())
+                        .font(PPBrandFont.bold(size: 11).monospacedDigit())
                         .foregroundStyle(AdminSurface.secondaryText)
                 }
             }
@@ -2437,6 +3394,7 @@ private struct AdminCommunityRecordCard: View {
             .frame(maxWidth: .infinity, minHeight: 156, alignment: .leading)
             .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
+            .shadow(color: Color.black.opacity(0.02), radius: 6, x: 0, y: 2)
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
@@ -2474,7 +3432,7 @@ private struct AdminCommunityRecordCard: View {
 
     private func compactFact(_ symbol: String, _ value: Int) -> some View {
         Label(value.formatted(), systemImage: symbol)
-            .font(AdminType.captionBold)
+            .font(PPBrandFont.bold(size: 11.5).monospacedDigit())
             .foregroundStyle(AdminSurface.secondaryText)
     }
 }
@@ -4026,26 +4984,44 @@ private struct AdminCommunitySectionHeader: View {
     let title: String
     let subtitle: String
     let symbol: String
+    var accentColor: Color = AdminSurface.primary
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: symbol)
-                .font(.system(size: 17, weight: .bold))
-                .foregroundStyle(AdminSurface.primary)
-                .frame(width: 40, height: 40)
-                .background(AdminSurface.primary.opacity(0.11), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .accessibilityHidden(true)
+        HStack(alignment: .top, spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [accentColor.opacity(0.18), accentColor.opacity(0.06)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 44, height: 44)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(accentColor.opacity(0.25), lineWidth: 0.8)
+                    .frame(width: 44, height: 44)
+                Image(systemName: symbol)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(accentColor)
+            }
+            .accessibilityHidden(true)
+
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(AdminType.title3)
+                    .font(PPBrandFont.bold(size: 19))
                     .foregroundStyle(AdminSurface.primaryText)
                 Text(subtitle)
-                    .font(AdminType.callout)
+                    .font(PPBrandFont.regular(size: 13.5))
                     .foregroundStyle(AdminSurface.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(2)
             }
             Spacer(minLength: 0)
         }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
         .accessibilityElement(children: .combine)
     }
 }
@@ -4066,11 +5042,12 @@ private struct AdminCommunityStatusBadge: View {
 
     var body: some View {
         Text(CommunityAdminLocalization.state(status))
-            .font(compact ? AdminType.caption2Bold : AdminType.captionBold)
+            .font(compact ? PPBrandFont.bold(size: 10.5) : PPBrandFont.bold(size: 12))
             .foregroundStyle(color)
             .padding(.horizontal, compact ? 8 : 10)
             .frame(minHeight: compact ? 24 : 28)
-            .background(color.opacity(0.11), in: Capsule())
+            .background(color.opacity(0.12), in: Capsule())
+            .overlay(Capsule().stroke(color.opacity(0.25), lineWidth: 0.7))
             .accessibilityLabel(
                 String(
                     format: Language.get("Community_Admin_Status_Format", alter: "الحالة: %@"),
@@ -4085,11 +5062,25 @@ private struct AdminCommunityErrorBanner: View {
     let dismiss: () -> Void
     let retry: (() -> Void)?
 
+    private var displayMessage: String {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.caseInsensitiveCompare("INTERNAL") == .orderedSame ||
+           trimmed.localizedCaseInsensitiveContains("internal") ||
+           trimmed.contains("FIRFunctionsErrorDomain") {
+            return Language.get("Community_Admin_Error_ServerSync", alter: "تعذرت المزامنة مع الخادم مؤقتاً. يجري تجهيز البيانات.")
+        }
+        if trimmed.caseInsensitiveCompare("UNAVAILABLE") == .orderedSame ||
+           trimmed.localizedCaseInsensitiveContains("unavailable") {
+            return Language.get("Community_Admin_Error_Unavailable", alter: "الخدمة غير متوفرة حالياً. يرجى المحاولة بعد قليل.")
+        }
+        return trimmed.isEmpty ? Language.get("Community_Admin_Error_Generic", alter: "حدث خطأ غير متوقع. أعد المحاولة.") : trimmed
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(AdminSurface.crimson)
-            Text(message)
+            Text(displayMessage)
                 .font(AdminType.captionBold)
                 .foregroundStyle(AdminSurface.primaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -4115,40 +5106,132 @@ private struct AdminCommunityEmptyState: View {
     let symbol: String
     let title: String
     let message: String
+    var accentColor: Color = AdminSurface.primary
+    var resetAction: (() -> Void)? = nil
     let action: () -> Void
 
-    init(symbol: String, title: String, body message: String, action: @escaping () -> Void) {
+    init(
+        symbol: String,
+        title: String,
+        body message: String,
+        accentColor: Color = AdminSurface.primary,
+        resetAction: (() -> Void)? = nil,
+        action: @escaping () -> Void
+    ) {
         self.symbol = symbol
         self.title = title
         self.message = message
+        self.accentColor = accentColor
+        self.resetAction = resetAction
         self.action = action
     }
 
+    init(
+        symbol: String,
+        title: String,
+        message: String,
+        accentColor: Color = AdminSurface.primary,
+        resetAction: (() -> Void)? = nil,
+        action: @escaping () -> Void
+    ) {
+        self.init(symbol: symbol, title: title, body: message, accentColor: accentColor, resetAction: resetAction, action: action)
+    }
+
     var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: symbol)
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(AdminSurface.primary)
-                .frame(width: 64, height: 64)
-                .background(AdminSurface.primary.opacity(0.1), in: Circle())
-            Text(title)
-                .font(AdminType.headline)
-                .foregroundStyle(AdminSurface.primaryText)
-                .multilineTextAlignment(.center)
-            Text(message)
-                .font(AdminType.callout)
-                .foregroundStyle(AdminSurface.secondaryText)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-            Button(Language.get("Refresh", alter: "تحديث"), action: action)
-                .font(AdminType.calloutBold)
-                .buttonStyle(.borderedProminent)
-                .tint(AdminSurface.primary)
+        VStack(spacing: 20) {
+            // Concentric Pulsing Aura & 3D-styled Emblem
+            ZStack {
+                Circle()
+                    .stroke(accentColor.opacity(0.10), lineWidth: 1.5)
+                    .frame(width: 104, height: 104)
+                Circle()
+                    .stroke(accentColor.opacity(0.18), lineWidth: 1.5)
+                    .frame(width: 84, height: 84)
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [accentColor.opacity(0.20), accentColor.opacity(0.06)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 66, height: 66)
+                    .shadow(color: accentColor.opacity(0.22), radius: 10, x: 0, y: 5)
+                Image(systemName: symbol)
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(accentColor)
+            }
+            .padding(.top, 8)
+
+            VStack(spacing: 8) {
+                Text(title)
+                    .font(PPBrandFont.bold(size: 19))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .multilineTextAlignment(.center)
+                Text(message)
+                    .font(PPBrandFont.regular(size: 13.5))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(3)
+                    .padding(.horizontal, 14)
+            }
+
+            VStack(spacing: 10) {
+                if let resetAction {
+                    Button(action: resetAction) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.system(size: 12, weight: .bold))
+                            Text(Language.get("Community_Admin_Reset_Filters", alter: "إعادة ضبط المرشحات والبحث"))
+                                .font(PPBrandFont.bold(size: 13))
+                        }
+                        .foregroundStyle(accentColor)
+                        .padding(.horizontal, 16)
+                        .frame(height: 38)
+                        .background(accentColor.opacity(0.10), in: Capsule())
+                        .overlay(Capsule().stroke(accentColor.opacity(0.25), lineWidth: 0.8))
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Button(action: action) {
+                    HStack(spacing: 7) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 13, weight: .bold))
+                        Text(Language.get("Community_Admin_LiveSync", alter: "تحديث البيانات من الخادم"))
+                            .font(PPBrandFont.bold(size: 14))
+                    }
+                    .foregroundStyle(Color.white)
+                    .padding(.horizontal, 22)
+                    .frame(height: 44)
+                    .background(
+                        LinearGradient(
+                            colors: [accentColor, accentColor.opacity(0.85)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
+                    .shadow(color: accentColor.opacity(0.25), radius: 8, x: 0, y: 4)
+                }
+                .buttonStyle(.plain)
+            }
+
+            HStack(spacing: 6) {
+                Circle().fill(AdminSurface.emerald).frame(width: 6, height: 6)
+                Text(Language.get("Community_Admin_ServerTruthFootnote", alter: "مزامنة لحظية مباشرة · مصدر الحقيقة الخادمي"))
+                    .font(PPBrandFont.medium(size: 11))
+                    .foregroundStyle(AdminSurface.secondaryText.opacity(0.8))
+            }
+            .padding(.top, 4)
         }
-        .padding(24)
-        .frame(maxWidth: .infinity, minHeight: 280)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
+        .padding(.vertical, 32)
+        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.8))
+        .shadow(color: Color.black.opacity(0.03), radius: 10, x: 0, y: 4)
         .accessibilityElement(children: .contain)
     }
 }
@@ -4259,6 +5342,8 @@ private enum CommunityAdminValueFormatter {
 
     public override func viewDidLoad() {
         super.viewDidLoad()
+        extendedLayoutIncludesOpaqueBars = true
+        edgesForExtendedLayout = .all
         view.backgroundColor = .ppBackground
         installLoadingState()
         restoreSession()
@@ -4310,6 +5395,7 @@ private enum CommunityAdminValueFormatter {
             }
             PPAdminNavigationFallback.popOrDismiss(from: self)
         })
+        controller.view.backgroundColor = .clear
         addChild(controller)
         view.addSubview(controller.view)
         controller.view.translatesAutoresizingMaskIntoConstraints = false

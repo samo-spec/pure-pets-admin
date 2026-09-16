@@ -132,6 +132,14 @@ public struct PuryField: Codable, Sendable, Identifiable {
         self.type = type
         self.tone = tone
     }
+
+    public var cleanLabel: String {
+        PuryModelsSanitizer.cleanText(label)
+    }
+
+    public var cleanValue: String {
+        PuryModelsSanitizer.cleanText(value)
+    }
 }
 
 public struct PuryCard: Codable, Sendable, Identifiable {
@@ -165,6 +173,53 @@ public struct PuryCard: Codable, Sendable, Identifiable {
         self.entityId = entityId
         self.details = details
         self.actionRoute = actionRoute
+    }
+
+    public var cleanTitle: String {
+        PuryModelsSanitizer.cleanText(title)
+    }
+
+    public var cleanSubtitle: String? {
+        guard let sub = subtitle, !sub.isEmpty else { return nil }
+        return PuryModelsSanitizer.cleanText(sub)
+    }
+
+    public var isHotelCard: Bool {
+        entityType?.lowercased().contains("hotel") == true ||
+        badge?.contains("إقامة") == true ||
+        cleanTitle.contains("إقامة") == true ||
+        cleanTitle.contains("جناح")
+    }
+
+    public var isProductCard: Bool {
+        entityType?.lowercased().contains("product") == true ||
+        entityType?.lowercased().contains("stock") == true ||
+        badge?.contains("منتج") == true
+    }
+
+    public var isOrderCard: Bool {
+        entityType?.lowercased().contains("order") == true ||
+        badge?.contains("طلب") == true
+    }
+}
+
+public enum PuryModelsSanitizer {
+    public static func cleanText(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("{") && trimmed.contains("\"ar\"") {
+            if let data = trimmed.data(using: .utf8),
+               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let isRTL = Language.isRTL()
+                if isRTL, let ar = dict["ar"] as? String, !ar.isEmpty {
+                    return ar
+                } else if let en = dict["en"] as? String, !en.isEmpty {
+                    return en
+                } else if let ar = dict["ar"] as? String {
+                    return ar
+                }
+            }
+        }
+        return trimmed
     }
 }
 
@@ -254,6 +309,23 @@ public struct PuryConfirmationAction: Codable, Sendable {
         self.warnings = warnings
         self.riskTier = riskTier
     }
+
+    public func asDictionary() -> [String: Any] {
+        var dict: [String: Any] = [
+            "token": token,
+            "intent": intent,
+            "actionId": actionId
+        ]
+        if let d = domain { dict["domain"] = d }
+        if let c = collectionTarget { dict["collectionTarget"] = c }
+        if let e = entityId { dict["entityId"] = e }
+        if let p = permissionRequired { dict["permissionRequired"] = p }
+        if let u = updates { dict["updates"] = u }
+        if let b = beforeState { dict["beforeState"] = b }
+        if let w = warnings { dict["warnings"] = w }
+        if let r = riskTier { dict["riskTier"] = r }
+        return dict
+    }
 }
 
 // MARK: - Response Metadata
@@ -276,6 +348,8 @@ public struct PuryResponseMetadata: Codable, Sendable {
     public let callable: String?
     public let error: String?
     public let errorSummary: String?
+    public let commandId: String?
+    public let replayed: Bool?
 
     public init(
         intent: String? = nil,
@@ -294,7 +368,9 @@ public struct PuryResponseMetadata: Codable, Sendable {
         agent: String? = nil,
         callable: String? = nil,
         error: String? = nil,
-        errorSummary: String? = nil
+        errorSummary: String? = nil,
+        commandId: String? = nil,
+        replayed: Bool? = nil
     ) {
         self.intent = intent
         self.domain = domain
@@ -313,6 +389,8 @@ public struct PuryResponseMetadata: Codable, Sendable {
         self.callable = callable
         self.error = error
         self.errorSummary = errorSummary
+        self.commandId = commandId
+        self.replayed = replayed
     }
 }
 

@@ -61,7 +61,43 @@ public actor PuryAdminService {
         language: String,
         history: [[String: String]],
         screenContext: PuryScreenContext?,
-        confirmAction: [String: Any]? = nil
+        confirmAction: PuryConfirmationAction? = nil
+    ) async throws -> PuryChatResponse {
+        return try await sendChatMessage(
+            message: message,
+            sessionId: sessionId,
+            language: language,
+            history: history,
+            screenContext: screenContext,
+            confirmActionDict: confirmAction?.asDictionary()
+        )
+    }
+
+    public func sendChatMessage(
+        message: String,
+        sessionId: String?,
+        language: String,
+        history: [[String: String]],
+        screenContext: PuryScreenContext?,
+        confirmAction: [String: Any]?
+    ) async throws -> PuryChatResponse {
+        return try await sendChatMessage(
+            message: message,
+            sessionId: sessionId,
+            language: language,
+            history: history,
+            screenContext: screenContext,
+            confirmActionDict: confirmAction
+        )
+    }
+
+    private func sendChatMessage(
+        message: String,
+        sessionId: String?,
+        language: String,
+        history: [[String: String]],
+        screenContext: PuryScreenContext?,
+        confirmActionDict: [String: Any]?
     ) async throws -> PuryChatResponse {
         guard Auth.auth().currentUser != nil else {
             throw PuryError.unauthenticated
@@ -105,7 +141,7 @@ public actor PuryAdminService {
             payload["sessionId"] = sId
         }
 
-        if let ca = confirmAction {
+        if let ca = confirmActionDict {
             payload["confirmAction"] = ca
         }
 
@@ -330,7 +366,9 @@ public actor PuryAdminService {
             agent: metaDict["agent"] as? String,
             callable: metaDict["callable"] as? String,
             error: metaDict["error"] as? String,
-            errorSummary: metaDict["errorSummary"] as? String
+            errorSummary: metaDict["errorSummary"] as? String,
+            commandId: metaDict["commandId"] as? String,
+            replayed: metaDict["replayed"] as? Bool
         )
 
         return PuryChatResponse(text: text, metadata: metadata)

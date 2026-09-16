@@ -95,17 +95,6 @@ public final class PuryConversationStore: ObservableObject {
         state = .loading
         activeProposal = nil
 
-        var confirmDict: [String: Any] = [
-            "token": action.token,
-            "intent": action.intent,
-            "actionId": action.actionId
-        ]
-        if let d = action.domain { confirmDict["domain"] = d }
-        if let c = action.collectionTarget { confirmDict["collectionTarget"] = c }
-        if let e = action.entityId { confirmDict["entityId"] = e }
-        if let p = action.permissionRequired { confirmDict["permissionRequired"] = p }
-        if let u = action.updates { confirmDict["updates"] = u }
-
         let historyPayload = recentHistoryPayload()
         let confirmText = Language.get("Pury_Confirm_Prompt", alter: "تأكيد تنفيذ العملية")
 
@@ -116,7 +105,7 @@ public final class PuryConversationStore: ObservableObject {
                 language: language,
                 history: historyPayload,
                 screenContext: screenContext,
-                confirmAction: confirmDict
+                confirmAction: action
             )
 
             handleResponse(response)
