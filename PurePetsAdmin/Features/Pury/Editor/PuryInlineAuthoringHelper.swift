@@ -252,7 +252,7 @@ public struct PuryInlineAuthoringBar: View {
             if !current.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(Language.get("Current", alter: "الحالي:"))
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(AdminType.caption2Bold)
                         .foregroundStyle(AdminSurface.secondaryText)
                     Text(current)
                         .font(AdminType.caption1)
@@ -266,7 +266,7 @@ public struct PuryInlineAuthoringBar: View {
             if !proposed.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(Language.get("Proposed", alter: "المقترح:"))
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(AdminType.caption2Bold)
                         .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
                     Text(proposed)
                         .font(AdminType.body)
