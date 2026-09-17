@@ -2326,7 +2326,7 @@ public struct PPGlobalNavigationScrollShell<Content: View>: View {
     public let collapseDistance: CGFloat
     /// When true the reserved navigation host area is backed by the soft top
     /// fade, so scrolled content emerges from under the bar instead of
-    /// colliding with it. Off by default so existing hosts stay unchanged.
+    /// colliding with it. Enabled by default across all sovereign shells.
     public let showsTopFade: Bool
     public let onAction: PPGlobalNavigationActionHandler
     private let content: Content
@@ -2338,7 +2338,7 @@ public struct PPGlobalNavigationScrollShell<Content: View>: View {
     public init(
         configuration: PPGlobalNavigationConfiguration,
         collapseDistance: CGFloat = 76,
-        showsTopFade: Bool = false,
+        showsTopFade: Bool = true,
         onAction: @escaping PPGlobalNavigationActionHandler,
         @ViewBuilder content: () -> Content
     ) {

@@ -21,6 +21,7 @@ public final class PuryConversationStore: ObservableObject {
         case empty
         case denied(String)
         case confirmationRequired(PuryConfirmationAction)
+        case pending(String)
         case conflictStale(String)
         case error(String)
 
@@ -32,6 +33,8 @@ public final class PuryConversationStore: ObservableObject {
                 return l == r
             case (.confirmationRequired(let l), .confirmationRequired(let r)):
                 return l.token == r.token
+            case (.pending(let l), .pending(let r)):
+                return l == r
             case (.conflictStale(let l), .conflictStale(let r)):
                 return l == r
             case (.error(let l), .error(let r)):
@@ -135,6 +138,16 @@ public final class PuryConversationStore: ObservableObject {
 
     private func handleResponse(_ response: PuryChatResponse) {
         let meta = response.metadata
+
+        if meta.commandState == "in_progress" || meta.commandState == "receipt_finalize_pending" {
+            activeProposal = nil
+            let message = !response.text.isEmpty
+                ? response.text
+                : Language.get("Pury_Command_Pending", alter: "يتم استكمال الأمر المؤكد بأمان.")
+            state = .pending(message)
+            messages.append(PuryMessage(role: .model, text: message, metadata: meta))
+            return
+        }
 
         if let err = meta.error, !err.isEmpty {
             let summary = meta.errorSummary ?? err

@@ -35,6 +35,21 @@ public struct PPServiceSpeciesPreset: Identifiable, Hashable, Sendable {
     }
 }
 
+// MARK: - PPServiceType Extension
+
+extension PPServiceType {
+    public var localizedTitle: String {
+        switch self {
+        case .training:
+            return Language.get("Service_Type_Training", alter: "تدريب الحيوانات")
+        case .grooming:
+            return Language.get("Service_Type_Grooming", alter: "حلاقة وعناية")
+        @unknown default:
+            return Language.get("Service_Field_Type", alter: "خدمة")
+        }
+    }
+}
+
 // MARK: - View Model
 
 @MainActor
@@ -795,6 +810,7 @@ public struct PPServiceTypeDial: View {
 
 public struct PPServiceCorePropositionCard: View {
     @ObservedObject var viewModel: PPServiceEditorViewModel
+    @State private var isGeneratingDesc: Bool = false
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -849,7 +865,7 @@ public struct PPServiceCorePropositionCard: View {
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(AdminSurface.hairline))
             }
 
-            // 2. Service Description Input
+            // 2. Service Description Input with Embedded Pury Writer
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text(Language.get("Service_Field_Description", alter: "وصف الخدمة ومميزاتها"))
@@ -863,22 +879,30 @@ public struct PPServiceCorePropositionCard: View {
                         .foregroundColor(AdminSurface.secondaryText.opacity(0.7))
                 }
 
-                ZStack(alignment: .topLeading) {
-                    if viewModel.serviceDescription.isEmpty {
-                        Text(Language.get("Service_Field_Description_Placeholder", alter: "اكتب وصفاً جذاباً وشاملاً يتضمن مراحل الخدمة والفوائد التي يحصل عليها الحيوان الأليف..."))
+                ZStack(alignment: .bottomTrailing) {
+                    ZStack(alignment: .topLeading) {
+                        if viewModel.serviceDescription.isEmpty {
+                            Text(Language.get("Service_Field_Description_Placeholder", alter: "اكتب وصفاً جذاباً وشاملاً يتضمن مراحل الخدمة والفوائد التي يحصل عليها الحيوان الأليف..."))
+                                .font(AdminType.callout)
+                                .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 12)
+                                .padding(.bottom, 36)
+                        }
+
+                        TextEditor(text: $viewModel.serviceDescription)
                             .font(AdminType.callout)
-                            .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
+                            .foregroundColor(AdminSurface.primaryText)
+                            .frame(minHeight: 90)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .padding(.bottom, 36)
+                            .background(Color.clear)
                     }
 
-                    TextEditor(text: $viewModel.serviceDescription)
-                        .font(AdminType.callout)
-                        .foregroundColor(AdminSurface.primaryText)
-                        .frame(minHeight: 90)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.clear)
+                    puryServiceDescWriterSubview
+                        .padding(.trailing, 8)
+                        .padding(.bottom, 8)
                 }
                 .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(AdminSurface.hairline))
@@ -933,6 +957,119 @@ public struct PPServiceCorePropositionCard: View {
         .padding(18)
         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(AdminSurface.hairline))
+    }
+
+    private var puryServiceDescWriterSubview: some View {
+        Button {
+            generateServiceDescriptionWithPury()
+        } label: {
+            HStack(spacing: 6) {
+                PuryAvatar(
+                    size: 22,
+                    isLiving: true,
+                    isThinking: isGeneratingDesc,
+                    showStatusRing: true,
+                    showAmbientAura: isGeneratingDesc
+                )
+
+                if isGeneratingDesc {
+                    HStack(spacing: 4) {
+                        ProgressView()
+                            .scaleEffect(0.65)
+                            .tint(Color(red: 16/255, green: 185/255, blue: 129/255))
+                        Text(Language.isRTL() ? "جارٍ الصياغة..." : "Crafting...")
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                    }
+                } else {
+                    HStack(spacing: 4) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                        Text(viewModel.serviceDescription.isEmpty ? (Language.isRTL() ? "صياغة بيوري" : "Write with Pury") : (Language.isRTL() ? "تحسين مع بيوري" : "Enhance with Pury"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule()
+                    .fill(Color(uiColor: .systemBackground).opacity(0.92))
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.45),
+                                Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.18)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(color: Color.black.opacity(0.08), radius: 4, x: 0, y: 2)
+        }
+        .buttonStyle(PuryCompactPressStyle())
+        .disabled(isGeneratingDesc)
+        .accessibilityLabel(Language.get("Pury_Write_Description", alter: "صياغة وصف احترافي مع بيوري"))
+    }
+
+    private func generateServiceDescriptionWithPury() {
+        guard !viewModel.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            return
+        }
+
+        isGeneratingDesc = true
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        let speciesPreset = PPServiceSpeciesPreset.presets.first(where: { $0.id == viewModel.selectedSpeciesID })
+        let speciesName = speciesPreset?.nameAr ?? ""
+
+        var attrs: [String: String] = [
+            "type": "service",
+            "serviceType": viewModel.serviceType.localizedTitle,
+            "category": viewModel.category,
+            "species": speciesName
+        ]
+        if !viewModel.priceText.isEmpty {
+            attrs["price"] = "\(viewModel.priceText) QAR"
+        }
+        if !viewModel.title.isEmpty {
+            attrs["title"] = viewModel.title
+        }
+
+        Task { @MainActor in
+            do {
+                let response = try await PuryAdminService.shared.requestAuthoring(
+                    task: .generateDescription,
+                    itemType: "service",
+                    sourceLanguage: "ar",
+                    targetLanguage: "ar",
+                    currentText: [
+                        "nameAr": viewModel.title,
+                        "descAr": viewModel.serviceDescription
+                    ],
+                    attributes: attrs
+                )
+
+                if let ar = response.descAr, !ar.isEmpty {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                        viewModel.serviceDescription = ar
+                    }
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                }
+                isGeneratingDesc = false
+            } catch {
+                isGeneratingDesc = false
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            }
+        }
     }
 }
 

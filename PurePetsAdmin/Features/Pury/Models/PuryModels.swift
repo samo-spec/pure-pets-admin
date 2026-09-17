@@ -269,6 +269,95 @@ public struct PuryStructuredData: Codable, Sendable {
     }
 }
 
+// MARK: - Lossless JSON Contract Value
+
+public indirect enum PuryJSONValue: Codable, Sendable, Equatable {
+    case string(String)
+    case number(Double)
+    case bool(Bool)
+    case array([PuryJSONValue])
+    case object([String: PuryJSONValue])
+    case null
+
+    public init(any: Any) {
+        switch any {
+        case is NSNull:
+            self = .null
+        case let value as Bool:
+            self = .bool(value)
+        case let value as Int:
+            self = .number(Double(value))
+        case let value as Int64:
+            self = .number(Double(value))
+        case let value as Double:
+            self = .number(value)
+        case let value as NSNumber:
+            self = .number(value.doubleValue)
+        case let value as String:
+            self = .string(value)
+        case let value as [Any]:
+            self = .array(value.map(PuryJSONValue.init(any:)))
+        case let value as [String: Any]:
+            self = .object(value.mapValues(PuryJSONValue.init(any:)))
+        default:
+            self = .string(String(describing: any))
+        }
+    }
+
+    public var anyValue: Any {
+        switch self {
+        case .string(let value): return value
+        case .number(let value):
+            if value.rounded() == value, value >= Double(Int.min), value <= Double(Int.max) {
+                return Int(value)
+            }
+            return value
+        case .bool(let value): return value
+        case .array(let values): return values.map(\.anyValue)
+        case .object(let values): return values.mapValues(\.anyValue)
+        case .null: return NSNull()
+        }
+    }
+
+    public var displayText: String {
+        switch self {
+        case .string(let value): return value
+        case .number(let value):
+            return value.rounded() == value ? String(Int(value)) : String(value)
+        case .bool(let value): return value ? "true" : "false"
+        case .array(let values): return values.map(\.displayText).joined(separator: ", ")
+        case .object(let values):
+            return values.keys.sorted().map { key in
+                "\(key): \(values[key]?.displayText ?? "")"
+            }.joined(separator: "\n")
+        case .null: return "—"
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() { self = .null; return }
+        if let value = try? container.decode(Bool.self) { self = .bool(value); return }
+        if let value = try? container.decode(Double.self) { self = .number(value); return }
+        if let value = try? container.decode(String.self) { self = .string(value); return }
+        if let value = try? container.decode([PuryJSONValue].self) { self = .array(value); return }
+        if let value = try? container.decode([String: PuryJSONValue].self) { self = .object(value); return }
+        throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unsupported Pury JSON value")
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value): try container.encode(value)
+        case .number(let value): try container.encode(value)
+        case .bool(let value): try container.encode(value)
+        case .array(let value): try container.encode(value)
+        case .object(let value): try container.encode(value)
+        case .null: try container.encodeNil()
+        }
+    }
+}
+
 // MARK: - Confirmation Action Proposal
 
 public struct PuryConfirmationAction: Codable, Sendable {
@@ -279,8 +368,13 @@ public struct PuryConfirmationAction: Codable, Sendable {
     public let collectionTarget: String?
     public let entityId: String?
     public let permissionRequired: String?
-    public let updates: [String: String]?
-    public let beforeState: [String: String]?
+    public let updates: [String: PuryJSONValue]?
+    public let beforeState: [String: PuryJSONValue]?
+    public let scope: PuryJSONValue?
+    public let expectedRevision: Int?
+    public let beforeStateHash: String?
+    public let policyVersion: String?
+    public let expiresAt: Int64?
     public let warnings: [String]?
     public let riskTier: Int?
 
@@ -292,8 +386,13 @@ public struct PuryConfirmationAction: Codable, Sendable {
         collectionTarget: String? = nil,
         entityId: String? = nil,
         permissionRequired: String? = nil,
-        updates: [String: String]? = nil,
-        beforeState: [String: String]? = nil,
+        updates: [String: PuryJSONValue]? = nil,
+        beforeState: [String: PuryJSONValue]? = nil,
+        scope: PuryJSONValue? = nil,
+        expectedRevision: Int? = nil,
+        beforeStateHash: String? = nil,
+        policyVersion: String? = nil,
+        expiresAt: Int64? = nil,
         warnings: [String]? = nil,
         riskTier: Int? = 3
     ) {
@@ -306,25 +405,23 @@ public struct PuryConfirmationAction: Codable, Sendable {
         self.permissionRequired = permissionRequired
         self.updates = updates
         self.beforeState = beforeState
+        self.scope = scope
+        self.expectedRevision = expectedRevision
+        self.beforeStateHash = beforeStateHash
+        self.policyVersion = policyVersion
+        self.expiresAt = expiresAt
         self.warnings = warnings
         self.riskTier = riskTier
     }
 
+    /// Confirmation execution intentionally sends only the opaque signed token
+    /// and UI action identity. Server execution reconstructs every protected
+    /// field from the cryptographically signed envelope and ignores client echo.
     public func asDictionary() -> [String: Any] {
-        var dict: [String: Any] = [
+        [
             "token": token,
-            "intent": intent,
-            "actionId": actionId
+            "actionId": actionId,
         ]
-        if let d = domain { dict["domain"] = d }
-        if let c = collectionTarget { dict["collectionTarget"] = c }
-        if let e = entityId { dict["entityId"] = e }
-        if let p = permissionRequired { dict["permissionRequired"] = p }
-        if let u = updates { dict["updates"] = u }
-        if let b = beforeState { dict["beforeState"] = b }
-        if let w = warnings { dict["warnings"] = w }
-        if let r = riskTier { dict["riskTier"] = r }
-        return dict
     }
 }
 
@@ -348,8 +445,10 @@ public struct PuryResponseMetadata: Codable, Sendable {
     public let callable: String?
     public let error: String?
     public let errorSummary: String?
+    public let commandState: String?
     public let commandId: String?
     public let replayed: Bool?
+    public let requestId: String?
 
     public init(
         intent: String? = nil,
@@ -369,8 +468,10 @@ public struct PuryResponseMetadata: Codable, Sendable {
         callable: String? = nil,
         error: String? = nil,
         errorSummary: String? = nil,
+        commandState: String? = nil,
         commandId: String? = nil,
-        replayed: Bool? = nil
+        replayed: Bool? = nil,
+        requestId: String? = nil
     ) {
         self.intent = intent
         self.domain = domain
@@ -389,8 +490,10 @@ public struct PuryResponseMetadata: Codable, Sendable {
         self.callable = callable
         self.error = error
         self.errorSummary = errorSummary
+        self.commandState = commandState
         self.commandId = commandId
         self.replayed = replayed
+        self.requestId = requestId
     }
 }
 

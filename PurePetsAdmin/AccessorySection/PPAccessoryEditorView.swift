@@ -1976,6 +1976,31 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         return selectedSubKind?.subKindName
     }
 
+    var authoringAttributes: [String: String] {
+        var attrs: [String: String] = [:]
+        if let cat = selectedCategoryDisplayTitle, !cat.isEmpty { attrs["category"] = cat }
+        if let sub = selectedSubCategoryDisplayTitle, !sub.isEmpty { attrs["subcategory"] = sub }
+        if let accCat = selectedAccessoryCategoryDisplayTitle, !accCat.isEmpty { attrs["accessoryCategory"] = accCat }
+        if !brand.isEmpty { attrs["brand"] = brand }
+        attrs["condition"] = (condition == .used) ? "used" : "new"
+        if isFood {
+            attrs["type"] = "food"
+            if !weightText.isEmpty { attrs["weight"] = "\(weightText) \(weightUnit)" }
+        } else if isLivePet {
+            attrs["type"] = "live_pet"
+            if !selectedGender.isEmpty { attrs["gender"] = selectedGender }
+            if isVaccinated { attrs["vaccinated"] = "true" }
+        } else {
+            attrs["type"] = "accessory"
+            if !size.isEmpty { attrs["size"] = size }
+            if !dimensionWidthText.isEmpty && !dimensionHeightText.isEmpty {
+                attrs["dimensions"] = "\(dimensionWidthText)×\(dimensionHeightText) \(dimensionUnit)"
+            }
+            if !weightText.isEmpty { attrs["weight"] = "\(weightText) \(weightUnit)" }
+        }
+        return attrs
+    }
+
     // MARK: - Pricing Calculations
 
     var basePrice: Double {
@@ -4059,9 +4084,13 @@ struct PPBilingualInputField: View {
     @Binding var selectedLanguage: PPBilingualLanguage
     let isFocused: Bool
     var maxWordCount: Int? = nil
+    var itemType: String = "accessory"
+    var contextAttributes: [String: String] = [:]
+    var enablePuryTranslator: Bool = true
     var onFocusChange: ((Bool) -> Void)? = nil
     var onSubmit: (() -> Void)? = nil
 
+    @State private var isTranslating: Bool = false
     @FocusState private var isArabicFocused: Bool
     @FocusState private var isEnglishFocused: Bool
 
@@ -4075,6 +4104,14 @@ struct PPBilingualInputField: View {
 
     private var isFieldFocused: Bool {
         isArabicFocused || isEnglishFocused
+    }
+
+    private var canShowPuryTranslator: Bool {
+        if selectedLanguage == .english {
+            return hasArabicText || !englishText.isEmpty
+        } else {
+            return !hasArabicText && hasEnglishText
+        }
     }
 
     var body: some View {
@@ -4102,35 +4139,41 @@ struct PPBilingualInputField: View {
             }
 
             // Single-Footprint Input Box (Smooth AR / EN state flip)
-            ZStack(alignment: .center) {
-                TextField(arabicPlaceholder, text: $arabicText)
-                    .font(AdminType.body)
-                    .focused($isArabicFocused)
-                    .environment(\.layoutDirection, .rightToLeft)
-                    .multilineTextAlignment(.leading)
-                    .textContentType(.name)
-                    .submitLabel(.next)
-                    .onSubmit { onSubmit?() }
-                    .forceKeyboardLanguage(.arabic)
-                    .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .opacity(selectedLanguage == .arabic ? 1 : 0)
-                    .allowsHitTesting(selectedLanguage == .arabic)
+            HStack(spacing: 8) {
+                ZStack(alignment: .center) {
+                    TextField(arabicPlaceholder, text: $arabicText)
+                        .font(AdminType.body)
+                        .focused($isArabicFocused)
+                        .environment(\.layoutDirection, .rightToLeft)
+                        .multilineTextAlignment(.leading)
+                        .textContentType(.name)
+                        .submitLabel(.next)
+                        .onSubmit { onSubmit?() }
+                        .forceKeyboardLanguage(.arabic)
+                        .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .opacity(selectedLanguage == .arabic ? 1 : 0)
+                        .allowsHitTesting(selectedLanguage == .arabic)
 
-                TextField(englishPlaceholder, text: $englishText)
-                    .font(AdminType.body)
-                    .focused($isEnglishFocused)
-                    .environment(\.layoutDirection, .leftToRight)
-                    .multilineTextAlignment(.leading)
-                    .textContentType(.name)
-                    .keyboardType(.asciiCapable)
-                    .submitLabel(.next)
-                    .onSubmit { onSubmit?() }
-                    .forceKeyboardLanguage(.english)
-                    .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .opacity(selectedLanguage == .english ? 1 : 0)
-                    .allowsHitTesting(selectedLanguage == .english)
+                    TextField(englishPlaceholder, text: $englishText)
+                        .font(AdminType.body)
+                        .focused($isEnglishFocused)
+                        .environment(\.layoutDirection, .leftToRight)
+                        .multilineTextAlignment(.leading)
+                        .textContentType(.name)
+                        .keyboardType(.asciiCapable)
+                        .submitLabel(.next)
+                        .onSubmit { onSubmit?() }
+                        .forceKeyboardLanguage(.english)
+                        .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .opacity(selectedLanguage == .english ? 1 : 0)
+                        .allowsHitTesting(selectedLanguage == .english)
+                }
+
+                if enablePuryTranslator && canShowPuryTranslator {
+                    puryTranslatorTrailingButton
+                }
             }
             .padding(.horizontal, AdminSpacing.md)
             .frame(minHeight: AdminTouchTarget.expanded)
@@ -4182,6 +4225,91 @@ struct PPBilingualInputField: View {
 
             // Status & Quick Action Strip
             bilingualStatusStrip
+        }
+    }
+
+    private var puryTranslatorTrailingButton: some View {
+        Button {
+            translateNameWithPury()
+        } label: {
+            HStack(spacing: 5) {
+                PuryAvatar(
+                    size: 24,
+                    isLiving: true,
+                    isThinking: isTranslating,
+                    showStatusRing: true,
+                    showAmbientAura: isTranslating
+                )
+
+                if isTranslating {
+                    ProgressView()
+                        .scaleEffect(0.65)
+                        .tint(Color(red: 16/255, green: 185/255, blue: 129/255))
+                } else {
+                    Text(Language.isRTL() ? "ترجمة" : "Translate")
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                }
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12))
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.35), lineWidth: 0.75)
+            )
+        }
+        .buttonStyle(PuryCompactPressStyle())
+        .disabled(isTranslating)
+        .accessibilityLabel(Language.get("Pury_Translate_Name", alter: "ترجمة فورية مع بيوري"))
+    }
+
+    private func translateNameWithPury() {
+        let sourceLang = selectedLanguage == .english ? "ar" : "en"
+        let targetLang = selectedLanguage == .english ? "en" : "ar"
+        let sourceText = sourceLang == "ar" ? arabicText : englishText
+
+        guard !sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            return
+        }
+
+        isTranslating = true
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        Task { @MainActor in
+            do {
+                let response = try await PuryAdminService.shared.requestAuthoring(
+                    task: .translate,
+                    itemType: itemType,
+                    sourceLanguage: sourceLang,
+                    targetLanguage: targetLang,
+                    currentText: [
+                        "nameAr": arabicText,
+                        "nameEn": englishText
+                    ],
+                    attributes: contextAttributes
+                )
+
+                if targetLang == "en", let en = response.nameEn, !en.isEmpty {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        englishText = en
+                    }
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                } else if targetLang == "ar", let ar = response.nameAr, !ar.isEmpty {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        arabicText = ar
+                    }
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                }
+                isTranslating = false
+            } catch {
+                isTranslating = false
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            }
         }
     }
 
@@ -4282,6 +4410,17 @@ struct PPBilingualInputField: View {
     }
 }
 
+// MARK: - Pury Compact Button Press Style
+
+struct PuryCompactPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .opacity(configuration.isPressed ? 0.85 : 1.0)
+            .animation(.spring(response: 0.2, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
 // MARK: - Bilingual Multi-Line TextEditor Field
 
 struct PPBilingualTextEditorField: View {
@@ -4294,8 +4433,16 @@ struct PPBilingualTextEditorField: View {
     @Binding var selectedLanguage: PPBilingualLanguage
     var minHeight: CGFloat = 100
     let isFocused: Bool
+    var itemType: String = "accessory"
+    var itemName: String = ""
+    var itemNameEn: String = ""
+    var categoryName: String = ""
+    var subCategoryName: String = ""
+    var contextAttributes: [String: String] = [:]
+    var enablePuryWriter: Bool = true
     var onFocusChange: ((Bool) -> Void)? = nil
 
+    @State private var isGenerating: Bool = false
     @FocusState private var isArabicFocused: Bool
     @FocusState private var isEnglishFocused: Bool
 
@@ -4309,6 +4456,20 @@ struct PPBilingualTextEditorField: View {
 
     private var isFieldFocused: Bool {
         isArabicFocused || isEnglishFocused
+    }
+
+    private var writerButtonLabel: String {
+        if selectedLanguage == .arabic {
+            return hasArabicText
+                ? (Language.isRTL() ? "تحسين مع بيوري" : "Enhance with Pury")
+                : (Language.isRTL() ? "صياغة بيوري" : "Write with Pury")
+        } else {
+            return hasArabicText && !hasEnglishText
+                ? (Language.isRTL() ? "ترجمة وصياغة" : "Translate & Write")
+                : (hasEnglishText
+                    ? (Language.isRTL() ? "تحسين بالإنجليزية" : "Enhance English")
+                    : (Language.isRTL() ? "صياغة بيوري" : "Write with Pury"))
+        }
     }
 
     var body: some View {
@@ -4335,66 +4496,79 @@ struct PPBilingualTextEditorField: View {
                 )
             }
 
-            // Single-Footprint Multiline Editor (Smooth AR / EN state flip)
-            ZStack(alignment: .top) {
-                // Arabic Editor Layer
-                ZStack(alignment: .topLeading) {
-                    if arabicText.isEmpty {
-                        Text(arabicPlaceholder)
+            // Single-Footprint Multiline Editor (Smooth AR / EN state flip) with Embedded Pury Writer Subview
+            ZStack(alignment: .bottomTrailing) {
+                ZStack(alignment: .top) {
+                    // Arabic Editor Layer
+                    ZStack(alignment: .topLeading) {
+                        if arabicText.isEmpty {
+                            Text(arabicPlaceholder)
+                                .font(AdminType.body)
+                                .foregroundStyle(AdminSurface.secondaryText.opacity(0.65))
+                                .environment(\.layoutDirection, .rightToLeft)
+                                .multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, AdminSpacing.md)
+                                .padding(.vertical, 12)
+                                .padding(.bottom, enablePuryWriter ? 38 : 0)
+                                .allowsHitTesting(false)
+                        }
+                        TextEditor(text: $arabicText)
                             .font(AdminType.body)
-                            .foregroundStyle(AdminSurface.secondaryText.opacity(0.65))
+                            .focused($isArabicFocused)
                             .environment(\.layoutDirection, .rightToLeft)
                             .multilineTextAlignment(.leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, AdminSpacing.md)
-                            .padding(.vertical, 12)
-                            .allowsHitTesting(false)
+                            .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .leading)
+                            .padding(AdminSpacing.xs)
+                            .padding(.bottom, enablePuryWriter ? 38 : 0)
+                            .scrollContentBackgroundIfAvailable()
+                            .forceKeyboardLanguage(.arabic)
                     }
-                    TextEditor(text: $arabicText)
-                        .font(AdminType.body)
-                        .focused($isArabicFocused)
-                        .environment(\.layoutDirection, .rightToLeft)
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .leading)
-                        .padding(AdminSpacing.xs)
-                        .scrollContentBackgroundIfAvailable()
-                        .forceKeyboardLanguage(.arabic)
-                }
-                .environment(\.layoutDirection, .rightToLeft)
-                .frame(maxWidth: .infinity, minHeight: minHeight)
-                .contentShape(Rectangle())
-                .opacity(selectedLanguage == .arabic ? 1 : 0)
-                .allowsHitTesting(selectedLanguage == .arabic)
+                    .environment(\.layoutDirection, .rightToLeft)
+                    .frame(maxWidth: .infinity, minHeight: minHeight)
+                    .contentShape(Rectangle())
+                    .opacity(selectedLanguage == .arabic ? 1 : 0)
+                    .allowsHitTesting(selectedLanguage == .arabic)
 
-                // English Editor Layer
-                ZStack(alignment: .topLeading) {
-                    if englishText.isEmpty {
-                        Text(englishPlaceholder)
+                    // English Editor Layer
+                    ZStack(alignment: .topLeading) {
+                        if englishText.isEmpty {
+                            Text(englishPlaceholder)
+                                .font(AdminType.body)
+                                .foregroundStyle(AdminSurface.secondaryText.opacity(0.65))
+                                .environment(\.layoutDirection, .leftToRight)
+                                .multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, AdminSpacing.md)
+                                .padding(.vertical, 12)
+                                .padding(.bottom, enablePuryWriter ? 38 : 0)
+                                .allowsHitTesting(false)
+                        }
+                        TextEditor(text: $englishText)
                             .font(AdminType.body)
-                            .foregroundStyle(AdminSurface.secondaryText.opacity(0.65))
+                            .focused($isEnglishFocused)
                             .environment(\.layoutDirection, .leftToRight)
                             .multilineTextAlignment(.leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, AdminSpacing.md)
-                            .padding(.vertical, 12)
-                            .allowsHitTesting(false)
+                            .keyboardType(.asciiCapable)
+                            .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .leading)
+                            .padding(AdminSpacing.xs)
+                            .padding(.bottom, enablePuryWriter ? 38 : 0)
+                            .scrollContentBackgroundIfAvailable()
+                            .forceKeyboardLanguage(.english)
                     }
-                    TextEditor(text: $englishText)
-                        .font(AdminType.body)
-                        .focused($isEnglishFocused)
-                        .environment(\.layoutDirection, .leftToRight)
-                        .multilineTextAlignment(.leading)
-                        .keyboardType(.asciiCapable)
-                        .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .leading)
-                        .padding(AdminSpacing.xs)
-                        .scrollContentBackgroundIfAvailable()
-                        .forceKeyboardLanguage(.english)
+                    .environment(\.layoutDirection, .leftToRight)
+                    .frame(maxWidth: .infinity, minHeight: minHeight)
+                    .contentShape(Rectangle())
+                    .opacity(selectedLanguage == .english ? 1 : 0)
+                    .allowsHitTesting(selectedLanguage == .english)
                 }
-                .environment(\.layoutDirection, .leftToRight)
-                .frame(maxWidth: .infinity, minHeight: minHeight)
-                .contentShape(Rectangle())
-                .opacity(selectedLanguage == .english ? 1 : 0)
-                .allowsHitTesting(selectedLanguage == .english)
+
+                // Embedded Pury Avatar Writer Subview inside TextEditor
+                if enablePuryWriter {
+                    puryWriterSubview
+                        .padding(.trailing, 8)
+                        .padding(.bottom, 8)
+                }
             }
             .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
             .overlay(
@@ -4444,6 +4618,142 @@ struct PPBilingualTextEditorField: View {
 
             // Status & Quick Action Strip
             bilingualStatusStrip
+        }
+    }
+
+    private var puryWriterSubview: some View {
+        Button {
+            generateDescriptionWithPury()
+        } label: {
+            HStack(spacing: 6) {
+                PuryAvatar(
+                    size: 22,
+                    isLiving: true,
+                    isThinking: isGenerating,
+                    showStatusRing: true,
+                    showAmbientAura: isGenerating
+                )
+
+                if isGenerating {
+                    HStack(spacing: 4) {
+                        ProgressView()
+                            .scaleEffect(0.65)
+                            .tint(Color(red: 16/255, green: 185/255, blue: 129/255))
+                        Text(Language.isRTL() ? "جارٍ الصياغة..." : "Crafting...")
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                    }
+                } else {
+                    HStack(spacing: 4) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                        Text(writerButtonLabel)
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule()
+                    .fill(Color(uiColor: .systemBackground).opacity(0.92))
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.45),
+                                Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.18)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(color: Color.black.opacity(0.08), radius: 4, x: 0, y: 2)
+        }
+        .buttonStyle(PuryCompactPressStyle())
+        .disabled(isGenerating)
+        .accessibilityLabel(Language.get("Pury_Write_Description", alter: "صياغة وصف احترافي مع بيوري"))
+    }
+
+    private func generateDescriptionWithPury() {
+        var effectiveName = itemName
+        if effectiveName.isEmpty {
+            effectiveName = arabicText
+        }
+
+        var attrs = contextAttributes
+        if !categoryName.isEmpty && attrs["category"] == nil {
+            attrs["category"] = categoryName
+        }
+        if !subCategoryName.isEmpty && attrs["subcategory"] == nil {
+            attrs["subcategory"] = subCategoryName
+        }
+        if !effectiveName.isEmpty {
+            attrs["name"] = effectiveName
+        }
+        if !itemNameEn.isEmpty {
+            attrs["nameEn"] = itemNameEn
+        }
+
+        let isEnglishTarget = (selectedLanguage == .english)
+        let targetLang = isEnglishTarget ? "en" : "ar"
+        let sourceLang = "ar"
+
+        let isTranslatingFromArabic = isEnglishTarget && hasArabicText && !hasEnglishText
+        let authoringTask: PuryAuthoringTask = isTranslatingFromArabic ? .translate : .generateDescription
+
+        isGenerating = true
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        Task { @MainActor in
+            do {
+                let response = try await PuryAdminService.shared.requestAuthoring(
+                    task: authoringTask,
+                    itemType: itemType,
+                    sourceLanguage: sourceLang,
+                    targetLanguage: targetLang,
+                    currentText: [
+                        "nameAr": effectiveName,
+                        "nameEn": itemNameEn,
+                        "descAr": arabicText,
+                        "descEn": englishText
+                    ],
+                    attributes: attrs
+                )
+
+                if isEnglishTarget {
+                    if let en = response.descEn, !en.isEmpty {
+                        withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                            englishText = en
+                        }
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    } else if let ar = response.descAr, !ar.isEmpty && arabicText.isEmpty {
+                        withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                            arabicText = ar
+                        }
+                    }
+                } else {
+                    if let ar = response.descAr, !ar.isEmpty {
+                        withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                            arabicText = ar
+                        }
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    }
+                    if let en = response.descEn, !en.isEmpty && englishText.isEmpty {
+                        englishText = en
+                    }
+                }
+                isGenerating = false
+            } catch {
+                isGenerating = false
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            }
         }
     }
 
@@ -5288,20 +5598,6 @@ struct PPAccessoryEditorScreen: View {
                 Spacer()
             }
 
-            if viewModel.canUsePuryAuthoring {
-                PuryInlineAuthoringBar(
-                    itemType: viewModel.isLivePet ? "live_pet" : "accessory",
-                    arabicText: $viewModel.name,
-                    englishText: $viewModel.nameEn,
-                    targetField: "name",
-                    attributes: [
-                        "category": viewModel.selectedCategoryDisplayTitle ?? "",
-                        "brand": viewModel.brand,
-                        "price": viewModel.price
-                    ]
-                )
-            }
-
             PPBilingualInputField(
                 title: Language.get("ItemName", alter: "اسم الصنف أو الحيوان"),
                 isRequired: true,
@@ -5312,6 +5608,9 @@ struct PPAccessoryEditorScreen: View {
                 selectedLanguage: $bilingualLanguage,
                 isFocused: focusedField == .name,
                 maxWordCount: 4,
+                itemType: viewModel.isLivePet ? "live_pet" : (viewModel.isFood ? "food" : "accessory"),
+                contextAttributes: viewModel.authoringAttributes,
+                enablePuryTranslator: true,
                 onFocusChange: { focused in
                     if focused { focusedField = .name }
                     else if focusedField == .name { focusedField = nil }
@@ -5319,20 +5618,6 @@ struct PPAccessoryEditorScreen: View {
                 onSubmit: { focusedField = .desc }
             )
             .id(FormField.name)
-
-            if viewModel.canUsePuryAuthoring {
-                PuryInlineAuthoringBar(
-                    itemType: viewModel.isLivePet ? "live_pet" : "accessory",
-                    arabicText: $viewModel.desc,
-                    englishText: $viewModel.descEn,
-                    targetField: "description",
-                    attributes: [
-                        "category": viewModel.selectedCategoryDisplayTitle ?? "",
-                        "brand": viewModel.brand,
-                        "price": viewModel.price
-                    ]
-                )
-            }
 
             PPBilingualTextEditorField(
                 title: Language.get("Description", alter: "الوصف التفصيلي والمواصفات"),
@@ -5344,6 +5629,13 @@ struct PPAccessoryEditorScreen: View {
                 selectedLanguage: $bilingualLanguage,
                 minHeight: 88,
                 isFocused: focusedField == .desc,
+                itemType: viewModel.isLivePet ? "live_pet" : (viewModel.isFood ? "food" : "accessory"),
+                itemName: viewModel.name,
+                itemNameEn: viewModel.nameEn,
+                categoryName: viewModel.selectedCategoryDisplayTitle ?? "",
+                subCategoryName: viewModel.selectedSubCategoryDisplayTitle ?? "",
+                contextAttributes: viewModel.authoringAttributes,
+                enablePuryWriter: true,
                 onFocusChange: { focused in
                     if focused { focusedField = .desc }
                     else if focusedField == .desc { focusedField = nil }
@@ -9556,6 +9848,9 @@ private struct PPLivePetIntakeJourney: View {
                     englishPlaceholder: "e.g. Tame Lutino Cockatiel",
                     selectedLanguage: $bilingualLanguage,
                     isFocused: focusedField == .name,
+                    itemType: viewModel.isLivePet ? "live_pet" : "accessory",
+                    contextAttributes: viewModel.authoringAttributes,
+                    enablePuryTranslator: true,
                     onFocusChange: { focused in
                         if focused { focusedField = .name }
                         else if focusedField == .name { focusedField = nil }
@@ -9576,6 +9871,13 @@ private struct PPLivePetIntakeJourney: View {
                     selectedLanguage: $bilingualLanguage,
                     minHeight: 112,
                     isFocused: focusedField == .description,
+                    itemType: viewModel.isLivePet ? "live_pet" : "accessory",
+                    itemName: viewModel.name,
+                    itemNameEn: viewModel.nameEn,
+                    categoryName: viewModel.selectedCategoryDisplayTitle ?? "",
+                    subCategoryName: viewModel.selectedSubCategoryDisplayTitle ?? "",
+                    contextAttributes: viewModel.authoringAttributes,
+                    enablePuryWriter: true,
                     onFocusChange: { focused in
                         if focused { focusedField = .description }
                         else if focusedField == .description { focusedField = nil }
@@ -16776,6 +17078,9 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     englishPlaceholder: "e.g. Premium Grain-Free Cat Food",
                     selectedLanguage: $bilingualLanguage,
                     isFocused: focusedField == .name,
+                    itemType: viewModel.isLivePet ? "live_pet" : (viewModel.isFood ? "food" : "accessory"),
+                    contextAttributes: viewModel.authoringAttributes,
+                    enablePuryTranslator: true,
                     onFocusChange: { focused in
                         if focused { focusedField = .name }
                         else if focusedField == .name { focusedField = nil }
@@ -16794,6 +17099,13 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     selectedLanguage: $bilingualLanguage,
                     minHeight: 120,
                     isFocused: focusedField == .description,
+                    itemType: viewModel.isLivePet ? "live_pet" : (viewModel.isFood ? "food" : "accessory"),
+                    itemName: viewModel.name,
+                    itemNameEn: viewModel.nameEn,
+                    categoryName: viewModel.selectedCategoryDisplayTitle ?? "",
+                    subCategoryName: viewModel.selectedSubCategoryDisplayTitle ?? "",
+                    contextAttributes: viewModel.authoringAttributes,
+                    enablePuryWriter: true,
                     onFocusChange: { focused in
                         if focused { focusedField = .description }
                         else if focusedField == .description { focusedField = nil }

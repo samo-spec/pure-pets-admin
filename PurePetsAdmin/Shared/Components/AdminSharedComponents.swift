@@ -630,6 +630,7 @@ public struct AdminSovereignNavigationBar<TrailingContent: View>: View {
     public var statusDotColor: Color?
     public var isModal: Bool
     public var customTopSpacing: CGFloat?
+    public var showsTopFade: Bool
     public var onBack: () -> Void
     public var onSubtitleTap: (() -> Void)?
     public var isSubtitleActionActive: Bool
@@ -641,6 +642,7 @@ public struct AdminSovereignNavigationBar<TrailingContent: View>: View {
         statusDotColor: Color? = Color(uiColor: .ppSuccess),
         isModal: Bool = false,
         customTopSpacing: CGFloat? = nil,
+        showsTopFade: Bool = true,
         onBack: @escaping () -> Void,
         onSubtitleTap: (() -> Void)? = nil,
         isSubtitleActionActive: Bool = false,
@@ -651,6 +653,7 @@ public struct AdminSovereignNavigationBar<TrailingContent: View>: View {
         self.statusDotColor = statusDotColor
         self.isModal = isModal
         self.customTopSpacing = customTopSpacing
+        self.showsTopFade = showsTopFade
         self.onBack = onBack
         self.onSubtitleTap = onSubtitleTap
         self.isSubtitleActionActive = isSubtitleActionActive
@@ -727,8 +730,21 @@ public struct AdminSovereignNavigationBar<TrailingContent: View>: View {
             .padding(.bottom, 12)
         }
         .background(
-            Color.clear
-                .ignoresSafeArea(edges: .top)
+            Group {
+                if showsTopFade {
+                    PPGlobalNavigationTopFade(
+                        surface: AdminSurface.background,
+                        maskGeometry: .anchored(
+                            solidHeight: topSpacing + 64,
+                            bleed: 32
+                        )
+                    )
+                } else {
+                    Color.clear
+                        .ignoresSafeArea(edges: .top)
+                }
+            },
+            alignment: .top
         )
     }
 }
@@ -740,6 +756,7 @@ extension AdminSovereignNavigationBar where TrailingContent == EmptyView {
         statusDotColor: Color? = Color(uiColor: .ppSuccess),
         isModal: Bool = false,
         customTopSpacing: CGFloat? = nil,
+        showsTopFade: Bool = true,
         onBack: @escaping () -> Void,
         onSubtitleTap: (() -> Void)? = nil,
         isSubtitleActionActive: Bool = false
@@ -750,6 +767,7 @@ extension AdminSovereignNavigationBar where TrailingContent == EmptyView {
             statusDotColor: statusDotColor,
             isModal: isModal,
             customTopSpacing: customTopSpacing,
+            showsTopFade: showsTopFade,
             onBack: onBack,
             onSubtitleTap: onSubtitleTap,
             isSubtitleActionActive: isSubtitleActionActive,

@@ -73,6 +73,36 @@ public struct PuryActionConfirmationCard: View {
                 .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 8))
             }
 
+            // Signed command context. These values are copied from the server-signed
+            // confirmation envelope and are never used as client execution authority.
+            VStack(alignment: .leading, spacing: 6) {
+                if let revision = action.expectedRevision {
+                    confirmationFact(
+                        label: Language.get("Pury_Confirm_Revision", alter: "نسخة السجل"),
+                        value: String(revision)
+                    )
+                }
+                if let scope = action.scope {
+                    confirmationFact(
+                        label: Language.get("Pury_Confirm_Scope", alter: "نطاق الصلاحية"),
+                        value: scope.displayText
+                    )
+                }
+                if let policy = action.policyVersion, !policy.isEmpty {
+                    confirmationFact(
+                        label: Language.get("Pury_Confirm_Policy", alter: "سياسة التنفيذ"),
+                        value: policy
+                    )
+                }
+                if let expiresAt = action.expiresAt {
+                    confirmationFact(
+                        label: Language.get("Pury_Confirm_Expiry", alter: "ينتهي التأكيد"),
+                        value: Self.expiryText(expiresAt)
+                    )
+                }
+            }
+            .accessibilityElement(children: .contain)
+
             // Warnings list
             if let warnings = action.warnings, !warnings.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
@@ -110,7 +140,7 @@ public struct PuryActionConfirmationCard: View {
                                 Spacer()
 
                                 if let beforeVal = action.beforeState?[key] {
-                                    Text(beforeVal)
+                                    Text(beforeVal.displayText)
                                         .font(AdminType.caption2)
                                         .foregroundStyle(AdminSurface.secondaryText)
                                         .strikethrough()
@@ -120,9 +150,11 @@ public struct PuryActionConfirmationCard: View {
                                         .foregroundStyle(AdminSurface.secondaryText)
                                 }
 
-                                Text(updates[key] ?? "")
+                                Text(updates[key]?.displayText ?? "")
                                     .font(AdminType.caption1Bold)
                                     .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                                    .multilineTextAlignment(.trailing)
+                                    .textSelection(.enabled)
                             }
                             .padding(.vertical, 3)
                             .padding(.horizontal, 6)
@@ -152,6 +184,8 @@ public struct PuryActionConfirmationCard: View {
                     .background(Color(red: 16/255, green: 185/255, blue: 129/255), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(Language.get("Pury_Confirm_Btn", alter: "تأكيد وتنفيذ"))
+                .accessibilityHint(Language.get("Pury_Confirm_A11y_Hint", alter: "ينفذ التغيير الموقع المعروض أعلاه فقط"))
 
                 Button {
                     onCancel()
@@ -168,6 +202,8 @@ public struct PuryActionConfirmationCard: View {
                         )
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(Language.get("Cancel", alter: "إلغاء"))
+                .accessibilityHint(Language.get("Pury_Cancel_A11y_Hint", alter: "يلغي الاقتراح بدون إجراء أي تعديل"))
             }
         }
         .padding(14)
@@ -176,5 +212,32 @@ public struct PuryActionConfirmationCard: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(Color(red: 245/255, green: 158/255, blue: 11/255).opacity(0.4), lineWidth: 1)
         )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Language.get("Pury_Confirm_Title", alter: "مطلوب تأكيد العملية"))
+    }
+
+    @ViewBuilder
+    private func confirmationFact(label: String, value: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(label)
+                .font(AdminType.caption2)
+                .foregroundStyle(AdminSurface.secondaryText)
+            Spacer(minLength: 8)
+            Text(value)
+                .font(AdminType.caption1Bold)
+                .foregroundStyle(AdminSurface.primaryText)
+                .multilineTextAlignment(.trailing)
+                .textSelection(.enabled)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(AdminSurface.surface.opacity(0.65), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value)")
+    }
+
+    private static func expiryText(_ epochMillis: Int64) -> String {
+        let date = Date(timeIntervalSince1970: TimeInterval(epochMillis) / 1_000.0)
+        return date.formatted(date: .omitted, time: .standard)
     }
 }

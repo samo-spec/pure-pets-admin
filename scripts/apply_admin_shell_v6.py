@@ -124,7 +124,11 @@ private struct AdminModuleListView: View {
     }
 
     var body: some View {
-        PPGlobalNavigationScrollShell(configuration: navigationConfiguration, onAction: { _ in }) {
+        PPGlobalNavigationScrollShell(
+            configuration: navigationConfiguration,
+            showsTopFade: true,
+            onAction: { _ in }
+        ) {
             LazyVStack(alignment: .leading, spacing: 16) {
                 AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)
 
@@ -164,7 +168,11 @@ private struct AdminMoreView: View {
     }
 
     var body: some View {
-        PPGlobalNavigationScrollShell(configuration: navigationConfiguration, onAction: { _ in }) {
+        PPGlobalNavigationScrollShell(
+            configuration: navigationConfiguration,
+            showsTopFade: true,
+            onAction: { _ in }
+        ) {
             LazyVStack(alignment: .leading, spacing: 16) {
                 AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)
                 AdminProfileSummaryCard(session: session)

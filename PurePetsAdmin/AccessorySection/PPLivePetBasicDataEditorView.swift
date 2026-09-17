@@ -74,6 +74,8 @@ public struct PPLivePetBasicDataEditorView: View {
     @State private var nameEn: String = ""
     @State private var descAr: String = ""
     @State private var descEn: String = ""
+    @State private var isTranslatingName: Bool = false
+    @State private var isGeneratingDesc: Bool = false
     @FocusState private var activeField: EditorField?
 
     // MARK: - State: Taxonomy (Species & Breed)
@@ -674,59 +676,62 @@ public struct PPLivePetBasicDataEditorView: View {
                         .foregroundStyle(currentText.count > 80 ? AdminSurface.crimson : AdminSurface.secondaryText.opacity(0.7))
                 }
 
-                PuryInlineAuthoringBar(
-                    itemType: "live_pet",
-                    arabicText: $nameAr,
-                    englishText: $nameEn,
-                    targetField: "name",
-                    attributes: [
-                        "species": selectedSpeciesID,
-                        "breed": selectedSubKindID
-                    ]
-                )
-
                 ZStack {
                     // Arabic Name Field (Aligned Right)
-                    TextField(Language.get("EnterArabicName", alter: "مثال: زوج كروان هولندي أليف"), text: $nameAr)
-                        .font(Font.custom("Beiruti-Bold", size: 16))
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .focused($activeField, equals: .arabicName)
-                        .environment(\.layoutDirection, .rightToLeft)
-                        .multilineTextAlignment(.leading) // In RTL layout, leading is on the RIGHT
-                        .padding(AdminSpacing.md)
-                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
-                                .stroke(activeField == .arabicName ? AdminSurface.primary : AdminSurface.hairline, lineWidth: activeField == .arabicName ? 1.5 : 0.75)
-                        )
-                        .opacity(selectedLanguage == .arabic ? 1 : 0)
-                        .allowsHitTesting(selectedLanguage == .arabic)
-                        .zIndex(selectedLanguage == .arabic ? 1 : 0)
-                        .accessibilityHidden(selectedLanguage != .arabic)
-                        .id(EditorField.arabicName)
+                    HStack(spacing: 8) {
+                        TextField(Language.get("EnterArabicName", alter: "مثال: زوج كروان هولندي أليف"), text: $nameAr)
+                            .font(Font.custom("Beiruti-Bold", size: 16))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .focused($activeField, equals: .arabicName)
+                            .environment(\.layoutDirection, .rightToLeft)
+                            .multilineTextAlignment(.leading) // In RTL layout, leading is on the RIGHT
 
-                    // English Name Field (Aligned Left)
-                    TextField(Language.get("EnterEnglishName", alter: "e.g. Dutch Cockatiel Mated Pair"), text: $nameEn)
-                        .font(Font.custom("Beiruti-Bold", size: 16))
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .focused($activeField, equals: .englishName)
-                        .environment(\.layoutDirection, .leftToRight)
-                        .multilineTextAlignment(.leading) // In LTR layout, leading is on the LEFT
-                        .padding(AdminSpacing.md)
-                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
-                                .stroke(activeField == .englishName ? AdminSurface.primary : AdminSurface.hairline, lineWidth: activeField == .englishName ? 1.5 : 0.75)
-                        )
-                        .opacity(selectedLanguage == .english ? 1 : 0)
-                        .allowsHitTesting(selectedLanguage == .english)
-                        .zIndex(selectedLanguage == .english ? 1 : 0)
-                        .accessibilityHidden(selectedLanguage != .english)
-                        .id(EditorField.englishName)
+                        if !nameEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && nameAr.isEmpty {
+                            puryLivePetTranslateButton
+                        }
+                    }
+                    .padding(.horizontal, AdminSpacing.md)
+                    .frame(minHeight: AdminTouchTarget.expanded)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                            .stroke(activeField == .arabicName ? AdminSurface.primary : AdminSurface.hairline, lineWidth: activeField == .arabicName ? 1.5 : 0.75)
+                    )
+                    .opacity(selectedLanguage == .arabic ? 1 : 0)
+                    .allowsHitTesting(selectedLanguage == .arabic)
+                    .zIndex(selectedLanguage == .arabic ? 1 : 0)
+                    .accessibilityHidden(selectedLanguage != .arabic)
+                    .id(EditorField.arabicName)
+
+                    // English Name Field (Aligned Left) with Trailing Pury Translator
+                    HStack(spacing: 8) {
+                        TextField(Language.get("EnterEnglishName", alter: "e.g. Dutch Cockatiel Mated Pair"), text: $nameEn)
+                            .font(Font.custom("Beiruti-Bold", size: 16))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .focused($activeField, equals: .englishName)
+                            .environment(\.layoutDirection, .leftToRight)
+                            .multilineTextAlignment(.leading) // In LTR layout, leading is on the LEFT
+
+                        if !nameAr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            puryLivePetTranslateButton
+                        }
+                    }
+                    .padding(.horizontal, AdminSpacing.md)
+                    .frame(minHeight: AdminTouchTarget.expanded)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                            .stroke(activeField == .englishName ? AdminSurface.primary : AdminSurface.hairline, lineWidth: activeField == .englishName ? 1.5 : 0.75)
+                    )
+                    .opacity(selectedLanguage == .english ? 1 : 0)
+                    .allowsHitTesting(selectedLanguage == .english)
+                    .zIndex(selectedLanguage == .english ? 1 : 0)
+                    .accessibilityHidden(selectedLanguage != .english)
+                    .id(EditorField.englishName)
                 }
             }
 
-            // Specimen Description Input (Bilingual Dual-Surface Multiline)
+            // Specimen Description Input (Bilingual Dual-Surface Multiline with Embedded Pury Writer)
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text(selectedLanguage == .arabic ? Language.get("DescArabicLabel", alter: "الوصف والمواصفات (بالعربية)") : Language.get("DescEnglishLabel", alter: "Description & Specifications (English)"))
@@ -741,85 +746,85 @@ public struct PPLivePetBasicDataEditorView: View {
                         .foregroundStyle(currentText.count > 1000 ? AdminSurface.crimson : AdminSurface.secondaryText.opacity(0.7))
                 }
 
-                PuryInlineAuthoringBar(
-                    itemType: "live_pet",
-                    arabicText: $descAr,
-                    englishText: $descEn,
-                    targetField: "description",
-                    attributes: [
-                        "species": selectedSpeciesID,
-                        "breed": selectedSubKindID
-                    ]
-                )
+                ZStack(alignment: .bottomTrailing) {
+                    ZStack {
+                        // Arabic Description (Aligned Right)
+                        ZStack(alignment: .topLeading) {
+                            if descAr.isEmpty {
+                                Text(Language.get("EnterArabicDescPrompt", alter: "اكتب وصفاً وافياً عن الحالة الصحية، التغذية، السلوك، وأي ملحقات مرفقة..."))
+                                    .font(Font.custom("Beiruti-Regular", size: 14))
+                                    .foregroundStyle(AdminSurface.secondaryText.opacity(0.6))
+                                    .multilineTextAlignment(.leading)
+                                    .padding(.horizontal, AdminSpacing.md)
+                                    .padding(.vertical, 12)
+                                    .padding(.bottom, 36)
+                                    .allowsHitTesting(false)
+                            }
 
-                ZStack {
-                    // Arabic Description (Aligned Right)
-                    ZStack(alignment: .topLeading) {
-                        if descAr.isEmpty {
-                            Text(Language.get("EnterArabicDescPrompt", alter: "اكتب وصفاً وافياً عن الحالة الصحية، التغذية، السلوك، وأي ملحقات مرفقة..."))
-                                .font(Font.custom("Beiruti-Regular", size: 14))
-                                .foregroundStyle(AdminSurface.secondaryText.opacity(0.6))
-                                .multilineTextAlignment(.leading)
-                                .padding(.horizontal, AdminSpacing.md)
-                                .padding(.vertical, 12)
-                                .allowsHitTesting(false)
+                            TextEditor(text: $descAr)
+                                .font(Font.custom("Beiruti-Regular", size: 15))
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .focused($activeField, equals: .arabicDesc)
+                                .multilineTextAlignment(.leading) // In RTL, leading is on the RIGHT
+                                .frame(minHeight: 110)
+                                .padding(AdminSpacing.xs)
+                                .padding(.bottom, 36)
+                                .scrollContentBackground(.hidden)
                         }
+                        .environment(\.layoutDirection, .rightToLeft)
+                        .padding(AdminSpacing.sm)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                                .stroke(activeField == .arabicDesc ? AdminSurface.primary : AdminSurface.hairline, lineWidth: activeField == .arabicDesc ? 1.5 : 0.75)
+                        )
+                        .opacity(selectedLanguage == .arabic ? 1 : 0)
+                        .allowsHitTesting(selectedLanguage == .arabic)
+                        .zIndex(selectedLanguage == .arabic ? 1 : 0)
+                        .accessibilityHidden(selectedLanguage != .arabic)
+                        .id(EditorField.arabicDesc)
 
-                        TextEditor(text: $descAr)
-                            .font(Font.custom("Beiruti-Regular", size: 15))
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .focused($activeField, equals: .arabicDesc)
-                            .multilineTextAlignment(.leading) // In RTL, leading is on the RIGHT
-                            .frame(minHeight: 110)
-                            .padding(AdminSpacing.xs)
-                            .scrollContentBackground(.hidden)
-                    }
-                    .environment(\.layoutDirection, .rightToLeft)
-                    .padding(AdminSpacing.sm)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
-                            .stroke(activeField == .arabicDesc ? AdminSurface.primary : AdminSurface.hairline, lineWidth: activeField == .arabicDesc ? 1.5 : 0.75)
-                    )
-                    .opacity(selectedLanguage == .arabic ? 1 : 0)
-                    .allowsHitTesting(selectedLanguage == .arabic)
-                    .zIndex(selectedLanguage == .arabic ? 1 : 0)
-                    .accessibilityHidden(selectedLanguage != .arabic)
-                    .id(EditorField.arabicDesc)
+                        // English Description (Aligned Left)
+                        ZStack(alignment: .topLeading) {
+                            if descEn.isEmpty {
+                                Text(Language.get("EnterEnglishDescPrompt", alter: "Detailed description of health condition, diet, behavior, and any included accessories..."))
+                                    .font(Font.custom("Beiruti-Regular", size: 14))
+                                    .foregroundStyle(AdminSurface.secondaryText.opacity(0.6))
+                                    .multilineTextAlignment(.leading)
+                                    .padding(.horizontal, AdminSpacing.md)
+                                    .padding(.vertical, 12)
+                                    .padding(.bottom, 36)
+                                    .allowsHitTesting(false)
+                            }
 
-                    // English Description (Aligned Left)
-                    ZStack(alignment: .topLeading) {
-                        if descEn.isEmpty {
-                            Text(Language.get("EnterEnglishDescPrompt", alter: "Detailed description of health condition, diet, behavior, and any included accessories..."))
-                                .font(Font.custom("Beiruti-Regular", size: 14))
-                                .foregroundStyle(AdminSurface.secondaryText.opacity(0.6))
-                                .multilineTextAlignment(.leading)
-                                .padding(.horizontal, AdminSpacing.md)
-                                .padding(.vertical, 12)
-                                .allowsHitTesting(false)
+                            TextEditor(text: $descEn)
+                                .font(Font.custom("Beiruti-Regular", size: 15))
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .focused($activeField, equals: .englishDesc)
+                                .multilineTextAlignment(.leading) // In LTR, leading is on the LEFT
+                                .frame(minHeight: 110)
+                                .padding(AdminSpacing.xs)
+                                .padding(.bottom, 36)
+                                .scrollContentBackground(.hidden)
                         }
-
-                        TextEditor(text: $descEn)
-                            .font(Font.custom("Beiruti-Regular", size: 15))
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .focused($activeField, equals: .englishDesc)
-                            .multilineTextAlignment(.leading) // In LTR, leading is on the LEFT
-                            .frame(minHeight: 110)
-                            .padding(AdminSpacing.xs)
-                            .scrollContentBackground(.hidden)
+                        .environment(\.layoutDirection, .leftToRight)
+                        .padding(AdminSpacing.sm)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                                .stroke(activeField == .englishDesc ? AdminSurface.primary : AdminSurface.hairline, lineWidth: activeField == .englishDesc ? 1.5 : 0.75)
+                        )
+                        .opacity(selectedLanguage == .english ? 1 : 0)
+                        .allowsHitTesting(selectedLanguage == .english)
+                        .zIndex(selectedLanguage == .english ? 1 : 0)
+                        .accessibilityHidden(selectedLanguage != .english)
+                        .id(EditorField.englishDesc)
                     }
-                    .environment(\.layoutDirection, .leftToRight)
-                    .padding(AdminSpacing.sm)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
-                            .stroke(activeField == .englishDesc ? AdminSurface.primary : AdminSurface.hairline, lineWidth: activeField == .englishDesc ? 1.5 : 0.75)
-                    )
-                    .opacity(selectedLanguage == .english ? 1 : 0)
-                    .allowsHitTesting(selectedLanguage == .english)
-                    .zIndex(selectedLanguage == .english ? 1 : 0)
-                    .accessibilityHidden(selectedLanguage != .english)
-                    .id(EditorField.englishDesc)
+
+                    // Embedded Pury Avatar Description Writer Subview
+                    puryLivePetDescWriterSubview
+                        .padding(.trailing, 8)
+                        .padding(.bottom, 8)
                 }
             }
         }
@@ -848,6 +853,245 @@ public struct PPLivePetBasicDataEditorView: View {
             activeField = .englishDesc
         } else if prevField == .englishDesc && newLang == .arabic {
             activeField = .arabicDesc
+        }
+    }
+
+    // MARK: - Pury Inline Translation & World-Class Authoring
+
+    private var puryLivePetTranslateButton: some View {
+        Button {
+            translateLivePetNameWithPury()
+        } label: {
+            HStack(spacing: 5) {
+                PuryAvatar(
+                    size: 24,
+                    isLiving: true,
+                    isThinking: isTranslatingName,
+                    showStatusRing: true,
+                    showAmbientAura: isTranslatingName
+                )
+
+                if isTranslatingName {
+                    ProgressView()
+                        .scaleEffect(0.65)
+                        .tint(Color(red: 16/255, green: 185/255, blue: 129/255))
+                } else {
+                    Text(Language.isRTL() ? "ترجمة" : "Translate")
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                }
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12))
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.35), lineWidth: 0.75)
+            )
+        }
+        .buttonStyle(PuryCompactPressStyle())
+        .disabled(isTranslatingName)
+        .accessibilityLabel(Language.get("Pury_Translate_Name", alter: "ترجمة فورية مع بيوري"))
+    }
+
+    private func translateLivePetNameWithPury() {
+        let isEnglishTarget = (selectedLanguage == .english)
+        let sourceLang = isEnglishTarget ? "ar" : "en"
+        let targetLang = isEnglishTarget ? "en" : "ar"
+        let sourceText = isEnglishTarget ? nameAr : nameEn
+
+        guard !sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            impactFeedback.impactOccurred()
+            return
+        }
+
+        isTranslatingName = true
+        impactFeedback.impactOccurred()
+
+        let speciesName = availableMainKinds.first(
+            where: { $0.id == selectedSpeciesID
+            })?.kindName ?? ""
+        let breedName = availableSubKinds.first(where: { $0.id == selectedSubKindID })?.subKindName ?? ""
+
+        Task { @MainActor in
+            do {
+                let response = try await PuryAdminService.shared.requestAuthoring(
+                    task: .translate,
+                    itemType: "live_pet",
+                    sourceLanguage: sourceLang,
+                    targetLanguage: targetLang,
+                    currentText: [
+                        "nameAr": nameAr,
+                        "nameEn": nameEn
+                    ],
+                    attributes: [
+                        "species": speciesName,
+                        "breed": breedName
+                    ]
+                )
+
+                if targetLang == "en", let en = response.nameEn, !en.isEmpty {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        nameEn = en
+                    }
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                } else if targetLang == "ar", let ar = response.nameAr, !ar.isEmpty {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        nameAr = ar
+                    }
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                }
+                isTranslatingName = false
+            } catch {
+                isTranslatingName = false
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            }
+        }
+    }
+
+    private var livePetWriterLabel: String {
+        if selectedLanguage == .arabic {
+            return !descAr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? (Language.isRTL() ? "تحسين مع بيوري" : "Enhance with Pury")
+                : (Language.isRTL() ? "صياغة بيوري" : "Write with Pury")
+        } else {
+            return !descAr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && descEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? (Language.isRTL() ? "ترجمة وصياغة" : "Translate & Write")
+                : (!descEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? (Language.isRTL() ? "تحسين بالإنجليزية" : "Enhance English")
+                    : (Language.isRTL() ? "صياغة بيوري" : "Write with Pury"))
+        }
+    }
+
+    private var puryLivePetDescWriterSubview: some View {
+        Button {
+            generateLivePetDescriptionWithPury()
+        } label: {
+            HStack(spacing: 6) {
+                PuryAvatar(
+                    size: 22,
+                    isLiving: true,
+                    isThinking: isGeneratingDesc,
+                    showStatusRing: true,
+                    showAmbientAura: isGeneratingDesc
+                )
+
+                if isGeneratingDesc {
+                    HStack(spacing: 4) {
+                        ProgressView()
+                            .scaleEffect(0.65)
+                            .tint(Color(red: 16/255, green: 185/255, blue: 129/255))
+                        Text(Language.isRTL() ? "جارٍ الصياغة..." : "Crafting...")
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                    }
+                } else {
+                    HStack(spacing: 4) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                        Text(livePetWriterLabel)
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule()
+                    .fill(Color(uiColor: .systemBackground).opacity(0.92))
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.45),
+                                Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.18)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(color: Color.black.opacity(0.08), radius: 4, x: 0, y: 2)
+        }
+        .buttonStyle(PuryCompactPressStyle())
+        .disabled(isGeneratingDesc)
+        .accessibilityLabel(Language.get("Pury_Write_Description", alter: "صياغة وصف احترافي مع بيوري"))
+    }
+
+    private func generateLivePetDescriptionWithPury() {
+        let isEnglishTarget = (selectedLanguage == .english)
+        let hasArDesc = !descAr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasEnDesc = !descEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        let isTranslatingFromArabic = isEnglishTarget && hasArDesc && !hasEnDesc
+        let authoringTask: PuryAuthoringTask = isTranslatingFromArabic ? .translate : .generateDescription
+        let targetLang = isEnglishTarget ? "en" : "ar"
+
+        isGeneratingDesc = true
+        impactFeedback.impactOccurred()
+
+        let speciesName = availableMainKinds.first(where: { $0.id == selectedSpeciesID })?.kindName ?? ""
+        let breedName = availableSubKinds.first(where: { $0.id == selectedSubKindID })?.subKindName ?? ""
+
+        var attrs: [String: String] = [
+            "type": "live_pet",
+            "species": speciesName,
+            "breed": breedName
+        ]
+        if !nameAr.isEmpty { attrs["nameAr"] = nameAr }
+        if !nameEn.isEmpty { attrs["nameEn"] = nameEn }
+
+        Task { @MainActor in
+            do {
+                let response = try await PuryAdminService.shared.requestAuthoring(
+                    task: authoringTask,
+                    itemType: "live_pet",
+                    sourceLanguage: "ar",
+                    targetLanguage: targetLang,
+                    currentText: [
+                        "nameAr": nameAr,
+                        "nameEn": nameEn,
+                        "descAr": descAr,
+                        "descEn": descEn
+                    ],
+                    attributes: attrs
+                )
+
+                if isEnglishTarget {
+                    if let en = response.descEn, !en.isEmpty {
+                        withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                            descEn = en
+                        }
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    } else if let ar = response.descAr, !ar.isEmpty && descAr.isEmpty {
+                        withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                            descAr = ar
+                        }
+                    }
+                } else {
+                    if let ar = response.descAr, !ar.isEmpty {
+                        withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                            descAr = ar
+                        }
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    }
+                    if let en = response.descEn, !en.isEmpty && descEn.isEmpty {
+                        descEn = en
+                    }
+                }
+                isGeneratingDesc = false
+            } catch {
+                isGeneratingDesc = false
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            }
         }
     }
 

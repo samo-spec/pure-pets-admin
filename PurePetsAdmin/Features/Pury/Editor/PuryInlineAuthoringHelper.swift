@@ -55,23 +55,41 @@ public struct PuryInlineAuthoringBar: View {
     }
 
     public var body: some View {
-        HStack(spacing: 8) {
-            // Task trigger buttons
-            if targetField == "name" {
-                authoringButton(task: .translate, label: Language.get("Translate", alter: "ترجمة"))
-                authoringButton(task: .improveName, label: Language.get("Pury_Task_ImproveName", alter: "تحسين الاسم"))
-            } else {
-                authoringButton(task: .generateDescription, label: Language.get("Pury_Task_GenDesc", alter: "توليد وصف"))
-                authoringButton(task: .rewriteShorter, label: Language.get("Pury_Task_Shorten", alter: "اختصار"))
-                authoringButton(task: .translate, label: Language.get("Translate", alter: "ترجمة"))
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                // Task trigger buttons
+                if targetField == "name" {
+                    authoringButton(task: .translate, label: Language.get("Translate", alter: "ترجمة"))
+                    authoringButton(task: .improveName, label: Language.get("Pury_Task_ImproveName", alter: "تحسين الاسم"))
+                } else {
+                    authoringButton(task: .generateDescription, label: Language.get("Pury_Task_GenDesc", alter: "توليد وصف"))
+                    authoringButton(task: .rewriteShorter, label: Language.get("Pury_Task_Shorten", alter: "اختصار"))
+                    authoringButton(task: .translate, label: Language.get("Translate", alter: "ترجمة"))
+                }
+
+                Spacer()
+
+                if isProcessing {
+                    ProgressView()
+                        .scaleEffect(0.75)
+                        .tint(Color(red: 16/255, green: 185/255, blue: 129/255))
+                        .accessibilityLabel(Language.get("Pury_Authoring_Processing", alter: "بيوري يصيغ النص"))
+                }
             }
 
-            Spacer()
-
-            if isProcessing {
-                ProgressView()
-                    .scaleEffect(0.75)
-                    .tint(Color(red: 16/255, green: 185/255, blue: 129/255))
+            if let errorMessage, !errorMessage.isEmpty {
+                Label {
+                    Text(errorMessage)
+                        .font(AdminType.caption2)
+                        .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .foregroundStyle(.red)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(Language.get("Pury_Authoring_Error", alter: "تعذر إكمال اقتراح بيوري"))
+                .accessibilityValue(errorMessage)
             }
         }
         .sheet(isPresented: $showingPreview) {
@@ -97,6 +115,10 @@ public struct PuryInlineAuthoringBar: View {
             .background(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.1), in: Capsule())
         }
         .buttonStyle(.plain)
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+        .accessibilityLabel(label)
+        .accessibilityHint(Language.get("Pury_Authoring_Action_Hint", alter: "ينشئ اقتراحاً للمعاينة قبل تطبيقه في المحرر"))
         .disabled(isProcessing)
     }
 

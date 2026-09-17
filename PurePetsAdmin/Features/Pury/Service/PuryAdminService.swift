@@ -47,7 +47,8 @@ public actor PuryAdminService {
     public static let shared = PuryAdminService()
 
     private let functions: Functions
-    private let timeoutInterval: TimeInterval = 25.0
+    private let chatTimeoutInterval: TimeInterval = 125.0
+    private let authoringTimeoutInterval: TimeInterval = 45.0
 
     public init(functions: Functions = Functions.functions(region: "us-central1")) {
         self.functions = functions
@@ -145,7 +146,11 @@ public actor PuryAdminService {
             payload["confirmAction"] = ca
         }
 
-        let dict = try await executeCallable(name: "puryAdminChat", payload: payload)
+        let dict = try await executeCallable(
+            name: "puryAdminChat",
+            payload: payload,
+            timeoutInterval: chatTimeoutInterval
+        )
         return try parseChatResponse(from: dict)
     }
 
@@ -181,7 +186,11 @@ public actor PuryAdminService {
             "client": clientDict
         ]
 
-        let dict = try await executeCallable(name: "puryAdminAuthor", payload: payload)
+        let dict = try await executeCallable(
+            name: "puryAdminAuthor",
+            payload: payload,
+            timeoutInterval: authoringTimeoutInterval
+        )
         return PuryAuthoringResponse(
             nameAr: dict["nameAr"] as? String,
             nameEn: dict["nameEn"] as? String,
@@ -199,7 +208,11 @@ public actor PuryAdminService {
         let dict: [String: Any]
     }
 
-    private func executeCallable(name: String, payload: [String: Any]) async throws -> [String: Any] {
+    private func executeCallable(
+        name: String,
+        payload: [String: Any],
+        timeoutInterval: TimeInterval
+    ) async throws -> [String: Any] {
         let callable = functions.httpsCallable(name)
         callable.timeoutInterval = timeoutInterval
         let boxed = PurySendablePayload(dict: payload)
@@ -272,12 +285,31 @@ public actor PuryAdminService {
 
     // MARK: - Parsing Helpers
 
+    private static func integerValue(_ value: Any?) -> Int? {
+        if let value = value as? Int { return value }
+        if let value = value as? NSNumber { return value.intValue }
+        if let value = value as? Double, value.rounded() == value { return Int(value) }
+        return nil
+    }
+
+    private static func int64Value(_ value: Any?) -> Int64? {
+        if let value = value as? Int64 { return value }
+        if let value = value as? Int { return Int64(value) }
+        if let value = value as? NSNumber { return value.int64Value }
+        if let value = value as? Double, value.rounded() == value { return Int64(value) }
+        return nil
+    }
+
     private func parseChatResponse(from dict: [String: Any]) throws -> PuryChatResponse {
         let text = dict["text"] as? String ?? ""
         let metaDict = dict["metadata"] as? [String: Any] ?? [:]
 
         var confirmationAction: PuryConfirmationAction? = nil
         if let caDict = metaDict["confirmationAction"] as? [String: Any] {
+            let updates = (caDict["updates"] as? [String: Any])?.mapValues { PuryJSONValue(any: $0) }
+            let beforeState = (caDict["beforeState"] as? [String: Any])?.mapValues { PuryJSONValue(any: $0) }
+            let expectedRevision = Self.integerValue(caDict["expectedRevision"])
+            let expiresAt = Self.int64Value(caDict["expiresAt"])
             confirmationAction = PuryConfirmationAction(
                 actionId: caDict["actionId"] as? String ?? "",
                 token: caDict["token"] as? String ?? "",
@@ -286,10 +318,15 @@ public actor PuryAdminService {
                 collectionTarget: caDict["collectionTarget"] as? String,
                 entityId: caDict["entityId"] as? String,
                 permissionRequired: caDict["permissionRequired"] as? String,
-                updates: caDict["updates"] as? [String: String],
-                beforeState: caDict["beforeState"] as? [String: String],
+                updates: updates,
+                beforeState: beforeState,
+                scope: caDict["scope"].map { PuryJSONValue(any: $0) },
+                expectedRevision: expectedRevision,
+                beforeStateHash: caDict["beforeStateHash"] as? String,
+                policyVersion: caDict["policyVersion"] as? String,
+                expiresAt: expiresAt,
                 warnings: caDict["warnings"] as? [String],
-                riskTier: caDict["riskTier"] as? Int ?? 3
+                riskTier: Self.integerValue(caDict["riskTier"]) ?? 3
             )
         }
 
@@ -367,8 +404,10 @@ public actor PuryAdminService {
             callable: metaDict["callable"] as? String,
             error: metaDict["error"] as? String,
             errorSummary: metaDict["errorSummary"] as? String,
+            commandState: metaDict["commandState"] as? String,
             commandId: metaDict["commandId"] as? String,
-            replayed: metaDict["replayed"] as? Bool
+            replayed: metaDict["replayed"] as? Bool,
+            requestId: metaDict["requestId"] as? String
         )
 
         return PuryChatResponse(text: text, metadata: metadata)

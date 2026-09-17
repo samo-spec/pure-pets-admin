@@ -94,7 +94,7 @@ struct AdminAppShell: View {
 
             if session.hasPermission("nova.view") && !(selectedTab == .command && commandShowsNestedWorkflow) {
                 puryFloatingAffordance
-                    .padding(.bottom, 84)
+                    .padding(.bottom, puryFloatingBottomClearance)
                     .padding(.trailing, 16)
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
@@ -226,38 +226,102 @@ struct AdminAppShell: View {
 
     // MARK: - Pury Operational Assistant
 
+    private var puryBottomSafeAreaInset: CGFloat {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let window = scenes.flatMap { $0.windows }.first(where: { $0.isKeyWindow }) ?? scenes.flatMap { $0.windows }.first
+        let bottom = window?.safeAreaInsets.bottom ?? 0
+        return max(bottom, 10)
+    }
+
+    private var puryFloatingBottomClearance: CGFloat {
+        // Tab bar height (56pt) + safe area inset + 18pt tactile breathing room above tab bar
+        puryBottomSafeAreaInset + 56 + 18
+    }
+
     private var puryFloatingAffordance: some View {
         Button {
             showingPurySheet = true
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(.white)
+            HStack(spacing: 8) {
+                PuryAvatar(
+                    size: 34,
+                    isLiving: true,
+                    isThinking: false,
+                    showStatusRing: true,
+                    showAmbientAura: true
+                )
 
                 Text(Language.isRTL() ? "بيوري" : "Pury")
                     .font(AdminType.caption1Bold)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(AdminSurface.primaryText)
+
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.leading, Language.isRTL() ? 12 : 5)
+            .padding(.trailing, Language.isRTL() ? 5 : 12)
+            .padding(.vertical, 5)
             .background(
-                LinearGradient(
-                    colors: [Color(red: 16/255, green: 185/255, blue: 129/255), Color(red: 5/255, green: 150/255, blue: 105/255)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                in: Capsule()
+                ZStack {
+                    Capsule()
+                        .fill(.ultraThinMaterial)
+
+                    Capsule()
+                        .fill(AdminSurface.surface.opacity(0.85))
+
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.16),
+                                    Color(red: 5/255, green: 150/255, blue: 105/255).opacity(0.05)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                }
             )
-            .shadow(color: Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.4), radius: 8, x: 0, y: 4)
             .overlay(
                 Capsule()
-                    .strokeBorder(Color.white.opacity(0.25), lineWidth: 1)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.40),
+                                Color.white.opacity(0.20),
+                                AdminSurface.hairline.opacity(0.35)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(
+                color: Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.30),
+                radius: 12,
+                x: 0,
+                y: 6
+            )
+            .shadow(
+                color: Color.black.opacity(0.10),
+                radius: 4,
+                x: 0,
+                y: 2
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PuryFloatingActionPressStyle())
         .accessibilityLabel(Language.get("Pury_AI_Assistant", alter: "مساعد بيوري الذكي"))
+    }
+
+    private struct PuryFloatingActionPressStyle: ButtonStyle {
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+                .animation(.spring(response: 0.25, dampingFraction: 0.72), value: configuration.isPressed)
+        }
     }
 
     private func currentPuryScreenContext() -> PuryScreenContext {
@@ -1059,7 +1123,11 @@ private struct AdminWorkDeckView: View {
     }
 
     var body: some View {
-        PPGlobalNavigationScrollShell(configuration: navigationConfiguration, onAction: { _ in }) {
+        PPGlobalNavigationScrollShell(
+            configuration: navigationConfiguration,
+            showsTopFade: true,
+            onAction: { _ in }
+        ) {
             Group {
                 if !hasAnyAuthorizedRoute {
                     AdminEmptyRoutesView()
@@ -2415,7 +2483,11 @@ private struct AdminPeopleDeckView: View {
     }
 
     var body: some View {
-        PPGlobalNavigationScrollShell(configuration: navigationConfiguration, onAction: { _ in }) {
+        PPGlobalNavigationScrollShell(
+            configuration: navigationConfiguration,
+            showsTopFade: true,
+            onAction: { _ in }
+        ) {
             Group {
                 if !hasAnyAuthorizedRoute {
                     AdminEmptyRoutesView()
@@ -4562,7 +4634,11 @@ private struct AdminMoreView: View {
     }
 
     var body: some View {
-        PPGlobalNavigationScrollShell(configuration: navigationConfiguration, onAction: { _ in }) {
+        PPGlobalNavigationScrollShell(
+            configuration: navigationConfiguration,
+            showsTopFade: true,
+            onAction: { _ in }
+        ) {
             Group {
                 if !hasAnyAuthorizedRoute {
                     AdminEmptyRoutesView()
