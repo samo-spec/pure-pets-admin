@@ -8,6 +8,91 @@
 
 import Foundation
 
+// MARK: - Pury Language-Scoped Localization
+
+/// Pury owns a conversation language that can legitimately differ from the app-wide
+/// `Language` selection (an operator may read the console in Arabic and interrogate
+/// Pury in English, or the reverse). `Language.get` always resolves against the
+/// *app* bundle, so using it inside Pury produces a mixed-language surface.
+///
+/// `PuryLocale` resolves the same `Localizable.strings` tables against the bundle for
+/// Pury's own language, and — unlike `Language.get` — distinguishes "key missing" from
+/// "key present" so a missing key can never leak the opposite language's fallback.
+private final class PuryLocaleBundleCache: @unchecked Sendable {
+    static let shared = PuryLocaleBundleCache()
+
+    private let lock = NSLock()
+    private var bundles: [String: Bundle] = [:]
+
+    func bundle(for code: String) -> Bundle {
+        lock.lock()
+        defer { lock.unlock() }
+        if let cached = bundles[code] { return cached }
+        let resolved = Bundle.main.path(forResource: code, ofType: "lproj")
+            .flatMap { Bundle(path: $0) } ?? .main
+        bundles[code] = resolved
+        return resolved
+    }
+}
+
+public enum PuryLocale {
+    /// Sentinel that can never appear in a shipped strings file, used to detect a missing key.
+    private static let missingMarker = "\u{1}pury.missing.key\u{1}"
+
+    /// Normalizes any language input to the two codes Pure Pets ships (`ar` / `en`).
+    public static func normalized(_ language: String?) -> String {
+        guard let language, !language.isEmpty else { return Language.isRTL() ? "ar" : "en" }
+        return language.lowercased().hasPrefix("ar") ? "ar" : "en"
+    }
+
+    public static func isArabic(_ language: String?) -> Bool {
+        normalized(language) == "ar"
+    }
+
+    /// Resolves `key` in Pury's language, falling back to the matching in-code literal
+    /// for that same language when the key is absent from the strings table.
+    public static func text(_ key: String, language: String?, ar: String, en: String) -> String {
+        let code = normalized(language)
+        let resolved = PuryLocaleBundleCache.shared
+            .bundle(for: code)
+            .localizedString(forKey: key, value: missingMarker, table: nil)
+        if resolved == missingMarker || resolved.isEmpty { return code == "ar" ? ar : en }
+        return resolved
+    }
+
+    /// Format-string variant. Pury's identifier tokens must stay Western-digit and
+    /// unlocalized, so formatting deliberately runs without a locale.
+    public static func format(
+        _ key: String,
+        language: String?,
+        ar: String,
+        en: String,
+        _ arguments: CVarArg...
+    ) -> String {
+        let template = text(key, language: language, ar: ar, en: en)
+        return String(format: template, arguments: arguments)
+    }
+}
+
+// MARK: - Bound Data Scope Facets
+
+/// One inspectable line of Pury's current data binding.
+/// `isTechnical` marks values that are backend identifiers: they must render
+/// left-to-right and monospaced even inside an Arabic RTL layout.
+public struct PuryScopeFacet: Identifiable, Sendable, Equatable {
+    public let id: String
+    public let label: String
+    public let value: String
+    public let isTechnical: Bool
+
+    public init(id: String, label: String, value: String, isTechnical: Bool) {
+        self.id = id
+        self.label = label
+        self.value = value
+        self.isTechnical = isTechnical
+    }
+}
+
 // MARK: - Risk Tiers
 
 public enum PuryRiskTier: Int, Codable, Sendable {
@@ -94,56 +179,226 @@ public struct PuryScreenContext: Codable, Sendable, Equatable {
         screen == nil && route == nil && branchId == nil && entityId == nil && reservationId == nil && stayId == nil
     }
 
-    public var displayLabel: String {
-        if let stayId = stayId, !stayId.isEmpty {
-            return Language.get("Pury_Context_Stay", alter: "إقامة فندقية: #\(stayId.prefix(8))")
-        }
-        if let reservationId = reservationId, !reservationId.isEmpty {
-            return Language.get("Pury_Context_Reservation", alter: "حجز فندقي: #\(reservationId.prefix(8))")
-        }
-        if let accommodationId = accommodationId, !accommodationId.isEmpty {
-            return Language.get("Pury_Context_Suite", alter: "جناح فندقي: #\(accommodationId)")
-        }
-        if let entityType = entityType, let entityId = entityId, !entityId.isEmpty {
-            return "\(entityType): #\(entityId.prefix(8))"
-        }
-        if let screen = screen {
-            return localizedScreenName(screen)
-        }
-        if let route = route {
-            return localizedScreenName(route)
-        }
-        return Language.get("Pury_Context_Admin", alter: "لوحة الإدارة")
+    /// True when Pury is bound to something more specific than "the admin console",
+    /// i.e. there is a real binding worth inspecting.
+    public var hasInspectableScope: Bool {
+        !scopeFacets(language: nil).isEmpty
     }
 
-    private func localizedScreenName(_ name: String) -> String {
+    public var displayLabel: String {
+        displayLabel(language: nil)
+    }
+
+    /// Operator-facing label for the current binding, resolved in Pury's own language.
+    ///
+    /// Never returns a raw internal identifier: an unmapped screen or route falls back to
+    /// the localized console label, and the raw route stays available through
+    /// `scopeFacets(language:)` where it is presented as a technical value.
+    public func displayLabel(language: String?) -> String {
+        if let stayId = stayId, !stayId.isEmpty {
+            return PuryLocale.format(
+                "Pury_Context_Stay",
+                language: language,
+                ar: "إقامة فندقية: #%@",
+                en: "Hotel Stay: #%@",
+                String(stayId.prefix(8))
+            )
+        }
+        if let reservationId = reservationId, !reservationId.isEmpty {
+            return PuryLocale.format(
+                "Pury_Context_Reservation",
+                language: language,
+                ar: "حجز فندقي: #%@",
+                en: "Hotel Reservation: #%@",
+                String(reservationId.prefix(8))
+            )
+        }
+        if let accommodationId = accommodationId, !accommodationId.isEmpty {
+            return PuryLocale.format(
+                "Pury_Context_Suite",
+                language: language,
+                ar: "جناح فندقي: #%@",
+                en: "Hotel Suite: #%@",
+                accommodationId
+            )
+        }
+        if let entityType = entityType,
+           let entityId = entityId,
+           !entityId.isEmpty,
+           let recordName = Self.localizedRecordName(entityType, language: language) {
+            return "\(recordName): #\(entityId.prefix(8))"
+        }
+        if let screen = screen, let mapped = Self.localizedScreenName(screen, language: language) {
+            return mapped
+        }
+        if let route = route, let mapped = Self.localizedScreenName(route, language: language) {
+            return mapped
+        }
+        return Self.consoleLabel(language: language)
+    }
+
+    /// Inspectable breakdown of exactly what Pury is bound to right now.
+    /// Only non-empty bindings are emitted, so the inspector never shows hollow rows.
+    public func scopeFacets(language: String?) -> [PuryScopeFacet] {
+        var facets: [PuryScopeFacet] = []
+
+        if let screen = screen, !screen.isEmpty {
+            let mapped = Self.localizedScreenName(screen, language: language)
+            facets.append(
+                PuryScopeFacet(
+                    id: "screen",
+                    label: PuryLocale.text("Pury_Scope_Screen", language: language, ar: "الشاشة", en: "Screen"),
+                    value: mapped ?? screen,
+                    isTechnical: mapped == nil
+                )
+            )
+        }
+
+        if let entityType = entityType, !entityType.isEmpty {
+            let mapped = Self.localizedRecordName(entityType, language: language)
+            facets.append(
+                PuryScopeFacet(
+                    id: "entityType",
+                    label: PuryLocale.text("Pury_Scope_RecordType", language: language, ar: "نوع السجل", en: "Record type"),
+                    value: mapped ?? entityType,
+                    isTechnical: mapped == nil
+                )
+            )
+        }
+
+        if let entityId = entityId, !entityId.isEmpty {
+            facets.append(
+                PuryScopeFacet(
+                    id: "entityId",
+                    label: PuryLocale.text("Pury_Scope_Record", language: language, ar: "معرّف السجل", en: "Record ID"),
+                    value: entityId,
+                    isTechnical: true
+                )
+            )
+        }
+
+        if let reservationId = reservationId, !reservationId.isEmpty {
+            facets.append(
+                PuryScopeFacet(
+                    id: "reservationId",
+                    label: PuryLocale.text("Pury_Scope_Reservation", language: language, ar: "الحجز", en: "Reservation"),
+                    value: reservationId,
+                    isTechnical: true
+                )
+            )
+        }
+
+        if let stayId = stayId, !stayId.isEmpty {
+            facets.append(
+                PuryScopeFacet(
+                    id: "stayId",
+                    label: PuryLocale.text("Pury_Scope_Stay", language: language, ar: "الإقامة", en: "Stay"),
+                    value: stayId,
+                    isTechnical: true
+                )
+            )
+        }
+
+        if let accommodationId = accommodationId, !accommodationId.isEmpty {
+            facets.append(
+                PuryScopeFacet(
+                    id: "accommodationId",
+                    label: PuryLocale.text("Pury_Scope_Suite", language: language, ar: "الجناح", en: "Suite"),
+                    value: accommodationId,
+                    isTechnical: true
+                )
+            )
+        }
+
+        if let branchId = branchId, !branchId.isEmpty {
+            facets.append(
+                PuryScopeFacet(
+                    id: "branchId",
+                    label: PuryLocale.text("Pury_Scope_Branch", language: language, ar: "الفرع", en: "Branch"),
+                    value: branchId,
+                    isTechnical: true
+                )
+            )
+        }
+
+        if let route = route, !route.isEmpty {
+            let mapped = Self.localizedScreenName(route, language: language)
+            facets.append(
+                PuryScopeFacet(
+                    id: "route",
+                    label: PuryLocale.text("Pury_Scope_Route", language: language, ar: "المسار", en: "Route"),
+                    value: mapped ?? route,
+                    isTechnical: mapped == nil
+                )
+            )
+        }
+
+        return facets
+    }
+
+    private static func consoleLabel(language: String?) -> String {
+        PuryLocale.text("Pury_Context_Admin", language: language, ar: "لوحة الإدارة", en: "Admin Console")
+    }
+
+    /// Returns `nil` for identifiers Pury has no operator-facing name for, so callers
+    /// can fall back deliberately instead of leaking an internal token into the UI.
+    private static func localizedScreenName(_ name: String, language: String?) -> String? {
         switch name.lowercased() {
         case "command", "commandcenter", "command_center":
-            return Language.get("Pury_Context_Command", alter: "مركز العمليات والقيادة")
+            return PuryLocale.text("Pury_Context_Command", language: language, ar: "مركز العمليات والقيادة", en: "Command Center")
+        case "work":
+            return PuryLocale.text("Pury_Context_Work", language: language, ar: "التجارة والمخزون", en: "Commerce & Inventory")
+        case "operations":
+            return PuryLocale.text("Pury_Context_Operations", language: language, ar: "التشغيل والخدمات", en: "Operations & Services")
+        case "customers", "people":
+            return PuryLocale.text("Pury_Context_People", language: language, ar: "العملاء والفريق", en: "People & Staff")
         case "hotel":
-            return Language.get("Pury_Context_Hotel", alter: "فندق الحيوانات")
-        case "pos":
-            return Language.get("Pury_Context_POS", alter: "نقطة البيع السريع")
+            return PuryLocale.text("Pury_Context_Hotel", language: language, ar: "فندق الحيوانات", en: "Pet Hotel")
+        case "pos", "pointofsale":
+            return PuryLocale.text("Pury_Context_POS", language: language, ar: "نقطة البيع السريع", en: "Point of Sale")
         case "fulfillment":
-            return Language.get("Pury_Context_Fulfillment", alter: "أوامر التجهيز والتسليم")
+            return PuryLocale.text("Pury_Context_Fulfillment", language: language, ar: "أوامر التجهيز والتسليم", en: "Fulfillment & Delivery")
         case "more":
-            return Language.get("Pury_Context_More", alter: "المزيد والإعدادات")
+            return PuryLocale.text("Pury_Context_More", language: language, ar: "المزيد والإعدادات", en: "More & Settings")
         case "accessories", "accessory":
-            return Language.get("Pury_Context_Accessories", alter: "المستلزمات والمخزون")
+            return PuryLocale.text("Pury_Context_Accessories", language: language, ar: "المستلزمات والمخزون", en: "Accessories & Stock")
         case "livepets", "live_pets", "livepet":
-            return Language.get("Pury_Context_LivePets", alter: "الحيوانات الحية")
+            return PuryLocale.text("Pury_Context_LivePets", language: language, ar: "الحيوانات الحية", en: "Live Pets")
         case "food":
-            return Language.get("Pury_Context_Food", alter: "قسم الأغذية")
+            return PuryLocale.text("Pury_Context_Food", language: language, ar: "قسم الأغذية", en: "Pet Food")
         case "users", "userscol":
-            return Language.get("Pury_Context_Users", alter: "ملفات العملاء")
+            return PuryLocale.text("Pury_Context_Users", language: language, ar: "ملفات العملاء", en: "Customer Profiles")
         case "staff", "staff_users":
-            return Language.get("Pury_Context_Staff", alter: "فريق العمل والأطباء")
+            return PuryLocale.text("Pury_Context_Staff", language: language, ar: "فريق العمل والأطباء", en: "Staff & Veterinarians")
         case "branches", "branch":
-            return Language.get("Pury_Context_Branches", alter: "الفروع والمستودعات")
+            return PuryLocale.text("Pury_Context_Branches", language: language, ar: "الفروع والمستودعات", en: "Branches & Warehouses")
         case "paymentorder", "order", "orders":
-            return Language.get("Pury_Context_Orders", alter: "إدارة الطلبات")
+            return PuryLocale.text("Pury_Context_Orders", language: language, ar: "إدارة الطلبات", en: "Order Management")
         default:
-            return name
+            return nil
+        }
+    }
+
+    /// Maps backend collection identities to the operator-facing record names Pury
+    /// already ships. Returns `nil` for unmapped collections.
+    private static func localizedRecordName(_ entityType: String, language: String?) -> String? {
+        switch entityType.lowercased() {
+        case "userscol", "users":
+            return PuryLocale.text("Pury_Record_Customer", language: language, ar: "ملف العميل", en: "Customer Profile")
+        case "petaccessories", "accessories":
+            return PuryLocale.text("Pury_Record_InventoryItem", language: language, ar: "منتج المخزون", en: "Inventory Item")
+        case "staff_users", "staff":
+            return PuryLocale.text("Pury_Record_StaffMember", language: language, ar: "عضو الفريق", en: "Staff Member")
+        case "branches", "branch":
+            return PuryLocale.text("Pury_Record_Branch", language: language, ar: "بيانات الفرع", en: "Branch Record")
+        case "orders", "order", "paymentorder":
+            return PuryLocale.text("Pury_Record_Order", language: language, ar: "طلب", en: "Order")
+        case "hotelstays", "hotelstay", "stays":
+            return PuryLocale.text("Pury_Record_HotelStay", language: language, ar: "إقامة فندقية", en: "Hotel Stay")
+        case "adoption", "adoptions":
+            return PuryLocale.text("Pury_Record_Adoption", language: language, ar: "سجل تبنٍ", en: "Adoption Record")
+        default:
+            return nil
         }
     }
 }

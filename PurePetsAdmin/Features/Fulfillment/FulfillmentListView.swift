@@ -917,7 +917,7 @@ struct AdminFulfillmentListView: View {
                                         .stroke(FulfillmentTokens.hairline, lineWidth: 0.8)
                                 )
 
-                            if viewModel.onlySLAUrgent || viewModel.selectedMode != "all" {
+                            if viewModel.onlySLAUrgent || viewModel.selectedMode != "all" || viewModel.sortOption != .newest {
                                 Circle()
                                     .fill(FulfillmentTokens.amber)
                                     .frame(width: 8, height: 8)
@@ -3253,10 +3253,51 @@ private struct FulfillmentFilterSheet: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    private var hasActiveFilters: Bool {
+        selectedMode != "all" || onlyUrgent || sortOption != .newest
+    }
+
+    private var activeFilterCount: Int {
+        var count = 0
+        if selectedMode != "all" { count += 1 }
+        if onlyUrgent { count += 1 }
+        if sortOption != .newest { count += 1 }
+        return count
+    }
+
     var body: some View {
-        NavigationView {
+        VStack(spacing: 0) {
+            // Reinvented Sovereign Pinned Filter Header
+            FulfillmentFilterSovereignHeaderView(
+                selectedMode: $selectedMode,
+                onlyUrgent: $onlyUrgent,
+                sortOption: $sortOption,
+                hasActiveFilters: hasActiveFilters,
+                activeFilterCount: activeFilterCount,
+                onResetAll: {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        selectedMode = "all"
+                        onlyUrgent = false
+                        sortOption = .newest
+                    }
+                },
+                onDismiss: {
+                    dismiss()
+                }
+            )
+
+            // Filter Options Form
             Form {
-                Section(header: Text(Language.get("Fulfillment_Filter_Scope", alter: "نطاق التنفيذ والمتاجر"))) {
+                Section(header:
+                    HStack(spacing: 6) {
+                        Image(systemName: "building.2")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(FulfillmentTokens.indigo)
+                        Text(Language.get("Fulfillment_Filter_Scope", alter: "نطاق العمل"))
+                            .font(AdminType.captionBold)
+                            .foregroundStyle(FulfillmentTokens.inkSecondary)
+                    }
+                ) {
                     Picker(Language.get("Fulfillment_DetailOwner", alter: "الجهة المنفذة"), selection: $selectedMode) {
                         Text(Language.get("All", alter: "الكل")).tag("all")
                         Text(Language.get("Fulfillment_Mode_Platform", alter: "مستودع المنصة الرسمي")).tag("platform")
@@ -3265,12 +3306,30 @@ private struct FulfillmentFilterSheet: View {
                     .pickerStyle(.segmented)
                 }
 
-                Section(header: Text(Language.get("Fulfillment_Filter_Urgency", alter: "مستوى الإلحاح"))) {
+                Section(header:
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock.badge.exclamationmark")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(FulfillmentTokens.crimson)
+                        Text(Language.get("Fulfillment_Filter_Urgency", alter: "مستوى الإلحاح"))
+                            .font(AdminType.captionBold)
+                            .foregroundStyle(FulfillmentTokens.inkSecondary)
+                    }
+                ) {
                     Toggle(Language.get("Fulfillment_SLA_Urgent", alter: "الطلبات المتأخرة عن SLA فقط (> 30 دقيقة)"), isOn: $onlyUrgent)
                         .tint(FulfillmentTokens.crimson)
                 }
 
-                Section(header: Text(Language.get("Fulfillment_Sort_Title", alter: "ترتيب القائمة"))) {
+                Section(header:
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.up.arrow.down")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(FulfillmentTokens.amber)
+                        Text(Language.get("Fulfillment_Sort_Title", alter: "ترتيب القائمة"))
+                            .font(AdminType.captionBold)
+                            .foregroundStyle(FulfillmentTokens.inkSecondary)
+                    }
+                ) {
                     Picker(Language.get("Fulfillment_Sort_Option", alter: "الترتيب حسب"), selection: $sortOption) {
                         ForEach(FulfillmentSortOption.allCases) { opt in
                             Text(opt.title).tag(opt)
@@ -3279,26 +3338,278 @@ private struct FulfillmentFilterSheet: View {
                     .pickerStyle(.inline)
                 }
 
-                Section {
-                    Button(Language.get("Reset", alter: "إعادة ضبط الفلاتر")) {
-                        selectedMode = "all"
-                        onlyUrgent = false
-                        sortOption = .newest
+                if hasActiveFilters {
+                    Section {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                selectedMode = "all"
+                                onlyUrgent = false
+                                sortOption = .newest
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Spacer()
+                                Image(systemName: "arrow.counterclockwise")
+                                    .font(.system(size: 13, weight: .bold))
+                                Text(Language.get("Fulfillment_Filter_Reset_All", alter: "إعادة ضبط الفلاتر"))
+                                    .font(AdminType.subheadlineBold)
+                                Spacer()
+                            }
+                            .foregroundStyle(FulfillmentTokens.crimson)
+                        }
                     }
-                    .foregroundStyle(FulfillmentTokens.crimson)
-                }
-            }
-            .navigationTitle(Language.get("Filter", alter: "خيارات التصفية والفرز"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(Language.get("Done", alter: "تم")) {
-                        dismiss()
-                    }
-                    .font(AdminType.subheadlineBold)
                 }
             }
         }
+        .background(FulfillmentTokens.canvas.ignoresSafeArea())
+    }
+}
+
+// MARK: - Sovereign Filter Header View
+
+private struct FulfillmentFilterSovereignHeaderView: View {
+    @Binding var selectedMode: String
+    @Binding var onlyUrgent: Bool
+    @Binding var sortOption: FulfillmentSortOption
+    let hasActiveFilters: Bool
+    let activeFilterCount: Int
+    let onResetAll: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Tactile Modal Grabber Handle
+            Capsule()
+                .fill(Color(uiColor: .tertiaryLabel).opacity(0.35))
+                .frame(width: 36, height: 5)
+                .padding(.top, 10)
+                .padding(.bottom, 8)
+
+            // Executive Command Bar
+            HStack(spacing: 12) {
+                // Leading: Tactile Squircle Filter Orb + Indicator
+                ZStack(alignment: .topTrailing) {
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    FulfillmentTokens.primary,
+                                    AdminSurface.primaryPressed
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 42, height: 42)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.2), lineWidth: 0.8)
+                        )
+                        .shadow(color: FulfillmentTokens.primary.opacity(0.22), radius: 6, x: 0, y: 2)
+
+                    Image(systemName: "slider.horizontal.2.square.on.square")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(Color.white)
+                        .frame(width: 42, height: 42)
+
+                    // Dynamic Active State Dot
+                    if hasActiveFilters {
+                        Circle()
+                            .fill(FulfillmentTokens.emerald)
+                            .frame(width: 9, height: 9)
+                            .overlay(Circle().stroke(AdminSurface.surface, lineWidth: 2))
+                            .offset(x: 2, y: -2)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
+
+                // Title & Intelligent Status Subtitle
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("Fulfillment_Filter_Options_Title", alter: "خيارات التصفية والفرز"))
+                        .font(AdminType.headlineBold)
+                        .foregroundStyle(FulfillmentTokens.inkPrimary)
+                        .lineLimit(1)
+                        .multilineTextAlignment(.leading)
+
+                    if hasActiveFilters {
+                        HStack(spacing: 5) {
+                            Circle()
+                                .fill(FulfillmentTokens.emerald)
+                                .frame(width: 6, height: 6)
+
+                            let countLabel = activeFilterCount == 1
+                                ? Language.get("Fulfillment_Filter_Active_Single", alter: "فلتر واحد نشط")
+                                : "\(activeFilterCount) " + Language.get("Fulfillment_Filter_Active_Plural", alter: "فلاتر نشطة")
+
+                            Text(countLabel)
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(FulfillmentTokens.emerald)
+                        }
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(FulfillmentTokens.emeraldSoft, in: Capsule())
+                        .overlay(Capsule().strokeBorder(FulfillmentTokens.emerald.opacity(0.3), lineWidth: 0.75))
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    } else {
+                        Text(Language.get("Fulfillment_Filter_Default_Desc", alter: "عرض جميع الطلبات (الافتراضي)"))
+                            .font(AdminType.caption2)
+                            .foregroundStyle(FulfillmentTokens.inkSecondary)
+                            .lineLimit(1)
+                            .multilineTextAlignment(.leading)
+                            .transition(.opacity)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                // Trailing Action Cluster: Quick Reset + Done Button
+                HStack(spacing: 8) {
+                    if hasActiveFilters {
+                        Button {
+                            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                            onResetAll()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .font(.system(size: 11, weight: .bold))
+                                Text(Language.get("Reset", alter: "إعادة ضبط"))
+                                    .font(AdminType.captionBold)
+                            }
+                            .foregroundStyle(FulfillmentTokens.crimson)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6.5)
+                            .background(FulfillmentTokens.crimsonSoft, in: Capsule())
+                            .overlay(Capsule().strokeBorder(FulfillmentTokens.crimson.opacity(0.25), lineWidth: 0.75))
+                        }
+                        .buttonStyle(.plain)
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.85).combined(with: .opacity),
+                            removal: .scale(scale: 0.85).combined(with: .opacity)
+                        ))
+                    }
+
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        onDismiss()
+                    } label: {
+                        Text(Language.get("Done", alter: "تم"))
+                            .font(AdminType.subheadlineBold)
+                            .foregroundStyle(Color.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 7)
+                            .background(
+                                LinearGradient(
+                                    colors: [
+                                        FulfillmentTokens.primary,
+                                        AdminSurface.primaryPressed
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                in: Capsule()
+                            )
+                            .shadow(color: FulfillmentTokens.primary.opacity(0.25), radius: 5, x: 0, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, AdminSpacing.screenMargin)
+            .padding(.top, 4)
+            .padding(.bottom, hasActiveFilters ? 6 : 10)
+
+            // Dynamic Active-Chips Shelf
+            if hasActiveFilters {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 7) {
+                        if selectedMode != "all" {
+                            FilterActiveTagChip(
+                                icon: selectedMode == "platform" ? "shippingbox.fill" : "building.2.crop.circle",
+                                title: selectedMode == "platform"
+                                    ? Language.get("Fulfillment_Mode_Platform_Short", alter: "مستودع المنصة")
+                                    : Language.get("Fulfillment_Mode_Partner_Short", alter: "المتاجر والشركاء"),
+                                tint: FulfillmentTokens.indigo
+                            ) {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    selectedMode = "all"
+                                }
+                            }
+                        }
+
+                        if onlyUrgent {
+                            FilterActiveTagChip(
+                                icon: "exclamationmark.triangle.fill",
+                                title: Language.get("Fulfillment_SLA_Urgent_Short", alter: "متأخر عن SLA"),
+                                tint: FulfillmentTokens.crimson
+                            ) {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    onlyUrgent = false
+                                }
+                            }
+                        }
+
+                        if sortOption != .newest {
+                            FilterActiveTagChip(
+                                icon: "arrow.up.arrow.down",
+                                title: sortOption.title,
+                                tint: FulfillmentTokens.amber
+                            ) {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    sortOption = .newest
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.vertical, 2)
+                }
+                .padding(.bottom, 8)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .background(
+            AdminSurface.surface.opacity(0.96)
+                .background(.ultraThinMaterial)
+        )
+        .overlay(
+            Divider()
+                .background(FulfillmentTokens.hairline),
+            alignment: .bottom
+        )
+        .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 3)
+    }
+}
+
+// MARK: - Active Filter Tag Chip
+
+private struct FilterActiveTagChip: View {
+    let icon: String
+    let title: String
+    let tint: Color
+    let onRemove: () -> Void
+
+    var body: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            onRemove()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .semibold))
+                Text(title)
+                    .font(AdminType.caption2Bold)
+                    .lineLimit(1)
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(tint.opacity(0.7))
+            }
+            .foregroundStyle(tint)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4.5)
+            .background(tint.opacity(0.1), in: Capsule())
+            .overlay(Capsule().strokeBorder(tint.opacity(0.25), lineWidth: 0.75))
+        }
+        .buttonStyle(.plain)
     }
 }
 

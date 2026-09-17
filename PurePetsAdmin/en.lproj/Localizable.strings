@@ -2342,6 +2342,15 @@
 "Fulfillment_Filter_Scope" = "Work scope";
 "Fulfillment_Filter_Stage" = "Fulfillment stage";
 "Fulfillment_Filter_ExactStatus" = "Exact status";
+"Fulfillment_Filter_Options_Title" = "Filter & Sort Options";
+"Fulfillment_Filter_Default_Desc" = "Showing all orders (Default)";
+"Fulfillment_Filter_Active_Single" = "1 active filter";
+"Fulfillment_Filter_Active_Plural" = "active filters";
+"Fulfillment_Filter_Reset_All" = "Reset All Filters";
+"Fulfillment_SLA_Urgent_Short" = "Breached SLA";
+"Fulfillment_Mode_Platform_Short" = "Platform Hub";
+"Fulfillment_Mode_Partner_Short" = "Partners & Stores";
+"Reset" = "Reset";
 "Fulfillment_StatusChanged" = "Status changed";
 "Fulfillment_Event_AdminOverride" = "Administrative override";
 "Fulfillment_Event_ProviderTransition" = "Provider transition";
@@ -9217,6 +9226,57 @@
 "Pury_Context_Suite" = "Hotel Suite: #%@";
 "Pury_Context_Admin" = "Admin Console";
 "Pury_Context_Bound" = "Active Context";
+
+/* Pury Command Crown — bound scope, state signal, and controls */
+"Pury_Name" = "Pury";
+"Pury_Badge_AI" = "AI";
+"Pury_Close" = "Close";
+"Pury_Identity_A11y" = "Pury, AI operations assistant";
+
+"Pury_Context_Command" = "Command Center";
+"Pury_Context_Work" = "Commerce & Inventory";
+"Pury_Context_Operations" = "Operations & Services";
+"Pury_Context_People" = "People & Staff";
+"Pury_Context_Hotel" = "Pet Hotel";
+"Pury_Context_POS" = "Point of Sale";
+"Pury_Context_Fulfillment" = "Fulfillment & Delivery";
+"Pury_Context_More" = "More & Settings";
+"Pury_Context_Accessories" = "Accessories & Stock";
+"Pury_Context_LivePets" = "Live Pets";
+"Pury_Context_Food" = "Pet Food";
+"Pury_Context_Users" = "Customer Profiles";
+"Pury_Context_Staff" = "Staff & Veterinarians";
+"Pury_Context_Branches" = "Branches & Warehouses";
+"Pury_Context_Orders" = "Order Management";
+
+"Pury_State_Ready" = "Ready";
+"Pury_State_Reading" = "Reading live records";
+"Pury_State_Executing" = "Executing safely";
+"Pury_State_Awaiting_Approval" = "Awaiting your approval";
+"Pury_State_Stale" = "Records changed";
+"Pury_State_Denied" = "Permission denied";
+"Pury_State_Alert" = "Operational alert";
+"Pury_State_NoResults" = "No matching records";
+
+"Pury_Scope_A11y_Label" = "Bound data scope";
+"Pury_Scope_A11y_Hint" = "Double tap to show binding details";
+"Pury_Scope_Screen" = "Screen";
+"Pury_Scope_Route" = "Route";
+"Pury_Scope_Branch" = "Branch";
+"Pury_Scope_RecordType" = "Record type";
+"Pury_Scope_Record" = "Record ID";
+"Pury_Scope_Reservation" = "Reservation";
+"Pury_Scope_Stay" = "Stay";
+"Pury_Scope_Suite" = "Suite";
+"Pury_Scope_Authority" = "Pury reads only records your staff permissions allow; authorization is enforced server-side.";
+
+"Pury_Language_A11y_Label" = "Pury language";
+"Pury_Language_Arabic" = "Arabic";
+"Pury_Language_English" = "English";
+
+"Pury_Clear_Confirm_Message" = "This clears the conversation on this device only. No operational record is affected.";
+"Pury_Clear_Confirm_Action" = "Clear Conversation";
+"Pury_Clear_Cancel_Action" = "Cancel";
 "Pury_Welcome_Title" = "Hello! I'm Pury, your operational assistant";
 "Pury_Welcome_Desc" = "Ask any question regarding inventory, orders, hotel guests, or sales reports, and I will answer directly from live authorized data.";
 "Pury_Quick_Prompts" = "Quick suggestions:";

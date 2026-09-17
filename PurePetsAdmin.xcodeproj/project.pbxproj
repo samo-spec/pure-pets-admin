@@ -79,6 +79,7 @@
 		D70001042FA9000100D70104 /* Features/Pury/UI/PuryAssistantSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70000042FA9000100D70004 /* Features/Pury/UI/PuryAssistantSheetView.swift */; };
 		D70001052FA9000100D70105 /* Features/Pury/Editor/PuryInlineAuthoringHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70000052FA9000100D70005 /* Features/Pury/Editor/PuryInlineAuthoringHelper.swift */; };
 		D70001062FA9000100D70106 /* Features/Pury/UI/PuryActionConfirmationCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70000062FA9000100D70006 /* Features/Pury/UI/PuryActionConfirmationCard.swift */; };
+		D70001082FA9000100D70108 /* Features/Pury/UI/PuryCommandCrown.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70000082FA9000100D70008 /* Features/Pury/UI/PuryCommandCrown.swift */; };
 		D70001072FA9000100D70107 /* Features/Pury/UI/PuryAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70000072FA9000100D70007 /* Features/Pury/UI/PuryAvatar.swift */; };
 		A72D13A3A310632E0D519B88 /* QBAssetsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 7A00759CF4579FBA409A2847 /* QBAssetsViewController.m */; };
 		A7C91D01FBE74D56A8101001 /* Features/POS/POSReceiptDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C91D02FBE74D56A8101002 /* Features/POS/POSReceiptDocument.swift */; };
@@ -492,6 +493,7 @@
 		D70000042FA9000100D70004 /* Features/Pury/UI/PuryAssistantSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Pury/UI/PuryAssistantSheetView.swift; sourceTree = "<group>"; };
 		D70000052FA9000100D70005 /* Features/Pury/Editor/PuryInlineAuthoringHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Pury/Editor/PuryInlineAuthoringHelper.swift; sourceTree = "<group>"; };
 		D70000062FA9000100D70006 /* Features/Pury/UI/PuryActionConfirmationCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Pury/UI/PuryActionConfirmationCard.swift; sourceTree = "<group>"; };
+		D70000082FA9000100D70008 /* Features/Pury/UI/PuryCommandCrown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Pury/UI/PuryCommandCrown.swift; sourceTree = "<group>"; };
 		D70000072FA9000100D70007 /* Features/Pury/UI/PuryAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Pury/UI/PuryAvatar.swift; sourceTree = "<group>"; };
 		A7C91D02FBE74D56A8101002 /* Features/POS/POSReceiptDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/POSReceiptDocument.swift; sourceTree = "<group>"; };
 		A7C91D04FBE74D56A8101004 /* Features/POS/POSReservedLivePetsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/POSReservedLivePetsView.swift; sourceTree = "<group>"; };
@@ -1358,6 +1360,7 @@
 				D70000042FA9000100D70004 /* Features/Pury/UI/PuryAssistantSheetView.swift */,
 				D70000052FA9000100D70005 /* Features/Pury/Editor/PuryInlineAuthoringHelper.swift */,
 				D70000062FA9000100D70006 /* Features/Pury/UI/PuryActionConfirmationCard.swift */,
+				D70000082FA9000100D70008 /* Features/Pury/UI/PuryCommandCrown.swift */,
 				D70000072FA9000100D70007 /* Features/Pury/UI/PuryAvatar.swift */,
 				A6C001352FA9000100A6C035 /* AdminPetsHotelHubView.swift */,
 				3DA39278C2834B63BDD94871 /* App/AdminRouteDestinationView.swift */,
@@ -2379,6 +2382,7 @@
 				D70001042FA9000100D70104 /* Features/Pury/UI/PuryAssistantSheetView.swift in Sources */,
 				D70001052FA9000100D70105 /* Features/Pury/Editor/PuryInlineAuthoringHelper.swift in Sources */,
 				D70001062FA9000100D70106 /* Features/Pury/UI/PuryActionConfirmationCard.swift in Sources */,
+				D70001082FA9000100D70108 /* Features/Pury/UI/PuryCommandCrown.swift in Sources */,
 				D70001072FA9000100D70107 /* Features/Pury/UI/PuryAvatar.swift in Sources */,
 				FA23686D0529430AA2E37709 /* PPVetModel.m in Sources */,
 				6C65E6AFB8534ED2B64E8AC0 /* PPVetManager.m in Sources */,

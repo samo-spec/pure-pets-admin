@@ -80,4 +80,89 @@ assert "renderableStructuredContent(for: message)" in ASSISTANT
 assert "purySmartAnswerView(message, structuredContent: structuredContent)" in ASSISTANT
 assert '"Pury_Field_CheckIn" = "تسجيل الوصول";' in AR_LOCALIZATION
 
+# Pury command crown: one header surface, language-scoped localization, no raw identifiers.
+CROWN = (ROOT / "PurePetsAdmin/Features/Pury/UI/PuryCommandCrown.swift").read_text()
+
+assert "struct PuryCommandCrown" in CROWN
+assert "PurySignalSpine" in CROWN
+assert "PuryHeaderSignal" in CROWN
+# The crown replaces both legacy bars; neither may come back.
+assert "executiveHeaderBar" not in ASSISTANT
+assert "contextIndicatorStrip" not in ASSISTANT
+assert "headerStatusSubtitle" not in ASSISTANT
+assert "puryCommandCrown" in ASSISTANT
+# Header strings must resolve through Pury's own language, never app-language `Language.get`.
+assert "PuryLocale.text(" in CROWN
+assert "enum PuryLocale" in MODELS
+assert "public func displayLabel(language:" in MODELS
+assert "public func scopeFacets(language:" in MODELS
+# An unmapped screen/route must never leak a raw internal identifier as a title.
+assert "default:\n            return nil" in MODELS
+# Format-bearing context keys must be substituted, not rendered with a literal %@.
+assert "PuryLocale.format(" in MODELS
+# RTL correctness: backend identifiers stay left-to-right inside Arabic layout.
+assert "layoutDirection, .leftToRight" in CROWN
+# Size-class safety: no UIScreen-based positioning in the Pury sheet.
+assert "UIScreen.main.bounds" not in ASSISTANT
+# Reduce Motion must degrade the signal sweep to a static state, not drop the state.
+assert "allowsMotion" in CROWN
+# Destructive clear is confirmed, not one-tap.
+assert "confirmationDialog" in ASSISTANT
+
+for key in [
+    "Pury_Context_Command",
+    "Pury_Context_Work",
+    "Pury_Context_Operations",
+    "Pury_Context_People",
+    "Pury_Context_Hotel",
+    "Pury_Context_POS",
+    "Pury_Context_Fulfillment",
+    "Pury_Context_More",
+    "Pury_Context_Accessories",
+    "Pury_Context_LivePets",
+    "Pury_Context_Food",
+    "Pury_Context_Users",
+    "Pury_Context_Staff",
+    "Pury_Context_Branches",
+    "Pury_Context_Orders",
+    "Pury_Name",
+    "Pury_Badge_AI",
+    "Pury_Close",
+    "Pury_Identity_A11y",
+    "Pury_State_Ready",
+    "Pury_State_Reading",
+    "Pury_State_Executing",
+    "Pury_State_Awaiting_Approval",
+    "Pury_State_Stale",
+    "Pury_State_Denied",
+    "Pury_State_Alert",
+    "Pury_State_NoResults",
+    "Pury_Scope_A11y_Label",
+    "Pury_Scope_A11y_Hint",
+    "Pury_Scope_Screen",
+    "Pury_Scope_Route",
+    "Pury_Scope_Branch",
+    "Pury_Scope_RecordType",
+    "Pury_Scope_Record",
+    "Pury_Scope_Reservation",
+    "Pury_Scope_Stay",
+    "Pury_Scope_Suite",
+    "Pury_Scope_Authority",
+    "Pury_Language_A11y_Label",
+    "Pury_Language_Arabic",
+    "Pury_Language_English",
+    "Pury_Clear_Confirm_Message",
+    "Pury_Clear_Confirm_Action",
+    "Pury_Clear_Cancel_Action",
+]:
+    assert f'"{key}"' in AR_LOCALIZATION, f"missing Arabic key: {key}"
+    assert f'"{key}"' in EN_LOCALIZATION, f"missing English key: {key}"
+
 print("Pury Admin static contract tests passed.")
+
+# Unmapped screens remain inspectable as technical context instead of disappearing.
+assert "if let screen = screen, !screen.isEmpty {" in MODELS
+assert "value: mapped ?? screen" in MODELS
+# Every non-empty route remains inspectable; mapped routes show their localized label.
+assert "if let route = route, !route.isEmpty {" in MODELS
+assert "value: mapped ?? route" in MODELS

@@ -2288,6 +2288,15 @@
 "Fulfillment_Filter_Scope" = "نطاق العمل";
 "Fulfillment_Filter_Stage" = "مرحلة التنفيذ";
 "Fulfillment_Filter_ExactStatus" = "الحالة الدقيقة";
+"Fulfillment_Filter_Options_Title" = "خيارات التصفية والفرز";
+"Fulfillment_Filter_Default_Desc" = "عرض جميع الطلبات (الافتراضي)";
+"Fulfillment_Filter_Active_Single" = "فلتر واحد نشط";
+"Fulfillment_Filter_Active_Plural" = "فلاتر نشطة";
+"Fulfillment_Filter_Reset_All" = "إعادة ضبط الفلاتر";
+"Fulfillment_SLA_Urgent_Short" = "متأخر عن SLA";
+"Fulfillment_Mode_Platform_Short" = "مستودع المنصة";
+"Fulfillment_Mode_Partner_Short" = "المتاجر والشركاء";
+"Reset" = "إعادة ضبط";
 "Fulfillment_StatusChanged" = "تغيرت الحالة";
 "Fulfillment_Event_AdminOverride" = "تجاوز إداري";
 "Fulfillment_Event_ProviderTransition" = "انتقال بواسطة المزود";
@@ -9286,6 +9295,57 @@
 "Pury_Context_Suite" = "جناح فندقي: #%@";
 "Pury_Context_Admin" = "لوحة الإدارة";
 "Pury_Context_Bound" = "سياق نشط";
+
+/* Pury Command Crown — النطاق المرتبط ومؤشر الحالة وعناصر التحكم */
+"Pury_Name" = "بيوري";
+"Pury_Badge_AI" = "AI";
+"Pury_Close" = "إغلاق";
+"Pury_Identity_A11y" = "بيوري، مساعد تشغيلي بالذكاء الاصطناعي";
+
+"Pury_Context_Command" = "مركز العمليات والقيادة";
+"Pury_Context_Work" = "التجارة والمخزون";
+"Pury_Context_Operations" = "التشغيل والخدمات";
+"Pury_Context_People" = "العملاء والفريق";
+"Pury_Context_Hotel" = "فندق الحيوانات";
+"Pury_Context_POS" = "نقطة البيع السريع";
+"Pury_Context_Fulfillment" = "أوامر التجهيز والتسليم";
+"Pury_Context_More" = "المزيد والإعدادات";
+"Pury_Context_Accessories" = "المستلزمات والمخزون";
+"Pury_Context_LivePets" = "الحيوانات الحية";
+"Pury_Context_Food" = "قسم الأغذية";
+"Pury_Context_Users" = "ملفات العملاء";
+"Pury_Context_Staff" = "فريق العمل والأطباء";
+"Pury_Context_Branches" = "الفروع والمستودعات";
+"Pury_Context_Orders" = "إدارة الطلبات";
+
+"Pury_State_Ready" = "جاهز";
+"Pury_State_Reading" = "يقرأ البيانات الحية";
+"Pury_State_Executing" = "يتم التنفيذ بأمان";
+"Pury_State_Awaiting_Approval" = "بانتظار موافقتك";
+"Pury_State_Stale" = "تغيّرت البيانات";
+"Pury_State_Denied" = "صلاحية غير كافية";
+"Pury_State_Alert" = "تنبيه تشغيلي";
+"Pury_State_NoResults" = "لا سجلات مطابقة";
+
+"Pury_Scope_A11y_Label" = "نطاق البيانات المرتبط";
+"Pury_Scope_A11y_Hint" = "انقر مرتين لعرض تفاصيل الارتباط";
+"Pury_Scope_Screen" = "الشاشة";
+"Pury_Scope_Route" = "المسار";
+"Pury_Scope_Branch" = "الفرع";
+"Pury_Scope_RecordType" = "نوع السجل";
+"Pury_Scope_Record" = "معرّف السجل";
+"Pury_Scope_Reservation" = "الحجز";
+"Pury_Scope_Stay" = "الإقامة";
+"Pury_Scope_Suite" = "الجناح";
+"Pury_Scope_Authority" = "يقرأ بيوري السجلات المصرح لك بها فقط، والتحقق يتم على الخادم.";
+
+"Pury_Language_A11y_Label" = "لغة بيوري";
+"Pury_Language_Arabic" = "العربية";
+"Pury_Language_English" = "الإنجليزية";
+
+"Pury_Clear_Confirm_Message" = "سيتم حذف هذه المحادثة من الجهاز فقط. لن يتأثر أي سجل تشغيلي.";
+"Pury_Clear_Confirm_Action" = "مسح المحادثة";
+"Pury_Clear_Cancel_Action" = "إلغاء";
 "Pury_Welcome_Title" = "مرحباً! أنا بيوري، مساعدك التشغيلي";
 "Pury_Welcome_Desc" = "اطرح أي سؤال حول المخزون، الطلبات، النزلاء في الفندق، أو تقارير المبيعات، وسأجيبك من واقع البيانات المحدثة مباشرة.";
 "Pury_Quick_Prompts" = "اقتراحات سريعة:";

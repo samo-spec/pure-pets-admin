@@ -26,8 +26,20 @@ struct PuryAssistantSheetView: View {
     /// (ambient background atmosphere pulse, avatar living breathing/stardust drift, status dot scaling, and synaptic beacon pulse).
     private static let isScreenAliveAnimationEnabled: Bool = false
 
+    /// Authoritative horizontal breathing room for all sheet subviews.
+    private static let sheetHorizontalMargin: CGFloat = 20
+
     // Living Avatar & Motion States
     @State private var ambientPulse: Bool = false
+
+    /// Presentation-only crown state. The crown compacts on real product signals —
+    /// the operator is composing, or the conversation already has depth — rather than
+    /// on scroll offset, which avoids mid-scroll jitter and layout feedback loops.
+    @State private var isClearConfirmationPresented: Bool = false
+
+    private var isCrownCompact: Bool {
+        isInputFocused || store.messages.count >= 3
+    }
 
     private var isRTL: Bool {
         if store.language == "ar" { return true }
@@ -52,13 +64,9 @@ struct PuryAssistantSheetView: View {
             ambientAtmosphere
 
             VStack(spacing: 0) {
-                // Top Executive Navigation Bar
-                executiveHeaderBar
-
-                // Context Indicator Strip
-                if let context = screenContext, !context.isEmpty {
-                    contextIndicatorStrip(context)
-                }
+                // Single authored header surface: identity, bound data scope, and the
+                // live state machine on one crown instead of two stacked bars.
+                puryCommandCrown
 
                 // Conversation Timeline
                 ScrollViewReader { proxy in
@@ -80,10 +88,12 @@ struct PuryAssistantSheetView: View {
                                 }
                             }
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, Self.sheetHorizontalMargin)
                         .padding(.top, 14)
                         .padding(.bottom, 24) // composer owns its space through safeAreaInset
+                        .frame(maxWidth: 680)
                     }
+                    .frame(maxWidth: .infinity)
                     .onChange(of: store.messages.count) { _ in
                         scrollToLatest(proxy: proxy)
                     }
@@ -98,6 +108,43 @@ struct PuryAssistantSheetView: View {
             floatingInputDock
         }
         .environment(\.layoutDirection, isRTL ? .rightToLeft : .leftToRight)
+        .confirmationDialog(
+            PuryLocale.text(
+                "Pury_Clear_Chat",
+                language: store.language,
+                ar: "مسح المحادثة",
+                en: "Clear Conversation"
+            ),
+            isPresented: $isClearConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button(
+                PuryLocale.text(
+                    "Pury_Clear_Confirm_Action",
+                    language: store.language,
+                    ar: "مسح المحادثة",
+                    en: "Clear Conversation"
+                ),
+                role: .destructive
+            ) {
+                store.clearHistory()
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
+
+            Button(
+                PuryLocale.text("Pury_Clear_Cancel_Action", language: store.language, ar: "إلغاء", en: "Cancel"),
+                role: .cancel
+            ) {}
+        } message: {
+            Text(
+                PuryLocale.text(
+                    "Pury_Clear_Confirm_Message",
+                    language: store.language,
+                    ar: "سيتم حذف هذه المحادثة من الجهاز فقط. لن يتأثر أي سجل تشغيلي.",
+                    en: "This clears the conversation on this device only. No operational record is affected."
+                )
+            )
+        }
         .onAppear {
             PPBrandFont.registerIfNeeded()
             guard Self.isScreenAliveAnimationEnabled && !reduceMotion else {
@@ -113,9 +160,10 @@ struct PuryAssistantSheetView: View {
     // MARK: - Ambient Atmosphere
 
     private var ambientAtmosphere: some View {
-        ZStack {
+        // Size-class safe: the glow is placed by layout alignment rather than by a
+        // hard-coded main-screen width, which is wrong on iPad, Slide Over, and Split View.
+        ZStack(alignment: .top) {
             AdminSurface.background
-                .ignoresSafeArea()
 
             Circle()
                 .fill(
@@ -131,149 +179,38 @@ struct PuryAssistantSheetView: View {
                     )
                 )
                 .frame(width: 460, height: 460)
-                .position(x: UIScreen.main.bounds.width / 2, y: 120)
-                .ignoresSafeArea()
+                .offset(y: -110)
+                .allowsHitTesting(false)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea()
     }
 
-    // MARK: - Executive Header Bar
+    // MARK: - Pury Command Crown
 
-    private var executiveHeaderBar: some View {
-        HStack(spacing: 12) {
-            // Living Avatar & Persona (Leading Edge: Right in RTL, Left in LTR)
-            HStack(spacing: 10) {
-                livingAvatarBeacon(size: 38)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(isRTL ? "بيوري" : "Pury")
-                            .font(AdminType.headline)
-                            .foregroundStyle(AdminSurface.primaryText)
-
-                        Text("AI")
-                            .font(PPBrandFont.bold(size: 10, relativeTo: .caption2))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(
-                                LinearGradient(
-                                    colors: [PuryBrand.hotPink, PuryBrand.primary],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                in: Capsule()
-                            )
-                    }
-
-                    // Live Subtitle Indicator
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(store.state == .loading ? Color(red: 245/255, green: 158/255, blue: 11/255) : PuryBrand.primary)
-                            .frame(width: 6, height: 6)
-                            .scaleEffect(Self.isScreenAliveAnimationEnabled && ambientPulse ? 1.2 : 1.0)
-
-                        Text(headerStatusSubtitle)
-                            .font(AdminType.caption2)
-                            .foregroundStyle(AdminSurface.secondaryText)
-                    }
+    private var puryCommandCrown: some View {
+        PuryCommandCrown(
+            language: store.language,
+            isRTL: isRTL,
+            state: store.state,
+            screenContext: screenContext,
+            isCompact: isCrownCompact,
+            canClearConversation: !store.messages.isEmpty,
+            onSelectLanguage: { code in
+                guard store.language != code else { return }
+                withAnimation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.78)) {
+                    store.language = code
                 }
+                UISelectionFeedbackGenerator().selectionChanged()
+            },
+            onRequestClear: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                isClearConfirmationPresented = true
+            },
+            onClose: {
+                dismiss()
             }
-
-            Spacer()
-
-            // Trailing Edge Controls (Left in RTL, Right in LTR)
-            HStack(spacing: 8) {
-                // Language Switcher Pill
-                Button {
-                    withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.7)) {
-                        store.language = isRTL ? "en" : "ar"
-                    }
-                    UISelectionFeedbackGenerator().selectionChanged()
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "globe")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text(isRTL ? "English" : "العربية")
-                            .font(AdminType.caption2Bold)
-                    }
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(AdminSurface.control, in: Capsule())
-                    .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
-                }
-                .buttonStyle(.plain)
-
-                // Clear Chat Action
-                if !store.messages.isEmpty {
-                    Button {
-                        store.clearHistory()
-                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                    } label: {
-                        ZStack {
-                            Circle()
-                                .fill(AdminSurface.control)
-                                .frame(width: 36, height: 36)
-                                .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
-
-                            Image(systemName: "trash")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(AdminSurface.secondaryText)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(isRTL ? "مسح المحادثة" : "Clear Chat")
-                }
-
-                // Dismiss / Close Button
-                Button {
-                    dismiss()
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(AdminSurface.control)
-                            .frame(width: 36, height: 36)
-                            .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
-
-                        Image(systemName: "xmark")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(AdminSurface.primaryText)
-                    }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(isRTL ? "إغلاق" : "Close")
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 12)
-        .background(
-            AdminSurface.surface.opacity(0.85)
-                .background(.ultraThinMaterial)
         )
-        .overlay(
-            Rectangle()
-                .fill(AdminSurface.hairline)
-                .frame(height: 0.5),
-            alignment: .bottom
-        )
-    }
-
-    private var headerStatusSubtitle: String {
-        switch store.state {
-        case .idle:
-            return isRTL ? "شريكك التشغيلي الذكي" : "Smart Operations Partner"
-        case .loading:
-            return isRTL ? "يراجع البيانات الحية..." : "Analyzing live data..."
-        case .confirmationRequired:
-            return isRTL ? "بانتظار موافقتك..." : "Awaiting approval..."
-        case .denied, .error:
-            return isRTL ? "تنبيه تشغيلي" : "Operational Alert"
-        case .conflictStale:
-            return isRTL ? "بيانات محدثة" : "Updated Records"
-        default:
-            return isRTL ? "شريكك التشغيلي الذكي" : "Smart Operations Partner"
-        }
     }
 
     // MARK: - Living Avatar Beacon
@@ -288,56 +225,11 @@ struct PuryAssistantSheetView: View {
         )
     }
 
-    // MARK: - Context Indicator Strip
-
-    private func contextIndicatorStrip(_ context: PuryScreenContext) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "scope")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(PuryBrand.primary)
-
-            Text(context.displayLabel)
-                .font(AdminType.caption1Bold)
-                .foregroundStyle(AdminSurface.primaryText)
-                .lineLimit(1)
-
-            Spacer()
-
-            HStack(spacing: 4) {
-                Circle()
-                    .fill(PuryBrand.primary)
-                    .frame(width: 6, height: 6)
-
-                Text(isRTL ? "سياق نشط" : "Active Context")
-                    .font(AdminType.caption2Bold)
-                    .foregroundStyle(PuryBrand.primary)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(PuryBrand.primary.opacity(0.10), in: Capsule())
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 7)
-        .background(AdminSurface.surface.opacity(0.82))
-        .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                .fill(PuryBrand.primary)
-                .frame(width: 3, height: 22)
-                .padding(.leading, 6)
-        }
-        .overlay(
-            Rectangle()
-                .fill(AdminSurface.hairline)
-                .frame(height: 0.5),
-            alignment: .bottom
-        )
-    }
-
     // MARK: - Living Operational Radar (Reinvented Empty State)
 
     private var livingEmptyStateView: some View {
-        VStack(spacing: 24) {
-            Spacer(minLength: 12)
+        VStack(spacing: 22) {
+            Spacer(minLength: 8)
 
             // Radiant Synaptic Beacon Hero
             ZStack {
@@ -354,15 +246,15 @@ struct PuryAssistantSheetView: View {
                             endRadius: 85
                         )
                     )
-                    .frame(width: 170, height: 170)
+                    .frame(width: 160, height: 160)
 
-                livingAvatarBeacon(size: 72)
+                livingAvatarBeacon(size: 68)
             }
 
             // Warm Executive Greeting & Mission Banner
             VStack(spacing: 8) {
                 Text(executiveGreetingTitle)
-                    .font(PPBrandFont.bold(size: 23, relativeTo: .title2))
+                    .font(PPBrandFont.bold(size: 22, relativeTo: .title2))
                     .foregroundStyle(AdminSurface.primaryText)
                     .multilineTextAlignment(.center)
 
@@ -376,54 +268,53 @@ struct PuryAssistantSheetView: View {
                     .padding(.horizontal, 16)
             }
 
-            // 4 Sculpted Operational Catalyst Pods (2 x 2)
-            VStack(spacing: 12) {
-                HStack(spacing: 12) {
-                    operationalCatalystPod(
-                        icon: "building.2.crop.circle.fill",
-                        accentGradient: [Color(red: 16/255, green: 185/255, blue: 129/255), Color(red: 20/255, green: 184/255, blue: 166/255)],
-                        badge: isRTL ? "🏨 الفندق النشط" : "🏨 Hotel Stays",
-                        title: isRTL ? "حالة إشغال الفندق" : "Hotel Occupancy",
-                        subtitle: isRTL ? "فحص الغرف والنزلاء" : "Live rooms & active stays",
-                        prompt: isRTL ? "ما هي حالة الإشغال اليوم في فندق الحيوانات؟" : "What is the hotel occupancy and active stays today?"
-                    )
+            // 4 Sculpted Operational Catalyst Pods (2 x 2 Bounded Grid)
+            let catalystColumns = [
+                GridItem(.flexible(), spacing: 10),
+                GridItem(.flexible(), spacing: 10)
+            ]
+            LazyVGrid(columns: catalystColumns, spacing: 10) {
+                operationalCatalystPod(
+                    icon: "building.2.crop.circle.fill",
+                    accentGradient: [Color(red: 16/255, green: 185/255, blue: 129/255), Color(red: 20/255, green: 184/255, blue: 166/255)],
+                    badge: isRTL ? "🏨 الفندق" : "🏨 Hotel",
+                    title: isRTL ? "إشغال الفندق" : "Occupancy",
+                    subtitle: isRTL ? "فحص الغرف والنزلاء" : "Live rooms & guests",
+                    prompt: isRTL ? "ما هي حالة الإشغال اليوم في فندق الحيوانات؟" : "What is the hotel occupancy and active stays today?"
+                )
 
-                    operationalCatalystPod(
-                        icon: "exclamationmark.triangle.fill",
-                        accentGradient: [Color(red: 245/255, green: 158/255, blue: 11/255), Color(red: 239/255, green: 68/255, blue: 68/255)],
-                        badge: isRTL ? "📦 رادار المخزون" : "📦 Low Stock",
-                        title: isRTL ? "نواقص المخزون" : "Inventory Alerts",
-                        subtitle: isRTL ? "المنتجات أوشكت على النفاد" : "Items reaching threshold",
-                        prompt: isRTL ? "ما هي المنتجات التي أوشكت على النفاد في المتجر؟" : "What products are currently running low on stock?"
-                    )
-                }
+                operationalCatalystPod(
+                    icon: "exclamationmark.triangle.fill",
+                    accentGradient: [Color(red: 245/255, green: 158/255, blue: 11/255), Color(red: 239/255, green: 68/255, blue: 68/255)],
+                    badge: isRTL ? "📦 المخزون" : "📦 Low Stock",
+                    title: isRTL ? "نواقص المخزون" : "Inventory Alerts",
+                    subtitle: isRTL ? "المنتجات أوشكت على النفاد" : "Items near empty",
+                    prompt: isRTL ? "ما هي المنتجات التي أوشكت على النفاد في المتجر؟" : "What products are currently running low on stock?"
+                )
 
-                HStack(spacing: 12) {
-                    operationalCatalystPod(
-                        icon: "shippingbox.fill",
-                        accentGradient: [Color(red: 59/255, green: 130/255, blue: 246/255), Color(red: 99/255, green: 102/255, blue: 241/255)],
-                        badge: isRTL ? "🚚 أوامر التجهيز" : "🚚 Fulfillments",
-                        title: isRTL ? "الطلبات المعلقة" : "Pending Orders",
-                        subtitle: isRTL ? "جاهزية الشحن والتسليم" : "Orders awaiting dispatch",
-                        prompt: isRTL ? "كم عدد الطلبات المعلقة بانتظار التجهيز والشحن؟" : "How many orders are awaiting fulfillment and shipping?"
-                    )
+                operationalCatalystPod(
+                    icon: "shippingbox.fill",
+                    accentGradient: [Color(red: 59/255, green: 130/255, blue: 246/255), Color(red: 99/255, green: 102/255, blue: 241/255)],
+                    badge: isRTL ? "🚚 التجهيز" : "🚚 Fulfillments",
+                    title: isRTL ? "الطلبات المعلقة" : "Pending Orders",
+                    subtitle: isRTL ? "جاهزية الشحن والتسليم" : "Awaiting dispatch",
+                    prompt: isRTL ? "كم عدد الطلبات المعلقة بانتظار التجهيز والشحن؟" : "How many orders are awaiting fulfillment and shipping?"
+                )
 
-                    operationalCatalystPod(
-                        icon: "chart.line.uptrend.xyaxis",
-                        accentGradient: [Color(red: 139/255, green: 92/255, blue: 246/255), Color(red: 236/255, green: 72/255, blue: 153/255)],
-                        badge: isRTL ? "📊 نبض الأداء" : "📊 Performance",
-                        title: isRTL ? "ملخص المبيعات" : "Weekly Metrics",
-                        subtitle: isRTL ? "الإيرادات والنمو التشغيلي" : "Revenue & platform KPIs",
-                        prompt: isRTL ? "قدم لي ملخصاً شاملاً لمؤشرات الأداء والمبيعات لهذا الأسبوع" : "Summarize platform sales and operational KPIs for this week"
-                    )
-                }
+                operationalCatalystPod(
+                    icon: "chart.line.uptrend.xyaxis",
+                    accentGradient: [Color(red: 139/255, green: 92/255, blue: 246/255), Color(red: 236/255, green: 72/255, blue: 153/255)],
+                    badge: isRTL ? "📊 الأداء" : "📊 Performance",
+                    title: isRTL ? "ملخص المبيعات" : "Weekly Metrics",
+                    subtitle: isRTL ? "الإيرادات والنمو" : "Revenue & KPIs",
+                    prompt: isRTL ? "قدم لي ملخصاً شاملاً لمؤشرات الأداء والمبيعات لهذا الأسبوع" : "Summarize platform sales and operational KPIs for this week"
+                )
             }
-            .padding(.horizontal, 4)
 
             // Quick Telemetry Accelerator Tray
             quickTelemetryTray
 
-            Spacer(minLength: 32)
+            Spacer(minLength: 28)
         }
     }
 
@@ -451,11 +342,11 @@ struct PuryAssistantSheetView: View {
                 await store.sendMessage(prompt, screenContext: screenContext)
             }
         } label: {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 7) {
                 // Top Row: Icon squircle + Badge
-                HStack {
+                HStack(spacing: 5) {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
                             .fill(
                                 LinearGradient(
                                     colors: [accentGradient.first?.opacity(0.18) ?? .clear, accentGradient.last?.opacity(0.10) ?? .clear],
@@ -463,58 +354,62 @@ struct PuryAssistantSheetView: View {
                                     endPoint: .bottomTrailing
                                 )
                             )
-                            .frame(width: 38, height: 38)
+                            .frame(width: 28, height: 28)
 
                         Image(systemName: icon)
-                            .font(.system(size: 17, weight: .bold))
+                            .font(.system(size: 13.5, weight: .bold))
                             .foregroundStyle(accentGradient.first ?? AdminSurface.primary)
                     }
 
-                    Spacer()
+                    Spacer(minLength: 2)
 
                     Text(badge)
-                        .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
+                        .font(PPBrandFont.bold(size: 9.5, relativeTo: .caption2))
                         .foregroundStyle(accentGradient.first ?? AdminSurface.secondaryText)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .padding(.horizontal, 5.5)
+                        .padding(.vertical, 2.5)
                         .background((accentGradient.first ?? Color.gray).opacity(0.10), in: Capsule())
                 }
 
                 // Title and Subtitle
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(PPBrandFont.bold(size: 15, relativeTo: .subheadline))
+                        .font(PPBrandFont.bold(size: 13.5, relativeTo: .subheadline))
                         .foregroundStyle(AdminSurface.primaryText)
                         .multilineTextAlignment(.leading)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.85)
 
                     Text(subtitle)
-                        .font(AdminType.caption2)
+                        .font(PPBrandFont.regular(size: 11, relativeTo: .caption2))
                         .foregroundStyle(AdminSurface.secondaryText)
                         .multilineTextAlignment(.leading)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                 }
 
                 // Action Prompt Cue
-                HStack(spacing: 5) {
+                HStack(spacing: 3) {
                     Text(isRTL ? "استعلام مباشر" : "Live Query")
                         .font(AdminType.caption2Bold)
                         .foregroundStyle(accentGradient.first ?? AdminSurface.primary)
 
                     Image(systemName: isRTL ? "arrow.left" : "arrow.right")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 8.5, weight: .bold))
                         .foregroundStyle(accentGradient.first ?? AdminSurface.primary)
                 }
-                .padding(.top, 2)
+                .padding(.top, 1)
             }
-            .padding(14)
+            .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 AdminSurface.surface
             )
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .strokeBorder(
                         LinearGradient(
                             colors: [accentGradient.first?.opacity(0.35) ?? AdminSurface.hairline, AdminSurface.hairline],
@@ -524,7 +419,7 @@ struct PuryAssistantSheetView: View {
                         lineWidth: 0.8
                     )
             )
-            .shadow(color: (accentGradient.first ?? Color.black).opacity(0.06), radius: 8, x: 0, y: 3)
+            .shadow(color: (accentGradient.first ?? Color.black).opacity(0.04), radius: 5, x: 0, y: 2)
         }
         .buttonStyle(.plain)
     }
@@ -536,7 +431,6 @@ struct PuryAssistantSheetView: View {
             Text(isRTL ? "استعلامات سريعة بنقرة واحدة" : "Instant Telemetry Accelerators")
                 .font(PPBrandFont.medium(size: 12, relativeTo: .caption))
                 .foregroundStyle(AdminSurface.secondaryText)
-                .padding(.horizontal, 6)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -565,10 +459,10 @@ struct PuryAssistantSheetView: View {
                         prompt: isRTL ? "ملخص سريع لأهم أصناف المخزون المتوفرة" : "Quick audit summary of available product inventory."
                     )
                 }
-                .padding(.horizontal, 4)
+                .padding(.horizontal, 1)
             }
         }
-        .padding(.top, 6)
+        .padding(.top, 4)
     }
 
     private func quickTelemetryChip(icon: String, title: String, prompt: String) -> some View {
@@ -1203,7 +1097,7 @@ struct PuryAssistantSheetView: View {
                         suggestionChip(isRTL ? "🚚 الطلبات المعلقة" : "🚚 Pending Orders")
                         suggestionChip(isRTL ? "📊 المبيعات اليوم" : "📊 Today's Sales")
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, Self.sheetHorizontalMargin)
                 }
             }
 
@@ -1244,7 +1138,7 @@ struct PuryAssistantSheetView: View {
                                         endPoint: .bottomTrailing
                                     )
                             )
-                            .frame(width: 42, height: 42)
+                            .frame(width: 40, height: 40)
                             .shadow(
                                 color: hasText ? PuryBrand.glow.opacity(0.32) : Color.clear,
                                 radius: 6,
@@ -1253,15 +1147,15 @@ struct PuryAssistantSheetView: View {
                             )
 
                         Image(systemName: "arrow.up")
-                            .font(.system(size: 16, weight: .bold))
+                            .font(.system(size: 15, weight: .bold))
                             .foregroundStyle(hasText && store.state != .loading ? .white : AdminSurface.secondaryText)
                     }
                 }
                 .buttonStyle(.plain)
                 .disabled(store.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.state == .loading)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 15)
+            .padding(.vertical, 7)
             .background(
                 AdminSurface.surface.opacity(0.95)
                     .background(.ultraThinMaterial)
@@ -1272,9 +1166,10 @@ struct PuryAssistantSheetView: View {
                     .strokeBorder(isInputFocused ? PuryBrand.primary : AdminSurface.hairline, lineWidth: isInputFocused ? 1.5 : 0.75)
             )
             .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 4)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 10)
+            .padding(.horizontal, Self.sheetHorizontalMargin)
+            .padding(.bottom, 12)
         }
+        .frame(maxWidth: 680)
     }
 
     private func suggestionChip(_ label: String) -> some View {
