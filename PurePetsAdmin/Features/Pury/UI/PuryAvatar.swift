@@ -10,6 +10,33 @@
 import SwiftUI
 import UIKit
 
+// MARK: - Pury Brand Identity
+
+/// Pury-local identity tokens sampled from the official `PuryV1` artwork.
+/// These colors identify Pury only; operational success/warning/error colors stay semantic.
+public enum PuryBrand {
+    public static let deepRose = Color(red: 160.0 / 255.0, green: 0.0 / 255.0, blue: 48.0 / 255.0)
+    public static let primary = Color(red: 208.0 / 255.0, green: 0.0 / 255.0, blue: 80.0 / 255.0)
+    public static let accent = Color(red: 224.0 / 255.0, green: 16.0 / 255.0, blue: 96.0 / 255.0)
+    public static let hotPink = Color(red: 255.0 / 255.0, green: 64.0 / 255.0, blue: 128.0 / 255.0)
+    public static let highlight = Color(red: 255.0 / 255.0, green: 96.0 / 255.0, blue: 160.0 / 255.0)
+    public static let violet = Color(red: 139.0 / 255.0, green: 92.0 / 255.0, blue: 246.0 / 255.0)
+    public static let glow = hotPink
+
+    /// Dynamic app foreground color token (`AppForgroundColr` / `ppElevatedSurface`).
+    public static var appForeground: Color {
+        Color(uiColor: UIColor(named: "AppForgroundColr") ?? .ppElevatedSurface)
+    }
+
+    public static var identityGradient: LinearGradient {
+        LinearGradient(
+            colors: [highlight, hotPink, primary, deepRose],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+}
+
 // MARK: - PuryAvatar (SwiftUI)
 
 /// Central shared circular UI view for Pury featuring a living Ultra Apex background
@@ -33,6 +60,7 @@ public struct PuryAvatar: View {
     // MARK: - Environment
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     // MARK: - Initialization
 
@@ -154,14 +182,16 @@ public struct PuryAvatar: View {
     private var auraColors: [Color] {
         if isThinking {
             return [
-                Color(red: 139/255, green: 92/255, blue: 246/255).opacity(0.85), // Violet
-                Color(red: 6/255, green: 182/255, blue: 212/255).opacity(0.45),  // Electric Cyan
+                PuryBrand.violet.opacity(0.78),
+                PuryBrand.highlight.opacity(0.58),
+                PuryBrand.primary.opacity(0.30),
                 Color.clear
             ]
         } else {
             return [
-                Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.80), // Emerald
-                Color(red: 52/255, green: 211/255, blue: 153/255).opacity(0.35), // Mint
+                PuryBrand.highlight.opacity(0.74),
+                PuryBrand.primary.opacity(0.48),
+                PuryBrand.deepRose.opacity(0.20),
                 Color.clear
             ]
         }
@@ -180,10 +210,11 @@ public struct PuryAvatar: View {
                     .strokeBorder(
                         AngularGradient(
                             colors: [
-                                Color(red: 139/255, green: 92/255, blue: 246/255), // Purple
-                                Color(red: 6/255, green: 182/255, blue: 212/255),  // Cyan
-                                Color(red: 16/255, green: 185/255, blue: 129/255), // Emerald
-                                Color(red: 139/255, green: 92/255, blue: 246/255)  // Back to Purple
+                                PuryBrand.violet,
+                                PuryBrand.highlight,
+                                PuryBrand.hotPink,
+                                PuryBrand.primary,
+                                PuryBrand.violet
                             ],
                             center: .center
                         ),
@@ -192,10 +223,10 @@ public struct PuryAvatar: View {
                     .frame(width: ringDiameter, height: ringDiameter)
                     .rotationEffect(.degrees(thinkingRotation))
             } else {
-                // Calibrated calm emerald status ring with soft highlight
+                // Calm Pury rose filament with a soft optical highlight.
                 Circle()
                     .strokeBorder(
-                        Color(red: 16/255, green: 185/255, blue: 129/255).opacity(isLiving ? (ambientBreath ? 0.45 : 0.22) : 0.25),
+                        PuryBrand.primary.opacity(isLiving ? (ambientBreath ? 0.46 : 0.24) : 0.28),
                         lineWidth: strokeWidth
                     )
                     .frame(width: ringDiameter, height: ringDiameter)
@@ -214,102 +245,81 @@ public struct PuryAvatar: View {
 
     private var apexCoreOrbView: some View {
         ZStack {
-            // (a) Frosted Glass Base Disc
+            // (a) App Foreground Base Disc
             Circle()
-                .fill(.ultraThinMaterial)
+                .fill(PuryBrand.appForeground)
                 .frame(width: size, height: size)
 
-            // (b) Ultra Apex Deep Atmospheric Aurora Gradient
+            // (b) Subtle Specular Surface Sheen (Tactile Apple-grade depth)
             Circle()
                 .fill(
                     LinearGradient(
-                        colors: coreAuroraColors,
+                        stops: [
+                            .init(color: Color.white.opacity(colorScheme == .dark ? 0.08 : 0.40), location: 0.0),
+                            .init(color: Color.white.opacity(0.0), location: 0.55)
+                        ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
                 .frame(width: size, height: size)
 
-            // (c) Spherical Radial Vignette (Optical Convexity)
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color.clear,
-                            Color.black.opacity(0.12),
-                            Color.black.opacity(0.32)
-                        ],
-                        center: .center,
-                        startRadius: size * 0.25,
-                        endRadius: size * 0.5
-                    )
-                )
-                .frame(width: size, height: size)
-
-            // (d) Living Stardust Particles (when enabled and size is sufficient)
+            // (c) Living Stardust Particles (when enabled and size is sufficient)
             if isLiving && !reduceMotion && size >= 32 {
                 microStardustLayer
             }
 
-            // (e) Official Pury Artwork (`PuryV1`) with graceful vector fallback
+            // (d) Official Pury Artwork (`PuryV1`) with graceful vector fallback
             mascotArtLayer
 
-            // (f) Directional Specular Inner Stroke Rim (Top-down lighting)
+            // (e) Directional Precision Inner Stroke Rim
             Circle()
                 .strokeBorder(
                     LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.85),
-                            Color.white.opacity(0.35),
-                            Color.white.opacity(0.08),
-                            Color.clear
-                        ],
+                        colors: colorScheme == .dark
+                            ? [
+                                Color.white.opacity(0.24),
+                                Color.white.opacity(0.10),
+                                Color.white.opacity(0.03)
+                            ]
+                            : [
+                                Color(uiColor: .ppSurfaceBorder),
+                                Color(uiColor: .ppSurfaceBorder).opacity(0.60),
+                                Color(uiColor: .ppSurfaceBorder).opacity(0.30)
+                            ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
-                    lineWidth: max(size * 0.026, 0.9)
+                    lineWidth: max(size * 0.024, 0.8)
                 )
                 .frame(width: size, height: size)
         }
         .frame(width: size, height: size)
         .shadow(
-            color: (isThinking ? Color(red: 139/255, green: 92/255, blue: 246/255) : Color(red: 16/255, green: 185/255, blue: 129/255)).opacity(0.35),
+            color: showAmbientAura
+                ? (isThinking ? PuryBrand.violet : PuryBrand.glow).opacity(colorScheme == .dark ? 0.30 : 0.16)
+                : Color.black.opacity(colorScheme == .dark ? 0.18 : 0.06),
             radius: max(size * 0.16, 4),
             x: 0,
             y: max(size * 0.06, 2)
         )
     }
 
-    private var coreAuroraColors: [Color] {
-        if isThinking {
-            return [
-                Color(red: 139/255, green: 92/255, blue: 246/255), // Violet
-                Color(red: 79/255, green: 70/255, blue: 229/255),  // Indigo
-                Color(red: 6/255, green: 182/255, blue: 212/255)   // Cyan
-            ]
-        } else {
-            return [
-                Color(red: 16/255, green: 185/255, blue: 129/255), // Emerald
-                Color(red: 5/255, green: 150/255, blue: 105/255),  // Mint Green
-                Color(red: 4/255, green: 120/255, blue: 87/255)    // Deep Ocean Teal
-            ]
-        }
-    }
-
     // MARK: - Micro Stardust Layer
 
     private var microStardustLayer: some View {
-        ZStack {
+        let stardustColor = colorScheme == .dark ? Color.white : PuryBrand.primary
+        return ZStack {
             // Top Right Sparkle Point
             Circle()
-                .fill(Color.white)
+                .fill(stardustColor)
                 .frame(width: max(size * 0.04, 1.8), height: max(size * 0.04, 1.8))
                 .opacity(particleDrift ? 0.75 : 0.25)
                 .offset(x: size * 0.28, y: -size * 0.24)
 
             // Bottom Left Stardust Point
             Circle()
-                .fill(Color.white.opacity(0.9))
+                .fill(stardustColor.opacity(0.9))
                 .frame(width: max(size * 0.03, 1.4), height: max(size * 0.03, 1.4))
                 .opacity(particleDrift ? 0.20 : 0.65)
                 .offset(x: -size * 0.26, y: size * 0.22)
@@ -344,7 +354,7 @@ public struct PuryAvatar: View {
     private func fallbackVectorBeacon(diameter: CGFloat) -> some View {
         Image(systemName: isThinking ? "rays" : "sparkles")
             .font(.system(size: diameter * 0.48, weight: .bold))
-            .foregroundStyle(.white)
+            .foregroundStyle(isThinking ? PuryBrand.violet : PuryBrand.primary)
             .rotationEffect(.degrees(isThinking ? thinkingRotation : 0))
     }
 

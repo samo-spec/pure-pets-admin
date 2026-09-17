@@ -54,4 +54,30 @@ assert "safeAreaInset(edge: .bottom" in ASSISTANT
 assert "structuredResultHeader" in ASSISTANT
 assert "PuryBrand.primary" in SHELL
 assert "PuryBrand.glow" in SHELL
+
+# Premium records expose human labels rather than raw backend field keys.
+assert 'case "petname"' in ASSISTANT
+assert 'case "ownername"' in ASSISTANT
+assert 'case "checkin", "checkindate", "check_in"' in ASSISTANT
+assert "humanizedFallbackLabel" in ASSISTANT
+assert "accessibilityReduceMotion" in ASSISTANT
+
+AR_LOCALIZATION = (ROOT / "PurePetsAdmin/ar.lproj/Localizable.strings").read_text()
+EN_LOCALIZATION = (ROOT / "PurePetsAdmin/en.lproj/Localizable.strings").read_text()
+for key in [
+    "Pury_Structured_Results_Subtitle",
+    "Pury_Results_ActiveStays_Format",
+    "Pury_Record_HotelStay",
+    "Pury_Field_Pet",
+    "Pury_Field_Owner",
+]:
+    assert f'"{key}"' in AR_LOCALIZATION
+    assert f'"{key}"' in EN_LOCALIZATION
+
+
+# Copy and visible rendering must share one sanitized structured-data source.
+assert "renderableStructuredContent(for: message)" in ASSISTANT
+assert "purySmartAnswerView(message, structuredContent: structuredContent)" in ASSISTANT
+assert '"Pury_Field_CheckIn" = "تسجيل الوصول";' in AR_LOCALIZATION
+
 print("Pury Admin static contract tests passed.")

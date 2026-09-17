@@ -9254,6 +9254,41 @@
 "Pury_Prompt_ContextProduct" = "What is the inventory and sales performance of this item?";
 "Pury_Prompt_ContextOrder" = "What is the tracking history and fulfillment status of this order?";
 
+// Pury premium structured result presentation
+"Pury_Structured_Results_Subtitle" = "Structured operational results";
+"Pury_Results_Count_Format" = "Result count: %@";
+"Pury_Results_ActiveStays_Format" = "%@ active stays";
+"Pury_Results_Hotel_Format" = "%@ hotel results";
+"Pury_Results_Orders_Format" = "%@ order results";
+"Pury_Results_Inventory_Format" = "%@ inventory results";
+"Pury_Results_Operational_Format" = "%@ operational results";
+"Pury_Record_InventoryItem" = "Inventory item";
+"Pury_Record_HotelStay" = "Hotel stay";
+"Pury_Record_Order" = "Order";
+"Pury_Record_Customer" = "Customer";
+"Pury_Record_Branch" = "Branch";
+"Pury_Record_StaffMember" = "Staff member";
+"Pury_Record_Adoption" = "Adoption record";
+"Pury_Field_Pet" = "Pet";
+"Pury_Field_PetCategory" = "Pet category";
+"Pury_Field_Breed" = "Breed";
+"Pury_Field_Owner" = "Owner";
+"Pury_Field_CheckIn" = "Check-in";
+"Pury_Field_ExpectedCheckout" = "Expected checkout";
+"Pury_Field_Checkout" = "Checkout";
+"Pury_Field_Suite" = "Suite";
+"Pury_Field_Room" = "Room";
+"Pury_Field_Price" = "Price";
+"Pury_Field_AvailableQuantity" = "Available quantity";
+"Pury_Field_Status" = "Status";
+"Pury_Field_Category" = "Category";
+"Pury_Field_Name" = "Name";
+"Pury_Field_Description" = "Description";
+"Pury_Field_Phone" = "Phone";
+"Pury_Field_Email" = "Email";
+"Pury_Field_Created" = "Created";
+"Pury_Field_LastUpdated" = "Last updated";
+
 // Live Pet Return Confirmation V2 (iPhone & iPadOS)
 "LivePet_Confirm_NoRefundRequiredSub" = "The return is recorded and no financial refund is required. The animal follow-up workflow has started.";
 "LivePet_Confirm_RefundProcessingSub" = "The return is recorded and the financial refund is processing. Animal follow-up continues independently.";

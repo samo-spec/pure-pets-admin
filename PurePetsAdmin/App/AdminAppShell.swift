@@ -238,60 +238,40 @@ struct AdminAppShell: View {
         puryBottomSafeAreaInset + 56 + 18
     }
 
+    // MARK: - Pury Operational Assistant Launcher (Circular FAB)
+    // Note: PuryBrand.primary and PuryBrand.glow are preserved for assistant identity contract.
     private var puryFloatingAffordance: some View {
         Button {
             showingPurySheet = true
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         } label: {
-            HStack(spacing: 8) {
+            ZStack {
+                // Frosted neutral circular glass base — clean aesthetic, no glowing brand color
+                Circle()
+                    .fill(.ultraThinMaterial)
+
+                Circle()
+                    .fill(AdminSurface.surface.opacity(0.85))
+
+                // Centered circular PuryAvatar with status ring and zero ambient brand glow
                 PuryAvatar(
-                    size: 34,
+                    size: 46,
                     isLiving: true,
                     isThinking: false,
                     showStatusRing: true,
-                    showAmbientAura: true
+                    showAmbientAura: false
                 )
-
-                Text(Language.isRTL() ? "بيوري" : "Pury")
-                    .font(AdminType.caption1Bold)
-                    .foregroundStyle(AdminSurface.primaryText)
-
-                Image(systemName: "sparkles")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
             }
-            .padding(.leading, Language.isRTL() ? 12 : 5)
-            .padding(.trailing, Language.isRTL() ? 5 : 12)
-            .padding(.vertical, 5)
-            .background(
-                ZStack {
-                    Capsule()
-                        .fill(.ultraThinMaterial)
-
-                    Capsule()
-                        .fill(AdminSurface.surface.opacity(0.85))
-
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.16),
-                                    Color(red: 5/255, green: 150/255, blue: 105/255).opacity(0.05)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
-            )
+            .frame(width: 54, height: 54)
+            .clipShape(Circle())
             .overlay(
-                Capsule()
+                Circle()
                     .strokeBorder(
                         LinearGradient(
                             colors: [
-                                Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.40),
-                                Color.white.opacity(0.20),
-                                AdminSurface.hairline.opacity(0.35)
+                                Color.white.opacity(0.45),
+                                Color.white.opacity(0.14),
+                                Color.clear
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -300,16 +280,16 @@ struct AdminAppShell: View {
                     )
             )
             .shadow(
-                color: Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.30),
-                radius: 12,
+                color: Color.black.opacity(0.14),
+                radius: 10,
                 x: 0,
-                y: 6
+                y: 5
             )
             .shadow(
-                color: Color.black.opacity(0.10),
-                radius: 4,
+                color: Color.black.opacity(0.06),
+                radius: 3,
                 x: 0,
-                y: 2
+                y: 1
             )
         }
         .buttonStyle(PuryFloatingActionPressStyle())

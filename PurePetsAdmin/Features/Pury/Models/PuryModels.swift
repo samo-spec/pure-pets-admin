@@ -108,12 +108,43 @@ public struct PuryScreenContext: Codable, Sendable, Equatable {
             return "\(entityType): #\(entityId.prefix(8))"
         }
         if let screen = screen {
-            return screen
+            return localizedScreenName(screen)
         }
         if let route = route {
-            return route
+            return localizedScreenName(route)
         }
         return Language.get("Pury_Context_Admin", alter: "لوحة الإدارة")
+    }
+
+    private func localizedScreenName(_ name: String) -> String {
+        switch name.lowercased() {
+        case "command", "commandcenter", "command_center":
+            return Language.get("Pury_Context_Command", alter: "مركز العمليات والقيادة")
+        case "hotel":
+            return Language.get("Pury_Context_Hotel", alter: "فندق الحيوانات")
+        case "pos":
+            return Language.get("Pury_Context_POS", alter: "نقطة البيع السريع")
+        case "fulfillment":
+            return Language.get("Pury_Context_Fulfillment", alter: "أوامر التجهيز والتسليم")
+        case "more":
+            return Language.get("Pury_Context_More", alter: "المزيد والإعدادات")
+        case "accessories", "accessory":
+            return Language.get("Pury_Context_Accessories", alter: "المستلزمات والمخزون")
+        case "livepets", "live_pets", "livepet":
+            return Language.get("Pury_Context_LivePets", alter: "الحيوانات الحية")
+        case "food":
+            return Language.get("Pury_Context_Food", alter: "قسم الأغذية")
+        case "users", "userscol":
+            return Language.get("Pury_Context_Users", alter: "ملفات العملاء")
+        case "staff", "staff_users":
+            return Language.get("Pury_Context_Staff", alter: "فريق العمل والأطباء")
+        case "branches", "branch":
+            return Language.get("Pury_Context_Branches", alter: "الفروع والمستودعات")
+        case "paymentorder", "order", "orders":
+            return Language.get("Pury_Context_Orders", alter: "إدارة الطلبات")
+        default:
+            return name
+        }
     }
 }
 

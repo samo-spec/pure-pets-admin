@@ -9323,6 +9323,41 @@
 "Pury_Prompt_ContextProduct" = "ما هي حالة المخزون والمبيعات لهذا المنتج؟";
 "Pury_Prompt_ContextOrder" = "ما هو ملخص حالة وسجل تتبع هذا الطلب؟";
 
+// Pury premium structured result presentation
+"Pury_Structured_Results_Subtitle" = "نتائج تشغيلية منظمة وقابلة للتنفيذ";
+"Pury_Results_Count_Format" = "عدد النتائج: %@";
+"Pury_Results_ActiveStays_Format" = "الإقامات النشطة: %@";
+"Pury_Results_Hotel_Format" = "نتائج الفندق: %@";
+"Pury_Results_Orders_Format" = "نتائج الطلبات: %@";
+"Pury_Results_Inventory_Format" = "نتائج المخزون: %@";
+"Pury_Results_Operational_Format" = "نتائج تشغيلية: %@";
+"Pury_Record_InventoryItem" = "منتج المخزون";
+"Pury_Record_HotelStay" = "إقامة فندقية";
+"Pury_Record_Order" = "طلب";
+"Pury_Record_Customer" = "ملف العميل";
+"Pury_Record_Branch" = "بيانات الفرع";
+"Pury_Record_StaffMember" = "عضو الفريق";
+"Pury_Record_Adoption" = "سجل تبنٍ";
+"Pury_Field_Pet" = "الحيوان";
+"Pury_Field_PetCategory" = "فئة الحيوان";
+"Pury_Field_Breed" = "السلالة";
+"Pury_Field_Owner" = "المالك";
+"Pury_Field_CheckIn" = "تسجيل الوصول";
+"Pury_Field_ExpectedCheckout" = "المغادرة المتوقعة";
+"Pury_Field_Checkout" = "المغادرة";
+"Pury_Field_Suite" = "الجناح";
+"Pury_Field_Room" = "الغرفة";
+"Pury_Field_Price" = "السعر";
+"Pury_Field_AvailableQuantity" = "الكمية المتوفرة";
+"Pury_Field_Status" = "الحالة";
+"Pury_Field_Category" = "التصنيف";
+"Pury_Field_Name" = "الاسم";
+"Pury_Field_Description" = "الوصف";
+"Pury_Field_Phone" = "رقم الهاتف";
+"Pury_Field_Email" = "البريد الإلكتروني";
+"Pury_Field_Created" = "تاريخ الإنشاء";
+"Pury_Field_LastUpdated" = "آخر تحديث";
+
 // Live Pet Return Confirmation V2 (iPhone & iPadOS)
 "LivePet_Confirm_NoRefundRequiredSub" = "تم تسجيل الاسترجاع ولا يلزم استرداد مالي. بدأ مسار الفحص والمتابعة للحيوان.";
 "LivePet_Confirm_RefundProcessingSub" = "تم تسجيل الاسترجاع وطلب الاسترداد المالي قيد المعالجة. تستمر متابعة الحيوان بشكل مستقل.";

@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import Foundation
 
 @available(iOS 16.0, *)
 struct PuryAssistantSheetView: View {
@@ -16,11 +17,17 @@ struct PuryAssistantSheetView: View {
 
     @StateObject private var store = PuryConversationStore()
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var isInputFocused: Bool
+
+    // MARK: - Animation Control Flags
+
+    /// Temporarily disables all continuous living/alive screen animations across the entire Pury chat screen
+    /// (ambient background atmosphere pulse, avatar living breathing/stardust drift, status dot scaling, and synaptic beacon pulse).
+    private static let isScreenAliveAnimationEnabled: Bool = false
 
     // Living Avatar & Motion States
     @State private var ambientPulse: Bool = false
-    @State private var avatarShimmer: Bool = false
 
     private var isRTL: Bool {
         if store.language == "ar" { return true }
@@ -75,7 +82,7 @@ struct PuryAssistantSheetView: View {
                         }
                         .padding(.horizontal, 16)
                         .padding(.top, 14)
-                        .padding(.bottom, 110) // clearance for floating input dock
+                        .padding(.bottom, 24) // composer owns its space through safeAreaInset
                     }
                     .onChange(of: store.messages.count) { _ in
                         scrollToLatest(proxy: proxy)
@@ -84,25 +91,21 @@ struct PuryAssistantSheetView: View {
                         scrollToLatest(proxy: proxy)
                     }
                 }
-
-                Spacer(minLength: 0)
             }
 
-            // Floating Tactile Input Dock
-            VStack {
-                Spacer()
-                floatingInputDock
-            }
-            .ignoresSafeArea(.keyboard, edges: .bottom)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            floatingInputDock
         }
         .environment(\.layoutDirection, isRTL ? .rightToLeft : .leftToRight)
         .onAppear {
             PPBrandFont.registerIfNeeded()
+            guard Self.isScreenAliveAnimationEnabled && !reduceMotion else {
+                ambientPulse = false
+                return
+            }
             withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) {
                 ambientPulse = true
-            }
-            withAnimation(.linear(duration: 4.0).repeatForever(autoreverses: false)) {
-                avatarShimmer = true
             }
         }
     }
@@ -118,8 +121,8 @@ struct PuryAssistantSheetView: View {
                 .fill(
                     RadialGradient(
                         colors: [
-                            Color(red: 16/255, green: 185/255, blue: 129/255).opacity(ambientPulse ? 0.12 : 0.05),
-                            Color(red: 59/255, green: 130/255, blue: 246/255).opacity(ambientPulse ? 0.06 : 0.02),
+                            PuryBrand.hotPink.opacity(Self.isScreenAliveAnimationEnabled && ambientPulse ? 0.14 : 0.06),
+                            PuryBrand.violet.opacity(Self.isScreenAliveAnimationEnabled && ambientPulse ? 0.07 : 0.025),
                             Color.clear
                         ],
                         center: .top,
@@ -137,29 +140,11 @@ struct PuryAssistantSheetView: View {
 
     private var executiveHeaderBar: some View {
         HStack(spacing: 12) {
-            // Dismiss / Close Button
-            Button {
-                dismiss()
-            } label: {
-                ZStack {
-                    Circle()
-                        .fill(AdminSurface.control)
-                        .frame(width: 36, height: 36)
-                        .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
-
-                    Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(AdminSurface.primaryText)
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(isRTL ? "إغلاق" : "Close")
-
-            // Living Avatar & Persona
+            // Living Avatar & Persona (Leading Edge: Right in RTL, Left in LTR)
             HStack(spacing: 10) {
                 livingAvatarBeacon(size: 38)
 
-                VStack(alignment: isRTL ? .trailing : .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(isRTL ? "بيوري" : "Pury")
                             .font(AdminType.headline)
@@ -172,7 +157,7 @@ struct PuryAssistantSheetView: View {
                             .padding(.vertical, 2)
                             .background(
                                 LinearGradient(
-                                    colors: [Color(red: 16/255, green: 185/255, blue: 129/255), Color(red: 5/255, green: 150/255, blue: 105/255)],
+                                    colors: [PuryBrand.hotPink, PuryBrand.primary],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 ),
@@ -183,9 +168,9 @@ struct PuryAssistantSheetView: View {
                     // Live Subtitle Indicator
                     HStack(spacing: 5) {
                         Circle()
-                            .fill(store.state == .loading ? Color(red: 245/255, green: 158/255, blue: 11/255) : Color(red: 16/255, green: 185/255, blue: 129/255))
+                            .fill(store.state == .loading ? Color(red: 245/255, green: 158/255, blue: 11/255) : PuryBrand.primary)
                             .frame(width: 6, height: 6)
-                            .scaleEffect(ambientPulse ? 1.2 : 0.8)
+                            .scaleEffect(Self.isScreenAliveAnimationEnabled && ambientPulse ? 1.2 : 1.0)
 
                         Text(headerStatusSubtitle)
                             .font(AdminType.caption2)
@@ -196,32 +181,53 @@ struct PuryAssistantSheetView: View {
 
             Spacer()
 
-            // Language Switcher Pill
-            Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                    store.language = isRTL ? "en" : "ar"
-                }
-                UISelectionFeedbackGenerator().selectionChanged()
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "globe")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text(isRTL ? "English" : "العربية")
-                        .font(AdminType.caption2Bold)
-                }
-                .foregroundStyle(AdminSurface.primaryText)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(AdminSurface.control, in: Capsule())
-                .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
-            }
-            .buttonStyle(.plain)
-
-            // Clear Chat Action
-            if !store.messages.isEmpty {
+            // Trailing Edge Controls (Left in RTL, Right in LTR)
+            HStack(spacing: 8) {
+                // Language Switcher Pill
                 Button {
-                    store.clearHistory()
-                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.7)) {
+                        store.language = isRTL ? "en" : "ar"
+                    }
+                    UISelectionFeedbackGenerator().selectionChanged()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "globe")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text(isRTL ? "English" : "العربية")
+                            .font(AdminType.caption2Bold)
+                    }
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(AdminSurface.control, in: Capsule())
+                    .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+                }
+                .buttonStyle(.plain)
+
+                // Clear Chat Action
+                if !store.messages.isEmpty {
+                    Button {
+                        store.clearHistory()
+                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(AdminSurface.control)
+                                .frame(width: 36, height: 36)
+                                .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+
+                            Image(systemName: "trash")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isRTL ? "مسح المحادثة" : "Clear Chat")
+                }
+
+                // Dismiss / Close Button
+                Button {
+                    dismiss()
                 } label: {
                     ZStack {
                         Circle()
@@ -229,13 +235,13 @@ struct PuryAssistantSheetView: View {
                             .frame(width: 36, height: 36)
                             .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
 
-                        Image(systemName: "trash")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(AdminSurface.secondaryText)
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(AdminSurface.primaryText)
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(isRTL ? "مسح المحادثة" : "Clear Chat")
+                .accessibilityLabel(isRTL ? "إغلاق" : "Close")
             }
         }
         .padding(.horizontal, 16)
@@ -275,10 +281,10 @@ struct PuryAssistantSheetView: View {
     private func livingAvatarBeacon(size: CGFloat) -> some View {
         PuryAvatar(
             size: size,
-            isLiving: true,
+            isLiving: Self.isScreenAliveAnimationEnabled,
             isThinking: store.state == .loading,
             showStatusRing: size >= 32,
-            showAmbientAura: size >= 32
+            showAmbientAura: size >= 32 && Self.isScreenAliveAnimationEnabled
         )
     }
 
@@ -288,7 +294,7 @@ struct PuryAssistantSheetView: View {
         HStack(spacing: 8) {
             Image(systemName: "scope")
                 .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                .foregroundStyle(PuryBrand.primary)
 
             Text(context.displayLabel)
                 .font(AdminType.caption1Bold)
@@ -299,23 +305,29 @@ struct PuryAssistantSheetView: View {
 
             HStack(spacing: 4) {
                 Circle()
-                    .fill(Color(red: 16/255, green: 185/255, blue: 129/255))
+                    .fill(PuryBrand.primary)
                     .frame(width: 6, height: 6)
 
                 Text(isRTL ? "سياق نشط" : "Active Context")
                     .font(AdminType.caption2Bold)
-                    .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                    .foregroundStyle(PuryBrand.primary)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12), in: Capsule())
+            .background(PuryBrand.primary.opacity(0.10), in: Capsule())
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.06))
+        .padding(.vertical, 7)
+        .background(AdminSurface.surface.opacity(0.82))
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                .fill(PuryBrand.primary)
+                .frame(width: 3, height: 22)
+                .padding(.leading, 6)
+        }
         .overlay(
             Rectangle()
-                .fill(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.15))
+                .fill(AdminSurface.hairline)
                 .frame(height: 0.5),
             alignment: .bottom
         )
@@ -333,8 +345,8 @@ struct PuryAssistantSheetView: View {
                     .fill(
                         RadialGradient(
                             colors: [
-                                Color(red: 16/255, green: 185/255, blue: 129/255).opacity(ambientPulse ? 0.24 : 0.08),
-                                Color(red: 59/255, green: 130/255, blue: 246/255).opacity(ambientPulse ? 0.12 : 0.03),
+                                PuryBrand.hotPink.opacity(Self.isScreenAliveAnimationEnabled && ambientPulse ? 0.24 : 0.08),
+                                PuryBrand.violet.opacity(Self.isScreenAliveAnimationEnabled && ambientPulse ? 0.12 : 0.03),
                                 Color.clear
                             ],
                             center: .center,
@@ -439,7 +451,7 @@ struct PuryAssistantSheetView: View {
                 await store.sendMessage(prompt, screenContext: screenContext)
             }
         } label: {
-            VStack(alignment: isRTL ? .trailing : .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 10) {
                 // Top Row: Icon squircle + Badge
                 HStack {
                     ZStack {
@@ -469,17 +481,17 @@ struct PuryAssistantSheetView: View {
                 }
 
                 // Title and Subtitle
-                VStack(alignment: isRTL ? .trailing : .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(title)
                         .font(PPBrandFont.bold(size: 15, relativeTo: .subheadline))
                         .foregroundStyle(AdminSurface.primaryText)
-                        .multilineTextAlignment(isRTL ? .trailing : .leading)
+                        .multilineTextAlignment(.leading)
                         .lineLimit(1)
 
                     Text(subtitle)
                         .font(AdminType.caption2)
                         .foregroundStyle(AdminSurface.secondaryText)
-                        .multilineTextAlignment(isRTL ? .trailing : .leading)
+                        .multilineTextAlignment(.leading)
                         .lineLimit(1)
                 }
 
@@ -496,7 +508,7 @@ struct PuryAssistantSheetView: View {
                 .padding(.top, 2)
             }
             .padding(14)
-            .frame(maxWidth: .infinity, alignment: isRTL ? .trailing : .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 AdminSurface.surface
             )
@@ -520,11 +532,12 @@ struct PuryAssistantSheetView: View {
     // MARK: - Quick Telemetry Accelerator Tray
 
     private var quickTelemetryTray: some View {
-        VStack(alignment: isRTL ? .trailing : .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(isRTL ? "استعلامات سريعة بنقرة واحدة" : "Instant Telemetry Accelerators")
                 .font(PPBrandFont.medium(size: 12, relativeTo: .caption))
                 .foregroundStyle(AdminSurface.secondaryText)
                 .padding(.horizontal, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -568,7 +581,7 @@ struct PuryAssistantSheetView: View {
             HStack(spacing: 6) {
                 Image(systemName: icon)
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                    .foregroundStyle(PuryBrand.primary)
 
                 Text(title)
                     .font(PPBrandFont.medium(size: 12, relativeTo: .caption))
@@ -601,26 +614,69 @@ struct PuryAssistantSheetView: View {
             Text(message.text)
                 .font(PPBrandFont.medium(size: 15, relativeTo: .body))
                 .foregroundStyle(.white)
-                .multilineTextAlignment(isRTL ? .trailing : .leading)
+                .multilineTextAlignment(.leading)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .background(
                     LinearGradient(
                         colors: [
-                            Color(red: 16/255, green: 185/255, blue: 129/255),
-                            Color(red: 5/255, green: 150/255, blue: 105/255)
+                            PuryBrand.hotPink,
+                            PuryBrand.primary
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
                     in: RoundedRectangle(cornerRadius: 20, style: .continuous)
                 )
-                .shadow(color: Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.25), radius: 6, x: 0, y: 3)
+                .shadow(color: PuryBrand.glow.opacity(0.24), radius: 7, x: 0, y: 3)
         }
     }
 
+    private struct PuryRenderableStructuredContent {
+        let cards: [PuryCard]
+        let blocks: [PuryDataBlock]
+
+        var hasResults: Bool {
+            !cards.isEmpty || !blocks.isEmpty
+        }
+    }
+
+    private func renderableStructuredContent(for message: PuryMessage) -> PuryRenderableStructuredContent {
+        let structured = message.metadata?.structuredData
+        let cards = (structured?.cards ?? []).filter { card in
+            let title = card.cleanTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            let hasDetails = !(card.details?.isEmpty ?? true)
+            return !title.isEmpty || hasDetails
+        }
+
+        let technicalFieldKeys: Set<String> = [
+            "id", "docid", "ownerid", "userid", "petid", "reservationid", "stayid",
+            "accommodationid", "roomid", "suiteid", "isdeleted", "deleted", "isblocked",
+            "blocked", "accesskindtype", "kindtype", "showinappmarket", "visibleinapp",
+            "showinapp", "raw", "payload", "__name__", "fcmtoken", "createdatmillis",
+            "updatedatmillis", "hash", "version"
+        ]
+
+        let blocks = (structured?.dataBlocks ?? []).compactMap { block -> PuryDataBlock? in
+            let cleanFields = block.fields.filter { field in
+                let key = field.cleanLabel.lowercased().replacingOccurrences(of: "_", with: "")
+                return !technicalFieldKeys.contains(key)
+            }
+            guard !cleanFields.isEmpty else { return nil }
+            return PuryDataBlock(id: block.id, type: block.type, collection: block.collection, fields: cleanFields)
+        }
+
+        return PuryRenderableStructuredContent(cards: cards, blocks: blocks)
+    }
+
     private func puryMessageBubble(_ message: PuryMessage) -> some View {
-        VStack(alignment: isRTL ? .trailing : .leading, spacing: 12) {
+        let structuredContent = renderableStructuredContent(for: message)
+        let copyText = PuryResponseDisplaySanitizer.cleanNarrative(
+            message.text,
+            hasStructuredData: structuredContent.hasResults
+        )
+
+        return VStack(alignment: .leading, spacing: 12) {
             // Pury Identity Header
             HStack(spacing: 8) {
                 livingAvatarBeacon(size: 24)
@@ -643,10 +699,10 @@ struct PuryAssistantSheetView: View {
 
                 Spacer()
 
-                // Copy Text Button
-                if !message.text.isEmpty {
+                // Copy only operator-facing prose; never copy hidden tool traces.
+                if !copyText.isEmpty {
                     Button {
-                        UIPasteboard.general.string = message.text
+                        UIPasteboard.general.string = copyText
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } label: {
                         Image(systemName: "doc.on.doc")
@@ -659,7 +715,7 @@ struct PuryAssistantSheetView: View {
             }
 
             // Category-Defining Dynamic Answer Orchestrator
-            purySmartAnswerView(message)
+            purySmartAnswerView(message, structuredContent: structuredContent)
 
             if let action = message.metadata?.confirmationAction,
                message.metadata?.confirmationRequired == true,
@@ -683,71 +739,180 @@ struct PuryAssistantSheetView: View {
 
     // MARK: - Category-Defining Dynamic Answer Orchestrator
 
-    private func purySmartAnswerView(_ message: PuryMessage) -> some View {
-        let structured = message.metadata?.structuredData
+    private func purySmartAnswerView(
+        _ message: PuryMessage,
+        structuredContent: PuryRenderableStructuredContent
+    ) -> some View {
+        let validCards = structuredContent.cards
+        let validBlocks = structuredContent.blocks
+        let hasStructuredResults = structuredContent.hasResults
+        let displayText = PuryResponseDisplaySanitizer.cleanNarrative(
+            message.text,
+            hasStructuredData: hasStructuredResults
+        )
 
-        let validCards: [PuryCard] = (structured?.cards ?? []).filter { card in
-            let title = card.cleanTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-            let hasDetails = !(card.details?.isEmpty ?? true)
-            return !title.isEmpty || hasDetails
-        }
+        return VStack(alignment: .leading, spacing: 12) {
+            if hasStructuredResults {
+                structuredResultHeader(
+                    message: message,
+                    cards: validCards,
+                    blocks: validBlocks
+                )
 
-        let technicalFieldKeys: Set<String> = [
-            "isdeleted", "deleted", "isblocked", "blocked", "accesskindtype", "kindtype", "kind_type",
-            "showinappmarket", "visibleinapp", "show_in_app", "docid", "raw", "payload", "__name__",
-            "fcmtoken", "createdatmillis", "updatedatmillis", "hash", "version"
-        ]
-
-        let validBlocks: [PuryDataBlock] = (structured?.dataBlocks ?? []).compactMap { block in
-            let cleanFields = block.fields.filter { field in
-                let key = field.cleanLabel.lowercased().replacingOccurrences(of: "_", with: "")
-                return !technicalFieldKeys.contains(key)
-            }
-            guard !cleanFields.isEmpty else { return nil }
-            return PuryDataBlock(id: block.id, type: block.type, collection: block.collection, fields: cleanFields)
-        }
-
-        return VStack(alignment: isRTL ? .trailing : .leading, spacing: 12) {
-            // Model prose is always rendered as prose. Only server-generated
-            // structuredData may become operational cards or record surfaces.
-            if !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text(message.text)
-                    .font(PPBrandFont.regular(size: 15, relativeTo: .body))
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .lineSpacing(5)
-                    .multilineTextAlignment(isRTL ? .trailing : .leading)
-                    .textSelection(.enabled)
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: isRTL ? .trailing : .leading)
-                    .background(AdminSurface.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
-                    )
-                    .accessibilityLabel(message.text)
-            }
-
-            if !validCards.isEmpty {
-                VStack(spacing: 10) {
-                    ForEach(validCards) { card in
-                        semanticCardView(card)
-                    }
-                }
-                .accessibilityElement(children: .contain)
-            }
-
-            if !validBlocks.isEmpty {
-                VStack(spacing: 10) {
-                    ForEach(validBlocks) { block in
-                        PuryRecordCardView(block: block, isRTL: isRTL) { entityType, entityId in
-                            handleDeepLink(entityType: entityType, entityId: entityId)
+                if !validCards.isEmpty {
+                    VStack(spacing: 10) {
+                        ForEach(validCards) { card in
+                            semanticCardView(card)
                         }
                     }
+                    .accessibilityElement(children: .contain)
                 }
-                .accessibilityElement(children: .contain)
+
+                if !validBlocks.isEmpty {
+                    VStack(spacing: 10) {
+                        ForEach(validBlocks) { block in
+                            PuryRecordCardView(block: block, isRTL: isRTL) { entityType, entityId in
+                                handleDeepLink(entityType: entityType, entityId: entityId)
+                            }
+                        }
+                    }
+                    .accessibilityElement(children: .contain)
+                }
+
+                if !displayText.isEmpty {
+                    assistantNarrativeView(displayText, supporting: true)
+                }
+            } else if !displayText.isEmpty {
+                assistantNarrativeView(displayText, supporting: false)
             }
         }
+    }
+
+    private func structuredResultHeader(
+        message: PuryMessage,
+        cards: [PuryCard],
+        blocks: [PuryDataBlock]
+    ) -> some View {
+        let count = cards.count + blocks.count
+        let title = structuredResultTitle(message: message, cards: cards, blocks: blocks, count: count)
+
+        return HStack(spacing: 11) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(PuryBrand.primary.opacity(0.10))
+                    .frame(width: 38, height: 38)
+
+                Image(systemName: "sparkles.rectangle.stack.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(PuryBrand.primary)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(PPBrandFont.bold(size: 15, relativeTo: .subheadline))
+                    .foregroundStyle(AdminSurface.primaryText)
+
+                Text(Language.get("Pury_Structured_Results_Subtitle", alter: isRTL ? "نتائج تشغيلية منظمة وقابلة للتنفيذ" : "Structured operational results"))
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+
+            Spacer(minLength: 8)
+
+            Text("\(count)")
+                .font(PPBrandFont.bold(size: 13, relativeTo: .caption))
+                .foregroundStyle(PuryBrand.primary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(PuryBrand.primary.opacity(0.09), in: Capsule())
+                .overlay(Capsule().strokeBorder(PuryBrand.primary.opacity(0.20), lineWidth: 0.75))
+                .accessibilityLabel(
+                    String(
+                        format: Language.get(
+                            "Pury_Results_Count_Format",
+                            alter: isRTL ? "عدد النتائج: %@" : "Result count: %@"
+                        ),
+                        String(count)
+                    )
+                )
+        }
+        .padding(12)
+        .background(AdminSurface.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(PuryBrand.primary.opacity(0.16), lineWidth: 0.8)
+        )
+    }
+
+    private func structuredResultTitle(
+        message: PuryMessage,
+        cards: [PuryCard],
+        blocks: [PuryDataBlock],
+        count: Int
+    ) -> String {
+        let signature = ([message.metadata?.domain, message.metadata?.operation]
+            + cards.flatMap { [$0.entityType, $0.badge] }
+            + blocks.flatMap { [$0.collection, $0.type] })
+            .compactMap { $0 }
+            .joined(separator: " ")
+            .lowercased()
+
+        if (signature.contains("hotel") || signature.contains("stay")) && signature.contains("active") {
+            return localizedResultTitle(
+                key: "Pury_Results_ActiveStays_Format",
+                fallback: isRTL ? "الإقامات النشطة: %@" : "%@ active stays",
+                count: count
+            )
+        }
+        if signature.contains("hotel") || signature.contains("stay") {
+            return localizedResultTitle(
+                key: "Pury_Results_Hotel_Format",
+                fallback: isRTL ? "نتائج الفندق: %@" : "%@ hotel results",
+                count: count
+            )
+        }
+        if signature.contains("order") {
+            return localizedResultTitle(
+                key: "Pury_Results_Orders_Format",
+                fallback: isRTL ? "نتائج الطلبات: %@" : "%@ order results",
+                count: count
+            )
+        }
+        if signature.contains("stock") || signature.contains("product") || signature.contains("accessor") {
+            return localizedResultTitle(
+                key: "Pury_Results_Inventory_Format",
+                fallback: isRTL ? "نتائج المخزون: %@" : "%@ inventory results",
+                count: count
+            )
+        }
+        return localizedResultTitle(
+            key: "Pury_Results_Operational_Format",
+            fallback: isRTL ? "نتائج تشغيلية: %@" : "%@ operational results",
+            count: count
+        )
+    }
+
+    private func localizedResultTitle(key: String, fallback: String, count: Int) -> String {
+        String(format: Language.get(key, alter: fallback), String(count))
+    }
+
+    private func assistantNarrativeView(_ text: String, supporting: Bool) -> some View {
+        Text(text)
+            .font(PPBrandFont.regular(size: supporting ? 14 : 15, relativeTo: .body))
+            .foregroundStyle(supporting ? AdminSurface.secondaryText : AdminSurface.primaryText)
+            .lineSpacing(5)
+            .multilineTextAlignment(.leading)
+            .textSelection(.enabled)
+            .padding(supporting ? 12 : 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(supporting ? AdminSurface.control.opacity(0.58) : AdminSurface.surface)
+            .clipShape(RoundedRectangle(cornerRadius: supporting ? 14 : 20, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: supporting ? 14 : 20, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+            )
+            .accessibilityLabel(text)
     }
 
     private func telemetryGridView(_ items: [PuryTelemetryItem]) -> some View {
@@ -778,18 +943,18 @@ struct PuryAssistantSheetView: View {
                 }
 
                 // Title and Subtitle
-                VStack(alignment: isRTL ? .trailing : .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(item.title)
                         .font(PPBrandFont.bold(size: 15, relativeTo: .subheadline))
                         .foregroundStyle(AdminSurface.primaryText)
-                        .multilineTextAlignment(isRTL ? .trailing : .leading)
+                        .multilineTextAlignment(.leading)
                         .lineLimit(1)
 
                     if let sub = item.subtitle {
                         Text(sub)
                             .font(AdminType.caption2)
                             .foregroundStyle(AdminSurface.secondaryText)
-                            .multilineTextAlignment(isRTL ? .trailing : .leading)
+                            .multilineTextAlignment(.leading)
                             .lineLimit(1)
                     }
                 }
@@ -831,11 +996,11 @@ struct PuryAssistantSheetView: View {
                 .font(PPBrandFont.regular(size: 13, relativeTo: .footnote))
                 .foregroundStyle(AdminSurface.secondaryText)
                 .lineSpacing(4)
-                .multilineTextAlignment(isRTL ? .trailing : .leading)
-                .frame(maxWidth: .infinity, alignment: isRTL ? .trailing : .leading)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(14)
-        .frame(maxWidth: .infinity, alignment: isRTL ? .trailing : .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(red: 245/255, green: 158/255, blue: 11/255).opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
@@ -847,7 +1012,7 @@ struct PuryAssistantSheetView: View {
     // MARK: - Domain Semantic Card View
 
     private func semanticCardView(_ card: PuryCard) -> some View {
-        VStack(alignment: isRTL ? .trailing : .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
             // Header Row
             HStack(alignment: .top, spacing: 10) {
                 // Card Category Icon
@@ -861,18 +1026,18 @@ struct PuryAssistantSheetView: View {
                         .foregroundStyle(cardIconColor(card))
                 }
 
-                VStack(alignment: isRTL ? .trailing : .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(card.cleanTitle)
                         .font(PPBrandFont.bold(size: 15, relativeTo: .subheadline))
                         .foregroundStyle(AdminSurface.primaryText)
-                        .multilineTextAlignment(isRTL ? .trailing : .leading)
+                        .multilineTextAlignment(.leading)
                         .lineLimit(2)
 
                     if let sub = card.cleanSubtitle {
                         Text(sub)
                             .font(AdminType.caption1)
                             .foregroundStyle(AdminSurface.secondaryText)
-                            .multilineTextAlignment(isRTL ? .trailing : .leading)
+                            .multilineTextAlignment(.leading)
                             .lineLimit(2)
                     }
                 }
@@ -1006,7 +1171,7 @@ struct PuryAssistantSheetView: View {
     private var thinkingBubble: some View {
         HStack(spacing: 10) {
             ProgressView()
-                .tint(Color(red: 16/255, green: 185/255, blue: 129/255))
+                .tint(PuryBrand.primary)
                 .scaleEffect(0.9)
 
             Text(isRTL ? "بيوري يراجع البيانات المصرح بها ويجهز الإجابة..." : "Pury is analyzing authorized records...")
@@ -1051,7 +1216,7 @@ struct PuryAssistantSheetView: View {
                     axis: .vertical
                 )
                 .font(PPBrandFont.regular(size: 15, relativeTo: .body))
-                .multilineTextAlignment(isRTL ? .trailing : .leading)
+                .multilineTextAlignment(.leading)
                 .lineLimit(1...4)
                 .focused($isInputFocused)
                 .submitLabel(.send)
@@ -1069,7 +1234,7 @@ struct PuryAssistantSheetView: View {
                             .fill(
                                 hasText && store.state != .loading
                                     ? LinearGradient(
-                                        colors: [Color(red: 16/255, green: 185/255, blue: 129/255), Color(red: 5/255, green: 150/255, blue: 105/255)],
+                                        colors: [PuryBrand.hotPink, PuryBrand.primary],
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
                                     )
@@ -1081,7 +1246,7 @@ struct PuryAssistantSheetView: View {
                             )
                             .frame(width: 42, height: 42)
                             .shadow(
-                                color: hasText ? Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.35) : Color.clear,
+                                color: hasText ? PuryBrand.glow.opacity(0.32) : Color.clear,
                                 radius: 6,
                                 x: 0,
                                 y: 3
@@ -1104,7 +1269,7 @@ struct PuryAssistantSheetView: View {
             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .strokeBorder(isInputFocused ? Color(red: 16/255, green: 185/255, blue: 129/255) : AdminSurface.hairline, lineWidth: isInputFocused ? 1.5 : 0.75)
+                    .strokeBorder(isInputFocused ? PuryBrand.primary : AdminSurface.hairline, lineWidth: isInputFocused ? 1.5 : 0.75)
             )
             .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 4)
             .padding(.horizontal, 16)
@@ -1142,7 +1307,7 @@ struct PuryAssistantSheetView: View {
     }
 
     private func scrollToLatest(proxy: ScrollViewProxy) {
-        withAnimation(.easeOut(duration: 0.25)) {
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
             if store.state == .loading {
                 proxy.scrollTo("pury_thinking_bubble", anchor: .bottom)
             } else if let last = store.messages.last {
@@ -1171,6 +1336,143 @@ struct PuryAssistantSheetView: View {
         default:
             break
         }
+    }
+}
+
+
+// MARK: - Pury Response Presentation Sanitizer
+
+/// Presentation-only cleanup for assistant prose. Backend `structuredData` remains
+/// authoritative; this utility only prevents execution traces from leaking into operator UI.
+public enum PuryResponseDisplaySanitizer {
+    private static let traceMarkers = [
+        "TOOL CALL", "TOOL RESPONSE", "FUNCTION CALL", "FUNCTION RESPONSE",
+        "<TOOL_CALL", "</TOOL_CALL", "<TOOL_RESPONSE", "</TOOL_RESPONSE"
+    ]
+
+    public static func cleanNarrative(_ rawText: String, hasStructuredData: Bool) -> String {
+        let normalized = rawText.replacingOccurrences(of: "\r\n", with: "\n")
+        var output: [String] = []
+        var inFence = false
+        var suppressFence = false
+        var suppressTracePayload = false
+        var tracePayloadDepth = 0
+        var sawTracePayload = false
+        var inStructuredPayload = false
+        var structuredPayloadDepth = 0
+
+        for rawLine in normalized.components(separatedBy: "\n") {
+            let trimmed = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            let upper = trimmed.uppercased()
+
+            if trimmed.hasPrefix("```") {
+                if inFence {
+                    inFence = false
+                    suppressFence = false
+                } else {
+                    let descriptor = trimmed.lowercased()
+                    suppressFence = hasStructuredData || descriptor.contains("json") || descriptor.contains("tool")
+                    inFence = true
+                }
+                continue
+            }
+            if inFence && suppressFence { continue }
+
+            if isTraceMarker(upper) {
+                suppressTracePayload = true
+                tracePayloadDepth = 0
+                sawTracePayload = false
+                continue
+            }
+
+            if suppressTracePayload {
+                if trimmed.isEmpty {
+                    suppressTracePayload = false
+                    continue
+                }
+
+                if !sawTracePayload && looksLikeToolIdentifier(trimmed) {
+                    continue
+                }
+
+                if !sawTracePayload && startsJSONPayload(trimmed) {
+                    sawTracePayload = true
+                    tracePayloadDepth = structuralDepthDelta(trimmed)
+                    if tracePayloadDepth <= 0 { suppressTracePayload = false }
+                    continue
+                }
+
+                if sawTracePayload {
+                    tracePayloadDepth += structuralDepthDelta(trimmed)
+                    if tracePayloadDepth <= 0 { suppressTracePayload = false }
+                    continue
+                }
+
+                // No technical payload followed the marker; treat this as human prose.
+                suppressTracePayload = false
+            }
+
+            if hasStructuredData && !inStructuredPayload && startsJSONPayload(trimmed) {
+                structuredPayloadDepth = structuralDepthDelta(trimmed)
+                inStructuredPayload = structuredPayloadDepth > 0
+                continue
+            }
+
+            if inStructuredPayload {
+                structuredPayloadDepth += structuralDepthDelta(trimmed)
+                if structuredPayloadDepth <= 0 { inStructuredPayload = false }
+                continue
+            }
+
+            let cleaned = cleanMarkdownArtifacts(trimmed)
+            if cleaned.isEmpty {
+                if output.last?.isEmpty == false { output.append("") }
+            } else {
+                output.append(cleaned)
+            }
+        }
+
+        while output.last?.isEmpty == true { output.removeLast() }
+        return output.joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func isTraceMarker(_ upperLine: String) -> Bool {
+        traceMarkers.contains { upperLine.hasPrefix($0) || upperLine.contains("[\($0)]") }
+    }
+
+    private static func startsJSONPayload(_ line: String) -> Bool {
+        guard let first = line.first else { return false }
+        return first == "{" || first == "["
+    }
+
+    private static func looksLikeToolIdentifier(_ line: String) -> Bool {
+        guard !line.contains(" "), line.count < 160 else { return false }
+        return line.contains("_") || line.contains(".") || line.contains("/")
+    }
+
+    private static func structuralDepthDelta(_ line: String) -> Int {
+        line.reduce(into: 0) { depth, character in
+            if character == "{" || character == "[" { depth += 1 }
+            if character == "}" || character == "]" { depth -= 1 }
+        }
+    }
+
+    private static func cleanMarkdownArtifacts(_ line: String) -> String {
+        var value = line
+            .replacingOccurrences(of: "**", with: "")
+            .replacingOccurrences(of: "__", with: "")
+            .replacingOccurrences(of: "`", with: "")
+
+        while value.hasPrefix("#") {
+            value.removeFirst()
+            value = value.trimmingCharacters(in: .whitespaces)
+        }
+        if value.hasPrefix("> ") { value = String(value.dropFirst(2)) }
+        if value.hasPrefix("* ") || value.hasPrefix("- ") {
+            value = "• " + String(value.dropFirst(2))
+        }
+        return value.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
@@ -1304,7 +1606,7 @@ public struct PuryProductCardView: View {
     public let onManageStock: () -> Void
 
     public var body: some View {
-        VStack(alignment: isRTL ? .trailing : .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 // Category Squircle Icon
                 ZStack {
@@ -1318,18 +1620,18 @@ public struct PuryProductCardView: View {
                 }
 
                 // Title & Category
-                VStack(alignment: isRTL ? .trailing : .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(product.title)
                         .font(PPBrandFont.bold(size: 16, relativeTo: .headline))
                         .foregroundStyle(AdminSurface.primaryText)
-                        .multilineTextAlignment(isRTL ? .trailing : .leading)
+                        .multilineTextAlignment(.leading)
                         .lineLimit(2)
 
                     if let sub = product.subtitle ?? product.category {
                         Text(sub)
                             .font(AdminType.caption2)
                             .foregroundStyle(AdminSurface.secondaryText)
-                            .multilineTextAlignment(isRTL ? .trailing : .leading)
+                            .multilineTextAlignment(.leading)
                             .lineLimit(1)
                     }
                 }
@@ -1343,7 +1645,7 @@ public struct PuryProductCardView: View {
             }
 
             // Stock Urgency & Visual Filament
-            VStack(alignment: isRTL ? .trailing : .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     stockStatusPill
                     Spacer()
@@ -1354,7 +1656,7 @@ public struct PuryProductCardView: View {
 
                 // Visual Filament Bar
                 GeometryReader { geo in
-                    ZStack(alignment: isRTL ? .trailing : .leading) {
+                    ZStack(alignment: .leading) {
                         Capsule()
                             .fill(AdminSurface.hairline.opacity(0.8))
                             .frame(height: 5)
@@ -1440,19 +1742,20 @@ public struct PuryRecordCardView: View {
     public let isRTL: Bool
     public var onDeepLink: ((String, String) -> Void)? = nil
     @State private var isExpanded: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public var body: some View {
-        VStack(alignment: isRTL ? .trailing : .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
             // Header with block collection or type
             HStack(spacing: 8) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color(red: 99/255, green: 102/255, blue: 241/255).opacity(0.12))
+                        .fill(recordAccentColor.opacity(0.12))
                         .frame(width: 32, height: 32)
 
-                    Image(systemName: "list.bullet.rectangle.portrait.fill")
+                    Image(systemName: recordIconName)
                         .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(Color(red: 99/255, green: 102/255, blue: 241/255))
+                        .foregroundStyle(recordAccentColor)
                 }
 
                 Text(blockTitle)
@@ -1461,14 +1764,16 @@ public struct PuryRecordCardView: View {
 
                 Spacer()
 
-                PuryInfoPill("#\(block.id.prefix(6))", tone: .cobalt, copyable: true, isSmall: true)
+                if isExpanded {
+                    PuryInfoPill("#\(block.id.prefix(6))", tone: .neutral, copyable: true, isSmall: true)
+                }
             }
 
             Divider()
                 .overlay(AdminSurface.hairline)
 
             // Filtered Human Fields
-            let visibleFields = isExpanded ? block.fields : Array(block.fields.prefix(4))
+            let visibleFields = isExpanded ? block.fields : Array(block.fields.prefix(5))
             VStack(spacing: 8) {
                 ForEach(visibleFields) { field in
                     HStack(alignment: .center) {
@@ -1484,16 +1789,16 @@ public struct PuryRecordCardView: View {
             }
 
             // Progressive Disclosure
-            if block.fields.count > 4 {
+            if block.fields.count > 5 {
                 Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8)) {
                         isExpanded.toggle()
                     }
                 } label: {
                     HStack(spacing: 4) {
                         Text(isExpanded
                             ? (isRTL ? "إخفاء التفاصيل" : "Show less")
-                            : (isRTL ? "عرض المزيد (+\(block.fields.count - 4))" : "Show more (+\(block.fields.count - 4))")
+                            : (isRTL ? "عرض المزيد (+\(block.fields.count - 5))" : "Show more (+\(block.fields.count - 5))")
                         )
                         .font(PPBrandFont.medium(size: 12, relativeTo: .caption))
                         .foregroundStyle(AdminSurface.primary)
@@ -1540,6 +1845,29 @@ public struct PuryRecordCardView: View {
         )
     }
 
+
+    private var recordSignature: String {
+        (block.collection ?? block.type).lowercased()
+    }
+
+    private var recordIconName: String {
+        if recordSignature.contains("hotel") || recordSignature.contains("stay") { return "bed.double.fill" }
+        if recordSignature.contains("order") { return "bag.fill" }
+        if recordSignature.contains("product") || recordSignature.contains("access") || recordSignature.contains("stock") { return "shippingbox.fill" }
+        if recordSignature.contains("user") { return "person.crop.circle.fill" }
+        if recordSignature.contains("staff") || recordSignature.contains("vet") { return "stethoscope" }
+        if recordSignature.contains("adopt") || recordSignature.contains("pet") { return "pawprint.fill" }
+        return "list.bullet.rectangle.portrait.fill"
+    }
+
+    private var recordAccentColor: Color {
+        if recordSignature.contains("hotel") || recordSignature.contains("stay") { return Color(red: 16/255, green: 185/255, blue: 129/255) }
+        if recordSignature.contains("order") { return Color(red: 59/255, green: 130/255, blue: 246/255) }
+        if recordSignature.contains("product") || recordSignature.contains("access") || recordSignature.contains("stock") { return Color(red: 245/255, green: 158/255, blue: 11/255) }
+        if recordSignature.contains("adopt") || recordSignature.contains("pet") { return Color(red: 236/255, green: 72/255, blue: 153/255) }
+        return Color(red: 99/255, green: 102/255, blue: 241/255)
+    }
+
     private var blockTitle: String {
         if let col = block.collection, !col.isEmpty {
             return localizedCollectionName(col)
@@ -1548,33 +1876,91 @@ public struct PuryRecordCardView: View {
     }
 
     private func localizedCollectionName(_ col: String) -> String {
-        guard isRTL else { return col }
         let lower = col.lowercased()
-        if lower.contains("access") || lower.contains("product") { return "منتج المخزن" }
-        if lower.contains("hotel") || lower.contains("stay") { return "إقامة فندقية" }
-        if lower.contains("order") { return "أمر شراء" }
-        if lower.contains("user") { return "ملف المستخدم" }
-        if lower.contains("branch") { return "بيانات الفرع" }
-        if lower.contains("staff") || lower.contains("vet") { return "الكادر الطبي" }
-        return col
+        if lower.contains("access") || lower.contains("product") || lower.contains("stock") {
+            return Language.get("Pury_Record_InventoryItem", alter: isRTL ? "منتج المخزون" : "Inventory item")
+        }
+        if lower.contains("hotel") || lower.contains("stay") {
+            return Language.get("Pury_Record_HotelStay", alter: isRTL ? "إقامة فندقية" : "Hotel stay")
+        }
+        if lower.contains("order") {
+            return Language.get("Pury_Record_Order", alter: isRTL ? "طلب" : "Order")
+        }
+        if lower.contains("user") {
+            return Language.get("Pury_Record_Customer", alter: isRTL ? "ملف العميل" : "Customer")
+        }
+        if lower.contains("branch") {
+            return Language.get("Pury_Record_Branch", alter: isRTL ? "بيانات الفرع" : "Branch")
+        }
+        if lower.contains("staff") || lower.contains("vet") {
+            return Language.get("Pury_Record_StaffMember", alter: isRTL ? "عضو الفريق" : "Staff member")
+        }
+        if lower.contains("adopt") {
+            return Language.get("Pury_Record_Adoption", alter: isRTL ? "سجل تبنٍ" : "Adoption record")
+        }
+        return humanizedFallbackLabel(col)
     }
 
     private func localizedLabel(_ label: String) -> String {
-        guard isRTL else { return label }
         let lower = label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         switch lower {
-        case "price": return "السعر"
-        case "quantity", "stock": return "الكمية المتوفرة"
-        case "status": return "الحالة"
-        case "category": return "التصنيف"
-        case "name", "title": return "الاسم"
-        case "description": return "الوصف"
-        case "phone", "phonenumber": return "رقم الهاتف"
-        case "email": return "البريد الإلكتروني"
-        case "createdat", "created_at": return "تاريخ الإنشاء"
-        case "updatedat", "updated_at": return "آخر تحديث"
-        default: return label
+        case "petname", "pet_name":
+            return Language.get("Pury_Field_Pet", alter: isRTL ? "الحيوان" : "Pet")
+        case "petcategory", "pet_category":
+            return Language.get("Pury_Field_PetCategory", alter: isRTL ? "فئة الحيوان" : "Pet category")
+        case "breed":
+            return Language.get("Pury_Field_Breed", alter: isRTL ? "السلالة" : "Breed")
+        case "ownername", "owner_name":
+            return Language.get("Pury_Field_Owner", alter: isRTL ? "المالك" : "Owner")
+        case "checkin", "checkindate", "check_in", "check_in_date":
+            return Language.get("Pury_Field_CheckIn", alter: isRTL ? "تسجيل الدخول" : "Check-in")
+        case "expectedcheckout", "expectedcheckoutdate", "expected_checkout", "expected_checkout_date":
+            return Language.get("Pury_Field_ExpectedCheckout", alter: isRTL ? "المغادرة المتوقعة" : "Expected checkout")
+        case "checkout", "checkoutdate", "check_out", "check_out_date":
+            return Language.get("Pury_Field_Checkout", alter: isRTL ? "المغادرة" : "Checkout")
+        case "suite", "suitename", "suite_name":
+            return Language.get("Pury_Field_Suite", alter: isRTL ? "الجناح" : "Suite")
+        case "room", "roomname", "room_name", "accommodation":
+            return Language.get("Pury_Field_Room", alter: isRTL ? "الغرفة" : "Room")
+        case "price":
+            return Language.get("Pury_Field_Price", alter: isRTL ? "السعر" : "Price")
+        case "quantity", "stock":
+            return Language.get("Pury_Field_AvailableQuantity", alter: isRTL ? "الكمية المتوفرة" : "Available quantity")
+        case "status":
+            return Language.get("Pury_Field_Status", alter: isRTL ? "الحالة" : "Status")
+        case "category":
+            return Language.get("Pury_Field_Category", alter: isRTL ? "التصنيف" : "Category")
+        case "name", "title":
+            return Language.get("Pury_Field_Name", alter: isRTL ? "الاسم" : "Name")
+        case "description":
+            return Language.get("Pury_Field_Description", alter: isRTL ? "الوصف" : "Description")
+        case "phone", "phonenumber", "phone_number":
+            return Language.get("Pury_Field_Phone", alter: isRTL ? "رقم الهاتف" : "Phone")
+        case "email":
+            return Language.get("Pury_Field_Email", alter: isRTL ? "البريد الإلكتروني" : "Email")
+        case "createdat", "created_at":
+            return Language.get("Pury_Field_Created", alter: isRTL ? "تاريخ الإنشاء" : "Created")
+        case "updatedat", "updated_at":
+            return Language.get("Pury_Field_LastUpdated", alter: isRTL ? "آخر تحديث" : "Last updated")
+        default:
+            return humanizedFallbackLabel(label)
         }
+    }
+
+    private func humanizedFallbackLabel(_ label: String) -> String {
+        let snakeSpaced = label.replacingOccurrences(of: "_", with: " ")
+        let camelSpaced = snakeSpaced.replacingOccurrences(
+            of: "([a-z0-9])([A-Z])",
+            with: "$1 $2",
+            options: .regularExpression
+        )
+        let normalized = camelSpaced
+            .split(whereSeparator: { $0.isWhitespace })
+            .map(String.init)
+            .joined(separator: " ")
+        guard !normalized.isEmpty else { return label }
+        if isRTL { return normalized }
+        return normalized.prefix(1).uppercased() + String(normalized.dropFirst())
     }
 
     private func actionTitleForBlock(_ block: PuryDataBlock) -> String? {
@@ -1604,6 +1990,7 @@ public struct PuryRecordCardView: View {
 
         if val.contains("ر.ق") || val.contains("QAR") || val.contains("ريال") || field.cleanLabel.lowercased().contains("price") {
             PuryInfoPill(val, tone: .currency, isSmall: true)
+                .environment(\.layoutDirection, .leftToRight)
         } else if ["active", "نشط", "مكتمل", "completed", "متاح", "available", "true"].contains(valLower) {
             PuryInfoPill(valLower == "true" ? (isRTL ? "مفعّل" : "Active") : val, tone: .emerald, isSmall: true)
         } else if ["pending", "معلق", "قيد الانتظار", "draft", "مسودة"].contains(valLower) {
@@ -1614,8 +2001,20 @@ public struct PuryRecordCardView: View {
             Text(val)
                 .font(AdminType.caption1Bold)
                 .foregroundStyle(AdminSurface.primaryText)
-                .multilineTextAlignment(isRTL ? .trailing : .leading)
+                .multilineTextAlignment(.leading)
+                .environment(
+                    \.layoutDirection,
+                    fieldUsesLTR(field) ? .leftToRight : (isRTL ? .rightToLeft : .leftToRight)
+                )
         }
+    }
+
+    private func fieldUsesLTR(_ field: PuryField) -> Bool {
+        let type = field.type?.lowercased() ?? ""
+        let label = field.cleanLabel.lowercased().replacingOccurrences(of: "_", with: "")
+        let ltrTypes: Set<String> = ["id", "url", "email", "phone", "currency", "number", "date", "datetime"]
+        if ltrTypes.contains(type) { return true }
+        return label.contains("email") || label.contains("phone") || label.contains("url") || label.contains("price") || label.contains("date") || label.contains("time")
     }
 }
 
@@ -1637,7 +2036,7 @@ public struct PuryMarkdownTableCard: View {
     public let isRTL: Bool
 
     public var body: some View {
-        VStack(alignment: isRTL ? .trailing : .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     // Header Row
@@ -1648,7 +2047,7 @@ public struct PuryMarkdownTableCard: View {
                                 .foregroundStyle(AdminSurface.primaryText)
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 10)
-                                .frame(minWidth: 100, alignment: isRTL ? .trailing : .leading)
+                                .frame(minWidth: 100, alignment: .leading)
 
                             if index < table.headers.count - 1 {
                                 Divider().overlay(AdminSurface.hairline)
@@ -1668,7 +2067,7 @@ public struct PuryMarkdownTableCard: View {
                                     .foregroundStyle(AdminSurface.primaryText)
                                     .padding(.horizontal, 14)
                                     .padding(.vertical, 10)
-                                    .frame(minWidth: 100, alignment: isRTL ? .trailing : .leading)
+                                    .frame(minWidth: 100, alignment: .leading)
 
                                 if colIndex < row.count - 1 {
                                     Divider().overlay(AdminSurface.hairline.opacity(0.5))
