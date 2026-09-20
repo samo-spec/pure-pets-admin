@@ -236,6 +236,7 @@ public final class SecurityPermissionCatalog: @unchecked Sendable {
                 permissions: [
                     SecurityPermissionItem(key: "pos.view", titleAr: "عرض شاشات البيع المباشر", titleEn: "View POS Screen", moduleKey: "pos", isHighRisk: false),
                     SecurityPermissionItem(key: "pos.sell", titleAr: "إجراء عمليات البيع وإصدار الفواتير", titleEn: "Execute Sales & Receipts", moduleKey: "pos", isHighRisk: false),
+                    SecurityPermissionItem(key: "pos.sell.wholesale", titleAr: "إجراء مبيعات الجملة عبر نقطة البيع", titleEn: "Execute Wholesale POS Sales", moduleKey: "pos", isHighRisk: false),
                     SecurityPermissionItem(key: "pos.history", titleAr: "استعراض سجل مبيعات الصندوق", titleEn: "Review Register History", moduleKey: "pos", isHighRisk: false)
                 ]
             ),

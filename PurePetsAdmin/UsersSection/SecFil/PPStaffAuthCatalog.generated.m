@@ -9,7 +9,7 @@
 
 NSString * const PPStaffIAMPolicyVersion = @"2.0.0-draft.1";
 NSString * const PPStaffIAMSchemaVersion = @"2.0.0";
-NSString * const PPStaffIAMPolicySHA256 = @"fb1c9e9df848d08c1985ee846afbf503fb5af13f9e1cfa29c75ecb8f3ad970e7";
+NSString * const PPStaffIAMPolicySHA256 = @"519642d699a53e335a062885bce9ea6b17b634d7fc91a8a14452ad1f03ab0b2f";
 
 #pragma mark - Role Definitions
 
@@ -72,6 +72,7 @@ NSString * const kStaffPermDeliveryCODReconcile = @"delivery.cod.reconcile";
 NSString * const kStaffPermDeliverySettingsManage = @"delivery.settings.manage";
 NSString * const kStaffPermPosView = @"pos.view";
 NSString * const kStaffPermPosSell = @"pos.sell";
+NSString * const kStaffPermPosSellWholesale = @"pos.sell.wholesale";
 NSString * const kStaffPermPosHistory = @"pos.history";
 NSString * const kStaffPermBranchesView = @"branches.view";
 NSString * const kStaffPermBranchesManage = @"branches.manage";
@@ -263,6 +264,7 @@ NSArray<NSString *> * PPStaffAllPermissionKeys(void) {
             kStaffPermDeliverySettingsManage,
             kStaffPermPosView,
             kStaffPermPosSell,
+            kStaffPermPosSellWholesale,
             kStaffPermPosHistory,
             kStaffPermBranchesView,
             kStaffPermBranchesManage,
@@ -498,6 +500,7 @@ NSArray<NSDictionary<NSString *, id> *> * PPStaffPermissionModules(void) {
                @"actions": @[
                    @{ @"key": @"pos.view", @"labelEn": @"View POS", @"labelAr": @"عرض نقطة البيع", @"riskTier": @"T0", @"protected": @NO },
                    @{ @"key": @"pos.sell", @"labelEn": @"Sell via POS", @"labelAr": @"بيع عبر نقطة البيع", @"riskTier": @"T1", @"protected": @NO },
+                   @{ @"key": @"pos.sell.wholesale", @"labelEn": @"Sell wholesale via POS", @"labelAr": @"بيع بنمط الجملة عبر نقطة البيع", @"riskTier": @"T1", @"protected": @NO },
                    @{ @"key": @"pos.history", @"labelEn": @"View POS history", @"labelAr": @"عرض سجل نقطة البيع", @"riskTier": @"T0", @"protected": @NO },
                ] },
             @{ @"key": @"branches",
@@ -851,6 +854,8 @@ NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role) {
             kStaffPermDeliveryPODReview,
             kStaffPermDeliveryCODView,
             kStaffPermPosView,
+            kStaffPermPosSell,
+            kStaffPermPosSellWholesale,
             kStaffPermPosHistory,
             kStaffPermBranchesView,
             kStaffPermBranchesManage,
@@ -1027,6 +1032,7 @@ NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role) {
             kStaffPermStockQuarantineRelease,
             kStaffPermPosView,
             kStaffPermPosSell,
+            kStaffPermPosSellWholesale,
             kStaffPermPosHistory,
             kStaffPermPaymentsView,
             kStaffPermPaymentsManage,
@@ -1117,6 +1123,7 @@ NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role) {
             kStaffPermDashboardView,
             kStaffPermPosView,
             kStaffPermPosSell,
+            kStaffPermPosSellWholesale,
             kStaffPermPosHistory,
             kStaffPermReturnsLivePetView,
             kStaffPermReturnsLivePetCreate,
