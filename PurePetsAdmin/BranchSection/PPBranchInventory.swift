@@ -1036,6 +1036,18 @@ public enum PPBranchInventoryErrorHelper {
                     return Language.get("CycleCount_Error_ExceedsThreshold", alter: "تجاوزت الفروقات الحد المسموح به وتتطلب اعتماد المدير.")
                 case "UNAUTHORIZED_RECONCILIATION":
                     return Language.get("CycleCount_Error_Unauthorized", alter: "ليس لديك صلاحية لاعتماد وتسوية فروقات الجرد.")
+                case "INVENTORY_LOT_MIGRATION_REQUIRED":
+                    return Language.get("Inventory_Lot_MigrationRequired", alter: "يجب استهلاك أو تسوية المخزون الحالي قبل تفعيل تتبع التشغيلات.")
+                case "PRODUCT_EXPIRED":
+                    return Language.get("Inventory_Lot_ExpiredError", alter: "تاريخ انتهاء الصلاحية غير صالح أو أن التشغيلة منتهية الصلاحية.")
+                case "LOT_ALREADY_EXISTS":
+                    return Language.get("Inventory_Lot_AlreadyExists", alter: "رقم التشغيلة مسجل مسبقاً لهذا الصنف في هذا الفرع.")
+                case "VALID_FROM_IN_FUTURE":
+                    return Language.get("Inventory_Lot_ValidFromFuture", alter: "تاريخ بدء الصلاحية لا يمكن أن يكون في المستقبل.")
+                case "INVALID_TRACKING_POLICY":
+                    return Language.get("Inventory_Lot_InvalidPolicy", alter: "لا يمكن إنشاء تشغيلات لأصناف تتبع الوحدات الفردية.")
+                case "LOT_UNAVAILABLE":
+                    return Language.get("Inventory_Lot_Unavailable", alter: "التشغيلة المحددة غير متوفرة أو غير صالحة.")
                 default:
                     break
                 }
@@ -1075,6 +1087,18 @@ public enum PPBranchInventoryErrorHelper {
                 }
                 if trimmed.lowercased().contains("inactive") {
                     return Language.get("Branch_Stock_Inactive", alter: "أحد الفروع المحددة غير نشط حالياً.")
+                }
+                if trimmed.lowercased().contains("validfrom") || trimmed.lowercased().contains("future") {
+                    return Language.get("Inventory_Lot_ValidFromFuture", alter: "تاريخ بدء الصلاحية لا يمكن أن يكون في المستقبل.")
+                }
+                if trimmed.lowercased().contains("expired") {
+                    return Language.get("Inventory_Lot_ExpiredError", alter: "تاريخ انتهاء الصلاحية غير صالح أو أن التشغيلة منتهية الصلاحية.")
+                }
+                if trimmed.lowercased().contains("migration") || trimmed.lowercased().contains("allocated") {
+                    return Language.get("Inventory_Lot_MigrationRequired", alter: "يجب استهلاك أو تسوية المخزون الحالي قبل تفعيل تتبع التشغيلات.")
+                }
+                if !trimmed.isEmpty && !trimmed.contains("com.firebase.functions") && !trimmed.lowercased().contains("the operation couldn") {
+                    return trimmed
                 }
                 return Language.get("Branch_Stock_PreconditionFailed", alter: "تعذر تنفيذ العملية بسبب عدم استيفاء شروط المخزون.")
             case 3, FunctionsErrorCode.invalidArgument.rawValue:

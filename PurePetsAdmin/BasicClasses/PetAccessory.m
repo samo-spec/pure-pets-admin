@@ -600,9 +600,16 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         [self setPrice:resolvedPrice];
         _discountPercent = PPAccessoryNumberValueForKeys(dict, (@[@"discountPercent"]));
         _discountAmount = PPAccessoryNumberValueForKeys(dict, (@[@"discountAmount"]));
-        _wholesalePrice = PPAccessoryNumberValueForKeys(dict, (@[@"wholesalePrice", @"wholesalePriceMinor"]));
-        if (_wholesalePrice && [_wholesalePrice doubleValue] > 1000.0 && [dict[@"wholesalePriceMinor"] isKindOfClass:NSNumber.class]) {
-            _wholesalePrice = @([_wholesalePrice doubleValue] / 100.0);
+        NSNumber *rawWholesale = PPAccessoryNumberValueForKeys(dict, (@[@"wholesalePrice"]));
+        if (rawWholesale != nil && isfinite([rawWholesale doubleValue]) && [rawWholesale doubleValue] > 0.0) {
+            _wholesalePrice = rawWholesale;
+        } else {
+            NSNumber *minorWholesale = PPAccessoryNumberValueForKeys(dict, (@[@"wholesalePriceMinor"]));
+            if (minorWholesale != nil && isfinite([minorWholesale doubleValue]) && [minorWholesale doubleValue] > 0.0) {
+                _wholesalePrice = @([minorWholesale doubleValue] / 100.0);
+            } else {
+                _wholesalePrice = nil;
+            }
         }
         _hasCommerceConfig = PPAccessoryBool(dict[@"hasCommerceConfig"]);
         _quantityGroups = PPAccessoryDictionaryArray(dict[@"quantityGroups"]);

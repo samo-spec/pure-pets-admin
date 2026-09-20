@@ -2962,6 +2962,13 @@
 "POS_BankTransferHint" = "تأكد من وصول الحوالة البنكية لحساب المتجر";
 "POS_ExternalPaymentHint" = "أكد استلام المبلغ عبر المزود قبل إتمام البيع";
 "POS_ExternalPaymentConfirmed" = "تم تأكيد الدفع الخارجي";
+"POS_Wholesale_Not_Supported_For_Product" = "هذا الصنف (%@) لا يدعم البيع بالجملة.";
+"POS_Wholesale_Permission_Required" = "صلاحية البيع بالجملة غير متوفرة لهذا المستخدم.";
+"POS_Wholesale_Unavailable_Message_Format" = "البيع بالجملة غير متاح لـ %d من أصناف السلة:\n%@";
+"POS_WholesaleUnavailableForProduct" = "البيع بالجملة غير متاح لهذا الصنف أو لم يتم تفعيل أسعار الجملة له.";
+"POS_WholesaleGroupDisabled" = "وحدة البيع المحددة غير مفعلة للبيع بالجملة. اختر وحدة أخرى أو عد إلى البيع القطاعي.";
+"POS_BranchWholesaleDisabled" = "البيع بالجملة لهذا الصنف غير متاح في هذا الفرع.";
+"POS_QuantityGroupUnavailable" = "وحدة البيع المحددة لم تعد متاحة. حدّث قائمة المنتجات ثم أعد المحاولة.";
 
 /* PPScanner - Cheque & Financial Document Scanner */
 "PPScanner_Title" = "ماسح الشيكات";
@@ -9650,3 +9657,55 @@
 "POS_A11y_IncreaseDiscount" = "زيادة الخصم";
 "POS_A11y_OpenNumberPad" = "فتح لوحة الأرقام";
 "POS_A11y_CopyTrace" = "نسخ معرّف التتبع";
+
+/* MARK: - POS Price Discrepancy & Reconciliation Sheet */
+"POS_PriceDiscrepancyTitle" = "تحديث السعر المعتمد";
+"POS_PriceDiscrepancySubtitle" = "تم رصد اختلاف بين السعر المسجل في السلة والسعر الرسمي المعتمد في الخادم.";
+"POS_PriceAuditBadge" = "تدقيق السعر السحابي";
+"POS_PriceMarkdownBadge" = "تخفيض سعر معتمد";
+"POS_PreviousPrice" = "السعر في السلة";
+"POS_AuthoritativePrice" = "السعر الرسمي المعتمد";
+"POS_PriceVariance" = "فارق السعر";
+"POS_CartImpactTitle" = "أثر التحديث على إجمالي السلة";
+"POS_CurrentCartTotal" = "الإجمالي الحالي";
+"POS_ProjectedCartTotal" = "الإجمالي بعد التحديث";
+"POS_UpdatePriceAndProceed" = "تحديث السعر في السلة والمتابعة";
+"POS_RemoveItemFromCart" = "إزالة الصنف من السلة";
+"POS_DismissInspection" = "إلغاء ومراجعة السلة";
+"POS_OldPriceBadge" = "السعر السابق";
+"POS_NewPriceBadge" = "معتمد سحابياً";
+"POS_PerUnitDifference" = "للقطعة الواحدة";
+"POS_LineTotalDifference" = "إجمالي فارق الصنف";
+"POS_ItemQuantityCount" = "الكمية: %d";
+
+/* MARK: - Barcode & Shelf Label Studio */
+"BarcodeStudio_Title" = "استوديو الباركود والملصقات";
+"BarcodeStudio_Subtitle" = "معاينة وتوليد وتعديل وطباعة باركود الصنف وملصقات الرفوف";
+"BarcodeStudio_Format_Barcode" = "كود 128";
+"BarcodeStudio_Format_QR" = "رمز QR";
+"BarcodeStudio_Format_ShelfTag" = "ملصق الرف";
+"BarcodeStudio_AutoGenerate" = "توليد تلقائي";
+"BarcodeStudio_ScanCamera" = "مسح بالعدسة";
+"BarcodeStudio_EditBarcode" = "رمز الباركود";
+"BarcodeStudio_SaveToCatalog" = "حفظ الكود بالصنف";
+"BarcodeStudio_SaveSuccess" = "تم تحديث باركود الصنف بنجاح";
+"BarcodeStudio_PrintCopies" = "عدد الملصقات";
+"BarcodeStudio_PrintAction" = "طباعة الملصق";
+"BarcodeStudio_ShareAction" = "مشاركة الملصق (PDF / PNG)";
+"BarcodeStudio_PrintAllStock" = "المخزون: %d";
+"BarcodeStudio_ResetOriginal" = "استعادة الأصلي";
+"BarcodeStudio_ValidCode" = "باركود صالح";
+"BarcodeStudio_EmptyWarning" = "أدخل رمز الباركود أو اضغط توليد";
+"Barcode_PrintQuickButton" = "طباعة";
+"Barcode_CopyQuickButton" = "نسخ";
+"Barcode_StudioTriggerHint" = "الاستوديو";
+"PrintUnavailable_Title" = "الطباعة غير متاحة";
+"PrintUnavailable_Subtitle" = "يرجى التأكد من اتصال الطابعة عبر AirPrint أو الشبكة المحلية.";
+
+/* MARK: - Inventory Lot Tracking Errors */
+"Inventory_Lot_MigrationRequired" = "يجب استهلاك أو تسوية المخزون الحالي قبل تفعيل تتبع التشغيلات.";
+"Inventory_Lot_ExpiredError" = "تاريخ انتهاء الصلاحية غير صالح أو أن التشغيلة منتهية الصلاحية.";
+"Inventory_Lot_AlreadyExists" = "رقم التشغيلة مسجل مسبقاً لهذا الصنف في هذا الفرع.";
+"Inventory_Lot_ValidFromFuture" = "تاريخ بدء الصلاحية لا يمكن أن يكون في المستقبل.";
+"Inventory_Lot_InvalidPolicy" = "لا يمكن إنشاء تشغيلات لأصناف تتبع الوحدات الفردية.";
+"Inventory_Lot_Unavailable" = "التشغيلة المحددة غير متوفرة أو غير صالحة.";

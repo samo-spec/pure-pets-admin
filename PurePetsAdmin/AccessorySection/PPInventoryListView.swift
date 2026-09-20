@@ -13,6 +13,7 @@ import AVFoundation
 import FirebaseFirestore
 import FirebaseFunctions
 import FirebaseAuth
+import CoreImage
 
 // MARK: - Sendable Conformance
 
@@ -1969,8 +1970,7 @@ final class PPInventoryListViewModel: ObservableObject {
         }
 
         let previousQuantity = effectiveStock(for: item)
-        guard PPBranchInventoryService.shared.isServerConfirmed,
-              PPBranchInventoryService.shared.inventory(for: docID) != nil else {
+        guard PPBranchInventoryService.shared.isServerConfirmed else {
             errorMessage = Language.get("Inventory_ProjectionUnavailable", alter: "تعذر التحقق من رصيد الفرع. أعد تحميل المخزون.")
             return
         }
@@ -2002,6 +2002,7 @@ final class PPInventoryListViewModel: ObservableObject {
                     let message = PPBranchInventoryErrorHelper.localizedMessage(for: error)
                     PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: message)
                 } else {
+                    self.errorMessage = nil
                     PPBranchInventoryService.shared.refreshInventory(for: docID, branchId: branchId)
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                 }
@@ -4930,6 +4931,895 @@ private struct PPAdminLivePetInventoryCard: View {
     }
 }
 
+// MARK: - Barcode & Retail Label Studio (NextGen Category-Defining Engine)
+
+public enum BarcodeStudioFormat: String, CaseIterable, Identifiable {
+    case code128 = "code128"
+    case qr = "qr"
+    case shelfTag = "shelfTag"
+
+    public var id: String { rawValue }
+
+    public var localizedTitle: String {
+        switch self {
+        case .code128:
+            return Language.get("BarcodeStudio_Format_Barcode", alter: "كود 128")
+        case .qr:
+            return Language.get("BarcodeStudio_Format_QR", alter: "رمز QR")
+        case .shelfTag:
+            return Language.get("BarcodeStudio_Format_ShelfTag", alter: "ملصق الرف")
+        }
+    }
+
+    public var icon: String {
+        switch self {
+        case .code128: return "barcode"
+        case .qr: return "qrcode"
+        case .shelfTag: return "tag.fill"
+        }
+    }
+}
+
+private struct BarcodeActivityShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        if let popover = controller.popoverPresentationController {
+            popover.permittedArrowDirections = []
+            if let window = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).flatMap({ $0.windows }).first(where: { $0.isKeyWindow }) {
+                popover.sourceView = window
+                popover.sourceRect = CGRect(x: window.bounds.midX, y: window.bounds.midY, width: 0, height: 0)
+            }
+        }
+        return controller
+    }
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+public struct BarcodeRenderer {
+    private static let ciContext = CIContext()
+
+    public static func generateCode128(from string: String) -> UIImage? {
+        guard !string.isEmpty, let data = string.data(using: .ascii) else { return nil }
+        guard let filter = CIFilter(name: "CICode128BarcodeGenerator") else { return nil }
+        filter.setValue(data, forKey: "inputMessage")
+        filter.setValue(NSNumber(value: 8.0), forKey: "inputQuietSpace")
+        guard let output = filter.outputImage else { return nil }
+        let scaled = output.transformed(by: CGAffineTransform(scaleX: 12, y: 12))
+        guard let cg = ciContext.createCGImage(scaled, from: scaled.extent) else { return nil }
+        return UIImage(cgImage: cg)
+    }
+
+    public static func generateQRCode(from string: String) -> UIImage? {
+        guard !string.isEmpty, let data = string.data(using: .utf8) else { return nil }
+        guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+        filter.setValue(data, forKey: "inputMessage")
+        filter.setValue("M", forKey: "inputCorrectionLevel")
+        guard let output = filter.outputImage else { return nil }
+        let scaled = output.transformed(by: CGAffineTransform(scaleX: 12, y: 12))
+        guard let cg = ciContext.createCGImage(scaled, from: scaled.extent) else { return nil }
+        return UIImage(cgImage: cg)
+    }
+
+    /// Renders a studio-grade retail printable shelf tag (50x30mm ratio, 300 DPI)
+    public static func renderRetailShelfTag(item: PetAccessory, code: String, isQR: Bool = false) -> UIImage {
+        let size = CGSize(width: 600, height: 380)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { ctx in
+            let cgCtx = ctx.cgContext
+
+            // Clean White Background
+            cgCtx.setFillColor(UIColor.white.cgColor)
+            cgCtx.fill(CGRect(origin: .zero, size: size))
+
+            // Outer Rounded Border
+            let borderRect = CGRect(x: 12, y: 12, width: size.width - 24, height: size.height - 24)
+            let path = UIBezierPath(roundedRect: borderRect, cornerRadius: 18)
+            cgCtx.setStrokeColor(UIColor(white: 0.88, alpha: 1.0).cgColor)
+            cgCtx.setLineWidth(2.5)
+            cgCtx.addPath(path.cgPath)
+            cgCtx.strokePath()
+
+            // Header Brand Ribbon
+            let brandFont = UIFont.systemFont(ofSize: 18, weight: .black)
+            let brandAttrs: [NSAttributedString.Key: Any] = [
+                .font: brandFont,
+                .foregroundColor: UIColor(red: 0.08, green: 0.48, blue: 0.95, alpha: 1.0)
+            ]
+            let brandText = "PURE PETS • بيور بيتس"
+            (brandText as NSString).draw(at: CGPoint(x: 24, y: 22), withAttributes: brandAttrs)
+
+            // Category tag
+            let catFont = UIFont.systemFont(ofSize: 14, weight: .bold)
+            let catAttrs: [NSAttributedString.Key: Any] = [
+                .font: catFont,
+                .foregroundColor: UIColor(white: 0.45, alpha: 1.0)
+            ]
+            let categoryText = (item.category?.isEmpty == false ? item.category : "PurePets Retail") ?? "Retail"
+            let catSize = (categoryText as NSString).size(withAttributes: catAttrs)
+            (categoryText as NSString).draw(at: CGPoint(x: size.width - catSize.width - 24, y: 24), withAttributes: catAttrs)
+
+            // Product Name
+            let nameFont = UIFont(name: "Beiruti-Bold", size: 28) ?? UIFont.systemFont(ofSize: 26, weight: .bold)
+            let nameParagraph = NSMutableParagraphStyle()
+            nameParagraph.alignment = Language.isRTL() ? .right : .left
+            nameParagraph.lineBreakMode = .byTruncatingTail
+            let nameAttrs: [NSAttributedString.Key: Any] = [
+                .font: nameFont,
+                .foregroundColor: UIColor(white: 0.1, alpha: 1.0),
+                .paragraphStyle: nameParagraph
+            ]
+            let nameRect = CGRect(x: 24, y: 52, width: size.width - 48, height: 68)
+            (item.name as NSString).draw(in: nameRect, withAttributes: nameAttrs)
+
+            // Barcode Graphic
+            if isQR {
+                if let qrImg = generateQRCode(from: code) {
+                    let qrRect = CGRect(x: (size.width - 130) / 2, y: 124, width: 130, height: 130)
+                    qrImg.draw(in: qrRect)
+                }
+            } else {
+                if let bcImg = generateCode128(from: code) {
+                    let bcRect = CGRect(x: 36, y: 124, width: size.width - 72, height: 120)
+                    bcImg.draw(in: bcRect)
+                }
+            }
+
+            // Human readable code
+            let codeFont = UIFont.monospacedSystemFont(ofSize: 20, weight: .bold)
+            let codeParagraph = NSMutableParagraphStyle()
+            codeParagraph.alignment = .center
+            let codeAttrs: [NSAttributedString.Key: Any] = [
+                .font: codeFont,
+                .foregroundColor: UIColor(white: 0.15, alpha: 1.0),
+                .paragraphStyle: codeParagraph
+            ]
+            let codeRect = CGRect(x: 24, y: 254, width: size.width - 48, height: 26)
+            (code as NSString).draw(in: codeRect, withAttributes: codeAttrs)
+
+            // Price Divider line
+            cgCtx.setStrokeColor(UIColor(white: 0.88, alpha: 1.0).cgColor)
+            cgCtx.setLineWidth(1.5)
+            cgCtx.move(to: CGPoint(x: 24, y: 288))
+            cgCtx.addLine(to: CGPoint(x: size.width - 24, y: 288))
+            cgCtx.strokePath()
+
+            // Bottom Left: SKU / ID
+            let skuFont = UIFont.systemFont(ofSize: 15, weight: .semibold)
+            let skuAttrs: [NSAttributedString.Key: Any] = [
+                .font: skuFont,
+                .foregroundColor: UIColor(white: 0.4, alpha: 1.0)
+            ]
+            let skuStr = "SKU: \(item.sku ?? item.accessoryID)"
+            (skuStr as NSString).draw(at: CGPoint(x: 24, y: 310), withAttributes: skuAttrs)
+
+            // Bottom Right: Price Display
+            let priceFont = UIFont(name: "Beiruti-Bold", size: 36) ?? UIFont.systemFont(ofSize: 34, weight: .black)
+            let priceAttrs: [NSAttributedString.Key: Any] = [
+                .font: priceFont,
+                .foregroundColor: UIColor(red: 0.05, green: 0.65, blue: 0.45, alpha: 1.0)
+            ]
+            let formattedPrice = String(format: "%.2f %@", item.finalPrice.doubleValue, Language.get("QAR", alter: "ر.ق"))
+            let priceSize = (formattedPrice as NSString).size(withAttributes: priceAttrs)
+            (formattedPrice as NSString).draw(at: CGPoint(x: size.width - priceSize.width - 24, y: 300), withAttributes: priceAttrs)
+        }
+    }
+}
+
+@available(iOS 16.0, *)
+public struct PPBarcodeStudioSheet: View {
+    let item: PetAccessory
+    var onBarcodeUpdated: ((String) -> Void)? = nil
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+
+    @State private var currentBarcode: String
+    @State private var originalBarcode: String
+    @State private var selectedFormat: BarcodeStudioFormat = .code128
+    @State private var labelCopies: Int = 1
+    @State private var isGenerating: Bool = false
+    @State private var isSaving: Bool = false
+    @State private var showSaveSuccessBanner: Bool = false
+    @State private var isCopied: Bool = false
+    @State private var showShareSheet: Bool = false
+    @State private var shareSheetImage: UIImage? = nil
+    @State private var isShowingScanner: Bool = false
+
+    public init(item: PetAccessory, onBarcodeUpdated: ((String) -> Void)? = nil) {
+        self.item = item
+        self.onBarcodeUpdated = onBarcodeUpdated
+        let initialCode = item.barcode?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? item.barcode!
+            : (item.sku?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? item.sku! : item.accessoryID)
+        _currentBarcode = State(initialValue: initialCode)
+        _originalBarcode = State(initialValue: initialCode)
+        _labelCopies = State(initialValue: max(1, min(item.quantity, 10)))
+    }
+
+    private var hasChanges: Bool {
+        currentBarcode.trimmingCharacters(in: .whitespacesAndNewlines) != originalBarcode.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isValidCode: Bool {
+        let trimmed = currentBarcode.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmed.isEmpty && trimmed.canBeConverted(to: .ascii)
+    }
+
+    public var body: some View {
+        ZStack {
+            AdminSurface.background
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Capsule()
+                    .fill(Color.secondary.opacity(0.25))
+                    .frame(width: 38, height: 5)
+                    .padding(.top, 10)
+                    .padding(.bottom, 12)
+
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 18) {
+                        headerNavigationRail
+                        formatSwitcherSegment
+                        specimenCanvasCard
+                        generatorAndScannerRow
+                        inPlaceEditorCard
+                        labelPrintStationCard
+                        Spacer(minLength: 24)
+                    }
+                    .padding(.horizontal, 20)
+                }
+
+                bottomCommandDock
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+                    .padding(.bottom, 20)
+                    .background(
+                        AdminSurface.background
+                            .opacity(0.96)
+                            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.05), radius: 12, x: 0, y: -4)
+                    )
+            }
+            .frame(maxWidth: 580)
+        }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .presentationDetents([.fraction(0.88), .large])
+        .presentationDragIndicator(.hidden)
+        .sheet(isPresented: $showShareSheet) {
+            if let img = shareSheetImage {
+                BarcodeActivityShareSheet(items: [img])
+            }
+        }
+    }
+
+    // MARK: - Subviews
+
+    private var headerNavigationRail: some View {
+        HStack(alignment: .center) {
+            AdminSquircleCloseButton {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                dismiss()
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Language.get("BarcodeStudio_Title", alter: "استوديو الباركود والملصقات"))
+                    .font(Font.custom("Beiruti-Bold", size: 18))
+                    .foregroundColor(AdminSurface.primaryText)
+                    .lineLimit(1)
+
+                Text(Language.get("BarcodeStudio_Subtitle", alter: "معاينة وتوليد وتعديل وطباعة باركود الصنف وملصقات الرفوف"))
+                    .font(Font.custom("Beiruti-Regular", size: 12))
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                shareBarcodeLabel()
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(AdminSurface.primary)
+                    .frame(width: 40, height: 40)
+                    .background(AdminSurface.primarySoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .accessibilityLabel(Language.get("BarcodeStudio_ShareAction", alter: "مشاركة الملصق"))
+        }
+    }
+
+    private var formatSwitcherSegment: some View {
+        HStack(spacing: 8) {
+            ForEach(BarcodeStudioFormat.allCases) { format in
+                let isSelected = selectedFormat == format
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                        selectedFormat = format
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: format.icon)
+                            .font(.system(size: 12, weight: .bold))
+                        Text(format.localizedTitle)
+                            .font(Font.custom("Beiruti-Bold", size: 13))
+                    }
+                    .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        isSelected
+                            ? AnyView(AdminSurface.primary)
+                            : AnyView(AdminSurface.control)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var specimenCanvasCard: some View {
+        VStack(spacing: 0) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(Color.white)
+                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.08), radius: 14, x: 0, y: 4)
+
+                VStack(spacing: 10) {
+                    if selectedFormat == .shelfTag {
+                        shelfTagPreviewView
+                    } else if selectedFormat == .qr {
+                        qrPreviewView
+                    } else {
+                        linearBarcodePreviewView
+                    }
+                }
+                .padding(16)
+            }
+            .frame(height: 240)
+            .scaleEffect(isGenerating ? 0.96 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isGenerating)
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private var shelfTagPreviewView: some View {
+        VStack(spacing: 8) {
+            HStack {
+                HStack(spacing: 4) {
+                    Image(systemName: "pawprint.fill")
+                        .font(.system(size: 10, weight: .black))
+                    Text("PURE PETS")
+                        .font(.system(size: 11, weight: .black, design: .rounded))
+                }
+                .foregroundColor(Color(red: 0.08, green: 0.48, blue: 0.95))
+
+                Spacer()
+
+                Text((item.category?.isEmpty == false ? item.category : "PurePets Retail") ?? "Retail")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(Color.gray)
+            }
+
+            Text(item.name)
+                .font(Font.custom("Beiruti-Bold", size: 16))
+                .foregroundColor(Color.black)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: Language.isRTL() ? .trailing : .leading)
+
+            if let bcImage = BarcodeRenderer.generateCode128(from: currentBarcode) {
+                Image(uiImage: bcImage)
+                    .resizable()
+                    .interpolation(.none)
+                    .scaledToFit()
+                    .frame(height: 52)
+            } else {
+                emptyBarcodePlaceholder
+            }
+
+            Text(currentBarcode)
+                .font(Font.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundColor(Color.black)
+
+            Divider()
+
+            HStack {
+                Text("SKU: \(item.sku ?? item.accessoryID)")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundColor(Color.gray)
+                    .lineLimit(1)
+
+                Spacer()
+
+                Text(String(format: "%.2f %@", item.finalPrice.doubleValue, Language.get("QAR", alter: "ر.ق")))
+                    .font(Font.custom("Beiruti-Bold", size: 18))
+                    .foregroundColor(Color(red: 0.05, green: 0.65, blue: 0.45))
+            }
+        }
+    }
+
+    private var qrPreviewView: some View {
+        VStack(spacing: 10) {
+            Text(item.name)
+                .font(Font.custom("Beiruti-Bold", size: 15))
+                .foregroundColor(Color.black)
+                .lineLimit(1)
+
+            if let qrImage = BarcodeRenderer.generateQRCode(from: currentBarcode) {
+                Image(uiImage: qrImage)
+                    .resizable()
+                    .interpolation(.none)
+                    .scaledToFit()
+                    .frame(width: 120, height: 120)
+            } else {
+                emptyBarcodePlaceholder
+            }
+
+            Text(currentBarcode)
+                .font(Font.system(size: 13, weight: .bold, design: .monospaced))
+                .foregroundColor(Color.black)
+        }
+    }
+
+    private var linearBarcodePreviewView: some View {
+        VStack(spacing: 12) {
+            Text(item.name)
+                .font(Font.custom("Beiruti-Bold", size: 16))
+                .foregroundColor(Color.black)
+                .lineLimit(1)
+
+            if let bcImage = BarcodeRenderer.generateCode128(from: currentBarcode) {
+                Image(uiImage: bcImage)
+                    .resizable()
+                    .interpolation(.none)
+                    .scaledToFit()
+                    .frame(height: 75)
+                    .padding(.horizontal, 8)
+            } else {
+                emptyBarcodePlaceholder
+            }
+
+            HStack {
+                Text(currentBarcode)
+                    .font(Font.system(size: 14, weight: .bold, design: .monospaced))
+                    .foregroundColor(Color.black)
+
+                Spacer()
+
+                Text(String(format: "%.2f %@", item.finalPrice.doubleValue, Language.get("QAR", alter: "ر.ق")))
+                    .font(Font.custom("Beiruti-Bold", size: 16))
+                    .foregroundColor(Color(red: 0.05, green: 0.65, blue: 0.45))
+            }
+            .padding(.horizontal, 4)
+        }
+    }
+
+    private var emptyBarcodePlaceholder: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "barcode.viewfinder")
+                .font(.system(size: 36))
+                .foregroundColor(Color.gray.opacity(0.5))
+            Text(Language.get("BarcodeStudio_EmptyWarning", alter: "أدخل رمز الباركود أو اضغط توليد"))
+                .font(Font.custom("Beiruti-Regular", size: 12))
+                .foregroundColor(Color.gray)
+        }
+        .frame(height: 80)
+    }
+
+    private var generatorAndScannerRow: some View {
+        HStack(spacing: 10) {
+            Button {
+                generateAutoBarcode()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 13, weight: .bold))
+                    Text(Language.get("BarcodeStudio_AutoGenerate", alter: "توليد تلقائي"))
+                        .font(Font.custom("Beiruti-Bold", size: 14))
+                }
+                .foregroundColor(AdminSurface.primary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
+                .background(AdminSurface.primarySoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(AdminSurface.primary.opacity(0.24), lineWidth: 0.8)
+                )
+            }
+            .buttonStyle(.plain)
+
+            AdminBarcodeScanButton { scanned in
+                currentBarcode = scanned
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            }
+            .frame(width: 44, height: 44)
+        }
+    }
+
+    private var inPlaceEditorCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "pencil.line")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(AdminSurface.secondaryText)
+
+                Text(Language.get("BarcodeStudio_EditBarcode", alter: "رمز الباركود"))
+                    .font(Font.custom("Beiruti-Bold", size: 13))
+                    .foregroundColor(AdminSurface.primaryText)
+
+                Spacer()
+
+                if isValidCode {
+                    HStack(spacing: 3) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 10))
+                        Text(Language.get("BarcodeStudio_ValidCode", alter: "باركود صالح"))
+                            .font(Font.custom("Beiruti-Bold", size: 11))
+                    }
+                    .foregroundColor(Color(uiColor: .ppSuccess))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+                }
+
+                if hasChanges {
+                    Button {
+                        currentBarcode = originalBarcode
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.system(size: 10, weight: .bold))
+                            Text(Language.get("BarcodeStudio_ResetOriginal", alter: "استعادة الأصلي"))
+                                .font(Font.custom("Beiruti-Regular", size: 11))
+                        }
+                        .foregroundColor(AdminSurface.secondaryText)
+                    }
+                }
+            }
+
+            HStack(spacing: 8) {
+                TextField("Barcode", text: $currentBarcode)
+                    .font(Font.system(size: 16, weight: .bold, design: .monospaced))
+                    .foregroundColor(AdminSurface.primaryText)
+                    .autocapitalization(.allCharacters)
+                    .disableAutocorrection(true)
+
+                if !currentBarcode.isEmpty {
+                    Button {
+                        currentBarcode = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
+                    }
+                }
+            }
+            .padding(12)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(hasChanges ? AdminSurface.primary : AdminSurface.hairline, lineWidth: 1)
+            )
+
+            if hasChanges {
+                Button {
+                    saveBarcodeToCatalog()
+                } label: {
+                    HStack(spacing: 6) {
+                        if isSaving {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "arrow.down.doc.fill")
+                                .font(.system(size: 13, weight: .bold))
+                            Text(Language.get("BarcodeStudio_SaveToCatalog", alter: "حفظ الكود بالصنف"))
+                                .font(Font.custom("Beiruti-Bold", size: 14))
+                        }
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 42)
+                    .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(isSaving || !isValidCode)
+            }
+
+            if showSaveSuccessBanner {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(Color(uiColor: .ppSuccess))
+                    Text(Language.get("BarcodeStudio_SaveSuccess", alter: "تم تحديث باركود الصنف بنجاح"))
+                        .font(Font.custom("Beiruti-Bold", size: 12))
+                        .foregroundColor(Color(uiColor: .ppSuccess))
+                }
+                .padding(.vertical, 4)
+                .transition(.opacity)
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AdminSurface.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+    }
+
+    private var labelPrintStationCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "printer.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(AdminSurface.secondaryText)
+
+                Text(Language.get("BarcodeStudio_PrintCopies", alter: "عدد الملصقات للطباعة"))
+                    .font(Font.custom("Beiruti-Bold", size: 13))
+                    .foregroundColor(AdminSurface.primaryText)
+
+                Spacer()
+
+                HStack(spacing: 12) {
+                    Button {
+                        if labelCopies > 1 {
+                            labelCopies -= 1
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
+                    } label: {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(labelCopies > 1 ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.3))
+                    }
+                    .disabled(labelCopies <= 1)
+
+                    Text("\(labelCopies)")
+                        .font(Font.custom("Beiruti-Bold", size: 16))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .frame(minWidth: 24)
+
+                    Button {
+                        labelCopies += 1
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(AdminSurface.primary)
+                    }
+                }
+            }
+
+            HStack(spacing: 8) {
+                ForEach([1, 5, 10], id: \.self) { count in
+                    Button {
+                        labelCopies = count
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        Text("\(count)")
+                            .font(Font.custom("Beiruti-Bold", size: 12))
+                            .foregroundColor(labelCopies == count ? .white : AdminSurface.primaryText)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 5)
+                            .background(
+                                labelCopies == count
+                                    ? AnyView(AdminSurface.primary)
+                                    : AnyView(AdminSurface.control)
+                            )
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if item.quantity > 0 {
+                    Button {
+                        labelCopies = item.quantity
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        Text(String(format: Language.get("BarcodeStudio_PrintAllStock", alter: "المخزون: %d"), item.quantity))
+                            .font(Font.custom("Beiruti-Bold", size: 12))
+                            .foregroundColor(labelCopies == item.quantity ? .white : AdminSurface.primaryText)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 5)
+                            .background(
+                                labelCopies == item.quantity
+                                    ? AnyView(AdminSurface.primary)
+                                    : AnyView(AdminSurface.control)
+                            )
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AdminSurface.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+    }
+
+    private var bottomCommandDock: some View {
+        HStack(spacing: 12) {
+            Button {
+                UIPasteboard.general.string = currentBarcode
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                    isCopied = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    withAnimation { isCopied = false }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: isCopied ? "checkmark.circle.fill" : "doc.on.doc.fill")
+                        .font(.system(size: 14, weight: .bold))
+                    Text(isCopied ? Language.get("Copied", alter: "تم النسخ") : Language.get("Barcode_CopyQuickButton", alter: "نسخ"))
+                        .font(Font.custom("Beiruti-Bold", size: 14))
+                }
+                .foregroundColor(isCopied ? Color(uiColor: .ppSuccess) : AdminSurface.primaryText)
+                .frame(width: 96, height: 50)
+                .background(
+                    isCopied
+                        ? Color(uiColor: .ppSuccess).opacity(0.12)
+                        : AdminSurface.control,
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(isCopied ? Color(uiColor: .ppSuccess).opacity(0.3) : AdminSurface.hairline, lineWidth: 0.8)
+                )
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                executePrint(copies: labelCopies)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "printer.fill")
+                        .font(.system(size: 16, weight: .bold))
+
+                    Text(Language.get("BarcodeStudio_PrintAction", alter: "طباعة الملصق"))
+                        .font(Font.custom("Beiruti-Bold", size: 16))
+
+                    Spacer()
+
+                    Text("× \(labelCopies)")
+                        .font(Font.custom("Beiruti-Bold", size: 14))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.2), in: Capsule())
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 18)
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+                .background(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.08, green: 0.52, blue: 0.98),
+                            Color(red: 0.05, green: 0.40, blue: 0.85)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.white.opacity(0.35), lineWidth: 1)
+                )
+                .shadow(color: Color(red: 0.08, green: 0.52, blue: 0.98).opacity(0.35), radius: 8, x: 0, y: 3)
+            }
+            .buttonStyle(.plain)
+            .disabled(!isValidCode)
+        }
+    }
+
+    // MARK: - Actions
+
+    private func generateAutoBarcode() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
+            isGenerating = true
+        }
+        let randomDigits = String(format: "%08d", Int.random(in: 10000000...99999999))
+        currentBarcode = "PP" + randomDigits
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                isGenerating = false
+            }
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        }
+    }
+
+    private func saveBarcodeToCatalog() {
+        let trimmed = currentBarcode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        isSaving = true
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        Firestore.firestore().collection("petAccessories").document(item.accessoryID).setData([
+            "barcode": trimmed,
+            "updatedAt": FieldValue.serverTimestamp()
+        ], merge: true) { error in
+            isSaving = false
+            if let error = error {
+                PPAlertHelper.showError(
+                    in: nil,
+                    title: Language.get("Error", alter: "خطأ"),
+                    subtitle: error.localizedDescription
+                )
+            } else {
+                item.barcode = trimmed
+                originalBarcode = trimmed
+                onBarcodeUpdated?(trimmed)
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    showSaveSuccessBanner = true
+                }
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                    withAnimation {
+                        showSaveSuccessBanner = false
+                    }
+                }
+            }
+        }
+    }
+
+    private func executePrint(copies: Int) {
+        guard UIPrintInteractionController.isPrintingAvailable else {
+            PPAlertHelper.showError(
+                in: nil,
+                title: Language.get("PrintUnavailable_Title", alter: "الطباعة غير متاحة"),
+                subtitle: Language.get("PrintUnavailable_Subtitle", alter: "يرجى التأكد من اتصال الطابعة عبر AirPrint أو الشبكة المحلية.")
+            )
+            return
+        }
+
+        let rendered = BarcodeRenderer.renderRetailShelfTag(
+            item: item,
+            code: currentBarcode,
+            isQR: selectedFormat == .qr
+        )
+
+        let printController = UIPrintInteractionController.shared
+        let printInfo = UIPrintInfo(dictionary: nil)
+        printInfo.outputType = .general
+        printInfo.jobName = "\(item.name) - Barcode"
+        printInfo.duplex = .none
+
+        printController.printInfo = printInfo
+        printController.showsNumberOfCopies = true
+        printController.printingItem = rendered
+
+        printController.present(animated: true) { _, completed, _ in
+            if completed {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
+        }
+    }
+
+    private func shareBarcodeLabel() {
+        let rendered = BarcodeRenderer.renderRetailShelfTag(
+            item: item,
+            code: currentBarcode,
+            isQR: selectedFormat == .qr
+        )
+        shareSheetImage = rendered
+        showShareSheet = true
+    }
+}
 
 // MARK: - Flagship Item Master Detail Screen (Push Navigation)
 
@@ -4974,6 +5864,7 @@ public struct PPInventoryItemDetailView: View {
     @State private var showQuarantineSheet: Bool = false
     @State private var showLotsSheet: Bool = false
     @State private var showTactileQuantityPad: Bool = false
+    @State private var showBarcodeStudio: Bool = false
     @State private var activeCommandUnit: PPLivePetInventoryUnit? = nil
     @State private var activeReturnCaseRoute: PPLivePetReturnCaseRoute? = nil
     @State private var showHistoryUnits: Bool = false
@@ -5313,6 +6204,10 @@ public struct PPInventoryItemDetailView: View {
             )
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
+        .sheet(isPresented: $showBarcodeStudio) {
+            PPBarcodeStudioSheet(item: item)
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
         .tactileQuantityPad(
             isPresented: $showTactileQuantityPad,
             title: Language.get("EditQuantity", alter: "تعديل الكمية"),
@@ -5637,14 +6532,22 @@ public struct PPInventoryItemDetailView: View {
 
     // MARK: - Sovereign Nomenclature & Identification Deck
 
-    private var specimenIdentifierText: String {
-        if let sku = item.sku, !sku.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return sku
-        }
+    private var specimenBarcodeText: String {
         if let barcode = item.barcode, !barcode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return barcode
         }
         return item.accessoryID
+    }
+
+    private var specimenSKUText: String? {
+        if let sku = item.sku, !sku.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return sku
+        }
+        return nil
+    }
+
+    private var specimenIdentifierText: String {
+        specimenBarcodeText
     }
 
     private var sovereignIdentificationDeck: some View {
@@ -5706,38 +6609,168 @@ public struct PPInventoryItemDetailView: View {
                 .buttonStyle(CatalogPressStyle())
             }
 
-            // Interactive SKU/Barcode Cryptopill
-            Button {
-                copyToClipboard(specimenIdentifierText, field: "sku")
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: copiedField == "sku" ? "checkmark.circle.fill" : "barcode.viewfinder")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(copiedField == "sku" ? Color(uiColor: .ppSuccess) : AdminSurface.primary)
+            // Barcode Primary Command Deck (Preserved First Row with Studio Launcher, Quick Print, Quick Copy)
+            HStack(spacing: 8) {
+                // Interactive Barcode Specimen Card (Tapping launches Barcode Studio)
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    showBarcodeStudio = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "barcode.viewfinder")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(AdminSurface.primary)
 
-                    Text(copiedField == "sku" ? Language.get("Copied", alter: "تم النسخ بنجاح") : specimenIdentifierText)
-                        .font(PPBrandFont.bold(size: 12))
-                        .foregroundStyle(copiedField == "sku" ? Color(uiColor: .ppSuccess) : AdminSurface.primaryText)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                        Text(specimenBarcodeText)
+                            .font(Font.system(size: 13, weight: .bold, design: .monospaced))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+
+                        Spacer(minLength: 4)
+
+                        HStack(spacing: 3) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 10, weight: .bold))
+                            Text(Language.get("Barcode_StudioTriggerHint", alter: "الاستوديو"))
+                                .font(Font.custom("Beiruti-Bold", size: 11))
+                        }
+                        .foregroundStyle(AdminSurface.primary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+                    )
+                }
+                .buttonStyle(CatalogPressStyle())
+                .accessibilityLabel(Language.get("BarcodeStudio_Title", alter: "استوديو الباركود"))
+
+                // Quick Print Barcode Label Button
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    let rendered = BarcodeRenderer.renderRetailShelfTag(
+                        item: item,
+                        code: specimenBarcodeText
+                    )
+                    quickPrintBarcodeLabel(image: rendered, jobName: "\(item.name) - Barcode")
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "printer.fill")
+                            .font(.system(size: 12, weight: .bold))
+                        Text(Language.get("Barcode_PrintQuickButton", alter: "طباعة"))
+                            .font(Font.custom("Beiruti-Bold", size: 12))
+                    }
+                    .foregroundStyle(AdminSurface.primary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(AdminSurface.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(AdminSurface.primary.opacity(0.25), lineWidth: 0.75)
+                    )
+                }
+                .buttonStyle(CatalogPressStyle())
+                .accessibilityLabel(Language.get("Barcode_PrintQuickButton", alter: "طباعة"))
+
+                // Quick Copy Barcode Button (Matched Proportions)
+                Button {
+                    copyToClipboard(specimenBarcodeText, field: "barcode")
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: copiedField == "barcode" ? "checkmark.circle.fill" : "doc.on.doc.fill")
+                            .font(.system(size: 12, weight: .bold))
+                        Text(copiedField == "barcode" ? Language.get("Copied", alter: "تم النسخ") : Language.get("Barcode_CopyQuickButton", alter: "نسخ"))
+                            .font(Font.custom("Beiruti-Bold", size: 12))
+                    }
+                    .foregroundStyle(copiedField == "barcode" ? Color(uiColor: .ppSuccess) : AdminSurface.secondaryText)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        copiedField == "barcode"
+                            ? Color(uiColor: .ppSuccess).opacity(0.12)
+                            : AdminSurface.control,
+                        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(
+                                copiedField == "barcode"
+                                    ? Color(uiColor: .ppSuccess).opacity(0.4)
+                                    : AdminSurface.hairline,
+                                lineWidth: 0.75
+                            )
+                    )
+                }
+                .buttonStyle(CatalogPressStyle())
+                .accessibilityLabel(Language.get("Barcode_CopyQuickButton", alter: "نسخ"))
+            }
+
+            // SKU Secondary Identification Deck (Preserved & Moved Below Barcode)
+            if let sku = specimenSKUText {
+                HStack(spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "number.square.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(AdminCommandInk.secondary)
+
+                        Text("SKU:")
+                            .font(Font.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundStyle(AdminSurface.secondaryText)
+
+                        Text(sku)
+                            .font(Font.system(size: 12, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(AdminSurface.control.opacity(0.8), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(AdminSurface.hairline, lineWidth: 0.6)
+                    )
 
                     Spacer(minLength: 4)
 
-                    if copiedField != "sku" {
-                        Text(Language.get("TapToCopy", alter: "نسخ الكود"))
-                            .font(Font.custom("Beiruti-Regular", size: 11))
-                            .foregroundStyle(AdminSurface.secondaryText)
+                    // Quick Copy SKU Button
+                    Button {
+                        copyToClipboard(sku, field: "sku_field")
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: copiedField == "sku_field" ? "checkmark.circle.fill" : "doc.on.doc")
+                                .font(.system(size: 11, weight: .bold))
+                            Text(copiedField == "sku_field" ? Language.get("Copied", alter: "تم النسخ") : Language.get("TapToCopy", alter: "نسخ"))
+                                .font(Font.custom("Beiruti-Bold", size: 11))
+                        }
+                        .foregroundStyle(copiedField == "sku_field" ? Color(uiColor: .ppSuccess) : AdminSurface.secondaryText)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(
+                            copiedField == "sku_field"
+                                ? Color(uiColor: .ppSuccess).opacity(0.12)
+                                : AdminSurface.control.opacity(0.6),
+                            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(
+                                    copiedField == "sku_field"
+                                        ? Color(uiColor: .ppSuccess).opacity(0.4)
+                                        : AdminSurface.hairline,
+                                    lineWidth: 0.6
+                                )
+                        )
                     }
+                    .buttonStyle(CatalogPressStyle())
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(copiedField == "sku" ? Color(uiColor: .ppSuccess).opacity(0.5) : AdminSurface.hairline, lineWidth: 0.75)
-                )
             }
-            .buttonStyle(CatalogPressStyle())
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -6256,6 +7289,26 @@ public struct PPInventoryItemDetailView: View {
                     copiedField = nil
                 }
             }
+        }
+    }
+
+    private func quickPrintBarcodeLabel(image: UIImage, jobName: String) {
+        let printController = UIPrintInteractionController.shared
+        let printInfo = UIPrintInfo(dictionary: nil)
+        printInfo.outputType = .general
+        printInfo.jobName = jobName
+        printInfo.duplex = .none
+        printController.printInfo = printInfo
+        printController.showsNumberOfCopies = true
+        printController.printingItem = image
+
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            if let windowScene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
+               let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController {
+                printController.present(from: CGRect(x: rootVC.view.bounds.midX, y: rootVC.view.bounds.midY, width: 0, height: 0), in: rootVC.view, animated: true)
+            }
+        } else {
+            printController.present(animated: true) { _, _, _ in }
         }
     }
 
@@ -8281,6 +9334,7 @@ public struct PPItemActionsHubView: View {
 
     @State private var dragOffset: CGFloat = 0
     @State private var hasAppeared: Bool = false
+    @State private var showBarcodeStudio: Bool = false
     @State private var streamContentHeight: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
@@ -8344,6 +9398,10 @@ public struct PPItemActionsHubView: View {
                         hasAppeared = true
                     }
                 }
+            }
+            .sheet(isPresented: $showBarcodeStudio) {
+                PPBarcodeStudioSheet(item: item)
+                    .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
             }
         }
     }
@@ -8417,10 +9475,23 @@ public struct PPItemActionsHubView: View {
                             .foregroundStyle(AdminSurface.primary)
 
                         if let barcode = item.barcode, !barcode.isEmpty {
-                            Text(barcode)
-                                .font(Font.system(size: 10, weight: .medium, design: .monospaced))
-                                .foregroundStyle(AdminCommandInk.tertiary)
-                                .lineLimit(1)
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                showBarcodeStudio = true
+                            } label: {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "barcode.viewfinder")
+                                        .font(.system(size: 9))
+                                    Text(barcode)
+                                        .font(Font.system(size: 10, weight: .bold, design: .monospaced))
+                                }
+                                .foregroundStyle(AdminSurface.primary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                            }
+                            .buttonStyle(CatalogPressStyle())
+                            .accessibilityLabel(Language.get("BarcodeStudio_Title", alter: "استوديو الباركود"))
                         }
                     }
                 }
@@ -8462,6 +9533,17 @@ public struct PPItemActionsHubView: View {
                             action: onOpenPOS
                         )
                     }
+
+                    // Barcode & Shelf Label Studio Launcher Row
+                    actionHubRow(
+                        title: Language.get("BarcodeStudio_Title", alter: "استوديو الباركود والملصقات"),
+                        subtitle: Language.get("BarcodeStudio_Subtitle", alter: "معاينة، توليد، تعديل وطباعة الملصقات"),
+                        icon: "barcode.viewfinder",
+                        tint: AdminSurface.primary,
+                        action: {
+                            showBarcodeStudio = true
+                        }
+                    )
 
                     // Live Pet Basic Data Editor (if applicable)
                     if item.isLivePet, let onEditBasicData = onEditBasicData {
@@ -8677,16 +9759,23 @@ public struct PPItemActionsHubView: View {
                         .background(AdminSurface.primary.opacity(0.10), in: Capsule(style: .continuous))
 
                         if let barcode = item.barcode, !barcode.isEmpty {
-                            HStack(spacing: 4) {
-                                Image(systemName: "barcode.viewfinder")
-                                    .font(.system(size: 11))
-                                Text(barcode)
-                                    .font(Font.system(size: 11, weight: .medium, design: .monospaced))
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                showBarcodeStudio = true
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "barcode.viewfinder")
+                                        .font(.system(size: 11))
+                                    Text(barcode)
+                                        .font(Font.system(size: 11, weight: .bold, design: .monospaced))
+                                }
+                                .foregroundStyle(AdminSurface.primary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3.5)
+                                .background(AdminSurface.primary.opacity(0.12), in: Capsule(style: .continuous))
                             }
-                            .foregroundStyle(AdminCommandInk.tertiary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3.5)
-                            .background(AdminSurface.control, in: Capsule(style: .continuous))
+                            .buttonStyle(CatalogPressStyle())
+                            .accessibilityLabel(Language.get("BarcodeStudio_Title", alter: "استوديو الباركود"))
                         }
                     }
                 }
@@ -8736,6 +9825,17 @@ public struct PPItemActionsHubView: View {
                             icon: "cart.fill.badge.plus",
                             tint: Color(uiColor: .ppSuccess),
                             action: onOpenPOS
+                        )
+
+                        // Barcode & Shelf Label Studio Launcher Row
+                        actionHubRow(
+                            title: Language.get("BarcodeStudio_Title", alter: "استوديو الباركود والملصقات"),
+                            subtitle: Language.get("BarcodeStudio_Subtitle", alter: "معاينة، توليد، تعديل وطباعة الملصقات"),
+                            icon: "barcode.viewfinder",
+                            tint: AdminSurface.primary,
+                            action: {
+                                showBarcodeStudio = true
+                            }
                         )
 
                         if item.isLivePet, let onEditBasicData = onEditBasicData {

@@ -1167,6 +1167,7 @@ private struct AddLotSheet: View {
     @State private var errorMessage: String? = nil
 
     @State private var selectedHorizon: ExpiryHorizon? = .sixMonths
+    @State private var isValidFromCalendarExpanded: Bool = false
     @State private var isCustomCalendarExpanded: Bool = false
     @State private var isManualQuantityEditing: Bool = false
     @State private var manualQuantityInput: String = "10"
@@ -1183,6 +1184,10 @@ private struct AddLotSheet: View {
 
     private var fefoLevel: FEFOSafetyLevel {
         FEFOSafetyLevel.resolve(days: daysUntilExpiry)
+    }
+
+    private var validFromDateFormatted: String {
+        formattedDate(validFromDate)
     }
 
     private var expiryDateFormatted: String {
@@ -1524,34 +1529,55 @@ private struct AddLotSheet: View {
 
         // Section 3: Validity Start
         VStack(alignment: .leading, spacing: 8) {
-            Text(Language.get("Inventory_Lot_Valid_From", alter: "Valid From *"))
+            Text(Language.get("Inventory_Lot_Valid_From", alter: "صالح من *"))
                 .font(AdminType.subheadlineBold)
                 .foregroundColor(AdminSurface.primaryText)
 
+            // Target Date Display Strip (Identical font & styling to Expiry Date)
             HStack {
                 Image(systemName: "calendar.badge.checkmark")
                     .font(.system(size: 15))
                     .foregroundColor(AdminSurface.primary)
-                DatePicker(
-                    Language.get("Inventory_Lot_Valid_From", alter: "Valid From *"),
-                    selection: $validFromDate,
-                    in: ...latestValidFromDate,
-                    displayedComponents: .date
-                )
-                .labelsHidden()
-                .datePickerStyle(.compact)
-                .font(AdminType.calloutBold)
-                .accentColor(AdminSurface.primary)
+                Text(verbatim: validFromDateFormatted.normalizedEnglishDigits)
+                    .font(AdminType.calloutBold)
+                    .foregroundColor(AdminSurface.primaryText)
                 Spacer()
+                Image(systemName: isValidFromCalendarExpanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AdminSurface.secondaryText)
             }
             .padding(AdminSpacing.md)
             .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
             .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline))
-            .onChange(of: validFromDate) { _, newValue in
-                guard selectedHorizon != .custom, let selectedHorizon else { return }
-                if let recalculatedExpiry = selectedHorizon.calculateDate(from: newValue) {
-                    expiryDate = max(recalculatedExpiry, minimumExpiryDate)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(AdminAnimation.standard) {
+                    isValidFromCalendarExpanded.toggle()
                 }
+            }
+
+            // Expandable Graphical Calendar
+            if isValidFromCalendarExpanded {
+                VStack {
+                    DatePicker(
+                        "",
+                        selection: $validFromDate,
+                        in: ...latestValidFromDate,
+                        displayedComponents: .date
+                    )
+                    .datePickerStyle(.graphical)
+                    .padding(AdminSpacing.sm)
+                    .accentColor(AdminSurface.primary)
+                }
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+                .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline))
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .onChange(of: validFromDate) { _, newValue in
+            guard selectedHorizon != .custom, let selectedHorizon else { return }
+            if let recalculatedExpiry = selectedHorizon.calculateDate(from: newValue) {
+                expiryDate = max(recalculatedExpiry, minimumExpiryDate)
             }
         }
 
@@ -1806,7 +1832,8 @@ private struct AddLotSheet: View {
         errorMessage = nil
 
         let cost = costPrice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : Optional(unitCostDouble)
-        let fingerprint = [branchId, item.accessoryID, lotNumber, String(quantity), cost.map { String($0) } ?? "unknown", String(validFromDate.timeIntervalSince1970), String(expiryDate.timeIntervalSince1970), supplier, notes].joined(separator: "\u{0}")
+        let clampedValidFrom = min(validFromDate, Date())
+        let fingerprint = [branchId, item.accessoryID, lotNumber, String(quantity), cost.map { String($0) } ?? "unknown", String(clampedValidFrom.timeIntervalSince1970), String(expiryDate.timeIntervalSince1970), supplier, notes].joined(separator: "\u{0}")
         if receiptFingerprint != fingerprint {
             receiptCommandId = UUID().uuidString
             receiptFingerprint = fingerprint
@@ -1820,7 +1847,7 @@ private struct AddLotSheet: View {
                     lotNumber: lotNumber,
                     initialQuantity: quantity,
                     costPrice: cost,
-                    validFrom: validFromDate,
+                    validFrom: clampedValidFrom,
                     expiryDate: expiryDate,
                     supplier: supplier,
                     notes: notes,

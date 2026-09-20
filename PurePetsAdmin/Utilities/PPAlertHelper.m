@@ -907,7 +907,14 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
 + (void)showErrorIn:(UIViewController *)vc
               title:(NSString *)title
            subtitle:(NSString * _Nullable)subtitle {
-    [self showFailIn:vc title:title subtitle:subtitle completion:nil];
+    [self showErrorIn:vc title:title subtitle:subtitle completion:nil];
+}
+
++ (void)showErrorIn:(UIViewController * _Nullable)vc
+              title:(NSString *)title
+           subtitle:(NSString * _Nullable)subtitle
+         completion:(void (^ _Nullable)(void))completion {
+    [self showFailIn:vc title:title subtitle:subtitle completion:completion];
 }
 
 + (void)showWarningIn:(UIViewController *)vc

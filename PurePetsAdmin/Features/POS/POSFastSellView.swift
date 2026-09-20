@@ -333,29 +333,199 @@ enum POSSalesChannel: String, CaseIterable, Identifiable {
     }
 }
 
-extension PetAccessory {
-    var pos_supportsWholesale: Bool {
-        guard (!isLivePet || !pos_isIndividuallyTrackedLivePet) && !isPetMedicine else { return false }
-        if let wp = wholesalePrice?.doubleValue, wp > 0 { return true }
-        if let groups = quantityGroups {
-            return groups.contains { ($0["wholesaleEnabled"] as? Bool) == true }
+struct POSQuantityGroupInfo: Equatable, Identifiable {
+    let id: String
+    let nameAr: String
+    let nameEn: String
+    let unitsPerGroup: Int
+    let active: Bool
+    let retailEnabled: Bool
+    let wholesaleEnabled: Bool
+    let defaultForRetail: Bool
+    let defaultForWholesale: Bool
+    let retailPriceMinor: Int?
+    let wholesalePriceMinor: Int?
+    let sortOrder: Int
+
+    var retailPrice: Double {
+        if let minor = retailPriceMinor, minor > 0 {
+            return Double(minor) / 100.0
         }
-        return false
+        return 0.0
     }
 
-    func pos_wholesalePrice() -> Double {
-        if let wp = wholesalePrice?.doubleValue, wp > 0 {
-            return wp
+    var wholesalePrice: Double {
+        if let minor = wholesalePriceMinor, minor > 0 {
+            return Double(minor) / 100.0
         }
-        if let groups = quantityGroups {
-            for g in groups {
-                if (g["wholesaleEnabled"] as? Bool) == true,
-                   let minor = g["wholesalePriceMinor"] as? Int, minor > 0 {
-                    return Double(minor) / 100.0
+        return 0.0
+    }
+
+    var localizedName: String {
+        Language.isRTL()
+            ? (nameAr.isEmpty ? nameEn : nameAr)
+            : (nameEn.isEmpty ? nameAr : nameEn)
+    }
+}
+
+private enum POSGroupFieldParser {
+    static func string(_ val: Any?) -> String {
+        if let s = val as? String { return s.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if let n = val as? NSNumber { return n.stringValue }
+        return ""
+    }
+
+    static func bool(_ val: Any?, defaultVal: Bool = false) -> Bool {
+        guard let val = val else { return defaultVal }
+        if let b = val as? Bool { return b }
+        if let n = val as? NSNumber { return n.boolValue }
+        if let s = val as? String {
+            let lower = s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if lower == "true" || lower == "1" || lower == "yes" { return true }
+            if lower == "false" || lower == "0" || lower == "no" { return false }
+        }
+        return defaultVal
+    }
+
+    static func int(_ val: Any?) -> Int? {
+        guard let val = val else { return nil }
+        if let i = val as? Int { return i }
+        if let n = val as? NSNumber { return n.intValue }
+        if let d = val as? Double, d.isFinite { return Int(d) }
+        if let s = val as? String, let parsed = Int(s.trimmingCharacters(in: .whitespacesAndNewlines)) { return parsed }
+        return nil
+    }
+
+    static func double(_ val: Any?) -> Double? {
+        guard let val = val else { return nil }
+        if let d = val as? Double, d.isFinite { return d }
+        if let n = val as? NSNumber {
+            let d = n.doubleValue
+            return d.isFinite ? d : nil
+        }
+        if let i = val as? Int { return Double(i) }
+        if let s = val as? String, let parsed = Double(s.trimmingCharacters(in: .whitespacesAndNewlines)), parsed.isFinite { return parsed }
+        return nil
+    }
+}
+
+@MainActor
+extension PetAccessory {
+    func pos_allQuantityGroups() -> [POSQuantityGroupInfo] {
+        if let rawGroups = quantityGroups, !rawGroups.isEmpty {
+            var result: [POSQuantityGroupInfo] = []
+            for (idx, dict) in rawGroups.enumerated() {
+                let id = POSGroupFieldParser.string(dict["id"])
+                guard !id.isEmpty else { continue }
+                let nameAr = POSGroupFieldParser.string(dict["nameAr"] ?? dict["name_ar"] ?? dict["name"])
+                let nameEn = POSGroupFieldParser.string(dict["nameEn"] ?? dict["name_en"] ?? id)
+                let units = max(1, POSGroupFieldParser.int(dict["unitsPerGroup"]) ?? 1)
+                let active = POSGroupFieldParser.bool(dict["active"], defaultVal: true)
+                let retailEnabled = POSGroupFieldParser.bool(dict["retailEnabled"], defaultVal: false)
+                let wholesaleEnabled = POSGroupFieldParser.bool(dict["wholesaleEnabled"], defaultVal: false)
+                let defaultForRetail = POSGroupFieldParser.bool(dict["defaultForRetail"], defaultVal: false)
+                let defaultForWholesale = POSGroupFieldParser.bool(dict["defaultForWholesale"], defaultVal: false)
+                let sortOrder = POSGroupFieldParser.int(dict["sortOrder"]) ?? idx
+
+                var rMinor = POSGroupFieldParser.int(dict["retailPriceMinor"])
+                if rMinor == nil, let rMajor = POSGroupFieldParser.double(dict["retailPrice"]) {
+                    rMinor = Int(round(rMajor * 100.0))
+                }
+
+                var wMinor = POSGroupFieldParser.int(dict["wholesalePriceMinor"])
+                if wMinor == nil, let wMajor = POSGroupFieldParser.double(dict["wholesalePrice"]) {
+                    wMinor = Int(round(wMajor * 100.0))
+                }
+
+                result.append(POSQuantityGroupInfo(
+                    id: id,
+                    nameAr: nameAr.isEmpty ? (nameEn.isEmpty ? id : nameEn) : nameAr,
+                    nameEn: nameEn.isEmpty ? (nameAr.isEmpty ? id : nameAr) : nameEn,
+                    unitsPerGroup: units,
+                    active: active,
+                    retailEnabled: retailEnabled,
+                    wholesaleEnabled: wholesaleEnabled,
+                    defaultForRetail: defaultForRetail,
+                    defaultForWholesale: defaultForWholesale,
+                    retailPriceMinor: rMinor,
+                    wholesalePriceMinor: wMinor,
+                    sortOrder: sortOrder
+                ))
+            }
+            if !result.isEmpty {
+                return result.sorted {
+                    if $0.sortOrder != $1.sortOrder { return $0.sortOrder < $1.sortOrder }
+                    return $0.unitsPerGroup < $1.unitsPerGroup
                 }
             }
         }
-        return 0
+
+        // Fallback single group (mirrors buildLegacyCommerceFallback in commerceDomain.js)
+        let retailPrice = pos_canonicalUnitPrice
+        let retailMinor = POSMoney.minorUnits(retailPrice)
+        let rawWholesale = wholesalePrice?.doubleValue ?? 0.0
+        let hasWholesale = rawWholesale > 0.0
+        let wholesaleMinor = hasWholesale ? POSMoney.minorUnits(rawWholesale) : nil
+
+        return [
+            POSQuantityGroupInfo(
+                id: "single",
+                nameAr: "حبة",
+                nameEn: "Single",
+                unitsPerGroup: 1,
+                active: true,
+                retailEnabled: true,
+                wholesaleEnabled: hasWholesale,
+                defaultForRetail: true,
+                defaultForWholesale: hasWholesale,
+                retailPriceMinor: retailMinor,
+                wholesalePriceMinor: wholesaleMinor,
+                sortOrder: 0
+            )
+        ]
+    }
+
+    func pos_defaultWholesaleGroup() -> POSQuantityGroupInfo? {
+        guard (!isLivePet || !pos_isIndividuallyTrackedLivePet) && !isPetMedicine else { return nil }
+        let groups = pos_allQuantityGroups().filter { $0.active && $0.wholesaleEnabled }
+        guard !groups.isEmpty else { return nil }
+        return groups.first(where: { $0.defaultForWholesale }) ?? groups.first
+    }
+
+    func pos_defaultRetailGroup() -> POSQuantityGroupInfo {
+        let groups = pos_allQuantityGroups().filter { $0.active && $0.retailEnabled }
+        if let matched = groups.first(where: { $0.defaultForRetail }) ?? groups.first {
+            return matched
+        }
+        return POSQuantityGroupInfo(
+            id: "single",
+            nameAr: "حبة",
+            nameEn: "Single",
+            unitsPerGroup: 1,
+            active: true,
+            retailEnabled: true,
+            wholesaleEnabled: false,
+            defaultForRetail: true,
+            defaultForWholesale: false,
+            retailPriceMinor: POSMoney.minorUnits(pos_canonicalUnitPrice),
+            wholesalePriceMinor: nil,
+            sortOrder: 0
+        )
+    }
+
+    var pos_supportsWholesale: Bool {
+        pos_defaultWholesaleGroup() != nil
+    }
+
+    func pos_wholesalePrice() -> Double {
+        pos_defaultWholesaleGroup()?.wholesalePrice ?? 0.0
+    }
+
+    var pos_safeImageURLs: [String] {
+        if let urls = value(forKey: "imageURLsArray") as? [String] {
+            return urls
+        }
+        return []
     }
 }
 
@@ -991,10 +1161,13 @@ final class POSFastSellViewModel: ObservableObject {
         for i in 0..<cartItems.count {
             guard !cartItems[i].isIndividuallyTracked else { continue }
             cartItems[i].salesChannel = "wholesale"
-            let wholesalePrice = cartItems[i].accessory.pos_wholesalePrice()
-            if wholesalePrice > 0 {
-                cartItems[i].unitGroupPrice = wholesalePrice
-                cartItems[i].unitGroupPriceMinor = POSMoney.minorUnits(wholesalePrice)
+            if let wGroup = cartItems[i].accessory.pos_defaultWholesaleGroup() {
+                cartItems[i].quantityGroupID = wGroup.id
+                cartItems[i].quantityGroupNameAr = wGroup.nameAr
+                cartItems[i].quantityGroupNameEn = wGroup.nameEn
+                cartItems[i].unitsPerGroup = max(1, wGroup.unitsPerGroup)
+                cartItems[i].unitGroupPrice = wGroup.wholesalePrice
+                cartItems[i].unitGroupPriceMinor = wGroup.wholesalePriceMinor ?? POSMoney.minorUnits(wGroup.wholesalePrice)
             }
         }
     }
@@ -1003,9 +1176,14 @@ final class POSFastSellViewModel: ObservableObject {
         for i in 0..<cartItems.count {
             guard !cartItems[i].isIndividuallyTracked else { continue }
             cartItems[i].salesChannel = "retail"
-            let retailPrice = cartItems[i].accessory.pos_canonicalUnitPrice
+            let rGroup = cartItems[i].accessory.pos_defaultRetailGroup()
+            cartItems[i].quantityGroupID = rGroup.id
+            cartItems[i].quantityGroupNameAr = rGroup.nameAr
+            cartItems[i].quantityGroupNameEn = rGroup.nameEn
+            cartItems[i].unitsPerGroup = max(1, rGroup.unitsPerGroup)
+            let retailPrice = rGroup.retailPrice > 0 ? rGroup.retailPrice : cartItems[i].accessory.pos_canonicalUnitPrice
             cartItems[i].unitGroupPrice = retailPrice
-            cartItems[i].unitGroupPriceMinor = POSMoney.minorUnits(retailPrice)
+            cartItems[i].unitGroupPriceMinor = rGroup.retailPriceMinor ?? POSMoney.minorUnits(retailPrice)
         }
     }
 
@@ -1269,16 +1447,52 @@ final class POSFastSellViewModel: ObservableObject {
                 "cartTotal": cartTotal
             ])
         } else {
-            guard branchStock > 0 else { return false }
+            let activeGroup: POSQuantityGroupInfo
+            if salesChannel == .wholesale {
+                guard let wGroup = accessory.pos_defaultWholesaleGroup() else {
+                    submitError = String(format: Language.get("POS_Wholesale_Not_Supported_For_Product", alter: "هذا الصنف (%@) لا يدعم البيع بالجملة."), accessory.name)
+                    return false
+                }
+                activeGroup = wGroup
+            } else {
+                activeGroup = accessory.pos_defaultRetailGroup()
+            }
+
+            let unitsPerGroup = max(1, activeGroup.unitsPerGroup)
+            guard branchStock >= unitsPerGroup else {
+                POSLogger.warn("cart.add_stock_capped", category: "cart", message: "Cannot add '\(accessory.name)': branch stock limit (\(branchStock)) reached", metadata: [
+                    "productId": accessory.accessoryID,
+                    "stock": branchStock,
+                    "unitsPerGroup": unitsPerGroup
+                ])
+                return false
+            }
+
             var item = POSCartItem(accessory: accessory, quantity: 1)
             item.salesChannel = salesChannel.rawValue
-            item.unitGroupPrice = unitPrice
-            item.unitGroupPriceMinor = unitPriceMinor
+            item.quantityGroupID = activeGroup.id
+            item.quantityGroupNameAr = activeGroup.nameAr
+            item.quantityGroupNameEn = activeGroup.nameEn
+            item.unitsPerGroup = unitsPerGroup
+
+            let resolvedPrice: Double
+            let resolvedPriceMinor: Int
+            if salesChannel == .wholesale {
+                resolvedPrice = activeGroup.wholesalePrice
+                resolvedPriceMinor = activeGroup.wholesalePriceMinor ?? POSMoney.minorUnits(activeGroup.wholesalePrice)
+            } else {
+                resolvedPrice = activeGroup.retailPrice > 0 ? activeGroup.retailPrice : accessory.pos_canonicalUnitPrice
+                resolvedPriceMinor = activeGroup.retailPriceMinor ?? POSMoney.minorUnits(resolvedPrice)
+            }
+
+            item.unitGroupPrice = resolvedPrice
+            item.unitGroupPriceMinor = resolvedPriceMinor
             cartItems.append(item)
-            POSLogger.info("cart.item_added", category: "cart", message: "Added '\(accessory.name)' to cart (Price: \(unitPrice) QAR, Subtotal: \(cartSubtotal) QAR)", metadata: [
+            POSLogger.info("cart.item_added", category: "cart", message: "Added '\(accessory.name)' to cart (Price: \(resolvedPrice) QAR, Subtotal: \(cartSubtotal) QAR)", metadata: [
                 "productId": accessory.accessoryID,
                 "name": accessory.name,
-                "unitPrice": unitPrice,
+                "unitPrice": resolvedPrice,
+                "quantityGroupId": activeGroup.id,
                 "cartTotal": cartTotal
             ])
         }
@@ -1513,6 +1727,26 @@ final class POSFastSellViewModel: ObservableObject {
                 return String(format: Language.get("POS_PriceDiscrepancy_Formatted", alter: "تغير السعر الرسمي للصنف%@ إلى %.2f ر.ق. يرجى تحديث السعر والمتابعة."), name, auth)
             }
             return Language.get("POS_PriceDiscrepancy_Generic", alter: "تغير سعر أحد الأصناف في النظام. حدّث السعر في السلة ثم أعد المحاولة.")
+        case "COMMERCE_WHOLESALE_UNAVAILABLE", "POS_WHOLESALE_INELIGIBLE_PRODUCT":
+            return Language.get(
+                "POS_WholesaleUnavailableForProduct",
+                alter: "البيع بالجملة غير متاح لهذا الصنف أو لم يتم تفعيل أسعار الجملة له."
+            )
+        case "COMMERCE_WHOLESALE_GROUP_DISABLED":
+            return Language.get(
+                "POS_WholesaleGroupDisabled",
+                alter: "وحدة البيع المحددة غير مفعلة للبيع بالجملة. اختر وحدة أخرى أو عد إلى البيع القطاعي."
+            )
+        case "COMMERCE_BRANCH_WHOLESALE_DISABLED":
+            return Language.get(
+                "POS_BranchWholesaleDisabled",
+                alter: "البيع بالجملة لهذا الصنف غير متاح في هذا الفرع."
+            )
+        case "COMMERCE_GROUP_NOT_FOUND", "COMMERCE_GROUP_INACTIVE", "COMMERCE_NO_DEFAULT_GROUP":
+            return Language.get(
+                "POS_QuantityGroupUnavailable",
+                alter: "وحدة البيع المحددة لم تعد متاحة. حدّث قائمة المنتجات ثم أعد المحاولة."
+            )
         default:
             break
         }
@@ -1539,6 +1773,12 @@ final class POSFastSellViewModel: ObservableObject {
                 alter: "توجد عملية بيع مسجلة بنفس رقم الأمر ببيانات مختلفة. راجع سجل المبيعات للتأكد قبل إعادة البيع، ثم أنشئ عملية جديدة."
             )
         case 7:
+            if message.contains("pos.sell.wholesale") || message.contains("wholesale") {
+                return Language.get(
+                    "POS_Wholesale_Permission_Required",
+                    alter: "صلاحية البيع بالجملة غير متوفرة لهذا المستخدم."
+                )
+            }
             return Language.get(
                 "POS_CheckoutPermissionDenied",
                 alter: "ليست لديك صلاحية إتمام البيع في هذا الفرع. اختر فرعًا مسموحًا أو اطلب الصلاحية."
@@ -1568,6 +1808,14 @@ final class POSFastSellViewModel: ObservableObject {
             submitError = Language.get(
                 "POS_CheckoutPermissionDenied",
                 alter: "ليست لديك صلاحية إتمام البيع في هذا الفرع. اختر فرعًا مسموحًا أو اطلب الصلاحية."
+            )
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return false
+        }
+        guard salesChannel != .wholesale || canSellWholesale else {
+            submitError = Language.get(
+                "POS_Wholesale_Permission_Required",
+                alter: "صلاحية البيع بالجملة غير متوفرة لهذا المستخدم."
             )
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             return false
@@ -2248,8 +2496,11 @@ struct AdminPOSFastSellView: View {
             POSCompletedReceiptSheet(receipt: receipt, notice: viewModel.receiptNotice)
         }
         .sheet(item: $viewModel.priceDiscrepancy) { discrepancy in
+            let matchedItem = viewModel.cartItems.first(where: { $0.accessory.accessoryID == discrepancy.productID })
             POSPriceReconciliationSheet(
                 discrepancy: discrepancy,
+                cartItem: matchedItem,
+                currentCartTotal: viewModel.cartTotal,
                 onApplyAuthoritativePrice: {
                     viewModel.reconcilePrice(productID: discrepancy.productID, newPrice: discrepancy.authoritativePrice)
                 },
@@ -2263,6 +2514,7 @@ struct AdminPOSFastSellView: View {
                     viewModel.dismissPriceDiscrepancy()
                 }
             )
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .onAppear { viewModel.startListening() }
         .onDisappear { viewModel.stopListening() }
@@ -5229,7 +5481,7 @@ private struct POSCatalogThumbnail: View {
         if let url = PetAccessory.firstImageURL(for: accessory) {
             return url
         }
-        for candidate in accessory.imageURLsArray {
+        for candidate in accessory.pos_safeImageURLs {
             let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty, let url = URL(string: trimmed) {
                 return url
@@ -7559,146 +7811,572 @@ struct POSDeepLogActivityShareSheet: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
-// MARK: - POS Price Reconciliation Sheet
+// MARK: - POS Price Reconciliation Sheet (NextGen Category-Defining Redesign)
+
+private struct POSReconcilePressStyle: ButtonStyle {
+    var scale: CGFloat = 0.98
+    var pressedOpacity: CGFloat = 0.92
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? scale : 1.0)
+            .opacity(configuration.isPressed ? pressedOpacity : 1.0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.8), value: configuration.isPressed)
+    }
+}
 
 struct POSPriceReconciliationSheet: View {
     let discrepancy: POSPriceDiscrepancyItem
+    var cartItem: POSCartItem? = nil
+    var currentCartTotal: Double = 0.0
     let onApplyAuthoritativePrice: () -> Void
     let onRemoveItem: () -> Void
     let onDismiss: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
 
-    private var rosePrimary: Color { Color(red: 0.88, green: 0.28, blue: 0.42) }
-    private var emeraldColor: Color { Color(red: 0.06, green: 0.72, blue: 0.51) }
-    private var amberColor: Color { Color(red: 0.96, green: 0.62, blue: 0.09) }
-
+    // Financial Metrics
     private var priceDiff: Double {
         discrepancy.authoritativePrice - discrepancy.submittedPrice
     }
 
+    private var isPriceIncrease: Bool {
+        priceDiff > 0
+    }
+
+    private var quantity: Int {
+        cartItem?.quantity ?? 1
+    }
+
+    private var lineDiff: Double {
+        priceDiff * Double(quantity)
+    }
+
+    private var projectedCartTotal: Double {
+        max(0, currentCartTotal + lineDiff)
+    }
+
+    private var percentageChange: Double {
+        guard discrepancy.submittedPrice > 0 else { return 0 }
+        return (abs(priceDiff) / discrepancy.submittedPrice) * 100.0
+    }
+
+    // Dynamic Polarity Theme
+    private var primaryThemeColor: Color {
+        isPriceIncrease
+            ? Color(red: 0.98, green: 0.58, blue: 0.12)
+            : Color(red: 0.08, green: 0.76, blue: 0.52)
+    }
+
+    private var secondaryThemeColor: Color {
+        isPriceIncrease
+            ? Color(red: 0.94, green: 0.36, blue: 0.20)
+            : Color(red: 0.05, green: 0.62, blue: 0.55)
+    }
+
+    private var rosePrimary: Color {
+        Color(red: 0.92, green: 0.25, blue: 0.36)
+    }
+
+    private var resolvedImageURL: URL? {
+        if let accessory = cartItem?.accessory {
+            if let url = PetAccessory.firstImageURL(for: accessory) {
+                return url
+            }
+            for candidate in accessory.pos_safeImageURLs {
+                let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty, let url = URL(string: trimmed) {
+                    return url
+                }
+            }
+        }
+        return nil
+    }
+
+    private func formatCurrency(_ value: Double) -> String {
+        guard value.isFinite else {
+            return String(format: "0.00 %@", Language.get("QAR", alter: "ر.ق"))
+        }
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "QAR"
+        formatter.locale = Locale(identifier: Language.isRTL() ? "ar_QA" : "en_QA")
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f %@", value, Language.get("QAR", alter: "ر.ق"))
+    }
+
     var body: some View {
-        VStack(spacing: 20) {
-            // Drag indicator capsule
-            Capsule()
-                .fill(Color.secondary.opacity(0.3))
-                .frame(width: 36, height: 5)
-                .padding(.top, 10)
+        ZStack {
+            AdminSurface.background
+                .ignoresSafeArea()
 
-            // Header Icon & Title
-            VStack(spacing: 8) {
-                ZStack {
-                    Circle()
-                        .fill(amberColor.opacity(0.15))
-                        .frame(width: 56, height: 56)
-                    Image(systemName: "tag.fill")
-                        .font(.system(size: 26, weight: .bold))
-                        .foregroundColor(amberColor)
-                }
-
-                Text(Language.get("POS_PriceDiscrepancyTitle", alter: "تحديث السعر المعتمد"))
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundColor(AdminSurface.primaryText)
-
-                Text(Language.get("POS_PriceDiscrepancySubtitle", alter: "تغير السعر الرسمي للصنف في النظام عن السعر المسجل في السلة."))
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(AdminSurface.secondaryText)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-            }
-
-            // Product & Price Comparison Card
-            VStack(spacing: 14) {
-                HStack {
-                    Text(discrepancy.productName.isEmpty ? discrepancy.productID : discrepancy.productName)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(AdminSurface.primaryText)
-                        .lineLimit(2)
-                    Spacer()
-                }
-
-                Divider()
-
-                HStack(spacing: 16) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(Language.get("POS_PreviousPrice", alter: "السعر في السلة"))
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(AdminSurface.secondaryText)
-                        Text(String(format: "%.2f ر.ق.", discrepancy.submittedPrice))
-                            .font(.system(size: 16, weight: .semibold))
-                            .strikethrough(color: .secondary)
-                            .foregroundColor(.secondary)
-                    }
-
-                    Image(systemName: "arrow.left")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(amberColor)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(Language.get("POS_AuthoritativePrice", alter: "السعر المعتمد بالسيرفر"))
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(emeraldColor)
-                        Text(String(format: "%.2f ر.ق.", discrepancy.authoritativePrice))
-                            .font(.system(size: 18, weight: .heavy))
-                            .foregroundColor(emeraldColor)
-                    }
-
-                    Spacer()
-
-                    // Diff badge
-                    Text(priceDiff > 0 ? String(format: "+%.2f ر.ق.", priceDiff) : String(format: "%.2f ر.ق.", priceDiff))
-                        .font(.system(size: 12, weight: .bold))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(priceDiff > 0 ? amberColor.opacity(0.15) : emeraldColor.opacity(0.15))
-                        .foregroundColor(priceDiff > 0 ? amberColor : emeraldColor)
-                        .cornerRadius(8)
-                }
-            }
-            .padding(16)
-            .background(AdminSurface.card)
-            .cornerRadius(16)
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(amberColor.opacity(0.3), lineWidth: 1)
+            RadialGradient(
+                colors: [
+                    primaryThemeColor.opacity(colorScheme == .dark ? 0.12 : 0.06),
+                    Color.clear
+                ],
+                center: .top,
+                startRadius: 20,
+                endRadius: 360
             )
-            .padding(.horizontal, 20)
+            .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Capsule()
+                    .fill(Color.secondary.opacity(0.26))
+                    .frame(width: 38, height: 5)
+                    .padding(.top, 10)
+                    .padding(.bottom, 12)
+
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 16) {
+                        headerNavigationRail
+                        headlineBlock
+                        productIdentificationPod
+                        transformationChamber
+                        cartImpactLedger
+                        Spacer(minLength: 12)
+                    }
+                    .padding(.horizontal, 20)
+                }
+
+                bottomActionLaunchers
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+                    .padding(.bottom, 20)
+                    .background(
+                        AdminSurface.background
+                            .opacity(0.96)
+                            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.05), radius: 12, x: 0, y: -4)
+                    )
+            }
+            .frame(maxWidth: 560)
+        }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .presentationDetents([.fraction(0.85), .large])
+        .presentationDragIndicator(.hidden)
+    }
+
+    // MARK: - Subviews
+
+    private var headerNavigationRail: some View {
+        HStack(alignment: .center) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(primaryThemeColor)
+                    .frame(width: 8, height: 8)
+                    .shadow(color: primaryThemeColor.opacity(0.8), radius: 4, x: 0, y: 0)
+
+                Image(systemName: isPriceIncrease ? "chart.line.uptrend.xyaxis" : "tag.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(primaryThemeColor)
+
+                Text(isPriceIncrease
+                     ? Language.get("POS_PriceAuditBadge", alter: "تدقيق السعر السحابي")
+                     : Language.get("POS_PriceMarkdownBadge", alter: "تخفيض سعر معتمد"))
+                    .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                    .foregroundColor(primaryThemeColor)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(primaryThemeColor.opacity(0.12))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(primaryThemeColor.opacity(0.24), lineWidth: 1)
+            )
 
             Spacer()
 
-            // Actions
-            VStack(spacing: 10) {
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    onApplyAuthoritativePrice()
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 16, weight: .bold))
-                        Text(Language.get("POS_UpdatePriceAndProceed", alter: "تحديث السعر في السلة والمتابعة"))
-                            .font(.system(size: 16, weight: .bold))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 52)
-                    .foregroundColor(.white)
-                    .background(emeraldColor)
-                    .cornerRadius(14)
-                }
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onDismiss()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundColor(AdminSurface.secondaryText.opacity(0.7))
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(POSReconcilePressStyle(scale: 0.92))
+            .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
+        }
+    }
 
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    onRemoveItem()
-                } label: {
-                    Text(Language.get("POS_RemoveItemFromCart", alter: "إزالة الصنف من السلة"))
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(rosePrimary)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 44)
+    private var headlineBlock: some View {
+        VStack(spacing: 6) {
+            Text(Language.get("POS_PriceDiscrepancyTitle", alter: "تحديث السعر المعتمد"))
+                .font(Font.custom("Beiruti-Bold", size: 24, relativeTo: .title2))
+                .foregroundColor(AdminSurface.primaryText)
+                .multilineTextAlignment(.center)
+
+            Text(Language.get("POS_PriceDiscrepancySubtitle", alter: "تم رصد اختلاف بين السعر المسجل في السلة والسعر الرسمي المعتمد في الخادم."))
+                .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .subheadline))
+                .foregroundColor(AdminSurface.secondaryText)
+                .multilineTextAlignment(.center)
+                .lineSpacing(3)
+                .padding(.horizontal, 10)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var productIdentificationPod: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(AdminSurface.control)
+
+                if let url = resolvedImageURL {
+                    AdminRemoteImage(
+                        url: url,
+                        contentMode: .fill,
+                        targetSize: CGSize(width: 130, height: 130)
+                    ) {
+                        Image(systemName: "shippingbox.fill")
+                            .font(.system(size: 22))
+                            .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
+                    }
+                    .frame(width: 62, height: 62)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                } else {
+                    Image(systemName: "shippingbox.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 24)
+            .frame(width: 62, height: 62)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 1)
+            )
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(discrepancy.productName.isEmpty ? (cartItem?.accessory.name ?? discrepancy.productID) : discrepancy.productName)
+                    .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .body))
+                    .foregroundColor(AdminSurface.primaryText)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+
+                HStack(spacing: 6) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "multiply")
+                            .font(.system(size: 9, weight: .bold))
+                        Text("\(quantity)")
+                            .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(AdminSurface.control, in: Capsule(style: .continuous))
+                    .foregroundColor(AdminSurface.primaryText)
+
+                    if let unitName = cartItem?.localizedGroupName, !unitName.isEmpty {
+                        Text(unitName)
+                            .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(AdminSurface.control, in: Capsule(style: .continuous))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+
+                    if let code = cartItem?.accessory.barcode ?? cartItem?.accessory.sku, !code.isEmpty {
+                        Text(code)
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(AdminSurface.control, in: Capsule(style: .continuous))
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .lineLimit(1)
+                    }
+
+                    Spacer()
+                }
+            }
         }
-        .background(AdminSurface.background.ignoresSafeArea())
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(AdminSurface.card)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 1)
+        )
+    }
+
+    private var transformationChamber: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 10) {
+                // Cart Price (Old)
+                VStack(spacing: 6) {
+                    Text(Language.get("POS_OldPriceBadge", alter: "السعر السابق"))
+                        .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(AdminSurface.control, in: Capsule(style: .continuous))
+
+                    Text(formatCurrency(discrepancy.submittedPrice))
+                        .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .body))
+                        .strikethrough(color: Color.secondary.opacity(0.8))
+                        .foregroundColor(AdminSurface.secondaryText.opacity(0.85))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+
+                    Text(Language.get("POS_PreviousPrice", alter: "السعر في السلة"))
+                        .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
+                        .foregroundColor(AdminSurface.secondaryText.opacity(0.7))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(AdminSurface.control.opacity(0.6))
+                )
+
+                // Vector Flow & Delta Bubble
+                VStack(spacing: 4) {
+                    HStack(spacing: 3) {
+                        Text(priceDiff > 0 ? "+\(formatCurrency(priceDiff))" : formatCurrency(priceDiff))
+                            .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
+                            .monospacedDigit()
+
+                        if percentageChange > 0 {
+                            Text(String(format: "(%.0f%%)", percentageChange))
+                                .font(.system(size: 9, weight: .heavy))
+                        }
+                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(primaryThemeColor.opacity(0.16))
+                    )
+                    .foregroundColor(primaryThemeColor)
+
+                    Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                        .font(.system(size: 15, weight: .black))
+                        .foregroundColor(primaryThemeColor)
+                }
+                .frame(width: 86)
+
+                // Authoritative Price (New / Official)
+                VStack(spacing: 6) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 9, weight: .bold))
+                        Text(Language.get("POS_NewPriceBadge", alter: "معتمد سحابياً"))
+                            .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
+                    }
+                    .foregroundColor(primaryThemeColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(primaryThemeColor.opacity(0.14), in: Capsule(style: .continuous))
+
+                    Text(formatCurrency(discrepancy.authoritativePrice))
+                        .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .title3))
+                        .foregroundColor(primaryThemeColor)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+
+                    Text(Language.get("POS_AuthoritativePrice", alter: "السعر الرسمي المعتمد"))
+                        .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
+                        .foregroundColor(primaryThemeColor.opacity(0.85))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(primaryThemeColor.opacity(0.08))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(primaryThemeColor.opacity(0.32), lineWidth: 1.2)
+                )
+            }
+            .padding(12)
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(AdminSurface.card)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(primaryThemeColor.opacity(0.24), lineWidth: 1)
+        )
+    }
+
+    private var cartImpactLedger: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "chart.bar.doc.horizontal")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(AdminSurface.secondaryText)
+
+                Text(Language.get("POS_CartImpactTitle", alter: "أثر التحديث على إجمالي السلة"))
+                    .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .subheadline))
+                    .foregroundColor(AdminSurface.primaryText)
+
+                Spacer()
+            }
+
+            Divider()
+                .background(AdminSurface.hairline)
+
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("POS_PerUnitDifference", alter: "للقطعة الواحدة"))
+                        .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption))
+                        .foregroundColor(AdminSurface.secondaryText)
+                    Text(priceDiff > 0 ? "+\(formatCurrency(priceDiff))" : formatCurrency(priceDiff))
+                        .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .subheadline))
+                        .foregroundColor(primaryThemeColor)
+                        .monospacedDigit()
+                }
+
+                Spacer()
+
+                if quantity > 1 {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(Language.get("POS_LineTotalDifference", alter: "إجمالي فارق الصنف"))
+                            .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption))
+                            .foregroundColor(AdminSurface.secondaryText)
+                        Text(lineDiff > 0 ? "+\(formatCurrency(lineDiff))" : formatCurrency(lineDiff))
+                            .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .subheadline))
+                            .foregroundColor(primaryThemeColor)
+                            .monospacedDigit()
+                    }
+                }
+            }
+
+            if currentCartTotal > 0 {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("POS_CurrentCartTotal", alter: "الإجمالي الحالي"))
+                            .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption))
+                            .foregroundColor(AdminSurface.secondaryText)
+                        Text(formatCurrency(currentCartTotal))
+                            .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .subheadline))
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .monospacedDigit()
+                    }
+
+                    Spacer()
+
+                    Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
+
+                    Spacer()
+
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(Language.get("POS_ProjectedCartTotal", alter: "الإجمالي بعد التحديث"))
+                            .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption))
+                            .foregroundColor(AdminSurface.primaryText)
+                        Text(formatCurrency(projectedCartTotal))
+                            .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .body))
+                            .foregroundColor(AdminSurface.primaryText)
+                            .monospacedDigit()
+                    }
+                }
+                .padding(10)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(AdminSurface.control.opacity(0.5))
+                )
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AdminSurface.card)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 1)
+        )
+    }
+
+    private var bottomActionLaunchers: some View {
+        VStack(spacing: 10) {
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onApplyAuthoritativePrice()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.shield.fill")
+                        .font(.system(size: 18, weight: .bold))
+
+                    Text(Language.get("POS_UpdatePriceAndProceed", alter: "تحديث السعر في السلة والمتابعة"))
+                        .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .body))
+
+                    Spacer()
+
+                    Text(formatCurrency(discrepancy.authoritativePrice * Double(quantity)))
+                        .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .caption))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.2), in: Capsule(style: .continuous))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 18)
+                .frame(maxWidth: .infinity)
+                .frame(height: 54)
+                .background(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.05, green: 0.74, blue: 0.52),
+                            Color(red: 0.02, green: 0.58, blue: 0.40)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.35), lineWidth: 1)
+                )
+                .shadow(color: Color(red: 0.05, green: 0.74, blue: 0.52).opacity(0.35), radius: 8, x: 0, y: 4)
+            }
+            .buttonStyle(POSReconcilePressStyle(scale: 0.98))
+
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onRemoveItem()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "trash.fill")
+                        .font(.system(size: 14, weight: .semibold))
+
+                    Text(Language.get("POS_RemoveItemFromCart", alter: "إزالة الصنف من السلة"))
+                        .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .callout))
+                }
+                .foregroundColor(rosePrimary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 46)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(rosePrimary.opacity(0.10))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(rosePrimary.opacity(0.26), lineWidth: 1)
+                )
+            }
+            .buttonStyle(POSReconcilePressStyle(scale: 0.98))
+
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onDismiss()
+            } label: {
+                Text(Language.get("POS_DismissInspection", alter: "إلغاء ومراجعة السلة"))
+                    .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .caption))
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .frame(height: 32)
+            }
+            .buttonStyle(.plain)
+        }
     }
 }

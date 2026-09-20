@@ -2750,6 +2750,13 @@
 "POS_BankTransferHint" = "Confirm bank transfer receipt in store merchant account";
 "POS_ExternalPaymentHint" = "Confirm external payment receipt before completing sale";
 "POS_ExternalPaymentConfirmed" = "External payment confirmed";
+"POS_Wholesale_Not_Supported_For_Product" = "This product (%@) does not support wholesale selling.";
+"POS_Wholesale_Permission_Required" = "Wholesale selling permission is not available for this user.";
+"POS_Wholesale_Unavailable_Message_Format" = "Wholesale selling is not available for %d items in cart:\n%@";
+"POS_WholesaleUnavailableForProduct" = "Wholesale is not available for this product or wholesale pricing is not configured.";
+"POS_WholesaleGroupDisabled" = "The selected selling unit is not enabled for wholesale. Select another unit or switch to retail.";
+"POS_BranchWholesaleDisabled" = "Wholesale selling for this product is disabled at this branch.";
+"POS_QuantityGroupUnavailable" = "The selected quantity unit is no longer available. Refresh products and try again.";
 
 /* PPScanner - Cheque & Financial Document Scanner */
 "PPScanner_Title" = "Cheque Scanner";
@@ -9581,3 +9588,55 @@
 "POS_A11y_IncreaseDiscount" = "Increase discount";
 "POS_A11y_OpenNumberPad" = "Open number pad";
 "POS_A11y_CopyTrace" = "Copy trace ID";
+
+/* MARK: - POS Price Discrepancy & Reconciliation Sheet */
+"POS_PriceDiscrepancyTitle" = "Authorized Price Update";
+"POS_PriceDiscrepancySubtitle" = "A variance was detected between the cart price and the authorized server price.";
+"POS_PriceAuditBadge" = "Cloud Price Audit";
+"POS_PriceMarkdownBadge" = "Price Reduction";
+"POS_PreviousPrice" = "Price in Cart";
+"POS_AuthoritativePrice" = "Authorized Price";
+"POS_PriceVariance" = "Variance";
+"POS_CartImpactTitle" = "Cart Impact Summary";
+"POS_CurrentCartTotal" = "Current Total";
+"POS_ProjectedCartTotal" = "Updated Total";
+"POS_UpdatePriceAndProceed" = "Update Price in Cart & Proceed";
+"POS_RemoveItemFromCart" = "Remove Item from Cart";
+"POS_DismissInspection" = "Dismiss & Inspect Cart";
+"POS_OldPriceBadge" = "Previous";
+"POS_NewPriceBadge" = "Cloud Verified";
+"POS_PerUnitDifference" = "Per Unit";
+"POS_LineTotalDifference" = "Total Item Diff";
+"POS_ItemQuantityCount" = "Qty: %d";
+
+/* MARK: - Barcode & Shelf Label Studio */
+"BarcodeStudio_Title" = "Barcode & Label Studio";
+"BarcodeStudio_Subtitle" = "Generate, preview, edit, and print specimen barcodes & shelf tags";
+"BarcodeStudio_Format_Barcode" = "Code 128";
+"BarcodeStudio_Format_QR" = "QR Matrix";
+"BarcodeStudio_Format_ShelfTag" = "Shelf Tag";
+"BarcodeStudio_AutoGenerate" = "Auto-Generate";
+"BarcodeStudio_ScanCamera" = "Scan Box";
+"BarcodeStudio_EditBarcode" = "Barcode Alphanumeric";
+"BarcodeStudio_SaveToCatalog" = "Save Code to Item";
+"BarcodeStudio_SaveSuccess" = "Barcode updated successfully";
+"BarcodeStudio_PrintCopies" = "Label Copies";
+"BarcodeStudio_PrintAction" = "Print Barcode Label";
+"BarcodeStudio_ShareAction" = "Share Label (PDF / PNG)";
+"BarcodeStudio_PrintAllStock" = "Stock: %d";
+"BarcodeStudio_ResetOriginal" = "Reset to Original";
+"BarcodeStudio_ValidCode" = "Valid Barcode";
+"BarcodeStudio_EmptyWarning" = "Enter a barcode or generate one";
+"Barcode_PrintQuickButton" = "Print";
+"Barcode_CopyQuickButton" = "Copy";
+"Barcode_StudioTriggerHint" = "Studio";
+"PrintUnavailable_Title" = "Printing Unavailable";
+"PrintUnavailable_Subtitle" = "Ensure a printer is connected via AirPrint or network.";
+
+/* MARK: - Inventory Lot Tracking Errors */
+"Inventory_Lot_MigrationRequired" = "Existing untracked stock must be reconciled before enabling lot tracking.";
+"Inventory_Lot_ExpiredError" = "The expiry date is invalid or the lot has already expired.";
+"Inventory_Lot_AlreadyExists" = "This lot number is already registered for this item in this branch.";
+"Inventory_Lot_ValidFromFuture" = "Validity start date cannot be in the future.";
+"Inventory_Lot_InvalidPolicy" = "Lots cannot be created for individually tracked items.";
+"Inventory_Lot_Unavailable" = "The selected lot is unavailable or invalid.";

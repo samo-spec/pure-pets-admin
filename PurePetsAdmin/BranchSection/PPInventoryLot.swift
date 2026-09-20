@@ -287,12 +287,13 @@ public final class PPInventoryLotService: ObservableObject {
         }
 
         let isoFormatter = ISO8601DateFormatter()
+        let clampedValidFrom = min(validFrom, Date())
         var payload: [String: Any] = [
             "branchId": resolvedBranch,
             "productId": productId,
             "lotNumber": lotNumber.trimmingCharacters(in: .whitespacesAndNewlines),
             "initialQuantity": initialQuantity,
-            "validFrom": isoFormatter.string(from: validFrom),
+            "validFrom": isoFormatter.string(from: clampedValidFrom),
             "expiryDate": isoFormatter.string(from: expiryDate),
             "supplier": supplier.trimmingCharacters(in: .whitespacesAndNewlines),
             "notes": notes.trimmingCharacters(in: .whitespacesAndNewlines),
