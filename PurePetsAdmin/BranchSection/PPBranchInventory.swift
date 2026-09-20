@@ -106,14 +106,22 @@ public struct PPBranchInventory: Identifiable, Hashable, Sendable {
         self.barcode = (dictionary["barcode"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         self.category = (dictionary["category"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         
-        let rawQty = (dictionary["quantity"] as? NSNumber)?.intValue ?? 0
-        let rawReserved = (dictionary["reservedQuantity"] as? NSNumber)?.intValue ?? 0
-        let rawAvailable = (dictionary["availableQuantity"] as? NSNumber)?.intValue
-        let rawDamaged = (dictionary["damagedQuantity"] as? NSNumber)?.intValue ?? 0
-        let rawExpired = (dictionary["expiredQuantity"] as? NSNumber)?.intValue ?? 0
-        let rawQuarantine = (dictionary["quarantineQuantity"] as? NSNumber)?.intValue ?? 0
-        let rawSupplierReturn = (dictionary["supplierReturnQuantity"] as? NSNumber)?.intValue ?? 0
-        let rawOnHand = (dictionary["onHandQuantity"] as? NSNumber)?.intValue
+        func count(_ key: String, default fallback: Int = 0) -> Int? {
+            guard let value = dictionary[key] else { return fallback }
+            guard let number = value as? NSNumber, number.doubleValue.isFinite,
+                  number.doubleValue >= 0, number.doubleValue <= 9_007_199_254_740_991,
+                  number.doubleValue.rounded(.towardZero) == number.doubleValue else { return nil }
+            return number.intValue
+        }
+        guard let rawQty = count("quantity"), let rawReserved = count("reservedQuantity"),
+              let rawDamaged = count("damagedQuantity"), let rawExpired = count("expiredQuantity"),
+              let rawQuarantine = count("quarantineQuantity"), let rawSupplierReturn = count("supplierReturnQuantity") else { return nil }
+        let nonSellable = rawReserved + rawDamaged + rawExpired + rawQuarantine + rawSupplierReturn
+        guard let rawAvailable = count("availableQuantity", default: max(0, rawQty - nonSellable)),
+              let rawOnHand = count("onHandQuantity", default: rawQty),
+              rawOnHand == rawAvailable + nonSellable,
+              let revision = count("projectionRevision", default: 1),
+              let minimum = count("minimumStock"), let maximum = count("maximumStock") else { return nil }
 
         self.quantity = max(0, rawQty)
         self.reservedQuantity = max(0, rawReserved)
@@ -121,23 +129,20 @@ public struct PPBranchInventory: Identifiable, Hashable, Sendable {
         self.expiredQuantity = max(0, rawExpired)
         self.quarantineQuantity = max(0, rawQuarantine)
         self.supplierReturnQuantity = max(0, rawSupplierReturn)
-        self.availableQuantity = max(0, rawAvailable ?? (rawQty - rawReserved))
-        self.onHandQuantity = max(
-            0,
-            rawOnHand ?? (self.availableQuantity + self.reservedQuantity + self.damagedQuantity + self.expiredQuantity + self.quarantineQuantity + self.supplierReturnQuantity)
-        )
-        self.projectionRevision = (dictionary["projectionRevision"] as? NSNumber)?.intValue ?? 1
-        self.minimumStock = max(0, (dictionary["minimumStock"] as? NSNumber)?.intValue ?? 0)
-        self.maximumStock = max(0, (dictionary["maximumStock"] as? NSNumber)?.intValue ?? 0)
+        self.availableQuantity = rawAvailable
+        self.onHandQuantity = rawOnHand
+        self.projectionRevision = revision
+        self.minimumStock = minimum
+        self.maximumStock = maximum
         self.shelfLocation = (dictionary["shelfLocation"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         
-        if let cost = dictionary["costPrice"] as? NSNumber {
+        if let cost = dictionary["costPrice"] as? NSNumber, cost.doubleValue.isFinite, cost.doubleValue >= 0 {
             self.costPrice = cost.doubleValue
         } else {
             self.costPrice = nil
         }
         
-        if let price = dictionary["sellingPrice"] as? NSNumber {
+        if let price = dictionary["sellingPrice"] as? NSNumber, price.doubleValue.isFinite, price.doubleValue >= 0 {
             self.sellingPrice = price.doubleValue
         } else {
             self.sellingPrice = nil
@@ -235,6 +240,9 @@ public final class PPBranchInventoryService: ObservableObject {
     @Published public private(set) var isLoading: Bool = false
     @Published public private(set) var currentBranchId: String? = nil
     @Published public private(set) var lastSyncDate: Date? = nil
+    @Published public private(set) var inventoryError: String? = nil
+    @Published public private(set) var settingsError: String? = nil
+    @Published public private(set) var isServerConfirmed = false
 
     private var listenerRegistration: ListenerRegistration?
     private var settingsListenerRegistration: ListenerRegistration?
@@ -284,6 +292,9 @@ public final class PPBranchInventoryService: ObservableObject {
         inventoryMap = [:]
         settingsMap = [:]
         lastSyncDate = nil
+        inventoryError = nil
+        settingsError = nil
+        isServerConfirmed = false
 
         guard let branchId = branchId?.trimmingCharacters(in: .whitespacesAndNewlines), !branchId.isEmpty else {
             currentBranchId = nil
@@ -298,7 +309,7 @@ public final class PPBranchInventoryService: ObservableObject {
             .collection("branchInventory")
             .whereField("branchId", isEqualTo: branchId)
 
-        listenerRegistration = query.addSnapshotListener { [weak self] snapshot, error in
+        listenerRegistration = query.addSnapshotListener(includeMetadataChanges: true) { [weak self] snapshot, error in
             Task { @MainActor in
                 guard let self,
                       self.bindingGeneration == generation,
@@ -306,19 +317,26 @@ public final class PPBranchInventoryService: ObservableObject {
                 self.isLoading = false
 
                 if let error {
-                    print("❌ [PPBranchInventoryService] Firestore inventory listener error: \(error.localizedDescription)")
+                    self.inventoryError = error.localizedDescription
+                    self.isServerConfirmed = false
                     return
                 }
 
                 guard let documents = snapshot?.documents else { return }
                 var newMap: [String: PPBranchInventory] = [:]
                 for doc in documents {
-                    if let record = PPBranchInventory(dictionary: doc.data(), documentId: doc.documentID) {
-                        newMap[record.productId] = record
+                    guard let record = PPBranchInventory(dictionary: doc.data(), documentId: doc.documentID),
+                          record.branchId == branchId, newMap[record.productId] == nil else {
+                        self.inventoryError = Language.get("Inventory_ProjectionUnavailable", alter: "تعذر التحقق من رصيد الفرع. أعد تحميل المخزون.")
+                        self.isServerConfirmed = false
+                        return
                     }
+                    newMap[record.productId] = record
                 }
                 self.inventoryMap = newMap
-                self.lastSyncDate = Date()
+                self.inventoryError = nil
+                self.isServerConfirmed = snapshot?.metadata.isFromCache == false && snapshot?.metadata.hasPendingWrites == false
+                if self.isServerConfirmed { self.lastSyncDate = Date() }
             }
         }
 
@@ -332,7 +350,7 @@ public final class PPBranchInventoryService: ObservableObject {
                       self.bindingGeneration == generation,
                       self.currentBranchId == branchId else { return }
                 if let error {
-                    print("❌ [PPBranchInventoryService] Firestore settings listener error: \(error.localizedDescription)")
+                    self.settingsError = error.localizedDescription
                     return
                 }
 
@@ -344,6 +362,7 @@ public final class PPBranchInventoryService: ObservableObject {
                     }
                 }
                 self.settingsMap = newSettings
+                self.settingsError = nil
             }
         }
     }
@@ -377,57 +396,31 @@ public final class PPBranchInventoryService: ObservableObject {
         return fallbackPrice
     }
 
-    /// Updates or inserts a local in-memory branch inventory record for immediate UI reactivity.
-    public func updateAvailableStockLocally(for productId: String, branchId: String, newQuantity: Int) {
+    /// Refreshes the authoritative record after a confirmed command. Never
+    /// invent quantities/revisions or reapply deltas to an already-new listener.
+    public func refreshInventory(for productId: String, branchId: String) {
         let cleanBranch = branchId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanBranch.isEmpty, currentBranchId == cleanBranch else { return }
-        let clamped = max(0, newQuantity)
-        if let existing = inventoryMap[productId] {
-            let nextAvailable = max(0, clamped - existing.reservedQuantity)
-            let updated = PPBranchInventory(
-                id: existing.id,
-                branchId: existing.branchId,
-                productId: existing.productId,
-                productName: existing.productName,
-                sku: existing.sku,
-                barcode: existing.barcode,
-                category: existing.category,
-                quantity: clamped,
-                reservedQuantity: existing.reservedQuantity,
-                availableQuantity: nextAvailable,
-                onHandQuantity: nextAvailable + existing.reservedQuantity + existing.damagedQuantity + existing.expiredQuantity + existing.quarantineQuantity + existing.supplierReturnQuantity,
-                damagedQuantity: existing.damagedQuantity,
-                expiredQuantity: existing.expiredQuantity,
-                quarantineQuantity: existing.quarantineQuantity,
-                supplierReturnQuantity: existing.supplierReturnQuantity,
-                minimumStock: existing.minimumStock,
-                maximumStock: existing.maximumStock,
-                shelfLocation: existing.shelfLocation,
-                costPrice: existing.costPrice,
-                sellingPrice: existing.sellingPrice,
-                noStock: nextAvailable <= 0,
-                projectionRevision: existing.projectionRevision + 1,
-                updatedAt: Date()
-            )
-            inventoryMap[productId] = updated
-        } else {
-            let newRecord = PPBranchInventory(
-                id: "\(cleanBranch)_\(productId)",
-                branchId: cleanBranch,
-                productId: productId,
-                quantity: clamped,
-                reservedQuantity: 0,
-                availableQuantity: clamped,
-                onHandQuantity: clamped,
-                damagedQuantity: 0,
-                expiredQuantity: 0,
-                quarantineQuantity: 0,
-                supplierReturnQuantity: 0,
-                noStock: clamped <= 0,
-                projectionRevision: 1,
-                updatedAt: Date()
-            )
-            inventoryMap[productId] = newRecord
+        let generation = bindingGeneration
+        Task { @MainActor [weak self] in
+            do {
+                let snapshot = try await Firestore.firestore().collection("branchInventory")
+                    .document("\(cleanBranch)_\(productId)").getDocument(source: .server)
+                guard let self, self.bindingGeneration == generation, self.currentBranchId == cleanBranch else { return }
+                guard let data = snapshot.data(), let record = PPBranchInventory(dictionary: data, documentId: snapshot.documentID),
+                      record.branchId == cleanBranch, record.productId == productId else {
+                    self.inventoryError = Language.get("Inventory_ProjectionUnavailable", alter: "تعذر التحقق من رصيد الفرع. أعد تحميل المخزون.")
+                    self.isServerConfirmed = false
+                    return
+                }
+                if (self.inventoryMap[productId]?.projectionRevision ?? 0) <= record.projectionRevision {
+                    self.inventoryMap[productId] = record
+                }
+            } catch {
+                guard let self, self.bindingGeneration == generation else { return }
+                self.inventoryError = error.localizedDescription
+                self.isServerConfirmed = false
+            }
         }
     }
 
@@ -479,41 +472,7 @@ public final class PPBranchInventoryService: ObservableObject {
                     completion?(.success(data))
                     return
                 }
-                if let branchData = data["branchInventory"] as? [String: Any] {
-                    let docId = (data["branchInventoryId"] as? String) ?? "\(resolvedBranch)_\(productId)"
-                    if let record = PPBranchInventory(dictionary: branchData, documentId: docId) {
-                        self.inventoryMap[productId] = record
-                    }
-                } else if let existing = self.inventoryMap[productId] {
-                    let newAvail = max(0, existing.availableQuantity - quantity)
-                    let newDamaged = existing.damagedQuantity + quantity
-                    let updated = PPBranchInventory(
-                        id: existing.id,
-                        branchId: existing.branchId,
-                        productId: existing.productId,
-                        productName: existing.productName,
-                        sku: existing.sku,
-                        barcode: existing.barcode,
-                        category: existing.category,
-                        quantity: existing.quantity,
-                        reservedQuantity: existing.reservedQuantity,
-                        availableQuantity: newAvail,
-                        onHandQuantity: existing.onHandQuantity,
-                        damagedQuantity: newDamaged,
-                        expiredQuantity: existing.expiredQuantity,
-                        quarantineQuantity: existing.quarantineQuantity,
-                        supplierReturnQuantity: existing.supplierReturnQuantity,
-                        minimumStock: existing.minimumStock,
-                        maximumStock: existing.maximumStock,
-                        shelfLocation: existing.shelfLocation,
-                        costPrice: existing.costPrice,
-                        sellingPrice: existing.sellingPrice,
-                        noStock: newAvail <= 0,
-                        projectionRevision: existing.projectionRevision + 1,
-                        updatedAt: Date()
-                    )
-                    self.inventoryMap[productId] = updated
-                }
+                self.refreshInventory(for: productId, branchId: resolvedBranch)
                 completion?(.success(data))
             }
         }
@@ -582,72 +541,7 @@ public final class PPBranchInventoryService: ObservableObject {
                     completion?(.success(data))
                     return
                 }
-                // Refresh local cache if record is available in map
-                if let existing = self.inventoryMap[productId] {
-                    var avail = existing.availableQuantity
-                    let res = existing.reservedQuantity
-                    var quar = existing.quarantineQuantity
-                    var dam = existing.damagedQuantity
-                    var exp = existing.expiredQuantity
-                    var ret = existing.supplierReturnQuantity
-                    var onHand = existing.onHandQuantity
-
-                    if action == "write_off" {
-                        onHand = max(0, onHand - quantity)
-                        switch fromBucket {
-                        case "available": avail = max(0, avail - quantity)
-                        case "quarantine": quar = max(0, quar - quantity)
-                        case "damaged": dam = max(0, dam - quantity)
-                        case "expired": exp = max(0, exp - quantity)
-                        case "supplierReturn": ret = max(0, ret - quantity)
-                        default: break
-                        }
-                    } else if action == "move", let to = toBucket {
-                        switch fromBucket {
-                        case "available": avail = max(0, avail - quantity)
-                        case "quarantine": quar = max(0, quar - quantity)
-                        case "damaged": dam = max(0, dam - quantity)
-                        case "expired": exp = max(0, exp - quantity)
-                        case "supplierReturn": ret = max(0, ret - quantity)
-                        default: break
-                        }
-                        switch to {
-                        case "available": avail += quantity
-                        case "quarantine": quar += quantity
-                        case "damaged": dam += quantity
-                        case "expired": exp += quantity
-                        case "supplierReturn": ret += quantity
-                        default: break
-                        }
-                    }
-
-                    let updated = PPBranchInventory(
-                        id: existing.id,
-                        branchId: existing.branchId,
-                        productId: existing.productId,
-                        productName: existing.productName,
-                        sku: existing.sku,
-                        barcode: existing.barcode,
-                        category: existing.category,
-                        quantity: existing.quantity,
-                        reservedQuantity: res,
-                        availableQuantity: avail,
-                        onHandQuantity: onHand,
-                        damagedQuantity: dam,
-                        expiredQuantity: exp,
-                        quarantineQuantity: quar,
-                        supplierReturnQuantity: ret,
-                        minimumStock: existing.minimumStock,
-                        maximumStock: existing.maximumStock,
-                        shelfLocation: existing.shelfLocation,
-                        costPrice: existing.costPrice,
-                        sellingPrice: existing.sellingPrice,
-                        noStock: avail <= 0,
-                        projectionRevision: existing.projectionRevision + 1,
-                        updatedAt: Date()
-                    )
-                    self.inventoryMap[productId] = updated
-                }
+                self.refreshInventory(for: productId, branchId: resolvedBranch)
                 completion?(.success(data))
             }
         }
@@ -739,13 +633,7 @@ public final class PPBranchInventoryService: ObservableObject {
                     completion?(.success(data))
                     return
                 }
-                if let newQtyNum = (data["newQuantity"] as? NSNumber) ?? (data["targetBranchQty"] as? NSNumber) {
-                    self.updateAvailableStockLocally(
-                        for: productId,
-                        branchId: branchId,
-                        newQuantity: newQtyNum.intValue
-                    )
-                }
+                self.refreshInventory(for: productId, branchId: branchId)
                 completion?(.success(data))
             }
         }
@@ -806,20 +694,8 @@ public final class PPBranchInventoryService: ObservableObject {
                     completion?(.success(data))
                     return
                 }
-                if let sourceNewQtyNum = data["sourceNewQuantity"] as? NSNumber {
-                    self.updateAvailableStockLocally(
-                        for: productId,
-                        branchId: sourceBranchId,
-                        newQuantity: sourceNewQtyNum.intValue
-                    )
-                }
-                if let destNewQtyNum = data["destNewQuantity"] as? NSNumber {
-                    self.updateAvailableStockLocally(
-                        for: productId,
-                        branchId: destinationBranchId,
-                        newQuantity: destNewQtyNum.intValue
-                    )
-                }
+                self.refreshInventory(for: productId, branchId: sourceBranchId)
+                self.refreshInventory(for: productId, branchId: destinationBranchId)
                 completion?(.success(data))
             }
         }
@@ -835,6 +711,7 @@ public final class PPBranchInventoryService: ObservableObject {
         shelfLocation: String? = nil,
         varianceThreshold: Int = 2,
         productIds: [String]? = nil,
+        commandId: String? = nil,
         completion: @escaping (Result<PPCycleCountSession, Error>) -> Void
     ) {
         var payload: [String: Any] = [
@@ -845,6 +722,7 @@ public final class PPBranchInventoryService: ObservableObject {
         if let cat = category, !cat.isEmpty { payload["category"] = cat }
         if let shelf = shelfLocation, !shelf.isEmpty { payload["shelfLocation"] = shelf }
         if let pids = productIds, !pids.isEmpty { payload["productIds"] = pids }
+        if let commandId { payload["commandId"] = commandId }
 
         let callable = Functions.functions().httpsCallable("createCycleCountSession")
         callable.call(["payload": payload]) { result, error in
@@ -852,8 +730,12 @@ public final class PPBranchInventoryService: ObservableObject {
                 completion(.failure(error))
                 return
             }
-            let data = (result?.data as? [String: Any]) ?? [:]
-            let auditId = data["auditId"] as? String ?? ""
+            guard let data = result?.data as? [String: Any], data["ok"] as? Bool == true,
+                  let auditId = data["auditId"] as? String, !auditId.isEmpty,
+                  data["items"] is [[String: Any]] else {
+                completion(.failure(Self.invalidCycleCountResponse()))
+                return
+            }
             let session = PPCycleCountSession(id: auditId, branchId: branchId, data: data)
             completion(.success(session))
         }
@@ -879,7 +761,12 @@ public final class PPBranchInventoryService: ObservableObject {
                 completion(.failure(error))
                 return
             }
-            let data = (result?.data as? [String: Any]) ?? [:]
+            guard let data = result?.data as? [String: Any], data["ok"] as? Bool == true,
+                  data["auditId"] as? String == auditId,
+                  data["items"] is [[String: Any]], data["status"] is String else {
+                completion(.failure(Self.invalidCycleCountResponse()))
+                return
+            }
             let session = PPCycleCountSession(id: auditId, branchId: branchId, data: data)
             completion(.success(session))
         }
@@ -905,7 +792,11 @@ public final class PPBranchInventoryService: ObservableObject {
                 completion(.failure(error))
                 return
             }
-            let data = (result?.data as? [String: Any]) ?? [:]
+            guard let data = result?.data as? [String: Any], data["ok"] as? Bool == true,
+                  data["auditId"] as? String == auditId else {
+                completion(.failure(Self.invalidCycleCountResponse()))
+                return
+            }
             Task { @MainActor [weak self] in
                 // Refresh local snapshot after reconciliation
                 self?.startListeningIfNeeded()
@@ -931,8 +822,12 @@ public final class PPBranchInventoryService: ObservableObject {
                 completion(.failure(error))
                 return
             }
-            let data = (result?.data as? [String: Any]) ?? [:]
-            let items = (data["items"] as? [[String: Any]]) ?? []
+            guard let data = result?.data as? [String: Any], data["ok"] as? Bool == true,
+                  let items = data["items"] as? [[String: Any]],
+                  items.allSatisfy({ !((($0["id"] ?? $0["auditId"]) as? String) ?? "").isEmpty }) else {
+                completion(.failure(Self.invalidCycleCountResponse()))
+                return
+            }
             let sessions = items.map { dict in
                 let id = (dict["id"] as? String) ?? (dict["auditId"] as? String) ?? ""
                 let bId = (dict["branchId"] as? String) ?? (branchId ?? "")
@@ -959,11 +854,20 @@ public final class PPBranchInventoryService: ObservableObject {
                 completion(.failure(error))
                 return
             }
-            let data = (result?.data as? [String: Any]) ?? [:]
-            let sessionData = (data["session"] as? [String: Any]) ?? data
+            guard let data = result?.data as? [String: Any], data["ok"] as? Bool == true,
+                  let sessionData = data["session"] as? [String: Any],
+                  sessionData["branchId"] as? String == branchId else {
+                completion(.failure(Self.invalidCycleCountResponse()))
+                return
+            }
             let session = PPCycleCountSession(id: auditId, branchId: branchId, data: sessionData)
             completion(.success(session))
         }
+    }
+
+    private nonisolated static func invalidCycleCountResponse() -> NSError {
+        NSError(domain: "PPInventory", code: -1, userInfo: [NSLocalizedDescriptionKey:
+            Language.get("Inventory_InvalidCommandResponse", alter: "تعذر التحقق من استجابة خدمة المخزون.")])
     }
 }
 
@@ -982,8 +886,8 @@ public struct PPCycleCountSession: Identifiable, Sendable {
     public let totalVariance: Int
     public let totalShrinkageUnits: Int
     public let totalSurplusUnits: Int
-    public let totalShrinkageValue: Double
-    public let totalSurplusValue: Double
+    public let totalShrinkageValue: Double?
+    public let totalSurplusValue: Double?
     public let discrepancyCount: Int
     public let accuracyRate: Double
     public let createdBy: String
@@ -1011,8 +915,8 @@ public struct PPCycleCountSession: Identifiable, Sendable {
         self.totalVariance = (data["totalVariance"] as? NSNumber)?.intValue ?? 0
         self.totalShrinkageUnits = (data["totalShrinkageUnits"] as? NSNumber)?.intValue ?? 0
         self.totalSurplusUnits = (data["totalSurplusUnits"] as? NSNumber)?.intValue ?? 0
-        self.totalShrinkageValue = (data["totalShrinkageValue"] as? NSNumber)?.doubleValue ?? 0.0
-        self.totalSurplusValue = (data["totalSurplusValue"] as? NSNumber)?.doubleValue ?? 0.0
+        self.totalShrinkageValue = (data["totalShrinkageValue"] as? NSNumber)?.doubleValue
+        self.totalSurplusValue = (data["totalSurplusValue"] as? NSNumber)?.doubleValue
         self.discrepancyCount = (data["discrepancyCount"] as? NSNumber)?.intValue ?? 0
         self.accuracyRate = (data["accuracyRate"] as? NSNumber)?.doubleValue ?? 100.0
         self.createdBy = data["createdBy"] as? String ?? ""
@@ -1024,14 +928,21 @@ public struct PPCycleCountSession: Identifiable, Sendable {
         self.resolutionNotes = data["resolutionNotes"] as? String
 
         let tsCreated = data["createdAt"] as? Timestamp
-        self.createdAt = tsCreated?.dateValue()
+        self.createdAt = tsCreated?.dateValue() ?? Self.callableDate(data["createdAt"])
         let tsSubmitted = data["submittedAt"] as? Timestamp
-        self.submittedAt = tsSubmitted?.dateValue()
+        self.submittedAt = tsSubmitted?.dateValue() ?? Self.callableDate(data["submittedAt"])
         let tsReconciled = data["reconciledAt"] as? Timestamp
-        self.reconciledAt = tsReconciled?.dateValue()
+        self.reconciledAt = tsReconciled?.dateValue() ?? Self.callableDate(data["reconciledAt"])
 
         let rawItems = (data["items"] as? [[String: Any]]) ?? (data["snapshot"] as? [[String: Any]]) ?? []
         self.items = rawItems.map { PPCycleCountItem(data: $0) }
+    }
+
+    private static func callableDate(_ value: Any?) -> Date? {
+        guard let fields = value as? [String: Any],
+              let seconds = (fields["_seconds"] ?? fields["seconds"]) as? NSNumber,
+              seconds.doubleValue.isFinite else { return nil }
+        return Date(timeIntervalSince1970: seconds.doubleValue)
     }
 }
 
@@ -1043,7 +954,7 @@ public struct PPCycleCountItem: Identifiable, Sendable {
     public let barcode: String
     public let category: String
     public let shelfLocation: String
-    public let costPrice: Double
+    public let costPrice: Double?
     public let sellingPrice: Double
     public let expectedOnHand: Int?
     public let expectedAvailable: Int?
@@ -1061,7 +972,7 @@ public struct PPCycleCountItem: Identifiable, Sendable {
         self.barcode = data["barcode"] as? String ?? ""
         self.category = data["category"] as? String ?? ""
         self.shelfLocation = data["shelfLocation"] as? String ?? ""
-        self.costPrice = (data["costPrice"] as? NSNumber)?.doubleValue ?? 0.0
+        self.costPrice = (data["costPrice"] as? NSNumber)?.doubleValue
         self.sellingPrice = (data["sellingPrice"] as? NSNumber)?.doubleValue ?? 0.0
         self.expectedOnHand = (data["expectedOnHand"] as? NSNumber)?.intValue
         self.expectedAvailable = (data["expectedAvailable"] as? NSNumber)?.intValue
@@ -1085,6 +996,18 @@ public enum PPBranchInventoryErrorHelper {
         if let detailsDict = (nsError.userInfo["details"] as? [String: Any]) ?? (nsError.userInfo["FIRFunctionsErrorDetailsKey"] as? [String: Any]) {
             if let domainCode = detailsDict["domainCode"] as? String {
                 switch domainCode {
+                case "CYCLE_COUNT_INCOMPLETE", "CYCLE_COUNT_INVALID_COUNTS":
+                    return Language.get("Inventory_CountIncomplete", alter: "عدّ كل صنف أو أكد أن رصيده صفر قبل إرسال الجرد.")
+                case "CYCLE_COUNT_SCOPE_TOO_LARGE":
+                    return Language.get("Inventory_CountScopeTooLarge", alter: "اختر رفاً أو فئة أو جرداً انتقائياً لا يتجاوز 100 صنف.")
+                case "CYCLE_COUNT_EMPTY":
+                    return Language.get("Inventory_CountScopeEmpty", alter: "لا توجد أصناف مخزون في نطاق الجرد المحدد.")
+                case "TRACKED_INVENTORY_OPERATION_REQUIRED":
+                    return Language.get("Inventory_TrackedOperationRequired", alter: "استخدم مسار الحيوان المحدد أو التشغيلة لتعديل هذا المخزون.")
+                case "INVENTORY_AGGREGATE_CONFLICT", "INVENTORY_IDENTITY_CONFLICT":
+                    return Language.get("Inventory_AggregateConflict", alter: "أرصدة المخزون غير متطابقة. حدّث البيانات وسوّها قبل إعادة المحاولة.")
+                case "STALE_REVISION":
+                    return Language.get("Inventory_StaleCount", alter: "تغير المخزون بعد بدء الجرد. ابدأ جرداً جديداً قبل تطبيق التسوية.")
                 case "INSUFFICIENT_BRANCH_STOCK":
                     return Language.get("Branch_Stock_Insufficient", alter: "الكمية المتوفرة في الفرع غير كافية لإتمام التحويل.")
                 case "BRANCH_NOT_FOUND", "SOURCE_BRANCH_NOT_FOUND":

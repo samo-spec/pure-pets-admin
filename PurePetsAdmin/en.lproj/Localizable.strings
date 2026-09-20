@@ -1,4 +1,16 @@
 /* ===================== Admin Login ===================== */
+"Inventory_CostUnavailable" = "Cost unavailable";
+"Inventory_SaveOutcomeUnknown_Format" = "The save could not be confirmed. Retry to recover the same operation without duplicating the item. %@";
+"Inventory_CountIncomplete" = "Count every item or verify zero stock before submitting.";
+"Inventory_CountVarianceFormat" = "%@ units · %@";
+"Inventory_DiscardCount_Title" = "Leave this count?";
+"Inventory_DiscardCount_Message" = "These counts have not been submitted. Leaving will discard the entered counts.";
+"Inventory_TrackedOperationRequired" = "Use the unit or lot workflow to change this stock.";
+"Inventory_AggregateConflict" = "Inventory records disagree. Refresh and reconcile them before retrying.";
+"Inventory_StaleCount" = "Stock changed after the count started. Start a new count before applying corrections.";
+"Inventory_CountScopeTooLarge" = "Choose a shelf, category, or spot count with at most 100 items.";
+"Inventory_CountScopeEmpty" = "There are no inventory items in the selected count scope.";
+"Inventory_ProjectionUnavailable" = "Branch inventory could not be verified. Refresh before changing stock.";
 "AdminLoginTitle"              = "Admin Login";
 "Email"                        = "Email";
 "EmailPlaceholder"             = "Enter email";
@@ -8472,6 +8484,14 @@
 "TactilePad_A11y_Backspace" = "Delete Last Digit";
 "TactilePad_A11y_Decimal" = "Decimal Point";
 "TactilePad_A11y_Readout" = "Entered Value: %@ %@";
+"Max_Stock_Format" = "Full Stock (%d)";
+"POS_Zero_Quantity_Remove_Warning" = "Quantity 0: Item will be removed from cart upon confirmation.";
+"POS_LivePet_Rings_Label" = "Rings:";
+"POS_LiveSpecimen_Tag" = "Live Pet";
+"POS_SelectRingTagsPrompt" = "Tap to select ring numbers";
+"POS_EditRings" = "Edit";
+"POS_SelectedRingsA11y" = "Selected rings: ";
+"POS_TapToChangeRings_Hint" = "Double tap to edit selected rings";
 
 /* ===================== App Marketplace Visibility ===================== */
 "AppMarket_Visibility_Title" = "App Marketplace Visibility";
@@ -9277,6 +9297,69 @@
 "Pury_Clear_Confirm_Message" = "This clears the conversation on this device only. No operational record is affected.";
 "Pury_Clear_Confirm_Action" = "Clear Conversation";
 "Pury_Clear_Cancel_Action" = "Cancel";
+
+/* Pury Conversation Ledger — launch deck, turn provenance, command bar */
+"Pury_Greeting_Morning" = "Good morning — I'm Pury";
+"Pury_Greeting_Afternoon" = "Good afternoon — I'm Pury";
+"Pury_Greeting_Evening" = "Good evening — I'm Pury";
+"Pury_Greeting_Night" = "Working late — I'm Pury";
+"Pury_Launch_Mission" = "Ask about occupancy, inventory, fulfillment, or performance — answered from the live records you are cleared to see.";
+"Pury_Launch_Section_Start" = "Start here";
+"Pury_Launch_Section_Quick" = "Quick queries";
+"Pury_Launch_Bound_Badge" = "Bound context";
+"Pury_Launch_Pod_A11y_Hint" = "Double tap to run this query";
+
+"Pury_Launch_ThisStay_Title" = "This stay";
+"Pury_Launch_ThisStay_Sub" = "Care tasks and medication status";
+"Pury_Launch_ThisOrder_Title" = "This order";
+"Pury_Launch_ThisOrder_Sub" = "Tracking history and fulfillment";
+"Pury_Launch_ThisItem_Title" = "This item";
+"Pury_Launch_ThisItem_Sub" = "Stock level and sales performance";
+
+"Pury_Launch_Kicker_Hotel" = "Hotel";
+"Pury_Launch_Kicker_Inventory" = "Inventory";
+"Pury_Launch_Kicker_Fulfillment" = "Fulfillment";
+"Pury_Launch_Kicker_Performance" = "Performance";
+"Pury_Launch_Hotel_Title" = "Occupancy status";
+"Pury_Launch_Hotel_Sub" = "Rooms and guests right now";
+"Pury_Launch_Stock_Title" = "Low stock";
+"Pury_Launch_Stock_Sub" = "Items nearing threshold";
+"Pury_Launch_Orders_Title" = "Pending orders";
+"Pury_Launch_Orders_Sub" = "Awaiting dispatch and delivery";
+"Pury_Launch_Kpi_Title" = "This week";
+"Pury_Launch_Kpi_Sub" = "Revenue and growth KPIs";
+
+"Pury_Quick_Vets_Title" = "Veterinarians";
+"Pury_Quick_Vets_Prompt" = "How many veterinarians are registered in the system?";
+"Pury_Quick_Adoption_Title" = "Adoption requests";
+"Pury_Quick_Adoption_Prompt" = "What are the latest adoption requests?";
+"Pury_Quick_Guests_Title" = "Hotel guests";
+"Pury_Quick_Guests_Prompt" = "List the pets currently staying at the hotel.";
+"Pury_Quick_Audit_Title" = "Stock audit";
+"Pury_Quick_Audit_Prompt" = "Quick audit summary of available product inventory.";
+"Pury_Quick_Delivery_Title" = "Delivery orders";
+"Pury_Quick_Delivery_Prompt" = "What is the status of delivery shipments today?";
+"Pury_Quick_Bookings_Title" = "Hotel bookings";
+"Pury_Quick_Bookings_Prompt" = "How many upcoming hotel bookings are confirmed?";
+"Pury_Quick_Branches_Title" = "Branch status";
+"Pury_Quick_Branches_Prompt" = "What are the active branches and their operational status?";
+"Pury_Quick_Missing_Title" = "Missing reports";
+"Pury_Quick_Missing_Prompt" = "What are the latest reported missing pets?";
+"Pury_Quick_POS_Title" = "POS sales";
+"Pury_Quick_POS_Prompt" = "Summary of today's point of sale and cashier transactions.";
+"Pury_Quick_LivePets_Title" = "Available pets";
+"Pury_Quick_LivePets_Prompt" = "How many live pets are currently available across branches?";
+
+"Pury_Turn_Copy" = "Copy";
+"Pury_Turn_Rerun" = "Re-run query";
+"Pury_Turn_Records_Format" = "%@ live records";
+"Pury_Turn_Latency_A11y_Format" = "Response time %@";
+
+"Pury_Pending_Approval_Title" = "Action awaiting your approval";
+"Pury_Pending_Approval_Action" = "Review";
+
+"Pury_Composer_Clear" = "Clear text";
+"Pury_Composer_Send" = "Send";
 "Pury_Welcome_Title" = "Hello! I'm Pury, your operational assistant";
 "Pury_Welcome_Desc" = "Ask any question regarding inventory, orders, hotel guests, or sales reports, and I will answer directly from live authorized data.";
 "Pury_Quick_Prompts" = "Quick suggestions:";
@@ -9382,3 +9465,92 @@
 "LivePet_Confirm_ErrorMessage" = "The return data is saved, but the summary can’t be displayed right now. Try again.";
 "LivePet_Confirm_Retry" = "Try again";
 "POS_TransactionID" = "Receipt";
+
+/* Pury Chat Content Layer — results, products, records, metrics */
+"Pury_CTA_Hotel" = "Open Hotel Dashboard";
+"Pury_CTA_Order" = "View Order Details";
+"Pury_CTA_Product" = "Manage Product Stock";
+"Pury_CTA_Listings" = "View Pet Listings";
+"Pury_CTA_MedicalStaff" = "View Medical Staff";
+"Pury_CTA_Users" = "View Users";
+"Pury_CTA_Branch" = "View Branch Details";
+"Pury_CTA_ProductCatalog" = "Manage Product in Catalog";
+"Pury_CTA_HotelStay" = "View Hotel Stay Details";
+"Pury_CTA_UserProfile" = "View User Profile";
+"Pury_Stock_Out" = "Out of Stock";
+"Pury_Stock_Low" = "Low Stock";
+"Pury_Stock_In" = "In Stock";
+"Pury_Stock_Units_None" = "0 units remaining";
+"Pury_Record_ShowLess" = "Show less";
+"Pury_Record_Generic" = "Record Details";
+"Pury_Value_Active" = "Active";
+"Pury_Value_Disabled" = "Disabled";
+"Pury_Catalog_StoreCatalog" = "Store Catalog";
+"Pury_Metric_Generic" = "Operational Metric";
+"Pury_Metric_Vets_Title" = "Veterinarians";
+"Pury_Metric_Vets_Sub" = "Certified Medical Staff";
+"Pury_Metric_Listings_Title" = "Pet Listings";
+"Pury_Metric_Listings_Sub" = "Active Listings";
+"Pury_Metric_Services_Title" = "Service Offers";
+"Pury_Metric_Services_Sub" = "Active Service Packages";
+"Pury_Metric_Adoption_Title" = "Adoption Requests";
+"Pury_Metric_Adoption_Sub" = "Eligible for Adoption";
+"Pury_Metric_Products_Title" = "Store Products";
+"Pury_Metric_Products_Sub" = "Catalog Inventory";
+"Pury_Metric_Orders_Title" = "Orders Queue";
+"Pury_Metric_Orders_Sub" = "Active Orders";
+"Pury_Metric_HotelStays_Title" = "Hotel Stays";
+"Pury_Metric_HotelStays_Sub" = "Current Guests";
+"Pury_Metric_Users_Title" = "Registered Users";
+"Pury_Metric_Users_Sub" = "Platform Accounts";
+"Pury_Metric_Branches_Title" = "Branches";
+"Pury_Metric_Branches_Sub" = "Active Locations";
+"Pury_Stock_Units_Format" = "%@ units available";
+"Pury_Record_ShowMore_Format" = "Show more (+%@)";
+"Pury_Currency_QAR_Format" = "%@ QAR";
+
+/* Pury Answer Studio — answer viewers */
+"Pury_Field_FinalPrice" = "Final price";
+"Pury_Field_VisibleInApp" = "Visible in app";
+"Pury_Field_Collection" = "Collection";
+"Pury_Field_EnglishName" = "English name";
+"Pury_Field_ArabicName" = "Arabic name";
+"Pury_Value_On" = "On";
+"Pury_Value_Off" = "Off";
+"Pury_Collection_PetAccessories" = "Accessories & food";
+"Pury_Stock_Risk_Depleted" = "Out";
+"Pury_Stock_Risk_Critical" = "Critical";
+"Pury_Stock_Risk_Low" = "Low";
+"Pury_Stock_Risk_Healthy" = "Healthy";
+"Pury_Stock_Hidden" = "Hidden";
+"Pury_Stock_Unit" = "units";
+"Pury_Answer_Stock_Title" = "Stock exposure";
+"Pury_Answer_Filter_Empty" = "No items in this band";
+"Pury_Answer_Manage_Inventory" = "Manage inventory";
+"Pury_Answer_Open_Record" = "Open record";
+"Pury_Answer_Row_Hint" = "Double tap for details";
+"Pury_Answer_Empty_Title" = "No matching records";
+"Pury_Answer_Empty_Body" = "No record you are cleared to read matched this query.";
+"Pury_Answer_Empty_Scope_Format" = "Read within scope: %@";
+"Pury_Answer_Broaden" = "Widen the search";
+"Pury_Exception_Denied_Title" = "Your permissions don't allow this";
+"Pury_Exception_Denied_Guidance" = "Authorization is enforced server-side. Ask an account owner to grant this permission.";
+"Pury_Exception_Stale_Title" = "Records changed before execution";
+"Pury_Exception_Stale_Guidance" = "Re-run the query to read the latest revision before acting.";
+"Pury_Exception_Failed_Title" = "The request could not be completed";
+"Pury_Exception_Failed_Guidance" = "No change was applied. You can try again.";
+"Pury_Exception_Required_Permission" = "Required permission";
+"Inventory_ResumePendingSave" = "Resume pending save";
+"Inventory_CachedStockNotice" = "Displayed stock is cached and has not yet been confirmed by the server.";
+
+
+/* MARK: - POS checkout transaction safety */
+"POS_CashReceivedBelowTotal_Format" = "Cash received (%.2f QAR) is less than the sale total (%.2f QAR). Correct the amount and try again.";
+"POS_ItemStockExceeded_Format" = "The quantity for (%@) exceeds available branch stock (%d available).";
+"POS_SubmitOutcomeUnknown" = "The sale was not confirmed. It may already have been recorded — check the sales history before selling again. Retrying is safe and will not create a duplicate sale.";
+"POS_UnconfirmedSaleTitle" = "Unconfirmed sale";
+"POS_UnconfirmedSaleNotice_Format" = "A previous sale of %.2f QAR was never confirmed (command %@). Review the sales history before selling the same items again.";
+"POS_Receipt_TotalMismatchNotice" = "The sale was recorded with the total held by the server, which differs from the total shown in the cart. Review the item prices.";
+"POS_SlideToSale_A11yHint" = "Double-tap to complete the sale";
+
+"POS_CheckoutCommandConflict" = "A sale is already recorded under this command reference with different details. Check the sales history to confirm before selling again, then start a new sale.";

@@ -395,13 +395,15 @@ struct POSReservedLivePetsView: View {
         .sheet(item: $vm.releasingItem) { item in
             POSReleaseReservationSheet(item: item, viewModel: vm)
         }
-        .alert(
-            Language.get("Error", alter: "تنبيه"),
-            isPresented: Binding(get: { vm.errorMessage != nil }, set: { if !$0 { vm.errorMessage = nil } })
-        ) {
-            Button(Language.get("OK", alter: "موافق")) {}
-        } message: {
-            Text(vm.errorMessage ?? "")
+        .onChange(of: vm.errorMessage) { message in
+            guard let message = message, !message.isEmpty else { return }
+            PPAlertHelper.showError(
+                in: nil,
+                title: Language.get("Error", alter: "تنبيه"),
+                subtitle: message
+            ) {
+                vm.errorMessage = nil
+            }
         }
     }
 

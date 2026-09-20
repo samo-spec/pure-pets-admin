@@ -120,8 +120,9 @@ public struct InventoryLotsSheet: View {
         lots.filter { $0.isExpired }.count
     }
 
-    private var totalCostValuation: Double {
-        lots.reduce(0.0) { $0 + (Double($1.availableQuantity) * $1.costPrice) }
+    private var totalCostValuation: Double? {
+        guard lots.allSatisfy({ $0.availableQuantity == 0 || $0.costPrice != nil }) else { return nil }
+        return lots.reduce(0.0) { $0 + (Double($1.availableQuantity) * ($1.costPrice ?? 0)) }
     }
 
     private var totalRetailValuation: Double {
@@ -368,7 +369,7 @@ public struct InventoryLotsSheet: View {
                         Text(Language.get("Inventory_Total_Cost", alter: "تكلفة المخزون"))
                             .font(AdminType.caption)
                             .foregroundStyle(AdminSurface.secondaryText)
-                        Text(PetAccessory.formatCurrency(NSNumber(value: totalCostValuation)))
+                        Text(totalCostValuation.map { PetAccessory.formatCurrency(NSNumber(value: $0)) } ?? Language.get("Inventory_CostUnavailable", alter: "التكلفة غير متاحة"))
                             .font(Font.custom("Beiruti-Bold", size: 16))
                             .foregroundStyle(AdminSurface.primaryText)
                     }
@@ -383,7 +384,7 @@ public struct InventoryLotsSheet: View {
                     }
                 }
 
-                if totalCostValuation > 0 && totalRetailValuation > totalCostValuation {
+                if let totalCostValuation, totalCostValuation > 0 && totalRetailValuation > totalCostValuation {
                     let profit = totalRetailValuation - totalCostValuation
                     let margin = (profit / totalCostValuation) * 100.0
                     HStack(spacing: 6) {
@@ -883,7 +884,7 @@ public struct InventoryLotsSheet: View {
             }
 
             // Footer Metadata (Supplier, Cost Price)
-            if !lot.supplier.isEmpty || lot.costPrice > 0 {
+            if !lot.supplier.isEmpty || lot.costPrice != nil {
                 Divider().background(AdminSurface.hairline)
 
                 HStack(spacing: 8) {
@@ -900,8 +901,8 @@ public struct InventoryLotsSheet: View {
 
                     Spacer()
 
-                    if lot.costPrice > 0 {
-                        Text(String(format: Language.get("Cost_Per_Unit", alter: "التكلفة: %@"), PetAccessory.formatCurrency(NSNumber(value: lot.costPrice))))
+                    if let costPrice = lot.costPrice {
+                        Text(String(format: Language.get("Cost_Per_Unit", alter: "التكلفة: %@"), PetAccessory.formatCurrency(NSNumber(value: costPrice))))
                             .font(AdminType.caption2)
                             .foregroundStyle(AdminSurface.secondaryText)
                     }
@@ -1155,6 +1156,8 @@ private struct AddLotSheet: View {
     @State private var lotNumber: String = ""
     @State private var quantity: Int = 10
     @State private var costPrice: String = ""
+    @State private var receiptCommandId = UUID().uuidString
+    @State private var receiptFingerprint = ""
     @State private var expiryDate: Date = Calendar.current.date(byAdding: .month, value: 6, to: Date()) ?? Date().addingTimeInterval(86400 * 180)
     @State private var supplier: String = ""
     @State private var notes: String = ""
@@ -1188,7 +1191,7 @@ private struct AddLotSheet: View {
     }
 
     private var unitCostDouble: Double {
-        Double(costPrice.replacingOccurrences(of: ",", with: ".")) ?? 0.0
+        Double(costPrice.normalizedEnglishDigits.replacingOccurrences(of: ",", with: ".").replacingOccurrences(of: "٫", with: ".")) ?? 0.0
     }
 
     private var totalBatchCost: Double {
@@ -1208,6 +1211,8 @@ private struct AddLotSheet: View {
     private var canSubmit: Bool {
         !lotNumber.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         quantity > 0 &&
+        unitCostDouble.isFinite && unitCostDouble >= 0 &&
+        (costPrice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || Double(costPrice.normalizedEnglishDigits.replacingOccurrences(of: ",", with: ".").replacingOccurrences(of: "٫", with: ".")) != nil) &&
         expiryDate > Date()
     }
 
@@ -1742,11 +1747,16 @@ private struct AddLotSheet: View {
     }
 
     private func submitLot() {
-        guard canSubmit else { return }
+        guard canSubmit, !isSubmitting else { return }
         isSubmitting = true
         errorMessage = nil
 
-        let cost = unitCostDouble
+        let cost = costPrice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : Optional(unitCostDouble)
+        let fingerprint = [branchId, item.accessoryID, lotNumber, String(quantity), cost.map { String($0) } ?? "unknown", String(expiryDate.timeIntervalSince1970), supplier, notes].joined(separator: "\u{0}")
+        if receiptFingerprint != fingerprint {
+            receiptCommandId = UUID().uuidString
+            receiptFingerprint = fingerprint
+        }
 
         Task {
             do {
@@ -1758,7 +1768,8 @@ private struct AddLotSheet: View {
                     costPrice: cost,
                     expiryDate: expiryDate,
                     supplier: supplier,
-                    notes: notes
+                    notes: notes,
+                    commandId: receiptCommandId
                 )
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 PPAlertHelper.showSuccess(
@@ -2095,4 +2106,3 @@ private struct IPadBatchLaboratoryCockpit: View {
         }
     }
 }
-

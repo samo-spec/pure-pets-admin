@@ -238,8 +238,11 @@ struct PuryCommandCrown: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    @ScaledMetric(relativeTo: .caption) private var controlDiameter: CGFloat = 32
-    @ScaledMetric(relativeTo: .headline) private var avatarDiameter: CGFloat = 34
+    /// Pury's navigation is an intentionally fixed system-chrome rhythm: circular actions
+    /// are 36 × 36 and every non-circular navigation item is exactly 36 points high.
+    /// Type scales inside those controls while their stable geometry preserves muscle memory.
+    private static let navigationButtonSide: CGFloat = 36
+    private static let navigationItemHeight: CGFloat = 36
 
     // MARK: Derived
 
@@ -268,18 +271,24 @@ struct PuryCommandCrown: View {
         reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86)
     }
 
-    private var resolvedAvatarSize: CGFloat { isCompact ? avatarDiameter * 0.78 : avatarDiameter }
-    private var resolvedControlSize: CGFloat { isCompact ? controlDiameter * 0.88 : controlDiameter }
+    private var resolvedAvatarSize: CGFloat { Self.navigationButtonSide }
+    private var resolvedControlSize: CGFloat { Self.navigationButtonSide }
 
     // MARK: Body
 
     var body: some View {
         VStack(spacing: 0) {
+            // Extends navbar background to fill the top safe area layout guide inset behind status bar
+            Color.clear
+                .frame(height: PPStatusBarHelper.statusBarHeight)
+                .allowsHitTesting(false)
+
             HStack(alignment: .center, spacing: 8) {
                 PuryAvatar(
                     size: resolvedAvatarSize,
-                    isLiving: false,
-                    isThinking: state == .loading,
+                    isLiving: true,
+                    isThinking: state.isWaitingOrThinking,
+                    motionState: state.puryMotionState,
                     showStatusRing: true,
                     showAmbientAura: false
                 )
@@ -300,6 +309,7 @@ struct PuryCommandCrown: View {
                     .transition(.opacity)
             }
         }
+        .frame(maxWidth: .infinity)
         .background(crownSurface)
         .overlay(alignment: .bottom) {
             PurySignalSpine(signal: signal, isRTL: isRTL, allowsMotion: !reduceMotion)
@@ -404,7 +414,7 @@ struct PuryCommandCrown: View {
             }
             .foregroundStyle(PuryBrand.primary)
             .padding(.horizontal, 7)
-            .padding(.vertical, 3)
+            .frame(height: Self.navigationItemHeight)
             .background(PuryBrand.primary.opacity(0.085), in: Capsule())
             .overlay(Capsule().strokeBorder(PuryBrand.primary.opacity(0.20), lineWidth: 0.75))
         }
@@ -439,7 +449,7 @@ struct PuryCommandCrown: View {
         }
         .foregroundStyle(signal.tint)
         .padding(.horizontal, 7)
-        .padding(.vertical, 3)
+        .frame(height: Self.navigationItemHeight)
         .background(signal.tint.opacity(0.12), in: Capsule())
         .transition(
             .opacity.combined(
@@ -541,6 +551,7 @@ struct PuryCommandCrown: View {
                 action: onClose
             )
         }
+        .frame(height: Self.navigationItemHeight)
     }
 
     /// Always-present controls with fixed geometry. The previous header inserted and
@@ -591,6 +602,7 @@ struct PuryCommandCrown: View {
         .padding(2)
         .background(AdminSurface.control, in: Capsule())
         .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+        .frame(height: Self.navigationItemHeight)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(
             PuryLocale.text("Pury_Language_A11y_Label", language: language, ar: "لغة بيوري", en: "Pury language")
@@ -608,8 +620,8 @@ struct PuryCommandCrown: View {
                 .font(PPBrandFont.bold(size: 10.5, relativeTo: .caption2))
                 .foregroundStyle(isActive ? Color.white : AdminSurface.secondaryText)
                 .frame(minWidth: 22)
-                .padding(.vertical, isCompact ? 3.5 : 4.5)
                 .padding(.horizontal, 3.5)
+                .frame(maxHeight: .infinity)
                 .background {
                     if isActive {
                         Capsule()

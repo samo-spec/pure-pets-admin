@@ -185,6 +185,7 @@ public struct PPTactileNumberPadConfig: Equatable {
     public var initialValue: Double
     public var referenceValue: Double?
     public var referenceLabel: String?
+    public var showsVarianceTelemetry: Bool
     public var specimen: PPTactileSpecimenInfo?
     public var customChips: [PPTactilePresetChip]?
     public var primaryActionTitle: String?
@@ -198,6 +199,7 @@ public struct PPTactileNumberPadConfig: Equatable {
         initialValue: Double = 0,
         referenceValue: Double? = nil,
         referenceLabel: String? = nil,
+        showsVarianceTelemetry: Bool = true,
         specimen: PPTactileSpecimenInfo? = nil,
         customChips: [PPTactilePresetChip]? = nil,
         primaryActionTitle: String? = nil,
@@ -210,6 +212,7 @@ public struct PPTactileNumberPadConfig: Equatable {
         self.initialValue = initialValue
         self.referenceValue = referenceValue
         self.referenceLabel = referenceLabel
+        self.showsVarianceTelemetry = showsVarianceTelemetry
         self.specimen = specimen
         self.customChips = customChips
         self.primaryActionTitle = primaryActionTitle
@@ -735,7 +738,7 @@ public struct PPTactileNumberPadSheet: View {
             )
 
             // Dynamic Variance Telemetry Badge
-            if let delta = delta {
+            if config.showsVarianceTelemetry, let delta = delta {
                 HStack(spacing: 6) {
                     if abs(delta) < 0.001 {
                         Image(systemName: "checkmark.seal.fill")
@@ -750,9 +753,7 @@ public struct PPTactileNumberPadSheet: View {
                             .foregroundColor(AdminSurface.crimson)
 
                         let deltaStr = config.mode.allowsDecimal ? String(format: "%.2f", abs(delta)) : "\(Int(abs(delta)))"
-                        let impactStr = (financialImpact != nil && financialImpact! > 0)
-                            ? String(format: Language.get("TactilePad_Financial_Impact_Minus", alter: " (أثر -%.2f ر.ق)"), financialImpact!)
-                            : ""
+                        let impactStr = formattedFinancialImpact(isDeficit: true)
                         Text(verbatim: String(format: Language.get("TactilePad_Deficit_Badge", alter: "عجز / نقص -%@ %@%@"), deltaStr, config.mode.defaultUnit, impactStr).normalizedEnglishDigits)
                             .font(PPTactileType.badgeBold)
                             .foregroundColor(AdminSurface.crimson)
@@ -762,9 +763,7 @@ public struct PPTactileNumberPadSheet: View {
                             .foregroundColor(AdminSurface.amber)
 
                         let deltaStr = config.mode.allowsDecimal ? String(format: "%.2f", delta) : "\(Int(delta))"
-                        let impactStr = (financialImpact != nil && financialImpact! > 0)
-                            ? String(format: Language.get("TactilePad_Financial_Impact_Plus", alter: " (أثر +%.2f ر.ق)"), financialImpact!)
-                            : ""
+                        let impactStr = formattedFinancialImpact(isDeficit: false)
                         Text(verbatim: String(format: Language.get("TactilePad_Surplus_Badge", alter: "فائض / زيادة +%@ %@%@"), deltaStr, config.mode.defaultUnit, impactStr).normalizedEnglishDigits)
                             .font(PPTactileType.badgeBold)
                             .foregroundColor(AdminSurface.amber)
@@ -782,7 +781,9 @@ public struct PPTactileNumberPadSheet: View {
                     Image(systemName: "slash.circle.fill")
                         .font(Font.custom("Beiruti-Bold", size: 12))
                         .foregroundColor(AdminSurface.crimson)
-                    Text(Language.get("TactilePad_Zero_Stock_Warning", alter: "تم تصفير الكمية. سيتم وسم الصنف بأنه نافذ من الرف."))
+                    Text(config.showsVarianceTelemetry
+                        ? Language.get("TactilePad_Zero_Stock_Warning", alter: "تم تصفير الكمية. سيتم وسم الصنف بأنه نافذ من الرف.")
+                        : Language.get("POS_Zero_Quantity_Remove_Warning", alter: "الكمية 0: سيتم حذف الصنف من السلة عند التأكيد."))
                         .font(PPTactileType.hint)
                         .foregroundColor(AdminSurface.crimson)
                 }
@@ -801,7 +802,7 @@ public struct PPTactileNumberPadSheet: View {
     }
 
     private func badgeTone(delta: Double?) -> Color {
-        guard let delta = delta else { return AdminSurface.hairline }
+        guard config.showsVarianceTelemetry, let delta = delta else { return AdminSurface.hairline }
         if abs(delta) < 0.001 {
             return AdminSurface.emerald
         } else if delta < 0 {
@@ -809,6 +810,14 @@ public struct PPTactileNumberPadSheet: View {
         } else {
             return AdminSurface.amber
         }
+    }
+
+    private func formattedFinancialImpact(isDeficit: Bool) -> String {
+        guard let impact = financialImpact, impact > 0 else { return "" }
+        let formattedImpact = String(format: "%.2f", impact)
+        let key = isDeficit ? "TactilePad_Financial_Impact_Minus" : "TactilePad_Financial_Impact_Plus"
+        let fallback = isDeficit ? " (أثر -%@ ر.ق)" : " (أثر +%@ ر.ق)"
+        return String(format: Language.get(key, alter: fallback), formattedImpact)
     }
 
     // MARK: - Accelerator Ribbon (iPhone Horizontal Scroll)
@@ -1071,7 +1080,7 @@ public struct PPTactileNumberPadSheet: View {
                             iPadSpecimenStudioCard(specimen: specimen)
                         }
 
-                        if let delta = referenceDelta {
+                        if config.showsVarianceTelemetry, let delta = referenceDelta {
                             iPadStockComparisonGauge(delta: delta)
                             iPadValuationLedgerCard(delta: delta)
                         }

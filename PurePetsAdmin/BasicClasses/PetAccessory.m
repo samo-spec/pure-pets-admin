@@ -114,18 +114,44 @@ static NSNumber *PPAccessoryNumberValueForKeys(NSDictionary *dict, NSArray<NSStr
 
     for (NSString *key in keys) {
         id value = dict[key];
-        if ([value isKindOfClass:[NSNumber class]]) {
+        if ([value isKindOfClass:[NSNumber class]] && isfinite([value doubleValue])) {
             return value;
         }
         NSString *string = PPAccessoryTrimmedString(value);
         if (string.length > 0) {
             NSNumber *number = [formatter numberFromString:string];
-            if (number) {
+            if (number && isfinite(number.doubleValue)) {
                 return number;
             }
         }
     }
     return nil;
+}
+
+static NSInteger PPAccessoryInteger(id value) {
+    NSNumber *number = PPAccessoryNumberValueForKeys(@{@"value": value ?: NSNull.null}, @[@"value"]);
+    double candidate = number.doubleValue;
+    // Firestore/JavaScript quantities must also fit the cross-platform safe range.
+    if (!number || fabs(candidate) > 9007199254740991.0 || trunc(candidate) != candidate) return 0;
+    return number.integerValue;
+}
+
+static BOOL PPAccessoryBool(id value) {
+    if ([value isKindOfClass:NSNumber.class]) return isfinite([value doubleValue]) && [value boolValue];
+    if ([value isKindOfClass:NSString.class]) return [value boolValue];
+    return NO;
+}
+
+static NSArray<NSNumber *> *PPAccessoryIntegerArray(id value) {
+    if (![value isKindOfClass:NSArray.class]) return @[];
+    NSMutableOrderedSet<NSNumber *> *numbers = [NSMutableOrderedSet orderedSet];
+    for (id candidate in value) {
+        NSNumber *number = PPAccessoryNumberValueForKeys(@{@"value": candidate}, @[@"value"]);
+        if (number && number.doubleValue >= 0 && number.doubleValue <= 9007199254740991.0 && trunc(number.doubleValue) == number.doubleValue) {
+            [numbers addObject:@(number.integerValue)];
+        }
+    }
+    return numbers.array;
 }
 
 static NSNumber * _Nullable PPAccessorySellingPriceValueForKeys(NSDictionary *dict, NSArray<NSString *> *keys) {
@@ -492,8 +518,8 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
             continue;
         }
         
-        CGFloat width = [meta[@"width"] floatValue] ?: 0;
-        CGFloat height = [meta[@"height"] floatValue] ?: 0;
+        CGFloat width = MAX(0, [PPAccessoryNumberValueForKeys(meta, @[@"width"]) doubleValue]);
+        CGFloat height = MAX(0, [PPAccessoryNumberValueForKeys(meta, @[@"height"]) doubleValue]);
         
         PetImageItem *item = [[PetImageItem alloc] initWithURL:url
                                                          width:width
@@ -531,10 +557,11 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
 
 - (instancetype)initWithDictionary:(NSDictionary *)dict documentID:(NSString *)docID {
     if (self = [super init]) {
-        _accessoryID = docID ?: @"";
+        dict = [dict isKindOfClass:NSDictionary.class] ? dict : @{};
+        _accessoryID = [docID isKindOfClass:NSString.class] ? docID : @"";
         _name = PPAccessoryStringValueForKeys(dict, (@[@"name", @"title"]));
         _nameEn = PPAccessoryStringValueForKeys(dict, (@[@"nameEn", @"name_en", @"titleEn", @"title_en"]));
-        _revision = [PPAccessoryNumberValueForKeys(dict, (@[@"revision"])) integerValue];
+        _revision = MAX(0, PPAccessoryInteger(dict[@"revision"]));
         _sku = PPAccessoryStringValueForKeys(dict, (@[@"sku", @"SKU", @"itemSku"]));
         _barcode = PPAccessoryStringValueForKeys(dict, (@[@"barcode", @"Barcode", @"barCode", @"upc", @"ean"]));
         _costPrice = PPAccessoryNumberValueForKeys(dict, (@[@"costPrice", @"cost_price", @"cost"]));
@@ -558,8 +585,8 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         if (_wholesalePrice && [_wholesalePrice doubleValue] > 1000.0 && [dict[@"wholesalePriceMinor"] isKindOfClass:NSNumber.class]) {
             _wholesalePrice = @([_wholesalePrice doubleValue] / 100.0);
         }
-        _hasCommerceConfig = [dict[@"hasCommerceConfig"] boolValue];
-        _quantityGroups = [dict[@"quantityGroups"] isKindOfClass:NSArray.class] ? dict[@"quantityGroups"] : nil;
+        _hasCommerceConfig = PPAccessoryBool(dict[@"hasCommerceConfig"]);
+        _quantityGroups = PPAccessoryDictionaryArray(dict[@"quantityGroups"]);
         _weightText = PPAccessoryStringValueForKeys(dict, (@[
             @"weightText",
             @"weightLabel",
@@ -718,19 +745,15 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
             }
             _imageMeta = [meta copy];
         }
-        _petMainCategoryID = [dict[@"petMainCategoryID"] integerValue];
-        _petSubCategoryID = [dict[@"petSubCategoryID"] integerValue];
-        if ([dict[@"petMainCategoryIDs"] isKindOfClass:NSArray.class]) {
-            _petMainCategoryIDs = dict[@"petMainCategoryIDs"];
-        }
-        if ([dict[@"petSubCategoryIDs"] isKindOfClass:NSArray.class]) {
-            _petSubCategoryIDs = dict[@"petSubCategoryIDs"];
-        }
-        _isAllCategories = [dict[@"isAllCategories"] boolValue];
-        _isAllSubCategories = [dict[@"isAllSubCategories"] boolValue];
+        _petMainCategoryID = PPAccessoryInteger(dict[@"petMainCategoryID"]);
+        _petSubCategoryID = PPAccessoryInteger(dict[@"petSubCategoryID"]);
+        _petMainCategoryIDs = PPAccessoryIntegerArray(dict[@"petMainCategoryIDs"]);
+        _petSubCategoryIDs = PPAccessoryIntegerArray(dict[@"petSubCategoryIDs"]);
+        _isAllCategories = PPAccessoryBool(dict[@"isAllCategories"]);
+        _isAllSubCategories = PPAccessoryBool(dict[@"isAllSubCategories"]);
         _AccessoryCategoryID = [dict[@"AccessoryCategoryID"] isKindOfClass:NSString.class] ? dict[@"AccessoryCategoryID"] : nil;
         _relatedAccessories = PPAccessoryStringArray(dict[@"relatedAccessories"]);
-        _cityID = [dict[@"cityID"] ?: @(0) integerValue];
+        _cityID = PPAccessoryInteger(dict[@"cityID"]);
         
         id rawCreated = dict[@"createdAt"] ?: dict[@"created_at"] ?: dict[@"timestamp"] ?: dict[@"date"] ?: dict[@"updatedAt"];
         _createdAt = PPDateFromFirestoreValue(rawCreated);
@@ -759,16 +782,16 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         _shelfLifeDays = PPAccessoryNumberValueForKeys(dict, (@[@"shelfLifeDays", @"shelf_life_days"]));
         _guaranteedShelfLifeDays = PPAccessoryNumberValueForKeys(dict, (@[@"guaranteedShelfLifeDays", @"guaranteed_shelf_life_days"]));
         _expiryCutoffDays = PPAccessoryNumberValueForKeys(dict, (@[@"expiryCutoffDays", @"expiry_cutoff_days"]));
-        _inventorySchemaVersion = [dict[@"inventorySchemaVersion"] integerValue];
+        _inventorySchemaVersion = PPAccessoryInteger(dict[@"inventorySchemaVersion"]);
         _standardSellingPrice = PPAccessorySellingPriceValueForKeys(dict, (@[@"standardSellingPrice"]));
-        _reservedQuantity = MAX(0, [dict[@"reservedQuantity"] integerValue]);
-        _isArchived = [dict[@"isArchived"] boolValue];
+        _reservedQuantity = MAX(0, PPAccessoryInteger(dict[@"reservedQuantity"]));
+        _isArchived = PPAccessoryBool(dict[@"isArchived"]);
         _blurHash = PPAccessoryTrimmedString(dict[@"blurHash"]);
         
         _accessKindType = ({
-            NSInteger rawKind = [dict[@"accessKindType"] integerValue];
+            NSInteger rawKind = PPAccessoryInteger(dict[@"accessKindType"]);
             if (rawKind == 0 && dict[@"type"] != nil) {
-                rawKind = [dict[@"type"] integerValue];
+                rawKind = PPAccessoryInteger(dict[@"type"]);
             }
             AccessKindType parsed;
             switch (rawKind) {
@@ -784,7 +807,7 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
                      [productType caseInsensitiveCompare:@"live_pet"] == NSOrderedSame ||
                      [productType caseInsensitiveCompare:@"livepet"] == NSOrderedSame)) {
                     parsed = AccessTypeLivePet;
-                } else if ([dict[@"isLivePet"] boolValue]) {
+                } else if (PPAccessoryBool(dict[@"isLivePet"])) {
                     parsed = AccessTypeLivePet;
                 } else {
                     NSString *category = dict[@"category"];
@@ -797,8 +820,8 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
             parsed;
         });
         
-        _condition = [dict[@"condition"] integerValue];
-        _isNew = [dict[@"isNew"] boolValue];
+        _condition = PPAccessoryInteger(dict[@"condition"]);
+        _isNew = PPAccessoryBool(dict[@"isNew"]);
         
         if (_condition == AccessConditionsUsed || !_isNew) {
             _condition = AccessConditionsUsed;
@@ -808,16 +831,16 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
             _isNew = YES;
         }
         
-        _hasOffer = [dict[@"hasOffer"] boolValue];
-        _showInAppMarket = [dict[@"showInAppMarket"] boolValue];
-        _isBlocked = [dict[@"isBlocked"] boolValue];
-        _isDeleted = [dict[@"isDeleted"] boolValue] || [dict[@"is_deleted"] boolValue] || [dict[@"deleted"] boolValue];
-        _isDisabled = [dict[@"isDisabled"] boolValue];
-        _active = dict[@"active"] == nil ? YES : [dict[@"active"] boolValue];
+        _hasOffer = PPAccessoryBool(dict[@"hasOffer"]);
+        _showInAppMarket = PPAccessoryBool(dict[@"showInAppMarket"]);
+        _isBlocked = PPAccessoryBool(dict[@"isBlocked"]);
+        _isDeleted = PPAccessoryBool(dict[@"isDeleted"]) || PPAccessoryBool(dict[@"is_deleted"]) || PPAccessoryBool(dict[@"deleted"]);
+        _isDisabled = PPAccessoryBool(dict[@"isDisabled"]);
+        _active = dict[@"active"] == nil ? YES : PPAccessoryBool(dict[@"active"]);
 
-        _quantity = MAX(0, [dict[@"quantity"] integerValue]);
-        if (dict[@"noStock"] != nil) {
-            _noStock = [dict[@"noStock"] boolValue];
+        _quantity = MAX(0, PPAccessoryInteger(dict[@"quantity"]));
+        if ([dict[@"noStock"] isKindOfClass:NSNumber.class] || [dict[@"noStock"] isKindOfClass:NSString.class]) {
+            _noStock = PPAccessoryBool(dict[@"noStock"]);
         } else {
             _noStock = (_quantity <= 0);
         }

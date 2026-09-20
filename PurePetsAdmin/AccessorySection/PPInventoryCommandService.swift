@@ -102,6 +102,24 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
         commandId suppliedCommandId: String? = nil,
         completion: @escaping @Sendable (PPInventoryCommandResult?, Error?) -> Void
     ) {
+        do {
+            let request = try prepareProductSave(accessory: accessory, branchId: branchId, commerce: commerce,
+                expectedRevision: expectedRevision, commandId: suppliedCommandId)
+            executeProductSave(request: request, completion: completion)
+        } catch {
+            completion(nil, error)
+        }
+    }
+
+    /// Builds the one canonical wire envelope so an editor can persist it before
+    /// sending and replay the exact same command after an ambiguous outcome.
+    public func prepareProductSave(
+        accessory: PetAccessory,
+        branchId: String?,
+        commerce: [String: Any]? = nil,
+        expectedRevision: Int? = nil,
+        commandId suppliedCommandId: String? = nil
+    ) throws -> [String: Any] {
         let isUpdate = !accessory.accessoryID.isEmpty
         let action = isUpdate ? "update" : "create"
         let productId = accessory.accessoryID
@@ -121,8 +139,7 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
                         alter: "اختر فرعاً محدداً قبل إنشاء مخزون أولي لهذا الصنف."
                     )]
                 )
-                completion(nil, error)
-                return
+                throw error
             }
         }
 
@@ -185,7 +202,22 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
             requestData["expectedRevision"] = rev
         }
 
-        let boxed = PPSendableRequest(data: requestData)
+        return requestData
+    }
+
+    public func executeProductSave(
+        request: [String: Any],
+        completion: @escaping @Sendable (PPInventoryCommandResult?, Error?) -> Void
+    ) {
+        guard let commandId = request["commandId"] as? String, !commandId.isEmpty,
+              let action = request["action"] as? String, ["create", "update"].contains(action),
+              request["payload"] is [String: Any] else {
+            completion(nil, NSError(domain: "pp.inventory.command", code: 400,
+                userInfo: [NSLocalizedDescriptionKey: Language.get("Inventory_InvalidCommandResponse", alter: "تعذر التحقق من استجابة خدمة المخزون.")]))
+            return
+        }
+        let productId = request["productId"] as? String ?? ""
+        let boxed = PPSendableRequest(data: request)
         functions.httpsCallable("validateInventoryChange").call(boxed.data) { result, error in
             if let error = error {
                 completion(nil, error)
@@ -272,6 +304,61 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
                 branchId: data["branchId"] as? String
             )
             completion(cmdResult, nil)
+        }
+    }
+
+    public func setAppMarketVisibility(
+        productId: String,
+        visible: Bool,
+        expectedRevision: Int? = nil,
+        commandId suppliedCommandId: String? = nil,
+        completion: @escaping @Sendable (PPInventoryCommandResult?, Error?) -> Void
+    ) {
+        let normalizedProductId = productId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedProductId.isEmpty else {
+            let err = NSError(domain: "pp.inventory.command", code: 400, userInfo: [NSLocalizedDescriptionKey: Language.get("Inventory_MissingProductIdentifier", alter: "تعذر تنفيذ العملية لأن معرّف الصنف غير صالح.")])
+            completion(nil, err)
+            return
+        }
+        let normalizedSuppliedCommandId = suppliedCommandId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let commandId = normalizedSuppliedCommandId.isEmpty
+            ? generateCommandId(action: "visibility", targetId: normalizedProductId)
+            : normalizedSuppliedCommandId
+
+        var requestData: [String: Any] = [
+            "contractVersion": 2,
+            "action": "update",
+            "productId": normalizedProductId,
+            "commandId": commandId,
+            "payload": ["showInAppMarket": visible]
+        ]
+        if let expectedRevision { requestData["expectedRevision"] = expectedRevision }
+
+        let boxed = PPSendableRequest(data: requestData)
+        functions.httpsCallable("validateInventoryChange").call(boxed.data) { result, error in
+            if let error {
+                completion(nil, error)
+                return
+            }
+            guard let data = result?.data as? [String: Any],
+                  data["ok"] as? Bool == true,
+                  (data["commandId"] as? String) == commandId else {
+                let err = NSError(domain: "pp.inventory.command", code: 500, userInfo: [NSLocalizedDescriptionKey: Language.get("Inventory_InvalidCommandResponse", alter: "تعذر التحقق من استجابة خدمة المخزون.")])
+                completion(nil, err)
+                return
+            }
+            let idempotent = data["idempotent"] as? Bool ?? false
+            completion(PPInventoryCommandResult(
+                success: true,
+                commandId: commandId,
+                productId: normalizedProductId,
+                revision: data["revision"] as? Int ?? 0,
+                idempotent: idempotent,
+                action: "update",
+                resultKind: data["resultKind"] as? String ?? (idempotent ? "already_applied" : "confirmed"),
+                branchId: data["branchId"] as? String,
+                projectionState: data["projectionState"] as? String
+            ), nil)
         }
     }
 

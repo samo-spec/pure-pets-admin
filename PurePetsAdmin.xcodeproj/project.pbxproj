@@ -72,6 +72,8 @@
 		A6C000392FA9000100A6C039 /* Features/Hotel/AdminHotelDateRangePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001392FA9000100A6C039 /* Features/Hotel/AdminHotelDateRangePicker.swift */; };
 		A6C000992FA9000100A6C099 /* App/PPSessionRestorationGatewayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001992FA9000100A6C099 /* App/PPSessionRestorationGatewayView.swift */; };
 		A6C0F0012FA9000100A6CF01 /* AdminPetsHotelDomainPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C0F1012FA9000100A6CF01 /* AdminPetsHotelDomainPolicyTests.swift */; };
+		D7000F012FA9000100D7000F /* PuryAnswerProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7000F112FA9000100D7001F /* PuryAnswerProjectionTests.swift */; };
+		D7000F022FA9000100D7000F /* POSMoneyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7000F122FA9000100D7001F /* POSMoneyTests.swift */; };
 		A6C0F0022FA9000100A6CF02 /* Features/Hotel/AdminHotelOperationalPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C0F1022FA9000100A6CF02 /* Features/Hotel/AdminHotelOperationalPolicy.swift */; };
 		D70001012FA9000100D70101 /* Features/Pury/Models/PuryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70000012FA9000100D70001 /* Features/Pury/Models/PuryModels.swift */; };
 		D70001022FA9000100D70102 /* Features/Pury/Service/PuryAdminService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70000022FA9000100D70002 /* Features/Pury/Service/PuryAdminService.swift */; };
@@ -80,6 +82,8 @@
 		D70001052FA9000100D70105 /* Features/Pury/Editor/PuryInlineAuthoringHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70000052FA9000100D70005 /* Features/Pury/Editor/PuryInlineAuthoringHelper.swift */; };
 		D70001062FA9000100D70106 /* Features/Pury/UI/PuryActionConfirmationCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70000062FA9000100D70006 /* Features/Pury/UI/PuryActionConfirmationCard.swift */; };
 		D70001082FA9000100D70108 /* Features/Pury/UI/PuryCommandCrown.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70000082FA9000100D70008 /* Features/Pury/UI/PuryCommandCrown.swift */; };
+		D70001092FA9000100D70109 /* Features/Pury/UI/PuryConversationLedger.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70000092FA9000100D70009 /* Features/Pury/UI/PuryConversationLedger.swift */; };
+		D700010A2FA9000100D7010A /* Features/Pury/UI/PuryAnswerStudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = D700000A2FA9000100D7000A /* Features/Pury/UI/PuryAnswerStudio.swift */; };
 		D70001072FA9000100D70107 /* Features/Pury/UI/PuryAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70000072FA9000100D70007 /* Features/Pury/UI/PuryAvatar.swift */; };
 		A72D13A3A310632E0D519B88 /* QBAssetsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 7A00759CF4579FBA409A2847 /* QBAssetsViewController.m */; };
 		A7C91D01FBE74D56A8101001 /* Features/POS/POSReceiptDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C91D02FBE74D56A8101002 /* Features/POS/POSReceiptDocument.swift */; };
@@ -486,6 +490,8 @@
 		A6C001392FA9000100A6C039 /* Features/Hotel/AdminHotelDateRangePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Hotel/AdminHotelDateRangePicker.swift; sourceTree = "<group>"; };
 		A6C001992FA9000100A6C099 /* App/PPSessionRestorationGatewayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/PPSessionRestorationGatewayView.swift; sourceTree = "<group>"; };
 		A6C0F1012FA9000100A6CF01 /* AdminPetsHotelDomainPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminPetsHotelDomainPolicyTests.swift; sourceTree = "<group>"; };
+		D7000F112FA9000100D7001F /* PuryAnswerProjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PuryAnswerProjectionTests.swift; sourceTree = "<group>"; };
+		D7000F122FA9000100D7001F /* POSMoneyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = POSMoneyTests.swift; sourceTree = "<group>"; };
 		A6C0F1022FA9000100A6CF02 /* Features/Hotel/AdminHotelOperationalPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Hotel/AdminHotelOperationalPolicy.swift; sourceTree = "<group>"; };
 		D70000012FA9000100D70001 /* Features/Pury/Models/PuryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Pury/Models/PuryModels.swift; sourceTree = "<group>"; };
 		D70000022FA9000100D70002 /* Features/Pury/Service/PuryAdminService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Pury/Service/PuryAdminService.swift; sourceTree = "<group>"; };
@@ -494,6 +500,8 @@
 		D70000052FA9000100D70005 /* Features/Pury/Editor/PuryInlineAuthoringHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Pury/Editor/PuryInlineAuthoringHelper.swift; sourceTree = "<group>"; };
 		D70000062FA9000100D70006 /* Features/Pury/UI/PuryActionConfirmationCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Pury/UI/PuryActionConfirmationCard.swift; sourceTree = "<group>"; };
 		D70000082FA9000100D70008 /* Features/Pury/UI/PuryCommandCrown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Pury/UI/PuryCommandCrown.swift; sourceTree = "<group>"; };
+		D70000092FA9000100D70009 /* Features/Pury/UI/PuryConversationLedger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Pury/UI/PuryConversationLedger.swift; sourceTree = "<group>"; };
+		D700000A2FA9000100D7000A /* Features/Pury/UI/PuryAnswerStudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Pury/UI/PuryAnswerStudio.swift; sourceTree = "<group>"; };
 		D70000072FA9000100D70007 /* Features/Pury/UI/PuryAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Pury/UI/PuryAvatar.swift; sourceTree = "<group>"; };
 		A7C91D02FBE74D56A8101002 /* Features/POS/POSReceiptDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/POSReceiptDocument.swift; sourceTree = "<group>"; };
 		A7C91D04FBE74D56A8101004 /* Features/POS/POSReservedLivePetsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/POSReservedLivePetsView.swift; sourceTree = "<group>"; };
@@ -1361,6 +1369,8 @@
 				D70000052FA9000100D70005 /* Features/Pury/Editor/PuryInlineAuthoringHelper.swift */,
 				D70000062FA9000100D70006 /* Features/Pury/UI/PuryActionConfirmationCard.swift */,
 				D70000082FA9000100D70008 /* Features/Pury/UI/PuryCommandCrown.swift */,
+				D70000092FA9000100D70009 /* Features/Pury/UI/PuryConversationLedger.swift */,
+				D700000A2FA9000100D7000A /* Features/Pury/UI/PuryAnswerStudio.swift */,
 				D70000072FA9000100D70007 /* Features/Pury/UI/PuryAvatar.swift */,
 				A6C001352FA9000100A6C035 /* AdminPetsHotelHubView.swift */,
 				3DA39278C2834B63BDD94871 /* App/AdminRouteDestinationView.swift */,
@@ -1480,6 +1490,8 @@
 			isa = PBXGroup;
 			children = (
 				A6C0F1012FA9000100A6CF01 /* AdminPetsHotelDomainPolicyTests.swift */,
+				D7000F112FA9000100D7001F /* PuryAnswerProjectionTests.swift */,
+				D7000F122FA9000100D7001F /* POSMoneyTests.swift */,
 				F28AE13B2E569031007279F5 /* PurePetsAdminTests.m */,
 			);
 			path = PurePetsAdminTests;
@@ -2383,6 +2395,8 @@
 				D70001052FA9000100D70105 /* Features/Pury/Editor/PuryInlineAuthoringHelper.swift in Sources */,
 				D70001062FA9000100D70106 /* Features/Pury/UI/PuryActionConfirmationCard.swift in Sources */,
 				D70001082FA9000100D70108 /* Features/Pury/UI/PuryCommandCrown.swift in Sources */,
+				D70001092FA9000100D70109 /* Features/Pury/UI/PuryConversationLedger.swift in Sources */,
+				D700010A2FA9000100D7010A /* Features/Pury/UI/PuryAnswerStudio.swift in Sources */,
 				D70001072FA9000100D70107 /* Features/Pury/UI/PuryAvatar.swift in Sources */,
 				FA23686D0529430AA2E37709 /* PPVetModel.m in Sources */,
 				6C65E6AFB8534ED2B64E8AC0 /* PPVetManager.m in Sources */,
@@ -2691,6 +2705,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				A6C0F0012FA9000100A6CF01 /* AdminPetsHotelDomainPolicyTests.swift in Sources */,
+				D7000F012FA9000100D7000F /* PuryAnswerProjectionTests.swift in Sources */,
+				D7000F022FA9000100D7000F /* POSMoneyTests.swift in Sources */,
 				F28AE13D2E569031007279F5 /* PurePetsAdminTests.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -3083,6 +3099,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PurePetsAdmin.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PurePetsAdmin";
+				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
 		};
@@ -3126,6 +3143,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PurePetsAdmin.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PurePetsAdmin";
+				SWIFT_VERSION = 6.0;
 			};
 			name = Release;
 		};

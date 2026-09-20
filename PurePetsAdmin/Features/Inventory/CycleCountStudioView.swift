@@ -133,6 +133,8 @@ public struct CycleCountStudioView: View {
     @State private var isLoading: Bool = false
     @State private var errorMessage: String? = nil
     @State private var successBanner: String? = nil
+    @State private var hasLoaded = false
+    @State private var createCommandId = UUID().uuidString
 
     private var isIPad: Bool {
         horizontalSizeClass == .regular || UIDevice.current.userInterfaceIdiom == .pad
@@ -222,6 +224,7 @@ public struct CycleCountStudioView: View {
             }
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
             .navigationBarHidden(true)
+            .interactiveDismissDisabled(isLoading || isReconciling || !localCounts.isEmpty || !zeroVerifiedIds.isEmpty)
             .sheet(isPresented: $showingScanner) {
                 barcodeScannerSheet
             }
@@ -229,6 +232,8 @@ public struct CycleCountStudioView: View {
                 directKeypadEntrySheet(for: item)
             }
             .onAppear {
+                guard !hasLoaded else { return }
+                hasLoaded = true
                 loadInitialData()
                 loadAccessoryImagesCache()
                 sessionStartTime = Date()
@@ -243,16 +248,32 @@ public struct CycleCountStudioView: View {
             // Dismiss Button with RTL-safe Direction
             Button {
                 UISelectionFeedbackGenerator().selectionChanged()
-                dismiss()
+                guard !isLoading, !isReconciling else { return }
+                if !localCounts.isEmpty || !zeroVerifiedIds.isEmpty {
+                    PPAlertHelper.showConfirmation(
+                        in: nil,
+                        title: Language.get("Inventory_DiscardCount_Title", alter: "مغادرة الجرد؟"),
+                        subtitle: Language.get("Inventory_DiscardCount_Message", alter: "لم تُرسل الأعداد بعد. ستفقد الأعداد المدخلة عند المغادرة."),
+                        confirmButton: Language.get("Discard", alter: "تجاهل"),
+                        cancelButton: Language.get("Cancel", alter: "إلغاء"),
+                        icon: UIImage(systemName: "exclamationmark.triangle"),
+                        confirmBlock: { _, confirmed in if confirmed { dismiss() } },
+                        cancelBlock: nil
+                    )
+                } else {
+                    dismiss()
+                }
             } label: {
                 Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
                     .font(.system(size: 15, weight: .bold))
                     .foregroundColor(AdminSurface.primaryText)
-                    .frame(width: 40, height: 40)
+                    .frame(width: 44, height: 44)
                     .background(AdminSurface.card, in: Circle())
                     .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: 0.8))
             }
             .buttonStyle(KeypadPressFeedbackStyle())
+            .accessibilityLabel(Language.get("Back", alter: "رجوع"))
+            .disabled(isLoading || isReconciling)
 
             // Title & Active Branch Context Block
             VStack(alignment: .leading, spacing: 3) {
@@ -1280,6 +1301,7 @@ public struct CycleCountStudioView: View {
             )
         )
         return PPTactileNumberPadSheet(config: config) { val in
+            guard val.isFinite, val >= 0, val <= 1_000_000_000, val.rounded(.towardZero) == val else { return }
             commitDirectCount(for: item, value: Int(val))
         } onDismiss: {
             itemForDirectInput = nil
@@ -1291,7 +1313,7 @@ public struct CycleCountStudioView: View {
         let current = Int(directInputText) ?? 0
         let expected = item.expectedOnHand ?? 0
         let delta = current - expected
-        let impactCost = Double(abs(delta)) * item.costPrice
+        let impactCost = item.costPrice.map { Double(abs(delta)) * $0 }
         let imageURL = imageCache[item.productId]
 
         return VStack(spacing: 0) {
@@ -1421,14 +1443,14 @@ public struct CycleCountStudioView: View {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.system(size: 13, weight: .bold))
                             .foregroundColor(Color.crimson)
-                        Text(verbatim: String(format: Language.get("CycleCount_Keypad_Shrinkage_Badge", alter: "عجز %d وحدة (خسارة %.2f ر.ق)"), abs(delta), impactCost).normalizedEnglishDigits)
+                        Text(verbatim: countVarianceText(delta: delta, cost: impactCost))
                             .font(AdminType.captionBold)
                             .foregroundColor(Color.crimson)
                     } else {
                         Image(systemName: "arrow.up.right.circle.fill")
                             .font(.system(size: 13, weight: .bold))
                             .foregroundColor(Color.amber)
-                        Text(verbatim: String(format: Language.get("CycleCount_Keypad_Surplus_Badge", alter: "فائض +%d وحدة (+%.2f ر.ق)"), delta, impactCost).normalizedEnglishDigits)
+                        Text(verbatim: countVarianceText(delta: delta, cost: impactCost))
                             .font(AdminType.captionBold)
                             .foregroundColor(Color.amber)
                     }
@@ -1582,7 +1604,7 @@ public struct CycleCountStudioView: View {
         let current = Int(directInputText) ?? 0
         let expected = item.expectedOnHand ?? 0
         let delta = current - expected
-        let impactCost = Double(abs(delta)) * item.costPrice
+        let impactCost = item.costPrice.map { Double(abs(delta)) * $0 }
         let imageURL = imageCache[item.productId]
 
         return NavigationStack {
@@ -1704,7 +1726,7 @@ public struct CycleCountStudioView: View {
 
                             iPadMetricPill(
                                 title: Language.get("CycleCount_Keypad_Unit_Cost", alter: "سعر التكلفة"),
-                                value: String(format: "%.2f ر.ق", item.costPrice),
+                                value: inventoryCostText(item.costPrice),
                                 color: AdminSurface.secondaryText
                             )
 
@@ -1727,7 +1749,7 @@ public struct CycleCountStudioView: View {
                                         .font(AdminType.captionBold)
                                         .foregroundColor(Color.emerald)
                                 } else {
-                                    Text(verbatim: String(format: "%@%.2f ر.ق", delta < 0 ? "-" : "+", impactCost).normalizedEnglishDigits)
+                                    Text(verbatim: inventoryCostText(impactCost))
                                         .font(AdminType.captionBold)
                                         .foregroundColor(delta < 0 ? Color.crimson : Color.amber)
                                 }
@@ -1741,8 +1763,8 @@ public struct CycleCountStudioView: View {
                                 Text(verbatim: (delta == 0 ?
                                     Language.get("CycleCount_Keypad_Matched_Badge", alter: "مطابق للرصيد الدفتري (0 فرق)") :
                                     (delta < 0 ?
-                                        String(format: Language.get("CycleCount_Keypad_Shrinkage_Badge", alter: "عجز %d وحدة (خسارة %.2f ر.ق)"), abs(delta), impactCost) :
-                                        String(format: Language.get("CycleCount_Keypad_Surplus_Badge", alter: "فائض +%d وحدة (+%.2f ر.ق)"), delta, impactCost)
+                                        countVarianceText(delta: delta, cost: impactCost) :
+                                        countVarianceText(delta: delta, cost: impactCost)
                                     )
                                 ).normalizedEnglishDigits)
                                     .font(AdminType.footnoteBold)
@@ -1834,8 +1856,8 @@ public struct CycleCountStudioView: View {
 
                             Text(verbatim: (delta == 0 ? ("✓ " + Language.get("CycleCount_Keypad_Matched_Badge", alter: "مطابق للرصيد الدفتري (0 فرق)")) :
                                 (delta < 0 ?
-                                    String(format: Language.get("CycleCount_Keypad_Shrinkage_Badge", alter: "عجز %d وحدة (خسارة %.2f ر.ق)"), abs(delta), impactCost) :
-                                    String(format: Language.get("CycleCount_Keypad_Surplus_Badge", alter: "فائض +%d وحدة (+%.2f ر.ق)"), delta, impactCost)
+                                    countVarianceText(delta: delta, cost: impactCost) :
+                                    countVarianceText(delta: delta, cost: impactCost)
                                 )
                             ).normalizedEnglishDigits)
                             .font(AdminType.captionBold)
@@ -2115,7 +2137,7 @@ public struct CycleCountStudioView: View {
                     reviewMetricCard(
                         title: Language.get("CycleCount_Total_Shrinkage", alter: "العجز / المفقود"),
                         value: "\(session.totalShrinkageUnits) \(Language.get("Units", alter: "قطعة"))",
-                        subvalue: String(format: "-%.2f ر.ق", session.totalShrinkageValue),
+                        subvalue: inventoryCostText(session.totalShrinkageValue),
                         icon: "arrow.down.right.circle.fill",
                         color: Color.crimson
                     )
@@ -2123,7 +2145,7 @@ public struct CycleCountStudioView: View {
                     reviewMetricCard(
                         title: Language.get("CycleCount_Total_Surplus", alter: "الفائض / الزيادة"),
                         value: "\(session.totalSurplusUnits) \(Language.get("Units", alter: "قطعة"))",
-                        subvalue: String(format: "+%.2f ر.ق", session.totalSurplusValue),
+                        subvalue: inventoryCostText(session.totalSurplusValue),
                         icon: "arrow.up.right.circle.fill",
                         color: Color.emerald
                     )
@@ -2659,14 +2681,19 @@ public struct CycleCountStudioView: View {
                     if let ongoing = sessions.first(where: { $0.status == "in_progress" || $0.status == "pending_review" }) {
                         self.activeSession = ongoing
                         self.selectedTab = (ongoing.status == "in_progress") ? .count : .review
+                    } else if let currentId = self.activeSession?.id {
+                        self.activeSession = sessions.first(where: { $0.id == currentId })
                     }
+                } else if case .failure(let error) = result {
+                    self.errorMessage = PPBranchInventoryErrorHelper.localizedMessage(for: error)
+                    PPAlertHelper.showError(in: nil, title: Language.get("Error", alter: "خطأ"), subtitle: self.errorMessage ?? error.localizedDescription)
                 }
             }
         }
     }
 
     private func loadAccessoryImagesCache() {
-        AccessoryManager.shared().observeAllAccessories { items, _ in
+        AccessoryManager.shared().fetchAllAccessories { items, _ in
             guard let items = items else { return }
             var map: [String: URL] = [:]
             for acc in items {
@@ -2715,6 +2742,7 @@ public struct CycleCountStudioView: View {
     }
 
     private func executeCreateSession() {
+        guard !isLoading, !isReconciling else { return }
         isLoading = true
         errorMessage = nil
 
@@ -2723,7 +2751,8 @@ public struct CycleCountStudioView: View {
             scope: selectedScope,
             category: selectedScope == "category" ? selectedCategory : nil,
             shelfLocation: selectedScope == "shelf" ? shelfLocationInput : nil,
-            varianceThreshold: varianceThreshold
+            varianceThreshold: varianceThreshold,
+            commandId: createCommandId
         ) { result in
             Task { @MainActor in
                 self.isLoading = false
@@ -2731,6 +2760,7 @@ public struct CycleCountStudioView: View {
                 case .success(let session):
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                     self.activeSession = session
+                    self.createCommandId = UUID().uuidString
                     self.localCounts.removeAll()
                     self.zeroVerifiedIds.removeAll()
                     self.selectedTab = .count
@@ -2756,7 +2786,13 @@ public struct CycleCountStudioView: View {
     }
 
     private func executeSubmitCount() {
-        guard let session = activeSession else { return }
+        guard !isLoading, !isReconciling, let session = activeSession, session.status == "in_progress" else { return }
+        guard !session.items.isEmpty, countedItemsCount(session: session) == session.items.count else {
+            let message = Language.get("Inventory_CountIncomplete", alter: "عدّ كل صنف أو أكد أن رصيده صفر قبل إرسال الجرد.")
+            errorMessage = message
+            PPAlertHelper.showError(in: nil, title: Language.get("Error", alter: "خطأ"), subtitle: message)
+            return
+        }
         isLoading = true
         errorMessage = nil
 
@@ -2782,6 +2818,8 @@ public struct CycleCountStudioView: View {
                 case .success(let updated):
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                     self.activeSession = updated
+                    self.localCounts.removeAll()
+                    self.zeroVerifiedIds.removeAll()
                     self.selectedTab = .review
                     self.showBanner(Language.get("CycleCount_Submitted_Success", alter: "تم احتساب الفروقات بنجاح."))
                     PPAlertHelper.showSuccess(
@@ -2804,7 +2842,7 @@ public struct CycleCountStudioView: View {
     }
 
     private func executeReconcile() {
-        guard let session = activeSession else { return }
+        guard !isLoading, !isReconciling, let session = activeSession, session.status == "pending_review" else { return }
         isReconciling = true
         errorMessage = nil
 
@@ -2875,6 +2913,15 @@ public struct CycleCountStudioView: View {
     }
 
     // MARK: - Helpers & Filtering
+
+    private func inventoryCostText(_ value: Double?) -> String {
+        guard let value, value.isFinite else { return Language.get("Inventory_CostUnavailable", alter: "التكلفة غير متاحة") }
+        return PetAccessory.formatCurrency(NSNumber(value: value))
+    }
+
+    private func countVarianceText(delta: Int, cost: Double?) -> String {
+        String(format: Language.get("Inventory_CountVarianceFormat", alter: "%@ قطعة · %@"), String(delta), inventoryCostText(cost))
+    }
 
     private func countedItemsCount(session: PPCycleCountSession) -> Int {
         session.items.filter {

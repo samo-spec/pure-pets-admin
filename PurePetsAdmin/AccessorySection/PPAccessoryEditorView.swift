@@ -105,6 +105,11 @@ private struct PPLivePetMutationRecovery: Codable {
     let oldImageURLs: [String]
 }
 
+private struct PPStandardInventoryRecovery: Codable {
+    let requestData: Data
+    let oldImageURLs: [String]
+}
+
 /// Prepared accessory/food image payload containing scaled pixel dimensions,
 /// optimized compressed data, and matching content type and file extension.
 struct PreparedAccessoryImagePayload {
@@ -700,6 +705,11 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     private var isApplyingCategoryHydration: Bool = false
     private var didScheduleSuccessfulDismissal: Bool = false
     private var standardSaveCommandID: String? = nil
+    @Published private(set) var hasPendingStandardSave = false
+    private var pendingStandardCommerce: [String: Any]? = nil
+    private var pendingStandardOldImageURLs: [String] = []
+    private var pendingStandardRequest: [String: Any]? = nil
+    private var standardSaveMayHaveCommitted = false
     private var liveCreateCommandID = PPLivePetInventoryService.commandID("catalog-create")
     private var pendingCatalogSyncSuccessMessage: String? = nil
     private var livePetRecovery: PPLivePetMutationRecovery? = nil
@@ -728,6 +738,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         populateInitialValues()
         setupStoreOptions()
         restoreLivePetRecoveryIfNeeded()
+        restoreStandardInventoryRecovery()
         loadMainKinds()
 
         NotificationCenter.default.addObserver(
@@ -1319,7 +1330,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     var isIndividualLivePet: Bool { isLivePet && liveInventoryMode == .individual }
     var isAwaitingCatalogSync: Bool { pendingCatalogSyncProductID != nil }
     private var preventsExplicitDismissal: Bool {
-        isSubmitting || hasPendingLivePetRecovery || hasCompletedSave
+        isSubmitting || hasPendingLivePetRecovery || hasPendingStandardSave || hasCompletedSave
     }
     var blocksDismissal: Bool {
         preventsExplicitDismissal || !pickedImageUploadIDs.isEmpty || !pendingUnsavedUploads.isEmpty
@@ -2431,7 +2442,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         hasUnsavedChanges = true
         errorMessage = nil
         submissionFailureKind = nil
-        if !isSubmitting && !isLivePet {
+        if !isSubmitting && !isLivePet && !hasPendingStandardSave {
             standardSaveCommandID = nil
         }
     }
@@ -2616,6 +2627,16 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     func saveAccessory() {
         guard !isSubmitting, !hasCompletedSave else { return }
+
+        // A lost response can follow a committed create. Retry the exact retained
+        // command before accepting edits or generating another product identity.
+        if hasPendingStandardSave {
+            guard let retained = pendingSavedAccessoryDraft, pendingStandardRequest != nil else { return }
+            isSubmitting = true
+            errorMessage = nil
+            finalizeAccessorySave(accessory: retained, oldImageURLs: pendingStandardOldImageURLs)
+            return
+        }
 
         if isLivePet, let recovery = livePetRecovery {
             isSubmitting = true
@@ -3130,7 +3151,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             return accessory.branchID ?? ""
         }()
 
-        let commercePayload = buildCommercePayload()
+        let commercePayload = pendingStandardCommerce ?? buildCommercePayload()
         let commandID: String = {
             if let existing = standardSaveCommandID, !existing.isEmpty {
                 return existing
@@ -3144,19 +3165,51 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             return generated
         }()
 
-        PPInventoryCommandService.shared.saveProduct(
-            accessory: accessory,
-            branchId: resolvedBranchId,
-            commerce: commercePayload,
-            expectedRevision: accessory.revision > 0 ? accessory.revision : nil,
-            commandId: commandID
-        ) { [weak self] cmdResult, error in
+        pendingSavedAccessoryDraft = accessory
+        pendingStandardCommerce = commercePayload
+        pendingStandardOldImageURLs = oldImageURLs
+        let request: [String: Any]
+        do {
+            request = try pendingStandardRequest ?? PPInventoryCommandService.shared.prepareProductSave(
+                accessory: accessory, branchId: resolvedBranchId, commerce: commercePayload,
+                expectedRevision: accessory.revision > 0 ? accessory.revision : nil, commandId: commandID
+            )
+            let recovery = PPStandardInventoryRecovery(
+                requestData: try JSONSerialization.data(withJSONObject: request, options: [.sortedKeys]),
+                oldImageURLs: oldImageURLs
+            )
+            UserDefaults.standard.set(try JSONEncoder().encode(recovery), forKey: standardInventoryRecoveryKey)
+            pendingStandardRequest = request
+            hasPendingStandardSave = true
+        } catch {
+            isSubmitting = false
+            errorMessage = error.localizedDescription
+            return
+        }
+
+        PPInventoryCommandService.shared.executeProductSave(request: request) { [weak self] cmdResult, error in
             DispatchQueue.main.async {
                 guard let self = self else { return }
 
                 if let err = error {
                     self.isSubmitting = false
-                    self.errorMessage = err.localizedDescription
+                    let nsError = err as NSError
+                    let definitiveRejection = nsError.domain == FunctionsErrorDomain && [
+                        FunctionsErrorCode.invalidArgument.rawValue,
+                        FunctionsErrorCode.permissionDenied.rawValue,
+                        FunctionsErrorCode.unauthenticated.rawValue,
+                        FunctionsErrorCode.failedPrecondition.rawValue,
+                        FunctionsErrorCode.notFound.rawValue
+                    ].contains(nsError.code)
+                    if definitiveRejection && !self.standardSaveMayHaveCommitted {
+                        self.clearStandardInventoryRecovery()
+                    } else {
+                        self.standardSaveMayHaveCommitted = true
+                    }
+                    self.errorMessage = definitiveRejection ? err.localizedDescription : String(
+                        format: Language.get("Inventory_SaveOutcomeUnknown_Format", alter: "تعذر تأكيد الحفظ. أعد المحاولة لاستعادة نفس العملية دون تكرار الصنف. %@"),
+                        err.localizedDescription
+                    )
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
                     return
                 }
@@ -3165,6 +3218,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                       let productID = result.productId,
                       !productID.isEmpty else {
                     self.isSubmitting = false
+                    self.standardSaveMayHaveCommitted = true
                     self.errorMessage = Language.get(
                         "Inventory_InvalidCommandResponse",
                         alter: "تعذر التحقق من استجابة خدمة المخزون."
@@ -3172,6 +3226,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
                     return
                 }
+                self.standardSaveMayHaveCommitted = true
 
                 PPInventoryCommandService.shared.readBackProduct(
                     productId: productID,
@@ -3204,7 +3259,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                         accessory.accessoryID = confirmed.accessoryID
                         accessory.revision = confirmed.revision
                         self.commitSavedAccessory(confirmed)
-                        self.standardSaveCommandID = nil
+                        self.clearStandardInventoryRecovery()
 
                         // Media cleanup is safe only after authoritative readback
                         // proves which URLs the committed catalog retained.
@@ -3223,6 +3278,48 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    private var standardInventoryRecoveryKey: String {
+        let actor = Auth.auth().currentUser?.uid ?? "signed-out"
+        let scope = (editingAccessory?.accessoryID).flatMap { $0.isEmpty ? nil : $0 } ?? "new-\(selectedKind.rawValue)"
+        return "PPAdmin.InventoryMutationRecovery.v1.\(actor).\(scope)"
+    }
+
+    private func restoreStandardInventoryRecovery() {
+        guard !isLivePet, let data = UserDefaults.standard.data(forKey: standardInventoryRecoveryKey) else { return }
+        do {
+            let recovery = try JSONDecoder().decode(PPStandardInventoryRecovery.self, from: data)
+            let request = try dictionary(from: recovery.requestData)
+            guard let payload = request["payload"] as? [String: Any],
+                  let command = request["commandId"] as? String, !command.isEmpty else {
+                throw PPLivePetServiceError.invalidResponse
+            }
+            pendingStandardRequest = request
+            standardSaveCommandID = command
+            pendingStandardOldImageURLs = recovery.oldImageURLs
+            pendingSavedAccessoryDraft = PetAccessory(dictionary: payload, documentID: request["productId"] as? String ?? "")
+            hasPendingStandardSave = true
+            standardSaveMayHaveCommitted = true
+            hasUnsavedChanges = true
+            activeStage = .governance
+            errorMessage = String(format: Language.get("Inventory_SaveOutcomeUnknown_Format", alter: "تعذر تأكيد الحفظ. أعد المحاولة لاستعادة نفس العملية دون تكرار الصنف. %@"), "")
+        } catch {
+            // Never discard an unreadable receipt and allow an accidental new
+            // creation. Keep the editor blocked and surface the recovery error.
+            hasPendingStandardSave = true
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func clearStandardInventoryRecovery() {
+        UserDefaults.standard.removeObject(forKey: standardInventoryRecoveryKey)
+        standardSaveCommandID = nil
+        hasPendingStandardSave = false
+        pendingStandardCommerce = nil
+        pendingStandardRequest = nil
+        pendingStandardOldImageURLs = []
+        standardSaveMayHaveCommitted = false
     }
 
     private func commitSavedAccessory(_ saved: PetAccessory) {
@@ -16614,7 +16711,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 y: showStepsAppSwitcher ? 14 : 0
             )
             .animation(.spring(response: 0.38, dampingFraction: 0.82), value: showStepsAppSwitcher)
-            .allowsHitTesting(!showStepsAppSwitcher && !viewModel.isSubmitting && !viewModel.hasCompletedSave)
+            .allowsHitTesting(!showStepsAppSwitcher && !viewModel.isSubmitting && !viewModel.hasCompletedSave && !viewModel.hasPendingStandardSave)
             .disabled(viewModel.hasCompletedSave)
             .accessibilityHidden(viewModel.isSubmitting || showStepsAppSwitcher)
 
@@ -18081,6 +18178,9 @@ private struct PPAccessoryFoodIntakeJourney: View {
     }
 
     private var primaryActionTitle: String {
+        if viewModel.hasPendingStandardSave {
+            return tr("Inventory_ResumePendingSave", "استعادة الحفظ المعلّق")
+        }
         if viewModel.activeStage != .governance {
             return tr("CatalogIntake_Continue", "متابعة")
         }
@@ -18101,6 +18201,11 @@ private struct PPAccessoryFoodIntakeJourney: View {
 
     private func performPrimaryAction() {
         focusedField = nil
+        if viewModel.hasPendingStandardSave {
+            stageMessage = nil
+            viewModel.saveAccessory()
+            return
+        }
         if viewModel.activeStage == .governance {
             guard let issue = firstIncompleteStage else {
                 stageMessage = nil

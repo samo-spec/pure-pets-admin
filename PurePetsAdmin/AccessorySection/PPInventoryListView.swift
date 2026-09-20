@@ -1713,6 +1713,24 @@ enum CatalogHorizonTab: Int, CaseIterable, Identifiable {
 
 // MARK: - Inventory List View Model
 
+/// Firestore registrations support thread-safe removal. This lifetime token
+/// also tears down a listener when Swift 6 destroys an actor-isolated model.
+///
+/// Shared by Inventory (`PPInventoryListViewModel`) and POS
+/// (`POSFastSellViewModel`): a `@MainActor` model cannot touch a non-`Sendable`
+/// `ListenerRegistration` from `deinit` under the Swift 6 language mode, so
+/// without this wrapper a model can only detach in an explicit teardown call
+/// and leaks its snapshot listener on any path that skips one.
+///
+/// Belongs in a shared layer rather than this Inventory file; kept here for now
+/// because adding a file requires a `project.pbxproj` change.
+final class PPFirestoreListenerToken: @unchecked Sendable {
+    let registration: ListenerRegistration
+    init(_ registration: ListenerRegistration) { self.registration = registration }
+    func remove() { registration.remove() }
+    deinit { registration.remove() }
+}
+
 @MainActor
 final class PPInventoryListViewModel: ObservableObject {
     @Published private(set) var allItems: [PetAccessory] = []
@@ -1725,7 +1743,9 @@ final class PPInventoryListViewModel: ObservableObject {
     @Published var errorMessage: String? = nil
     @Published var selectedItemForDossier: PetAccessory? = nil
 
-    private var listener: AnyObject?
+    private var listener: PPFirestoreListenerToken?
+    private var listenerGeneration = UUID()
+    private var refreshContinuation: CheckedContinuation<Void, Never>?
     private var branchInventoryCancellable: AnyCancellable?
     private var pendingQuantityItemIDs = Set<String>()
     private var pendingDeletedIDs = Set<String>()
@@ -1793,23 +1813,33 @@ final class PPInventoryListViewModel: ObservableObject {
     func switchTab(to tab: CatalogHorizonTab) {
         guard tab != activeTab else { return }
         activeTab = tab
-        stopListening()
+        allItems = []
+        filteredItems = []
         startListening()
     }
 
     func startListening() {
+        stopListening()
+        let generation = listenerGeneration
         isLoading = true
         errorMessage = nil
         Task { [weak self] in
-            if let loaded = try? await PPLivePetInventoryService.listBranches() {
-                await MainActor.run {
-                    self?.branches = loaded
-                }
+            do {
+                let loaded = try await PPLivePetInventoryService.listBranches()
+                guard let self, self.listenerGeneration == generation else { return }
+                self.branches = loaded
+            } catch {
+                guard let self, self.listenerGeneration == generation else { return }
+                self.errorMessage = error.localizedDescription
             }
         }
-        listener = AccessoryManager.shared().observeAccessories(of: currentKind) { [weak self] items, error in
+        listener = PPFirestoreListenerToken(AccessoryManager.shared().observeAccessories(of: currentKind) { [weak self] items, error in
             DispatchQueue.main.async {
-                guard let self = self else { return }
+                guard let self, self.listenerGeneration == generation else { return }
+                defer {
+                    self.refreshContinuation?.resume()
+                    self.refreshContinuation = nil
+                }
                 self.isLoading = false
                 if let error = error {
                     self.errorMessage = error.localizedDescription
@@ -1827,14 +1857,20 @@ final class PPInventoryListViewModel: ObservableObject {
                 }
                 self.applyFilter()
             }
-        }
+        })
     }
 
     func stopListening() {
-        if let reg = listener as? AnyObject {
-            _ = reg.perform(Selector(("remove")))
-        }
+        listenerGeneration = UUID()
+        listener?.remove()
         listener = nil
+        refreshContinuation?.resume()
+        refreshContinuation = nil
+    }
+
+    deinit {
+        listener?.remove()
+        refreshContinuation?.resume()
     }
 
     func applyFilter() {
@@ -1891,33 +1927,11 @@ final class PPInventoryListViewModel: ObservableObject {
     }
 
     func refresh() async {
+        // Refresh the same owned projection, never replace it with a separate
+        // 50-item query whose callback can race a category switch or listener.
         await withCheckedContinuation { continuation in
-            AccessoryManager.shared().fetchAccessories(of: currentKind, limit: 50, startAfterDocument: nil) { [weak self] items, _, error in
-                DispatchQueue.main.async {
-                    if let error = error {
-                        self?.errorMessage = error.localizedDescription
-                        PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: error.localizedDescription)
-                        continuation.resume()
-                        return
-                    }
-                    guard let items = items else {
-                        continuation.resume()
-                        return
-                    }
-                    self?.allItems = items.filter { item in
-                        !item.isDeleted && !(self?.pendingDeletedIDs.contains(item.accessoryID) ?? false)
-                    }.sorted { a, b in
-                        let dateA = a.createdAt
-                        let dateB = b.createdAt
-                        if dateA != dateB {
-                            return dateA > dateB
-                        }
-                        return a.accessoryID > b.accessoryID
-                    }
-                    self?.applyFilter()
-                    continuation.resume()
-                }
-            }
+            startListening()
+            refreshContinuation = continuation
         }
     }
 
@@ -1955,6 +1969,11 @@ final class PPInventoryListViewModel: ObservableObject {
         }
 
         let previousQuantity = effectiveStock(for: item)
+        guard PPBranchInventoryService.shared.isServerConfirmed,
+              PPBranchInventoryService.shared.inventory(for: docID) != nil else {
+            errorMessage = Language.get("Inventory_ProjectionUnavailable", alter: "تعذر التحقق من رصيد الفرع. أعد تحميل المخزون.")
+            return
+        }
         let targetQuantity = previousQuantity + delta
         guard targetQuantity >= 0 else {
             PPHUD.showError(
@@ -1964,10 +1983,6 @@ final class PPInventoryListViewModel: ObservableObject {
             return
         }
         pendingQuantityItemIDs.insert(docID)
-        item.quantity = targetQuantity
-        item.noStock = (item.quantity <= 0)
-        objectWillChange.send()
-        applyFilter()
         let expectedRevision = PPBranchInventoryService.shared.inventory(for: docID)?.projectionRevision
         let commandID = PPInventoryCommandService.shared.generateCommandId(action: "adjust", targetId: docID)
         PPInventoryCommandService.shared.adjustStock(
@@ -1984,13 +1999,10 @@ final class PPInventoryListViewModel: ObservableObject {
                 guard let self else { return }
                 self.pendingQuantityItemIDs.remove(docID)
                 if let error {
-                    item.quantity = previousQuantity
-                    item.noStock = previousQuantity <= 0
-                    self.objectWillChange.send()
-                    self.applyFilter()
                     let message = PPBranchInventoryErrorHelper.localizedMessage(for: error)
                     PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: message)
                 } else {
+                    PPBranchInventoryService.shared.refreshInventory(for: docID, branchId: branchId)
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                 }
             }
@@ -2000,75 +2012,21 @@ final class PPInventoryListViewModel: ObservableObject {
     // MARK: - Quick Out of Stock Toggle
 
     func toggleStockAvailability(for item: PetAccessory) {
-        let docID = item.accessoryID
-        guard !docID.isEmpty else { return }
-        if item.isLivePet {
-            errorMessage = Language.get(
+        // Availability is derived from authoritative branch quantity (or live-pet
+        // unit state). Never translate a presentation toggle into a quantity
+        // reconciliation: doing so can destroy stock history and on-hand counts.
+        let message = item.isLivePet
+            ? Language.get(
                 "LivePet_Availability_ServerOwned",
                 alter: "توفر الحيوان يتغير من خلال البيع أو الحجر أو النقل أو الوفاة، وليس من مفتاح يدوي."
             )
-            UINotificationFeedbackGenerator().notificationOccurred(.warning)
-            return
-        }
-
-        let previousNoStock = item.noStock
-        let previousQuantity = item.quantity
-        let newNoStock = !previousNoStock
-
-        guard let branchId = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines),
-              !branchId.isEmpty,
-              branchId != "main_store" else {
-            PPHUD.showError(
-                Language.get("Error", alter: "خطأ"),
-                subtitle: Language.get("SelectBranchFirst", alter: "يرجى اختيار الفرع أولاً قبل تعديل حالة المخزون")
+            : Language.get(
+                "Inventory_Availability_DerivedFromQuantity",
+                alter: "حالة التوفر مشتقة من الرصيد الفعلي. استخدم تعديل الكمية لتحديث المخزون بأمان."
             )
-            return
-        }
-
-        let currentBranchStock = PPBranchInventoryService.shared.availableStock(for: docID, fallback: item.quantity)
-
-        if !newNoStock && currentBranchStock <= 0 {
-            // Cannot mark in stock when available quantity is 0 without adding quantity
-            PPHUD.showError(
-                Language.get("Stock_Zero_Title", alter: "الكمية صفر"),
-                subtitle: Language.get("Stock_Zero_Desc", alter: "لا يمكن تفعيل توفر الصنف بينما الرصيد الفعلي في الفرع صفر. أضف كمية للصنف أولاً.")
-            )
-            return
-        }
-
-        item.noStock = newNoStock
-        if newNoStock {
-            item.quantity = 0
-        }
-        objectWillChange.send()
-        applyFilter()
-
-        let targetQuantity = newNoStock ? 0 : currentBranchStock
-        let expectedRevision = PPBranchInventoryService.shared.inventory(for: docID)?.projectionRevision
-        let commandID = PPInventoryCommandService.shared.generateCommandId(action: "availability", targetId: docID)
-        PPInventoryCommandService.shared.adjustStock(
-            productId: docID,
-            branchId: branchId,
-            delta: nil,
-            newQuantity: targetQuantity,
-            reason: newNoStock ? "marked_no_stock" : "reconciled_in_stock",
-            notes: "admin_inventory_list_availability",
-            expectedRevision: expectedRevision,
-            commandId: commandID
-        ) { [weak self] _, error in
-            DispatchQueue.main.async {
-                if let error {
-                    item.noStock = previousNoStock
-                    item.quantity = previousQuantity
-                    self?.objectWillChange.send()
-                    self?.applyFilter()
-                    let message = PPBranchInventoryErrorHelper.localizedMessage(for: error)
-                    PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: message)
-                } else {
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                }
-            }
-        }
+        errorMessage = message
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        PPHUD.showError(Language.get("Inventory_StockProtected", alter: "المخزون محمي"), subtitle: message)
     }
 
     // MARK: - Quick App Market Visibility Toggle
@@ -2084,14 +2042,21 @@ final class PPInventoryListViewModel: ObservableObject {
         objectWillChange.send()
         applyFilter()
 
-        Firestore.firestore().collection("petAccessories").document(docID).updateData(["showInAppMarket": newValue]) { [weak self] error in
+        let commandID = PPInventoryCommandService.shared.generateCommandId(action: "visibility", targetId: docID)
+        PPInventoryCommandService.shared.setAppMarketVisibility(
+            productId: docID,
+            visible: newValue,
+            expectedRevision: item.revision > 0 ? item.revision : nil,
+            commandId: commandID
+        ) { [weak self] result, error in
             DispatchQueue.main.async {
                 if let error = error {
                     item.showInAppMarket = previousValue
                     self?.objectWillChange.send()
                     self?.applyFilter()
-                    PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: error.localizedDescription)
+                    PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: PPBranchInventoryErrorHelper.localizedMessage(for: error))
                 } else {
+                    if let revision = result?.revision, revision > 0 { item.revision = revision }
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                     let msg = newValue ? Language.get("AppMarket_NowVisible_Toast", alter: "تم إظهار الصنف في متجر التطبيق") : Language.get("AppMarket_NowHidden_Toast", alter: "تم إخفاء الصنف من متجر التطبيق")
                     PPHUD.showSuccess(msg)
@@ -2174,6 +2139,7 @@ final class PPInventoryListViewModel: ObservableObject {
 struct PPInventoryListView: View {
     private let session: AdminSession?
     @StateObject private var viewModel: PPInventoryListViewModel
+    @ObservedObject private var branchProjection = PPBranchInventoryService.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
     private let onPushViewController: (UIViewController) -> Void
@@ -2445,8 +2411,11 @@ struct PPInventoryListView: View {
                     }
                 },
                 onToggleStock: {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    viewModel.toggleStockAvailability(for: item)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    itemForActionMenu = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                        openItemDetail(for: item)
+                    }
                 },
                 onDelete: {
                     itemForActionMenu = nil
@@ -2575,6 +2544,17 @@ struct PPInventoryListView: View {
                 AdminErrorBanner(message: error) { viewModel.startListening() }
                     .padding(.horizontal, AdminSpacing.screenMargin)
                     .padding(.top, 4)
+            }
+            if let error = branchProjection.inventoryError ?? branchProjection.settingsError {
+                AdminErrorBanner(message: error) {
+                    branchProjection.bindToBranch(branchProjection.currentBranchId)
+                }
+                .padding(.horizontal, AdminSpacing.screenMargin)
+            } else if branchProjection.currentBranchId != nil && !branchProjection.isServerConfirmed && !branchProjection.isLoading {
+                Text(Language.get("Inventory_CachedStockNotice", alter: "الرصيد المعروض محفوظ مؤقتاً ولم يؤكده الخادم بعد."))
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .padding(.horizontal, AdminSpacing.screenMargin)
             }
         }
     }
@@ -4223,14 +4203,13 @@ private struct PPAdminCatalogInventoryCard: View {
             )
         } else {
             Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                onToggleStock()
+                promptQuantityEdit()
             } label: {
                 HStack(spacing: 5) {
-                    Image(systemName: item.noStock ? "eye.slash.fill" : "checkmark.seal.fill")
+                    Image(systemName: "number.square.fill")
                         .font(.system(size: 11, weight: .bold))
 
-                    Text(item.noStock ? Language.get("HiddenFromCatalog", alter: "موقوف مؤقتاً") : Language.get("ActiveInCatalog", alter: "متاح بالمتجر"))
+                    Text(Language.get("EditQuantity", alter: "تعديل الكمية"))
                         .font(AdminType.caption2Bold)
                         .lineLimit(1)
                 }
@@ -4247,7 +4226,7 @@ private struct PPAdminCatalogInventoryCard: View {
                 )
             }
             .buttonStyle(CatalogPressStyle())
-            .accessibilityLabel(item.noStock ? Language.get("MarkInStock", alter: "تفعيل المخزون") : Language.get("MarkOutOfStock", alter: "تعطيل المخزون"))
+            .accessibilityLabel(Language.get("EditQuantity", alter: "تعديل الكمية"))
         }
     }
 
@@ -4381,15 +4360,6 @@ private struct PPAdminCatalogInventoryCard: View {
                 promptQuantityEdit()
             } label: {
                 Label(Language.get("EditQuantity", alter: "تعديل الكمية"), systemImage: "number.square.fill")
-            }
-
-            Button {
-                onToggleStock()
-            } label: {
-                Label(
-                    item.noStock ? Language.get("MarkInStock", alter: "تفعيل المخزون") : Language.get("MarkOutOfStock", alter: "تعطيل المخزون"),
-                    systemImage: item.noStock ? "checkmark.seal" : "eye.slash"
-                )
             }
 
             if let onManageLots = onManageLots, item.isFood || item.isPetMedicine {
@@ -5196,7 +5166,12 @@ public struct PPInventoryItemDetailView: View {
                         }
                     } : nil,
                     onToggleStock: !item.isLivePet ? {
-                        toggleStockVisibility()
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                            showActionsHub = false
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                            showTactileQuantityPad = true
+                        }
                     } : nil,
                     onToggleAppMarket: {
                         toggleAppMarketVisibility()
@@ -5298,10 +5273,9 @@ public struct PPInventoryItemDetailView: View {
                         item.noStock = (newQuantity <= 0)
                     }
                     if let branchId = BranchContextStore.shared.activeBranch?.branchID {
-                        branchInventory.updateAvailableStockLocally(
+                        branchInventory.refreshInventory(
                             for: item.accessoryID,
-                            branchId: branchId,
-                            newQuantity: newQuantity
+                            branchId: branchId
                         )
                     }
                     viewModel?.applyFilter()
@@ -6356,53 +6330,51 @@ public struct PPInventoryItemDetailView: View {
     }
 
     private func toggleStockVisibility() {
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-            item.noStock.toggle()
-        }
-        onToggleStock?()
+        guard !item.isLivePet else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        // “Availability” is quantity-derived. Route the control to the exact
+        // quantity pad rather than mutating a synthetic noStock state.
+        showTactileQuantityPad = true
     }
 
     private func toggleAppMarketVisibility() {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        // The owner callback is authoritative when present. It performs the
+        // optimistic update and the audited command exactly once; pre-toggling
+        // here would invert the value a second time.
+        if let onToggleAppMarket {
+            onToggleAppMarket()
+            return
+        }
+
+        let docID = item.accessoryID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !docID.isEmpty else { return }
         let previous = item.showInAppMarket
         let next = !previous
         withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
             item.showInAppMarket = next
         }
-        if let onToggleAppMarket = onToggleAppMarket {
-            onToggleAppMarket()
-        } else if let viewModel = viewModel {
-            let docID = item.accessoryID.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !docID.isEmpty else { return }
-            Firestore.firestore().collection("petAccessories").document(docID).updateData(["showInAppMarket": next]) { error in
-                DispatchQueue.main.async {
-                    if let error = error {
-                        item.showInAppMarket = previous
-                        viewModel.applyFilter()
-                        PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: error.localizedDescription)
-                    } else {
-                        UINotificationFeedbackGenerator().notificationOccurred(.success)
-                        let msg = next ? Language.get("AppMarket_NowVisible_Toast", alter: "تم إظهار الصنف في متجر التطبيق") : Language.get("AppMarket_NowHidden_Toast", alter: "تم إخفاء الصنف من متجر التطبيق")
-                        PPHUD.showSuccess(msg)
-                        viewModel.applyFilter()
-                    }
+
+        let commandID = PPInventoryCommandService.shared.generateCommandId(action: "visibility", targetId: docID)
+        PPInventoryCommandService.shared.setAppMarketVisibility(
+            productId: docID,
+            visible: next,
+            expectedRevision: item.revision > 0 ? item.revision : nil,
+            commandId: commandID
+        ) { result, error in
+            DispatchQueue.main.async {
+                if let error {
+                    item.showInAppMarket = previous
+                    viewModel?.applyFilter()
+                    PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: PPBranchInventoryErrorHelper.localizedMessage(for: error))
+                    return
                 }
-            }
-        } else {
-            let docID = item.accessoryID.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !docID.isEmpty else { return }
-            Firestore.firestore().collection("petAccessories").document(docID).updateData(["showInAppMarket": next]) { error in
-                DispatchQueue.main.async {
-                    if let error = error {
-                        item.showInAppMarket = previous
-                        PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: error.localizedDescription)
-                    } else {
-                        UINotificationFeedbackGenerator().notificationOccurred(.success)
-                        let msg = next ? Language.get("AppMarket_NowVisible_Toast", alter: "تم إظهار الصنف في متجر التطبيق") : Language.get("AppMarket_NowHidden_Toast", alter: "تم إخفاء الصنف من متجر التطبيق")
-                        PPHUD.showSuccess(msg)
-                    }
-                }
+                if let revision = result?.revision, revision > 0 { item.revision = revision }
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                let msg = next ? Language.get("AppMarket_NowVisible_Toast", alter: "تم إظهار الصنف في متجر التطبيق") : Language.get("AppMarket_NowHidden_Toast", alter: "تم إخفاء الصنف من متجر التطبيق")
+                PPHUD.showSuccess(msg)
+                viewModel?.applyFilter()
             }
         }
     }

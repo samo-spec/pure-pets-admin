@@ -226,16 +226,15 @@ struct POSCompletedReceiptSheet: View {
                 POSReceiptShareSheet(url: temporaryReceiptURL)
             }
         }
-        .alert(
-            Language.get("POS_Receipt_ActionFailedTitle", alter: "تعذر تجهيز الإيصال"),
-            isPresented: Binding(
-                get: { feedbackMessage != nil },
-                set: { if !$0 { feedbackMessage = nil } }
-            )
-        ) {
-            Button(Language.get("OK", alter: "موافق"), role: .cancel) {}
-        } message: {
-            Text(feedbackMessage ?? "")
+        .onChange(of: feedbackMessage) { message in
+            guard let message = message, !message.isEmpty else { return }
+            PPAlertHelper.showError(
+                in: nil,
+                title: Language.get("POS_Receipt_ActionFailedTitle", alter: "تعذر تجهيز الإيصال"),
+                subtitle: message
+            ) {
+                feedbackMessage = nil
+            }
         }
     }
 

@@ -541,7 +541,8 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
     NSString *domainCode = [PPSafeString(details[@"domainCode"]) uppercaseString];
     if ([domainCode hasPrefix:@"POS_INVENTORY_UNIT_"] ||
         [domainCode isEqualToString:@"POS_PRODUCT_NOT_FOUND"] ||
-        [domainCode isEqualToString:@"POS_INSUFFICIENT_STOCK"]) {
+        [domainCode isEqualToString:@"POS_INSUFFICIENT_STOCK"] ||
+        [domainCode isEqualToString:@"POS_PRICE_DISCREPANCY"]) {
         return YES;
     }
     if (error.code == FIRFunctionsErrorCodeNotFound) return YES;
@@ -552,7 +553,9 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         [message containsString:@"animal"] ||
         [message containsString:@"no longer available"] ||
         [message containsString:@"product is unavailable"] ||
-        [message containsString:@"insufficient stock"];
+        [message containsString:@"insufficient stock"] ||
+        [message containsString:@"price does not match"] ||
+        [message containsString:@"canonical catalog price"];
 }
 
 + (NSDictionary<NSString *, id> *)exactUnitConflictDetailsForError:(NSError *)error {

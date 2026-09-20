@@ -92,7 +92,7 @@ struct AdminAppShell: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            if session.hasPermission("nova.view") && !(selectedTab == .command && commandShowsNestedWorkflow) {
+            if isPuryFloatingAffordanceVisible {
                 puryFloatingAffordance
                     .padding(.bottom, puryFloatingBottomClearance)
                     .padding(.trailing, 16)
@@ -239,6 +239,19 @@ struct AdminAppShell: View {
     }
 
     // MARK: - Pury Operational Assistant Launcher (Circular FAB)
+    // Temporary toggle: hide floating Pury circle button on Admin Home during UI/layout review.
+    private static let isPuryFloatingButtonVisibleOnAdminHome: Bool = false
+    private static let isPuryFloatingAffordanceGloballyVisible: Bool = true
+
+    private var isPuryFloatingAffordanceVisible: Bool {
+        guard Self.isPuryFloatingAffordanceGloballyVisible else { return false }
+        guard session.hasPermission("nova.view") else { return false }
+        if selectedTab == .command {
+            return Self.isPuryFloatingButtonVisibleOnAdminHome && !commandShowsNestedWorkflow
+        }
+        return true
+    }
+
     // Note: PuryBrand.primary and PuryBrand.glow are preserved for assistant identity contract.
     private var puryFloatingAffordance: some View {
         Button {
@@ -246,20 +259,18 @@ struct AdminAppShell: View {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         } label: {
             ZStack {
-                // Frosted neutral circular glass base — clean aesthetic, no glowing brand color
+                // Frosted neutral circular glass base — ultraThinMaterial only, never clearGlass
                 Circle()
                     .fill(.ultraThinMaterial)
 
-                Circle()
-                    .fill(AdminSurface.surface.opacity(0.85))
-
-                // Centered circular PuryAvatar with status ring and zero ambient brand glow
+                // Centered circular PuryAvatar with ultraThinMaterial glass background and status ring
                 PuryAvatar(
                     size: 46,
                     isLiving: true,
                     isThinking: false,
                     showStatusRing: true,
-                    showAmbientAura: false
+                    showAmbientAura: false,
+                    useGlassBackground: true
                 )
             }
             .frame(width: 54, height: 54)

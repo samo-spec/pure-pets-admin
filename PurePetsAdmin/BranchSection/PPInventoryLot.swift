@@ -24,7 +24,7 @@ public struct PPInventoryLot: Identifiable, Hashable, Sendable {
     public let availableQuantity: Int
     public let reservedQuantity: Int
     public let onHandQuantity: Int
-    public let costPrice: Double
+    public let costPrice: Double?
     public let expiryDate: Date?
     public let status: String
     public let supplier: String
@@ -42,7 +42,7 @@ public struct PPInventoryLot: Identifiable, Hashable, Sendable {
         availableQuantity: Int,
         reservedQuantity: Int = 0,
         onHandQuantity: Int? = nil,
-        costPrice: Double = 0.0,
+        costPrice: Double? = nil,
         expiryDate: Date?,
         status: String = "active",
         supplier: String = "",
@@ -121,6 +121,7 @@ public final class PPInventoryLotService: ObservableObject {
     @Published public var errorMessage: String? = nil
 
     private lazy var functions = Functions.functions()
+    private var pendingLoads = 0
 
     private init() {}
 
@@ -131,8 +132,9 @@ public final class PPInventoryLotService: ObservableObject {
         includeDepleted: Bool = false,
         includeExpired: Bool = false
     ) async throws -> [PPInventoryLot] {
+        pendingLoads += 1
         isLoading = true
-        defer { isLoading = false }
+        defer { pendingLoads -= 1; isLoading = pendingLoads > 0 }
 
         let resolvedBranch: String
         let trimmed = branchId.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -160,7 +162,9 @@ public final class PPInventoryLotService: ObservableObject {
             let result = try await functions.httpsCallable("listBranchInventoryLots").call(["payload": payload])
 
             guard let dict = result.data as? [String: Any],
-                  let lotsRaw = dict["lots"] as? [[String: Any]] else {
+                  dict["ok"] as? Bool == true,
+                  let lotsRaw = dict["lots"] as? [[String: Any]],
+                  lotsRaw.allSatisfy({ ($0["id"] as? String)?.isEmpty == false && $0["lotNumber"] is String && $0["branchId"] as? String == resolvedBranch && $0["productId"] as? String == productId }) else {
                 throw NSError(
                     domain: "PPInventoryLotService",
                     code: -1,
@@ -192,7 +196,7 @@ public final class PPInventoryLotService: ObservableObject {
                     availableQuantity: (lotDict["availableQuantity"] as? Int) ?? 0,
                     reservedQuantity: (lotDict["reservedQuantity"] as? Int) ?? 0,
                     onHandQuantity: lotDict["onHandQuantity"] as? Int,
-                    costPrice: (lotDict["costPrice"] as? Double) ?? 0.0,
+                    costPrice: (lotDict["costPrice"] as? NSNumber)?.doubleValue,
                     expiryDate: expDate,
                     status: (lotDict["status"] as? String) ?? "active",
                     supplier: (lotDict["supplier"] as? String) ?? "",
@@ -200,12 +204,14 @@ public final class PPInventoryLotService: ObservableObject {
                 )
             }
 
-            lotsByProduct[productId] = parsedLots
+            lotsByProduct["\(resolvedBranch)/\(productId)"] = parsedLots
+            errorMessage = nil
             return parsedLots
         } catch {
             // Lot records contain cost, supplier and expiry data. A callable
             // failure must not turn into a direct Firestore query that could
             // bypass the server's permission and branch-scope filtering.
+            errorMessage = PPBranchInventoryErrorHelper.localizedMessage(for: error)
             throw error
         }
     }
@@ -233,13 +239,15 @@ public final class PPInventoryLotService: ObservableObject {
         productId: String,
         lotNumber: String,
         initialQuantity: Int,
-        costPrice: Double = 0.0,
+        costPrice: Double? = nil,
         expiryDate: Date,
         supplier: String = "",
-        notes: String = ""
+        notes: String = "",
+        commandId: String? = nil
     ) async throws -> PPInventoryLot {
+        pendingLoads += 1
         isLoading = true
-        defer { isLoading = false }
+        defer { pendingLoads -= 1; isLoading = pendingLoads > 0 }
 
         let resolvedBranch: String
         let trimmed = branchId.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -256,24 +264,29 @@ public final class PPInventoryLotService: ObservableObject {
         }
 
         let isoFormatter = ISO8601DateFormatter()
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "branchId": resolvedBranch,
             "productId": productId,
             "lotNumber": lotNumber.trimmingCharacters(in: .whitespacesAndNewlines),
             "initialQuantity": initialQuantity,
-            "costPrice": costPrice,
             "expiryDate": isoFormatter.string(from: expiryDate),
             "supplier": supplier.trimmingCharacters(in: .whitespacesAndNewlines),
             "notes": notes.trimmingCharacters(in: .whitespacesAndNewlines),
-            "commandId": UUID().uuidString
+            "commandId": commandId ?? UUID().uuidString
         ]
+        if let costPrice { payload["costPrice"] = costPrice }
 
         do {
             let result = try await functions.httpsCallable("createInventoryLot").call(["payload": payload])
 
             guard let dict = result.data as? [String: Any],
+                  dict["ok"] as? Bool == true,
                   let lotData = dict["lot"] as? [String: Any],
-                  let lotId = lotData["lotId"] as? String else {
+                  let lotId = lotData["lotId"] as? String, !lotId.isEmpty,
+                  lotData["branchId"] as? String == resolvedBranch,
+                  lotData["productId"] as? String == productId,
+                  let receivedQuantity = lotData["initialQuantity"] as? Int,
+                  let availableQuantity = lotData["availableQuantity"] as? Int else {
                 throw NSError(domain: "PPInventoryLotService", code: -1, userInfo: [NSLocalizedDescriptionKey: Language.get("Inventory_Lot_Invalid_Response", alter: "استجابة غير صالحة من الخادم")])
             }
 
@@ -283,9 +296,9 @@ public final class PPInventoryLotService: ObservableObject {
                 lotNumber: lotNumber,
                 productId: productId,
                 branchId: resolvedBranch,
-                initialQuantity: initialQuantity,
-                availableQuantity: initialQuantity,
-                costPrice: costPrice,
+                initialQuantity: receivedQuantity,
+                availableQuantity: availableQuantity,
+                costPrice: (lotData["costPrice"] as? NSNumber)?.doubleValue,
                 expiryDate: expiryDate,
                 status: "active",
                 supplier: supplier,
@@ -293,9 +306,12 @@ public final class PPInventoryLotService: ObservableObject {
                 createdAt: Date()
             )
 
-            var current = lotsByProduct[productId] ?? []
+            let key = "\(resolvedBranch)/\(productId)"
+            var current = lotsByProduct[key] ?? []
+            current.removeAll { $0.id == lotId }
             current.insert(newLot, at: 0)
-            lotsByProduct[productId] = current
+            lotsByProduct[key] = current
+            errorMessage = nil
 
             return newLot
         } catch {

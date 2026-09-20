@@ -26,8 +26,25 @@ struct PuryAssistantSheetView: View {
     /// (ambient background atmosphere pulse, avatar living breathing/stardust drift, status dot scaling, and synaptic beacon pulse).
     private static let isScreenAliveAnimationEnabled: Bool = false
 
+    /// Scroll anchors. The reading dossier and a pending Tier-3 approval both need to be
+    /// reachable from outside the `ScrollViewReader`.
+    private static let readingAnchor = "pury_reading_dossier"
+    private static let pendingApprovalAnchor = "pury_pending_approval"
+
     /// Authoritative horizontal breathing room for all sheet subviews.
     private static let sheetHorizontalMargin: CGFloat = 20
+
+    /// Optical perimeter beyond the system safe area. The system safe area protects
+    /// hardware; this keeps interactive chrome from visually touching the screen edge.
+    private static let sheetPerimeterInset: CGFloat = 8
+
+    /// The foreground crown begins below the status-bar safe-area boundary; only the
+    /// decorative atmosphere is allowed to extend behind system chrome.
+    private static let navigationSafeAreaClearance: CGFloat = 8
+
+    /// A completed answer needs a distinct handoff before the next operator prompt. The
+    /// stack keeps its normal rhythm elsewhere; this is only answer -> new question space.
+    private static let answerToNextQueryBreathingRoom: CGFloat = 14
 
     // Living Avatar & Motion States
     @State private var ambientPulse: Bool = false
@@ -36,6 +53,10 @@ struct PuryAssistantSheetView: View {
     /// the operator is composing, or the conversation already has depth — rather than
     /// on scroll offset, which avoids mid-scroll jitter and layout feedback loops.
     @State private var isClearConfirmationPresented: Bool = false
+
+    /// Set from the composer to move the conversation to an anchor that lives inside the
+    /// scroll view, which the composer cannot reach directly.
+    @State private var pendingScrollTarget: String? = nil
 
     private var isCrownCompact: Bool {
         isInputFocused || store.messages.count >= 3
@@ -46,6 +67,12 @@ struct PuryAssistantSheetView: View {
         if store.language == "en" { return false }
         return Language.isRTL()
     }
+
+    /// Pury's own conversation language. `isRTL` already originates from
+    /// `PuryConversationStore.language`, so deriving the language code from it keeps every
+    /// string on this surface resolving from one source rather than the app-wide bundle.
+    private var language: String { isRTL ? "ar" : "en" }
+
 
     init(
         session: AdminSession,
@@ -63,50 +90,83 @@ struct PuryAssistantSheetView: View {
             // Ambient Atmospheric Background
             ambientAtmosphere
 
-            VStack(spacing: 0) {
-                // Single authored header surface: identity, bound data scope, and the
-                // live state machine on one crown instead of two stacked bars.
-                puryCommandCrown
+            // Conversation Ledger
+            ScrollViewReader { proxy in
+                ScrollView(showsIndicators: false) {
+                    LazyVStack(spacing: 16) {
+                        if store.messages.isEmpty {
+                            PuryLaunchDeck(
+                                language: store.language,
+                                isRTL: isRTL,
+                                screenContext: screenContext,
+                                authorizedIntentIDs: authorizedIntentIDs,
+                                authorizedQueryIDs: authorizedQueryIDs,
+                                onRun: { prompt in rerunQuery(prompt) }
+                            )
+                            .padding(.top, 4)
+                            .transition(.opacity.combined(with: .scale(scale: 0.985)))
+                        } else {
+                            ForEach(store.messages) { message in
+                                messageStreamRow(for: message)
+                                    .padding(.bottom, bottomBreathingRoom(after: message))
+                                    .id(message.id)
+                            }
 
-                // Conversation Timeline
-                ScrollViewReader { proxy in
-                    ScrollView(showsIndicators: false) {
-                        LazyVStack(spacing: 16) {
-                            if store.messages.isEmpty && store.state == .idle {
-                                livingEmptyStateView
-                                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
-                            } else {
-                                ForEach(store.messages) { message in
-                                    messageStreamRow(for: message)
-                                        .id(message.id)
-                                }
-
-                                if store.state == .loading {
-                                    thinkingBubble
-                                        .id("pury_thinking_bubble")
-                                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                                }
+                            if store.isWaitingOrThinking {
+                                PuryReadingDossier(
+                                    language: store.language,
+                                    isRTL: isRTL,
+                                    allowsMotion: !reduceMotion
+                                )
+                                .id(Self.readingAnchor)
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
                             }
                         }
-                        .padding(.horizontal, Self.sheetHorizontalMargin)
-                        .padding(.top, 14)
-                        .padding(.bottom, 24) // composer owns its space through safeAreaInset
-                        .frame(maxWidth: 680)
                     }
-                    .frame(maxWidth: .infinity)
-                    .onChange(of: store.messages.count) { _ in
-                        scrollToLatest(proxy: proxy)
+                    .padding(.horizontal, Self.sheetHorizontalMargin)
+                    .padding(.top, 14)
+                    .padding(.bottom, 24) // composer owns its space through safeAreaInset
+                    .frame(maxWidth: 680)
+                }
+                .frame(maxWidth: .infinity)
+                // Content dissolves into the command bar instead of being clipped by it.
+                .overlay(alignment: .bottom) {
+                    LinearGradient(
+                        colors: [AdminSurface.background.opacity(0), AdminSurface.background],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 20)
+                    .allowsHitTesting(false)
+                }
+                .onChange(of: store.messages.count) { _ in
+                    scrollToLatest(proxy: proxy)
+                }
+                .onChange(of: store.state) { _ in
+                    scrollToLatest(proxy: proxy)
+                }
+                .onChange(of: pendingScrollTarget) { target in
+                    guard let target else { return }
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.32)) {
+                        proxy.scrollTo(target, anchor: .center)
                     }
-                    .onChange(of: store.state) { _ in
-                        scrollToLatest(proxy: proxy)
-                    }
+                    pendingScrollTarget = nil
                 }
             }
-
+            .padding(.horizontal, Self.sheetPerimeterInset)
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            // Single authored header surface: identity, bound data scope, and the
+            // live state machine on one crown spanning edge-to-edge and filling the
+            // top safe area layout guide inset.
+            puryCommandCrown
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             floatingInputDock
+                .padding(.horizontal, Self.sheetPerimeterInset)
+                .padding(.bottom, Self.sheetPerimeterInset)
         }
+        .ignoresSafeArea(.all, edges: .top)
         .environment(\.layoutDirection, isRTL ? .rightToLeft : .leftToRight)
         .confirmationDialog(
             PuryLocale.text(
@@ -186,8 +246,39 @@ struct PuryAssistantSheetView: View {
         .ignoresSafeArea()
     }
 
-    // MARK: - Pury Command Crown
+    // MARK: - Operator Authorization Projection
 
+    /// Launch-deck offers are gated by the same `AdminRoute` authorization the app uses for
+    /// navigation, so Pury never proposes a query whose result the operator cannot open.
+    private func isAuthorized(_ route: AdminRoute) -> Bool {
+        route.isAuthorized(for: session)
+    }
+
+    private var authorizedIntentIDs: Set<String> {
+        var allowed: Set<String> = []
+        if isAuthorized(.hotel) { allowed.insert("hotel") }
+        if isAuthorized(.accessories) || isAuthorized(.food) || isAuthorized(.livePets) { allowed.insert("stock") }
+        if isAuthorized(.fulfillment) || isAuthorized(.payments) { allowed.insert("orders") }
+        if isAuthorized(.payments) || isAuthorized(.accounting) { allowed.insert("performance") }
+        return allowed
+    }
+
+    private var authorizedQueryIDs: Set<String> {
+        var allowed: Set<String> = []
+        if isAuthorized(.veterinarians) || isAuthorized(.staff) { allowed.insert("vets") }
+        if isAuthorized(.adoptionManager) { allowed.insert("adoption") }
+        if isAuthorized(.hotel) { allowed.insert("guests") }
+        if isAuthorized(.accessories) { allowed.insert("audit") }
+        if isAuthorized(.delivery) { allowed.insert("delivery") }
+        if isAuthorized(.hotel) { allowed.insert("bookings") }
+        if isAuthorized(.branches) { allowed.insert("branches") }
+        if isAuthorized(.community) || isAuthorized(.moderation) { allowed.insert("missing") }
+        if isAuthorized(.pointOfSale) || isAuthorized(.payments) { allowed.insert("posSales") }
+        if isAuthorized(.livePets) { allowed.insert("livePets") }
+        return allowed
+    }
+
+    // MARK: - Pury Command Crown
     private var puryCommandCrown: some View {
         PuryCommandCrown(
             language: store.language,
@@ -213,403 +304,285 @@ struct PuryAssistantSheetView: View {
         )
     }
 
-    // MARK: - Living Avatar Beacon
-
-    private func livingAvatarBeacon(size: CGFloat) -> some View {
-        PuryAvatar(
-            size: size,
-            isLiving: Self.isScreenAliveAnimationEnabled,
-            isThinking: store.state == .loading,
-            showStatusRing: size >= 32,
-            showAmbientAura: size >= 32 && Self.isScreenAliveAnimationEnabled
-        )
-    }
-
-    // MARK: - Living Operational Radar (Reinvented Empty State)
-
-    private var livingEmptyStateView: some View {
-        VStack(spacing: 22) {
-            Spacer(minLength: 8)
-
-            // Radiant Synaptic Beacon Hero
-            ZStack {
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                PuryBrand.hotPink.opacity(Self.isScreenAliveAnimationEnabled && ambientPulse ? 0.24 : 0.08),
-                                PuryBrand.violet.opacity(Self.isScreenAliveAnimationEnabled && ambientPulse ? 0.12 : 0.03),
-                                Color.clear
-                            ],
-                            center: .center,
-                            startRadius: 24,
-                            endRadius: 85
-                        )
-                    )
-                    .frame(width: 160, height: 160)
-
-                livingAvatarBeacon(size: 68)
-            }
-
-            // Warm Executive Greeting & Mission Banner
-            VStack(spacing: 8) {
-                Text(executiveGreetingTitle)
-                    .font(PPBrandFont.bold(size: 22, relativeTo: .title2))
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .multilineTextAlignment(.center)
-
-                Text(isRTL
-                     ? "أنا هنا للإجابة فوراً عن إشغال الفندق، تنبيهات المخزون، أوامر التجهيز، ومؤشرات الأداء من واقع البيانات الحية المعتمدة."
-                     : "Ready to assist with hotel occupancy, inventory radar, fulfillment queue, and platform sales from verified live data.")
-                    .font(AdminType.subheadline)
-                    .foregroundStyle(AdminSurface.secondaryText)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(4)
-                    .padding(.horizontal, 16)
-            }
-
-            // 4 Sculpted Operational Catalyst Pods (2 x 2 Bounded Grid)
-            let catalystColumns = [
-                GridItem(.flexible(), spacing: 10),
-                GridItem(.flexible(), spacing: 10)
-            ]
-            LazyVGrid(columns: catalystColumns, spacing: 10) {
-                operationalCatalystPod(
-                    icon: "building.2.crop.circle.fill",
-                    accentGradient: [Color(red: 16/255, green: 185/255, blue: 129/255), Color(red: 20/255, green: 184/255, blue: 166/255)],
-                    badge: isRTL ? "🏨 الفندق" : "🏨 Hotel",
-                    title: isRTL ? "إشغال الفندق" : "Occupancy",
-                    subtitle: isRTL ? "فحص الغرف والنزلاء" : "Live rooms & guests",
-                    prompt: isRTL ? "ما هي حالة الإشغال اليوم في فندق الحيوانات؟" : "What is the hotel occupancy and active stays today?"
-                )
-
-                operationalCatalystPod(
-                    icon: "exclamationmark.triangle.fill",
-                    accentGradient: [Color(red: 245/255, green: 158/255, blue: 11/255), Color(red: 239/255, green: 68/255, blue: 68/255)],
-                    badge: isRTL ? "📦 المخزون" : "📦 Low Stock",
-                    title: isRTL ? "نواقص المخزون" : "Inventory Alerts",
-                    subtitle: isRTL ? "المنتجات أوشكت على النفاد" : "Items near empty",
-                    prompt: isRTL ? "ما هي المنتجات التي أوشكت على النفاد في المتجر؟" : "What products are currently running low on stock?"
-                )
-
-                operationalCatalystPod(
-                    icon: "shippingbox.fill",
-                    accentGradient: [Color(red: 59/255, green: 130/255, blue: 246/255), Color(red: 99/255, green: 102/255, blue: 241/255)],
-                    badge: isRTL ? "🚚 التجهيز" : "🚚 Fulfillments",
-                    title: isRTL ? "الطلبات المعلقة" : "Pending Orders",
-                    subtitle: isRTL ? "جاهزية الشحن والتسليم" : "Awaiting dispatch",
-                    prompt: isRTL ? "كم عدد الطلبات المعلقة بانتظار التجهيز والشحن؟" : "How many orders are awaiting fulfillment and shipping?"
-                )
-
-                operationalCatalystPod(
-                    icon: "chart.line.uptrend.xyaxis",
-                    accentGradient: [Color(red: 139/255, green: 92/255, blue: 246/255), Color(red: 236/255, green: 72/255, blue: 153/255)],
-                    badge: isRTL ? "📊 الأداء" : "📊 Performance",
-                    title: isRTL ? "ملخص المبيعات" : "Weekly Metrics",
-                    subtitle: isRTL ? "الإيرادات والنمو" : "Revenue & KPIs",
-                    prompt: isRTL ? "قدم لي ملخصاً شاملاً لمؤشرات الأداء والمبيعات لهذا الأسبوع" : "Summarize platform sales and operational KPIs for this week"
-                )
-            }
-
-            // Quick Telemetry Accelerator Tray
-            quickTelemetryTray
-
-            Spacer(minLength: 28)
-        }
-    }
-
-    private var executiveGreetingTitle: String {
-        let hour = Calendar.current.component(.hour, from: Date())
-        let isMorning = hour < 12
-        if isRTL {
-            return isMorning ? "صباح الخير! أنا بيوري 🐾" : "مساء الخير! أنا بيوري 🐾"
-        } else {
-            return isMorning ? "Good morning! I'm Pury 🐾" : "Good evening! I'm Pury 🐾"
-        }
-    }
-
-    private func operationalCatalystPod(
-        icon: String,
-        accentGradient: [Color],
-        badge: String,
-        title: String,
-        subtitle: String,
-        prompt: String
-    ) -> some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            Task {
-                await store.sendMessage(prompt, screenContext: screenContext)
-            }
-        } label: {
-            VStack(alignment: .leading, spacing: 7) {
-                // Top Row: Icon squircle + Badge
-                HStack(spacing: 5) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [accentGradient.first?.opacity(0.18) ?? .clear, accentGradient.last?.opacity(0.10) ?? .clear],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 28, height: 28)
-
-                        Image(systemName: icon)
-                            .font(.system(size: 13.5, weight: .bold))
-                            .foregroundStyle(accentGradient.first ?? AdminSurface.primary)
-                    }
-
-                    Spacer(minLength: 2)
-
-                    Text(badge)
-                        .font(PPBrandFont.bold(size: 9.5, relativeTo: .caption2))
-                        .foregroundStyle(accentGradient.first ?? AdminSurface.secondaryText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .padding(.horizontal, 5.5)
-                        .padding(.vertical, 2.5)
-                        .background((accentGradient.first ?? Color.gray).opacity(0.10), in: Capsule())
-                }
-
-                // Title and Subtitle
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(PPBrandFont.bold(size: 13.5, relativeTo: .subheadline))
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .multilineTextAlignment(.leading)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-
-                    Text(subtitle)
-                        .font(PPBrandFont.regular(size: 11, relativeTo: .caption2))
-                        .foregroundStyle(AdminSurface.secondaryText)
-                        .multilineTextAlignment(.leading)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                }
-
-                // Action Prompt Cue
-                HStack(spacing: 3) {
-                    Text(isRTL ? "استعلام مباشر" : "Live Query")
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(accentGradient.first ?? AdminSurface.primary)
-
-                    Image(systemName: isRTL ? "arrow.left" : "arrow.right")
-                        .font(.system(size: 8.5, weight: .bold))
-                        .foregroundStyle(accentGradient.first ?? AdminSurface.primary)
-                }
-                .padding(.top, 1)
-            }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                AdminSurface.surface
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [accentGradient.first?.opacity(0.35) ?? AdminSurface.hairline, AdminSurface.hairline],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 0.8
-                    )
-            )
-            .shadow(color: (accentGradient.first ?? Color.black).opacity(0.04), radius: 5, x: 0, y: 2)
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - Quick Telemetry Accelerator Tray
-
-    private var quickTelemetryTray: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(isRTL ? "استعلامات سريعة بنقرة واحدة" : "Instant Telemetry Accelerators")
-                .font(PPBrandFont.medium(size: 12, relativeTo: .caption))
-                .foregroundStyle(AdminSurface.secondaryText)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    quickTelemetryChip(
-                        icon: "stethoscope",
-                        title: isRTL ? "كادر الأطباء" : "Veterinarians",
-                        prompt: isRTL ? "كم عدد الأطباء البيطريين المسجلين في النظام؟" : "How many veterinarians are registered in the system?"
-                    )
-
-                    quickTelemetryChip(
-                        icon: "heart.circle.fill",
-                        title: isRTL ? "طلبات التبني" : "Adoption Requests",
-                        prompt: isRTL ? "ما هي أحدث طلبات التبني المسجلة؟" : "What are the latest adoption requests?"
-                    )
-
-                    quickTelemetryChip(
-                        icon: "building.2.fill",
-                        title: isRTL ? "نزلاء الفندق" : "Hotel Guests",
-                        prompt: isRTL ? "ما هي قائمة الحيوانات المقيمة بالفندق حالياً؟" : "List active hotel guests currently staying."
-                    )
-
-                    quickTelemetryChip(
-                        icon: "shippingbox.fill",
-                        title: isRTL ? "جرد المخزون" : "Stock Audit",
-                        prompt: isRTL ? "ملخص سريع لأهم أصناف المخزون المتوفرة" : "Quick audit summary of available product inventory."
-                    )
-                }
-                .padding(.horizontal, 1)
-            }
-        }
-        .padding(.top, 4)
-    }
-
-    private func quickTelemetryChip(icon: String, title: String, prompt: String) -> some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            Task {
-                await store.sendMessage(prompt, screenContext: screenContext)
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(PuryBrand.primary)
-
-                Text(title)
-                    .font(PPBrandFont.medium(size: 12, relativeTo: .caption))
-                    .foregroundStyle(AdminSurface.primaryText)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(AdminSurface.surface, in: Capsule())
-            .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
-            .shadow(color: Color.black.opacity(0.03), radius: 4, x: 0, y: 2)
-        }
-        .buttonStyle(.plain)
-    }
-
     // MARK: - Message Stream Rows
 
     @ViewBuilder
     private func messageStreamRow(for message: PuryMessage) -> some View {
         if message.role == .user {
-            userMessageBubble(message)
+            PuryQueryTurn(
+                text: message.text,
+                timestamp: message.timestamp,
+                isRTL: isRTL,
+                language: store.language,
+                showsInlineRerun: isLatestQuery(message) && !store.isWaitingOrThinking,
+                onRerun: { rerunQuery(message.text) }
+            )
         } else {
-            puryMessageBubble(message)
+            puryAnswerTurn(message)
         }
     }
 
-    private func userMessageBubble(_ message: PuryMessage) -> some View {
-        HStack {
-            Spacer(minLength: 44)
+    /// Only the most recent operator query carries a visible re-run control; older turns
+    /// keep it in their context menu so the stream never repeats chrome on every row.
+    private func isLatestQuery(_ message: PuryMessage) -> Bool {
+        store.messages.last(where: { $0.role == .user })?.id == message.id
+    }
 
-            Text(message.text)
-                .font(PPBrandFont.medium(size: 15, relativeTo: .body))
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.leading)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(
-                    LinearGradient(
-                        colors: [
-                            PuryBrand.hotPink,
-                            PuryBrand.primary
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    in: RoundedRectangle(cornerRadius: 20, style: .continuous)
-                )
-                .shadow(color: PuryBrand.glow.opacity(0.24), radius: 7, x: 0, y: 3)
+    private func bottomBreathingRoom(after message: PuryMessage) -> CGFloat {
+        guard message.role == .model,
+              let index = store.messages.firstIndex(where: { $0.id == message.id }) else {
+            return 0
+        }
+        let nextIndex = store.messages.index(after: index)
+        guard nextIndex < store.messages.endIndex,
+              store.messages[nextIndex].role == .user else {
+            return 0
+        }
+        return Self.answerToNextQueryBreathingRoom
+    }
+
+    /// Operational data moves underneath the operator, so asking the same question again
+    /// is a first-class action rather than a retype.
+    private func rerunQuery(_ text: String) {
+        guard !store.isWaitingOrThinking else { return }
+        isInputFocused = false
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        Task {
+            await store.sendMessage(text, screenContext: screenContext)
         }
     }
 
     private struct PuryRenderableStructuredContent {
-        let cards: [PuryCard]
-        let blocks: [PuryDataBlock]
+        /// Entity-merged records. Cards and data blocks describing the same entity collapse
+        /// into one projection, so a record can no longer appear twice in one answer.
+        let records: [PuryRecordProjection]
 
-        var hasResults: Bool {
-            !cards.isEmpty || !blocks.isEmpty
-        }
+        var hasResults: Bool { !records.isEmpty }
     }
 
     private func renderableStructuredContent(for message: PuryMessage) -> PuryRenderableStructuredContent {
-        let structured = message.metadata?.structuredData
-        let cards = (structured?.cards ?? []).filter { card in
-            let title = card.cleanTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-            let hasDetails = !(card.details?.isEmpty ?? true)
-            return !title.isEmpty || hasDetails
-        }
-
-        let technicalFieldKeys: Set<String> = [
-            "id", "docid", "ownerid", "userid", "petid", "reservationid", "stayid",
-            "accommodationid", "roomid", "suiteid", "isdeleted", "deleted", "isblocked",
-            "blocked", "accesskindtype", "kindtype", "showinappmarket", "visibleinapp",
-            "showinapp", "raw", "payload", "__name__", "fcmtoken", "createdatmillis",
-            "updatedatmillis", "hash", "version"
-        ]
-
-        let blocks = (structured?.dataBlocks ?? []).compactMap { block -> PuryDataBlock? in
-            let cleanFields = block.fields.filter { field in
-                let key = field.cleanLabel.lowercased().replacingOccurrences(of: "_", with: "")
-                return !technicalFieldKeys.contains(key)
-            }
-            guard !cleanFields.isEmpty else { return nil }
-            return PuryDataBlock(id: block.id, type: block.type, collection: block.collection, fields: cleanFields)
-        }
-
-        return PuryRenderableStructuredContent(cards: cards, blocks: blocks)
+        PuryRenderableStructuredContent(records: PuryAnswerProjection.records(for: message.metadata))
     }
 
-    private func puryMessageBubble(_ message: PuryMessage) -> some View {
-        let structuredContent = renderableStructuredContent(for: message)
-        let copyText = PuryResponseDisplaySanitizer.cleanNarrative(
+
+    private enum PuryNarrativeRole {
+        case title
+        case subtitle
+        case body
+        case bullet
+    }
+
+    private struct PuryNarrativeBlock: Identifiable {
+        let id = UUID()
+        let role: PuryNarrativeRole
+        let text: String
+    }
+
+    private func semanticNarrativeBlocks(
+        for message: PuryMessage,
+        structuredContent: PuryRenderableStructuredContent
+    ) -> [PuryNarrativeBlock] {
+        let cleaned = PuryResponseDisplaySanitizer.cleanNarrative(
             message.text,
             hasStructuredData: structuredContent.hasResults
         )
+        let blocks = narrativeBlocks(from: cleaned)
+        guard structuredContent.hasResults else { return blocks }
+        return nonRedundantNarrativeBlocks(blocks, structuredContent: structuredContent)
+    }
 
-        return VStack(alignment: .leading, spacing: 12) {
-            // Pury Identity Header
-            HStack(spacing: 8) {
-                livingAvatarBeacon(size: 24)
+    private func narrativeBlocks(from cleanedText: String) -> [PuryNarrativeBlock] {
+        let rawLines = cleanedText.components(separatedBy: "\n")
+        var blocks: [PuryNarrativeBlock] = []
+        var paragraph: [String] = []
+        var hasEmittedContent = false
 
-                Text(isRTL ? "بيوري" : "Pury")
-                    .font(PPBrandFont.bold(size: 13, relativeTo: .caption))
-                    .foregroundStyle(AdminSurface.primaryText)
+        func flushParagraph() {
+            guard !paragraph.isEmpty else { return }
+            let text = paragraph.joined(separator: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            paragraph.removeAll(keepingCapacity: true)
+            guard !text.isEmpty else { return }
 
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(Color(red: 16/255, green: 185/255, blue: 129/255))
-                        .frame(width: 5, height: 5)
-                    Text(isRTL ? "بيانات حية" : "Live data")
-                        .font(PPBrandFont.medium(size: 10, relativeTo: .caption2))
-                        .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+            let words = text.split(whereSeparator: { $0.isWhitespace }).count
+            let endsLikeSentence = text.last.map { ".!?؟".contains($0) } ?? false
+            let isShort = text.count <= 72 && words <= 10
+            let role: PuryNarrativeRole
+            if !hasEmittedContent && isShort && !endsLikeSentence {
+                role = .title
+            } else if isShort && text.hasSuffix(":") {
+                role = .subtitle
+            } else {
+                role = .body
+            }
+            blocks.append(PuryNarrativeBlock(role: role, text: text))
+            hasEmittedContent = true
+        }
+
+        for rawLine in rawLines {
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            if line.isEmpty {
+                flushParagraph()
+                continue
+            }
+            if line.hasPrefix("• ") {
+                flushParagraph()
+                let bullet = String(line.dropFirst(2)).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !bullet.isEmpty {
+                    blocks.append(PuryNarrativeBlock(role: .bullet, text: bullet))
+                    hasEmittedContent = true
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12), in: Capsule())
+                continue
+            }
+            paragraph.append(line)
+        }
+        flushParagraph()
+        return blocks
+    }
 
-                Spacer()
+    private func structuredEvidenceTokens(_ content: PuryRenderableStructuredContent) -> Set<String> {
+        var evidence: [String] = []
+        for record in content.records {
+            evidence.append(record.title)
+            if let subtitle = record.subtitle { evidence.append(subtitle) }
+            if let status = record.status { evidence.append(status) }
+            if let badge = record.badge { evidence.append(badge) }
+            if let collection = record.collection { evidence.append(collection) }
+            for field in record.fields {
+                evidence.append(field.cleanLabel)
+                evidence.append(field.cleanValue)
+            }
+        }
+        return Set(evidence.flatMap(answerTokens))
+    }
 
-                // Copy only operator-facing prose; never copy hidden tool traces.
-                if !copyText.isEmpty {
-                    Button {
-                        UIPasteboard.general.string = copyText
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    } label: {
-                        Image(systemName: "doc.on.doc")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(AdminSurface.secondaryText)
+    private func answerTokens(_ text: String) -> [String] {
+        let folded = text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .lowercased()
+        let stopWords: Set<String> = [
+            "the", "a", "an", "and", "or", "of", "to", "for", "in", "on", "is", "are", "was", "were",
+            "this", "that", "these", "those", "with", "from", "at", "by", "your", "you", "i", "we", "it",
+            "من", "في", "على", "إلى", "الى", "عن", "هو", "هي", "هذا", "هذه", "ذلك", "تلك", "مع", "تم", "و", "أو"
+        ]
+        return folded
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { token in
+                token.count > 1 && !stopWords.contains(token)
+            }
+    }
+
+    /// When an answer carries records, a bulleted prose list of those same records is by
+    /// definition a restatement — the records are the canonical form of the enumeration. So
+    /// bullets are dropped wholesale and only genuine interpretation survives, capped so a
+    /// verbose model cannot flood the turn.
+    private func nonRedundantNarrativeBlocks(
+        _ blocks: [PuryNarrativeBlock],
+        structuredContent: PuryRenderableStructuredContent
+    ) -> [PuryNarrativeBlock] {
+        let evidence = structuredEvidenceTokens(structuredContent)
+        let interpretiveCues = [
+            "recommend", "suggest", "attention", "risk", "warning", "because", "next step", "should",
+            "أنصح", "اقترح", "انتبه", "مخاطر", "تحذير", "لأن", "الخطوة التالية", "ينبغي", "يرجى", "راجع"
+        ]
+        let boilerplatePrefixes = [
+            "here are", "i found", "found ", "results", "these are", "the results", "sure", "certainly",
+            "إليك", "وجدت", "تم العثور", "النتائج", "هذه النتائج", "بالتأكيد", "يسعدني", "سأقدم"
+        ]
+
+        let kept = blocks.filter { block in
+            // Enumeration never survives alongside the records it enumerates.
+            if block.role == .bullet { return false }
+
+            let folded = block.text
+                .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+                .lowercased()
+            if boilerplatePrefixes.contains(where: { folded.contains($0) }) { return false }
+            if interpretiveCues.contains(where: { folded.contains($0) }) { return true }
+
+            let tokens = Set(answerTokens(block.text))
+            guard !tokens.isEmpty else { return false }
+            let overlap = Double(tokens.intersection(evidence).count) / Double(tokens.count)
+            if tokens.count <= 2 && tokens.isSubset(of: evidence) { return false }
+            if tokens.count >= 3 && overlap >= 0.5 { return false }
+            return true
+        }
+
+        return Array(kept.prefix(2))
+    }
+
+    private func narrativePlainText(_ blocks: [PuryNarrativeBlock]) -> String {
+        blocks.map { block in
+            switch block.role {
+            case .bullet: return "• \(block.text)"
+            default: return block.text
+            }
+        }
+        .joined(separator: "\n")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func semanticNarrativeView(_ blocks: [PuryNarrativeBlock]) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            ForEach(blocks) { block in
+                switch block.role {
+                case .title:
+                    Text(block.text)
+                        .font(PPBrandFont.bold(size: 17, relativeTo: .headline))
+                        .foregroundStyle(PuryBrand.primary)
+                        .lineSpacing(2)
+                case .subtitle:
+                    Text(block.text)
+                        .font(PPBrandFont.medium(size: 14, relativeTo: .subheadline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineSpacing(3)
+                case .body:
+                    Text(block.text)
+                        .font(PPBrandFont.regular(size: 15, relativeTo: .body))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineSpacing(5)
+                case .bullet:
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Circle()
+                            .fill(PuryBrand.primary)
+                            .frame(width: 5, height: 5)
+                            .accessibilityHidden(true)
+                        Text(block.text)
+                            .font(PPBrandFont.regular(size: 14.5, relativeTo: .body))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .lineSpacing(4)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(isRTL ? "نسخ" : "Copy")
                 }
             }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .textSelection(.enabled)
+        .accessibilityElement(children: .contain)
+    }
 
-            // Category-Defining Dynamic Answer Orchestrator
-            purySmartAnswerView(message, structuredContent: structuredContent)
+    private func puryAnswerTurn(_ message: PuryMessage) -> some View {
+        let structuredContent = renderableStructuredContent(for: message)
+        let narrativeBlocks = semanticNarrativeBlocks(for: message, structuredContent: structuredContent)
+        let copyText = narrativePlainText(narrativeBlocks)
+
+        // Provenance is earned: the live-records badge is only claimed when the turn
+        // actually carries records, and it counts merged entities — not card plus block
+        // duplicates, which previously doubled the number the badge advertised.
+        let recordCount: Int? = structuredContent.hasResults
+            ? structuredContent.records.count
+            : nil
+        let latencyMs = message.metadata?.latencyMs
+        let showsFooter = !copyText.isEmpty || (latencyMs ?? 0) > 0
+
+        return VStack(alignment: .leading, spacing: 10) {
+            PuryAnswerTurnHeader(
+                language: store.language,
+                isRTL: isRTL,
+                timestamp: message.timestamp,
+                recordCount: recordCount,
+                isReading: false
+            )
+
+            purySmartAnswerView(message, structuredContent: structuredContent, narrativeBlocks: narrativeBlocks)
 
             if let action = message.metadata?.confirmationAction,
                message.metadata?.confirmationRequired == true,
@@ -627,127 +600,166 @@ struct PuryAssistantSheetView: View {
                         store.cancelAction()
                     }
                 )
+                .id(Self.pendingApprovalAnchor)
+            }
+
+            if showsFooter {
+                PuryAnswerTurnFooter(
+                    language: store.language,
+                    latencyMs: latencyMs,
+                    canCopy: !copyText.isEmpty,
+                    onCopy: {
+                        // Copy only operator-facing prose; never copy hidden tool traces.
+                        UIPasteboard.general.string = copyText
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    }
+                )
             }
         }
     }
 
     // MARK: - Category-Defining Dynamic Answer Orchestrator
 
+    /// Resolves the answer to a single form and renders only that form. Nothing here may
+    /// present the same record through two components.
+    @ViewBuilder
     private func purySmartAnswerView(
         _ message: PuryMessage,
-        structuredContent: PuryRenderableStructuredContent
+        structuredContent: PuryRenderableStructuredContent,
+        narrativeBlocks: [PuryNarrativeBlock]
     ) -> some View {
-        let validCards = structuredContent.cards
-        let validBlocks = structuredContent.blocks
-        let hasStructuredResults = structuredContent.hasResults
-        let displayText = PuryResponseDisplaySanitizer.cleanNarrative(
-            message.text,
-            hasStructuredData: hasStructuredResults
+        let form = PuryAnswerProjection.form(
+            metadata: message.metadata,
+            records: structuredContent.records,
+            hasNarrative: !narrativeBlocks.isEmpty
         )
 
-        return VStack(alignment: .leading, spacing: 12) {
-            if hasStructuredResults {
-                structuredResultHeader(
-                    message: message,
-                    cards: validCards,
-                    blocks: validBlocks
+        VStack(alignment: .leading, spacing: 12) {
+            // Interpretation may accompany records; enumeration may not.
+            if !narrativeBlocks.isEmpty, !isExceptionForm(form) {
+                semanticNarrativeView(narrativeBlocks)
+            }
+
+            switch form {
+            case .advisory:
+                EmptyView()
+
+            case .exception(let kind):
+                PuryExceptionPanel(
+                    kind: kind,
+                    summary: PuryResponseDisplaySanitizer.cleanNarrative(message.text, hasStructuredData: false),
+                    requiredPermission: message.metadata?.permissionRequired,
+                    language: language,
+                    onRetry: lastOperatorQuery.map { query in { rerunQuery(query) } }
                 )
 
-                if !validCards.isEmpty {
-                    VStack(spacing: 10) {
-                        ForEach(validCards) { card in
-                            semanticCardView(card)
-                        }
-                    }
-                    .accessibilityElement(children: .contain)
-                }
+            case .emptyVerdict:
+                PuryEmptyVerdictView(
+                    language: language,
+                    scopeLabel: screenContext?.displayLabel(language: language),
+                    onBroaden: { isInputFocused = true }
+                )
 
-                if !validBlocks.isEmpty {
-                    VStack(spacing: 10) {
-                        ForEach(validBlocks) { block in
-                            PuryRecordCardView(block: block, isRTL: isRTL) { entityType, entityId in
-                                handleDeepLink(entityType: entityType, entityId: entityId)
-                            }
-                        }
-                    }
-                    .accessibilityElement(children: .contain)
-                }
+            case .dossier(let record):
+                PuryRecordDossierView(
+                    record: record,
+                    language: language,
+                    isRTL: isRTL,
+                    recordTypeName: recordTypeName(for: record),
+                    symbol: recordSymbol(for: record),
+                    accent: recordAccent(for: record),
+                    onOpenRecord: openProjectedRecord
+                )
 
-                if !displayText.isEmpty {
-                    assistantNarrativeView(displayText, supporting: true)
-                }
-            } else if !displayText.isEmpty {
-                assistantNarrativeView(displayText, supporting: false)
+            case .stockLedger(let records):
+                PuryStockLedgerView(
+                    records: records,
+                    language: language,
+                    isRTL: isRTL,
+                    onOpenInventory: { handleDeepLink(entityType: "petAccessories", entityId: "") },
+                    onOpenRecord: openProjectedRecord
+                )
+
+            case .roster(let records):
+                PuryRecordRosterView(
+                    records: records,
+                    language: language,
+                    isRTL: isRTL,
+                    title: structuredResultTitle(message: message, records: records, count: records.count),
+                    symbol: recordSymbol(for: records.first),
+                    onOpenRecord: openProjectedRecord
+                )
+
+            case .metricBoard(let records):
+                PuryMetricBoardView(
+                    records: records,
+                    language: language,
+                    title: structuredResultTitle(message: message, records: records, count: records.count),
+                    onOpenRecord: openProjectedRecord
+                )
             }
         }
     }
 
-    private func structuredResultHeader(
-        message: PuryMessage,
-        cards: [PuryCard],
-        blocks: [PuryDataBlock]
-    ) -> some View {
-        let count = cards.count + blocks.count
-        let title = structuredResultTitle(message: message, cards: cards, blocks: blocks, count: count)
+    private func isExceptionForm(_ form: PuryAnswerForm) -> Bool {
+        if case .exception = form { return true }
+        return false
+    }
 
-        return HStack(spacing: 11) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(PuryBrand.primary.opacity(0.10))
-                    .frame(width: 38, height: 38)
+    private var lastOperatorQuery: String? {
+        store.messages.last(where: { $0.role == .user })?.text
+    }
 
-                Image(systemName: "sparkles.rectangle.stack.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(PuryBrand.primary)
-            }
+    private func openProjectedRecord(_ record: PuryRecordProjection) {
+        guard let type = record.navigationType else { return }
+        handleDeepLink(entityType: type, entityId: record.entityId ?? "")
+    }
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(PPBrandFont.bold(size: 15, relativeTo: .subheadline))
-                    .foregroundStyle(AdminSurface.primaryText)
+    private func recordSignature(for record: PuryRecordProjection?) -> String {
+        [record?.entityType, record?.collection, record?.badge, record?.title]
+            .compactMap { $0 }
+            .joined(separator: " ")
+            .lowercased()
+    }
 
-                Text(Language.get("Pury_Structured_Results_Subtitle", alter: isRTL ? "نتائج تشغيلية منظمة وقابلة للتنفيذ" : "Structured operational results"))
-                    .font(AdminType.caption2)
-                    .foregroundStyle(AdminSurface.secondaryText)
-            }
+    private func recordSymbol(for record: PuryRecordProjection?) -> String {
+        let signature = recordSignature(for: record)
+        if signature.contains("hotel") || signature.contains("stay") || signature.contains("إقامة") { return "building.2.fill" }
+        if signature.contains("order") || signature.contains("طلب") { return "shippingbox.fill" }
+        if signature.contains("accessor") || signature.contains("product") || signature.contains("منتج") { return "cube.box.fill" }
+        if signature.contains("staff") || signature.contains("vet") { return "stethoscope" }
+        if signature.contains("user") || signature.contains("customer") || signature.contains("عميل") { return "person.crop.circle.fill" }
+        if signature.contains("branch") || signature.contains("فرع") { return "mappin.and.ellipse" }
+        return "doc.text.fill"
+    }
 
-            Spacer(minLength: 8)
+    private func recordAccent(for record: PuryRecordProjection?) -> Color {
+        let signature = recordSignature(for: record)
+        if signature.contains("hotel") || signature.contains("stay") { return AdminSurface.emerald }
+        if signature.contains("order") { return Color(red: 59/255, green: 130/255, blue: 246/255) }
+        if signature.contains("accessor") || signature.contains("product") { return AdminSurface.amber }
+        return PuryBrand.primary
+    }
 
-            Text("\(count)")
-                .font(PPBrandFont.bold(size: 13, relativeTo: .caption))
-                .foregroundStyle(PuryBrand.primary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(PuryBrand.primary.opacity(0.09), in: Capsule())
-                .overlay(Capsule().strokeBorder(PuryBrand.primary.opacity(0.20), lineWidth: 0.75))
-                .accessibilityLabel(
-                    String(
-                        format: Language.get(
-                            "Pury_Results_Count_Format",
-                            alter: isRTL ? "عدد النتائج: %@" : "Result count: %@"
-                        ),
-                        String(count)
-                    )
-                )
+    private func recordTypeName(for record: PuryRecordProjection) -> String {
+        if let collection = record.collection,
+           let name = PuryFieldSemantics.collectionName(collection, language: language) {
+            return name
         }
-        .padding(12)
-        .background(AdminSurface.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(PuryBrand.primary.opacity(0.16), lineWidth: 0.8)
-        )
+        if let entityType = record.entityType,
+           let name = PuryFieldSemantics.collectionName(entityType, language: language) {
+            return name
+        }
+        return PuryLocale.text("Pury_Record_Generic", language: language, ar: "بيانات السجل", en: "Record Details")
     }
 
     private func structuredResultTitle(
         message: PuryMessage,
-        cards: [PuryCard],
-        blocks: [PuryDataBlock],
+        records: [PuryRecordProjection],
         count: Int
     ) -> String {
         let signature = ([message.metadata?.domain, message.metadata?.operation]
-            + cards.flatMap { [$0.entityType, $0.badge] }
-            + blocks.flatMap { [$0.collection, $0.type] })
+            + records.flatMap { [$0.entityType, $0.collection, $0.badge] })
             .compactMap { $0 }
             .joined(separator: " ")
             .lowercased()
@@ -755,58 +767,45 @@ struct PuryAssistantSheetView: View {
         if (signature.contains("hotel") || signature.contains("stay")) && signature.contains("active") {
             return localizedResultTitle(
                 key: "Pury_Results_ActiveStays_Format",
-                fallback: isRTL ? "الإقامات النشطة: %@" : "%@ active stays",
+                ar: "الإقامات النشطة: %@",
+                en: "%@ active stays",
                 count: count
             )
         }
         if signature.contains("hotel") || signature.contains("stay") {
             return localizedResultTitle(
                 key: "Pury_Results_Hotel_Format",
-                fallback: isRTL ? "نتائج الفندق: %@" : "%@ hotel results",
+                ar: "نتائج الفندق: %@",
+                en: "%@ hotel results",
                 count: count
             )
         }
         if signature.contains("order") {
             return localizedResultTitle(
                 key: "Pury_Results_Orders_Format",
-                fallback: isRTL ? "نتائج الطلبات: %@" : "%@ order results",
+                ar: "نتائج الطلبات: %@",
+                en: "%@ order results",
                 count: count
             )
         }
         if signature.contains("stock") || signature.contains("product") || signature.contains("accessor") {
             return localizedResultTitle(
                 key: "Pury_Results_Inventory_Format",
-                fallback: isRTL ? "نتائج المخزون: %@" : "%@ inventory results",
+                ar: "نتائج المخزون: %@",
+                en: "%@ inventory results",
                 count: count
             )
         }
         return localizedResultTitle(
             key: "Pury_Results_Operational_Format",
-            fallback: isRTL ? "نتائج تشغيلية: %@" : "%@ operational results",
+            ar: "نتائج تشغيلية: %@",
+            en: "%@ operational results",
             count: count
         )
     }
 
-    private func localizedResultTitle(key: String, fallback: String, count: Int) -> String {
-        String(format: Language.get(key, alter: fallback), String(count))
-    }
-
-    private func assistantNarrativeView(_ text: String, supporting: Bool) -> some View {
-        Text(text)
-            .font(PPBrandFont.regular(size: supporting ? 14 : 15, relativeTo: .body))
-            .foregroundStyle(supporting ? AdminSurface.secondaryText : AdminSurface.primaryText)
-            .lineSpacing(5)
-            .multilineTextAlignment(.leading)
-            .textSelection(.enabled)
-            .padding(supporting ? 12 : 16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(supporting ? AdminSurface.control.opacity(0.58) : AdminSurface.surface)
-            .clipShape(RoundedRectangle(cornerRadius: supporting ? 14 : 20, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: supporting ? 14 : 20, style: .continuous)
-                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
-            )
-            .accessibilityLabel(text)
+    private func localizedResultTitle(key: String, ar: String, en: String, count: Int) -> String {
+        PuryLocale.format(key, language: language, ar: ar, en: en, String(count))
     }
 
     private func telemetryGridView(_ items: [PuryTelemetryItem]) -> some View {
@@ -861,7 +860,7 @@ struct PuryAssistantSheetView: View {
 
                 // Directional navigation chevron if deep link available
                 if item.deepLinkRoute != nil {
-                    Image(systemName: isRTL ? "chevron.left" : "chevron.right")
+                    Image(systemName: "chevron.forward")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(AdminSurface.secondaryText.opacity(0.6))
                         .padding(.leading, 2)
@@ -974,7 +973,7 @@ struct PuryAssistantSheetView: View {
                             .font(AdminType.caption1Bold)
                             .foregroundStyle(AdminSurface.primary)
 
-                        Image(systemName: isRTL ? "chevron.left" : "chevron.right")
+                        Image(systemName: "chevron.forward")
                             .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(AdminSurface.primary)
 
@@ -1021,27 +1020,32 @@ struct PuryAssistantSheetView: View {
     private func actionLabelForEntity(_ entityType: String) -> String {
         let lower = entityType.lowercased()
         if lower.contains("hotel") || lower.contains("stay") {
-            return isRTL ? "فتح لوحة تحكم الفندق" : "Open Hotel Dashboard"
+            return PuryLocale.text("Pury_CTA_Hotel", language: language, ar: "فتح لوحة تحكم الفندق", en: "Open Hotel Dashboard")
         }
         if lower.contains("order") {
-            return isRTL ? "عرض تفاصيل الطلب" : "View Order Details"
+            return PuryLocale.text("Pury_CTA_Order", language: language, ar: "عرض تفاصيل الطلب", en: "View Order Details")
         }
         if lower.contains("product") || lower.contains("stock") || lower.contains("access") {
-            return isRTL ? "إدارة المنتج في المخزن" : "Manage Product Stock"
+            return PuryLocale.text("Pury_CTA_Product", language: language, ar: "إدارة المنتج في المخزن", en: "Manage Product Stock")
         }
         if lower.contains("pet") || lower.contains("adopt") {
-            return isRTL ? "عرض إعلانات الحيوانات" : "View Pet Listings"
+            return PuryLocale.text("Pury_CTA_Listings", language: language, ar: "عرض إعلانات الحيوانات", en: "View Pet Listings")
         }
         if lower.contains("staff") || lower.contains("vet") {
-            return isRTL ? "عرض الكادر الطبي" : "View Medical Staff"
+            return PuryLocale.text("Pury_CTA_MedicalStaff", language: language, ar: "عرض الكادر الطبي", en: "View Medical Staff")
         }
         if lower.contains("user") {
-            return isRTL ? "عرض المستخدمين" : "View Users"
+            return PuryLocale.text("Pury_CTA_Users", language: language, ar: "عرض المستخدمين", en: "View Users")
         }
         if lower.contains("branch") {
-            return isRTL ? "عرض تفاصيل الفرع" : "View Branch Details"
+            return PuryLocale.text("Pury_CTA_Branch", language: language, ar: "عرض تفاصيل الفرع", en: "View Branch Details")
         }
-        return isRTL ? "فتح السجل في لوحة الإدارة" : "View Record in Admin"
+        return PuryLocale.text(
+            "Pury_View_Record",
+            language: language,
+            ar: "فتح السجل في لوحة الإدارة",
+            en: "View Record in Admin"
+        )
     }
 
     private func statusPill(_ status: String) -> some View {
@@ -1060,133 +1064,164 @@ struct PuryAssistantSheetView: View {
         return PuryInfoPill(cleanStatus, tone: tone, isSmall: true)
     }
 
-    // MARK: - Thinking Bubble
-
-    private var thinkingBubble: some View {
-        HStack(spacing: 10) {
-            ProgressView()
-                .tint(PuryBrand.primary)
-                .scaleEffect(0.9)
-
-            Text(isRTL ? "بيوري يراجع البيانات المصرح بها ويجهز الإجابة..." : "Pury is analyzing authorized records...")
-                .font(PPBrandFont.medium(size: 13, relativeTo: .caption))
-                .foregroundStyle(AdminSurface.secondaryText)
-
-            Spacer()
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(AdminSurface.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
-        )
-    }
-
-    // MARK: - Floating Input Dock
+    // MARK: - Command Bar
 
     private var floatingInputDock: some View {
         VStack(spacing: 8) {
-            // Contextual Suggestion Pills (if in chat)
-            if !store.messages.isEmpty && store.state == .idle {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        suggestionChip(isRTL ? "🏨 إشغال الفندق" : "🏨 Hotel Occupancy")
-                        suggestionChip(isRTL ? "📦 نواقص المخزون" : "📦 Low Stock")
-                        suggestionChip(isRTL ? "🚚 الطلبات المعلقة" : "🚚 Pending Orders")
-                        suggestionChip(isRTL ? "📊 المبيعات اليوم" : "📊 Today's Sales")
-                    }
-                    .padding(.horizontal, Self.sheetHorizontalMargin)
+            // A pending Tier-3 approval must stay reachable even after it scrolls away.
+            if store.activeProposal != nil {
+                PuryPendingApprovalRail(language: store.language) {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    pendingScrollTarget = Self.pendingApprovalAnchor
                 }
+                .padding(.horizontal, Self.sheetHorizontalMargin)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
 
-            // Glass Input Pill Container
-            HStack(spacing: 10) {
-                // Text Field
-                TextField(
-                    isRTL ? "اسأل بيوري عن أي تفاصيل تشغيلية..." : "Ask Pury any operational question...",
-                    text: $store.currentInputText,
-                    axis: .vertical
-                )
-                .font(PPBrandFont.regular(size: 15, relativeTo: .body))
-                .multilineTextAlignment(.leading)
-                .lineLimit(1...4)
-                .focused($isInputFocused)
-                .submitLabel(.send)
-                .onSubmit {
-                    submitInput()
-                }
-
-                // Send Button with Kinetic Glow
-                Button {
-                    submitInput()
-                } label: {
-                    let hasText = !store.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    ZStack {
-                        Circle()
-                            .fill(
-                                hasText && store.state != .loading
-                                    ? LinearGradient(
-                                        colors: [PuryBrand.hotPink, PuryBrand.primary],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                    : LinearGradient(
-                                        colors: [AdminSurface.control, AdminSurface.control],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                            )
-                            .frame(width: 40, height: 40)
-                            .shadow(
-                                color: hasText ? PuryBrand.glow.opacity(0.32) : Color.clear,
-                                radius: 6,
-                                x: 0,
-                                y: 3
-                            )
-
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(hasText && store.state != .loading ? .white : AdminSurface.secondaryText)
-                    }
-                }
-                .buttonStyle(.plain)
-                .disabled(store.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.state == .loading)
+            if showsSuggestionRail {
+                suggestionRail
             }
-            .padding(.horizontal, 15)
-            .padding(.vertical, 7)
-            .background(
-                AdminSurface.surface.opacity(0.95)
-                    .background(.ultraThinMaterial)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .strokeBorder(isInputFocused ? PuryBrand.primary : AdminSurface.hairline, lineWidth: isInputFocused ? 1.5 : 0.75)
-            )
-            .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 4)
-            .padding(.horizontal, Self.sheetHorizontalMargin)
-            .padding(.bottom, 12)
+
+            composerRow
         }
         .frame(maxWidth: 680)
+        .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86), value: store.activeProposal?.token)
     }
 
-    private func suggestionChip(_ label: String) -> some View {
+    /// The previous rail was also hidden whenever the operator had typed anything, which
+    /// moved the input field mid-typing. It now only changes on send and on answer, so the
+    /// composer never shifts under an active cursor.
+    private var showsSuggestionRail: Bool {
+        !store.messages.isEmpty && !store.isWaitingOrThinking
+    }
+
+    /// Follow-up suggestions are composed from the same scope-aware intent set as the
+    /// launch deck, so they stay relevant to the screen the operator came from.
+    private var suggestionRail: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(PuryLaunchDeckComposer.intents(context: screenContext, language: store.language)) { intent in
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        rerunQuery(intent.prompt)
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: intent.symbol)
+                                .font(.system(size: 10.5, weight: .bold))
+                                .foregroundStyle(intent.accent)
+
+                            Text(intent.title)
+                                .font(PPBrandFont.medium(size: 12, relativeTo: .caption))
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 7)
+                        .background(AdminSurface.surface, in: Capsule())
+                        .overlay(
+                            Capsule().strokeBorder(
+                                intent.isScoped ? intent.accent.opacity(0.40) : AdminSurface.hairline,
+                                lineWidth: intent.isScoped ? 1 : 0.75
+                            )
+                        )
+                    }
+                    .buttonStyle(PuryTactilePressStyle(pressedScale: 0.95))
+                    .accessibilityLabel(intent.title)
+                }
+            }
+            .padding(.horizontal, Self.sheetHorizontalMargin)
+        }
+    }
+
+    private var composerRow: some View {
+        let trimmed = store.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let canSend = !trimmed.isEmpty && !store.isWaitingOrThinking
+        let placeholder = PuryLocale.text(
+            "Pury_Input_Placeholder",
+            language: store.language,
+            ar: "اسأل بيوري عن أي تفاصيل تشغيلية...",
+            en: "Ask Pury about any operational details..."
+        )
+
+        return HStack(alignment: .bottom, spacing: 8) {
+            TextField(placeholder, text: $store.currentInputText, axis: .vertical)
+                .font(PPBrandFont.regular(size: 15, relativeTo: .body))
+                .multilineTextAlignment(.leading)
+                .lineLimit(1...5)
+                .focused($isInputFocused)
+                .submitLabel(.send)
+                .onSubmit { submitInput() }
+                .padding(.vertical, 9)
+                .accessibilityLabel(placeholder)
+
+            if !trimmed.isEmpty {
+                Button {
+                    store.currentInputText = ""
+                    UISelectionFeedbackGenerator().selectionChanged()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(AdminSurface.secondaryText.opacity(0.5))
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 11)
+                .accessibilityLabel(
+                    PuryLocale.text("Pury_Composer_Clear", language: store.language, ar: "مسح النص", en: "Clear text")
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.82)))
+            }
+
+            sendControl(canSend: canSend)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 5)
+        .background(
+            AdminSurface.surface.opacity(0.95)
+                .background(.ultraThinMaterial)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(
+                    isInputFocused ? PuryBrand.primary : AdminSurface.hairline,
+                    lineWidth: isInputFocused ? 1.5 : 0.75
+                )
+        )
+        .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 4)
+        .padding(.horizontal, Self.sheetHorizontalMargin)
+        .padding(.bottom, 12)
+        .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.8), value: trimmed.isEmpty)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isInputFocused)
+    }
+
+    /// `arrow.up` is direction-neutral, so the send glyph reads correctly in Arabic and
+    /// English without mirroring.
+    private func sendControl(canSend: Bool) -> some View {
         Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            store.currentInputText = label
             submitInput()
         } label: {
-            Text(label)
-                .font(PPBrandFont.medium(size: 12, relativeTo: .caption))
-                .foregroundStyle(AdminSurface.primaryText)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(AdminSurface.surface, in: Capsule())
-                .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+            ZStack {
+                Circle()
+                    .fill(AdminSurface.control)
+
+                if canSend {
+                    Circle()
+                        .fill(PuryBrand.identityGradient)
+                        .shadow(color: PuryBrand.glow.opacity(0.34), radius: 7, x: 0, y: 3)
+                }
+
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(canSend ? Color.white : AdminSurface.secondaryText.opacity(0.7))
+            }
+            .frame(width: 38, height: 38)
+            .scaleEffect(canSend ? 1 : 0.94)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PuryTactilePressStyle(pressedScale: 0.9))
+        .disabled(!canSend)
+        .accessibilityLabel(
+            PuryLocale.text("Pury_Composer_Send", language: store.language, ar: "إرسال", en: "Send")
+        )
     }
 
     // MARK: - Actions & Navigation
@@ -1201,12 +1236,14 @@ struct PuryAssistantSheetView: View {
         }
     }
 
+    /// A long structured dossier is read from its beginning: anchoring an arriving answer
+    /// to the bottom would hide the result summary the operator needs first.
     private func scrollToLatest(proxy: ScrollViewProxy) {
-        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
-            if store.state == .loading {
-                proxy.scrollTo("pury_thinking_bubble", anchor: .bottom)
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.28)) {
+            if store.isWaitingOrThinking {
+                proxy.scrollTo(Self.readingAnchor, anchor: .bottom)
             } else if let last = store.messages.last {
-                proxy.scrollTo(last.id, anchor: .bottom)
+                proxy.scrollTo(last.id, anchor: last.role == .user ? .bottom : .top)
             }
         }
     }
@@ -1498,6 +1535,8 @@ public struct PuryProductItem: Identifiable, Equatable {
 public struct PuryProductCardView: View {
     public let product: PuryProductItem
     public let isRTL: Bool
+
+    private var language: String { isRTL ? "ar" : "en" }
     public let onManageStock: () -> Void
 
     public var body: some View {
@@ -1570,11 +1609,11 @@ public struct PuryProductCardView: View {
             // Direct 1-Tap Stock Action
             Button(action: onManageStock) {
                 HStack(spacing: 6) {
-                    Text(isRTL ? "إدارة المنتج في المخزن" : "Manage Product Stock")
+                    Text(PuryLocale.text("Pury_CTA_Product", language: language, ar: "إدارة المنتج في المخزن", en: "Manage Product Stock"))
                         .font(AdminType.caption1Bold)
                         .foregroundStyle(AdminSurface.primary)
 
-                    Image(systemName: isRTL ? "chevron.left" : "chevron.right")
+                    Image(systemName: "chevron.forward")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(AdminSurface.primary)
 
@@ -1613,19 +1652,25 @@ public struct PuryProductCardView: View {
 
     private var stockStatusPill: some View {
         if product.quantity == 0 {
-            return PuryInfoPill(isRTL ? "نفد من المخزون" : "Out of Stock", tone: .crimson, isSmall: true)
+            return PuryInfoPill(PuryLocale.text("Pury_Stock_Out", language: language, ar: "نفد من المخزون", en: "Out of Stock"), tone: .crimson, isSmall: true)
         } else if product.quantity <= 3 {
-            return PuryInfoPill(isRTL ? "مخزون حرج" : "Low Stock", tone: .amber, isPulse: true, isSmall: true)
+            return PuryInfoPill(PuryLocale.text("Pury_Stock_Low", language: language, ar: "مخزون حرج", en: "Low Stock"), tone: .amber, isPulse: true, isSmall: true)
         } else {
-            return PuryInfoPill(isRTL ? "متوفر" : "In Stock", tone: .emerald, isSmall: true)
+            return PuryInfoPill(PuryLocale.text("Pury_Stock_In", language: language, ar: "متوفر", en: "In Stock"), tone: .emerald, isSmall: true)
         }
     }
 
     private var stockStatusLabel: String {
         if product.quantity == 0 {
-            return isRTL ? "0 وحدات متبقية" : "0 units remaining"
+            return PuryLocale.text("Pury_Stock_Units_None", language: language, ar: "0 وحدات متبقية", en: "0 units remaining")
         } else {
-            return isRTL ? "\(product.quantity) وحدات متوفرة" : "\(product.quantity) units available"
+            return PuryLocale.format(
+                "Pury_Stock_Units_Format",
+                language: language,
+                ar: "%@ وحدات متوفرة",
+                en: "%@ units available",
+                String(product.quantity)
+            )
         }
     }
 }
@@ -1639,27 +1684,43 @@ public struct PuryRecordCardView: View {
     @State private var isExpanded: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    private var language: String { isRTL ? "ar" : "en" }
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Header with block collection or type
-            HStack(spacing: 8) {
+            // Human record identity: primary fact first, operational context second.
+            HStack(alignment: .top, spacing: 10) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(recordAccentColor.opacity(0.12))
-                        .frame(width: 32, height: 32)
+                        .fill(recordAccentColor.opacity(0.10))
+                        .frame(width: 34, height: 34)
 
                     Image(systemName: recordIconName)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(recordAccentColor)
                 }
 
-                Text(blockTitle)
-                    .font(PPBrandFont.bold(size: 14, relativeTo: .subheadline))
-                    .foregroundStyle(AdminSurface.primaryText)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(recordPrimaryField?.cleanValue ?? blockTitle)
+                        .font(PPBrandFont.bold(size: 15, relativeTo: .subheadline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                Spacer()
+                    if let subtitle = recordSubtitleText {
+                        Text(subtitle)
+                            .font(PPBrandFont.medium(size: 12.5, relativeTo: .caption))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
 
-                if isExpanded {
+                Spacer(minLength: 8)
+
+                if let status = recordStatusField {
+                    fieldValueView(status)
+                } else if isExpanded {
                     PuryInfoPill("#\(block.id.prefix(6))", tone: .neutral, copyable: true, isSmall: true)
                 }
             }
@@ -1668,7 +1729,7 @@ public struct PuryRecordCardView: View {
                 .overlay(AdminSurface.hairline)
 
             // Filtered Human Fields
-            let visibleFields = isExpanded ? block.fields : Array(block.fields.prefix(5))
+            let visibleFields = isExpanded ? visibleRecordFields : Array(visibleRecordFields.prefix(4))
             VStack(spacing: 8) {
                 ForEach(visibleFields) { field in
                     HStack(alignment: .center) {
@@ -1684,7 +1745,7 @@ public struct PuryRecordCardView: View {
             }
 
             // Progressive Disclosure
-            if block.fields.count > 5 {
+            if visibleRecordFields.count > 4 {
                 Button {
                     withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8)) {
                         isExpanded.toggle()
@@ -1692,8 +1753,14 @@ public struct PuryRecordCardView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Text(isExpanded
-                            ? (isRTL ? "إخفاء التفاصيل" : "Show less")
-                            : (isRTL ? "عرض المزيد (+\(block.fields.count - 5))" : "Show more (+\(block.fields.count - 5))")
+                            ? (PuryLocale.text("Pury_Record_ShowLess", language: language, ar: "إخفاء التفاصيل", en: "Show less"))
+                            : PuryLocale.format(
+                                "Pury_Record_ShowMore_Format",
+                                language: language,
+                                ar: "عرض المزيد (+%@)",
+                                en: "Show more (+%@)",
+                                String(visibleRecordFields.count - 4)
+                            )
                         )
                         .font(PPBrandFont.medium(size: 12, relativeTo: .caption))
                         .foregroundStyle(AdminSurface.primary)
@@ -1721,7 +1788,7 @@ public struct PuryRecordCardView: View {
                             .font(AdminType.caption1Bold)
                             .foregroundStyle(AdminSurface.primary)
 
-                        Image(systemName: isRTL ? "chevron.left" : "chevron.right")
+                        Image(systemName: "chevron.forward")
                             .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(AdminSurface.primary)
 
@@ -1740,6 +1807,58 @@ public struct PuryRecordCardView: View {
         )
     }
 
+
+    private var recordPrimaryField: PuryField? {
+        let priority: Set<String> = [
+            "name", "title", "petname", "pet_name", "fullname", "full_name",
+            "username", "ordernumber", "order_number", "orderreference", "order_reference",
+            "reference", "sku"
+        ]
+        return block.fields.first { priority.contains($0.cleanLabel.lowercased()) }
+    }
+
+    private var recordStatusField: PuryField? {
+        block.fields.first { field in
+            let key = field.cleanLabel.lowercased().replacingOccurrences(of: "_", with: "")
+            return key == "status" || key == "state"
+        }
+    }
+
+    private var recordSubtitleField: PuryField? {
+        let hotelPriority = ["suite", "suitename", "room", "roomname", "ownername", "breed"]
+        let inventoryPriority = ["category", "brand", "sku"]
+        let userPriority = ["email", "phone", "phonenumber"]
+        let genericPriority = ["category", "ownername", "breed", "email"]
+        let priorities: [String]
+        if recordSignature.contains("hotel") || recordSignature.contains("stay") {
+            priorities = hotelPriority
+        } else if recordSignature.contains("product") || recordSignature.contains("access") || recordSignature.contains("stock") {
+            priorities = inventoryPriority
+        } else if recordSignature.contains("user") || recordSignature.contains("staff") {
+            priorities = userPriority
+        } else {
+            priorities = genericPriority
+        }
+        for priority in priorities {
+            if let field = block.fields.first(where: {
+                $0.cleanLabel.lowercased().replacingOccurrences(of: "_", with: "") == priority
+            }) {
+                return field
+            }
+        }
+        return nil
+    }
+
+    private var recordSubtitleText: String? {
+        guard recordPrimaryField != nil else { return nil }
+        guard let field = recordSubtitleField, !field.cleanValue.isEmpty else { return blockTitle }
+        return "\(blockTitle) · \(field.cleanValue)"
+    }
+
+    private var visibleRecordFields: [PuryField] {
+        let hidden = Set([recordPrimaryField?.id, recordSubtitleField?.id, recordStatusField?.id].compactMap { $0 })
+        return block.fields.filter { !hidden.contains($0.id) }
+    }
 
     private var recordSignature: String {
         (block.collection ?? block.type).lowercased()
@@ -1767,31 +1886,31 @@ public struct PuryRecordCardView: View {
         if let col = block.collection, !col.isEmpty {
             return localizedCollectionName(col)
         }
-        return isRTL ? "بيانات السجل" : "Record Details"
+        return PuryLocale.text("Pury_Record_Generic", language: language, ar: "بيانات السجل", en: "Record Details")
     }
 
     private func localizedCollectionName(_ col: String) -> String {
         let lower = col.lowercased()
         if lower.contains("access") || lower.contains("product") || lower.contains("stock") {
-            return Language.get("Pury_Record_InventoryItem", alter: isRTL ? "منتج المخزون" : "Inventory item")
+            return PuryLocale.text("Pury_Record_InventoryItem", language: language, ar: "منتج المخزون", en: "Inventory item")
         }
         if lower.contains("hotel") || lower.contains("stay") {
-            return Language.get("Pury_Record_HotelStay", alter: isRTL ? "إقامة فندقية" : "Hotel stay")
+            return PuryLocale.text("Pury_Record_HotelStay", language: language, ar: "إقامة فندقية", en: "Hotel stay")
         }
         if lower.contains("order") {
-            return Language.get("Pury_Record_Order", alter: isRTL ? "طلب" : "Order")
+            return PuryLocale.text("Pury_Record_Order", language: language, ar: "طلب", en: "Order")
         }
         if lower.contains("user") {
-            return Language.get("Pury_Record_Customer", alter: isRTL ? "ملف العميل" : "Customer")
+            return PuryLocale.text("Pury_Record_Customer", language: language, ar: "ملف العميل", en: "Customer")
         }
         if lower.contains("branch") {
-            return Language.get("Pury_Record_Branch", alter: isRTL ? "بيانات الفرع" : "Branch")
+            return PuryLocale.text("Pury_Record_Branch", language: language, ar: "بيانات الفرع", en: "Branch")
         }
         if lower.contains("staff") || lower.contains("vet") {
-            return Language.get("Pury_Record_StaffMember", alter: isRTL ? "عضو الفريق" : "Staff member")
+            return PuryLocale.text("Pury_Record_StaffMember", language: language, ar: "عضو الفريق", en: "Staff member")
         }
         if lower.contains("adopt") {
-            return Language.get("Pury_Record_Adoption", alter: isRTL ? "سجل تبنٍ" : "Adoption record")
+            return PuryLocale.text("Pury_Record_Adoption", language: language, ar: "سجل تبنٍ", en: "Adoption record")
         }
         return humanizedFallbackLabel(col)
     }
@@ -1800,43 +1919,43 @@ public struct PuryRecordCardView: View {
         let lower = label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         switch lower {
         case "petname", "pet_name":
-            return Language.get("Pury_Field_Pet", alter: isRTL ? "الحيوان" : "Pet")
+            return PuryLocale.text("Pury_Field_Pet", language: language, ar: "الحيوان", en: "Pet")
         case "petcategory", "pet_category":
-            return Language.get("Pury_Field_PetCategory", alter: isRTL ? "فئة الحيوان" : "Pet category")
+            return PuryLocale.text("Pury_Field_PetCategory", language: language, ar: "فئة الحيوان", en: "Pet category")
         case "breed":
-            return Language.get("Pury_Field_Breed", alter: isRTL ? "السلالة" : "Breed")
+            return PuryLocale.text("Pury_Field_Breed", language: language, ar: "السلالة", en: "Breed")
         case "ownername", "owner_name":
-            return Language.get("Pury_Field_Owner", alter: isRTL ? "المالك" : "Owner")
+            return PuryLocale.text("Pury_Field_Owner", language: language, ar: "المالك", en: "Owner")
         case "checkin", "checkindate", "check_in", "check_in_date":
-            return Language.get("Pury_Field_CheckIn", alter: isRTL ? "تسجيل الدخول" : "Check-in")
+            return PuryLocale.text("Pury_Field_CheckIn", language: language, ar: "تسجيل الدخول", en: "Check-in")
         case "expectedcheckout", "expectedcheckoutdate", "expected_checkout", "expected_checkout_date":
-            return Language.get("Pury_Field_ExpectedCheckout", alter: isRTL ? "المغادرة المتوقعة" : "Expected checkout")
+            return PuryLocale.text("Pury_Field_ExpectedCheckout", language: language, ar: "المغادرة المتوقعة", en: "Expected checkout")
         case "checkout", "checkoutdate", "check_out", "check_out_date":
-            return Language.get("Pury_Field_Checkout", alter: isRTL ? "المغادرة" : "Checkout")
+            return PuryLocale.text("Pury_Field_Checkout", language: language, ar: "المغادرة", en: "Checkout")
         case "suite", "suitename", "suite_name":
-            return Language.get("Pury_Field_Suite", alter: isRTL ? "الجناح" : "Suite")
+            return PuryLocale.text("Pury_Field_Suite", language: language, ar: "الجناح", en: "Suite")
         case "room", "roomname", "room_name", "accommodation":
-            return Language.get("Pury_Field_Room", alter: isRTL ? "الغرفة" : "Room")
+            return PuryLocale.text("Pury_Field_Room", language: language, ar: "الغرفة", en: "Room")
         case "price":
-            return Language.get("Pury_Field_Price", alter: isRTL ? "السعر" : "Price")
+            return PuryLocale.text("Pury_Field_Price", language: language, ar: "السعر", en: "Price")
         case "quantity", "stock":
-            return Language.get("Pury_Field_AvailableQuantity", alter: isRTL ? "الكمية المتوفرة" : "Available quantity")
+            return PuryLocale.text("Pury_Field_AvailableQuantity", language: language, ar: "الكمية المتوفرة", en: "Available quantity")
         case "status":
-            return Language.get("Pury_Field_Status", alter: isRTL ? "الحالة" : "Status")
+            return PuryLocale.text("Pury_Field_Status", language: language, ar: "الحالة", en: "Status")
         case "category":
-            return Language.get("Pury_Field_Category", alter: isRTL ? "التصنيف" : "Category")
+            return PuryLocale.text("Pury_Field_Category", language: language, ar: "التصنيف", en: "Category")
         case "name", "title":
-            return Language.get("Pury_Field_Name", alter: isRTL ? "الاسم" : "Name")
+            return PuryLocale.text("Pury_Field_Name", language: language, ar: "الاسم", en: "Name")
         case "description":
-            return Language.get("Pury_Field_Description", alter: isRTL ? "الوصف" : "Description")
+            return PuryLocale.text("Pury_Field_Description", language: language, ar: "الوصف", en: "Description")
         case "phone", "phonenumber", "phone_number":
-            return Language.get("Pury_Field_Phone", alter: isRTL ? "رقم الهاتف" : "Phone")
+            return PuryLocale.text("Pury_Field_Phone", language: language, ar: "رقم الهاتف", en: "Phone")
         case "email":
-            return Language.get("Pury_Field_Email", alter: isRTL ? "البريد الإلكتروني" : "Email")
+            return PuryLocale.text("Pury_Field_Email", language: language, ar: "البريد الإلكتروني", en: "Email")
         case "createdat", "created_at":
-            return Language.get("Pury_Field_Created", alter: isRTL ? "تاريخ الإنشاء" : "Created")
+            return PuryLocale.text("Pury_Field_Created", language: language, ar: "تاريخ الإنشاء", en: "Created")
         case "updatedat", "updated_at":
-            return Language.get("Pury_Field_LastUpdated", alter: isRTL ? "آخر تحديث" : "Last updated")
+            return PuryLocale.text("Pury_Field_LastUpdated", language: language, ar: "آخر تحديث", en: "Last updated")
         default:
             return humanizedFallbackLabel(label)
         }
@@ -1861,21 +1980,26 @@ public struct PuryRecordCardView: View {
     private func actionTitleForBlock(_ block: PuryDataBlock) -> String? {
         let target = (block.collection ?? block.type).lowercased()
         if target.contains("access") || target.contains("product") {
-            return isRTL ? "إدارة هذا المنتج في المخزن" : "Manage Product in Catalog"
+            return PuryLocale.text("Pury_CTA_ProductCatalog", language: language, ar: "إدارة هذا المنتج في المخزن", en: "Manage Product in Catalog")
         }
         if target.contains("hotel") || target.contains("stay") {
-            return isRTL ? "فتح تفاصيل الإقامة الفندقية" : "View Hotel Stay Details"
+            return PuryLocale.text("Pury_CTA_HotelStay", language: language, ar: "فتح تفاصيل الإقامة الفندقية", en: "View Hotel Stay Details")
         }
         if target.contains("order") {
-            return isRTL ? "عرض تفاصيل الطلب" : "View Order Details"
+            return PuryLocale.text("Pury_CTA_Order", language: language, ar: "عرض تفاصيل الطلب", en: "View Order Details")
         }
         if target.contains("user") {
-            return isRTL ? "عرض ملف المستخدم" : "View User Profile"
+            return PuryLocale.text("Pury_CTA_UserProfile", language: language, ar: "عرض ملف المستخدم", en: "View User Profile")
         }
         if target.contains("branch") {
-            return isRTL ? "عرض تفاصيل الفرع" : "View Branch Details"
+            return PuryLocale.text("Pury_CTA_Branch", language: language, ar: "عرض تفاصيل الفرع", en: "View Branch Details")
         }
-        return isRTL ? "عرض السجل في لوحة الإدارة" : "View Record in Admin"
+        return PuryLocale.text(
+            "Pury_View_Record",
+            language: language,
+            ar: "فتح السجل في لوحة الإدارة",
+            en: "View Record in Admin"
+        )
     }
 
     @ViewBuilder
@@ -1887,11 +2011,11 @@ public struct PuryRecordCardView: View {
             PuryInfoPill(val, tone: .currency, isSmall: true)
                 .environment(\.layoutDirection, .leftToRight)
         } else if ["active", "نشط", "مكتمل", "completed", "متاح", "available", "true"].contains(valLower) {
-            PuryInfoPill(valLower == "true" ? (isRTL ? "مفعّل" : "Active") : val, tone: .emerald, isSmall: true)
+            PuryInfoPill(valLower == "true" ? (PuryLocale.text("Pury_Value_Active", language: language, ar: "مفعّل", en: "Active")) : val, tone: .emerald, isSmall: true)
         } else if ["pending", "معلق", "قيد الانتظار", "draft", "مسودة"].contains(valLower) {
             PuryInfoPill(val, tone: .amber, isSmall: true)
         } else if ["cancelled", "ملغي", "مرفوض", "rejected", "out_of_stock", "نفد", "false"].contains(valLower) {
-            PuryInfoPill(valLower == "false" ? (isRTL ? "معطّل" : "Disabled") : val, tone: .crimson, isSmall: true)
+            PuryInfoPill(valLower == "false" ? (PuryLocale.text("Pury_Value_Disabled", language: language, ar: "معطّل", en: "Disabled")) : val, tone: .crimson, isSmall: true)
         } else {
             Text(val)
                 .font(AdminType.caption1Bold)
@@ -2149,6 +2273,7 @@ public enum PuryContentParser {
     }
 
     private static func parseProductLine(_ line: String, isRTL: Bool) -> PuryProductItem? {
+        let language = isRTL ? "ar" : "en"
         guard line.hasPrefix("*") || line.hasPrefix("-") || line.hasPrefix("•") else {
             return nil
         }
@@ -2210,7 +2335,13 @@ public enum PuryContentParser {
                 priceString = matchedPrice.replacingOccurrences(of: "بسعر", with: "").trimmingCharacters(in: .whitespaces)
             } else if let numRange = Range(match.range(at: 1), in: cleanVal) {
                 let num = cleanVal[numRange]
-                priceString = isRTL ? "\(num) ر.ق." : "\(num) QAR"
+                priceString = PuryLocale.format(
+                    "Pury_Currency_QAR_Format",
+                    language: language,
+                    ar: "%@ ر.ق.",
+                    en: "%@ QAR",
+                    String(num)
+                )
             }
         }
 
@@ -2218,11 +2349,12 @@ public enum PuryContentParser {
             title: title,
             quantity: quantity,
             price: priceString,
-            category: isRTL ? "مخزون المتجر" : "Store Catalog"
+            category: PuryLocale.text("Pury_Catalog_StoreCatalog", language: language, ar: "مخزون المتجر", en: "Store Catalog")
         )
     }
 
     private static func parseMetricLine(_ line: String, isRTL: Bool) -> PuryTelemetryItem? {
+        let language = isRTL ? "ar" : "en"
         guard line.hasPrefix("*") || line.hasPrefix("-") || line.hasPrefix("•") else {
             return nil
         }
@@ -2305,77 +2437,78 @@ public enum PuryContentParser {
         title: String,
         isRTL: Bool
     ) -> (title: String, subtitle: String?, icon: String, tint: Color, deepLinkRoute: String?) {
+        let language = isRTL ? "ar" : "en"
         let key = (collectionKey ?? "").lowercased()
         let lowerTitle = title.lowercased()
 
         if key.contains("vet") || lowerTitle.contains("بيطر") || lowerTitle.contains("أطباء") || lowerTitle.contains("طبيب") {
             return (
-                title: isRTL ? "الأطباء البيطريون" : "Veterinarians",
-                subtitle: isRTL ? "كادر طبي معتمد" : "Certified Medical Staff",
+                title: PuryLocale.text("Pury_Metric_Vets_Title", language: language, ar: "الأطباء البيطريون", en: "Veterinarians"),
+                subtitle: PuryLocale.text("Pury_Metric_Vets_Sub", language: language, ar: "كادر طبي معتمد", en: "Certified Medical Staff"),
                 icon: "stethoscope",
                 tint: Color(red: 20/255, green: 184/255, blue: 166/255),
                 deepLinkRoute: "staff"
             )
         } else if key.contains("pet_ad") || key.contains("petad") || lowerTitle.contains("إعلان") || lowerTitle.contains("اعلان") {
             return (
-                title: isRTL ? "إعلانات الحيوانات" : "Pet Listings",
-                subtitle: isRTL ? "إعلانات منشورة" : "Active Listings",
+                title: PuryLocale.text("Pury_Metric_Listings_Title", language: language, ar: "إعلانات الحيوانات", en: "Pet Listings"),
+                subtitle: PuryLocale.text("Pury_Metric_Listings_Sub", language: language, ar: "إعلانات منشورة", en: "Active Listings"),
                 icon: "pawprint.fill",
                 tint: Color(red: 245/255, green: 158/255, blue: 11/255),
                 deepLinkRoute: "livePets"
             )
         } else if key.contains("service") || lowerTitle.contains("خدمات") || lowerTitle.contains("خدمة") {
             return (
-                title: isRTL ? "عروض الخدمات" : "Service Offers",
-                subtitle: isRTL ? "باقات مفعّلة" : "Active Service Packages",
+                title: PuryLocale.text("Pury_Metric_Services_Title", language: language, ar: "عروض الخدمات", en: "Service Offers"),
+                subtitle: PuryLocale.text("Pury_Metric_Services_Sub", language: language, ar: "باقات مفعّلة", en: "Active Service Packages"),
                 icon: "sparkles.rectangle.stack.fill",
                 tint: Color(red: 139/255, green: 92/255, blue: 246/255),
                 deepLinkRoute: "hotel"
             )
         } else if key.contains("adopt") || lowerTitle.contains("تبني") {
             return (
-                title: isRTL ? "طلبات التبني" : "Adoption Requests",
-                subtitle: isRTL ? "حيوانات مؤهلة" : "Eligible for Adoption",
+                title: PuryLocale.text("Pury_Metric_Adoption_Title", language: language, ar: "طلبات التبني", en: "Adoption Requests"),
+                subtitle: PuryLocale.text("Pury_Metric_Adoption_Sub", language: language, ar: "حيوانات مؤهلة", en: "Eligible for Adoption"),
                 icon: "heart.circle.fill",
                 tint: Color(red: 236/255, green: 72/255, blue: 153/255),
                 deepLinkRoute: "livePets"
             )
         } else if key.contains("accessory") || key.contains("product") || key.contains("stock") || lowerTitle.contains("منتج") || lowerTitle.contains("مخزون") {
             return (
-                title: isRTL ? "منتجات المتجر" : "Store Products",
-                subtitle: isRTL ? "المخزون المسجل" : "Catalog Inventory",
+                title: PuryLocale.text("Pury_Metric_Products_Title", language: language, ar: "منتجات المتجر", en: "Store Products"),
+                subtitle: PuryLocale.text("Pury_Metric_Products_Sub", language: language, ar: "المخزون المسجل", en: "Catalog Inventory"),
                 icon: "shippingbox.fill",
                 tint: Color(red: 59/255, green: 130/255, blue: 246/255),
                 deepLinkRoute: "accessories"
             )
         } else if key.contains("order") || lowerTitle.contains("طلب") {
             return (
-                title: isRTL ? "أوامر الشراء" : "Orders Queue",
-                subtitle: isRTL ? "طلبات معتمدة" : "Active Orders",
+                title: PuryLocale.text("Pury_Metric_Orders_Title", language: language, ar: "أوامر الشراء", en: "Orders Queue"),
+                subtitle: PuryLocale.text("Pury_Metric_Orders_Sub", language: language, ar: "طلبات معتمدة", en: "Active Orders"),
                 icon: "bag.fill",
                 tint: Color(red: 16/255, green: 185/255, blue: 129/255),
                 deepLinkRoute: "orders"
             )
         } else if key.contains("hotel") || key.contains("stay") || lowerTitle.contains("فندق") || lowerTitle.contains("إقامة") {
             return (
-                title: isRTL ? "إشغال الفندق" : "Hotel Stays",
-                subtitle: isRTL ? "نزلاء حاليون" : "Current Guests",
+                title: PuryLocale.text("Pury_Metric_HotelStays_Title", language: language, ar: "إشغال الفندق", en: "Hotel Stays"),
+                subtitle: PuryLocale.text("Pury_Metric_HotelStays_Sub", language: language, ar: "نزلاء حاليون", en: "Current Guests"),
                 icon: "building.2.fill",
                 tint: Color(red: 16/255, green: 185/255, blue: 129/255),
                 deepLinkRoute: "hotel"
             )
         } else if key.contains("user") || lowerTitle.contains("مستخدم") {
             return (
-                title: isRTL ? "المستخدمين" : "Registered Users",
-                subtitle: isRTL ? "حسابات نشطة" : "Platform Accounts",
+                title: PuryLocale.text("Pury_Metric_Users_Title", language: language, ar: "المستخدمين", en: "Registered Users"),
+                subtitle: PuryLocale.text("Pury_Metric_Users_Sub", language: language, ar: "حسابات نشطة", en: "Platform Accounts"),
                 icon: "person.2.fill",
                 tint: Color(red: 99/255, green: 102/255, blue: 241/255),
                 deepLinkRoute: "users"
             )
         } else if key.contains("branch") || lowerTitle.contains("فرع") {
             return (
-                title: isRTL ? "فروع بيور بيتس" : "Branches",
-                subtitle: isRTL ? "مواقع تشغيلية" : "Active Locations",
+                title: PuryLocale.text("Pury_Metric_Branches_Title", language: language, ar: "فروع بيور بيتس", en: "Branches"),
+                subtitle: PuryLocale.text("Pury_Metric_Branches_Sub", language: language, ar: "مواقع تشغيلية", en: "Active Locations"),
                 icon: "mappin.and.ellipse",
                 tint: Color(red: 249/255, green: 115/255, blue: 22/255),
                 deepLinkRoute: "branches"
@@ -2383,7 +2516,7 @@ public enum PuryContentParser {
         }
 
         return (
-            title: title.isEmpty ? (collectionKey ?? (isRTL ? "عنصر تشغيلي" : "Operational Metric")) : title,
+            title: title.isEmpty ? (collectionKey ?? (PuryLocale.text("Pury_Metric_Generic", language: language, ar: "عنصر تشغيلي", en: "Operational Metric"))) : title,
             subtitle: collectionKey,
             icon: "chart.bar.fill",
             tint: Color(red: 16/255, green: 185/255, blue: 129/255),

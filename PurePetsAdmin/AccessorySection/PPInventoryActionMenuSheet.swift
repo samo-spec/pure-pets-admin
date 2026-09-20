@@ -10,7 +10,6 @@
 
 import SwiftUI
 import UIKit
-import FirebaseFirestore
 
 public struct PPInventoryActionMenuSheet: View {
     let item: PetAccessory
@@ -366,23 +365,23 @@ public struct PPInventoryActionMenuSheet: View {
                 .buttonStyle(SpecimenActionPressStyle())
             }
 
-            // Stock Availability Toggle Row (Merchandise & Dry Goods Only)
+            // Safe stock adjustment entry (Merchandise & Dry Goods Only)
             if canManageStock && !item.isLivePet {
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     onToggleStock()
                 } label: {
                     HStack(spacing: 12) {
-                        Image(systemName: item.noStock ? "xmark.circle.fill" : "checkmark.circle.fill")
+                        Image(systemName: "number.square.fill")
                             .font(.system(size: 20, weight: .bold))
                             .foregroundColor(item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(item.noStock ? Language.get("MarkInStock", alter: "تفعيل التوفر بالمخزون") : Language.get("MarkOutOfStock", alter: "تعيين كنفاذ المخزون"))
+                            Text(Language.get("EditQuantity", alter: "تعديل الكمية"))
                                 .font(PPBrandFont.bold(size: 14))
                                 .foregroundColor(AdminSurface.primaryText)
                                 .multilineTextAlignment(.leading)
-                            Text(item.noStock ? Language.get("Stock_Currently_Out", alter: "الصنف غير متاح للبيع حالياً") : Language.get("Stock_Currently_Active", alter: "الصنف متاح في عمليات البيع والكاشير"))
+                            Text(Language.get("Inventory_AdjustQuantity_Desc", alter: "تغيير الرصيد الفعلي بأمر مخزون مسجّل وآمن"))
                                 .font(AdminType.caption2)
                                 .foregroundColor(AdminSurface.secondaryText)
                                 .multilineTextAlignment(.leading)
@@ -667,9 +666,9 @@ public struct PPInventoryActionMenuSheet: View {
                                     onToggleStock()
                                 } label: {
                                     HStack(spacing: 6) {
-                                        Image(systemName: item.noStock ? "checkmark.circle" : "xmark.circle")
+                                        Image(systemName: "number.square.fill")
                                             .font(.system(size: 14, weight: .bold))
-                                        Text(item.noStock ? Language.get("MarkInStock", alter: "تفعيل التوفر") : Language.get("MarkOutOfStock", alter: "نفاذ المخزون"))
+                                        Text(Language.get("EditQuantity", alter: "تعديل الكمية"))
                                             .font(PPBrandFont.bold(size: 14))
                                     }
                                     .foregroundColor(item.noStock ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppError))
@@ -918,17 +917,33 @@ public struct PPInventoryActionMenuSheet: View {
     }
 
     private func toggleAppMarketDirectly() {
-        let newStatus = !item.showInAppMarket
-        item.showInAppMarket = newStatus
         let docId = item.accessoryID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !docId.isEmpty else { return }
-        Firestore.firestore().collection("petAccessories").document(docId).updateData(["showInAppMarket": newStatus]) { error in
-            if let error = error {
-                print("Failed to toggle showInAppMarket: \(error.localizedDescription)")
+        let previousStatus = item.showInAppMarket
+        let newStatus = !previousStatus
+        item.showInAppMarket = newStatus
+
+        let commandID = PPInventoryCommandService.shared.generateCommandId(action: "visibility", targetId: docId)
+        PPInventoryCommandService.shared.setAppMarketVisibility(
+            productId: docId,
+            visible: newStatus,
+            expectedRevision: item.revision > 0 ? item.revision : nil,
+            commandId: commandID
+        ) { result, error in
+            DispatchQueue.main.async {
+                if let error {
+                    item.showInAppMarket = previousStatus
+                    PPHUD.showError(
+                        Language.get("Error", alter: "خطأ"),
+                        subtitle: PPBranchInventoryErrorHelper.localizedMessage(for: error)
+                    )
+                    return
+                }
+                if let revision = result?.revision, revision > 0 { item.revision = revision }
+                let message = newStatus ? Language.get("AppMarket_NowVisible_Toast", alter: "تم إظهار الصنف في متجر التطبيق") : Language.get("AppMarket_NowHidden_Toast", alter: "تم إخفاء الصنف من متجر التطبيق")
+                PPHUD.showSuccess(message)
             }
         }
-        let message = newStatus ? Language.get("AppMarket_NowVisible_Toast", alter: "تم إظهار الصنف في متجر التطبيق") : Language.get("AppMarket_NowHidden_Toast", alter: "تم إخفاء الصنف من متجر التطبيق")
-        PPHUD.showSuccess(message)
     }
 }
 

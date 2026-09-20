@@ -1,4 +1,16 @@
 /* ===================== Admin Login ===================== */
+"Inventory_CostUnavailable" = "التكلفة غير متاحة";
+"Inventory_SaveOutcomeUnknown_Format" = "تعذر تأكيد الحفظ. أعد المحاولة لاستعادة نفس العملية دون تكرار الصنف. %@";
+"Inventory_CountIncomplete" = "عدّ كل صنف أو أكد أن رصيده صفر قبل إرسال الجرد.";
+"Inventory_CountVarianceFormat" = "%@ قطعة · %@";
+"Inventory_DiscardCount_Title" = "مغادرة الجرد؟";
+"Inventory_DiscardCount_Message" = "لم تُرسل الأعداد بعد. ستفقد الأعداد المدخلة عند المغادرة.";
+"Inventory_TrackedOperationRequired" = "استخدم مسار الحيوان المحدد أو التشغيلة لتعديل هذا المخزون.";
+"Inventory_AggregateConflict" = "أرصدة المخزون غير متطابقة. حدّث البيانات وسوّها قبل إعادة المحاولة.";
+"Inventory_StaleCount" = "تغير المخزون بعد بدء الجرد. ابدأ جرداً جديداً قبل تطبيق التسوية.";
+"Inventory_CountScopeTooLarge" = "اختر رفاً أو فئة أو جرداً انتقائياً لا يتجاوز 100 صنف.";
+"Inventory_CountScopeEmpty" = "لا توجد أصناف مخزون في نطاق الجرد المحدد.";
+"Inventory_ProjectionUnavailable" = "تعذر التحقق من مخزون الفرع. حدّث البيانات قبل تعديل الرصيد.";
 "AdminLoginTitle"              = "تسجيل دخول المشرف";
 "Email"                        = "البريد الإلكتروني";
 "EmailPlaceholder"             = "أدخل البريد الإلكتروني";
@@ -8534,6 +8546,14 @@
 "TactilePad_A11y_Backspace" = "حذف آخر رقم";
 "TactilePad_A11y_Decimal" = "فاصلة عشرية";
 "TactilePad_A11y_Readout" = "القيمة المدخلة: %@ %@";
+"Max_Stock_Format" = "كامل المخزون (%d)";
+"POS_Zero_Quantity_Remove_Warning" = "الكمية 0: سيتم حذف الصنف من السلة عند التأكيد.";
+"POS_LivePet_Rings_Label" = "الحجول:";
+"POS_LiveSpecimen_Tag" = "حيوان حي";
+"POS_SelectRingTagsPrompt" = "اضغط لاختيار أرقام الحجول";
+"POS_EditRings" = "تعديل";
+"POS_SelectedRingsA11y" = "الحجول المختارة: ";
+"POS_TapToChangeRings_Hint" = "اضغط لتعديل اختيار الحجول";
 
 /* ===================== App Marketplace Visibility ===================== */
 "AppMarket_Visibility_Title" = "العرض في متجر التطبيق";
@@ -9346,6 +9366,69 @@
 "Pury_Clear_Confirm_Message" = "سيتم حذف هذه المحادثة من الجهاز فقط. لن يتأثر أي سجل تشغيلي.";
 "Pury_Clear_Confirm_Action" = "مسح المحادثة";
 "Pury_Clear_Cancel_Action" = "إلغاء";
+
+/* Pury Conversation Ledger — لوحة الانطلاق ومصدر البيانات وشريط الأوامر */
+"Pury_Greeting_Morning" = "صباح الخير، أنا بيوري";
+"Pury_Greeting_Afternoon" = "طاب يومك، أنا بيوري";
+"Pury_Greeting_Evening" = "مساء الخير، أنا بيوري";
+"Pury_Greeting_Night" = "سهرة مباركة، أنا بيوري";
+"Pury_Launch_Mission" = "اسألني عن الإشغال، المخزون، التجهيز، أو الأداء — وأجيبك من السجلات الحية المصرح لك بها.";
+"Pury_Launch_Section_Start" = "ابدأ من هنا";
+"Pury_Launch_Section_Quick" = "استعلامات سريعة";
+"Pury_Launch_Bound_Badge" = "مرتبط بالسياق";
+"Pury_Launch_Pod_A11y_Hint" = "انقر مرتين لتشغيل هذا الاستعلام";
+
+"Pury_Launch_ThisStay_Title" = "هذه الإقامة";
+"Pury_Launch_ThisStay_Sub" = "المهام الطبية وحالة الرعاية";
+"Pury_Launch_ThisOrder_Title" = "هذا الطلب";
+"Pury_Launch_ThisOrder_Sub" = "سجل التتبع وحالة التجهيز";
+"Pury_Launch_ThisItem_Title" = "هذا المنتج";
+"Pury_Launch_ThisItem_Sub" = "حالة المخزون والمبيعات";
+
+"Pury_Launch_Kicker_Hotel" = "الفندق";
+"Pury_Launch_Kicker_Inventory" = "المخزون";
+"Pury_Launch_Kicker_Fulfillment" = "التجهيز";
+"Pury_Launch_Kicker_Performance" = "الأداء";
+"Pury_Launch_Hotel_Title" = "حالة الإشغال";
+"Pury_Launch_Hotel_Sub" = "الغرف والنزلاء الآن";
+"Pury_Launch_Stock_Title" = "نواقص المخزون";
+"Pury_Launch_Stock_Sub" = "منتجات أوشكت على النفاد";
+"Pury_Launch_Orders_Title" = "الطلبات المعلقة";
+"Pury_Launch_Orders_Sub" = "بانتظار الشحن والتسليم";
+"Pury_Launch_Kpi_Title" = "ملخص الأسبوع";
+"Pury_Launch_Kpi_Sub" = "الإيرادات ومؤشرات النمو";
+
+"Pury_Quick_Vets_Title" = "كادر الأطباء";
+"Pury_Quick_Vets_Prompt" = "كم عدد الأطباء البيطريين المسجلين في النظام؟";
+"Pury_Quick_Adoption_Title" = "طلبات التبني";
+"Pury_Quick_Adoption_Prompt" = "ما هي أحدث طلبات التبني المسجلة؟";
+"Pury_Quick_Guests_Title" = "نزلاء الفندق";
+"Pury_Quick_Guests_Prompt" = "ما هي قائمة الحيوانات المقيمة بالفندق حالياً؟";
+"Pury_Quick_Audit_Title" = "جرد المخزون";
+"Pury_Quick_Audit_Prompt" = "ملخص سريع لأهم أصناف المخزون المتوفرة";
+"Pury_Quick_Delivery_Title" = "شحنات التوصيل";
+"Pury_Quick_Delivery_Prompt" = "ما هي حالة شحنات وطلبات التوصيل اليوم؟";
+"Pury_Quick_Bookings_Title" = "حجوزات الفندق";
+"Pury_Quick_Bookings_Prompt" = "كم عدد حجوزات الفندق القادمة والمؤكدة؟";
+"Pury_Quick_Branches_Title" = "حالة الفروع";
+"Pury_Quick_Branches_Prompt" = "ما هي الفروع النشطة وحالة تشغيلها الحالية؟";
+"Pury_Quick_Missing_Title" = "بلاغات المفقودات";
+"Pury_Quick_Missing_Prompt" = "ما هي أحدث بلاغات الحيوانات المفقودة المسجلة؟";
+"Pury_Quick_POS_Title" = "مبيعات الكاشير";
+"Pury_Quick_POS_Prompt" = "ملخص مبيعات نقاط البيع والكاشير المسجلة اليوم";
+"Pury_Quick_LivePets_Title" = "الحيوانات المتوفرة";
+"Pury_Quick_LivePets_Prompt" = "كم عدد الحيوانات الحية المتوفرة حالياً في الفروع؟";
+
+"Pury_Turn_Copy" = "نسخ";
+"Pury_Turn_Rerun" = "إعادة الاستعلام";
+"Pury_Turn_Records_Format" = "%@ سجل حي";
+"Pury_Turn_Latency_A11y_Format" = "زمن الاستجابة %@";
+
+"Pury_Pending_Approval_Title" = "إجراء بانتظار موافقتك";
+"Pury_Pending_Approval_Action" = "مراجعة";
+
+"Pury_Composer_Clear" = "مسح النص";
+"Pury_Composer_Send" = "إرسال";
 "Pury_Welcome_Title" = "مرحباً! أنا بيوري، مساعدك التشغيلي";
 "Pury_Welcome_Desc" = "اطرح أي سؤال حول المخزون، الطلبات، النزلاء في الفندق، أو تقارير المبيعات، وسأجيبك من واقع البيانات المحدثة مباشرة.";
 "Pury_Quick_Prompts" = "اقتراحات سريعة:";
@@ -9451,3 +9534,92 @@
 "LivePet_Confirm_ErrorMessage" = "بيانات الاسترجاع محفوظة، لكن تعذر عرض الملخص الآن. حاول مرة أخرى.";
 "LivePet_Confirm_Retry" = "إعادة المحاولة";
 "POS_TransactionID" = "فاتورة";
+
+/* Pury Chat Content Layer — نتائج ومنتجات وسجلات ومؤشرات */
+"Pury_CTA_Hotel" = "فتح لوحة تحكم الفندق";
+"Pury_CTA_Order" = "عرض تفاصيل الطلب";
+"Pury_CTA_Product" = "إدارة المنتج في المخزن";
+"Pury_CTA_Listings" = "عرض إعلانات الحيوانات";
+"Pury_CTA_MedicalStaff" = "عرض الكادر الطبي";
+"Pury_CTA_Users" = "عرض المستخدمين";
+"Pury_CTA_Branch" = "عرض تفاصيل الفرع";
+"Pury_CTA_ProductCatalog" = "إدارة هذا المنتج في المخزن";
+"Pury_CTA_HotelStay" = "فتح تفاصيل الإقامة الفندقية";
+"Pury_CTA_UserProfile" = "عرض ملف المستخدم";
+"Pury_Stock_Out" = "نفد من المخزون";
+"Pury_Stock_Low" = "مخزون حرج";
+"Pury_Stock_In" = "متوفر";
+"Pury_Stock_Units_None" = "0 وحدات متبقية";
+"Pury_Record_ShowLess" = "إخفاء التفاصيل";
+"Pury_Record_Generic" = "بيانات السجل";
+"Pury_Value_Active" = "مفعّل";
+"Pury_Value_Disabled" = "معطّل";
+"Pury_Catalog_StoreCatalog" = "مخزون المتجر";
+"Pury_Metric_Generic" = "عنصر تشغيلي";
+"Pury_Metric_Vets_Title" = "الأطباء البيطريون";
+"Pury_Metric_Vets_Sub" = "كادر طبي معتمد";
+"Pury_Metric_Listings_Title" = "إعلانات الحيوانات";
+"Pury_Metric_Listings_Sub" = "إعلانات منشورة";
+"Pury_Metric_Services_Title" = "عروض الخدمات";
+"Pury_Metric_Services_Sub" = "باقات مفعّلة";
+"Pury_Metric_Adoption_Title" = "طلبات التبني";
+"Pury_Metric_Adoption_Sub" = "حيوانات مؤهلة";
+"Pury_Metric_Products_Title" = "منتجات المتجر";
+"Pury_Metric_Products_Sub" = "المخزون المسجل";
+"Pury_Metric_Orders_Title" = "أوامر الشراء";
+"Pury_Metric_Orders_Sub" = "طلبات معتمدة";
+"Pury_Metric_HotelStays_Title" = "إشغال الفندق";
+"Pury_Metric_HotelStays_Sub" = "نزلاء حاليون";
+"Pury_Metric_Users_Title" = "المستخدمين";
+"Pury_Metric_Users_Sub" = "حسابات نشطة";
+"Pury_Metric_Branches_Title" = "فروع بيور بيتس";
+"Pury_Metric_Branches_Sub" = "مواقع تشغيلية";
+"Pury_Stock_Units_Format" = "%@ وحدات متوفرة";
+"Pury_Record_ShowMore_Format" = "عرض المزيد (+%@)";
+"Pury_Currency_QAR_Format" = "%@ ر.ق.";
+
+/* Pury Answer Studio — عارضات الأجوبة */
+"Pury_Field_FinalPrice" = "السعر النهائي";
+"Pury_Field_VisibleInApp" = "الظهور في التطبيق";
+"Pury_Field_Collection" = "المجموعة";
+"Pury_Field_EnglishName" = "الاسم بالإنجليزية";
+"Pury_Field_ArabicName" = "الاسم بالعربية";
+"Pury_Value_On" = "مفعل";
+"Pury_Value_Off" = "معطل";
+"Pury_Collection_PetAccessories" = "مستلزمات وأغذية";
+"Pury_Stock_Risk_Depleted" = "نفد";
+"Pury_Stock_Risk_Critical" = "حرج";
+"Pury_Stock_Risk_Low" = "منخفض";
+"Pury_Stock_Risk_Healthy" = "متوفر";
+"Pury_Stock_Hidden" = "مخفي";
+"Pury_Stock_Unit" = "وحدة";
+"Pury_Answer_Stock_Title" = "حالة المخزون";
+"Pury_Answer_Filter_Empty" = "لا عناصر في هذا التصنيف";
+"Pury_Answer_Manage_Inventory" = "إدارة المخزون";
+"Pury_Answer_Open_Record" = "فتح السجل";
+"Pury_Answer_Row_Hint" = "انقر مرتين لعرض التفاصيل";
+"Pury_Answer_Empty_Title" = "لا سجلات مطابقة";
+"Pury_Answer_Empty_Body" = "لم يعد أي سجل مصرح لك به لهذا الاستعلام.";
+"Pury_Answer_Empty_Scope_Format" = "تمت القراءة داخل نطاق: %@";
+"Pury_Answer_Broaden" = "وسّع نطاق البحث";
+"Pury_Exception_Denied_Title" = "صلاحيتك لا تسمح بهذا الطلب";
+"Pury_Exception_Denied_Guidance" = "التحقق يتم على الخادم. اطلب الصلاحية من مالك الحساب لمتابعة هذا الإجراء.";
+"Pury_Exception_Stale_Title" = "تغيّرت البيانات قبل التنفيذ";
+"Pury_Exception_Stale_Guidance" = "أعد الاستعلام لقراءة أحدث نسخة قبل اتخاذ أي إجراء.";
+"Pury_Exception_Failed_Title" = "تعذّر إكمال الطلب";
+"Pury_Exception_Failed_Guidance" = "لم يتم تنفيذ أي تغيير. يمكنك إعادة المحاولة.";
+"Pury_Exception_Required_Permission" = "الصلاحية المطلوبة";
+"Inventory_ResumePendingSave" = "استعادة الحفظ المعلّق";
+"Inventory_CachedStockNotice" = "الرصيد المعروض محفوظ مؤقتاً ولم يؤكده الخادم بعد.";
+
+
+/* MARK: - POS checkout transaction safety */
+"POS_CashReceivedBelowTotal_Format" = "المبلغ المستلم (%.2f ر.ق) أقل من إجمالي البيع (%.2f ر.ق). صحّح المبلغ ثم أعد المحاولة.";
+"POS_ItemStockExceeded_Format" = "كمية الصنف (%@) تتجاوز المخزون المتوفر في الفرع (%d متوفر).";
+"POS_SubmitOutcomeUnknown" = "لم يتأكد اكتمال البيع. قد تكون العملية سُجلت بالفعل — تحقق من سجل المبيعات قبل إعادة البيع. إعادة المحاولة آمنة ولن تُنشئ عملية مكررة.";
+"POS_UnconfirmedSaleTitle" = "بيع غير مؤكد";
+"POS_UnconfirmedSaleNotice_Format" = "عملية بيع سابقة بقيمة %.2f ر.ق لم يتأكد اكتمالها (رقم الأمر %@). راجع سجل المبيعات قبل إعادة بيع نفس الأصناف.";
+"POS_Receipt_TotalMismatchNotice" = "تم اعتماد البيع بالإجمالي المسجل في النظام، وهو يختلف عن الإجمالي المعروض في السلة. راجع أسعار الأصناف.";
+"POS_SlideToSale_A11yHint" = "انقر مرتين لإتمام عملية البيع";
+
+"POS_CheckoutCommandConflict" = "توجد عملية بيع مسجلة بنفس رقم الأمر ببيانات مختلفة. راجع سجل المبيعات للتأكد قبل إعادة البيع، ثم أنشئ عملية جديدة.";

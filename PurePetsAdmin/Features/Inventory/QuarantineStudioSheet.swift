@@ -10,7 +10,6 @@
 import SwiftUI
 import UIKit
 import AudioToolbox
-import FirebaseFirestore
 import FirebaseFunctions
 
 // MARK: - Color Palette Extensions
@@ -2465,12 +2464,19 @@ private struct LivePetVeterinaryQuarantineDeckView: View {
 
                 case .extendIsolation:
                     if let unit = selectedUnit {
-                        let docRef = Firestore.firestore().collection("petAccessories").document(item.accessoryID).collection("inventoryUnits").document(unit.id)
-                        try await docRef.setData([
-                            "quarantineNotes": clinicalNotes,
-                            "lastClinicalCheckAt": FieldValue.serverTimestamp(),
-                            "clinicalStatus": selectedReasonCode
-                        ], merge: true)
+                        let trimmedNotes = clinicalNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let clinicalReport = trimmedNotes.isEmpty
+                            ? selectedReasonLabel
+                            : "\(selectedReasonLabel) — \(trimmedNotes)"
+                        _ = try await PPLivePetInventoryService.callInventory(
+                            action: "update_unit_profile",
+                            productID: item.accessoryID,
+                            commandID: commandId,
+                            payload: [
+                                "unitId": unit.id,
+                                "notes": clinicalReport
+                            ]
+                        )
                     }
                 }
 

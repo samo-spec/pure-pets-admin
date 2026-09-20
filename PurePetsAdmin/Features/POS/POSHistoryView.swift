@@ -1446,16 +1446,15 @@ private struct POSTransactionCard: View {
                 shareFailed = true
             }
         }
-        .alert(
-            Language.get("POS_History_ContactFailed", alter: "تعذر إكمال الإجراء"),
-            isPresented: Binding(
-                get: { feedbackMessage != nil },
-                set: { if !$0 { feedbackMessage = nil } }
-            )
-        ) {
-            Button(Language.get("OK", alter: "موافق"), role: .cancel) {}
-        } message: {
-            Text(feedbackMessage ?? "")
+        .onChange(of: feedbackMessage) { message in
+            guard let message = message, !message.isEmpty else { return }
+            PPAlertHelper.showError(
+                in: nil,
+                title: Language.get("POS_History_ContactFailed", alter: "تعذر إكمال الإجراء"),
+                subtitle: message
+            ) {
+                feedbackMessage = nil
+            }
         }
     }
 
@@ -3128,16 +3127,15 @@ struct POSTransactionDossierSheet: View {
                 }
             }
         }
-        .alert(
-            Language.get("POS_History_ContactFailed", alter: "تعذر إكمال الإجراء"),
-            isPresented: Binding(
-                get: { feedbackMessage != nil },
-                set: { if !$0 { feedbackMessage = nil } }
-            )
-        ) {
-            Button(Language.get("OK", alter: "موافق"), role: .cancel) {}
-        } message: {
-            Text(feedbackMessage ?? "")
+        .onChange(of: feedbackMessage) { message in
+            guard let message = message, !message.isEmpty else { return }
+            PPAlertHelper.showError(
+                in: nil,
+                title: Language.get("POS_History_ContactFailed", alter: "تعذر إكمال الإجراء"),
+                subtitle: message
+            ) {
+                feedbackMessage = nil
+            }
         }
     }
 

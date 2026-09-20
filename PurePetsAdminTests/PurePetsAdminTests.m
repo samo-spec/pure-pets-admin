@@ -19,6 +19,38 @@
 
 @implementation PurePetsAdminTests
 
+- (void)testInventoryModelRejectsNullAndMalformedScalarsWithoutCrashing {
+    NSArray *invalidValues = @[NSNull.null, @[], @{}, @(NAN), @(INFINITY)];
+    NSArray *keys = @[@"quantity", @"reservedQuantity", @"revision", @"inventorySchemaVersion",
+        @"petMainCategoryID", @"petSubCategoryID", @"cityID", @"accessKindType", @"type",
+        @"condition", @"hasCommerceConfig", @"isAllCategories", @"isAllSubCategories",
+        @"isArchived", @"isLivePet", @"isNew", @"hasOffer", @"showInAppMarket",
+        @"isBlocked", @"isDeleted", @"is_deleted", @"deleted", @"isDisabled", @"active", @"noStock"];
+    for (id invalid in invalidValues) {
+        NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+        for (NSString *key in keys) payload[key] = invalid;
+        PetAccessory *item = [[PetAccessory alloc] initWithDictionary:payload documentID:@"malformed"];
+        XCTAssertEqual(item.quantity, 0);
+        XCTAssertEqual(item.reservedQuantity, 0);
+        XCTAssertFalse(item.active);
+        XCTAssertEqualObjects(item.accessoryID, @"malformed");
+    }
+}
+
+- (void)testInventoryModelPreservesLegacyNumericStringsAndFiltersInvalidCategories {
+    PetAccessory *item = [[PetAccessory alloc] initWithDictionary:@{
+        @"quantity": @"12", @"reservedQuantity": @"2", @"price": @"9.50", @"type": @"2",
+        @"petMainCategoryIDs": @[@"3", @3, NSNull.null, @{}, @1.5],
+        @"imageURLsArray": @[@"https://example.invalid/item.jpg"],
+        @"imageMeta": @[@{@"width": NSNull.null, @"height": @{}}]
+    } documentID:@"legacy"];
+    XCTAssertEqual(item.quantity, 12);
+    XCTAssertEqual(item.reservedQuantity, 2);
+    XCTAssertEqualWithAccuracy(item.price.doubleValue, 9.5, 0.001);
+    XCTAssertEqualObjects(item.petMainCategoryIDs, (@[@3]));
+    XCTAssertNoThrow([item imageItems]);
+}
+
 - (void)setUp {
     // Put setup code here. This method is called before the invocation of each test method in the class.
 }

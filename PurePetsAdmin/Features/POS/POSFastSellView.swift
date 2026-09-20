@@ -17,6 +17,7 @@ import UIKit
 import AVFoundation
 import AudioToolbox
 import FirebaseFirestore
+import FirebaseFunctions
 import Combine
 
 // MARK: - Live Pet Inventory Contract
@@ -82,6 +83,82 @@ enum POSLogger {
 
 private enum POSFastSellSpace {
     static let root = "pos.fastsell.root"
+}
+
+/// Single money authority for the POS screen.
+///
+/// Every displayed and submitted amount must agree with the server, because
+/// `processTransaction` recomputes all money itself and rejects a mismatched
+/// client assertion with `failed-precondition` ("… does not match the
+/// server-calculated amount") using a half-cent tolerance.
+///
+/// Infra reference (`Pure Pets Infra/functions/posIntegrity.js`,
+/// `functions/transactions.js`):
+/// - `roundMoney(v)` → `Math.round((v + Number.EPSILON) * 100) / 100`
+/// - each line total is rounded, then `subtotal = roundMoney(subtotal + lineTotal)`
+///   is accumulated **per line** (transactions.js:1671)
+/// - `moneyMatches` compares with `abs(a - b) < 0.005`
+///
+/// Rounding only the final sum, as the cart previously did, drifts from the
+/// server once several lines each carry a half-cent residue, which fails an
+/// otherwise valid checkout. `sum(_:)` mirrors the server's accumulation
+/// exactly so an honest cart can never be rejected for a rounding artifact.
+enum POSMoney {
+    /// Half-cent tolerance used by Infra `moneyMatches`.
+    static let matchTolerance = 0.005
+
+    /// Server-equivalent 2-decimal rounding.
+    static func round(_ value: Double) -> Double {
+        guard value.isFinite else { return 0 }
+        return ((value + .ulpOfOne) * 100).rounded() / 100.0
+    }
+
+    /// Server-equivalent per-line accumulation: round each line, then round
+    /// after every addition.
+    static func sum(_ lineTotals: [Double]) -> Double {
+        lineTotals.reduce(0) { running, line in
+            POSMoney.round(running + POSMoney.round(line))
+        }
+    }
+
+    /// True when two amounts agree within the server's tolerance.
+    static func matches(_ lhs: Double, _ rhs: Double) -> Bool {
+        let a = POSMoney.round(lhs)
+        let b = POSMoney.round(rhs)
+        guard a.isFinite, b.isFinite else { return false }
+        return abs(a - b) < matchTolerance
+    }
+
+    /// Minor units for the wire contract (`assertedGroupPriceMinor`, `lineTotalMinor`).
+    static func minorUnits(_ value: Double) -> Int {
+        let rounded = POSMoney.round(value)
+        guard rounded.isFinite else { return 0 }
+        return Int((rounded * 100).rounded())
+    }
+
+    /// Single parser for every operator-entered money field (cash tender,
+    /// fixed discount).
+    ///
+    /// Arabic is the primary language, so an operator can legitimately type
+    /// Arabic-Indic digits (`١٢٣`) and the Arabic decimal separator (`٫`).
+    /// Parsing those with a plain `Double(_:)` yields 0, which silently
+    /// disables the confirm control with no explanation. Digits are normalised
+    /// first via the shared `normalizedEnglishDigits`, then both Arabic and
+    /// Latin decimal separators are accepted.
+    static func parse(_ text: String) -> Double {
+        let normalized = text
+            .normalizedEnglishDigits
+            .replacingOccurrences(of: "٫", with: ".")
+            .replacingOccurrences(of: "٬", with: "")
+            .replacingOccurrences(of: ",", with: ".")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return 0 }
+        if let value = Double(normalized), value.isFinite { return value }
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        guard let value = formatter.number(from: normalized)?.doubleValue, value.isFinite else { return 0 }
+        return value
+    }
 }
 
 extension PetAccessory {
@@ -293,21 +370,41 @@ struct POSCartItem: Identifiable, Equatable {
     }
 
     /// Exact-unit lines total the selected animals, never quantity × catalog price.
+    ///
+    /// Rounded to the server's money precision so the cart subtotal that
+    /// `POSMoney.sum` builds matches Infra's per-line accumulation.
     @MainActor
     var lineTotal: Double {
         if isIndividuallyTracked {
-            return unitPrices.reduce(0) { $0 + (($1["unitPrice"] as? Double) ?? 0) }
+            return POSMoney.round(unitPrices.reduce(0) { $0 + POSCartItem.unitPrice(from: $1) })
         }
         if unitGroupPrice > 0 {
-            return unitGroupPrice * Double(quantity)
+            return POSMoney.round(unitGroupPrice * Double(quantity))
         }
-        return accessory.pos_canonicalUnitPrice * Double(quantity)
+        return POSMoney.round(accessory.pos_canonicalUnitPrice * Double(quantity))
+    }
+
+    /// `unitPrices` is an untyped `[[String: Any]]` because it crosses the
+    /// Objective-C callable boundary, where a price can arrive as `NSNumber`,
+    /// `Int`, or `Double`. `as? Double` alone silently reads those as 0, which
+    /// would under-total a live-pet line, so every numeric representation is
+    /// accepted explicitly.
+    static func unitPrice(from entry: [String: Any]) -> Double {
+        guard let raw = entry["unitPrice"] else { return 0 }
+        if let value = raw as? Double { return value.isFinite ? value : 0 }
+        if let value = raw as? NSNumber {
+            let value = value.doubleValue
+            return value.isFinite ? value : 0
+        }
+        if let value = raw as? Int { return Double(value) }
+        if let value = raw as? String, let parsed = Double(value), parsed.isFinite { return parsed }
+        return 0
     }
 
     @MainActor
     var unitPriceDisplay: Double {
         if isIndividuallyTracked {
-            return quantity > 0 ? lineTotal / Double(quantity) : 0
+            return quantity > 0 ? POSMoney.round(lineTotal / Double(quantity)) : 0
         }
         if unitGroupPrice > 0 {
             return unitGroupPrice
@@ -379,9 +476,9 @@ struct POSDiscount: Equatable {
         switch type {
         case .percentage:
             let pct = min(max(value, 0), 100)
-            return ((subtotal * pct / 100.0) * 100).rounded() / 100.0
+            return POSMoney.round(subtotal * pct / 100.0)
         case .fixedAmount:
-            return min(subtotal, (max(value, 0) * 100).rounded() / 100.0)
+            return min(POSMoney.round(subtotal), POSMoney.round(max(value, 0)))
         }
     }
 
@@ -462,22 +559,138 @@ struct POSAnimalUnit: Identifiable, Hashable, Sendable {
 /// captured by the `@MainActor` task that updates SwiftUI state.
 private struct POSSubmitFailure: Sendable {
     let productID: String
+    let productName: String
     let unitID: String
     let ringTag: String
     let domainCode: String
     let functionsCode: Int
     let serverMessage: String
+    let submittedPrice: Double?
+    let authoritativePrice: Double?
 
     init(error: Error) {
         let nsError = error as NSError
         let details = PPPOSService.exactUnitConflictDetails(forError: error)
         productID = (details["productId"] as? String) ?? ""
+        productName = (details["productName"] as? String) ?? ""
         unitID = (details["unitId"] as? String) ?? ""
         ringTag = (details["ringTag"] as? String) ?? ""
         domainCode = ((details["domainCode"] as? String) ?? "").uppercased()
         functionsCode = nsError.code
         serverMessage = nsError.localizedDescription
+        if let sub = details["submittedPrice"] as? NSNumber {
+            submittedPrice = sub.doubleValue
+        } else if let sub = details["submittedPrice"] as? Double {
+            submittedPrice = sub
+        } else {
+            submittedPrice = nil
+        }
+        if let auth = details["authoritativePrice"] as? NSNumber {
+            authoritativePrice = auth.doubleValue
+        } else if let auth = details["authoritativePrice"] as? Double {
+            authoritativePrice = auth
+        } else {
+            authoritativePrice = nil
+        }
+        isFunctionsError = nsError.domain == FunctionsErrorDomain || nsError.domain == "com.firebase.functions"
     }
+
+    /// `functionsCode` is only meaningful for a Cloud Functions error. Without
+    /// this the service's own codes (400/502) or a URL-loading code could be
+    /// read as `permission-denied`/`unauthenticated` and show the operator a
+    /// misleading recovery instruction.
+    let isFunctionsError: Bool
+
+    /// The server rejected the command outright, so no transaction exists and
+    /// nothing needs reconciling. Anything else — transport failure, timeout,
+    /// internal error — leaves the outcome genuinely unknown.
+    var isDefinitiveRejection: Bool {
+        if !domainCode.isEmpty { return true }
+        guard isFunctionsError else { return false }
+        switch functionsCode {
+        // invalid-argument, not-found, permission-denied, failed-precondition,
+        // already-exists, unauthenticated.
+        case 3, 5, 6, 7, 9, 16:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Only a unit-level conflict justifies dropping the operator's selected
+    /// animals. A stock shortfall or permission error is retryable, and
+    /// deleting cart lines for those loses work the operator must redo.
+    var isExactUnitConflict: Bool {
+        switch domainCode {
+        case "POS_INVENTORY_UNIT_NOT_FOUND",
+             "POS_INVENTORY_UNIT_UNAVAILABLE",
+             "POS_INVENTORY_UNIT_BRANCH_MISMATCH",
+             "INVENTORY_UNIT_BRANCH_MISMATCH":
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Infra `already-exists`: this command key is bound to a different sale
+    /// payload, so it can never succeed again and must be released.
+    var isCommandKeyConflict: Bool {
+        isFunctionsError && functionsCode == 6
+    }
+}
+
+/// Durable record of a dispatched POS command whose outcome was never observed.
+///
+/// The server keys idempotency on `(actorUid, commandId)` with no expiry, so a
+/// command ID is only safe to reuse while the client still has it. It lived in
+/// memory only, which meant a crash or force-quit mid-checkout lost the key —
+/// the operator's natural retry then minted a new command and the customer was
+/// charged, and stock deducted, twice. Persisting the key lets the next launch
+/// warn instead of silently duplicating.
+private enum POSPendingCommandStore {
+    private static let commandKey = "PPAdmin.POS.PendingCommand.v1.commandId"
+    private static let totalKey = "PPAdmin.POS.PendingCommand.v1.total"
+    private static let itemCountKey = "PPAdmin.POS.PendingCommand.v1.itemCount"
+    private static let dispatchedAtKey = "PPAdmin.POS.PendingCommand.v1.dispatchedAt"
+
+    struct Record {
+        let commandID: String
+        let total: Double
+        let itemCount: Int
+        let dispatchedAt: Date
+    }
+
+    static func record(commandID: String, total: Double, itemCount: Int) {
+        let defaults = UserDefaults.standard
+        defaults.set(commandID, forKey: commandKey)
+        defaults.set(total, forKey: totalKey)
+        defaults.set(itemCount, forKey: itemCountKey)
+        defaults.set(Date().timeIntervalSince1970, forKey: dispatchedAtKey)
+    }
+
+    static func clear() {
+        let defaults = UserDefaults.standard
+        [commandKey, totalKey, itemCountKey, dispatchedAtKey].forEach { defaults.removeObject(forKey: $0) }
+    }
+
+    static func pending() -> Record? {
+        let defaults = UserDefaults.standard
+        guard let commandID = defaults.string(forKey: commandKey), !commandID.isEmpty else { return nil }
+        return Record(
+            commandID: commandID,
+            total: defaults.double(forKey: totalKey),
+            itemCount: defaults.integer(forKey: itemCountKey),
+            dispatchedAt: Date(timeIntervalSince1970: defaults.double(forKey: dispatchedAtKey))
+        )
+    }
+}
+
+public struct POSPriceDiscrepancyItem: Identifiable, Sendable {
+    public var id: String { productID }
+    public let productID: String
+    public let productName: String
+    public let submittedPrice: Double
+    public let authoritativePrice: Double
 }
 
 @MainActor
@@ -640,6 +853,8 @@ final class POSFastSellViewModel: ObservableObject {
 
     init() {
         branchInventoryCancellable = PPBranchInventoryService.shared.$inventoryMap
+            .dropFirst()
+            .removeDuplicates()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
@@ -667,10 +882,52 @@ final class POSFastSellViewModel: ObservableObject {
     @Published var showWholesaleReconciliationAlert: Bool = false
     @Published var unsupportedWholesaleCartItems: [POSCartItem] = []
 
+    // Apple-Grade Price Discrepancy Reconciliation
+    @Published var priceDiscrepancy: POSPriceDiscrepancyItem? = nil
+
+    /// Set when a sale was dispatched but its outcome was never observed —
+    /// typically because the app was terminated mid-checkout. Warning the
+    /// operator to reconcile against POS history is the only way to stop the
+    /// sale being rung a second time on the next shift.
+    @Published var unconfirmedSaleNotice: String? = nil
+
+    func reconcilePrice(productID: String, newPrice: Double) {
+        guard let idx = cartIndex(for: productID) else {
+            priceDiscrepancy = nil
+            return
+        }
+        var item = cartItems.remove(at: idx)
+        item.unitGroupPrice = newPrice
+        item.unitGroupPriceMinor = POSMoney.minorUnits(newPrice)
+        cartItems.insert(item, at: idx)
+        priceDiscrepancy = nil
+        invalidateSubmissionCommand()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    func dismissPriceDiscrepancy() {
+        priceDiscrepancy = nil
+    }
+
     var canSellWholesale: Bool {
         guard let staff = PPStaffAuth.shared().cachedCurrentStaff else { return false }
         if staff.role == .superAdmin || staff.role == .owner || staff.isAdmin() { return true }
         return staff.hasPermission("pos.sell.wholesale")
+    }
+
+    /// `true` only when the canonical `staff_users` record is loaded and
+    /// positively lacks `pos.sell`.
+    ///
+    /// The server authorizes every `processTransaction` call, so this is not a
+    /// security boundary — it exists so a `pos.view`-only operator is told
+    /// before ringing up a full cart instead of after. It is deliberately
+    /// fail-open on a cold cache: refusing checkout because the staff snapshot
+    /// has not loaded yet would lock out a permitted cashier, which is worse
+    /// than deferring to the server's denial.
+    var isSaleExplicitlyDenied: Bool {
+        guard let staff = PPStaffAuth.shared().cachedCurrentStaff else { return false }
+        if staff.role == .superAdmin || staff.role == .owner || staff.isAdmin() { return false }
+        return !staff.hasPermission("pos.sell")
     }
 
     func requestSalesChannelChange(_ newChannel: POSSalesChannel) {
@@ -713,7 +970,7 @@ final class POSFastSellViewModel: ObservableObject {
             let wholesalePrice = cartItems[i].accessory.pos_wholesalePrice()
             if wholesalePrice > 0 {
                 cartItems[i].unitGroupPrice = wholesalePrice
-                cartItems[i].unitGroupPriceMinor = Int((wholesalePrice * 100).rounded())
+                cartItems[i].unitGroupPriceMinor = POSMoney.minorUnits(wholesalePrice)
             }
         }
     }
@@ -724,7 +981,7 @@ final class POSFastSellViewModel: ObservableObject {
             cartItems[i].salesChannel = "retail"
             let retailPrice = cartItems[i].accessory.pos_canonicalUnitPrice
             cartItems[i].unitGroupPrice = retailPrice
-            cartItems[i].unitGroupPriceMinor = Int((retailPrice * 100).rounded())
+            cartItems[i].unitGroupPriceMinor = POSMoney.minorUnits(retailPrice)
         }
     }
 
@@ -783,7 +1040,17 @@ final class POSFastSellViewModel: ObservableObject {
         invalidateSubmissionCommand()
     }
 
-    private var listener: (any ListenerRegistration)?
+    /// Owns the catalog snapshot registration.
+    ///
+    /// `PPFirestoreListenerToken` removes the registration from its own
+    /// `deinit`, so the listener is released even when the view is destroyed
+    /// without `onDisappear` running. A `deinit` on this `@MainActor` model
+    /// could not do that itself — Swift 6 forbids touching a non-`Sendable`
+    /// `ListenerRegistration` from a nonisolated `deinit`.
+    private var listener: PPFirestoreListenerToken?
+    /// Staleness token for the catalog snapshot listener, mirroring
+    /// `POSUnitPickerState.requestID`.
+    private var catalogListenerGeneration = UUID()
     /// Retained across an uncertain callable response so retrying the same
     /// checkout cannot create a second transaction. Any cart/payment change
     /// invalidates it and starts a new command.
@@ -791,54 +1058,60 @@ final class POSFastSellViewModel: ObservableObject {
     private var submissionCashReceived: Double?
     private var receiptRequestID: UUID?
 
+    /// Identifies the submission currently awaiting a response.
+    ///
+    /// This is deliberately **not** `submissionCommandID`. That ID is a retry
+    /// key that every cart, discount, customer and payment mutation
+    /// invalidates on purpose, so gating the completion handler on it meant a
+    /// single edit during flight discarded the server's answer entirely:
+    /// `isSubmitting` stayed `true` forever behind the blocking overlay while a
+    /// sale that may already have been committed produced no receipt, no
+    /// change due and no error. This token is owned only by `submitOrder` and
+    /// its completion, so an outcome is always applied exactly once.
+    private var inFlightSubmissionToken: UUID?
+
+    /// The cart exactly as submitted, held on the main actor.
+    ///
+    /// `POSCartItem` is not `Sendable` — it carries the `PetAccessory` ObjC
+    /// object and an untyped `[[String: Any]]` — so it must not be captured by
+    /// the callable's `@Sendable` completion closure. Parking the snapshot here
+    /// and reading it back inside the `@MainActor` hop keeps the receipt built
+    /// from what was actually sold without crossing an isolation boundary.
+    private var submittedCartSnapshot: [POSCartItem] = []
+
     var searchResults: [PetAccessory] {
-        var list = allAccessories
-        if !searchText.isEmpty {
-            let q = searchText.lowercased()
-            list = list.filter {
-                $0.name.lowercased().contains(q) ||
-                $0.accessoryID.lowercased().contains(q) ||
-                ($0.sku?.lowercased().contains(q) ?? false) ||
-                ($0.barcode?.lowercased().contains(q) ?? false)
-            }
+        guard !searchText.isEmpty else { return allAccessories }
+        let q = searchText.lowercased()
+        // `allAccessories` is already stored in the canonical
+        // createdAt-desc / accessoryID-desc order by `startListening`, and
+        // `filter` preserves order, so re-sorting here was pure duplicate work
+        // on every body evaluation — and the blanket `objectWillChange` from
+        // the branch-inventory subscription makes that every inventory tick.
+        return allAccessories.filter {
+            $0.name.lowercased().contains(q) ||
+            $0.accessoryID.lowercased().contains(q) ||
+            ($0.sku?.lowercased().contains(q) ?? false) ||
+            ($0.barcode?.lowercased().contains(q) ?? false)
         }
-        list.sort { a, b in
-            let dateA = a.createdAt
-            let dateB = b.createdAt
-            if dateA != dateB {
-                return dateA > dateB
-            }
-            return a.accessoryID > b.accessoryID
-        }
-        return list
     }
 
     /// Sellable, type-filtered catalog for the footer quick-add grid (ordered newest first).
     var catalogResults: [PetAccessory] {
-        var list = allAccessories.filter { $0.pos_isSellable && catalogFilter.matches($0) }
         let q = catalogSearchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if !q.isEmpty {
-            list = list.filter {
-                $0.name.lowercased().contains(q) ||
-                $0.accessoryID.lowercased().contains(q) ||
-                ($0.sku?.lowercased().contains(q) ?? false) ||
-                ($0.barcode?.lowercased().contains(q) ?? false)
-            }
+        return allAccessories.filter { accessory in
+            guard accessory.pos_isSellable, catalogFilter.matches(accessory) else { return false }
+            guard !q.isEmpty else { return true }
+            return accessory.name.lowercased().contains(q) ||
+                accessory.accessoryID.lowercased().contains(q) ||
+                (accessory.sku?.lowercased().contains(q) ?? false) ||
+                (accessory.barcode?.lowercased().contains(q) ?? false)
         }
-        list.sort { a, b in
-            let dateA = a.createdAt
-            let dateB = b.createdAt
-            if dateA != dateB {
-                return dateA > dateB
-            }
-            return a.accessoryID > b.accessoryID
-        }
-        return list
     }
 
+    /// Mirrors Infra's `subtotal = roundMoney(subtotal + lineTotal)` accumulation
+    /// so the asserted subtotal can never drift outside the server's tolerance.
     var cartSubtotal: Double {
-        let sum = cartItems.reduce(0) { $0 + $1.lineTotal }
-        return (sum * 100).rounded() / 100.0
+        POSMoney.sum(cartItems.map { $0.lineTotal })
     }
 
     var discountAmount: Double {
@@ -847,7 +1120,7 @@ final class POSFastSellViewModel: ObservableObject {
     }
 
     var cartTotal: Double {
-        max(0, ((cartSubtotal - discountAmount) * 100).rounded() / 100.0)
+        max(0, POSMoney.round(cartSubtotal - discountAmount))
     }
 
     var cartItemCount: Int {
@@ -867,17 +1140,25 @@ final class POSFastSellViewModel: ObservableObject {
 
     func startListening() {
         PPBranchInventoryService.shared.startListeningIfNeeded()
+        surfacePendingCommandIfNeeded()
         listener?.remove()
         listener = nil
+        // Invalidate any snapshot already in flight from the previous
+        // registration: without this, a late callback from a removed listener
+        // still replaced `allAccessories` and cleared the loading state, which
+        // could reprice cart lines that fall back to the canonical catalog
+        // price. The exact-animal picker already uses this pattern.
+        let generation = UUID()
+        catalogListenerGeneration = generation
         isCatalogLoading = allAccessories.isEmpty
         catalogErrorMessage = nil
         POSLogger.info("catalog.listener.started", category: "catalog", message: "Starting PetAccessory catalog listener")
 
-        listener = AccessoryManager.shared().observeAllAccessories { [weak self] items, error in
+        listener = PPFirestoreListenerToken(AccessoryManager.shared().observeAllAccessories { [weak self] items, error in
             let projectedItems = items ?? []
             let projectedError = error?.localizedDescription
             Task { @MainActor in
-                guard let self else { return }
+                guard let self, self.catalogListenerGeneration == generation else { return }
                 self.isCatalogLoading = false
                 if let projectedError {
                     self.catalogErrorMessage = projectedError
@@ -900,7 +1181,7 @@ final class POSFastSellViewModel: ObservableObject {
                     "branchId": BranchContextStore.shared.activeBranch?.branchID ?? "none"
                 ])
             }
-        }
+        })
     }
 
     func retryCatalog() {
@@ -909,6 +1190,9 @@ final class POSFastSellViewModel: ObservableObject {
     }
 
     func stopListening() {
+        // Bump the generation first so an in-flight snapshot callback cannot
+        // land after teardown.
+        catalogListenerGeneration = UUID()
         listener?.remove()
         listener = nil
     }
@@ -940,7 +1224,7 @@ final class POSFastSellViewModel: ObservableObject {
         }
         let branchStock = accessory.pos_branchStock()
         let unitPrice = salesChannel == .wholesale ? accessory.pos_wholesalePrice() : accessory.pos_canonicalUnitPrice
-        let unitPriceMinor = Int((unitPrice * 100).rounded())
+        let unitPriceMinor = POSMoney.minorUnits(unitPrice)
 
         if let idx = cartIndex(for: accessory.accessoryID) {
             let nextUnits = (cartItems[idx].quantity + 1) * max(1, cartItems[idx].unitsPerGroup)
@@ -986,7 +1270,7 @@ final class POSFastSellViewModel: ObservableObject {
         let subSubKinds = units.compactMap { $0.subSubKindName.isEmpty ? nil : $0.subSubKindName }
         let subSubKindItems = units.compactMap { $0.subSubKindItemName.isEmpty ? nil : $0.subSubKindItemName }
         let prices: [[String: Any]] = units.map { ["unitId": $0.unitID, "unitPrice": $0.sellingPrice] }
-        let lineTotal = prices.reduce(0) { $0 + (($1["unitPrice"] as? Double) ?? 0) }
+        let lineTotal = POSMoney.round(prices.reduce(0) { $0 + POSCartItem.unitPrice(from: $1) })
 
         if let idx = cartIndex(for: product.accessoryID) {
             var updated = cartItems.remove(at: idx)
@@ -1081,7 +1365,9 @@ final class POSFastSellViewModel: ObservableObject {
         guard let idx = cartItems.firstIndex(where: { $0.id == item.id }) else { return }
         guard !cartItems[idx].isIndividuallyTracked else { return }
         let branchStock = cartItems[idx].accessory.pos_branchStock()
-        guard cartItems[idx].quantity < branchStock else { return }
+        let unitsPerGroup = max(1, cartItems[idx].unitsPerGroup)
+        let nextUnits = (cartItems[idx].quantity + 1) * unitsPerGroup
+        guard nextUnits <= branchStock else { return }
         cartItems[idx].quantity += 1
         POSLogger.info("cart.quantity_increased", category: "cart", message: "Increased '\(item.accessory.name)' quantity to \(cartItems[idx].quantity)", metadata: [
             "productId": item.accessory.accessoryID,
@@ -1197,6 +1483,12 @@ final class POSFastSellViewModel: ObservableObject {
                 "POS_ExactUnitRefreshNeeded",
                 alter: "تغيّر حيوان واحد أو أكثر من الحيوانات المحددة أو لم يعد متاحًا. اختر سجلات الحيوانات مرة أخرى."
             )
+        case "POS_PRICE_DISCREPANCY":
+            let name = failure.productName.isEmpty ? "" : " (\(failure.productName))"
+            if let auth = failure.authoritativePrice, auth > 0 {
+                return String(format: Language.get("POS_PriceDiscrepancy_Formatted", alter: "تغير السعر الرسمي للصنف%@ إلى %.2f ر.ق. يرجى تحديث السعر والمتابعة."), name, auth)
+            }
+            return Language.get("POS_PriceDiscrepancy_Generic", alter: "تغير سعر أحد الأصناف في النظام. حدّث السعر في السلة ثم أعد المحاولة.")
         default:
             break
         }
@@ -1208,7 +1500,20 @@ final class POSFastSellViewModel: ObservableObject {
                 alter: "تعذر مزامنة بيانات الفرع مع خدمة البيع. حدّث التطبيق أو تواصل مع المسؤول ثم أعد المحاولة."
             )
         }
+        // Only a Cloud Functions error carries these codes. Reading them off a
+        // transport or service-layer error would show the wrong recovery step.
+        guard failure.isFunctionsError else {
+            return Language.get("POS_SubmitFailed", alter: "تعذر إتمام عملية البيع. حاول مرة أخرى.")
+        }
         switch failure.functionsCode {
+        case 6:
+            // already-exists: a sale is already stored under this command key
+            // with a different payload, so this attempt did not commit but an
+            // earlier variant did. Reusing the key can only ever collide again.
+            return Language.get(
+                "POS_CheckoutCommandConflict",
+                alter: "توجد عملية بيع مسجلة بنفس رقم الأمر ببيانات مختلفة. راجع سجل المبيعات للتأكد قبل إعادة البيع، ثم أنشئ عملية جديدة."
+            )
         case 7:
             return Language.get(
                 "POS_CheckoutPermissionDenied",
@@ -1229,22 +1534,75 @@ final class POSFastSellViewModel: ObservableObject {
         }
     }
 
-    func submitOrder(cashReceived: Double? = nil) {
-        guard !cartItems.isEmpty, !isCheckoutBusy, completedReceipt == nil else { return }
+    /// - Returns: `true` when the sale was dispatched to the server. `false`
+    ///   means nothing is in flight and the caller's commit affordance must
+    ///   settle back to its idle state.
+    @discardableResult
+    func submitOrder(cashReceived: Double? = nil) -> Bool {
+        guard !cartItems.isEmpty, !isCheckoutBusy, completedReceipt == nil else { return false }
+        guard !isSaleExplicitlyDenied else {
+            submitError = Language.get(
+                "POS_CheckoutPermissionDenied",
+                alter: "ليست لديك صلاحية إتمام البيع في هذا الفرع. اختر فرعًا مسموحًا أو اطلب الصلاحية."
+            )
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return false
+        }
         guard !hasExpiredItems else {
             submitError = Language.get(
                 "pos_checkout_blocked_expired",
                 alter: "لا يمكن إتمام البيع: السلة تحتوي على منتج منتهي الصلاحية"
             )
-            return
+            return false
         }
+
+        for item in cartItems where !item.isIndividuallyTracked {
+            let availableStock = item.accessory.pos_branchStock()
+            if item.baseUnitQuantity > availableStock {
+                submitError = String(
+                    format: Language.get(
+                        "POS_ItemStockExceeded_Format",
+                        alter: "كمية الصنف (%@) تتجاوز المخزون المتوفر في الفرع (%d متوفر)."
+                    ),
+                    item.accessory.name,
+                    availableStock
+                )
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                return false
+            }
+        }
+
+        // Snapshot the money before anything else so every downstream
+        // consumer — assertion payload, receipt, tender validation — agrees.
+        let submittedSubtotal = cartSubtotal
+        let submittedDiscount = discountAmount
+        let submittedTotal = cartTotal
+        let isCashSale = selectedPaymentMethod == "cash"
+
+        // A tender below the total is an operator error, not something to
+        // paper over. Silently raising it to the total (the previous
+        // behaviour) recorded cash that was never taken and broke drawer
+        // reconciliation; the server rejects it anyway with
+        // "Cash received must cover the sale total."
+        if isCashSale, let tendered = cashReceived, !POSMoney.matches(tendered, submittedTotal), tendered < submittedTotal {
+            submitError = String(
+                format: Language.get(
+                    "POS_CashReceivedBelowTotal_Format",
+                    alter: "المبلغ المستلم (%.2f ر.ق) أقل من إجمالي البيع (%.2f ر.ق). صحّح المبلغ ثم أعد المحاولة."
+                ),
+                POSMoney.round(tendered),
+                submittedTotal
+            )
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            return false
+        }
+
+        // No explicit tender means exact change.
+        let acceptedCash = isCashSale ? max(POSMoney.round(cashReceived ?? submittedTotal), submittedTotal) : 0
+
         isSubmitting = true
         submitError = nil
         receiptNotice = nil
-
-        let acceptedCash = selectedPaymentMethod == "cash"
-            ? max(cashReceived ?? cartTotal, cartTotal)
-            : 0
 
         if submissionCommandID != nil, submissionCashReceived != acceptedCash {
             invalidateSubmissionCommand()
@@ -1253,7 +1611,16 @@ final class POSFastSellViewModel: ObservableObject {
         submissionCommandID = commandID
         submissionCashReceived = acceptedCash
 
-        let items: [[String: Any]] = cartItems.map { item in
+        let submissionToken = UUID()
+        inFlightSubmissionToken = submissionToken
+
+        // The cart as actually submitted. The catalog listener can replace
+        // `allAccessories` mid-flight and reprice lines that fall back to the
+        // canonical catalog price, so the receipt must be built from this
+        // snapshot rather than from live cart state.
+        submittedCartSnapshot = cartItems
+
+        let items: [[String: Any]] = submittedCartSnapshot.map { item in
             var payload: [String: Any] = [
                 "itemID": item.accessory.accessoryID,
                 "name": item.accessory.name,
@@ -1265,8 +1632,8 @@ final class POSFastSellViewModel: ObservableObject {
                 "unitsPerGroup": item.unitsPerGroup,
                 "groupQuantity": item.quantity,
                 "baseUnitQuantity": item.baseUnitQuantity,
-                "assertedGroupPriceMinor": item.unitGroupPriceMinor > 0 ? item.unitGroupPriceMinor : Int((item.unitPriceDisplay * 100).rounded()),
-                "lineTotalMinor": Int((item.lineTotal * 100).rounded())
+                "assertedGroupPriceMinor": item.unitGroupPriceMinor > 0 ? item.unitGroupPriceMinor : POSMoney.minorUnits(item.unitPriceDisplay),
+                "lineTotalMinor": POSMoney.minorUnits(item.lineTotal)
             ]
             if let lotId = item.lotId {
                 payload["lotId"] = lotId
@@ -1295,18 +1662,19 @@ final class POSFastSellViewModel: ObservableObject {
         let customerPhone = selectedCustomer?.phone
         let posCustomerID = selectedCustomer?.id
         let activeBranchId = BranchContextStore.shared.activeBranch?.branchID
+        let submittedPaymentMethod = selectedPaymentMethod
 
         var checkoutMetadata: [String: Any] = [
             "commandId": commandID,
             "itemsCount": items.count,
-            "subtotal": cartSubtotal,
-            "discount": discountAmount,
-            "total": cartTotal,
-            "paymentMethod": selectedPaymentMethod,
+            "subtotal": submittedSubtotal,
+            "discount": submittedDiscount,
+            "total": submittedTotal,
+            "paymentMethod": submittedPaymentMethod,
             "acceptedCash": acceptedCash,
             "branchId": activeBranchId ?? "none"
         ]
-        if selectedPaymentMethod == "cheque", let cheque = attachedCheque {
+        if submittedPaymentMethod == "cheque", let cheque = attachedCheque {
             checkoutMetadata["chequeNumber"] = cheque.chequeNumber
             checkoutMetadata["chequeBank"] = cheque.bankName
             if let amount = cheque.amount {
@@ -1314,15 +1682,20 @@ final class POSFastSellViewModel: ObservableObject {
             }
         }
 
-        POSLogger.info("checkout.initiated", category: "checkout", traceID: commandID, message: "Initiating checkout: \(items.count) line items (Total: \(cartTotal) QAR via \(selectedPaymentMethod))", metadata: checkoutMetadata)
+        POSLogger.info("checkout.initiated", category: "checkout", traceID: commandID, message: "Initiating checkout: \(items.count) line items (Total: \(submittedTotal) QAR via \(submittedPaymentMethod))", metadata: checkoutMetadata)
+
+        // Survive process death: if the app is killed between dispatch and
+        // response the in-memory command ID is gone, and a fresh retry would
+        // mint a new one and bill the customer twice.
+        POSPendingCommandStore.record(commandID: commandID, total: submittedTotal, itemCount: items.count)
 
         PPPOSService.shared().submitPOSOrder(
             withItems: items,
-            subtotal: cartSubtotal,
-            discount: discountAmount,
-            total: cartTotal,
-            paymentMethod: selectedPaymentMethod,
-            cashReceived: selectedPaymentMethod == "cash" ? NSNumber(value: acceptedCash) : nil,
+            subtotal: submittedSubtotal,
+            discount: submittedDiscount,
+            total: submittedTotal,
+            paymentMethod: submittedPaymentMethod,
+            cashReceived: isCashSale ? NSNumber(value: acceptedCash) : nil,
             commandID: commandID,
             customerName: customerName,
             customerPhone: customerPhone,
@@ -1334,12 +1707,17 @@ final class POSFastSellViewModel: ObservableObject {
             let transactionID = result?.transactionID ?? ""
             let serverTotal = result?.total ?? 0
             let serverCurrency = result?.currency ?? ""
+            let wasIdempotentReplay = result?.isIdempotent ?? false
             let failure = error.map(POSSubmitFailure.init)
 
             Task { @MainActor in
-                guard let self, self.submissionCommandID == commandID else { return }
+                guard let self, self.inFlightSubmissionToken == submissionToken else { return }
+                self.inFlightSubmissionToken = nil
+                // Cleared exactly once, on every branch, so the blocking
+                // overlay can never outlive the request.
+                self.isSubmitting = false
+
                 if let failure {
-                    self.isSubmitting = false
                     POSLogger.error("checkout.failed", category: "checkout", traceID: commandID, message: "Checkout failed: \(failure.serverMessage)", metadata: [
                         "domainCode": failure.domainCode,
                         "productId": failure.productID,
@@ -1347,13 +1725,49 @@ final class POSFastSellViewModel: ObservableObject {
                         "ringTag": failure.ringTag,
                         "functionsCode": failure.functionsCode
                     ])
+
+                    // A definitively rejected command never reached a committed
+                    // state, so there is nothing left to reconcile.
+                    if failure.isDefinitiveRejection {
+                        POSPendingCommandStore.clear()
+                    }
+
+                    // `already-exists` means this command key is permanently
+                    // bound to a different payload. Retaining it would make
+                    // every retry collide forever, dead-ending the sale, so the
+                    // key is released and the next attempt mints a fresh one.
+                    if failure.isCommandKeyConflict {
+                        self.invalidateSubmissionCommand()
+                    }
+
+                    if failure.domainCode == "POS_PRICE_DISCREPANCY",
+                       let authPrice = failure.authoritativePrice, authPrice > 0 {
+                        let subPrice = failure.submittedPrice ?? 0
+                        let name = !failure.productName.isEmpty
+                            ? failure.productName
+                            : (self.cartItems.first(where: { $0.accessory.accessoryID == failure.productID })?.accessory.name ?? failure.productID)
+                        self.priceDiscrepancy = POSPriceDiscrepancyItem(
+                            productID: failure.productID,
+                            productName: name,
+                            submittedPrice: subPrice,
+                            authoritativePrice: authPrice
+                        )
+                        self.invalidateSubmissionCommand()
+                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                        return
+                    }
+
                     // The server names the offending animal; drop those lines so
                     // the operator reselects instead of retrying a dead unit.
-                    if self.discardStaleExactUnits(
+                    // Only unit-level conflicts justify mutating the cart — a
+                    // stock or permission error is retryable and must not
+                    // silently delete the operator's selection.
+                    if failure.isExactUnitConflict,
+                       self.discardStaleExactUnits(
                         productID: failure.productID,
                         unitID: failure.unitID,
                         ringTag: failure.ringTag
-                    ) {
+                       ) {
                         self.invalidateSubmissionCommand()
                     }
                     self.submitError = self.localizedSubmitFailure(failure)
@@ -1361,11 +1775,16 @@ final class POSFastSellViewModel: ObservableObject {
                 }
 
                 guard !transactionID.isEmpty else {
-                    self.isSubmitting = false
                     POSLogger.error("checkout.missing_txnid", category: "checkout", traceID: commandID, message: "Server did not return a valid transaction ID")
                     // The server may already have committed the command. Keep
-                    // its ID so Retry is idempotent instead of creating a sale.
-                    self.submitError = Language.get("POS_SubmitFailed", alter: "تعذر إتمام عملية البيع. حاول مرة أخرى.")
+                    // its ID so Retry is idempotent instead of creating a sale,
+                    // keep the persisted record so a relaunch still warns, and
+                    // say plainly that the outcome is unknown — telling the
+                    // operator it simply "failed" invites a duplicate sale.
+                    self.submitError = Language.get(
+                        "POS_SubmitOutcomeUnknown",
+                        alter: "لم يتأكد اكتمال البيع. قد تكون العملية سُجلت بالفعل — تحقق من سجل المبيعات قبل إعادة البيع. إعادة المحاولة آمنة ولن تُنشئ عملية مكررة."
+                    )
                     return
                 }
 
@@ -1373,27 +1792,48 @@ final class POSFastSellViewModel: ObservableObject {
                     "transactionId": transactionID,
                     "serverTotal": serverTotal,
                     "serverCurrency": serverCurrency,
-                    "paymentMethod": self.selectedPaymentMethod
+                    "idempotentReplay": wasIdempotentReplay,
+                    "paymentMethod": submittedPaymentMethod
                 ])
+
+                // The sale is committed and reconciled; nothing to recover.
+                POSPendingCommandStore.clear()
+
+                // The server is the money authority. If its total disagrees
+                // with what was asserted, print the server's number and say so
+                // rather than issuing a receipt whose lines do not add up.
+                let authoritativeTotal = serverTotal > 0 ? serverTotal : submittedTotal
+                let totalsDisagree = serverTotal > 0 && !POSMoney.matches(serverTotal, submittedTotal)
+                if totalsDisagree {
+                    POSLogger.warn("checkout.total_mismatch", category: "checkout", traceID: commandID, message: "Server total \(serverTotal) differs from submitted total \(submittedTotal)", metadata: [
+                        "serverTotal": serverTotal,
+                        "submittedTotal": submittedTotal
+                    ])
+                }
 
                 let fallbackReceipt = POSCompletedReceipt(
                     transactionID: transactionID,
-                    subtotal: self.cartSubtotal,
-                    discount: self.discountAmount,
-                    total: serverTotal > 0 ? serverTotal : self.cartTotal,
+                    subtotal: submittedSubtotal,
+                    discount: submittedDiscount,
+                    total: authoritativeTotal,
                     currency: serverCurrency,
-                    paymentMethod: self.selectedPaymentMethod,
+                    paymentMethod: submittedPaymentMethod,
                     cashReceived: acceptedCash,
-                    cartItems: self.cartItems,
+                    cartItems: self.submittedCartSnapshot,
                     customerName: customerName ?? "",
                     customerPhone: customerPhone ?? ""
                 )
                 NotificationCenter.default.post(name: Notification.Name("PPAccountingDataDidChangeNotification"), object: nil)
                 self.invalidateSubmissionCommand()
-                self.isSubmitting = false
                 self.isPreparingReceipt = true
                 let receiptRequestID = UUID()
                 self.receiptRequestID = receiptRequestID
+                let mismatchNotice = totalsDisagree
+                    ? Language.get(
+                        "POS_Receipt_TotalMismatchNotice",
+                        alter: "تم اعتماد البيع بالإجمالي المسجل في النظام، وهو يختلف عن الإجمالي المعروض في السلة. راجع أسعار الأصناف."
+                    )
+                    : nil
 
                 // A receipt must never leave the operator trapped behind a
                 // network-dependent loading state after the sale committed.
@@ -1402,7 +1842,7 @@ final class POSFastSellViewModel: ObservableObject {
                     guard let self, self.receiptRequestID == receiptRequestID else { return }
                     self.receiptRequestID = nil
                     self.isPreparingReceipt = false
-                    self.receiptNotice = Language.get(
+                    self.receiptNotice = mismatchNotice ?? Language.get(
                         "POS_Receipt_PartialNotice",
                         alter: "تمت عملية البيع، لكن تعذر تحديث بعض تفاصيل الإيصال من الخادم. تم تجهيز إيصال مؤكد بالبيانات المتاحة ويمكن طباعته أو مشاركته."
                     )
@@ -1417,22 +1857,31 @@ final class POSFastSellViewModel: ObservableObject {
                         guard let self, self.receiptRequestID == receiptRequestID else { return }
                         self.receiptRequestID = nil
                         self.isPreparingReceipt = false
-                        self.receiptNotice = needsFallback
-                            ? Language.get(
+                        if needsFallback {
+                            self.receiptNotice = mismatchNotice ?? Language.get(
                                 "POS_Receipt_PartialNotice",
                                 alter: "تمت عملية البيع، لكن تعذر تحديث بعض تفاصيل الإيصال من الخادم. تم تجهيز إيصال مؤكد بالبيانات المتاحة ويمكن طباعته أو مشاركته."
                             )
-                            : nil
+                        } else {
+                            self.receiptNotice = mismatchNotice
+                        }
                         self.completedReceipt = authoritativeReceipt ?? fallbackReceipt
                     }
                 }
             }
         }
+
+        return true
     }
 
     /// Clear the completed cart only after the receipt workflow is dismissed.
     /// Keeping the accepted cart snapshot alive makes the PDF fallback safe if
     /// the authoritative transaction read is briefly unavailable.
+    ///
+    /// This resets the **whole** commercial context. Previously it cleared only
+    /// the cart, so the next customer silently inherited the last sale's
+    /// discount and customer attribution — a money and audit defect, since the
+    /// operator had no indication a discount was still armed.
     func acknowledgeCompletedReceipt() {
         receiptRequestID = nil
         completedReceipt = nil
@@ -1440,6 +1889,15 @@ final class POSFastSellViewModel: ObservableObject {
         cartItems = []
         searchText = ""
         attachedCheque = nil
+        appliedDiscount = nil
+        selectedCustomer = nil
+        submitError = nil
+        priceDiscrepancy = nil
+        unsupportedWholesaleCartItems = []
+        showWholesaleReconciliationAlert = false
+        submittedCartSnapshot = []
+        invalidateSubmissionCommand()
+        POSLogger.info("cart.reset_after_sale", category: "cart", message: "Cart, discount and customer cleared after completing the sale")
     }
 
     /// Server rejected specific animals — drop those lines so the operator reselects.
@@ -1460,6 +1918,37 @@ final class POSFastSellViewModel: ObservableObject {
     private func invalidateSubmissionCommand() {
         submissionCommandID = nil
         submissionCashReceived = nil
+    }
+
+    /// Warn once when a previous session dispatched a sale whose outcome was
+    /// never observed, so the operator reconciles against POS history instead
+    /// of ringing the same sale again.
+    private func surfacePendingCommandIfNeeded() {
+        guard inFlightSubmissionToken == nil, let pending = POSPendingCommandStore.pending() else { return }
+        POSPendingCommandStore.clear()
+        POSLogger.warn(
+            "checkout.unconfirmed_recovered",
+            category: "checkout",
+            traceID: pending.commandID,
+            message: "Found a dispatched POS command with no observed outcome",
+            metadata: [
+                "commandId": pending.commandID,
+                "total": pending.total,
+                "itemCount": pending.itemCount
+            ]
+        )
+        unconfirmedSaleNotice = String(
+            format: Language.get(
+                "POS_UnconfirmedSaleNotice_Format",
+                alter: "عملية بيع سابقة بقيمة %.2f ر.ق لم يتأكد اكتمالها (رقم الأمر %@). راجع سجل المبيعات قبل إعادة بيع نفس الأصناف."
+            ),
+            POSMoney.round(pending.total),
+            pending.commandID
+        )
+    }
+
+    func acknowledgeUnconfirmedSaleNotice() {
+        unconfirmedSaleNotice = nil
     }
 
     private func generatePOSCommandID() -> String {
@@ -1552,9 +2041,6 @@ struct AdminPOSFastSellView: View {
         if isSearchFocused {
             isSearchFocused = false
         }
-        if quantityEditingItem != nil {
-            quantityEditingItem = nil
-        }
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
@@ -1573,7 +2059,13 @@ struct AdminPOSFastSellView: View {
 
             VStack(spacing: 0) {
                 commandDeck
+
+                // `catalogGrid` owns its own empty presentation, and
+                // `commandStatusView` owns the loading/error banners, so the
+                // catalog has exactly one empty-state source of truth here.
                 catalogGrid
+
+                Spacer(minLength: 0)
             }
 
             POSApexFlightDeck(
@@ -1602,11 +2094,16 @@ struct AdminPOSFastSellView: View {
             }
 
             if viewModel.isCheckoutBusy {
+                // Two distinct phases: the callable is still in flight vs. the
+                // sale is committed and the authoritative receipt is being
+                // fetched. They are not interchangeable — the second is no
+                // longer cancellable and must not read as "still selling".
                 AdminLoadingOverlay(
                     message: viewModel.isPreparingReceipt
                         ? Language.get("POS_Receipt_Preparing", alter: "جارٍ تجهيز الإيصال...")
                         : Language.get("POS_Submitting", alter: "جارٍ إتمام البيع...")
                 )
+                .ignoresSafeArea()
             }
 
         }
@@ -1617,42 +2114,30 @@ struct AdminPOSFastSellView: View {
             let branchStock = item.accessory.pos_branchStock()
             let unitsPerGroup = max(1, item.unitsPerGroup)
             let maxGroups = branchStock / unitsPerGroup
+            let safeMaxGroups = max(0, maxGroups)
             let imageURL = PetAccessory.firstImageURL(for: item.accessory)
 
             let specimen = PPTactileSpecimenInfo(
                 title: item.accessory.name ?? "",
-                subtitle: String(format: Language.get("POS_AvailableStockFormat", alter: "المتوفر في الفرع: %d"), maxGroups),
+                subtitle: String(format: Language.get("POS_AvailableStockFormat", alter: "المتوفر في الفرع: %d"), safeMaxGroups),
                 imageURL: imageURL,
                 sku: (item.accessory.sku?.isEmpty ?? true) ? nil : item.accessory.sku,
                 barcode: (item.accessory.barcode?.isEmpty ?? true) ? nil : item.accessory.barcode,
                 unitCost: item.unitPriceDisplay
             )
 
-            let chips: [PPTactilePresetChip] = [
-                PPTactilePresetChip(title: "+1".normalizedEnglishDigits, action: .delta(1)),
-                PPTactilePresetChip(title: "+5".normalizedEnglishDigits, action: .delta(5)),
-                PPTactilePresetChip(title: "+10".normalizedEnglishDigits, action: .delta(10)),
-                PPTactilePresetChip(
-                    title: String(format: Language.get("Max_Stock_Format", alter: "كامل المخزون (%d)"), maxGroups).normalizedEnglishDigits,
-                    icon: "shippingbox.fill",
-                    action: .set(Double(maxGroups)),
-                    tint: AdminSurface.primary
-                ),
-                PPTactilePresetChip(
-                    title: Language.get("Remove_From_Cart", alter: "حذف من السلة"),
-                    icon: "trash.fill",
-                    action: .set(0),
-                    tint: AdminSurface.crimson
-                )
-            ]
+            let chips: [PPTactilePresetChip] = quantityPadChips(maxGroups: safeMaxGroups)
+
+            let unitTitle = item.localizedGroupName.isEmpty ? Language.get("Units", alter: "وحدات") : item.localizedGroupName
 
             let config = PPTactileNumberPadConfig(
                 title: Language.get("POS_EditCartQuantity", alter: "تعديل كمية السلة"),
                 subtitle: item.accessory.name,
-                mode: .quantity(unit: Language.get("Units", alter: "وحدات"), allowZero: true, maxLimit: max(1, maxGroups)),
+                mode: .quantity(unit: unitTitle, allowZero: true, maxLimit: max(1, safeMaxGroups)),
                 initialValue: Double(item.quantity),
-                referenceValue: Double(maxGroups),
+                referenceValue: Double(safeMaxGroups),
                 referenceLabel: Language.get("POS_BranchAvailableStock", alter: "المتاح بالفرع"),
+                showsVarianceTelemetry: false,
                 specimen: specimen,
                 customChips: chips,
                 primaryActionTitle: Language.get("POS_ConfirmQuantity", alter: "تأكيد الكمية")
@@ -1738,31 +2223,66 @@ struct AdminPOSFastSellView: View {
         )) { receipt in
             POSCompletedReceiptSheet(receipt: receipt, notice: viewModel.receiptNotice)
         }
+        .sheet(item: $viewModel.priceDiscrepancy) { discrepancy in
+            POSPriceReconciliationSheet(
+                discrepancy: discrepancy,
+                onApplyAuthoritativePrice: {
+                    viewModel.reconcilePrice(productID: discrepancy.productID, newPrice: discrepancy.authoritativePrice)
+                },
+                onRemoveItem: {
+                    if let idx = viewModel.cartIndex(for: discrepancy.productID) {
+                        viewModel.removeFromCart(viewModel.cartItems[idx])
+                    }
+                    viewModel.dismissPriceDiscrepancy()
+                },
+                onDismiss: {
+                    viewModel.dismissPriceDiscrepancy()
+                }
+            )
+        }
         .onAppear { viewModel.startListening() }
         .onDisappear { viewModel.stopListening() }
-        .alert(
-            Language.get("Error", alter: "خطأ"),
-            isPresented: Binding(
-                get: { viewModel.submitError != nil },
-                set: { if !$0 { viewModel.submitError = nil } }
-            )
-        ) {
-            Button(Language.get("OK", alter: "موافق")) {}
-        } message: {
-            Text(viewModel.submitError ?? "")
+        .onChange(of: viewModel.submitError) { error in
+            guard let error = error, !error.isEmpty else { return }
+            PPAlertHelper.showError(
+                in: nil,
+                title: Language.get("Error", alter: "خطأ"),
+                subtitle: error
+            ) {
+                // PPAlertHelper's completion is not main-actor isolated.
+                Task { @MainActor in viewModel.submitError = nil }
+            }
         }
-        .alert(
-            Language.get("POS_Wholesale_Unavailable_Title", alter: "البيع بالجملة غير متاح لبعض الأصناف"),
-            isPresented: $viewModel.showWholesaleReconciliationAlert
-        ) {
-            Button(Language.get("POS_Remove_Unavailable_Items", alter: "إزالة الأصناف غير المتاحة ومتابعة الجملة"), role: .destructive) {
-                viewModel.confirmSwitchToWholesale(removeUnavailable: true)
+        .onChange(of: viewModel.unconfirmedSaleNotice) { notice in
+            guard let notice = notice, !notice.isEmpty else { return }
+            PPAlertHelper.showWarning(
+                in: nil,
+                title: Language.get("POS_UnconfirmedSaleTitle", alter: "بيع غير مؤكد"),
+                subtitle: notice
+            ) {
+                Task { @MainActor in viewModel.acknowledgeUnconfirmedSaleNotice() }
             }
-            Button(Language.get("POS_Stay_In_Retail", alter: "البقاء في نمط التجزئة"), role: .cancel) {
-                viewModel.showWholesaleReconciliationAlert = false
-            }
-        } message: {
-            Text(viewModel.wholesaleUnavailableAlertMessage)
+        }
+        .onChange(of: viewModel.showWholesaleReconciliationAlert) { isPresented in
+            guard isPresented else { return }
+            PPAlertHelper.showConfirmation(
+                in: nil,
+                title: Language.get("POS_Wholesale_Unavailable_Title", alter: "البيع بالجملة غير متاح لبعض الأصناف"),
+                subtitle: viewModel.wholesaleUnavailableAlertMessage,
+                confirmButton: Language.get("POS_Remove_Unavailable_Items", alter: "إزالة الأصناف غير المتاحة ومتابعة الجملة"),
+                cancelButton: Language.get("POS_Stay_In_Retail", alter: "البقاء في نمط التجزئة"),
+                icon: UIImage(systemName: "exclamationmark.triangle.fill"),
+                confirmBlock: { _, didConfirm in
+                    if didConfirm {
+                        viewModel.confirmSwitchToWholesale(removeUnavailable: true)
+                    } else {
+                        viewModel.showWholesaleReconciliationAlert = false
+                    }
+                },
+                cancelBlock: {
+                    viewModel.showWholesaleReconciliationAlert = false
+                }
+            )
         }
     }
 
@@ -1925,6 +2445,15 @@ struct AdminPOSFastSellView: View {
             customTopSpacing: PPStatusBarHelper.statusBarHeight,
             onBack: {
                 dismissKeyboard()
+                // Leaving mid-checkout tears down the view model, which loses
+                // the receipt, the change due and the operator's only record of
+                // a sale that may already have committed. Consistent with
+                // `handleCatalogTap`, the screen stays put until the
+                // transaction reaches a terminal state.
+                guard !viewModel.isCheckoutBusy else {
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    return
+                }
                 if let onDismiss {
                     onDismiss()
                 } else {
@@ -2460,6 +2989,45 @@ struct AdminPOSFastSellView: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             quantityEditingItem = item
         }
+    }
+
+    /// Preset chips for the cart-quantity number pad.
+    ///
+    /// Built outside the sheet's `@ViewBuilder` closure: a `ViewBuilder` only
+    /// accepts declarations and view-producing statements, so conditional
+    /// array construction has to live in a plain function.
+    ///
+    /// The "full stock" chip is omitted when the branch has nothing available,
+    /// because a `.set(0)` shortcut labelled "كامل المخزون (0)" would read as a
+    /// stock action while actually clearing the line.
+    private func quantityPadChips(maxGroups: Int) -> [PPTactilePresetChip] {
+        var chips: [PPTactilePresetChip] = [
+            PPTactilePresetChip(title: "+1".normalizedEnglishDigits, action: .delta(1)),
+            PPTactilePresetChip(title: "+5".normalizedEnglishDigits, action: .delta(5)),
+            PPTactilePresetChip(title: "+10".normalizedEnglishDigits, action: .delta(10))
+        ]
+
+        if maxGroups > 0 {
+            chips.append(
+                PPTactilePresetChip(
+                    title: String(format: Language.get("Max_Stock_Format", alter: "كامل المخزون (%d)"), maxGroups).normalizedEnglishDigits,
+                    icon: "shippingbox.fill",
+                    action: .set(Double(maxGroups)),
+                    tint: AdminSurface.primary
+                )
+            )
+        }
+
+        chips.append(
+            PPTactilePresetChip(
+                title: Language.get("Remove_From_Cart", alter: "حذف من السلة"),
+                icon: "trash.fill",
+                action: .set(0),
+                tint: AdminSurface.crimson
+            )
+        )
+
+        return chips
     }
 
     // MARK: - Motion
@@ -3216,14 +3784,14 @@ private struct POSApexFlightDeck: View {
                 onSlideComplete: {
                     if hasExpired {
                         UINotificationFeedbackGenerator().notificationOccurred(.error)
-                        return
+                        return false
                     }
                     if isChequeMissing {
                         UINotificationFeedbackGenerator().notificationOccurred(.warning)
                         isShowingScanner = true
-                    } else {
-                        viewModel.submitOrder(cashReceived: tenderedAmount)
+                        return false
                     }
+                    return viewModel.submitOrder(cashReceived: tenderedAmount)
                 }
             )
         }
@@ -3237,9 +3805,18 @@ private struct POSSlideToSaleButton: View {
     let isCheckoutBusy: Bool
     let totalAmountText: String
     let accentColor: Color
-    let onSlideComplete: () -> Void
+    /// Returns `true` only when a submission actually started.
+    ///
+    /// The slider used to latch `isCompleted` and rely on an `isCheckoutBusy`
+    /// transition to unlatch it. Every early return from the handler — expired
+    /// item, missing cheque, a rejected tender — never sets `isCheckoutBusy`,
+    /// so that transition never arrived and the control stayed latched with a
+    /// checkmark, refusing all further drags. Reporting acceptance explicitly
+    /// keeps the knob honest without a timer.
+    let onSlideComplete: () -> Bool
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var dragOffset: CGFloat = 0
     @State private var isDragging: Bool = false
     @State private var isCompleted: Bool = false
@@ -3248,6 +3825,35 @@ private struct POSSlideToSaleButton: View {
     private let knobDiameter: CGFloat = 46.0
     private let trackHeight: CGFloat = 54.0
     private let horizontalPadding: CGFloat = 4.0
+
+    private var accessibilityLabelText: String {
+        if isCheckoutBusy {
+            return Language.get("POS_Submitting", alter: "جارٍ إتمام العملية...")
+        }
+        if !hasItems {
+            return Language.get("POS_SelectItemsPrompt", alter: "اختر منتجات من الكتالوج للبدء")
+        }
+        return Language.get("POS_SlideToSale", alter: "اسحب لإتمام عملية البيع")
+    }
+
+    /// Commits the sale and settles the knob based on whether the submission
+    /// was actually accepted. Shared by the drag gesture and the accessibility
+    /// activation so both paths behave identically.
+    private func commitSale(maxSlide: CGFloat) {
+        guard hasItems && !isCheckoutBusy && !isCompleted else { return }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.8)) {
+            dragOffset = maxSlide
+            isCompleted = true
+        }
+        let accepted = onSlideComplete()
+        if !accepted {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                dragOffset = 0
+                isCompleted = false
+            }
+        }
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -3448,12 +4054,7 @@ private struct POSSlideToSaleButton: View {
 
                             if dragOffset >= (maxSlide * 0.82) {
                                 // Threshold reached -> Complete!
-                                UINotificationFeedbackGenerator().notificationOccurred(.success)
-                                withAnimation(.spring(response: 0.24, dampingFraction: 0.8)) {
-                                    dragOffset = maxSlide
-                                    isCompleted = true
-                                }
-                                onSlideComplete()
+                                commitSale(maxSlide: maxSlide)
                             } else {
                                 // Threshold not reached -> Spring back
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -3466,10 +4067,34 @@ private struct POSSlideToSaleButton: View {
             }
             .frame(height: trackHeight)
             .clipShape(Capsule(style: .continuous))
+            // A drag is the only way a sighted operator commits the sale, and
+            // VoiceOver / Switch Control / AssistiveTouch cannot perform one.
+            // Exposing the track as a single activatable button makes checkout
+            // reachable by assistive technology without altering the visuals.
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(accessibilityLabelText)
+            .accessibilityValue(hasItems ? totalAmountText : "")
+            .accessibilityHint(
+                hasItems && !isCheckoutBusy
+                    ? Language.get("POS_SlideToSale_A11yHint", alter: "انقر مرتين لإتمام عملية البيع")
+                    : ""
+            )
+            .accessibilityAddTraits(hasItems && !isCheckoutBusy ? [] : .isStaticText)
+            .accessibilityAction {
+                commitSale(maxSlide: maxSlide)
+            }
             .onAppear {
+                // `repeatForever` is decorative; Reduce Motion must stop it
+                // rather than leave an endless animation running.
+                guard !reduceMotion else { return }
                 withAnimation(.linear(duration: 2.2).repeatForever(autoreverses: false)) {
                     shimmerPhase = 1.5
                 }
+            }
+            .onChange(of: reduceMotion) { isReduced in
+                guard isReduced else { return }
+                shimmerPhase = -0.5
             }
             .onChange(of: hasItems) { newValue in
                 if !newValue {
@@ -3508,17 +4133,26 @@ private struct POSCustomCashSheet: View {
     private var emeraldColor: Color { Color(red: 0.06, green: 0.72, blue: 0.51) }
 
     private var parsedAmount: Double {
-        let clean = inputText
-            .replacingOccurrences(of: "٫", with: ".")
-            .replacingOccurrences(of: ",", with: ".")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let formatter = NumberFormatter()
-        formatter.locale = Locale(identifier: "en_US")
-        return formatter.number(from: clean)?.doubleValue ?? (Double(clean) ?? 0.0)
+        POSMoney.parse(inputText)
     }
 
     private var changeAmount: Double {
-        max(0, parsedAmount - cartTotal)
+        max(0, POSMoney.round(parsedAmount - cartTotal))
+    }
+
+    /// Whether the entered tender covers the sale.
+    ///
+    /// Compared through `POSMoney` so this gate agrees exactly with the
+    /// model-side check in `submitOrder`. Raw `>=` on unrounded doubles could
+    /// disable Confirm for a tender the operator correctly typed as the
+    /// displayed total, with nothing on screen explaining why.
+    private var coversTotal: Bool {
+        POSMoney.matches(parsedAmount, cartTotal) || POSMoney.round(parsedAmount) > cartTotal
+    }
+
+    /// An empty field means "exact change", which is always valid.
+    private var isTenderValid: Bool {
+        parsedAmount <= 0 || coversTotal
     }
 
     var body: some View {
@@ -3618,7 +4252,7 @@ private struct POSCustomCashSheet: View {
 
                     // Live Change Due or Shortfall Status
                     if parsedAmount > 0 {
-                        if parsedAmount >= cartTotal {
+                        if coversTotal {
                             HStack(spacing: 8) {
                                 Image(systemName: "arrow.counterclockwise.circle.fill")
                                     .font(.system(size: 16, weight: .bold))
@@ -3653,7 +4287,7 @@ private struct POSCustomCashSheet: View {
 
                                 Spacer()
 
-                                Text(currency(cartTotal - parsedAmount))
+                                Text(currency(POSMoney.round(cartTotal - parsedAmount)))
                                     .font(AdminType.captionBold)
                                     .foregroundColor(Color.orange)
                                     .monospacedDigit()
@@ -3666,7 +4300,7 @@ private struct POSCustomCashSheet: View {
                     // Confirm Button
                     Button {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        let finalAmount = parsedAmount > 0 ? parsedAmount : cartTotal
+                        let finalAmount = parsedAmount > 0 ? POSMoney.round(parsedAmount) : cartTotal
                         onConfirm(finalAmount)
                     } label: {
                         HStack(spacing: 6) {
@@ -3679,11 +4313,11 @@ private struct POSCustomCashSheet: View {
                         .padding(.vertical, 14)
                         .foregroundColor(.white)
                         .background(
-                            (parsedAmount >= cartTotal || parsedAmount == 0) ? emeraldColor : Color.gray.opacity(0.6),
+                            isTenderValid ? emeraldColor : Color.gray.opacity(0.6),
                             in: RoundedRectangle(cornerRadius: 16, style: .continuous)
                         )
                     }
-                    .disabled(parsedAmount > 0 && parsedAmount < cartTotal)
+                    .disabled(!isTenderValid)
                 }
                 .padding(AdminSpacing.screenMargin)
             }
@@ -4919,174 +5553,180 @@ private struct POSCartCardRow: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        HStack(spacing: 8) {
-            // Leading category / pet icon squircle
-            ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(item.isIndividuallyTracked ? Color.orange.opacity(0.14) : AdminSurface.primary.opacity(0.10))
-                    .frame(width: 36, height: 36)
+        VStack(alignment: .leading, spacing: item.isIndividuallyTracked ? 7 : 0) {
+            // MARK: - Primary Row: Icon, Identity, Line Total, Stepper
+            HStack(spacing: 8) {
+                // Leading category / pet icon squircle
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(item.isIndividuallyTracked ? Color.orange.opacity(0.14) : AdminSurface.primary.opacity(0.10))
+                        .frame(width: 36, height: 36)
 
-                Image(systemName: item.isIndividuallyTracked ? "pawprint.fill" : "shippingbox.fill")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(item.isIndividuallyTracked ? Color.orange : AdminSurface.primary)
-            }
+                    Image(systemName: item.isIndividuallyTracked ? "pawprint.fill" : "shippingbox.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(item.isIndividuallyTracked ? Color.orange : AdminSurface.primary)
+                }
 
-            // Name, tags, and unit price
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.accessory.name)
-                    .font(AdminType.subheadlineBold)
-                    .foregroundColor(AdminSurface.primaryText)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                // Name & Subtitle Details
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 5) {
+                        Text(item.accessory.name)
+                            .font(AdminType.subheadlineBold)
+                            .foregroundColor(AdminSurface.primaryText)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
 
-                HStack(spacing: 5) {
-                    if item.isIndividuallyTracked && !item.unitRingTags.isEmpty {
-                        let visibleTags = item.unitRingTags.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                        if !visibleTags.isEmpty {
-                            HStack(spacing: 3) {
-                                ForEach(Array(visibleTags.prefix(2).enumerated()), id: \.offset) { _, tag in
-                                    Text("#\(tag)")
-                                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                                        .padding(.horizontal, 5)
-                                        .padding(.vertical, 1.5)
-                                        .background(Color.orange.opacity(0.15), in: Capsule(style: .continuous))
-                                        .foregroundColor(Color.orange)
-                                }
-                                if visibleTags.count > 2 {
-                                    Text("+\(visibleTags.count - 2)")
+                        if item.isIndividuallyTracked {
+                            HStack(spacing: 2) {
+                                Image(systemName: "pawprint.fill")
+                                    .font(.system(size: 7, weight: .bold))
+                                Text(Language.get("POS_LiveSpecimen_Tag", alter: "حيوان حي"))
+                                    .font(Font.custom("Beiruti-Bold", size: 10))
+                            }
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color.orange.opacity(0.12), in: Capsule(style: .continuous))
+                            .foregroundColor(Color.orange)
+                        }
+                    }
+
+                    HStack(spacing: 5) {
+                        if !item.isIndividuallyTracked {
+                            if item.unitsPerGroup > 1 {
+                                Text("\(item.localizedGroupName) (\(item.unitsPerGroup))")
+                                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1.5)
+                                    .background(AdminSurface.primary.opacity(0.12), in: Capsule(style: .continuous))
+                                    .foregroundColor(AdminSurface.primary)
+                            }
+
+                            if let lotNum = item.lotNumber, !lotNum.isEmpty {
+                                Text("LOT: \(lotNum)")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 1)
+                                    .background(Color.blue.opacity(0.12), in: Capsule(style: .continuous))
+                                    .foregroundColor(Color.blue)
+                            }
+                            if item.isExpired {
+                                HStack(spacing: 2) {
+                                    Image(systemName: "exclamationmark.octagon.fill")
+                                        .font(.system(size: 8, weight: .bold))
+                                    Text(Language.get("pos_cart_item_expired", alter: "منتهي الصلاحية"))
                                         .font(.system(size: 9, weight: .bold))
-                                        .foregroundColor(Color.orange)
                                 }
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(Color.red.opacity(0.15), in: Capsule(style: .continuous))
+                                .foregroundColor(Color.red)
+                            } else if item.isNearExpiry {
+                                HStack(spacing: 2) {
+                                    Image(systemName: "clock.badge.exclamationmark.fill")
+                                        .font(.system(size: 8, weight: .bold))
+                                    Text(Language.get("pos_cart_item_near_expiry", alter: "قريب الانتهاء"))
+                                        .font(.system(size: 9, weight: .bold))
+                                }
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(Color.orange.opacity(0.15), in: Capsule(style: .continuous))
+                                .foregroundColor(Color.orange)
                             }
                         }
-                    } else if item.unitsPerGroup > 1 {
-                        Text("\(item.localizedGroupName) (\(item.unitsPerGroup))")
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1.5)
-                            .background(AdminSurface.primary.opacity(0.12), in: Capsule(style: .continuous))
-                            .foregroundColor(AdminSurface.primary)
-                    }
 
-                    if let lotNum = item.lotNumber, !lotNum.isEmpty {
-                        Text("LOT: \(lotNum)")
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(Color.blue.opacity(0.12), in: Capsule(style: .continuous))
-                            .foregroundColor(Color.blue)
+                        Text(currency(item.unitPriceDisplay) + " " + Language.get("POS_Each", alter: "للقطعة"))
+                            .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
+                            .foregroundColor(AdminSurface.secondaryText)
                     }
-                    if item.isExpired {
-                        HStack(spacing: 2) {
-                            Image(systemName: "exclamationmark.octagon.fill")
-                                .font(.system(size: 8, weight: .bold))
-                            Text(Language.get("pos_cart_item_expired", alter: "منتهي الصلاحية"))
-                                .font(.system(size: 9, weight: .bold))
-                        }
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(Color.red.opacity(0.15), in: Capsule(style: .continuous))
-                        .foregroundColor(Color.red)
-                    } else if item.isNearExpiry {
-                        HStack(spacing: 2) {
-                            Image(systemName: "clock.badge.exclamationmark.fill")
-                                .font(.system(size: 8, weight: .bold))
-                            Text(Language.get("pos_cart_item_near_expiry", alter: "قريب الانتهاء"))
-                                .font(.system(size: 9, weight: .bold))
-                        }
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(Color.orange.opacity(0.15), in: Capsule(style: .continuous))
-                        .foregroundColor(Color.orange)
-                    }
+                }
+                .layoutPriority(0)
 
-                    Text(currency(item.unitPriceDisplay) + " " + Language.get("POS_Each", alter: "للقطعة"))
-                        .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
-                        .foregroundColor(AdminSurface.secondaryText)
+                Spacer(minLength: 4)
+
+                // Price & Controls
+                HStack(spacing: 6) {
+                    Text(currency(item.lineTotal))
+                        .font(AdminType.calloutBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .layoutPriority(2)
+
+                    if isFrontCard {
+                        // Tactile Stepper Capsule (widened for easy tap & breathing room)
+                        HStack(spacing: 3) {
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                onDecrease()
+                            } label: {
+                                Image(systemName: "minus")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(AdminSurface.primary)
+                                    .frame(width: 28, height: 28)
+                                    .background(AdminSurface.control, in: Circle())
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .accessibilityLabel(Language.get("POS_DecreaseQty", alter: "إنقاص الكمية"))
+
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                onTapQuantity?()
+                            } label: {
+                                Text("\(item.quantity)")
+                                    .font(AdminType.subheadlineBold)
+                                    .foregroundColor(AdminSurface.primaryText)
+                                    .monospacedDigit()
+                                    .frame(minWidth: 28, minHeight: 28, alignment: .center)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .accessibilityLabel(String(format: Language.get("POS_QuantityValueFormat", alter: "الكمية %d، اضغط للتعديل"), item.quantity))
+                            .accessibilityHint(Language.get("POS_TapToEditQuantity_Hint", alter: "اضغط لتعديل الكمية بواسطة لوحة المفاتيح"))
+
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                onIncrease()
+                            } label: {
+                                Image(systemName: item.isIndividuallyTracked ? "pawprint.fill" : "plus")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .frame(width: 28, height: 28)
+                                    .background(item.isIndividuallyTracked ? Color.orange : AdminSurface.primary, in: Circle())
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .accessibilityLabel(item.isIndividuallyTracked
+                                ? Language.get("POS_SelectUnits", alter: "اختيار الحيوانات")
+                                : Language.get("POS_IncreaseQty", alter: "زيادة الكمية"))
+                        }
+                        .padding(3)
+                        .background(AdminSurface.surface.opacity(0.9), in: Capsule(style: .continuous))
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(AdminSurface.hairline, lineWidth: 0.5)
+                        )
+                        .fixedSize(horizontal: true, vertical: false)
+                        .layoutPriority(3)
+                    } else {
+                        // Subtle count badge for background cards
+                        Text("x\(item.quantity)")
+                            .font(AdminType.captionBold)
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(AdminSurface.control, in: Capsule(style: .continuous))
+                    }
                 }
             }
-            .layoutPriority(0)
 
-            Spacer(minLength: 4)
-
-            // Price & Controls
-            HStack(spacing: 6) {
-                Text(currency(item.lineTotal))
-                    .font(AdminType.calloutBold)
-                    .foregroundColor(AdminSurface.primaryText)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .layoutPriority(2)
-
-                if isFrontCard {
-                    // Tactile Stepper Capsule (widened for easy tap & breathing room)
-                    HStack(spacing: 3) {
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            onDecrease()
-                        } label: {
-                            Image(systemName: "minus")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(AdminSurface.primary)
-                                .frame(width: 28, height: 28)
-                                .background(AdminSurface.control, in: Circle())
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .accessibilityLabel(Language.get("POS_DecreaseQty", alter: "إنقاص الكمية"))
-
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            onTapQuantity?()
-                        } label: {
-                            Text("\(item.quantity)")
-                                .font(AdminType.subheadlineBold)
-                                .foregroundColor(AdminSurface.primaryText)
-                                .monospacedDigit()
-                                .frame(minWidth: 28, minHeight: 28, alignment: .center)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .accessibilityLabel(String(format: Language.get("POS_QuantityValueFormat", alter: "الكمية %d، اضغط للتعديل"), item.quantity))
-                        .accessibilityHint(Language.get("POS_TapToEditQuantity_Hint", alter: "اضغط لتعديل الكمية بواسطة لوحة المفاتيح"))
-
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            onIncrease()
-                        } label: {
-                            Image(systemName: item.isIndividuallyTracked ? "pawprint.fill" : "plus")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.white)
-                                .frame(width: 28, height: 28)
-                                .background(item.isIndividuallyTracked ? Color.orange : AdminSurface.primary, in: Circle())
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .accessibilityLabel(item.isIndividuallyTracked
-                            ? Language.get("POS_SelectUnits", alter: "اختيار الحيوانات")
-                            : Language.get("POS_IncreaseQty", alter: "زيادة الكمية"))
-                    }
-                    .padding(3)
-                    .background(AdminSurface.surface.opacity(0.9), in: Capsule(style: .continuous))
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .stroke(AdminSurface.hairline, lineWidth: 0.5)
-                    )
-                    .fixedSize(horizontal: true, vertical: false)
-                    .layoutPriority(3)
-                } else {
-                    // Subtle count badge for background cards
-                    Text("x\(item.quantity)")
-                        .font(AdminType.captionBold)
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(AdminSurface.control, in: Capsule(style: .continuous))
-                }
+            // MARK: - Dedicated Rings Shelf for Live Pets
+            if item.isIndividuallyTracked {
+                livePetRingsShelf
             }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.vertical, item.isIndividuallyTracked ? 10 : 8)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(colorScheme == .dark ? Color(uiColor: .secondarySystemGroupedBackground) : Color.white)
@@ -5096,12 +5736,14 @@ private struct POSCartCardRow: View {
                 .strokeBorder(
                     item.isExpired
                         ? Color.red.opacity(0.7)
-                        : Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.7 : 0.4),
-                    lineWidth: item.isExpired ? 1.5 : 0.75
+                        : (item.isIndividuallyTracked
+                            ? Color.orange.opacity(colorScheme == .dark ? 0.50 : 0.35)
+                            : Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.7 : 0.4)),
+                    lineWidth: item.isExpired ? 1.5 : (item.isIndividuallyTracked ? 1.0 : 0.75)
                 )
         )
         .shadow(
-            color: Color.black.opacity(colorScheme == .dark ? 0.30 : 0.06),
+            color: Color.black.opacity(colorScheme == .dark ? 0.30 : (item.isIndividuallyTracked ? 0.08 : 0.06)),
             radius: 6,
             x: 0,
             y: 2
@@ -5139,6 +5781,116 @@ private struct POSCartCardRow: View {
             ? "\(item.accessory.name), \(item.quantity), \(currency(item.lineTotal))"
             : "\(item.accessory.name), \(item.quantity) \(Language.get("POS_Items", alter: "عناصر")), \(currency(item.lineTotal))")
         .accessibilityHint(isFrontCard ? "" : Language.get("POS_BringCardToFront_Hint", alter: "اضغط مرتين لتقديم هذه البطاقة إلى واجهة السلة"))
+    }
+
+    // MARK: - Live Pet Rings Shelf
+    @ViewBuilder
+    private var livePetRingsShelf: some View {
+        let visibleTags = item.unitRingTags.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let effectiveTags = !visibleTags.isEmpty ? visibleTags : item.unitIDs.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            onOpenUnitPicker?()
+        } label: {
+            HStack(spacing: 6) {
+                // Leading Ring Indicator & Title
+                HStack(spacing: 3) {
+                    Image(systemName: "circle.circle.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color.orange)
+
+                    Text(Language.get("POS_LivePet_Rings_Label", alter: "الحجول:"))
+                        .font(Font.custom("Beiruti-Bold", size: 12))
+                        .foregroundColor(Color.orange)
+                }
+                .fixedSize(horizontal: true, vertical: false)
+
+                if !effectiveTags.isEmpty {
+                    // Horizontal scroll of full ring tags
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 5) {
+                            ForEach(Array(effectiveTags.enumerated()), id: \.offset) { _, tag in
+                                HStack(spacing: 3) {
+                                    Image(systemName: "tag.fill")
+                                        .font(.system(size: 8, weight: .bold))
+                                    Text(verbatim: "#\(tag)")
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        .lineLimit(1)
+                                        .fixedSize(horizontal: true, vertical: false)
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(Color.orange.opacity(0.16))
+                                )
+                                .overlay(
+                                    Capsule(style: .continuous)
+                                        .stroke(Color.orange.opacity(0.35), lineWidth: 0.8)
+                                )
+                                .foregroundColor(Color.orange)
+                            }
+                        }
+                        .padding(.vertical, 1)
+                    }
+                } else {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.system(size: 10, weight: .bold))
+                        Text(Language.get("POS_SelectRingTagsPrompt", alter: "اضغط لاختيار أرقام الحجول"))
+                            .font(Font.custom("Beiruti-Bold", size: 11))
+                    }
+                    .foregroundColor(Color.orange)
+                }
+
+                Spacer(minLength: 2)
+
+                // Sub-sub-kind variants (if present)
+                if !item.unitSubSubKinds.isEmpty {
+                    Text(item.unitSubSubKinds.joined(separator: " · "))
+                        .font(Font.custom("Beiruti-Regular", size: 10))
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                        .padding(.horizontal, 4)
+                }
+
+                // Edit / Picker Tap Hint
+                if isFrontCard {
+                    HStack(spacing: 2) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 9, weight: .bold))
+                        Text(Language.get("POS_EditRings", alter: "تعديل"))
+                            .font(Font.custom("Beiruti-Bold", size: 11))
+                    }
+                    .foregroundColor(Color.orange)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2.5)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color.orange.opacity(0.12))
+                    )
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(Color.orange.opacity(0.25), lineWidth: 0.6)
+                    )
+                    .fixedSize(horizontal: true, vertical: false)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.orange.opacity(0.07))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.orange.opacity(0.22), lineWidth: 0.8)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel(Language.get("POS_SelectedRingsA11y", alter: "الحجول المختارة: ") + effectiveTags.joined(separator: ", "))
+        .accessibilityHint(Language.get("POS_TapToChangeRings_Hint", alter: "اضغط لتعديل اختيار الحجول"))
     }
 }
 
@@ -5333,7 +6085,12 @@ private struct POSStackedCartDeck: View {
     // MARK: - Expanded List View
 
     private func expandedDeckView(displayItems: [POSCartItem]) -> some View {
-        VStack(spacing: 6) {
+        let dynamicDeckHeight: CGFloat = displayItems.reduce(CGFloat(0)) { total, item in
+            total + (item.isIndividuallyTracked ? 96 : 64)
+        } + 12
+        let maxDeckHeight = min(dynamicDeckHeight, UIScreen.main.bounds.height * 0.40)
+
+        return VStack(spacing: 6) {
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(spacing: 7) {
                     ForEach(displayItems) { item in
@@ -5366,7 +6123,7 @@ private struct POSStackedCartDeck: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 2)
             }
-            .frame(maxHeight: min(CGFloat(displayItems.count) * 64 + 8, 220))
+            .frame(maxHeight: maxDeckHeight)
 
             // Collapse Handle
             HStack(spacing: 5) {
@@ -5444,20 +6201,22 @@ struct POSDiscountSheet: View {
         return candidates.filter { $0 < subtotal }
     }
 
+    /// The discount the sheet would apply. Built once here so the previewed
+    /// amount and the applied amount can never diverge: both go through
+    /// `POSDiscount.calculateAmount`, which is the only discount authority.
+    private var draftDiscount: POSDiscount {
+        POSDiscount(
+            type: discountType,
+            value: discountType == .percentage ? percentageValue : POSMoney.parse(fixedValueText)
+        )
+    }
+
     private var calculatedDiscountAmount: Double {
-        switch discountType {
-        case .percentage:
-            let pct = min(max(percentageValue, 0), 100)
-            return ((subtotal * pct / 100.0) * 100).rounded() / 100.0
-        case .fixedAmount:
-            let sanitized = fixedValueText.replacingOccurrences(of: ",", with: ".")
-            let val = Double(sanitized) ?? 0
-            return min(subtotal, (max(val, 0) * 100).rounded() / 100.0)
-        }
+        draftDiscount.calculateAmount(subtotal: subtotal)
     }
 
     private var calculatedNetTotal: Double {
-        max(0, ((subtotal - calculatedDiscountAmount) * 100).rounded() / 100.0)
+        max(0, POSMoney.round(subtotal - calculatedDiscountAmount))
     }
 
     private var isValid: Bool {
@@ -5879,11 +6638,7 @@ struct POSDiscountSheet: View {
             Button {
                 guard isValid else { return }
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                let discount = POSDiscount(
-                    type: discountType,
-                    value: discountType == .percentage ? percentageValue : (Double(fixedValueText.replacingOccurrences(of: ",", with: ".")) ?? 0)
-                )
-                onApply(discount)
+                onApply(draftDiscount)
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
@@ -6101,6 +6856,7 @@ extension PPPOSLogLevel {
     }
 }
 
+@MainActor
 final class POSDeepLogViewModel: ObservableObject {
     @Published var entries: [PPPOSLogEntry] = []
     @Published var searchText: String = ""
@@ -6122,12 +6878,21 @@ final class POSDeepLogViewModel: ObservableObject {
         let all = PPPOSLogger.shared().allEntries()
         self.entries = all
         let summary = PPPOSLogger.shared().diagnosticSummary()
-        self.totalCount = summary["totalCount"] as? Int ?? all.count
+        // Key names must match `-[PPPOSLogger diagnosticSummary]` exactly.
+        // `totalCount`, `activeBranch` and `lastLatencyMs` are not in that
+        // contract, so the branch and latency tiles silently rendered "all"
+        // and "--" forever regardless of real activity.
+        self.totalCount = summary["totalLogs"] as? Int ?? all.count
         self.infoCount = summary["infoCount"] as? Int ?? 0
         self.warningCount = summary["warningCount"] as? Int ?? 0
         self.errorCount = summary["errorCount"] as? Int ?? 0
-        self.activeBranch = summary["activeBranch"] as? String ?? ""
-        self.lastLatencyMs = summary["lastLatencyMs"] as? Int ?? 0
+        self.lastLatencyMs = summary["lastCheckoutDurationMs"] as? Int ?? 0
+        // The logger has no branch concept; the branch context is the honest
+        // source for the branch tile.
+        let branch = BranchContextStore.shared.activeBranch
+        self.activeBranch = (branch?.code.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+            ?? branch?.branchID
+            ?? ""
     }
 
     var availableCategories: [String] {
@@ -6759,4 +7524,148 @@ struct POSDeepLogActivityShareSheet: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - POS Price Reconciliation Sheet
+
+struct POSPriceReconciliationSheet: View {
+    let discrepancy: POSPriceDiscrepancyItem
+    let onApplyAuthoritativePrice: () -> Void
+    let onRemoveItem: () -> Void
+    let onDismiss: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var rosePrimary: Color { Color(red: 0.88, green: 0.28, blue: 0.42) }
+    private var emeraldColor: Color { Color(red: 0.06, green: 0.72, blue: 0.51) }
+    private var amberColor: Color { Color(red: 0.96, green: 0.62, blue: 0.09) }
+
+    private var priceDiff: Double {
+        discrepancy.authoritativePrice - discrepancy.submittedPrice
+    }
+
+    var body: some View {
+        VStack(spacing: 20) {
+            // Drag indicator capsule
+            Capsule()
+                .fill(Color.secondary.opacity(0.3))
+                .frame(width: 36, height: 5)
+                .padding(.top, 10)
+
+            // Header Icon & Title
+            VStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(amberColor.opacity(0.15))
+                        .frame(width: 56, height: 56)
+                    Image(systemName: "tag.fill")
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundColor(amberColor)
+                }
+
+                Text(Language.get("POS_PriceDiscrepancyTitle", alter: "تحديث السعر المعتمد"))
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundColor(AdminSurface.primaryText)
+
+                Text(Language.get("POS_PriceDiscrepancySubtitle", alter: "تغير السعر الرسمي للصنف في النظام عن السعر المسجل في السلة."))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+
+            // Product & Price Comparison Card
+            VStack(spacing: 14) {
+                HStack {
+                    Text(discrepancy.productName.isEmpty ? discrepancy.productID : discrepancy.productName)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(2)
+                    Spacer()
+                }
+
+                Divider()
+
+                HStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(Language.get("POS_PreviousPrice", alter: "السعر في السلة"))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(AdminSurface.secondaryText)
+                        Text(String(format: "%.2f ر.ق.", discrepancy.submittedPrice))
+                            .font(.system(size: 16, weight: .semibold))
+                            .strikethrough(color: .secondary)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Image(systemName: "arrow.left")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(amberColor)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(Language.get("POS_AuthoritativePrice", alter: "السعر المعتمد بالسيرفر"))
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(emeraldColor)
+                        Text(String(format: "%.2f ر.ق.", discrepancy.authoritativePrice))
+                            .font(.system(size: 18, weight: .heavy))
+                            .foregroundColor(emeraldColor)
+                    }
+
+                    Spacer()
+
+                    // Diff badge
+                    Text(priceDiff > 0 ? String(format: "+%.2f ر.ق.", priceDiff) : String(format: "%.2f ر.ق.", priceDiff))
+                        .font(.system(size: 12, weight: .bold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(priceDiff > 0 ? amberColor.opacity(0.15) : emeraldColor.opacity(0.15))
+                        .foregroundColor(priceDiff > 0 ? amberColor : emeraldColor)
+                        .cornerRadius(8)
+                }
+            }
+            .padding(16)
+            .background(AdminSurface.card)
+            .cornerRadius(16)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(amberColor.opacity(0.3), lineWidth: 1)
+            )
+            .padding(.horizontal, 20)
+
+            Spacer()
+
+            // Actions
+            VStack(spacing: 10) {
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onApplyAuthoritativePrice()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 16, weight: .bold))
+                        Text(Language.get("POS_UpdatePriceAndProceed", alter: "تحديث السعر في السلة والمتابعة"))
+                            .font(.system(size: 16, weight: .bold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .foregroundColor(.white)
+                    .background(emeraldColor)
+                    .cornerRadius(14)
+                }
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onRemoveItem()
+                } label: {
+                    Text(Language.get("POS_RemoveItemFromCart", alter: "إزالة الصنف من السلة"))
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(rosePrimary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 24)
+        }
+        .background(AdminSurface.background.ignoresSafeArea())
+    }
 }

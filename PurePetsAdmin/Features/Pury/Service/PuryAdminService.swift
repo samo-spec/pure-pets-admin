@@ -342,16 +342,32 @@ public actor PuryAdminService {
                             return PuryField(label: l, value: v, type: f["type"] as? String, tone: f["tone"] as? String)
                         }
                     }
+
+                    // `puryStructuredResponse` is the server-owned producer for these
+                    // cards. Its canonical shape uses `id` and `kind`, whereas older
+                    // Pury producers used `entityId` and `entityType`. Preserve both
+                    // shapes before the answer projection merges cards with dataBlocks.
+                    // Without this bridge, a product's title-only card cannot join its
+                    // field-bearing block and becomes an empty disclosure row.
+                    let suppliedCardIdentifier = cardDict["id"] as? String
+                    let cardIdentifier = suppliedCardIdentifier ?? UUID().uuidString
+                    let entityIdentifier = (cardDict["entityId"] as? String)
+                        ?? (cardDict["recordId"] as? String)
+                        ?? suppliedCardIdentifier
+                    let entityType = (cardDict["entityType"] as? String)
+                        ?? (cardDict["kind"] as? String)
+                        ?? (cardDict["collection"] as? String)
+
                     cards.append(PuryCard(
-                        id: cardDict["id"] as? String ?? UUID().uuidString,
+                        id: cardIdentifier,
                         title: cardDict["title"] as? String ?? "",
                         subtitle: cardDict["subtitle"] as? String,
                         status: cardDict["status"] as? String,
                         badge: cardDict["badge"] as? String,
-                        entityType: cardDict["entityType"] as? String,
-                        entityId: cardDict["entityId"] as? String,
+                        entityType: entityType,
+                        entityId: entityIdentifier,
                         details: fields,
-                        actionRoute: cardDict["actionRoute"] as? String
+                        actionRoute: (cardDict["actionRoute"] as? String) ?? (cardDict["route"] as? String)
                     ))
                 }
             }

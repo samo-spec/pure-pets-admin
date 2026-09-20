@@ -9,6 +9,7 @@
 
 import SwiftUI
 import UIKit
+import AVFoundation
 
 // MARK: - Pury Brand Identity
 
@@ -47,14 +48,15 @@ public struct PuryAvatar: View {
     public let size: CGFloat
     public let isLiving: Bool
     public let isThinking: Bool
+    public let motionState: PuryMotionState?
     public let showStatusRing: Bool
     public let showAmbientAura: Bool
+    public let useGlassBackground: Bool
     public let action: (() -> Void)?
 
     // MARK: - Animation States
 
     @State private var ambientBreath: Bool = false
-    @State private var thinkingRotation: Double = 0
     @State private var particleDrift: Bool = false
 
     // MARK: - Environment
@@ -68,15 +70,19 @@ public struct PuryAvatar: View {
         size: CGFloat = 44,
         isLiving: Bool = true,
         isThinking: Bool = false,
+        motionState: PuryMotionState? = nil,
         showStatusRing: Bool = true,
         showAmbientAura: Bool = true,
+        useGlassBackground: Bool = false,
         action: (() -> Void)? = nil
     ) {
         self.size = size
         self.isLiving = isLiving
         self.isThinking = isThinking
+        self.motionState = motionState
         self.showStatusRing = showStatusRing
         self.showAmbientAura = showAmbientAura
+        self.useGlassBackground = useGlassBackground
         self.action = action
     }
 
@@ -131,28 +137,34 @@ public struct PuryAvatar: View {
     // MARK: - Avatar View Composition
 
     private var avatarContent: some View {
-        ZStack {
-            // 1. Living Outer Ambient Aura
-            if showAmbientAura {
-                ambientAuraView
-            }
+        TimelineView(.animation(paused: !isThinking || reduceMotion)) { timeline in
+            let time = timeline.date.timeIntervalSinceReferenceDate
+            let spinRotation: Double = (isThinking && !reduceMotion)
+                ? (time.truncatingRemainder(dividingBy: 3.6) / 3.6) * 360.0
+                : 0.0
+            let microPulse: CGFloat = (isThinking && !reduceMotion)
+                ? CGFloat(sin(time * 3.0) * 0.026 + 1.0)
+                : 1.0
 
-            // 2. Outer Precision Status Ring
-            if showStatusRing {
-                statusRingView
-            }
+            ZStack {
+                // 1. Living Outer Ambient Aura
+                if showAmbientAura {
+                    ambientAuraView
+                }
 
-            // 3. Ultra Apex Core Disk (Background + Mascot Art + Inner Rim)
-            apexCoreOrbView
+                // 2. Outer Precision Status Ring
+                if showStatusRing {
+                    statusRingView(spinRotation: spinRotation)
+                }
+
+                // 3. Ultra Apex Core Disk (Background + Mascot Art + Inner Rim)
+                apexCoreOrbView(spinRotation: spinRotation, microPulse: microPulse)
+            }
+            .frame(width: totalCanvasSize, height: totalCanvasSize)
+            .animation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.82), value: isThinking)
         }
-        .frame(width: totalCanvasSize, height: totalCanvasSize)
         .onAppear {
             startLivingAnimations()
-        }
-        .onChange(of: isThinking) { thinking in
-            if thinking {
-                startThinkingAnimation()
-            }
         }
     }
 
@@ -162,7 +174,9 @@ public struct PuryAvatar: View {
         let auraExpansion: CGFloat = isThinking ? (size * 0.34) : (size * 0.22)
         let baseAuraSize = size + auraExpansion
         let pulseScale: CGFloat = (!reduceMotion && isLiving) ? (ambientBreath ? 1.08 : 0.94) : 1.0
-        let pulseOpacity: Double = (!reduceMotion && isLiving) ? (ambientBreath ? (isThinking ? 0.55 : 0.36) : (isThinking ? 0.25 : 0.12)) : 0.22
+        let pulseOpacity: Double = isThinking
+            ? 0.45
+            : ((!reduceMotion && isLiving) ? (ambientBreath ? 0.36 : 0.12) : 0.22)
 
         return Circle()
             .fill(
@@ -199,7 +213,7 @@ public struct PuryAvatar: View {
 
     // MARK: - 2. Status Filament Ring
 
-    private var statusRingView: some View {
+    private func statusRingView(spinRotation: Double) -> some View {
         let ringDiameter = size + max(size * 0.14, 5)
         let strokeWidth: CGFloat = max(size * 0.032, 1.2)
 
@@ -221,7 +235,7 @@ public struct PuryAvatar: View {
                         lineWidth: strokeWidth
                     )
                     .frame(width: ringDiameter, height: ringDiameter)
-                    .rotationEffect(.degrees(thinkingRotation))
+                    .rotationEffect(.degrees(spinRotation * 1.15))
             } else {
                 // Calm Pury rose filament with a soft optical highlight.
                 Circle()
@@ -243,12 +257,18 @@ public struct PuryAvatar: View {
 
     // MARK: - 3. Ultra Apex Core Disk
 
-    private var apexCoreOrbView: some View {
+    private func apexCoreOrbView(spinRotation: Double, microPulse: CGFloat) -> some View {
         ZStack {
-            // (a) App Foreground Base Disc
-            Circle()
-                .fill(PuryBrand.appForeground)
-                .frame(width: size, height: size)
+            // (a) Base Disc: Ultra Thin Material for glass mode, App Foreground otherwise
+            if useGlassBackground {
+                Circle()
+                    .fill(.ultraThinMaterial)
+                    .frame(width: size, height: size)
+            } else {
+                Circle()
+                    .fill(PuryBrand.appForeground)
+                    .frame(width: size, height: size)
+            }
 
             // (b) Subtle Specular Surface Sheen (Tactile Apple-grade depth)
             Circle()
@@ -270,17 +290,17 @@ public struct PuryAvatar: View {
             }
 
             // (d) Official Pury Artwork (`PuryV1`) with graceful vector fallback
-            mascotArtLayer
+            mascotArtLayer(spinRotation: spinRotation, microPulse: microPulse)
 
             // (e) Directional Precision Inner Stroke Rim
             Circle()
                 .strokeBorder(
                     LinearGradient(
-                        colors: colorScheme == .dark
+                        colors: (colorScheme == .dark || useGlassBackground)
                             ? [
-                                Color.white.opacity(0.24),
-                                Color.white.opacity(0.10),
-                                Color.white.opacity(0.03)
+                                Color.white.opacity(0.36),
+                                Color.white.opacity(0.16),
+                                Color.white.opacity(0.04)
                             ]
                             : [
                                 Color(uiColor: .ppSurfaceBorder),
@@ -328,34 +348,80 @@ public struct PuryAvatar: View {
 
     // MARK: - Mascot Art Layer (PuryV1)
 
-    private var mascotArtLayer: some View {
+    private func mascotArtLayer(spinRotation: Double, microPulse: CGFloat) -> some View {
         let artworkInset: CGFloat = max(size * 0.06, 2.0)
         let artworkDiameter = max(size - (artworkInset * 2), 12)
 
         return Group {
             if hasPuryV1Asset {
-                Image("PuryV1")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: artworkDiameter, height: artworkDiameter)
-                    .clipShape(Circle())
-                    .scaleEffect((isThinking && !reduceMotion) ? (ambientBreath ? 1.03 : 0.98) : 1.0)
+                ZStack {
+                    if let videoURL = renderedMotionURL {
+                        Image("PuryV1")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: artworkDiameter, height: artworkDiameter)
+                            .clipShape(Circle())
+
+                        PuryLoopingVideoView(url: videoURL)
+                            .frame(width: artworkDiameter, height: artworkDiameter)
+                            .clipShape(Circle())
+                            .id(resolvedMotionState)
+                            .transition(.opacity)
+                            .allowsHitTesting(false)
+                    } else {
+                        Image("PuryV1")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: artworkDiameter, height: artworkDiameter)
+                            .clipShape(Circle())
+                            .rotationEffect(.degrees(spinRotation))
+                            .scaleEffect(isThinking ? microPulse : 1.0)
+                    }
+
+                    // Apple-grade dynamic specular light sheen across the rotating mascot
+                    if isThinking && !reduceMotion {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: Color.white.opacity(colorScheme == .dark ? 0.15 : 0.32), location: 0.0),
+                                        .init(color: Color.white.opacity(0.0), location: 0.45)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: artworkDiameter, height: artworkDiameter)
+                            .blendMode(.plusLighter)
+                            .allowsHitTesting(false)
+                    }
+                }
             } else {
                 // Fail-safe vector beacon fallback if image asset is absent
-                fallbackVectorBeacon(diameter: artworkDiameter)
+                fallbackVectorBeacon(diameter: artworkDiameter, spinRotation: spinRotation)
             }
         }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: resolvedMotionState)
     }
 
     private var hasPuryV1Asset: Bool {
         UIImage(named: "PuryV1") != nil
     }
 
-    private func fallbackVectorBeacon(diameter: CGFloat) -> some View {
+    private var resolvedMotionState: PuryMotionState {
+        motionState ?? (isThinking ? .thinking : .idle)
+    }
+
+    private var renderedMotionURL: URL? {
+        guard isLiving, !reduceMotion, size >= 36 else { return nil }
+        return PuryMotionAssetStore.url(for: resolvedMotionState)
+    }
+
+    private func fallbackVectorBeacon(diameter: CGFloat, spinRotation: Double) -> some View {
         Image(systemName: isThinking ? "rays" : "sparkles")
             .font(.system(size: diameter * 0.48, weight: .bold))
             .foregroundStyle(isThinking ? PuryBrand.violet : PuryBrand.primary)
-            .rotationEffect(.degrees(isThinking ? thinkingRotation : 0))
+            .rotationEffect(.degrees(isThinking ? spinRotation : 0))
     }
 
     // MARK: - Layout Helpers
@@ -388,21 +454,6 @@ public struct PuryAvatar: View {
             .repeatForever(autoreverses: true)
         ) {
             particleDrift = true
-        }
-
-        if isThinking {
-            startThinkingAnimation()
-        }
-    }
-
-    private func startThinkingAnimation() {
-        guard !reduceMotion else { return }
-
-        withAnimation(
-            .linear(duration: 2.4)
-            .repeatForever(autoreverses: false)
-        ) {
-            thinkingRotation = 360
         }
     }
 }
@@ -451,6 +502,13 @@ public final class PuryAvatarView: UIView {
         }
     }
 
+    @objc public var useGlassBackground: Bool = false {
+        didSet {
+            guard useGlassBackground != oldValue else { return }
+            rebuildHostedView()
+        }
+    }
+
     public var onTapped: (() -> Void)? {
         didSet {
             rebuildHostedView()
@@ -468,13 +526,15 @@ public final class PuryAvatarView: UIView {
         isLiving: Bool = true,
         isThinking: Bool = false,
         showStatusRing: Bool = true,
-        showAmbientAura: Bool = true
+        showAmbientAura: Bool = true,
+        useGlassBackground: Bool = false
     ) {
         self.size = size
         self.isLiving = isLiving
         self.isThinking = isThinking
         self.showStatusRing = showStatusRing
         self.showAmbientAura = showAmbientAura
+        self.useGlassBackground = useGlassBackground
         super.init(frame: CGRect(x: 0, y: 0, width: size, height: size))
         setupView()
     }
@@ -511,6 +571,7 @@ public final class PuryAvatarView: UIView {
             isThinking: isThinking,
             showStatusRing: showStatusRing,
             showAmbientAura: showAmbientAura,
+            useGlassBackground: useGlassBackground,
             action: onTapped
         )
 
@@ -548,6 +609,136 @@ public final class PuryAvatarView: UIView {
             }
         } else {
             self.isThinking = thinking
+        }
+    }
+}
+
+// MARK: - Rendered Motion States
+
+public enum PuryMotionState: String, CaseIterable, Sendable {
+    case idle
+    case thinking
+    case searching
+    case responding
+    case success
+    case confused
+    case warning
+    case error
+
+    fileprivate var assetName: String {
+        "PuryV1" 
+    }
+}
+
+private enum PuryMotionAssetStore {
+    nonisolated(unsafe) private static let cache = NSCache<NSString, NSURL>()
+
+    static func url(for state: PuryMotionState) -> URL? {
+        let key = state.assetName as NSString
+        if let cached = cache.object(forKey: key) {
+            return cached as URL
+        }
+        guard let asset = NSDataAsset(name: state.assetName) else { return nil }
+
+        let fm = FileManager.default
+        guard let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+
+        let directory = caches.appendingPathComponent("PuryV1", isDirectory: true)
+        let destination = directory.appendingPathComponent(state.assetName).appendingPathExtension("mp4")
+
+        do {
+            try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+            let existingSize = ((try? fm.attributesOfItem(atPath: destination.path)[.size]) as? NSNumber)?.intValue
+            if existingSize != asset.data.count {
+                try asset.data.write(to: destination, options: .atomic)
+            }
+        } catch {
+            return nil
+        }
+
+        cache.setObject(destination as NSURL, forKey: key)
+        return destination
+    }
+}
+
+private final class PuryPlayerSurfaceView: UIView {
+    override class var layerClass: AnyClass { AVPlayerLayer.self }
+
+    var playerLayer: AVPlayerLayer {
+        guard let layer = layer as? AVPlayerLayer else {
+            preconditionFailure("PuryPlayerSurfaceView requires AVPlayerLayer")
+        }
+        return layer
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        isOpaque = false
+        playerLayer.videoGravity = .resizeAspectFill
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        backgroundColor = .clear
+        isOpaque = false
+        playerLayer.videoGravity = .resizeAspectFill
+    }
+}
+
+private struct PuryLoopingVideoView: UIViewRepresentable {
+    let url: URL
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> PuryPlayerSurfaceView {
+        let view = PuryPlayerSurfaceView()
+        context.coordinator.play(url: url, on: view)
+        return view
+    }
+
+    func updateUIView(_ view: PuryPlayerSurfaceView, context: Context) {
+        guard context.coordinator.currentURL != url else { return }
+        context.coordinator.play(url: url, on: view)
+    }
+
+    static func dismantleUIView(_ view: PuryPlayerSurfaceView, coordinator: Coordinator) {
+        coordinator.stop()
+        view.playerLayer.player = nil
+    }
+
+    final class Coordinator {
+        fileprivate var currentURL: URL?
+        private var player: AVQueuePlayer?
+        private var looper: AVPlayerLooper?
+
+        func play(url: URL, on view: PuryPlayerSurfaceView) {
+            stop()
+            let item = AVPlayerItem(url: url)
+            item.preferredForwardBufferDuration = 0.12
+            let queue = AVQueuePlayer()
+            queue.isMuted = true
+            queue.actionAtItemEnd = .none
+            queue.automaticallyWaitsToMinimizeStalling = false
+
+            player = queue
+            looper = AVPlayerLooper(player: queue, templateItem: item)
+            currentURL = url
+            view.playerLayer.player = queue
+            queue.playImmediately(atRate: 1.0)
+        }
+
+        func stop() {
+            player?.pause()
+            looper?.disableLooping()
+            looper = nil
+            player?.removeAllItems()
+            player = nil
+            currentURL = nil
         }
     }
 }

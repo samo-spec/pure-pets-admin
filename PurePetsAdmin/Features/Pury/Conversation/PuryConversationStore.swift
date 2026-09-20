@@ -43,6 +43,15 @@ public final class PuryConversationStore: ObservableObject {
                 return false
             }
         }
+
+        public var isWaitingOrThinking: Bool {
+            switch self {
+            case .loading, .pending:
+                return true
+            default:
+                return false
+            }
+        }
     }
 
     // MARK: - Published Properties
@@ -52,6 +61,10 @@ public final class PuryConversationStore: ObservableObject {
     @Published public private(set) var activeProposal: PuryConfirmationAction? = nil
     @Published public var currentInputText: String = ""
     @Published public var language: String = Language.isRTL() ? "ar" : "en"
+
+    public var isWaitingOrThinking: Bool {
+        state.isWaitingOrThinking
+    }
 
     private let service: PuryAdminService
     private let maxHistoryTurns = 8
@@ -193,6 +206,22 @@ public final class PuryConversationStore: ObservableObject {
         messages.suffix(maxHistoryTurns).compactMap { msg in
             let r = msg.role == .user ? "user" : "model"
             return ["role": r, "text": msg.text]
+        }
+    }
+}
+
+
+extension PuryConversationStore.State {
+    var puryMotionState: PuryMotionState {
+        switch self {
+        case .idle: return .idle
+        case .loading: return .thinking
+        case .pending: return .searching
+        case .ready: return .success
+        case .empty: return .confused
+        case .confirmationRequired: return .warning
+        case .conflictStale: return .warning
+        case .denied, .error: return .error
         }
     }
 }
