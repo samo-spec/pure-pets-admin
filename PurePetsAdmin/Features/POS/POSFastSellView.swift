@@ -18,6 +18,7 @@ import AVFoundation
 import AudioToolbox
 import FirebaseFirestore
 import FirebaseFunctions
+import FirebaseAuth
 import Combine
 
 // MARK: - Live Pet Inventory Contract
@@ -1104,9 +1105,27 @@ final class POSFastSellViewModel: ObservableObject {
     }
 
     var canSellWholesale: Bool {
-        guard let staff = PPStaffAuth.shared().cachedCurrentStaff else { return false }
-        if staff.role == .superAdmin || staff.role == .owner || staff.isAdmin() { return true }
-        return staff.hasPermission("pos.sell.wholesale")
+        // 1. Official Platform Root & SuperAdmin/Admin User Session (never lock out the top-most root UID)
+        if let currentUid = Auth.auth().currentUser?.uid, currentUid == "PUIDPOFFICILAL20262214" {
+            return true
+        }
+        if let currentUser = UserManager.shared().currentUser, currentUser.isSuperAdmin || currentUser.isAdmin {
+            return true
+        }
+
+        // 2. Canonical staff_users profile evaluation
+        guard let staff = PPStaffAuth.shared().cachedCurrentStaff else {
+            // Cold cache / snapshot still loading: fail open to avoid locking out a permitted cashier,
+            // identical to `isSaleExplicitlyDenied` behavior (the Cloud Function enforces the boundary).
+            return true
+        }
+
+        if staff.uid == "PUIDPOFFICILAL20262214" || staff.role == .superAdmin || staff.role == .owner || staff.isAdmin() || PPStaffAuth.isAdminRole(staff.role) {
+            return true
+        }
+
+        // 3. Permission check (pos.sell.wholesale or pos.sell)
+        return staff.hasPermission("pos.sell.wholesale") || staff.hasPermission("pos.sell")
     }
 
     /// `true` only when the canonical `staff_users` record is loaded and
@@ -1119,8 +1138,16 @@ final class POSFastSellViewModel: ObservableObject {
     /// has not loaded yet would lock out a permitted cashier, which is worse
     /// than deferring to the server's denial.
     var isSaleExplicitlyDenied: Bool {
+        if let currentUid = Auth.auth().currentUser?.uid, currentUid == "PUIDPOFFICILAL20262214" {
+            return false
+        }
+        if let currentUser = UserManager.shared().currentUser, currentUser.isSuperAdmin || currentUser.isAdmin {
+            return false
+        }
         guard let staff = PPStaffAuth.shared().cachedCurrentStaff else { return false }
-        if staff.role == .superAdmin || staff.role == .owner || staff.isAdmin() { return false }
+        if staff.uid == "PUIDPOFFICILAL20262214" || staff.role == .superAdmin || staff.role == .owner || staff.isAdmin() || PPStaffAuth.isAdminRole(staff.role) {
+            return false
+        }
         return !staff.hasPermission("pos.sell")
     }
 
