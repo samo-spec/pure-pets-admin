@@ -108,9 +108,17 @@ enum POSMoney {
     static let matchTolerance = 0.005
 
     /// Server-equivalent 2-decimal rounding.
+    ///
+    /// Infra uses `Math.round`, which is `floor(x + 0.5)` — a half always
+    /// rounds toward +∞. Swift's `.rounded()` rounds a half *away from zero*,
+    /// so the two disagree on negative halves (`-10.555` → `-10.55` on the
+    /// server, `-10.56` in Swift). Verified against the real
+    /// `posIntegrity.roundMoney` for both signs.
     static func round(_ value: Double) -> Double {
         guard value.isFinite else { return 0 }
-        return ((value + .ulpOfOne) * 100).rounded() / 100.0
+        let scaled = (value + .ulpOfOne) * 100
+        guard scaled.isFinite else { return 0 }
+        return (scaled + 0.5).rounded(.down) / 100.0
     }
 
     /// Server-equivalent per-line accumulation: round each line, then round
@@ -122,18 +130,34 @@ enum POSMoney {
     }
 
     /// True when two amounts agree within the server's tolerance.
+    ///
+    /// Non-finite inputs are rejected **before** rounding. `round` neutralises
+    /// a non-finite value to 0, so checking after it made `matches(NaN, NaN)`
+    /// report agreement — while Infra's `moneyMatches` returns false, because
+    /// it applies `Number.isFinite` to `roundMoney`'s own NaN result. Two
+    /// unusable amounts must never be treated as equal.
     static func matches(_ lhs: Double, _ rhs: Double) -> Bool {
-        let a = POSMoney.round(lhs)
-        let b = POSMoney.round(rhs)
-        guard a.isFinite, b.isFinite else { return false }
-        return abs(a - b) < matchTolerance
+        guard lhs.isFinite, rhs.isFinite else { return false }
+        return abs(POSMoney.round(lhs) - POSMoney.round(rhs)) < matchTolerance
     }
 
     /// Minor units for the wire contract (`assertedGroupPriceMinor`, `lineTotalMinor`).
+    ///
+    /// An amount that cannot be represented is not an amount: it yields 0
+    /// rather than a fabricated `Int.max`, matching how `round` neutralises an
+    /// overflowing value. Converting an out-of-range `Double` to `Int` is a
+    /// hard trap in Swift, so a malformed catalog or inventory-unit price would
+    /// otherwise crash the till while building the checkout payload.
+    ///
+    /// Fail-closed either way: the server recomputes from its own catalog and
+    /// rejects the same corrupt value with `POS_PRICE_DISCREPANCY` or
+    /// "Product has no valid canonical price", which the operator can act on.
     static func minorUnits(_ value: Double) -> Int {
-        let rounded = POSMoney.round(value)
-        guard rounded.isFinite else { return 0 }
-        return Int((rounded * 100).rounded())
+        let scaled = (POSMoney.round(value) * 100).rounded()
+        guard scaled.isFinite,
+              scaled > Double(Int.min),
+              scaled < Double(Int.max) else { return 0 }
+        return Int(scaled)
     }
 
     /// Single parser for every operator-entered money field (cash tender,
@@ -2323,7 +2347,7 @@ struct AdminPOSFastSellView: View {
             commandHeaderView
             VStack(spacing: AdminSpacing.sm) {
                 if isBranchPickerVisible {
-                    PPAdminBranchSwitcherBar(style: .compact)
+                    PPAdminBranchSwitcherBar(style: .compact, horizontalPadding: 0)
                         .transition(.asymmetric(
                             insertion: .opacity.combined(with: .move(edge: .top)),
                             removal: .opacity.combined(with: .move(edge: .top))
@@ -2333,7 +2357,7 @@ struct AdminPOSFastSellView: View {
                 omniSearchAndFilterBar
                 commandStatusView
             }
-            .padding(.horizontal, AdminSpacing.base)
+            .padding(.horizontal, AdminSpacing.screenMargin)
         }
         .padding(.top, 0)
         .padding(.bottom, AdminSpacing.md)
@@ -4216,6 +4240,7 @@ private struct POSCustomCashSheet: View {
                                         .font(.system(size: 18))
                                         .foregroundColor(AdminSurface.secondaryText)
                                 }
+                                .accessibilityLabel(Language.get("POS_A11y_ClearAmount", alter: "مسح المبلغ"))
                             }
                         }
                         .padding(.horizontal, 14)
@@ -4681,6 +4706,7 @@ private struct POSApexAnimalRegistrySheet: View {
                             .font(.system(size: 14))
                             .foregroundColor(AdminSurface.secondaryText)
                     }
+                    .accessibilityLabel(Language.get("POS_A11y_ClearSearchField", alter: "مسح البحث"))
                 }
             }
             .padding(.horizontal, 12)
@@ -6489,6 +6515,7 @@ struct POSDiscountSheet: View {
                             .foregroundColor(AdminSurface.primaryText)
                             .background(AdminSurface.control, in: Circle())
                     }
+                    .accessibilityLabel(Language.get("POS_A11y_DecreaseDiscount", alter: "تقليل الخصم"))
 
                     Spacer()
 
@@ -6514,6 +6541,7 @@ struct POSDiscountSheet: View {
                             .background(emeraldColor.opacity(0.12), in: Circle())
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .accessibilityLabel(Language.get("POS_A11y_OpenNumberPad", alter: "فتح لوحة الأرقام"))
 
                     Button {
                         if percentageValue < 100 {
@@ -6527,6 +6555,7 @@ struct POSDiscountSheet: View {
                             .foregroundColor(.white)
                             .background(AdminSurface.primary, in: Circle())
                     }
+                    .accessibilityLabel(Language.get("POS_A11y_IncreaseDiscount", alter: "زيادة الخصم"))
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
@@ -6556,6 +6585,7 @@ struct POSDiscountSheet: View {
                                 .font(.system(size: 16))
                                 .foregroundColor(AdminSurface.secondaryText)
                         }
+                        .accessibilityLabel(Language.get("POS_A11y_ClearAmount", alter: "مسح المبلغ"))
                     }
 
                     Button {
@@ -6568,6 +6598,7 @@ struct POSDiscountSheet: View {
                             .background(emeraldColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .accessibilityLabel(Language.get("POS_A11y_OpenNumberPad", alter: "فتح لوحة الأرقام"))
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
@@ -7181,6 +7212,7 @@ struct POSDeepLogInspectorView: View {
                             .font(.system(size: 13))
                             .foregroundColor(AdminSurface.secondaryText)
                     }
+                    .accessibilityLabel(Language.get("POS_A11y_ClearSearchField", alter: "مسح البحث"))
                 }
             }
             .padding(.horizontal, AdminSpacing.sm)
@@ -7433,6 +7465,7 @@ struct POSDeepLogEntryCard: View {
                             .font(.system(size: 9))
                             .foregroundColor(copiedTrace ? .green : AdminSurface.secondaryText)
                     }
+                    .accessibilityLabel(Language.get("POS_A11y_CopyTrace", alter: "نسخ معرّف التتبع"))
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)

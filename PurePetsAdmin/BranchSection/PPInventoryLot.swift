@@ -25,6 +25,7 @@ public struct PPInventoryLot: Identifiable, Hashable, Sendable {
     public let reservedQuantity: Int
     public let onHandQuantity: Int
     public let costPrice: Double?
+    public let validFrom: Date?
     public let expiryDate: Date?
     public let status: String
     public let supplier: String
@@ -43,6 +44,7 @@ public struct PPInventoryLot: Identifiable, Hashable, Sendable {
         reservedQuantity: Int = 0,
         onHandQuantity: Int? = nil,
         costPrice: Double? = nil,
+        validFrom: Date? = nil,
         expiryDate: Date?,
         status: String = "active",
         supplier: String = "",
@@ -60,6 +62,7 @@ public struct PPInventoryLot: Identifiable, Hashable, Sendable {
         self.reservedQuantity = reservedQuantity
         self.onHandQuantity = onHandQuantity ?? (availableQuantity + reservedQuantity)
         self.costPrice = costPrice
+        self.validFrom = validFrom
         self.expiryDate = expiryDate
         self.status = status
         self.supplier = supplier
@@ -142,6 +145,12 @@ public final class PPInventoryLotService: ObservableObject {
             resolvedBranch = trimmed
         } else if let active = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines), !active.isEmpty && active != "main_store" {
             resolvedBranch = active
+        } else if let firstAvailable = BranchContextStore.shared.availableBranches.first(where: { !$0.branchID.isEmpty && $0.branchID != "all_branches" && $0.branchID != "main_store" })?.branchID {
+            resolvedBranch = firstAvailable
+        } else if !trimmed.isEmpty && trimmed != "all_branches" {
+            resolvedBranch = trimmed
+        } else if let active = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines), !active.isEmpty {
+            resolvedBranch = active
         } else {
             throw NSError(
                 domain: "PPInventoryLotService",
@@ -162,7 +171,7 @@ public final class PPInventoryLotService: ObservableObject {
             let result = try await functions.httpsCallable("listBranchInventoryLots").call(["payload": payload])
 
             guard let dict = result.data as? [String: Any],
-                  dict["ok"] as? Bool == true,
+                  (dict["ok"] as? Bool == true || (dict["ok"] as? NSNumber)?.boolValue == true),
                   let lotsRaw = dict["lots"] as? [[String: Any]],
                   lotsRaw.allSatisfy({ ($0["id"] as? String)?.isEmpty == false && $0["lotNumber"] is String && $0["branchId"] as? String == resolvedBranch && $0["productId"] as? String == productId }) else {
                 throw NSError(
@@ -178,10 +187,16 @@ public final class PPInventoryLotService: ObservableObject {
                     return nil
                 }
 
+                let isoFormatter = ISO8601DateFormatter()
+                isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+                var validFromDate: Date? = nil
+                if let validFromString = lotDict["validFrom"] as? String {
+                    validFromDate = isoFormatter.date(from: validFromString) ?? ISO8601DateFormatter().date(from: validFromString)
+                }
+
                 var expDate: Date? = nil
                 if let expStr = lotDict["expiryDate"] as? String {
-                    let isoFormatter = ISO8601DateFormatter()
-                    isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
                     expDate = isoFormatter.date(from: expStr) ?? ISO8601DateFormatter().date(from: expStr)
                 }
 
@@ -192,11 +207,12 @@ public final class PPInventoryLotService: ObservableObject {
                     productId: (lotDict["productId"] as? String) ?? productId,
                     productName: (lotDict["productName"] as? String) ?? "",
                     branchId: (lotDict["branchId"] as? String) ?? resolvedBranch,
-                    initialQuantity: (lotDict["initialQuantity"] as? Int) ?? 0,
-                    availableQuantity: (lotDict["availableQuantity"] as? Int) ?? 0,
-                    reservedQuantity: (lotDict["reservedQuantity"] as? Int) ?? 0,
-                    onHandQuantity: lotDict["onHandQuantity"] as? Int,
+                    initialQuantity: (lotDict["initialQuantity"] as? NSNumber)?.intValue ?? (lotDict["initialQuantity"] as? Int) ?? 0,
+                    availableQuantity: (lotDict["availableQuantity"] as? NSNumber)?.intValue ?? (lotDict["availableQuantity"] as? Int) ?? 0,
+                    reservedQuantity: (lotDict["reservedQuantity"] as? NSNumber)?.intValue ?? (lotDict["reservedQuantity"] as? Int) ?? 0,
+                    onHandQuantity: (lotDict["onHandQuantity"] as? NSNumber)?.intValue ?? (lotDict["onHandQuantity"] as? Int),
                     costPrice: (lotDict["costPrice"] as? NSNumber)?.doubleValue,
+                    validFrom: validFromDate,
                     expiryDate: expDate,
                     status: (lotDict["status"] as? String) ?? "active",
                     supplier: (lotDict["supplier"] as? String) ?? "",
@@ -240,6 +256,7 @@ public final class PPInventoryLotService: ObservableObject {
         lotNumber: String,
         initialQuantity: Int,
         costPrice: Double? = nil,
+        validFrom: Date,
         expiryDate: Date,
         supplier: String = "",
         notes: String = "",
@@ -255,6 +272,12 @@ public final class PPInventoryLotService: ObservableObject {
             resolvedBranch = trimmed
         } else if let active = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines), !active.isEmpty && active != "main_store" {
             resolvedBranch = active
+        } else if let firstAvailable = BranchContextStore.shared.availableBranches.first(where: { !$0.branchID.isEmpty && $0.branchID != "all_branches" && $0.branchID != "main_store" })?.branchID {
+            resolvedBranch = firstAvailable
+        } else if !trimmed.isEmpty && trimmed != "all_branches" {
+            resolvedBranch = trimmed
+        } else if let active = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines), !active.isEmpty {
+            resolvedBranch = active
         } else {
             throw NSError(
                 domain: "PPInventoryLotManager",
@@ -269,6 +292,7 @@ public final class PPInventoryLotService: ObservableObject {
             "productId": productId,
             "lotNumber": lotNumber.trimmingCharacters(in: .whitespacesAndNewlines),
             "initialQuantity": initialQuantity,
+            "validFrom": isoFormatter.string(from: validFrom),
             "expiryDate": isoFormatter.string(from: expiryDate),
             "supplier": supplier.trimmingCharacters(in: .whitespacesAndNewlines),
             "notes": notes.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -280,13 +304,13 @@ public final class PPInventoryLotService: ObservableObject {
             let result = try await functions.httpsCallable("createInventoryLot").call(["payload": payload])
 
             guard let dict = result.data as? [String: Any],
-                  dict["ok"] as? Bool == true,
+                  (dict["ok"] as? Bool == true || (dict["ok"] as? NSNumber)?.boolValue == true),
                   let lotData = dict["lot"] as? [String: Any],
                   let lotId = lotData["lotId"] as? String, !lotId.isEmpty,
                   lotData["branchId"] as? String == resolvedBranch,
                   lotData["productId"] as? String == productId,
-                  let receivedQuantity = lotData["initialQuantity"] as? Int,
-                  let availableQuantity = lotData["availableQuantity"] as? Int else {
+                  let receivedQuantity = (lotData["initialQuantity"] as? NSNumber)?.intValue ?? (lotData["initialQuantity"] as? Int),
+                  let availableQuantity = (lotData["availableQuantity"] as? NSNumber)?.intValue ?? (lotData["availableQuantity"] as? Int) else {
                 throw NSError(domain: "PPInventoryLotService", code: -1, userInfo: [NSLocalizedDescriptionKey: Language.get("Inventory_Lot_Invalid_Response", alter: "استجابة غير صالحة من الخادم")])
             }
 
@@ -299,6 +323,7 @@ public final class PPInventoryLotService: ObservableObject {
                 initialQuantity: receivedQuantity,
                 availableQuantity: availableQuantity,
                 costPrice: (lotData["costPrice"] as? NSNumber)?.doubleValue,
+                validFrom: validFrom,
                 expiryDate: expiryDate,
                 status: "active",
                 supplier: supplier,

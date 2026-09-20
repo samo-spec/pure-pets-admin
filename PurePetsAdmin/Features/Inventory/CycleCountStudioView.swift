@@ -2686,7 +2686,6 @@ public struct CycleCountStudioView: View {
                     }
                 } else if case .failure(let error) = result {
                     self.errorMessage = PPBranchInventoryErrorHelper.localizedMessage(for: error)
-                    PPAlertHelper.showError(in: nil, title: Language.get("Error", alter: "خطأ"), subtitle: self.errorMessage ?? error.localizedDescription)
                 }
             }
         }

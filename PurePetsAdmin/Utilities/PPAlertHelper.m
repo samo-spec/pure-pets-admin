@@ -656,11 +656,65 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
     }
 }
 
-- (void)showInViewController:(UIViewController *)vc {
-    UIWindow *window = vc.view.window ?: [UIApplication sharedApplication].keyWindow;
-    if (!window) {
-        window = [UIApplication sharedApplication].windows.firstObject;
+- (BOOL)pp_isSystemOrKeyboardWindow:(UIWindow *)window {
+    if (!window) return YES;
+    NSString *className = NSStringFromClass([window class]);
+    if ([className containsString:@"TextEffects"] ||
+        [className containsString:@"Keyboard"] ||
+        [className containsString:@"RemoteKeyboard"] ||
+        [className containsString:@"StatusBar"]) {
+        return YES;
     }
+    return NO;
+}
+
+- (void)showInViewController:(UIViewController *)vc {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self showInViewController:vc];
+        });
+        return;
+    }
+
+    UIWindow *window = nil;
+    if (vc && vc.view.window && ![self pp_isSystemOrKeyboardWindow:vc.view.window]) {
+        window = vc.view.window;
+    }
+
+    if (!window) {
+        if (@available(iOS 13.0, *)) {
+            for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+                if (scene.activationState == UISceneActivationStateForegroundActive && [scene isKindOfClass:[UIWindowScene class]]) {
+                    UIWindowScene *windowScene = (UIWindowScene *)scene;
+                    for (UIWindow *w in windowScene.windows) {
+                        if (w.isKeyWindow && ![self pp_isSystemOrKeyboardWindow:w]) {
+                            window = w;
+                            break;
+                        }
+                    }
+                    if (!window) {
+                        for (UIWindow *w in windowScene.windows) {
+                            if (![self pp_isSystemOrKeyboardWindow:w] && !w.hidden && w.alpha > 0.01) {
+                                window = w;
+                                break;
+                            }
+                        }
+                    }
+                    if (window) break;
+                }
+            }
+        }
+    }
+
+    if (!window) {
+        for (UIWindow *w in [UIApplication sharedApplication].windows) {
+            if (![self pp_isSystemOrKeyboardWindow:w] && !w.hidden && w.alpha > 0.01) {
+                window = w;
+                break;
+            }
+        }
+    }
+
     if (!window) return;
 
     self.isPresentingAlert = YES;

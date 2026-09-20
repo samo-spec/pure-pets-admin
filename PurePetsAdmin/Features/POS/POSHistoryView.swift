@@ -634,9 +634,8 @@ struct AdminPOSHistoryView: View {
 
                 // 2. Compact Multi-Branch Switcher Bar
                 PPAdminBranchSwitcherBar(style: .compact)
-                    .padding(.horizontal, AdminSpacing.base)
-                    .padding(.top, 4)
-                    .padding(.bottom, 6)
+                    .padding(.top, 2)
+                    .padding(.bottom, 4)
 
                 // 3. Scrollable Financial Command Ledger
                 ScrollView(.vertical, showsIndicators: false) {

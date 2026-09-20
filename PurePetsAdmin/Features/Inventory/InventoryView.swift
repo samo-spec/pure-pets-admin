@@ -325,7 +325,6 @@ struct AdminInventoryView: View {
             VStack(spacing: 0) {
                 dossierHeaderView
                 PPAdminBranchSwitcherBar(style: .compact)
-                    .padding(.horizontal, AdminSpacing.screenMargin)
                     .padding(.vertical, 4)
                 statsRow
                 searchAndFilters

@@ -3747,7 +3747,7 @@ private struct AdminPetsHotelSlideToDischargeBar: View {
             let maxDistance = max(10, geo.size.width - knobSize - 8)
             let isRTL = Language.isRTL()
 
-            ZStack(alignment: isRTL ? .trailing : .leading) {
+            ZStack(alignment: .leading) {
                 // Background Track
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .fill(
@@ -3769,7 +3769,7 @@ private struct AdminPetsHotelSlideToDischargeBar: View {
                             endPoint: isRTL ? .leading : .trailing
                         )
                     )
-                    .frame(width: max(knobSize + 8, dragOffset + knobSize + 4), height: barHeight)
+                    .frame(width: max(knobSize + 8, dragOffset + knobSize + 8), height: barHeight)
                     .opacity(isLocked ? 0.0 : 1.0)
                     .animation(isDragging ? .none : .spring(response: 0.35, dampingFraction: 0.75), value: dragOffset)
 
@@ -3823,10 +3823,10 @@ private struct AdminPetsHotelSlideToDischargeBar: View {
                         .foregroundStyle(.white)
                         .scaleEffect(isDragging ? 1.15 : 1.0)
                 }
-                .padding(4)
+                .padding(.leading, 4)
                 .offset(x: isRTL ? -dragOffset : dragOffset)
                 .gesture(
-                    DragGesture()
+                    DragGesture(minimumDistance: 0)
                         .onChanged { value in
                             guard !isLocked else {
                                 if !shakeHint {
@@ -3838,17 +3838,22 @@ private struct AdminPetsHotelSlideToDischargeBar: View {
                                 }
                                 return
                             }
-                            isDragging = true
-                            let translation = isRTL ? -value.translation.width : value.translation.width
-                            dragOffset = min(max(0, translation), maxDistance)
+                            if !isDragging {
+                                isDragging = true
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                            let rawDelta = isRTL ? -value.translation.width : value.translation.width
+                            let clamped = min(maxDistance, max(0, rawDelta))
+                            dragOffset = clamped
                             if dragOffset == maxDistance {
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             }
                         }
-                        .onEnded { _ in
+                        .onEnded { value in
                             guard !isLocked else { return }
                             isDragging = false
-                            if dragOffset >= maxDistance * 0.86 {
+                            let rawDelta = isRTL ? -value.translation.width : value.translation.width
+                            if rawDelta >= maxDistance * 0.86 || dragOffset >= maxDistance * 0.86 {
                                 withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
                                     dragOffset = maxDistance
                                 }

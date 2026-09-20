@@ -894,6 +894,56 @@ extension View {
     public func englishNumericInput(text: Binding<String>, allowsDecimal: Bool = true) -> some View {
         modifier(PPEnglishNumericInputModifier(text: text, allowsDecimal: allowsDecimal))
     }
+
+    /// Ensures that alphanumeric inputs (e.g. barcodes and SKUs) show ASCII keyboard,
+    /// format LTR, convert letters to uppercase, and normalize Arabic-Indic numerals to ASCII digits.
+    public func englishAlphanumericInput(text: Binding<String>) -> some View {
+        modifier(PPEnglishAlphanumericInputModifier(text: text))
+    }
+}
+
+public struct PPEnglishAlphanumericInputModifier: ViewModifier {
+    @Binding var text: String
+
+    public init(text: Binding<String>) {
+        self._text = text
+    }
+
+    public func body(content: Content) -> some View {
+        content
+            .keyboardType(.asciiCapable)
+            .environment(\.layoutDirection, .leftToRight)
+            .textInputAutocapitalization(.characters)
+            .autocorrectionDisabled(true)
+            .onChange(of: text) { newValue in
+                let normalized = newValue.normalizedEnglishAlphanumeric()
+                if normalized != newValue {
+                    text = normalized
+                }
+            }
+    }
+}
+
+extension String {
+    /// Normalizes Arabic-Indic numerals to standard ASCII English digits,
+    /// allows ASCII letters (converting to uppercase), digits, hyphens, and underscores.
+    public func normalizedEnglishAlphanumeric() -> String {
+        let arabicToEnglishMap: [Character: Character] = [
+            "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4",
+            "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9",
+            "۰": "0", "۱": "1", "۲": "2", "۳": "3", "۴": "4",
+            "۵": "5", "۶": "6", "۷": "7", "۸": "8", "۹": "9"
+        ]
+        var result = ""
+        for char in self {
+            if let mapped = arabicToEnglishMap[char] {
+                result.append(mapped)
+            } else if char.isASCII && (char.isLetter || char.isNumber || char == "-" || char == "_") {
+                result.append(char.uppercased())
+            }
+        }
+        return result
+    }
 }
 
 // MARK: - Pure Pets Brand Typography

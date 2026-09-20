@@ -19,7 +19,38 @@ import FirebaseFunctions
 
 // MARK: - Sendable Conformance
 
-extension MainKindsModel: @unchecked Sendable {}
+extension MainKindsModel: @unchecked Sendable {
+    var petSFSymbolName: String {
+        let lower = "\(kindNameAr ?? "") \(kindNameEn ?? "") \(kindName ?? "")".lowercased()
+        let idVal = self.id
+        if lower.contains("كلب") || lower.contains("كلاب") || lower.contains("dog") || idVal == 6 {
+            return "dog.fill"
+        }
+        if lower.contains("قط") || lower.contains("قطط") || lower.contains("cat") || idVal == 5 {
+            return "cat.fill"
+        }
+        if lower.contains("طير") || lower.contains("طيور") || lower.contains("bird") || idVal == 1 || idVal == 11 {
+            return "bird.fill"
+        }
+        if lower.contains("سمك") || lower.contains("أسماك") || lower.contains("fish") || idVal == 7 {
+            return "fish.fill"
+        }
+        if lower.contains("أرنب") || lower.contains("ارنب") || lower.contains("rabbit") || lower.contains("hare") {
+            return "hare.fill"
+        }
+        if lower.contains("سلحفاة") || lower.contains("turtle") || lower.contains("tortoise") {
+            return "tortoise.fill"
+        }
+        if lower.contains("خيل") || lower.contains("حصان") || lower.contains("horse") || idVal == 3 {
+            return "figure.equestrian.sports"
+        }
+        let rawIcon = self.kindIconName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !rawIcon.isEmpty, UIImage(systemName: rawIcon) != nil {
+            return rawIcon
+        }
+        return "pawprint.fill"
+    }
+}
 extension SubKindModel: @unchecked Sendable {}
 extension PPAccessoryCategoryModel: @unchecked Sendable {}
 
@@ -661,7 +692,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     var selectedAccessoryCategory: PPAccessoryCategoryModel? {
         guard let id = selectedAccessoryCategoryID, !id.isEmpty else { return nil }
-        return availableAccessoryCategories.first { $0.categoryID == id || $0.documentID == id }
+        return availableAccessoryCategories.first {
+            $0.categoryID == id || $0.documentID == id || $0.nameAr == id || $0.nameEn == id
+        }
     }
 
     var selectedAccessoryCategoryDisplayTitle: String? {
@@ -764,12 +797,8 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 selectedStoreName = Language.get("Main Store", alter: "المتجر الرئيسي")
             }
             initialSetupComplete = true
-        isPopulatingInitialValues = false
-        if editingAccessory != nil {
-            loadCommerceIfAvailable()
-        } else {
+            isPopulatingInitialValues = false
             ensureDefaultSingleGroup()
-        }
             return
         }
 
@@ -850,11 +879,27 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             isAllSubCategoriesSelected = false
         }
 
-        if let catID = acc.accessoryCategoryID, !catID.isEmpty {
+        let loadedCatID = acc.accessoryCategoryID
+        if let catID = loadedCatID, !catID.isEmpty {
             selectedAccessoryCategoryID = catID
         }
 
+        let mainIDToLoad: Int = {
+            if let firstID = selectedMainKinds.first, firstID > 0 { return firstID }
+            if acc.petMainCategoryID > 0 { return acc.petMainCategoryID }
+            if isAllCategoriesSelected { return 1 }
+            return 0
+        }()
+        if mainIDToLoad > 0 {
+            refreshAccessoryCategories(forMainKindID: mainIDToLoad)
+        }
+
         isPopulatingInitialValues = false
+        initialSetupComplete = true
+        if editingAccessory != nil {
+            loadCommerceIfAvailable()
+            loadCostSummaryIfAvailable()
+        }
     }
 
     private func hydrateWeight(from accessory: PetAccessory) {
@@ -1572,6 +1617,95 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                     }
                 } else {
                     self.ensureDefaultSingleGroup()
+                }
+            }
+        }
+    }
+
+    func loadCostSummaryIfAvailable() {
+        guard let acc = editingAccessory, !acc.accessoryID.isEmpty else { return }
+        let accID = acc.accessoryID
+
+        // 1. Immediately hydrate if PetAccessory model already has costPrice > 0
+        if let cost = acc.costPrice, cost.doubleValue > 0 {
+            let current = costPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if current.isEmpty || current == "0" || current == "0.00" {
+                costPriceText = String(format: "%g", cost.doubleValue)
+            }
+        }
+
+        // 2. Fetch authoritative cost summary via Cloud Function
+        let branchId = (selectedStoreID.isEmpty || selectedStoreID == "main_store") ? nil : selectedStoreID
+        PPInventoryCommandService.shared.fetchCostSummary(productId: accID, branchId: branchId) { [weak self] summary, _ in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                let resolvedCost: Double? = {
+                    if let acq = summary?.acquisitionCost?.doubleValue, acq.isFinite, acq > 0 {
+                        return acq
+                    }
+                    if let avg = summary?.averageUnitCost?.doubleValue, avg.isFinite, avg > 0 {
+                        return avg
+                    }
+                    return nil
+                }()
+                if let cost = resolvedCost {
+                    let current = self.costPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if current.isEmpty || current == "0" || current == "0.00" {
+                        self.costPriceText = String(format: "%g", cost)
+                    }
+                    if self.editingAccessory?.costPrice == nil || self.editingAccessory?.costPrice?.doubleValue == 0 {
+                        self.editingAccessory?.costPrice = NSNumber(value: cost)
+                    }
+                    return
+                }
+
+                // 3. Fallback: Direct Firestore doc read if still empty
+                let current = self.costPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if current.isEmpty || current == "0" || current == "0.00" {
+                    self.fetchDirectDocCostFallback(productId: accID)
+                }
+            }
+        }
+    }
+
+    private func fetchDirectDocCostFallback(productId: String) {
+        Firestore.firestore().collection("petAccessories").document(productId).getDocument { [weak self] snap, _ in
+            guard let self = self, let snap = snap, snap.exists, let data = snap.data() else { return }
+            DispatchQueue.main.async {
+                let current = self.costPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard current.isEmpty || current == "0" || current == "0.00" else { return }
+
+                var foundCost: Double? = nil
+                let costCandidates: [Any?] = [
+                    data["costPrice"],
+                    data["cost_price"],
+                    data["cost"],
+                    data["buyPrice"],
+                    data["buy_price"],
+                    data["purchasePrice"],
+                    data["purchase_price"],
+                    data["initialCostPrice"],
+                    data["unitCost"],
+                    (data["pricing"] as? [String: Any])?["costPrice"],
+                    (data["pricing"] as? [String: Any])?["costPerBaseUnit"],
+                    (data["pricing"] as? [String: Any])?["myCost"],
+                    (data["pricing"] as? [String: Any])?["totalCost"],
+                    (data["stockPurchase"] as? [String: Any])?["costPrice"],
+                    (data["stockPurchase"] as? [String: Any])?["unitCost"],
+                    (data["stockPurchase"] as? [String: Any])?["initialCostPrice"]
+                ]
+                for candidate in costCandidates {
+                    if let num = candidate as? NSNumber, num.doubleValue.isFinite, num.doubleValue > 0 {
+                        foundCost = num.doubleValue
+                        break
+                    } else if let str = candidate as? String, let val = Double(str.trimmingCharacters(in: .whitespacesAndNewlines)), val.isFinite, val > 0 {
+                        foundCost = val
+                        break
+                    }
+                }
+                if let cost = foundCost {
+                    self.costPriceText = String(format: "%g", cost)
+                    self.editingAccessory?.costPrice = NSNumber(value: cost)
                 }
             }
         }
@@ -3260,6 +3394,14 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                         accessory.revision = confirmed.revision
                         self.commitSavedAccessory(confirmed)
                         self.clearStandardInventoryRecovery()
+
+                        let pId = confirmed.accessoryID ?? accessory.accessoryID ?? ""
+                        if let catID = accessory.accessoryCategoryID, !catID.isEmpty, !pId.isEmpty {
+                            Firestore.firestore().collection("petAccessories").document(pId).setData([
+                                "AccessoryCategoryID": catID,
+                                "accessoryCategoryID": catID
+                            ], merge: true)
+                        }
 
                         // Media cleanup is safe only after authoritative readback
                         // proves which URLs the committed catalog retained.
@@ -5760,7 +5902,28 @@ struct PPAccessoryEditorScreen: View {
                     focusedField = nil
                     viewModel.showSpeciesPicker = true
                 } label: {
-                    HStack {
+                    HStack(spacing: 10) {
+                        let selectedIcon: String = {
+                            if let kind = viewModel.selectedMainKind {
+                                return kind.petSFSymbolName
+                            } else if let firstID = viewModel.selectedMainKinds.first,
+                                      let match = viewModel.availableMainKinds.first(where: { $0.id == firstID }) {
+                                return match.petSFSymbolName
+                            } else if viewModel.isAllCategoriesSelected {
+                                return "globe"
+                            }
+                            return "pawprint.fill"
+                        }()
+                        
+                        Image(systemName: selectedIcon)
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(viewModel.selectedCategoryDisplayTitle != nil ? AdminSurface.primary : AdminCommandInk.tertiary)
+                            .frame(width: 32, height: 32)
+                            .background(
+                                (viewModel.selectedCategoryDisplayTitle != nil ? AdminSurface.primary : AdminCommandInk.tertiary).opacity(0.12),
+                                in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            )
+
                         VStack(alignment: .leading, spacing: 2) {
                             Text(Language.get("Species", alter: "نوع الحيوان (الفئة)"))
                                 .font(AdminType.caption2Bold)
@@ -7588,7 +7751,7 @@ private struct iPhoneQuantityGroupInspector: View {
 
                     TextField(Language.get("Barcode", alter: "امسح أو اكتب الباركود"), text: $group.barcode)
                         .font(AdminType.body.monospaced())
-                        .englishNumericInput(text: $group.barcode, allowsDecimal: false)
+                        .englishAlphanumericInput(text: $group.barcode)
 
                     if !group.barcode.isEmpty {
                         Button {
@@ -8314,7 +8477,7 @@ private struct iPadQuantityGroupInspector: View {
                                     .foregroundStyle(AdminCommandInk.secondary)
                                 TextField(Language.get("Barcode", alter: "الباركود"), text: $group.barcode)
                                     .font(AdminType.body.monospaced())
-                                    .englishNumericInput(text: $group.barcode, allowsDecimal: false)
+                                    .englishAlphanumericInput(text: $group.barcode)
 
                                 AdminBarcodeScanButton { scannedCode in
                                     group.barcode = scannedCode
@@ -9475,6 +9638,9 @@ private struct PPLivePetIntakeJourney: View {
             }
             if viewModel.activeStage == .pricing {
                 viewModel.populateDefaultLivePetPriceIfNeeded()
+            }
+            if viewModel.editingAccessory != nil {
+                viewModel.loadCostSummaryIfAvailable()
             }
         }
         .onChange(of: viewModel.isSubmitting) { submitting in
@@ -16763,7 +16929,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                             format: tr("CatalogIntake_SubcategoryCount", "%ld تصنيفاً فرعياً"),
                             (kind.subKindsArray as? [SubKindModel])?.count ?? 0
                         ),
-                        symbol: viewModel.isFood ? "fork.knife.circle.fill" : "shippingbox.fill"
+                        symbol: kind.petSFSymbolName
                     )
                 },
                 isAllSelected: $viewModel.isAllCategoriesSelected,
@@ -16884,6 +17050,11 @@ private struct PPAccessoryFoodIntakeJourney: View {
         .onChange(of: viewModel.saveSuccessMessage) { message in
             guard let message, !message.isEmpty else { return }
             UIAccessibility.post(notification: .announcement, argument: message)
+        }
+        .onAppear {
+            if viewModel.editingAccessory != nil {
+                viewModel.loadCostSummaryIfAvailable()
+            }
         }
     }
 
@@ -17210,55 +17381,84 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 )
                 .id(FocusedField.description)
 
-                HStack(spacing: AdminSpacing.md) {
-                    VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-                        fieldLabel(tr("CatalogIntake_SKULabel", "رمز المنتج (SKU)"), required: false)
-                        TextField(tr("CatalogIntake_SKUPlaceholder", "مثال: PP-10023"), text: $viewModel.sku)
+                VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+                    fieldLabel(tr("CatalogIntake_BarcodeLabel", "الباركود"), required: false)
+                    HStack(spacing: AdminSpacing.xs) {
+                        TextField(tr("CatalogIntake_BarcodePlaceholder", "امسح أو اكتب الباركود"), text: $viewModel.barcode)
                             .font(AdminType.body)
-                            .focused($focusedField, equals: .sku)
-                            .environment(\.layoutDirection, .leftToRight)
-                            .padding(.horizontal, AdminSpacing.md)
-                            .frame(minHeight: AdminTouchTarget.expanded)
-                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
-                            .overlay(fieldFocusBorder(focusedField == .sku))
-                    }
+                            .englishAlphanumericInput(text: $viewModel.barcode)
+                            .focused($focusedField, equals: .barcode)
 
-                    VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-                        fieldLabel(tr("CatalogIntake_BarcodeLabel", "الباركود"), required: false)
-                        HStack(spacing: AdminSpacing.xs) {
-                            TextField(tr("CatalogIntake_BarcodePlaceholder", "امسح أو اكتب الباركود"), text: $viewModel.barcode)
-                                .font(AdminType.body)
-                                .englishNumericInput(text: $viewModel.barcode, allowsDecimal: false)
-                                .focused($focusedField, equals: .barcode)
-
-                            if !viewModel.barcode.isEmpty {
-                                Button {
-                                    viewModel.barcode = ""
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 15, weight: .semibold))
-                                        .foregroundStyle(AdminSurface.secondaryText)
-                                        .frame(width: 30, height: AdminTouchTarget.minimum)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel(Language.get("Clear", alter: "مسح"))
+                        if !viewModel.barcode.isEmpty {
+                            Button {
+                                viewModel.barcode = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(AdminSurface.secondaryText)
+                                    .frame(width: 30, height: AdminTouchTarget.minimum)
+                                    .contentShape(Rectangle())
                             }
-
-                            AdminBarcodeScanButton { scanned in
-                                viewModel.barcode = scanned
-                                focusedField = nil
-                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(Language.get("Clear", alter: "مسح"))
                         }
-                        .padding(.leading, AdminSpacing.md)
-                        .padding(.trailing, AdminSpacing.xs)
+
+                        Button {
+                            generatePPBarcode()
+                        } label: {
+                            HStack(spacing: 2) {
+                                Text("PP")
+                                    .font(.system(size: 11, weight: .black, design: .rounded))
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 10, weight: .bold))
+                            }
+                            .foregroundColor(AdminSurface.primary)
+                            .frame(height: 36)
+                            .padding(.horizontal, 7)
+                            .background(AdminSurface.primarySoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(tr("CatalogIntake_GeneratePPBarcode", "توليد باركود PP"))
+
+                        AdminBarcodeScanButton { scanned in
+                            viewModel.barcode = scanned
+                            focusedField = nil
+                        }
+                    }
+                    .padding(.leading, AdminSpacing.md)
+                    .padding(.trailing, AdminSpacing.xs)
+                    .frame(minHeight: AdminTouchTarget.expanded)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                    .overlay(fieldFocusBorder(focusedField == .barcode))
+                }
+
+                VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+                    fieldLabel(tr("CatalogIntake_SKULabel", "رمز المنتج (SKU)"), required: false)
+                    TextField(tr("CatalogIntake_SKUPlaceholder", "مثال: PP-10023"), text: $viewModel.sku)
+                        .font(AdminType.body)
+                        .focused($focusedField, equals: .sku)
+                        .environment(\.layoutDirection, .leftToRight)
+                        .padding(.horizontal, AdminSpacing.md)
                         .frame(minHeight: AdminTouchTarget.expanded)
                         .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
-                        .overlay(fieldFocusBorder(focusedField == .barcode))
-                    }
+                        .overlay(fieldFocusBorder(focusedField == .sku))
                 }
             }
         }
+    }
+
+    private func generatePPBarcode() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        let timestamp = Int(Date().timeIntervalSince1970) % 1_000_000_000
+        let randomDigit = Int.random(in: 0...9)
+        let generated = String(format: "PP%09d%d", timestamp, randomDigit)
+        viewModel.barcode = generated
+        if let idx = viewModel.quantityGroups.firstIndex(where: { $0.unitsPerGroup == 1 && $0.defaultForRetail }) {
+            viewModel.quantityGroups[idx].barcode = generated
+        } else if viewModel.quantityGroups.count == 1 {
+            viewModel.quantityGroups[0].barcode = generated
+        }
+        focusedField = nil
     }
 
     private var mediaCanvas: some View {
@@ -17466,7 +17666,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                             ? tr("CatalogIntake_SelectCategoryFirst", "اختر الفئة الرئيسية أولاً")
                             : Language.get("SelectAccessoryCategory", alter: "اختر تصنيف الإكسسوار..."),
                         symbol: "square.grid.2x2",
-                        required: false,
+                        required: true,
                         disabled: viewModel.hasNoCategorySelected
                     ) {
                         viewModel.showAccessoryCategoryPicker = true
@@ -17544,11 +17744,11 @@ private struct PPAccessoryFoodIntakeJourney: View {
         Button(action: action) {
             HStack(spacing: AdminSpacing.md) {
                 Image(systemName: symbol)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(AdminSurface.primary)
-                    .frame(width: 42, height: 42)
+                    .frame(width: 36, height: 36)
                     .background(AdminSurface.primary.opacity(0.09), in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
-                VStack(alignment: .leading, spacing: AdminSpacing.xxs) {
+                VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 3) {
                         Text(title).font(AdminType.caption2Bold)
                         if required { Text("*").foregroundStyle(Color(uiColor: .ppError)) }
@@ -17564,8 +17764,9 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(AdminSurface.secondaryText)
             }
-            .padding(AdminSpacing.sm)
-            .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded)
+            .padding(.horizontal, AdminSpacing.sm)
+            .padding(.vertical, AdminSpacing.xs)
+            .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.inputField)
             .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
@@ -18818,6 +19019,9 @@ private struct PPAccessoryFoodIntakeJourney: View {
         case .bioVault:
             if viewModel.selectedMainKind == nil {
                 return tr("CatalogIntake_ValidationCategory", "اختر الفئة الرئيسية للصنف.")
+            }
+            if !viewModel.isFood && !viewModel.isLivePet && (viewModel.selectedAccessoryCategoryID == nil || viewModel.selectedAccessoryCategoryID?.isEmpty == true) {
+                return Language.get("Validation_Accessory_Category_Required", alter: "اختر تصنيف الإكسسوار للمتابعة.")
             }
             if !viewModel.isValidWeightInput() {
                 return tr("CatalogIntake_ValidationWeight", "أدخل وزناً أو حجماً صالحاً وبحد أقصى ثلاث منازل عشرية.")

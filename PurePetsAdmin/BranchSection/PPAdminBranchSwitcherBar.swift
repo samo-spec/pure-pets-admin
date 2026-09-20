@@ -20,11 +20,13 @@ public struct PPAdminBranchSwitcherBar: View {
     @State private var showingSwitcherSheet = false
     @State private var isBeaconPulsing = false
     public let style: PPBranchSwitcherStyle
+    public let horizontalPadding: CGFloat
 
-    private let compactCornerRadius: CGFloat = 18
+    private let compactCornerRadius: CGFloat = 12
 
-    public init(style: PPBranchSwitcherStyle = .compact) {
+    public init(style: PPBranchSwitcherStyle = .compact, horizontalPadding: CGFloat = 20) {
         self.style = style
+        self.horizontalPadding = horizontalPadding
     }
 
     public var body: some View {
@@ -38,6 +40,7 @@ public struct PPAdminBranchSwitcherBar: View {
         }
         .frame(maxWidth: .infinity)
         .buttonStyle(BranchCapsulePressStyle())
+        .padding(.horizontal, horizontalPadding)
         .disabled(!canSwitchBranch)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(branchSwitcherAccessibilityLabel))
@@ -143,13 +146,13 @@ public struct PPAdminBranchSwitcherBar: View {
     // MARK: - Compact Branch Identity Island
 
     private var compactCapsule: some View {
-        HStack(spacing: AdminSpacing.sm) {
+        HStack(spacing: 8) {
             branchIdentityEmblem
 
             Text(contextStore.currentBranchDisplayName)
-                .font(PPBrandFont.bold(size: 15, relativeTo: .subheadline))
+                .font(PPBrandFont.bold(size: 13.5, relativeTo: .subheadline))
                 .foregroundColor(AdminSurface.primaryText)
-                .lineLimit(2)
+                .lineLimit(1)
                 .minimumScaleFactor(0.84)
                 .fixedSize(horizontal: false, vertical: true)
                 .layoutPriority(1)
@@ -158,21 +161,21 @@ public struct PPAdminBranchSwitcherBar: View {
 
             branchSwitchAffordance
         }
-        .padding(.leading, 8)
-        .padding(.trailing, AdminSpacing.sm)
-        .padding(.vertical, 7)
+        .padding(.leading, 6)
+        .padding(.trailing, 8)
+        .padding(.vertical, 3.5)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(compactCapsuleSurface)
         .overlay(compactCapsuleBorder)
         .shadow(
-            color: AdminSurface.primary.opacity(0.08),
-            radius: 12,
+            color: AdminSurface.primary.opacity(0.06),
+            radius: 8,
             x: 0,
-            y: 5
+            y: 3
         )
         .shadow(
-            color: Color.black.opacity(0.045),
-            radius: 3,
+            color: Color.black.opacity(0.03),
+            radius: 2,
             x: 0,
             y: 1
         )
@@ -181,7 +184,7 @@ public struct PPAdminBranchSwitcherBar: View {
 
     private var branchIdentityEmblem: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
@@ -193,7 +196,7 @@ public struct PPAdminBranchSwitcherBar: View {
                     )
                 )
 
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .stroke(
                     LinearGradient(
                         colors: [
@@ -207,14 +210,14 @@ public struct PPAdminBranchSwitcherBar: View {
                 )
 
             Image(systemName: branchSymbolName)
-                .font(.system(size: 17, weight: .bold))
+                .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(AdminSurface.primary)
                 .symbolRenderingMode(.hierarchical)
         }
-        .frame(width: 40, height: 40)
+        .frame(width: 28, height: 28)
         .overlay(alignment: .bottomTrailing) {
             branchContextSignal
-                .offset(x: 2, y: 2)
+                .offset(x: 1, y: 1)
         }
         .accessibilityHidden(true)
     }
@@ -222,20 +225,20 @@ public struct PPAdminBranchSwitcherBar: View {
     private var branchContextSignal: some View {
         ZStack {
             Circle()
-                .stroke(branchContextColor.opacity(0.24), lineWidth: 1.5)
-                .frame(width: 15, height: 15)
-                .scaleEffect(isBeaconPulsing && hasResolvedContext ? 1.32 : 0.94)
+                .stroke(branchContextColor.opacity(0.24), lineWidth: 1.2)
+                .frame(width: 11, height: 11)
+                .scaleEffect(isBeaconPulsing && hasResolvedContext ? 1.3 : 0.94)
                 .opacity(isBeaconPulsing && hasResolvedContext ? 0.18 : 0.72)
 
             Circle()
                 .fill(branchContextColor)
-                .frame(width: 8, height: 8)
+                .frame(width: 6, height: 6)
                 .overlay(
                     Circle()
-                        .stroke(AdminSurface.surface, lineWidth: 2)
+                        .stroke(AdminSurface.surface, lineWidth: 1.5)
                 )
         }
-        .frame(width: 16, height: 16)
+        .frame(width: 12, height: 12)
     }
 
     private func branchCodeBadge(_ code: String) -> some View {
@@ -261,34 +264,34 @@ public struct PPAdminBranchSwitcherBar: View {
     private var branchSwitchAffordance: some View {
         Group {
             if canSwitchBranch {
-                HStack(spacing: 4) {
+                HStack(spacing: 3) {
                     Text(Language.get("AdminCommandCenter_Switch_Action", alter: "تبديل"))
-                        .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
+                        .font(PPBrandFont.bold(size: 11, relativeTo: .caption))
                         .foregroundStyle(AdminSurface.primary)
 
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 9.5, weight: .bold))
+                        .font(.system(size: 8.5, weight: .bold))
                         .foregroundStyle(AdminSurface.primary)
                 }
-                .padding(.horizontal, 9)
-                .padding(.vertical, 5)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
                 .background(AdminSurface.control, in: Capsule())
                 .overlay(
                     Capsule()
                         .strokeBorder(AdminSurface.primary.opacity(0.22), lineWidth: 0.75)
                 )
             } else {
-                HStack(spacing: 3.5) {
+                HStack(spacing: 3) {
                     Image(systemName: "lock.fill")
-                        .font(.system(size: 8.5, weight: .bold))
+                        .font(.system(size: 8, weight: .bold))
                         .foregroundStyle(AdminCommandInk.secondary)
 
                     Text(Language.get("BranchContext_SingleBranch_Locked", alter: "فرع معتمد"))
-                        .font(PPBrandFont.medium(size: 10.5, relativeTo: .caption2))
+                        .font(PPBrandFont.medium(size: 10, relativeTo: .caption2))
                         .foregroundStyle(AdminCommandInk.secondary)
                 }
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3.5)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2.5)
                 .background(AdminSurface.control.opacity(0.5), in: Capsule())
             }
         }

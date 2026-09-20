@@ -7574,6 +7574,21 @@
 "AdminPOS_Refunds_Header" = "Refunds";
 "AdminPOS_NoRefunds" = "None";
 "AdminPOS_OpenLedger_Short" = "View Invoices & Receipts";
+"AdminPOS_SectionEyebrow" = "POS Station";
+"AdminPOS_Status_Unauthorized" = "Sales Unauthorized";
+"AdminPOS_Status_AuditMode" = "Audit Mode Only";
+"AdminPOS_Status_Syncing" = "Syncing...";
+"AdminPOS_RefreshTelemetry" = "Refresh POS telemetry";
+"AdminPOS_TodaySales_Title" = "Today's Gross Sales";
+"AdminPOS_Metric_Receipts" = "Receipts";
+"AdminPOS_Metric_AOV" = "Avg Receipt";
+"AdminPOS_Metric_AOV_Short" = "AOV";
+"AdminPOS_Metric_Refunds" = "Refunds";
+"AdminPOS_Tender_Cash" = "Cash";
+"AdminPOS_Tender_Card" = "Card & POS";
+"AdminPOS_AwaitingFirstSale" = "Awaiting first transaction of the shift";
+"AdminPOS_ViewOnly_Notice" = "POS Terminal (View Only)";
+"AdminPOS_TerminalSubtitle_Short" = "Instant scan • Smart cart • Direct pay";
 "Stock_Section_Title" = "Stock & Products Horizon";
 "Stock_Section_Subtitle" = "Products catalog, nutrition & live pets with real-time stock sync";
 "Stock_Alerts_Count_Format" = "%d Stock Alerts";
@@ -9554,3 +9569,15 @@
 "POS_SlideToSale_A11yHint" = "Double-tap to complete the sale";
 
 "POS_CheckoutCommandConflict" = "A sale is already recorded under this command reference with different details. Check the sales history to confirm before selling again, then start a new sale.";
+
+/* MARK: - Inventory lot validity */
+"Inventory_Lot_Valid_From" = "Valid From *";
+
+
+/* MARK: - POS VoiceOver labels for icon-only controls */
+"POS_A11y_ClearAmount" = "Clear amount";
+"POS_A11y_ClearSearchField" = "Clear search";
+"POS_A11y_DecreaseDiscount" = "Decrease discount";
+"POS_A11y_IncreaseDiscount" = "Increase discount";
+"POS_A11y_OpenNumberPad" = "Open number pad";
+"POS_A11y_CopyTrace" = "Copy trace ID";

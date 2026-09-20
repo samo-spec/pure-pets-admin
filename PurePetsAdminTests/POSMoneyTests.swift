@@ -180,3 +180,104 @@ final class POSMoneyTests: XCTestCase {
         XCTAssertEqual(totalAfterCapped, 0.0)
     }
 }
+
+
+// MARK: - Infra Parity Regressions
+//
+// These lock in two defects found by differential-testing `POSMoney` against
+// the real `Pure Pets Infra/functions/posIntegrity.js`. A 5,500-case sweep
+// (4,000 scalars + 1,500 line-total sets) matched exactly after these fixes;
+// both cases below failed before them.
+
+final class POSMoneyInfraParityRegressionTests: XCTestCase {
+
+    /// Infra rounds with `Math.round`, which is `floor(x + 0.5)` — a half
+    /// always rounds toward +∞. Swift's `.rounded()` rounds a half *away from
+    /// zero*, so the two disagreed on every negative half-value.
+    ///
+    /// Oracle (`node` → `posIntegrity.roundMoney`):
+    ///   roundMoney(-10.555) === -10.55   (Swift `.rounded()` gave -10.56)
+    ///   roundMoney(-2.675)  === -2.67
+    ///   roundMoney(-0.005)  === -0       (0 after normalisation)
+    func testRoundMatchesInfraHalfTowardPositiveInfinityOnNegatives() {
+        XCTAssertEqual(POSMoney.round(-10.555), -10.55, accuracy: 0.0001)
+        XCTAssertEqual(POSMoney.round(-2.675), -2.67, accuracy: 0.0001)
+        XCTAssertEqual(POSMoney.round(-1.005), -1.00, accuracy: 0.0001)
+        XCTAssertEqual(POSMoney.round(-0.005), 0.0, accuracy: 0.0001)
+        XCTAssertEqual(POSMoney.round(-0.5), -0.5, accuracy: 0.0001)
+
+        // Positive half-values are unaffected by the change.
+        XCTAssertEqual(POSMoney.round(10.555), 10.56, accuracy: 0.0001)
+        XCTAssertEqual(POSMoney.round(2.675), 2.68, accuracy: 0.0001)
+
+        // Float-representation cases the oracle also pins down.
+        XCTAssertEqual(POSMoney.round(8.165), 8.16, accuracy: 0.0001)
+        XCTAssertEqual(POSMoney.round(33.335), 33.34, accuracy: 0.0001)
+    }
+
+    /// `minorUnits` converted a `Double` to `Int` unguarded. Converting an
+    /// out-of-range `Double` is a hard trap in Swift, so a malformed catalog or
+    /// inventory-unit price crashed the till *while building the checkout
+    /// payload* — verified as `SIGTRAP` before the fix.
+    ///
+    /// An unrepresentable amount yields 0 rather than a fabricated `Int.max`,
+    /// consistent with `round` neutralising an overflowing value. Fail-closed
+    /// either way: the server recomputes from its own catalog and rejects the
+    /// same corrupt value, which the operator can then act on.
+    func testMinorUnitsIsCrashFreeOnOutOfRangeValues() {
+        XCTAssertEqual(POSMoney.minorUnits(1e300), 0)
+        XCTAssertEqual(POSMoney.minorUnits(-1e300), 0)
+        XCTAssertEqual(POSMoney.minorUnits(Double.greatestFiniteMagnitude), 0)
+        XCTAssertEqual(POSMoney.minorUnits(-Double.greatestFiniteMagnitude), 0)
+
+        // Non-finite input stays at zero.
+        XCTAssertEqual(POSMoney.minorUnits(Double.nan), 0)
+        XCTAssertEqual(POSMoney.minorUnits(Double.infinity), 0)
+        XCTAssertEqual(POSMoney.minorUnits(-Double.infinity), 0)
+
+        // Ordinary amounts are unaffected.
+        XCTAssertEqual(POSMoney.minorUnits(19.99), 1999)
+        XCTAssertEqual(POSMoney.minorUnits(0.0), 0)
+        XCTAssertEqual(POSMoney.minorUnits(-19.99), -1999)
+    }
+
+    /// Infra's `moneyMatches` applies `Number.isFinite` to `roundMoney`'s own
+    /// result, so a non-finite amount never matches anything — including
+    /// another non-finite amount. The Swift port rounded first, which
+    /// neutralises NaN to 0 and made `matches(NaN, NaN)` report agreement.
+    func testMatchesRejectsNonFiniteBeforeRounding() {
+        XCTAssertFalse(POSMoney.matches(Double.nan, Double.nan))
+        XCTAssertFalse(POSMoney.matches(Double.infinity, Double.infinity))
+        XCTAssertFalse(POSMoney.matches(Double.nan, 0.0))
+        XCTAssertFalse(POSMoney.matches(0.0, Double.nan))
+        XCTAssertFalse(POSMoney.matches(Double.infinity, 0.0))
+
+        // Finite comparisons are unchanged.
+        XCTAssertTrue(POSMoney.matches(100.0, 100.004))
+        XCTAssertFalse(POSMoney.matches(100.0, 100.01))
+    }
+
+    /// The accumulation that prevents a valid cart being rejected for a
+    /// rounding artifact. Mirrors `transactions.js`
+    /// `subtotal = roundMoney(subtotal + lineTotal)`, verified against the
+    /// oracle for each set below.
+    func testSumMirrorsInfraPerLineAccumulation() {
+        XCTAssertEqual(POSMoney.sum([3.335, 3.335, 3.335]), 10.02, accuracy: 0.0001)
+        XCTAssertEqual(POSMoney.sum([0.005, 0.005, 0.005]), 0.03, accuracy: 0.0001)
+        XCTAssertEqual(POSMoney.sum([19.99, 19.99, 19.99]), 59.97, accuracy: 0.0001)
+        XCTAssertEqual(POSMoney.sum([10.005, 10.005]), 20.02, accuracy: 0.0001)
+
+        // Rounding only the final sum — the behaviour this replaced — yields
+        // 10.01 here, which the server would reject as a subtotal mismatch.
+        let naive = ((3.335 + 3.335 + 3.335) * 100).rounded() / 100.0
+        XCTAssertNotEqual(naive, POSMoney.sum([3.335, 3.335, 3.335]))
+    }
+
+    /// A non-finite amount must never reach the wire as a real number.
+    func testNonFiniteMoneyIsNeutralised() {
+        XCTAssertEqual(POSMoney.round(Double.nan), 0.0)
+        XCTAssertEqual(POSMoney.round(Double.infinity), 0.0)
+        XCTAssertEqual(POSMoney.sum([Double.nan, 10.0]), 10.0, accuracy: 0.0001)
+        XCTAssertFalse(POSMoney.matches(Double.nan, Double.nan))
+    }
+}

@@ -59,8 +59,8 @@ public enum SpeciesTaxonomy: String, CaseIterable, Sendable {
     public var iconName: String {
         switch self {
         case .birds: return "bird.fill"
-        case .cats: return "pawprint.fill"
-        case .dogs: return "pawprint.fill"
+        case .cats: return "cat.fill"
+        case .dogs: return "dog.fill"
         case .falcons: return "wind"
         case .horses: return "figure.equestrian.sports"
         case .other: return "pawprint.fill"

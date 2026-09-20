@@ -126,7 +126,8 @@ public struct InventoryLotsSheet: View {
     }
 
     private var totalRetailValuation: Double {
-        Double(totalAvailableUnits) * item.finalPrice.doubleValue
+        let unitPrice = item.finalPrice.doubleValue > 0 ? item.finalPrice.doubleValue : item.price.doubleValue
+        return Double(totalAvailableUnits) * max(0.0, unitPrice)
     }
 
     private var filteredLots: [PPInventoryLot] {
@@ -1158,6 +1159,7 @@ private struct AddLotSheet: View {
     @State private var costPrice: String = ""
     @State private var receiptCommandId = UUID().uuidString
     @State private var receiptFingerprint = ""
+    @State private var validFromDate: Date = Calendar.current.startOfDay(for: Date())
     @State private var expiryDate: Date = Calendar.current.date(byAdding: .month, value: 6, to: Date()) ?? Date().addingTimeInterval(86400 * 180)
     @State private var supplier: String = ""
     @State private var notes: String = ""
@@ -1184,10 +1186,26 @@ private struct AddLotSheet: View {
     }
 
     private var expiryDateFormatted: String {
+        formattedDate(expiryDate)
+    }
+
+    private func formattedDate(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .none
-        return formatter.string(from: expiryDate)
+        return formatter.string(from: date)
+    }
+
+    private var latestValidFromDate: Date {
+        Calendar.current.startOfDay(for: Date())
+    }
+
+    private var minimumExpiryDate: Date {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let validityStart = calendar.startOfDay(for: validFromDate)
+        let baseline = max(today, validityStart)
+        return calendar.date(byAdding: .day, value: 1, to: baseline) ?? baseline.addingTimeInterval(86_400)
     }
 
     private var unitCostDouble: Double {
@@ -1199,7 +1217,8 @@ private struct AddLotSheet: View {
     }
 
     private var retailPriceDouble: Double {
-        item.price.doubleValue
+        let price = item.price.doubleValue > 0 ? item.price.doubleValue : item.finalPrice.doubleValue
+        return max(0.0, price)
     }
 
     private var projectedMarginPercent: Double? {
@@ -1213,7 +1232,8 @@ private struct AddLotSheet: View {
         quantity > 0 &&
         unitCostDouble.isFinite && unitCostDouble >= 0 &&
         (costPrice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || Double(costPrice.normalizedEnglishDigits.replacingOccurrences(of: ",", with: ".").replacingOccurrences(of: "٫", with: ".")) != nil) &&
-        expiryDate > Date()
+        validFromDate <= Date() &&
+        expiryDate >= minimumExpiryDate
     }
 
     var body: some View {
@@ -1403,7 +1423,7 @@ private struct AddLotSheet: View {
                     .font(AdminType.subheadlineBold)
                     .foregroundColor(AdminSurface.primaryText)
                 Spacer()
-                Text("المخزون الحالي: \(item.wholesalePrice?.intValue ?? 0) وحدة")
+                Text(Language.isRTL() ? "المخزون الحالي: \(item.pos_branchStock(activeBranch: branchId)) وحدة" : "Current Stock: \(item.pos_branchStock(activeBranch: branchId)) units")
                     .font(AdminType.caption)
                     .foregroundColor(AdminSurface.secondaryText)
             }
@@ -1502,7 +1522,40 @@ private struct AddLotSheet: View {
             }
         }
 
-        // Section 3: Shelf-Life Horizon & Expiry Date
+        // Section 3: Validity Start
+        VStack(alignment: .leading, spacing: 8) {
+            Text(Language.get("Inventory_Lot_Valid_From", alter: "Valid From *"))
+                .font(AdminType.subheadlineBold)
+                .foregroundColor(AdminSurface.primaryText)
+
+            HStack {
+                Image(systemName: "calendar.badge.checkmark")
+                    .font(.system(size: 15))
+                    .foregroundColor(AdminSurface.primary)
+                DatePicker(
+                    Language.get("Inventory_Lot_Valid_From", alter: "Valid From *"),
+                    selection: $validFromDate,
+                    in: ...latestValidFromDate,
+                    displayedComponents: .date
+                )
+                .labelsHidden()
+                .datePickerStyle(.compact)
+                .font(AdminType.calloutBold)
+                .accentColor(AdminSurface.primary)
+                Spacer()
+            }
+            .padding(AdminSpacing.md)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+            .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline))
+            .onChange(of: validFromDate) { _, newValue in
+                guard selectedHorizon != .custom, let selectedHorizon else { return }
+                if let recalculatedExpiry = selectedHorizon.calculateDate(from: newValue) {
+                    expiryDate = max(recalculatedExpiry, minimumExpiryDate)
+                }
+            }
+        }
+
+        // Section 4: Shelf-Life Horizon & Expiry Date
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(Language.get("Expiry_Date", alter: "تاريخ انتهاء الصلاحية *"))
@@ -1531,7 +1584,7 @@ private struct AddLotSheet: View {
                                 withAnimation(AdminAnimation.standard) {
                                     isCustomCalendarExpanded = true
                                 }
-                            } else if let newDate = horizon.calculateDate() {
+                            } else if let newDate = horizon.calculateDate(from: validFromDate) {
                                 withAnimation(AdminAnimation.standard) {
                                     expiryDate = newDate
                                     isCustomCalendarExpanded = false
@@ -1595,7 +1648,7 @@ private struct AddLotSheet: View {
                     DatePicker(
                         "",
                         selection: $expiryDate,
-                        in: Date()...,
+                        in: minimumExpiryDate...,
                         displayedComponents: .date
                     )
                     .datePickerStyle(.graphical)
@@ -1608,7 +1661,7 @@ private struct AddLotSheet: View {
             }
         }
 
-        // Section 4: Cost Valuation & Supplier
+        // Section 5: Cost Valuation & Supplier
         VStack(alignment: .leading, spacing: AdminSpacing.md) {
             // Cost Price
             VStack(alignment: .leading, spacing: 6) {
@@ -1748,17 +1801,18 @@ private struct AddLotSheet: View {
 
     private func submitLot() {
         guard canSubmit, !isSubmitting else { return }
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         isSubmitting = true
         errorMessage = nil
 
         let cost = costPrice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : Optional(unitCostDouble)
-        let fingerprint = [branchId, item.accessoryID, lotNumber, String(quantity), cost.map { String($0) } ?? "unknown", String(expiryDate.timeIntervalSince1970), supplier, notes].joined(separator: "\u{0}")
+        let fingerprint = [branchId, item.accessoryID, lotNumber, String(quantity), cost.map { String($0) } ?? "unknown", String(validFromDate.timeIntervalSince1970), String(expiryDate.timeIntervalSince1970), supplier, notes].joined(separator: "\u{0}")
         if receiptFingerprint != fingerprint {
             receiptCommandId = UUID().uuidString
             receiptFingerprint = fingerprint
         }
 
-        Task {
+        Task { @MainActor in
             do {
                 _ = try await PPInventoryLotService.shared.createLot(
                     branchId: branchId,
@@ -1766,17 +1820,13 @@ private struct AddLotSheet: View {
                     lotNumber: lotNumber,
                     initialQuantity: quantity,
                     costPrice: cost,
+                    validFrom: validFromDate,
                     expiryDate: expiryDate,
                     supplier: supplier,
                     notes: notes,
                     commandId: receiptCommandId
                 )
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-                PPAlertHelper.showSuccess(
-                    in: nil,
-                    title: Language.get("Lot_Created_Success", alter: "تم إنشاء التشغيلة بنجاح"),
-                    subtitle: Language.get("Lot_Created_Subtitle", alter: "تم توثيق التشغيلة وتحديث رصيد FEFO بنجاح.")
-                )
                 isSubmitting = false
                 onAdded()
                 dismiss()
@@ -1785,11 +1835,6 @@ private struct AddLotSheet: View {
                 let errorMsg = error.localizedDescription
                 self.errorMessage = errorMsg
                 self.isSubmitting = false
-                await PPAlertHelper.showError(
-                    in: nil,
-                    title: Language.get("Error", alter: "خطأ"),
-                    subtitle: errorMsg
-                )
             }
         }
     }
@@ -1816,14 +1861,13 @@ private enum ExpiryHorizon: String, CaseIterable, Identifiable {
         }
     }
 
-    func calculateDate() -> Date? {
+    func calculateDate(from startDate: Date = Date()) -> Date? {
         let cal = Calendar.current
-        let now = Date()
         switch self {
-        case .threeMonths: return cal.date(byAdding: .month, value: 3, to: now)
-        case .sixMonths: return cal.date(byAdding: .month, value: 6, to: now)
-        case .oneYear: return cal.date(byAdding: .year, value: 1, to: now)
-        case .twoYears: return cal.date(byAdding: .year, value: 2, to: now)
+        case .threeMonths: return cal.date(byAdding: .month, value: 3, to: startDate)
+        case .sixMonths: return cal.date(byAdding: .month, value: 6, to: startDate)
+        case .oneYear: return cal.date(byAdding: .year, value: 1, to: startDate)
+        case .twoYears: return cal.date(byAdding: .year, value: 2, to: startDate)
         case .custom: return nil
         }
     }

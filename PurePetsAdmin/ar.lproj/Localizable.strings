@@ -7632,7 +7632,22 @@
 "AdminPOS_Transactions_Header" = "العمليات";
 "AdminPOS_Refunds_Header" = "المرتجعات";
 "AdminPOS_NoRefunds" = "لا يوجد";
-"AdminPOS_OpenLedger_Short" = "عرض سجل الفواتير";
+"AdminPOS_OpenLedger_Short" = "سجل الفواتير";
+"AdminPOS_SectionEyebrow" = "نظام نقاط البيع";
+"AdminPOS_Status_Unauthorized" = "غير مصرح بالبيع";
+"AdminPOS_Status_AuditMode" = "وضع التدقيق";
+"AdminPOS_Status_Syncing" = "مزامنة...";
+"AdminPOS_RefreshTelemetry" = "تحديث بيانات نقطة البيع";
+"AdminPOS_TodaySales_Title" = "إجمالي مبيعات اليوم";
+"AdminPOS_Metric_Receipts" = "الفواتير";
+"AdminPOS_Metric_AOV" = "متوسط الفاتورة";
+"AdminPOS_Metric_AOV_Short" = "متوسط";
+"AdminPOS_Metric_Refunds" = "المرتجعات";
+"AdminPOS_Tender_Cash" = "نقداً";
+"AdminPOS_Tender_Card" = "شبكة وبطاقة";
+"AdminPOS_AwaitingFirstSale" = "بانتظار أول عملية بيع اليوم لبدء تحليل المقبوضات";
+"AdminPOS_ViewOnly_Notice" = "نقطة البيع (للمعاينة فقط)";
+"AdminPOS_TerminalSubtitle_Short" = "مسح فوري • إضافة للسلة • دفع مباشر";
 "Stock_Section_Title" = "قطاع المخزون والمنتجات";
 "Stock_Section_Subtitle" = "كتالوج المنتجات، الأغذية، والحيوانات الحية مع تتبع الكميات";
 "Stock_Alerts_Count_Format" = "%d تنبيهات بالمخزون";
@@ -9623,3 +9638,15 @@
 "POS_SlideToSale_A11yHint" = "انقر مرتين لإتمام عملية البيع";
 
 "POS_CheckoutCommandConflict" = "توجد عملية بيع مسجلة بنفس رقم الأمر ببيانات مختلفة. راجع سجل المبيعات للتأكد قبل إعادة البيع، ثم أنشئ عملية جديدة.";
+
+/* MARK: - Inventory lot validity */
+"Inventory_Lot_Valid_From" = "صالح من *";
+
+
+/* MARK: - POS VoiceOver labels for icon-only controls */
+"POS_A11y_ClearAmount" = "مسح المبلغ";
+"POS_A11y_ClearSearchField" = "مسح البحث";
+"POS_A11y_DecreaseDiscount" = "تقليل الخصم";
+"POS_A11y_IncreaseDiscount" = "زيادة الخصم";
+"POS_A11y_OpenNumberPad" = "فتح لوحة الأرقام";
+"POS_A11y_CopyTrace" = "نسخ معرّف التتبع";

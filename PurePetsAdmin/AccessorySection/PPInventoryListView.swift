@@ -2278,7 +2278,6 @@ struct PPInventoryListView: View {
                         .frame(maxWidth: .infinity)
 
                     PPAdminBranchSwitcherBar(style: .compact)
-                        .padding(.horizontal, AdminSpacing.screenMargin)
                         .padding(.vertical, 4)
                         .frame(maxWidth: isRegular ? 980 : .infinity)
                         .frame(maxWidth: .infinity)

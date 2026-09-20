@@ -563,8 +563,27 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         _nameEn = PPAccessoryStringValueForKeys(dict, (@[@"nameEn", @"name_en", @"titleEn", @"title_en"]));
         _revision = MAX(0, PPAccessoryInteger(dict[@"revision"]));
         _sku = PPAccessoryStringValueForKeys(dict, (@[@"sku", @"SKU", @"itemSku"]));
-        _barcode = PPAccessoryStringValueForKeys(dict, (@[@"barcode", @"Barcode", @"barCode", @"upc", @"ean"]));
-        _costPrice = PPAccessoryNumberValueForKeys(dict, (@[@"costPrice", @"cost_price", @"cost"]));
+        NSArray<NSString *> *costKeys = @[
+            @"costPrice", @"cost_price", @"cost",
+            @"buyPrice", @"buy_price",
+            @"purchasePrice", @"purchase_price",
+            @"initialCostPrice", @"initial_cost_price",
+            @"unitCost", @"unit_cost"
+        ];
+        NSNumber *foundCost = PPAccessoryNumberValueForKeys(dict, costKeys);
+        if (!foundCost) {
+            NSDictionary *pricingDict = [dict[@"pricing"] isKindOfClass:NSDictionary.class] ? dict[@"pricing"] : nil;
+            if (pricingDict) {
+                foundCost = PPAccessoryNumberValueForKeys(pricingDict, @[@"costPrice", @"costPerBaseUnit", @"myCost", @"totalCost", @"cost"]);
+            }
+        }
+        if (!foundCost) {
+            NSDictionary *stockPurchaseDict = [dict[@"stockPurchase"] isKindOfClass:NSDictionary.class] ? dict[@"stockPurchase"] : nil;
+            if (stockPurchaseDict) {
+                foundCost = PPAccessoryNumberValueForKeys(stockPurchaseDict, @[@"costPrice", @"unitCost", @"initialCostPrice", @"cost"]);
+            }
+        }
+        _costPrice = foundCost;
         _desc = PPAccessoryStringValueForKeys(dict, (@[@"desc", @"description"]));
         _descEn = PPAccessoryStringValueForKeys(dict, (@[@"descEn", @"descriptionEn", @"desc_en", @"description_en"]));
 
@@ -751,7 +770,7 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         _petSubCategoryIDs = PPAccessoryIntegerArray(dict[@"petSubCategoryIDs"]);
         _isAllCategories = PPAccessoryBool(dict[@"isAllCategories"]);
         _isAllSubCategories = PPAccessoryBool(dict[@"isAllSubCategories"]);
-        _AccessoryCategoryID = [dict[@"AccessoryCategoryID"] isKindOfClass:NSString.class] ? dict[@"AccessoryCategoryID"] : nil;
+        _AccessoryCategoryID = PPAccessoryStringValueForKeys(dict, (@[@"AccessoryCategoryID", @"accessoryCategoryID", @"accessoryCategory", @"AccessoryCategory"]));
         _relatedAccessories = PPAccessoryStringArray(dict[@"relatedAccessories"]);
         _cityID = PPAccessoryInteger(dict[@"cityID"]);
         

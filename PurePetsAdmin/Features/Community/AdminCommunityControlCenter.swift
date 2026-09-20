@@ -2554,8 +2554,8 @@ private struct AdminCommunityAdoptionWorkspace: View {
 
     private let speciesOptions: [(id: String, title: String, symbol: String)] = [
         ("", "الكل", "pawprint.fill"),
-        ("dog", "كلاب", "pawprint"),
-        ("cat", "قطط", "pawprint"),
+        ("dog", "كلاب", "dog.fill"),
+        ("cat", "قطط", "cat.fill"),
         ("bird", "طيور", "bird.fill"),
         ("other", "أخرى", "ellipsis.circle.fill")
     ]

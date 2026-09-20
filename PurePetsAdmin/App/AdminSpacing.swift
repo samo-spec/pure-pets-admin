@@ -42,7 +42,8 @@ enum AdminRadius {
 enum AdminTouchTarget {
     static let minimum: CGFloat = 44
     static let comfortable: CGFloat = 48
-    static let expanded: CGFloat = 56
+    static let inputField: CGFloat = 48
+    static let expanded: CGFloat = 48
 }
 
 // MARK: - Animation

@@ -72,6 +72,36 @@ struct AdminCategoryItem: Identifiable, Equatable, Sendable {
         return palette[idx]
     }
 
+    var resolvedIconName: String {
+        let lower = "\(nameAr) \(nameEn) \(localizedName)".lowercased()
+        if lower.contains("كلب") || lower.contains("كلاب") || lower.contains("dog") || numericID == 6 {
+            return "dog.fill"
+        }
+        if lower.contains("قط") || lower.contains("قطط") || lower.contains("cat") || numericID == 5 {
+            return "cat.fill"
+        }
+        if lower.contains("طير") || lower.contains("طيور") || lower.contains("bird") || numericID == 1 || numericID == 11 {
+            return "bird.fill"
+        }
+        if lower.contains("سمك") || lower.contains("أسماك") || lower.contains("fish") || numericID == 7 {
+            return "fish.fill"
+        }
+        if lower.contains("أرنب") || lower.contains("ارنب") || lower.contains("rabbit") || lower.contains("hare") {
+            return "hare.fill"
+        }
+        if lower.contains("سلحفاة") || lower.contains("turtle") || lower.contains("tortoise") {
+            return "tortoise.fill"
+        }
+        if lower.contains("خيل") || lower.contains("حصان") || lower.contains("horse") || numericID == 3 {
+            return "figure.equestrian.sports"
+        }
+        // Fallback: preserve currently configured SF Symbol if valid
+        if !iconName.isEmpty, UIImage(systemName: iconName) != nil {
+            return iconName
+        }
+        return "pawprint.fill"
+    }
+
     static func fromSnapshot(_ doc: DocumentSnapshot) -> AdminCategoryItem? {
         guard let data = doc.data() else { return nil }
         return fromDictionary(data, documentID: doc.documentID)
@@ -1402,7 +1432,7 @@ struct AdminCategoryCardView: View {
                             .frame(width: 46, height: 46)
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         } else {
-                            Image(systemName: category.iconName.isEmpty ? "pawprint.fill" : category.iconName)
+                            Image(systemName: category.resolvedIconName)
                                 .font(.system(size: 26, weight: .semibold))
                                 .foregroundColor(category.accentColor)
                                 .rotationEffect(.degrees(category.professionalAngle))
@@ -1646,7 +1676,7 @@ struct AdminCategoryTreeBranch: View {
                 }
                 .buttonStyle(.plain)
 
-                Image(systemName: category.iconName.isEmpty ? "pawprint.fill" : category.iconName)
+                Image(systemName: category.resolvedIconName)
                     .font(.system(size: 15, weight: .bold))
                     .foregroundColor(category.accentColor)
 
@@ -1864,8 +1894,8 @@ struct AdminCategoryStudioView: View {
     }
 
     private let popularGlyphs: [String] = [
-        "pawprint.fill", "bird.fill", "hare.fill", "tortoise.fill", "fish.fill",
-        "ladybug.fill", "ant.fill", "crown.fill", "star.fill", "heart.fill"
+        "dog.fill", "cat.fill", "bird.fill", "fish.fill", "hare.fill", "tortoise.fill",
+        "pawprint.fill", "ladybug.fill", "ant.fill", "crown.fill", "star.fill", "heart.fill"
     ]
 
     init(category: AdminCategoryItem, viewModel: AdminCategoriesViewModel, onDismiss: @escaping () -> Void) {
@@ -1877,7 +1907,7 @@ struct AdminCategoryStudioView: View {
         _draftEn = State(initialValue: category.nameEn)
         _draftNumericID = State(initialValue: category.numericID)
         _draftSortingKey = State(initialValue: category.sortingKey)
-        _draftIconName = State(initialValue: category.iconName.isEmpty ? "pawprint.fill" : category.iconName)
+        _draftIconName = State(initialValue: category.iconName.isEmpty ? category.resolvedIconName : category.iconName)
         _draftImageUrl = State(initialValue: category.imageUrl)
         _draftLighten = State(initialValue: category.lightenAmount)
         _draftAngle = State(initialValue: category.professionalAngle)

@@ -133,7 +133,7 @@ public struct AdminPetsHotelHubView: View {
             AdminPetsHotelCheckInSheet(reservation: res, viewModel: viewModel)
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
-        .sheet(item: $viewModel.checkOutModalStay) { stay in
+        .fullScreenCover(item: $viewModel.checkOutModalStay) { stay in
             AdminPetsHotelCheckOutSheet(stay: stay, viewModel: viewModel)
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }

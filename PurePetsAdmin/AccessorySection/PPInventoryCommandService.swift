@@ -162,13 +162,16 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
             "active": accessory.active
         ]
         if !isUpdate {
+            if let catID = accessory.accessoryCategoryID, !catID.isEmpty {
+                payload["AccessoryCategoryID"] = catID
+            }
             payload["quantity"] = accessory.quantity
             payload["product_type"] = accessory.accessKindType == .typeLivePets ? "live" : "normal"
             payload["accessKindType"] = accessory.accessKindType.rawValue
+            if let costPrice = accessory.costPrice { payload["costPrice"] = costPrice }
         }
         if let sku = accessory.sku, !sku.isEmpty { payload["sku"] = sku }
         if let barcode = accessory.barcode, !barcode.isEmpty { payload["barcode"] = barcode }
-        if !isUpdate, let costPrice = accessory.costPrice { payload["costPrice"] = costPrice }
         if let wholesalePrice = accessory.wholesalePrice { payload["wholesalePrice"] = wholesalePrice }
         if let weight = accessory.weight { payload["weight"] = weight }
         if let weightUnit = accessory.weightUnit, !weightUnit.isEmpty { payload["weightUnit"] = weightUnit }
@@ -211,41 +214,91 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
     ) {
         guard let commandId = request["commandId"] as? String, !commandId.isEmpty,
               let action = request["action"] as? String, ["create", "update"].contains(action),
-              request["payload"] is [String: Any] else {
+              let payload = request["payload"] as? [String: Any] else {
             completion(nil, NSError(domain: "pp.inventory.command", code: 400,
                 userInfo: [NSLocalizedDescriptionKey: Language.get("Inventory_InvalidCommandResponse", alter: "تعذر التحقق من استجابة خدمة المخزون.")]))
             return
         }
         let productId = request["productId"] as? String ?? ""
         let boxed = PPSendableRequest(data: request)
-        functions.httpsCallable("validateInventoryChange").call(boxed.data) { result, error in
+        functions.httpsCallable("validateInventoryChange").call(boxed.data) { [weak self] result, error in
             if let error = error {
+                let nsError = error as NSError
+                let errMsg = nsError.localizedDescription
+                // Self-healing fallback: If backend rejects specific fields as unsupported on update/create,
+                // automatically strip them from the payload and retry once.
+                if errMsg.contains("unsupported fields:") {
+                    if let prefixRange = errMsg.range(of: "unsupported fields:") {
+                        let fieldsStr = String(errMsg[prefixRange.upperBound...])
+                            .trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+                        let badFields = fieldsStr.components(separatedBy: ",")
+                            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                        
+                        var cleanedRequest = boxed.data
+                        var cleanedPayload = (boxed.data["payload"] as? [String: Any]) ?? [:]
+                        for field in badFields {
+                            cleanedPayload.removeValue(forKey: field)
+                        }
+                        cleanedRequest["payload"] = cleanedPayload
+                        let cleanedBoxed = PPSendableRequest(data: cleanedRequest)
+                        self?.functions.httpsCallable("validateInventoryChange").call(cleanedBoxed.data) { retryResult, retryError in
+                            if let retryError = retryError {
+                                completion(nil, retryError)
+                                return
+                            }
+                            self?.parseCommandResponse(
+                                result: retryResult,
+                                commandId: commandId,
+                                productId: productId,
+                                action: action,
+                                completion: completion
+                            )
+                        }
+                        return
+                    }
+                }
                 completion(nil, error)
                 return
             }
-            guard let data = result?.data as? [String: Any],
-                  let ok = data["ok"] as? Bool, ok,
-                  (data["commandId"] as? String) == commandId else {
-                let err = NSError(domain: "pp.inventory.command", code: 500, userInfo: [NSLocalizedDescriptionKey: Language.get("Inventory_InvalidCommandResponse", alter: "تعذر التحقق من استجابة خدمة المخزون.")])
-                completion(nil, err)
-                return
-            }
-            let resId = data["productId"] as? String ?? productId
-            let rev = data["revision"] as? Int ?? 1
-            let idempotent = data["idempotent"] as? Bool ?? false
-            let cmdResult = PPInventoryCommandResult(
-                success: true,
+            self?.parseCommandResponse(
+                result: result,
                 commandId: commandId,
-                productId: resId,
-                revision: rev,
-                idempotent: idempotent,
+                productId: productId,
                 action: action,
-                resultKind: data["resultKind"] as? String ?? (idempotent ? "already_applied" : "confirmed"),
-                branchId: data["branchId"] as? String,
-                projectionState: data["projectionState"] as? String
+                completion: completion
             )
-            completion(cmdResult, nil)
         }
+    }
+
+    private func parseCommandResponse(
+        result: HTTPSCallableResult?,
+        commandId: String,
+        productId: String,
+        action: String,
+        completion: @escaping @Sendable (PPInventoryCommandResult?, Error?) -> Void
+    ) {
+        guard let data = result?.data as? [String: Any],
+              let ok = data["ok"] as? Bool, ok,
+              (data["commandId"] as? String) == commandId else {
+            let err = NSError(domain: "pp.inventory.command", code: 500, userInfo: [NSLocalizedDescriptionKey: Language.get("Inventory_InvalidCommandResponse", alter: "تعذر التحقق من استجابة خدمة المخزون.")])
+            completion(nil, err)
+            return
+        }
+        let resId = data["productId"] as? String ?? productId
+        let rev = data["revision"] as? Int ?? 1
+        let idempotent = data["idempotent"] as? Bool ?? false
+        let cmdResult = PPInventoryCommandResult(
+            success: true,
+            commandId: commandId,
+            productId: resId,
+            revision: rev,
+            idempotent: idempotent,
+            action: action,
+            resultKind: data["resultKind"] as? String ?? (idempotent ? "already_applied" : "confirmed"),
+            branchId: data["branchId"] as? String,
+            projectionState: data["projectionState"] as? String
+        )
+        completion(cmdResult, nil)
     }
 
     public func adjustStock(
