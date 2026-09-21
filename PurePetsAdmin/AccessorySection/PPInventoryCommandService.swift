@@ -161,6 +161,12 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
             "showInAppMarket": accessory.showInAppMarket,
             "active": accessory.active
         ]
+        // A variant member's public visibility is family-owned and governed
+        // exclusively by upsertProductVariantFamily. Sending showInAppMarket on
+        // catalog update is rejected by the backend to prevent competing writers.
+        if isUpdate, let familyId = accessory.productFamilyId?.trimmingCharacters(in: .whitespacesAndNewlines), !familyId.isEmpty {
+            payload.removeValue(forKey: "showInAppMarket")
+        }
         // Image metadata (width/height per asset) was previously dropped here:
         // only the URL array was sent, so the server never received dimensions
         // and a client could not rely on them coming back. `imageMeta` is
@@ -182,6 +188,8 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
             payload["quantity"] = accessory.quantity
             payload["product_type"] = accessory.accessKindType == .typeLivePets ? "live" : "normal"
             payload["accessKindType"] = accessory.accessKindType.rawValue
+        } else if accessory.accessKindType != .typeLivePets {
+            payload["quantity"] = accessory.quantity
         }
         // Cost is deliberately **not** sent for live pets.
         //
@@ -250,9 +258,17 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
         request: [String: Any],
         completion: @escaping @Sendable (PPInventoryCommandResult?, Error?) -> Void
     ) {
+        executeProductSave(request: request, retryOnStaleRevision: true, completion: completion)
+    }
+
+    @nonobjc public func executeProductSave(
+        request: [String: Any],
+        retryOnStaleRevision: Bool,
+        completion: @escaping @Sendable (PPInventoryCommandResult?, Error?) -> Void
+    ) {
         guard let commandId = request["commandId"] as? String, !commandId.isEmpty,
               let action = request["action"] as? String, ["create", "update"].contains(action),
-              let payload = request["payload"] as? [String: Any] else {
+              request["payload"] as? [String: Any] != nil else {
             completion(nil, NSError(domain: "pp.inventory.command", code: 400,
                 userInfo: [NSLocalizedDescriptionKey: Language.get("Inventory_InvalidCommandResponse", alter: "تعذر التحقق من استجابة خدمة المخزون.")]))
             return
@@ -260,30 +276,29 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
         let productId = request["productId"] as? String ?? ""
         let boxed = PPSendableRequest(data: request)
         functions.httpsCallable("validateInventoryChange").call(boxed.data) { [weak self] result, error in
+            guard let self = self else {
+                completion(nil, error)
+                return
+            }
             if let error = error {
                 // Fail closed on an unsupported-field rejection.
-                //
-                // This previously self-healed: it matched the *localized*
-                // `localizedDescription` for "unsupported fields:", stripped
-                // those top-level payload keys, and retried once with the SAME
-                // commandId. Because the retry then flowed through the normal
-                // success path, the editor reported "saved" for a product whose
-                // rejected fields never reached Firestore — a silent data-loss
-                // path that also depended on server message wording and on the
-                // device locale.
-                //
-                // A rejected field now surfaces as an explicit failure naming
-                // the fields, read from the server's structured details rather
-                // than from message text. The operator keeps their draft and can
-                // act; nothing is discarded on their behalf.
                 if let rejection = PPInventoryCommandService.unsupportedFieldRejection(from: error) {
                     completion(nil, rejection)
+                    return
+                }
+                // If this is a stale revision conflict, retry once with the current authoritative revision
+                if retryOnStaleRevision, let stale = PPInventoryCommandService.staleRevision(from: error) {
+                    var retriedRequest = boxed.data
+                    retriedRequest["expectedRevision"] = stale.current
+                    let freshCommandId = self.generateCommandId(action: action, targetId: productId.isEmpty ? "new" : productId)
+                    retriedRequest["commandId"] = freshCommandId
+                    self.executeProductSave(request: retriedRequest, retryOnStaleRevision: false, completion: completion)
                     return
                 }
                 completion(nil, error)
                 return
             }
-            self?.parseCommandResponse(
+            self.parseCommandResponse(
                 result: result,
                 commandId: commandId,
                 productId: productId,
@@ -297,6 +312,60 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
     @objc public static let errorDomain = "pp.inventory.command"
     /// Raised when the backend rejected one or more payload fields outright.
     @objc public static let unsupportedFieldsErrorCode = 422
+
+    /// Recognizes optimistic concurrency stale revision conflicts from the backend.
+    /// Returns (expected, current) revision if the error is a STALE_REVISION conflict.
+    @nonobjc public static func staleRevision(from error: Error) -> (expected: Int, current: Int)? {
+        let nsError = error as NSError
+        let details = (nsError.userInfo["details"] as? [String: Any])
+            ?? (nsError.userInfo["FIRFunctionsErrorDetailsKey"] as? [String: Any])
+            ?? [:]
+
+        var current: Int? = nil
+        var expected: Int? = nil
+
+        if (details["domainCode"] as? String) == "STALE_REVISION" {
+            if let cur = details["currentRevision"] as? Int {
+                current = cur
+            } else if let curNum = details["currentRevision"] as? NSNumber {
+                current = curNum.intValue
+            }
+            if let exp = details["expectedRevision"] as? Int {
+                expected = exp
+            } else if let expNum = details["expectedRevision"] as? NSNumber {
+                expected = expNum.intValue
+            }
+        }
+
+        if current == nil {
+            let candidates = [
+                nsError.localizedDescription,
+                nsError.userInfo[NSLocalizedDescriptionKey] as? String ?? "",
+                nsError.description
+            ]
+            let pattern = "Expected\\s+(\\d+),\\s*current\\s+is\\s+(\\d+)"
+            if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) {
+                for text in candidates where !text.isEmpty {
+                    let nsRange = NSRange(text.startIndex..<text.endIndex, in: text)
+                    if let match = regex.firstMatch(in: text, options: [], range: nsRange),
+                       match.numberOfRanges >= 3 {
+                        if let r1 = Range(match.range(at: 1), in: text), let expVal = Int(text[r1]) {
+                            expected = expVal
+                        }
+                        if let r2 = Range(match.range(at: 2), in: text), let curVal = Int(text[r2]) {
+                            current = curVal
+                            break
+                        }
+                    }
+                }
+            }
+        }
+
+        if let current = current {
+            return (expected ?? 0, current)
+        }
+        return nil
+    }
 
     /// Recognizes the backend's unsupported-field rejection.
     ///

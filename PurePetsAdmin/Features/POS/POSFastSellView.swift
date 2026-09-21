@@ -242,6 +242,120 @@ extension PetAccessory {
         let base = (discounted > 0) ? discounted : price.doubleValue
         return PPBranchInventoryService.shared.effectiveSellingPrice(for: accessoryID, fallbackPrice: base)
     }
+
+    /// Resolved variant color model from `variantColorDictionary`.
+    var pos_variantColor: PPAccessoryVariantColor? {
+        guard let dict = variantColorDictionary else { return nil }
+        return PPAccessoryVariantColor(dictionary: dict)
+    }
+
+    /// Color display name in the active language.
+    var pos_variantColorName: String {
+        pos_variantColor?.localizedName ?? ""
+    }
+
+    /// Matches query against name, nameEn, accessoryID, sku, barcode, and variant color attributes (with Arabic normalization).
+    func pos_matchesSearch(_ rawQuery: String) -> Bool {
+        let q = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return true }
+        let normQ = POSFastSellViewNormalization.normalize(q)
+        guard !normQ.isEmpty else { return true }
+
+        if POSFastSellViewNormalization.normalize(name).contains(normQ) { return true }
+        if let nameEn = nameEn, POSFastSellViewNormalization.normalize(nameEn).contains(normQ) { return true }
+        if accessoryID.lowercased().contains(normQ) { return true }
+        if let sku = sku, sku.lowercased().contains(normQ) { return true }
+        if let barcode = barcode, barcode.lowercased().contains(normQ) { return true }
+
+        if let color = pos_variantColor {
+            if POSFastSellViewNormalization.normalize(color.nameAr).contains(normQ) { return true }
+            if POSFastSellViewNormalization.normalize(color.nameEn).contains(normQ) { return true }
+            if color.identifier.lowercased().contains(normQ) { return true }
+        }
+        return false
+    }
+}
+
+// MARK: - Arabic Search Normalization
+
+enum POSFastSellViewNormalization {
+    static func normalize(_ text: String) -> String {
+        var s = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        s = s.replacingOccurrences(of: "أ", with: "ا")
+             .replacingOccurrences(of: "إ", with: "ا")
+             .replacingOccurrences(of: "آ", with: "ا")
+             .replacingOccurrences(of: "ة", with: "ه")
+             .replacingOccurrences(of: "ى", with: "ي")
+        return s
+    }
+}
+
+// MARK: - Catalog Display Item (Family / Single)
+
+enum POSCatalogDisplayItem: Identifiable {
+    case single(PetAccessory)
+    case family(familyId: String, members: [PetAccessory], primary: PetAccessory)
+
+    var id: String {
+        switch self {
+        case .single(let item): return "item:\(item.accessoryID)"
+        case .family(let familyId, _, _): return "family:\(familyId)"
+        }
+    }
+
+    var primaryAccessory: PetAccessory {
+        switch self {
+        case .single(let item): return item
+        case .family(_, _, let primary): return primary
+        }
+    }
+
+    var isFamily: Bool {
+        switch self {
+        case .single: return false
+        case .family: return true
+        }
+    }
+
+    var members: [PetAccessory] {
+        switch self {
+        case .single(let item): return [item]
+        case .family(_, let members, _): return members
+        }
+    }
+
+    @MainActor
+    var totalBranchStock: Int {
+        switch self {
+        case .single(let item):
+            return item.pos_branchStock()
+        case .family(_, let members, _):
+            return members.reduce(0) { $0 + $1.pos_branchStock() }
+        }
+    }
+
+    @MainActor
+    var isSellable: Bool {
+        switch self {
+        case .single(let item):
+            return item.pos_isSellable
+        case .family(_, let members, _):
+            return members.contains { $0.pos_isSellable }
+        }
+    }
+
+    /// Unique color palette of the family members that have color attributes.
+    var variantColors: [PPAccessoryVariantColor] {
+        var seen = Set<String>()
+        var list: [PPAccessoryVariantColor] = []
+        for m in members {
+            if let color = m.pos_variantColor, !seen.contains(color.identifier) {
+                seen.insert(color.identifier)
+                list.append(color)
+            }
+        }
+        return list
+    }
 }
 
 // MARK: - Catalog Filter Rail
@@ -1048,6 +1162,33 @@ final class POSUnitPickerState: ObservableObject {
     }
 }
 
+// MARK: - POS Color Variant Picker State
+
+@MainActor
+final class POSVariantPickerState: ObservableObject {
+    @Published var familyId: String?
+    @Published var members: [PetAccessory] = []
+    @Published var primaryAccessory: PetAccessory?
+
+    var isPresented: Bool { familyId != nil && !members.isEmpty }
+
+    func open(familyId: String, members: [PetAccessory], primary: PetAccessory?) {
+        self.familyId = familyId
+        self.members = members.sorted { lhs, rhs in
+            lhs.variantSortOrder == rhs.variantSortOrder
+                ? lhs.accessoryID < rhs.accessoryID
+                : lhs.variantSortOrder < rhs.variantSortOrder
+        }
+        self.primaryAccessory = primary ?? members.first(where: { $0.isDefaultVariant }) ?? members.first
+    }
+
+    func close() {
+        familyId = nil
+        members = []
+        primaryAccessory = nil
+    }
+}
+
 // MARK: - POS FastSell ViewModel
 
 @MainActor
@@ -1321,30 +1462,105 @@ final class POSFastSellViewModel: ObservableObject {
 
     var searchResults: [PetAccessory] {
         guard !searchText.isEmpty else { return allAccessories }
-        let q = searchText.lowercased()
-        // `allAccessories` is already stored in the canonical
-        // createdAt-desc / accessoryID-desc order by `startListening`, and
-        // `filter` preserves order, so re-sorting here was pure duplicate work
-        // on every body evaluation — and the blanket `objectWillChange` from
-        // the branch-inventory subscription makes that every inventory tick.
-        return allAccessories.filter {
-            $0.name.lowercased().contains(q) ||
-            $0.accessoryID.lowercased().contains(q) ||
-            ($0.sku?.lowercased().contains(q) ?? false) ||
-            ($0.barcode?.lowercased().contains(q) ?? false)
-        }
+        let q = searchText
+        return allAccessories.filter { $0.pos_matchesSearch(q) }
     }
 
     /// Sellable, type-filtered catalog for the footer quick-add grid (ordered newest first).
     var catalogResults: [PetAccessory] {
-        let q = catalogSearchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let q = catalogSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         return allAccessories.filter { accessory in
             guard accessory.pos_isSellable, catalogFilter.matches(accessory) else { return false }
-            guard !q.isEmpty else { return true }
-            return accessory.name.lowercased().contains(q) ||
-                accessory.accessoryID.lowercased().contains(q) ||
-                (accessory.sku?.lowercased().contains(q) ?? false) ||
-                (accessory.barcode?.lowercased().contains(q) ?? false)
+            return accessory.pos_matchesSearch(q)
+        }
+    }
+
+    /// Grouped catalog display items (families and singles) for the quick-add grid.
+    var catalogDisplayItems: [POSCatalogDisplayItem] {
+        let q = catalogSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let matchingLens = allAccessories.filter { catalogFilter.matches($0) }
+
+        var familyOrder: [String] = []
+        var families: [String: [PetAccessory]] = [:]
+        var singles: [PetAccessory] = []
+
+        for item in matchingLens {
+            let familyId = (item.productFamilyId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if familyId.isEmpty {
+                singles.append(item)
+            } else {
+                if families[familyId] == nil {
+                    familyOrder.append(familyId)
+                    families[familyId] = []
+                }
+                families[familyId]?.append(item)
+            }
+        }
+
+        var result: [POSCatalogDisplayItem] = []
+
+        // Process families
+        for familyId in familyOrder {
+            guard let allMembers = families[familyId], !allMembers.isEmpty else { continue }
+            let sortedMembers = allMembers.sorted { lhs, rhs in
+                lhs.variantSortOrder == rhs.variantSortOrder
+                    ? lhs.accessoryID < rhs.accessoryID
+                    : lhs.variantSortOrder < rhs.variantSortOrder
+            }
+            let defaultOrFirst = sortedMembers.first(where: { $0.isDefaultVariant }) ?? sortedMembers[0]
+
+            // Check search match across members
+            guard q.isEmpty || sortedMembers.contains(where: { $0.pos_matchesSearch(q) }) else { continue }
+
+            if sortedMembers.count > 1 {
+                // Multi-variant family: include if at least one member is sellable in this active branch
+                if sortedMembers.contains(where: { $0.pos_isSellable }) {
+                    result.append(.family(familyId: familyId, members: sortedMembers, primary: defaultOrFirst))
+                }
+            } else {
+                if let single = sortedMembers.first, single.pos_isSellable {
+                    result.append(.single(single))
+                }
+            }
+        }
+
+        // Process singles
+        for item in singles {
+            guard item.pos_isSellable else { continue }
+            guard q.isEmpty || item.pos_matchesSearch(q) else { continue }
+            result.append(.single(item))
+        }
+
+        return result
+    }
+
+    func quantityInCart(for item: POSCatalogDisplayItem) -> Int {
+        switch item {
+        case .single(let accessory):
+            return quantityInCart(for: accessory.accessoryID)
+        case .family(_, let members, _):
+            return members.reduce(0) { $0 + quantityInCart(for: $1.accessoryID) }
+        }
+    }
+
+    @MainActor
+    func priceText(for item: POSCatalogDisplayItem, currency: (Double) -> String) -> String {
+        switch item {
+        case .single(let accessory):
+            let price = salesChannel == .wholesale ? accessory.pos_wholesalePrice() : accessory.pos_canonicalUnitPrice
+            return currency(price)
+        case .family(_, let members, let primary):
+            let sellable = members.filter { $0.pos_isSellable }
+            let targetMembers = sellable.isEmpty ? members : sellable
+            let prices = targetMembers.map { salesChannel == .wholesale ? $0.pos_wholesalePrice() : $0.pos_canonicalUnitPrice }
+            guard let minP = prices.min(), let maxP = prices.max() else {
+                let defaultPrice = salesChannel == .wholesale ? primary.pos_wholesalePrice() : primary.pos_canonicalUnitPrice
+                return currency(defaultPrice)
+            }
+            if abs(minP - maxP) < 0.01 {
+                return currency(minP)
+            }
+            return "\(currency(minP)) - \(currency(maxP))"
         }
     }
 
@@ -1736,6 +1952,11 @@ final class POSFastSellViewModel: ObservableObject {
             ])
         }
         invalidateSubmissionCommand()
+    }
+
+    func decrementQuantity(for accessoryID: String) {
+        guard let item = cartItems.first(where: { $0.accessory.accessoryID == accessoryID }) else { return }
+        decreaseQuantity(item)
     }
 
     func updateQuantity(_ item: POSCartItem, newQuantity: Int) {
@@ -2372,6 +2593,7 @@ struct AdminPOSFastSellView: View {
     @FocusState private var isSearchFocused: Bool
     @StateObject private var viewModel = POSFastSellViewModel()
     @StateObject private var unitPicker = POSUnitPickerState()
+    @StateObject private var variantPicker = POSVariantPickerState()
     @ObservedObject private var branchStore = BranchContextStore.shared
     @State private var isBranchPickerVisible = false
     @State private var showsReservedLivePets = false
@@ -2578,6 +2800,12 @@ struct AdminPOSFastSellView: View {
             set: { if !$0 { unitPicker.close() } }
         )) {
             exactAnimalPickerSheet
+        }
+        .sheet(isPresented: Binding(
+            get: { variantPicker.isPresented },
+            set: { if !$0 { variantPicker.close() } }
+        )) {
+            variantPickerSheet
         }
         .sheet(item: Binding(
             get: { viewModel.completedReceipt },
@@ -3337,7 +3565,7 @@ struct AdminPOSFastSellView: View {
 
     @ViewBuilder
     private var catalogGrid: some View {
-        let items = viewModel.catalogResults
+        let items = viewModel.catalogDisplayItems
         if items.isEmpty {
             VStack(spacing: AdminSpacing.xs) {
                 Image(systemName: "tray")
@@ -3358,13 +3586,13 @@ struct AdminPOSFastSellView: View {
                     columns: catalogGridColumns,
                     spacing: 8
                 ) {
-                    ForEach(items, id: \.accessoryID) { accessory in
+                    ForEach(items) { item in
                         POSCatalogTile(
-                            accessory: accessory,
-                            inCart: viewModel.quantityInCart(for: accessory.accessoryID),
+                            item: item,
+                            inCart: viewModel.quantityInCart(for: item),
                             salesChannel: viewModel.salesChannel,
                             currency: { formatCurrency($0) },
-                            onTap: { rect in handleCatalogTap(accessory, from: rect) }
+                            onTap: { rect in handleCatalogItemTap(item, from: rect) }
                         )
                     }
                 }
@@ -3396,6 +3624,19 @@ struct AdminPOSFastSellView: View {
     }
 
     // MARK: - Interaction
+
+    private func handleCatalogItemTap(_ item: POSCatalogDisplayItem, from rect: CGRect) {
+        dismissKeyboard()
+        guard !viewModel.isCheckoutBusy else { return }
+
+        switch item {
+        case .single(let accessory):
+            handleCatalogTap(accessory, from: rect)
+        case .family(let familyId, let members, let primary):
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            variantPicker.open(familyId: familyId, members: members, primary: primary)
+        }
+    }
 
     private func handleCatalogTap(_ accessory: PetAccessory, from rect: CGRect) {
         dismissKeyboard()
@@ -4859,9 +5100,15 @@ private struct POSCustomCashSheet: View {
                             } label: {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(accessory.name)
-                                            .font(AdminType.calloutBold)
-                                            .foregroundColor(AdminSurface.primaryText)
+                                        HStack(spacing: 6) {
+                                            Text(accessory.name)
+                                                .font(AdminType.calloutBold)
+                                                .foregroundColor(AdminSurface.primaryText)
+
+                                            if let color = accessory.pos_variantColor {
+                                                searchResultColorBadge(for: color)
+                                            }
+                                        }
                                         let branchStock = accessory.pos_branchStock()
                                         Text(stockLabel(for: accessory))
                                             .font(AdminType.caption2)
@@ -4901,6 +5148,24 @@ private struct POSCustomCashSheet: View {
         }
     }
 
+    @ViewBuilder
+    private func searchResultColorBadge(for color: PPAccessoryVariantColor) -> some View {
+        HStack(spacing: 3) {
+            Circle()
+                .fill(Color(uiColor: color.uiColor))
+                .frame(width: 9, height: 9)
+                .overlay(
+                    Circle().stroke(color.requiresContrastBorder ? Color.gray.opacity(0.3) : Color.white.opacity(0.3), lineWidth: 0.75)
+                )
+            Text(color.localizedName)
+                .font(AdminType.caption2Bold)
+                .foregroundColor(AdminSurface.secondaryText)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(AdminSurface.fieldBackground, in: Capsule())
+    }
+
     // MARK: - POS Apex Animal Registry Sheet (Reimagined Exact Animal Selection)
 
     private var exactAnimalPickerSheet: some View {
@@ -4914,6 +5179,19 @@ private struct POSCustomCashSheet: View {
             },
             onClose: {
                 unitPicker.close()
+            }
+        )
+    }
+
+    // MARK: - POS Color Variant Picker Sheet
+
+    private var variantPickerSheet: some View {
+        POSVariantPickerSheet(
+            variantPicker: variantPicker,
+            viewModel: viewModel,
+            currency: { formatCurrency($0) },
+            onClose: {
+                variantPicker.close()
             }
         )
     }
@@ -4932,6 +5210,289 @@ private struct POSCustomCashSheet: View {
         let stockTitle = Language.get("Stock", alter: "المخزون")
         let branchStock = accessory.pos_branchStock()
         return "\(stockTitle): \(branchStock)"
+    }
+}
+
+// MARK: - POS Color Variant Picker Sheet Component
+
+private struct POSVariantPickerSheet: View {
+    @ObservedObject var variantPicker: POSVariantPickerState
+    @ObservedObject var viewModel: POSFastSellViewModel
+    let currency: (Double) -> String
+    let onClose: () -> Void
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                // Product Header Banner
+                if let primary = variantPicker.primaryAccessory {
+                    HStack(spacing: 12) {
+                        POSCatalogThumbnail(accessory: primary)
+                            .frame(width: 56, height: 56)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(AdminSurface.hairline, lineWidth: 1)
+                            )
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(primary.name)
+                                .font(AdminType.headlineBold)
+                                .foregroundColor(AdminSurface.primaryText)
+                                .lineLimit(2)
+
+                            HStack(spacing: 8) {
+                                Text("\(variantPicker.members.count) " + Language.get("POS_VariantsCount", alter: "خيارات ألوان"))
+                                    .font(AdminType.caption)
+                                    .foregroundColor(AdminSurface.secondaryText)
+
+                                let totalStock = variantPicker.members.reduce(0) { $0 + $1.pos_branchStock() }
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(totalStock > 0 ? Color(red: 0.1, green: 0.72, blue: 0.45) : Color.red)
+                                        .frame(width: 5, height: 5)
+                                    Text("\(totalStock) " + Language.get("POS_InBranch", alter: "في الفرع"))
+                                        .font(AdminType.captionBold)
+                                        .foregroundColor(totalStock > 0 ? AdminSurface.secondaryText : Color.red)
+                                }
+                            }
+                        }
+
+                        Spacer()
+                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.vertical, 10)
+                    .background(AdminSurface.surface)
+
+                    Divider().background(AdminSurface.hairline)
+                }
+
+                // Variants List
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(variantPicker.members, id: \.accessoryID) { member in
+                            POSVariantRow(
+                                member: member,
+                                inCart: viewModel.quantityInCart(for: member.accessoryID),
+                                salesChannel: viewModel.salesChannel,
+                                currency: currency,
+                                onIncrement: {
+                                    let added = viewModel.addToCart(member)
+                                    if added {
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    } else {
+                                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                                    }
+                                },
+                                onDecrement: {
+                                    viewModel.decrementQuantity(for: member.accessoryID)
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                }
+                            )
+                        }
+                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.vertical, 12)
+                }
+            }
+            .background(AdminSurface.background)
+            .navigationTitle(Language.get("POS_SelectColorVariant", alter: "اختر اللون"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        onClose()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+}
+
+// MARK: - POS Variant Row
+
+private struct POSVariantRow: View {
+    let member: PetAccessory
+    let inCart: Int
+    var salesChannel: POSSalesChannel = .retail
+    let currency: (Double) -> String
+    let onIncrement: () -> Void
+    let onDecrement: () -> Void
+
+    private var isWholesaleMode: Bool { salesChannel == .wholesale }
+    private var activePrice: Double {
+        if isWholesaleMode { return member.pos_wholesalePrice() }
+        return member.pos_canonicalUnitPrice
+    }
+
+    @MainActor
+    private var branchStock: Int {
+        if member.noStock || member.isBlocked || member.isDeleted || member.isDisabled || member.isArchived {
+            return 0
+        }
+        return member.pos_branchStock()
+    }
+
+    @MainActor
+    private var remainingStock: Int {
+        max(0, branchStock - inCart)
+    }
+
+    @MainActor
+    private var isAvailable: Bool {
+        member.pos_isSellable && remainingStock > 0
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Color Swatch
+            if let color = member.pos_variantColor {
+                ZStack {
+                    Circle()
+                        .fill(Color(uiColor: color.uiColor))
+                        .frame(width: 36, height: 36)
+                        .overlay(
+                            Circle()
+                                .stroke(color.requiresContrastBorder ? Color.gray.opacity(0.3) : Color.white.opacity(0.25), lineWidth: 1.5)
+                        )
+                        .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
+
+                    if member.isDefaultVariant {
+                        VStack {
+                            Spacer()
+                            HStack {
+                                Spacer()
+                                Image(systemName: "star.fill")
+                                    .font(.system(size: 7))
+                                    .foregroundColor(.yellow)
+                                    .padding(2)
+                                    .background(Color.black.opacity(0.7), in: Circle())
+                            }
+                        }
+                        .frame(width: 38, height: 38)
+                    }
+                }
+            } else {
+                Circle()
+                    .fill(AdminSurface.fieldBackground)
+                    .frame(width: 36, height: 36)
+                    .overlay(
+                        Image(systemName: "paintpalette")
+                            .font(.system(size: 14))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    )
+            }
+
+            // Info
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(member.pos_variantColorName.isEmpty ? member.name : member.pos_variantColorName)
+                        .font(AdminType.calloutBold)
+                        .foregroundColor(AdminSurface.primaryText)
+
+                    if member.isDefaultVariant {
+                        Text(Language.get("POS_DefaultVariant", alter: "أساسي"))
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(AdminSurface.primary)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1.5)
+                            .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                    }
+                }
+
+                HStack(spacing: 6) {
+                    if let sku = member.sku, !sku.isEmpty {
+                        Text("SKU: \(sku)")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+
+                    Circle()
+                        .fill(remainingStock > 0 ? Color(red: 0.1, green: 0.72, blue: 0.45) : Color.red)
+                        .frame(width: 4, height: 4)
+
+                    Text(remainingStock > 0
+                         ? String(format: Language.get("POS_RemainingStockFormat", alter: "المتبقي: %d"), remainingStock)
+                         : Language.get("POS_OutOfStock", alter: "نفد المخزون"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(remainingStock > 0 ? AdminSurface.secondaryText : Color.red)
+                }
+            }
+
+            Spacer()
+
+            // Price & Stepper
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(currency(activePrice))
+                    .font(AdminType.calloutBold)
+                    .foregroundColor(isWholesaleMode ? Color(uiColor: .systemTeal) : AdminSurface.primary)
+
+                if inCart > 0 {
+                    HStack(spacing: 6) {
+                        Button {
+                            onDecrement()
+                        } label: {
+                            Image(systemName: inCart == 1 ? "trash" : "minus")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(inCart == 1 ? .red : AdminSurface.primaryText)
+                                .frame(width: 26, height: 26)
+                                .background(AdminSurface.fieldBackground, in: Circle())
+                        }
+                        .buttonStyle(BorderlessButtonStyle())
+
+                        Text("\(inCart)")
+                            .font(AdminType.captionBold)
+                            .foregroundColor(AdminSurface.primaryText)
+                            .frame(minWidth: 18)
+
+                        Button {
+                            onIncrement()
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.white)
+                                .frame(width: 26, height: 26)
+                                .background(isAvailable ? AdminSurface.primary : Color.gray.opacity(0.5), in: Circle())
+                        }
+                        .buttonStyle(BorderlessButtonStyle())
+                        .disabled(!isAvailable)
+                    }
+                    .padding(2)
+                    .background(AdminSurface.fieldBackground.opacity(0.6), in: Capsule())
+                } else {
+                    Button {
+                        onIncrement()
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 10, weight: .bold))
+                            Text(Language.get("POS_Add", alter: "إضافة"))
+                                .font(AdminType.captionBold)
+                        }
+                        .foregroundColor(isAvailable ? .white : AdminSurface.secondaryText)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(isAvailable ? AdminSurface.primary : AdminSurface.fieldBackground, in: Capsule())
+                    }
+                    .buttonStyle(BorderlessButtonStyle())
+                    .disabled(!isAvailable)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(inCart > 0 ? AdminSurface.primary.opacity(0.4) : AdminSurface.hairline, lineWidth: inCart > 0 ? 1.5 : 0.75)
+        )
     }
 }
 
@@ -5703,24 +6264,69 @@ private struct POSCatalogThumbnail: View {
 
 /// Reports its own live frame so the fly-to-cart ghost can start exactly here.
 private struct POSCatalogTile: View {
-    let accessory: PetAccessory
+    let item: POSCatalogDisplayItem
     let inCart: Int
     var salesChannel: POSSalesChannel = .retail
     let currency: (Double) -> String
     let onTap: (CGRect) -> Void
 
+    init(
+        item: POSCatalogDisplayItem,
+        inCart: Int,
+        salesChannel: POSSalesChannel = .retail,
+        currency: @escaping (Double) -> String,
+        onTap: @escaping (CGRect) -> Void
+    ) {
+        self.item = item
+        self.inCart = inCart
+        self.salesChannel = salesChannel
+        self.currency = currency
+        self.onTap = onTap
+    }
+
+    init(
+        accessory: PetAccessory,
+        inCart: Int,
+        salesChannel: POSSalesChannel = .retail,
+        currency: @escaping (Double) -> String,
+        onTap: @escaping (CGRect) -> Void
+    ) {
+        self.init(
+            item: .single(accessory),
+            inCart: inCart,
+            salesChannel: salesChannel,
+            currency: currency,
+            onTap: onTap
+        )
+    }
+
+    private var accessory: PetAccessory { item.primaryAccessory }
     private var isWholesaleMode: Bool { salesChannel == .wholesale }
     private var isSellableInChannel: Bool {
         if isWholesaleMode {
-            return accessory.pos_supportsWholesale
+            return item.members.contains { $0.pos_supportsWholesale }
         }
-        return true
+        return item.isSellable
     }
-    private var activePrice: Double {
-        if isWholesaleMode {
-            return accessory.pos_wholesalePrice()
+
+    private var priceDisplayString: String {
+        switch item {
+        case .single(let acc):
+            let p = isWholesaleMode ? acc.pos_wholesalePrice() : acc.pos_canonicalUnitPrice
+            return currency(p)
+        case .family(_, let members, let primary):
+            let sellable = members.filter { $0.pos_isSellable }
+            let targetMembers = sellable.isEmpty ? members : sellable
+            let prices = targetMembers.map { isWholesaleMode ? $0.pos_wholesalePrice() : $0.pos_canonicalUnitPrice }
+            guard let minP = prices.min(), let maxP = prices.max() else {
+                let defaultPrice = isWholesaleMode ? primary.pos_wholesalePrice() : primary.pos_canonicalUnitPrice
+                return currency(defaultPrice)
+            }
+            if abs(minP - maxP) < 0.01 {
+                return currency(minP)
+            }
+            return "\(currency(minP)) - \(currency(maxP))"
         }
-        return accessory.pos_canonicalUnitPrice
     }
 
     private var tileHeight: CGFloat {
@@ -5729,10 +6335,7 @@ private struct POSCatalogTile: View {
 
     @MainActor
     private var totalStock: Int {
-        if accessory.noStock || accessory.isBlocked || accessory.isDeleted || accessory.isDisabled || accessory.isArchived {
-            return 0
-        }
-        return accessory.pos_branchStock()
+        item.totalBranchStock
     }
 
     @MainActor
@@ -5785,26 +6388,72 @@ private struct POSCatalogTile: View {
                                 .background(AdminSurface.primary, in: Circle())
                                 .padding(3)
                         }
+
+                        // Top-leading variant indicator
+                        VStack {
+                            HStack {
+                                if item.isFamily {
+                                    HStack(spacing: 3) {
+                                        ForEach(item.variantColors.prefix(3), id: \.identifier) { color in
+                                            Circle()
+                                                .fill(Color(uiColor: color.uiColor))
+                                                .frame(width: 7, height: 7)
+                                                .overlay(
+                                                    Circle().stroke(Color.white.opacity(0.8), lineWidth: 0.75)
+                                                )
+                                        }
+                                        Text("\(item.members.count)")
+                                            .font(.system(size: 9, weight: .bold))
+                                            .foregroundColor(.white)
+                                    }
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2.5)
+                                    .background(Color.black.opacity(0.65), in: Capsule())
+                                    .padding(4)
+                                } else if let color = accessory.pos_variantColor {
+                                    Circle()
+                                        .fill(Color(uiColor: color.uiColor))
+                                        .frame(width: 10, height: 10)
+                                        .overlay(
+                                            Circle().stroke(color.requiresContrastBorder ? Color.gray.opacity(0.3) : Color.white, lineWidth: 1)
+                                        )
+                                        .shadow(color: Color.black.opacity(0.2), radius: 2, x: 0, y: 1)
+                                        .padding(4)
+                                }
+                                Spacer()
+                            }
+                            Spacer()
+                        }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                     // Bottom: All labels anchored to bottom, laid out from bottom to top with guaranteed priority
                     VStack(alignment: .leading, spacing: 1.5) {
-                        Text(accessory.name)
-                            .font(AdminType.caption2Bold)
-                            .foregroundColor(AdminSurface.primaryText)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.85)
-                            .multilineTextAlignment(.leading)
+                        HStack(spacing: 2) {
+                            Text(accessory.name)
+                                .font(AdminType.caption2Bold)
+                                .foregroundColor(AdminSurface.primaryText)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
+                                .multilineTextAlignment(.leading)
+
+                            Spacer(minLength: 0)
+
+                            if item.isFamily {
+                                Image(systemName: "paintpalette.fill")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(AdminSurface.primary)
+                            }
+                        }
 
                         HStack(spacing: 2) {
-                            if isWholesaleMode && !accessory.pos_supportsWholesale {
+                            if isWholesaleMode && !accessory.pos_supportsWholesale && !item.isFamily {
                                 Text(Language.get("POS_Wholesale_Unavailable_Badge", alter: "غير متاح للجملة"))
                                     .font(.system(size: 9, weight: .bold))
                                     .foregroundColor(Color.gray)
                                     .lineLimit(1)
                             } else {
-                                Text(currency(activePrice))
+                                Text(priceDisplayString)
                                     .font(AdminType.caption2Bold)
                                     .foregroundColor(isWholesaleMode ? Color(uiColor: .systemTeal) : AdminSurface.primary)
                                     .lineLimit(1)
@@ -5841,7 +6490,7 @@ private struct POSCatalogTile: View {
                 .padding(6)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .opacity(isWholesaleMode && !accessory.pos_supportsWholesale ? 0.45 : 1.0)
+                .opacity(isWholesaleMode && !accessory.pos_supportsWholesale && !item.isFamily ? 0.45 : 1.0)
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .stroke(inCart > 0 ? AdminSurface.primary.opacity(0.5) : AdminSurface.hairline, lineWidth: inCart > 0 ? 1.5 : 0.75)
@@ -5851,11 +6500,13 @@ private struct POSCatalogTile: View {
             .buttonStyle(POSTilePressStyle())
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .accessibilityLabel("\(accessory.name), \(currency(accessory.pos_canonicalUnitPrice)), \(stockText)")
+            .accessibilityLabel("\(accessory.name), \(priceDisplayString), \(stockText)")
             .accessibilityHint(
-                accessory.pos_isIndividuallyTrackedLivePet
-                    ? Language.get("POS_ExactAnimalTitle", alter: "اختيار الحيوانات المحددة")
-                    : Language.get("POS_AddToCartHint", alter: "إضافة هذا العنصر إلى السلة")
+                item.isFamily
+                    ? Language.get("POS_SelectColorVariant", alter: "اختر اللون")
+                    : (accessory.pos_isIndividuallyTrackedLivePet
+                        ? Language.get("POS_ExactAnimalTitle", alter: "اختيار الحيوانات المحددة")
+                        : Language.get("POS_AddToCartHint", alter: "إضافة هذا العنصر إلى السلة"))
             )
         }
         .frame(height: tileHeight)
@@ -5883,9 +6534,28 @@ private struct CartItemRow: View {
         VStack(alignment: .leading, spacing: AdminSpacing.xs) {
             HStack(spacing: AdminSpacing.md) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(item.accessory.name)
-                        .font(AdminType.calloutBold)
-                        .foregroundColor(AdminSurface.primaryText)
+                    HStack(spacing: 6) {
+                        Text(item.accessory.name)
+                            .font(AdminType.calloutBold)
+                            .foregroundColor(AdminSurface.primaryText)
+
+                        if let color = item.accessory.pos_variantColor {
+                            HStack(spacing: 3) {
+                                Circle()
+                                    .fill(Color(uiColor: color.uiColor))
+                                    .frame(width: 8, height: 8)
+                                    .overlay(
+                                        Circle().stroke(color.requiresContrastBorder ? Color.gray.opacity(0.3) : Color.white.opacity(0.3), lineWidth: 0.5)
+                                    )
+                                Text(color.localizedName)
+                                    .font(AdminType.caption2Bold)
+                                    .foregroundColor(AdminSurface.secondaryText)
+                            }
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1.5)
+                            .background(AdminSurface.fieldBackground, in: Capsule())
+                        }
+                    }
                     HStack(spacing: 4) {
                         if item.unitsPerGroup > 1 || item.salesChannel == "wholesale" {
                             Text(item.localizedGroupName)
@@ -6055,6 +6725,26 @@ private struct POSCartCardRow: View {
                             .foregroundColor(AdminSurface.primaryText)
                             .lineLimit(1)
                             .truncationMode(.tail)
+
+                        if let color = item.accessory.pos_variantColor {
+                            HStack(spacing: 3) {
+                                Circle()
+                                    .fill(Color(uiColor: color.uiColor))
+                                    .frame(width: 8, height: 8)
+                                    .overlay(
+                                        Circle().strokeBorder(
+                                            color.requiresContrastBorder ? AdminSurface.primaryText.opacity(0.3) : Color.clear,
+                                            lineWidth: 0.75
+                                        )
+                                    )
+                                Text(color.localizedName)
+                                    .font(Font.custom("Beiruti-Bold", size: 10))
+                            }
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(AdminSurface.fieldBackground, in: Capsule(style: .continuous))
+                            .foregroundColor(AdminSurface.primaryText)
+                        }
 
                         if item.isIndividuallyTracked {
                             HStack(spacing: 2) {

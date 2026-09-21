@@ -11,6 +11,7 @@
 "Inventory_CountScopeTooLarge" = "اختر رفاً أو فئة أو جرداً انتقائياً لا يتجاوز 100 صنف.";
 "Inventory_CountScopeEmpty" = "لا توجد أصناف مخزون في نطاق الجرد المحدد.";
 "Inventory_ProjectionUnavailable" = "تعذر التحقق من مخزون الفرع. حدّث البيانات قبل تعديل الرصيد.";
+"Inventory_RevisionUpdatedRetry" = "تم تحديث رقم النسخة إلى الأحدث تلقائياً. اضغط حفظ التغييرات لإتمام العملية.";
 "AdminLoginTitle"              = "تسجيل دخول المشرف";
 "Email"                        = "البريد الإلكتروني";
 "EmailPlaceholder"             = "أدخل البريد الإلكتروني";
@@ -9855,8 +9856,9 @@
 "Inventory_Family_HasOutOfStock" = "لون غير متوفر";
 "Inventory_Family_HasLowStock" = "مخزون منخفض";
 "Inventory_Family_ArchivedCount" = "%@ مؤرشف";
-"Inventory_Family_Expand_Hint" = "إظهار كل لون لإدارة مخزونه";
+"Inventory_Family_Expand_Hint" = "اختر لوناً لعرض سعره ومخزونه وإجراءاته";
 "Inventory_Family_Collapse_Hint" = "طي الألوان";
+"Inventory_Family_SelectColour_Hint" = "يعرض سعر ومخزون وإجراءات هذا اللون";
 "Inventory_Family_Summary_A11y" = "%@، %@ ألوان، %@ متوفر إجمالاً";
 
 
@@ -9876,3 +9878,97 @@
 "Variant_Preset_Palettes" = "المجموعات اللونية المتناسقة";
 
 "CatalogCategorySyncError" = "تعذر تحديث تصنيف الصنف";
+
+
+/* Variant commerce hardening */
+"Variant_Add_Action" = "إضافة لون";
+"Variant_Add_Hint" = "ينشئ صنفاً مستقلاً بالسعر والرمز الخاصين بهذا اللون ثم يربطه بالمنتج.";
+"Variant_Add_Title" = "إضافة لون";
+"Variant_Add_Create" = "إنشاء اللون";
+"Variant_Add_Color" = "اللون";
+"Variant_Add_Color_A11y" = "اللون المحدد %@. اضغط للتغيير";
+"Variant_Add_Pricing" = "تسعير هذا اللون";
+"Variant_Add_Wholesale" = "سعر جملة مستقل";
+"Variant_Add_Identifiers" = "هوية اللون في المخزون";
+"Variant_Add_SKU_Placeholder" = "مثال: BAG-BLU";
+"Variant_Add_Barcode_Placeholder" = "امسح أو أدخل باركود اللون";
+"Variant_Add_SafetyNote" = "سيُنشأ اللون بدون مخزون وبدون صور. أضف المخزون والصور بعد الإنشاء من سجل هذا اللون حتى تبقى كل حركة مرتبطة بالصنف الصحيح.";
+"Variant_Add_Failed" = "تعذر إكمال إضافة اللون. لم يتم تكرار أي صنف؛ يمكنك إعادة المحاولة.";
+"Variant_Add_SaveFamilyFirst" = "احفظ لون المنتج الحالي أولاً، ثم أضف لوناً جديداً.";
+"Variant_Add_InvalidPrice" = "أدخل سعر بيع صالحاً للون الجديد.";
+"Variant_Add_Confirmed" = "تمت إضافة اللون وحفظه.";
+"Variant_RetailPrice" = "سعر البيع";
+"Variant_WholesalePrice" = "سعر الجملة";
+"Variant_iPad_Colours" = "ألوان المنتج";
+"Inventory_Family_PriceRange_Format" = "%@ – %@";
+"Inventory_Family_Price_A11y" = "نطاق السعر: %@";
+"Inventory_Family_Price_A11y_Suffix" = "، نطاق السعر %@";
+"Variant_Price_A11y" = "السعر %@";
+"Variant_OpenProduct_Failed" = "تعذر فتح سجل هذا اللون";
+"Variant_Section_Count_Format" = "%@ ألوان · %@ متوفر";
+"BranchCommerce_ProjectionMissing" = "تعذر تأكيد سعر الفرع لبعض الأصناف. أعد حفظ تسعير الفرع قبل البيع.";
+
+/* Inventory product cells */
+"InventoryCell_SelectBranch" = "اختر فرعاً لتعديل الرصيد";
+"InventoryCell_Loading" = "جارٍ تحميل رصيد الفرع";
+"InventoryCell_Unconfirmed" = "الرصيد غير مؤكد · اسحب للتحديث";
+"InventoryCell_Missing" = "رصيد الفرع غير متاح";
+"InventoryCell_Unnamed" = "صنف بدون اسم";
+"InventoryCell_Available" = "المتاح";
+"InventoryCell_Low" = "رصيد منخفض";
+"InventoryCell_CatalogQuantity" = "رصيد الصنف";
+"InventoryCell_LotTracking" = "تتبع الشحنات والصلاحية";
+"InventoryCell_Lots" = "الشحنات والصلاحية";
+"InventoryCell_AnimalRecords" = "سجل الحيوانات";
+"InventoryCell_OpenHint" = "يفتح التفاصيل وإجراءات الصنف";
+"InventoryCell_QuantityHint" = "يفتح لوحة إدخال الكمية";
+"InventoryCell_Decrease" = "إنقاص الكمية بمقدار واحد";
+"InventoryCell_Increase" = "زيادة الكمية بمقدار واحد";
+"InventoryCell_QuantityChanged" = "تغير رصيد الصنف";
+"InventoryCell_QuantityChangedDetail" = "راجع الرصيد الحالي ثم أعد التعديل.";
+"InventoryCell_WholesaleMargin" = "فرق الجملة %@%%";
+"InventoryCell_ReadbackPending" = "تم استلام التعديل، وتعذر تأكيد الرصيد. اسحب للتحديث قبل تعديل الصنف مرة أخرى.";
+"InventoryCell_ReadOnly" = "عرض فقط";
+"InventoryCell_Inactive" = "الصنف غير نشط";
+"InventoryCell_PreviousPrice" = "السعر السابق";
+"InventoryCell_PhotoCount" = "عدد الصور %@";
+
+/* Variant Atelier & Studio Reinvention */
+"Variant_Stock_InStock" = "متوفر في المستودع";
+"Variant_Stock_OutOfStock" = "نفد من المخزون";
+"Variant_Stock_Low" = "مخزون منخفض";
+"Variant_Identifier_Unset" = "غير محدد";
+"Variant_Order_Index_Format" = "الترتيب: %@ من %@";
+"Variant_Copied_Hex" = "تم نسخ كود اللون";
+"Variant_OpenProduct_Subtitle" = "فتح سجل هذا اللون لإدارة الكميات والتسعير والموردين";
+"Variant_Media_Empty_Tip" = "أضف صوراً مخصصة لهذا اللون لتظهر للعملاء عند اختياره في المتجر.";
+"Variant_Reorder_Title" = "ترتيب الظهور";
+"Variant_Color_Spec_Title" = "مواصفات وتفاصيل اللون";
+"Variant_Spec_Retail" = "سعر البيع المعتمد";
+"Variant_Spec_Wholesale" = "سعر الجملة";
+"Variant_Spec_Stock" = "حالة المخزون";
+"Variant_Spec_SKU" = "رمز الصنف SKU";
+"Variant_Spec_Barcode" = "الباركود الدولي";
+"Variant_Quick_SetDefault" = "جعله الافتراضي";
+
+/* Variant Studio Sheet Keys */
+"Variant_Studio_CreateTitle" = "إضافة لون جديد";
+"Variant_Studio_EditTitle" = "استوديو اللون: %@";
+"Variant_Studio_Save" = "حفظ التعديلات";
+"Variant_Studio_SaveFailed" = "تعذر حفظ التعديلات. لم يتم فقدان أي بيانات، يرجى المحاولة مرة أخرى.";
+"Variant_Studio_UpdateSuccess" = "تم حفظ وتحديث اللون بنجاح.";
+"Variant_Studio_Stock_Title" = "الكمية والمخزون الحالي";
+"Variant_Studio_Stock_InStock_Format" = "متوفر (%@ حبة)";
+"Variant_Studio_Stock_Low_Format" = "مخزون محدود (%@ حبة)";
+"Variant_Studio_Stock_Zero" = "نفد المخزون (0 حبة)";
+"Variant_Studio_Photos_Title" = "صور هذا اللون";
+"Variant_Studio_Photos_Subtitle" = "الصور المخصصة لهذا اللون. تظهر تلقائياً للعميل عند اختيار هذا اللون.";
+"Variant_Studio_Photos_Add" = "إضافة صور";
+"Variant_Studio_Photos_Primary" = "الرئيسية";
+"Variant_Studio_Photos_MakePrimary" = "اضغط على أي صورة لجعلها الرئيسية";
+"Variant_Studio_Custom_Palette" = "استوديو الألوان الكامل";
+"Variant_Studio_Margin_Delta" = "فارق السعر: %@ (هامش الربح: %@%%)";
+"Variant_Studio_SafetyNote" = "ترتبط كل حركة مخزون وصور بهذا اللون بالتحديد وبشكل مستقل وآمن داخل النظام.";
+"Variant_Studio_OpenFullRecord" = "فتح السجل الكامل في إدارة الأصناف";
+"Variant_Studio_Banner_Subtitle" = "تعديل فوري للون، الصور، الكمية، السعر، والرموز";
+"Validation_Duplicate" = "مكرر";

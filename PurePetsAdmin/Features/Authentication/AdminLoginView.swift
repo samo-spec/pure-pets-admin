@@ -1025,6 +1025,7 @@ enum AdminSurface {
     static let background = Color(uiColor: .ppBackground)
     static let backgroundSecondary = Color(uiColor: .ppBackgroundSecondary)
     static let control = Color(uiColor: .ppElevatedSurface)
+    static let fieldBackground = Color(uiColor: .ppElevatedSurface)
     static let surface = Color(uiColor: .ppSurface)
     static let card = Color(uiColor: .ppSurface)
     static let cardElevated = Color(uiColor: .ppElevatedSurface)

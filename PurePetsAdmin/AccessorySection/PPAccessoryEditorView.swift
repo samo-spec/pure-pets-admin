@@ -1868,6 +1868,22 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         editingAccessory?.costPrice = NSNumber(value: cost)
     }
 
+    func refreshAuthoritativeRevisionIfNeeded() {
+        guard let acc = editingAccessory, !acc.accessoryID.isEmpty else { return }
+        Firestore.firestore().collection("petAccessories").document(acc.accessoryID).getDocument { [weak self] snapshot, _ in
+            guard let self = self, let snapshot = snapshot, snapshot.exists, let data = snapshot.data() else { return }
+            let rev = (data["revision"] as? NSNumber)?.intValue ?? (data["revision"] as? Int) ?? 0
+            if rev > 0 {
+                DispatchQueue.main.async {
+                    self.editingAccessory?.revision = rev
+                    if let draft = self.pendingSavedAccessoryDraft, draft.accessoryID == acc.accessoryID {
+                        draft.revision = rev
+                    }
+                }
+            }
+        }
+    }
+
     func persistCommerceRecord(for productID: String) {
         guard !isIndividualLivePet, !productID.isEmpty else { return }
         ensureDefaultSingleGroup()
@@ -3491,13 +3507,27 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 if let err = error {
                     self.isSubmitting = false
                     let nsError = err as NSError
-                    let definitiveRejection = nsError.domain == FunctionsErrorDomain && [
+                    let isFunctionsDomain = nsError.domain == FunctionsErrorDomain || nsError.domain == "com.firebase.functions"
+                    let definitiveRejection = isFunctionsDomain && [
                         FunctionsErrorCode.invalidArgument.rawValue,
                         FunctionsErrorCode.permissionDenied.rawValue,
                         FunctionsErrorCode.unauthenticated.rawValue,
                         FunctionsErrorCode.failedPrecondition.rawValue,
                         FunctionsErrorCode.notFound.rawValue
                     ].contains(nsError.code)
+
+                    if let stale = PPInventoryCommandService.staleRevision(from: err) {
+                        accessory.revision = stale.current
+                        self.editingAccessory?.revision = stale.current
+                        self.clearStandardInventoryRecovery()
+                        self.errorMessage = Language.get(
+                            "Inventory_RevisionUpdatedRetry",
+                            alter: "تم تحديث رقم النسخة إلى الأحدث تلقائياً. اضغط حفظ التغييرات لإتمام العملية."
+                        )
+                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                        return
+                    }
+
                     if definitiveRejection && !self.standardSaveMayHaveCommitted {
                         self.clearStandardInventoryRecovery()
                     } else {
@@ -5348,6 +5378,26 @@ struct PPBilingualTextEditorField: View {
     }
 }
 
+@MainActor
+private func ppPresentVariantProductEditor(
+    productId: String,
+    onDismiss: @escaping () -> Void
+) async {
+    do {
+        let product = try await PPAccessoryVariantService.shared.loadProduct(productId: productId)
+        let editor = AddAccessoryViewController(accessory: product)
+        editor.showTypeRow = false
+        editor.defaultKind = product.accessKindType
+        editor.onDismissBlock = onDismiss
+        PPAdminNavigationFallback.presentOrPush(editor)
+    } catch {
+        PPHUD.showError(
+            Language.get("Variant_OpenProduct_Failed", alter: "تعذر فتح سجل هذا اللون"),
+            subtitle: error.localizedDescription
+        )
+    }
+}
+
 // MARK: - Reimagined Flagship Screen
 
 struct PPAccessoryEditorScreen: View {
@@ -5993,7 +6043,20 @@ struct PPAccessoryEditorScreen: View {
             // nothing to group until the product exists, and live pets are
             // individually tracked and excluded from the colour axis.
             if viewModel.supportsColourVariants {
-                PPAccessoryVariantSection(model: variantSectionModel)
+                PPAccessoryVariantSection(
+                    model: variantSectionModel,
+                    onOpenVariantProduct: { productId in
+                        Task { @MainActor in
+                            await ppPresentVariantProductEditor(productId: productId) {
+                                Task { @MainActor in
+                                    viewModel.refreshAuthoritativeRevisionIfNeeded()
+                                    guard let accessory = viewModel.editingAccessory else { return }
+                                    await variantSectionModel.load(for: accessory)
+                                }
+                            }
+                        }
+                    }
+                )
                     .task(id: viewModel.editingAccessory?.accessoryID) {
                         guard let accessory = viewModel.editingAccessory else { return }
                         await variantSectionModel.load(for: accessory)
@@ -9554,6 +9617,11 @@ struct PPAccessoryEditorExperienceRouter: View {
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .interactiveDismissDisabled(viewModel.blocksDismissal)
+        .onAppear {
+            if viewModel.editingAccessory != nil {
+                viewModel.refreshAuthoritativeRevisionIfNeeded()
+            }
+        }
         .background {
             PPUIKitDismissalGuard(isBlocked: viewModel.blocksDismissal)
                 .frame(width: 0, height: 0)
@@ -17653,7 +17721,20 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 // nothing to group until the product exists, and live pets are
                 // individually tracked and excluded from the colour axis.
                 if viewModel.supportsColourVariants {
-                    PPAccessoryVariantSection(model: variantSectionModel)
+                    PPAccessoryVariantSection(
+                        model: variantSectionModel,
+                        onOpenVariantProduct: { productId in
+                            Task { @MainActor in
+                                await ppPresentVariantProductEditor(productId: productId) {
+                                    Task { @MainActor in
+                                        viewModel.refreshAuthoritativeRevisionIfNeeded()
+                                        guard let accessory = viewModel.editingAccessory else { return }
+                                        await variantSectionModel.load(for: accessory)
+                                    }
+                                }
+                            }
+                        }
+                    )
                         .task(id: viewModel.editingAccessory?.accessoryID) {
                             guard let accessory = viewModel.editingAccessory else { return }
                             await variantSectionModel.load(for: accessory)

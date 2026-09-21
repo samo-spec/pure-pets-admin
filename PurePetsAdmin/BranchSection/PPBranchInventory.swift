@@ -225,6 +225,45 @@ public struct PPBranchProductSettings: Identifiable, Hashable, Sendable {
     }
 }
 
+// MARK: - Canonical Branch Commerce Projection
+
+/// Client-safe projection written by `upsertBranchProductCommerce` from the
+/// SAME resolver used by POS/checkout. This deliberately replaces the legacy
+/// `branchProductSettings.sellingPrice` and `branchInventory.sellingPrice`
+/// shortcuts, which could disagree with ProductCommerce/BranchProductCommerce.
+public struct PPBranchCommercePriceProjection: Identifiable, Hashable, Sendable {
+    public let id: String
+    public let branchId: String
+    public let productId: String
+    public let pricingRevision: Int
+    public let defaultRetailQuantityGroupId: String
+    public let effectiveDefaultRetailPriceMinor: Int
+    public let currency: String
+
+    public var effectiveDefaultRetailPrice: Double {
+        Double(effectiveDefaultRetailPriceMinor) / 100.0
+    }
+
+    public init?(dictionary: [String: Any], documentId: String) {
+        let branchId = (dictionary["branchId"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let productId = (dictionary["productId"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let groupId = (dictionary["defaultRetailQuantityGroupId"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !branchId.isEmpty, !productId.isEmpty, !groupId.isEmpty,
+              let minor = dictionary["effectiveDefaultRetailPriceMinor"] as? NSNumber,
+              minor.doubleValue.isFinite,
+              minor.doubleValue >= 0,
+              minor.doubleValue.rounded(.towardZero) == minor.doubleValue else { return nil }
+
+        self.id = documentId
+        self.branchId = branchId
+        self.productId = productId
+        self.pricingRevision = max(1, (dictionary["pricingRevision"] as? NSNumber)?.intValue ?? 1)
+        self.defaultRetailQuantityGroupId = groupId
+        self.effectiveDefaultRetailPriceMinor = minor.intValue
+        self.currency = ((dictionary["currency"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()).flatMap { $0.isEmpty ? nil : $0 } ?? "QAR"
+    }
+}
+
 // MARK: - Reactive Branch Inventory Service
 
 @MainActor
@@ -234,8 +273,11 @@ public final class PPBranchInventoryService: ObservableObject {
     /// Real-time map of branch inventory keyed by productId: [productId: PPBranchInventory]
     @Published public private(set) var inventoryMap: [String: PPBranchInventory] = [:]
 
-    /// Real-time map of branch product settings overrides: [productId: PPBranchProductSettings]
-    @Published public private(set) var settingsMap: [String: PPBranchProductSettings] = [:]
+    /// Canonical branch retail projection keyed by productId. The legacy name
+    /// `settingsMap` is retained for source compatibility with observers; its
+    /// authority is now BranchProductCommerce, not branchProductSettings.
+    @Published public private(set) var settingsMap: [String: PPBranchCommercePriceProjection] = [:]
+    @Published public private(set) var unresolvedCommerceProductIds: Set<String> = []
 
     @Published public private(set) var isLoading: Bool = false
     @Published public private(set) var currentBranchId: String? = nil
@@ -279,7 +321,7 @@ public final class PPBranchInventoryService: ObservableObject {
         }
     }
 
-    /// Subscribes to Firestore collection `branchInventory` and `branchProductSettings` for the specified branch.
+    /// Subscribes to `branchInventory` plus canonical `BranchProductCommerce` for the specified branch.
     /// Every branch change invalidates the previous generation and clears its projection before the new listeners attach.
     public func bindToBranch(_ branchId: String?) {
         listenerRegistration?.remove()
@@ -291,6 +333,7 @@ public final class PPBranchInventoryService: ObservableObject {
         bindingGeneration = generation
         inventoryMap = [:]
         settingsMap = [:]
+        unresolvedCommerceProductIds = []
         lastSyncDate = nil
         inventoryError = nil
         settingsError = nil
@@ -341,10 +384,10 @@ public final class PPBranchInventoryService: ObservableObject {
         }
 
         let settingsQuery = Firestore.firestore()
-            .collection("branchProductSettings")
+            .collection("BranchProductCommerce")
             .whereField("branchId", isEqualTo: branchId)
 
-        settingsListenerRegistration = settingsQuery.addSnapshotListener { [weak self] snapshot, error in
+        settingsListenerRegistration = settingsQuery.addSnapshotListener(includeMetadataChanges: true) { [weak self] snapshot, error in
             Task { @MainActor in
                 guard let self,
                       self.bindingGeneration == generation,
@@ -355,14 +398,26 @@ public final class PPBranchInventoryService: ObservableObject {
                 }
 
                 guard let documents = snapshot?.documents else { return }
-                var newSettings: [String: PPBranchProductSettings] = [:]
+                var newSettings: [String: PPBranchCommercePriceProjection] = [:]
+                var unresolved: Set<String> = []
                 for doc in documents {
-                    if let setting = PPBranchProductSettings(dictionary: doc.data(), documentId: doc.documentID) {
-                        newSettings[setting.productId] = setting
+                    let productId = (doc.data()["productId"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    guard let projection = PPBranchCommercePriceProjection(dictionary: doc.data(), documentId: doc.documentID),
+                          projection.branchId == branchId,
+                          newSettings[projection.productId] == nil else {
+                        if !productId.isEmpty { unresolved.insert(productId) }
+                        continue
                     }
+                    newSettings[projection.productId] = projection
                 }
                 self.settingsMap = newSettings
-                self.settingsError = nil
+                self.unresolvedCommerceProductIds = unresolved
+                self.settingsError = unresolved.isEmpty
+                    ? nil
+                    : Language.get(
+                        "BranchCommerce_ProjectionMissing",
+                        alter: "تعذر تأكيد سعر الفرع لبعض الأصناف. أعد حفظ تسعير الفرع قبل البيع."
+                    )
             }
         }
     }
@@ -385,41 +440,67 @@ public final class PPBranchInventoryService: ObservableObject {
         return max(0, fallback)
     }
 
-    /// Resolves the effective selling price for a product, honoring branch overrides when present
+    /// Resolves the effective DEFAULT RETAIL price from the same branch commerce
+    /// authority the backend transaction engine uses. If an override document
+    /// exists without the new projection, return 0 to fail closed rather than
+    /// silently submit a catalog fallback the server will reject as stale/wrong.
     public func effectiveSellingPrice(for productId: String, fallbackPrice: Double) -> Double {
-        if let settings = settingsMap[productId], let customPrice = settings.sellingPrice, customPrice > 0 {
-            return customPrice
+        if let projection = settingsMap[productId] {
+            return projection.effectiveDefaultRetailPrice
         }
-        if let record = inventoryMap[productId], let recordPrice = record.sellingPrice, recordPrice > 0 {
-            return recordPrice
+        if unresolvedCommerceProductIds.contains(productId) {
+            return 0
         }
         return fallbackPrice
     }
 
+    public func hasConfirmedCommercePrice(for productId: String) -> Bool {
+        !unresolvedCommerceProductIds.contains(productId)
+    }
+
     /// Refreshes the authoritative record after a confirmed command. Never
     /// invent quantities/revisions or reapply deltas to an already-new listener.
-    public func refreshInventory(for productId: String, branchId: String) {
+    public func refreshInventory(
+        for productId: String,
+        branchId: String,
+        minimumRevision: Int = 0,
+        completion: ((Result<PPBranchInventory, Error>) -> Void)? = nil
+    ) {
         let cleanBranch = branchId.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanBranch.isEmpty, currentBranchId == cleanBranch else { return }
+        guard !cleanBranch.isEmpty, currentBranchId == cleanBranch else {
+            completion?(.failure(CancellationError()))
+            return
+        }
         let generation = bindingGeneration
         Task { @MainActor [weak self] in
             do {
                 let snapshot = try await Firestore.firestore().collection("branchInventory")
                     .document("\(cleanBranch)_\(productId)").getDocument(source: .server)
-                guard let self, self.bindingGeneration == generation, self.currentBranchId == cleanBranch else { return }
+                guard let self, self.bindingGeneration == generation, self.currentBranchId == cleanBranch else {
+                    completion?(.failure(CancellationError()))
+                    return
+                }
                 guard let data = snapshot.data(), let record = PPBranchInventory(dictionary: data, documentId: snapshot.documentID),
-                      record.branchId == cleanBranch, record.productId == productId else {
-                    self.inventoryError = Language.get("Inventory_ProjectionUnavailable", alter: "تعذر التحقق من رصيد الفرع. أعد تحميل المخزون.")
+                      record.branchId == cleanBranch, record.productId == productId,
+                      record.projectionRevision >= minimumRevision else {
+                    let message = Language.get("Inventory_ProjectionUnavailable", alter: "تعذر التحقق من رصيد الفرع. أعد تحميل المخزون.")
+                    self.inventoryError = message
                     self.isServerConfirmed = false
+                    completion?(.failure(NSError(domain: "pp.inventory.projection", code: 409, userInfo: [NSLocalizedDescriptionKey: message])))
                     return
                 }
                 if (self.inventoryMap[productId]?.projectionRevision ?? 0) <= record.projectionRevision {
                     self.inventoryMap[productId] = record
                 }
+                completion?(.success(record))
             } catch {
-                guard let self, self.bindingGeneration == generation else { return }
+                guard let self, self.bindingGeneration == generation else {
+                    completion?(.failure(CancellationError()))
+                    return
+                }
                 self.inventoryError = error.localizedDescription
                 self.isServerConfirmed = false
+                completion?(.failure(error))
             }
         }
     }

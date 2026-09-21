@@ -316,6 +316,12 @@ import UIKit
     @objc public let barcode: String
     @objc public let primaryImageURL: String
     @objc public let quantity: Int
+    /// Public/default retail projection for this exact color product. The
+    /// authoritative branch override is resolved at presentation/POS time from
+    /// BranchProductCommerce; the family never owns a price.
+    @objc public let retailPrice: NSNumber?
+    @objc public let wholesalePrice: NSNumber?
+    @objc public let hasResolvedRetailPrice: Bool
     @objc public let showInAppMarket: Bool
     /// Product revision observed when this variant was loaded, for optimistic
     /// concurrency on the family save.
@@ -333,6 +339,9 @@ import UIKit
         barcode: String = "",
         primaryImageURL: String = "",
         quantity: Int = 0,
+        retailPrice: NSNumber? = nil,
+        wholesalePrice: NSNumber? = nil,
+        hasResolvedRetailPrice: Bool = false,
         showInAppMarket: Bool = false,
         revision: Int = 0,
         media: [PPAccessoryVariantMedia] = []
@@ -346,6 +355,9 @@ import UIKit
         self.barcode = barcode
         self.primaryImageURL = primaryImageURL
         self.quantity = max(0, quantity)
+        self.retailPrice = retailPrice
+        self.wholesalePrice = wholesalePrice
+        self.hasResolvedRetailPrice = hasResolvedRetailPrice
         self.showInAppMarket = showInAppMarket
         self.revision = max(0, revision)
         self.media = media
@@ -366,6 +378,9 @@ import UIKit
             barcode: accessory.barcode ?? "",
             primaryImageURL: PetAccessory.firstImageURL(for: accessory)?.absoluteString ?? "",
             quantity: accessory.quantity,
+            retailPrice: accessory.hasResolvedSellingPrice ? accessory.finalPrice : nil,
+            wholesalePrice: accessory.wholesalePrice,
+            hasResolvedRetailPrice: accessory.hasResolvedSellingPrice,
             showInAppMarket: accessory.showInAppMarket,
             revision: accessory.revision,
             media: (accessory.imageURLsArray ?? []).map { PPAccessoryVariantMedia(remoteURL: $0) }
@@ -545,6 +560,9 @@ import UIKit
                 primaryImageURL: product.flatMap { PetAccessory.firstImageURL(for: $0)?.absoluteString }
                     ?? (projection?["primaryImageURL"] as? String) ?? "",
                 quantity: product?.quantity ?? 0,
+                retailPrice: (product?.hasResolvedSellingPrice == true) ? product?.finalPrice : nil,
+                wholesalePrice: product?.wholesalePrice,
+                hasResolvedRetailPrice: product?.hasResolvedSellingPrice ?? false,
                 showInAppMarket: product?.showInAppMarket ?? false,
                 revision: product?.revision ?? 0,
                 media: (product?.imageURLsArray ?? []).map { PPAccessoryVariantMedia(remoteURL: $0) }
@@ -598,6 +616,9 @@ import UIKit
             barcode: accessory.barcode ?? "",
             primaryImageURL: PetAccessory.firstImageURL(for: accessory)?.absoluteString ?? "",
             quantity: accessory.quantity,
+            retailPrice: accessory.hasResolvedSellingPrice ? accessory.finalPrice : nil,
+            wholesalePrice: accessory.wholesalePrice,
+            hasResolvedRetailPrice: accessory.hasResolvedSellingPrice,
             showInAppMarket: accessory.showInAppMarket,
             revision: accessory.revision,
             media: (accessory.imageURLsArray ?? []).map { PPAccessoryVariantMedia(remoteURL: $0) }
@@ -703,17 +724,9 @@ import UIKit
         if resolvedDefault.isArchived {
             messages.append(Language.get("Variant_Error_DefaultArchived", alter: "اللون الافتراضي مؤرشف. اختر لونًا نشطًا."))
         }
-        // The server refuses a family whose non-default colour is publicly
-        // listed, because released consumer clients render each product
-        // document as its own card. Surface it here as an ordered instruction
-        // rather than letting the save fail.
-        for variant in variants where variant.productId != resolvedDefault.productId && variant.showInAppMarket {
-            let template = Language.get(
-                "Variant_Error_NonDefaultPublished",
-                alter: "أوقف عرض اللون %@ في المتجر قبل الحفظ."
-            )
-            messages.append(String(format: template, variant.color.accessibilityName))
-        }
+        // Public visibility is normalized atomically by the family callable.
+        // Do not block a re-default here based on the pre-transaction listing
+        // state; doing so would recreate the old client-side choreography.
         for variant in variants where variant.isArchived && variant.quantity > 0 {
             let template = Language.get(
                 "Variant_Error_ArchivedWithStock",
@@ -897,6 +910,9 @@ import UIKit
                     barcode: variant.barcode,
                     primaryImageURL: variant.primaryImageURL,
                     quantity: variant.quantity,
+                    retailPrice: variant.retailPrice,
+                    wholesalePrice: variant.wholesalePrice,
+                    hasResolvedRetailPrice: variant.hasResolvedRetailPrice,
                     showInAppMarket: variant.showInAppMarket,
                     revision: variant.revision,
                     media: variant.media

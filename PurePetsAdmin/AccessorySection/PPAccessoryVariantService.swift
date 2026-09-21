@@ -9,9 +9,8 @@
 //  typed result. Reads are direct Firestore because ProductFamilies and
 //  petAccessories are both server-owned and client-readable.
 //
-//  This facade owns one behaviour the server cannot: the ordered listing
-//  transfer required when the default colour changes. See
-//  `saveFamily(_:transferringListingFrom:)`.
+//  Default-colour visibility transfer is intentionally server-owned and atomic.
+//  This facade never writes `showInAppMarket` for a family member.
 //
 
 import Foundation
@@ -128,99 +127,139 @@ import FirebaseFunctions
         return result
     }
 
+    /// Loads one exact sellable color product. Used by exact-variant editor
+    /// navigation and by Add Color template cloning; never a family projection.
+    public func loadProduct(productId: String) async throws -> PetAccessory {
+        let trimmed = productId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw PPAccessoryVariantServiceError.invalidFamilyIdentifier }
+        let snapshot = try await db.collection("petAccessories").document(trimmed).getDocument()
+        guard snapshot.exists, let data = snapshot.data() else {
+            throw PPAccessoryVariantServiceError.familyNotFound
+        }
+        return PetAccessory(dictionary: data, documentID: trimmed)
+    }
+
+    /// Creates the standalone sellable product that will become a new color.
+    /// Catalog creation remains owned by `validateInventoryChange`; this method
+    /// deliberately sends NO family/variant identity fields. Initial stock is 0,
+    /// media starts empty (color-specific), and public visibility is false until
+    /// the family command binds it. A retained command id makes ambiguous create
+    /// responses safely replayable.
+    public func createStandaloneVariantProduct(
+        template: PetAccessory,
+        sku: String,
+        barcode: String,
+        retailPrice: Double,
+        wholesalePrice: Double?,
+        quantity: Int = 0,
+        commandId: String
+    ) async throws -> PetAccessory {
+        let created = PetAccessory.deepCopy(from: template)
+        created.accessoryID = ""
+        created.productFamilyId = nil
+        created.variantSchemaVersion = 0
+        created.isVariant = false
+        created.isDefaultVariant = false
+        created.variantSortOrder = 0
+        created.variantColorDictionary = nil
+        created.revision = 0
+        created.createdAt = Date()
+        created.quantity = max(0, quantity)
+        created.noStock = (quantity <= 0)
+        created.showInAppMarket = false
+        created.sku = sku.trimmingCharacters(in: .whitespacesAndNewlines)
+        created.barcode = barcode.trimmingCharacters(in: .whitespacesAndNewlines)
+        created.price = NSNumber(value: retailPrice)
+        created.wholesalePrice = wholesalePrice.map { NSNumber(value: $0) }
+        created.costPrice = nil
+        created.discountPercent = nil
+        created.discountAmount = nil
+        created.hasOffer = false
+        created.imageURLsArray = []
+        created.imageMeta = []
+        created.normalizeInventoryState()
+
+        let retailMinor = Int((retailPrice * 100.0).rounded())
+        let wholesaleMinor = wholesalePrice.map { Int(($0 * 100.0).rounded()) }
+        var singleGroup: [String: Any] = [
+            "id": "single",
+            "nameAr": "حبة",
+            "nameEn": "Single",
+            "unitsPerGroup": 1,
+            "barcode": created.barcode?.isEmpty == false ? created.barcode! : NSNull(),
+            "sku": created.sku?.isEmpty == false ? created.sku! : NSNull(),
+            "sortOrder": 0,
+            "retailEnabled": true,
+            "wholesaleEnabled": wholesaleMinor != nil,
+            "retailPriceMinor": retailMinor,
+            "wholesalePriceMinor": wholesaleMinor ?? NSNull(),
+            "defaultForRetail": true,
+            "defaultForWholesale": wholesaleMinor != nil,
+            "active": true,
+        ]
+        // Keep payload JSON-compatible when wholesale is disabled.
+        if wholesaleMinor == nil { singleGroup["wholesalePriceMinor"] = NSNull() }
+        let commerce: [String: Any] = [
+            "currency": "QAR",
+            "baseUnit": ["id": "piece", "nameAr": "قطعة", "nameEn": "Piece"],
+            "quantityGroups": [singleGroup],
+        ]
+
+        let branchId = (created.branchID ?? created.storeID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let result: PPInventoryCommandResult = try await withCheckedThrowingContinuation { continuation in
+            PPInventoryCommandService.shared.saveProduct(
+                accessory: created,
+                branchId: branchId.isEmpty ? nil : branchId,
+                commerce: commerce,
+                expectedRevision: nil,
+                commandId: commandId
+            ) { result, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let result, result.success, let productId = result.productId, !productId.isEmpty {
+                    continuation.resume(returning: result)
+                } else {
+                    continuation.resume(throwing: PPAccessoryVariantServiceError.invalidResponse)
+                }
+            }
+        }
+        guard let productId = result.productId else { throw PPAccessoryVariantServiceError.invalidResponse }
+        return try await withCheckedThrowingContinuation { continuation in
+            PPInventoryCommandService.shared.readBackProduct(
+                productId: productId,
+                minimumRevision: max(1, result.revision)
+            ) { product, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let product {
+                    continuation.resume(returning: product)
+                } else {
+                    continuation.resume(throwing: PPAccessoryVariantServiceError.invalidResponse)
+                }
+            }
+        }
+    }
+
     // MARK: - Write
 
-    /// Persists a family through the callable.
+    /// Persists a family through the single authoritative family callable.
     ///
-    /// `transferringListingFrom` names the colour that currently holds the
-    /// public listing when the default is changing. The server refuses a family
-    /// whose non-default colour is publicly listed, because released consumer
-    /// clients render each product document as its own marketplace card, so the
-    /// listing must move **before** the family is re-pointed:
-    ///
-    ///   1. unlist the outgoing default        (validateInventoryChange)
-    ///   2. list the incoming default          (validateInventoryChange)
-    ///   3. re-point the family                (upsertProductVariantFamily)
-    ///
-    /// Doing step 3 first fails with `VARIANT_CONSUMER_VISIBILITY_CONFLICT`.
-    /// Steps 1 and 2 are ordered unlist-then-list deliberately: the intermediate
-    /// state is "briefly not listed", which is recoverable, rather than "briefly
-    /// listed twice", which duplicates the product in the marketplace.
-    ///
-    /// Each step carries its own derived command id, so a retry of the whole
-    /// operation is idempotent per step rather than re-running a partial
-    /// sequence under one key.
+    /// Public-listing ownership for family members is now part of the server
+    /// transaction: when the default color changes, `upsertProductVariantFamily`
+    /// atomically unlists the outgoing default, lists the incoming default when
+    /// the family was public, updates the family, and restamps every member.
+    /// The client deliberately performs no visibility preflight/write here; a
+    /// multi-call choreography could leave a half-applied public state.
     public func saveFamily(
         _ family: PPAccessoryVariantFamily,
-        commandId: String,
-        transferringListingFrom outgoingDefaultProductId: String?
+        commandId: String
     ) async throws -> PPAccessoryVariantSaveResult {
         let messages = family.validationMessages()
         if !messages.isEmpty {
             throw PPAccessoryVariantServiceError.validationFailed(messages)
         }
 
-        if let outgoing = outgoingDefaultProductId?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !outgoing.isEmpty,
-           outgoing != family.defaultVariantProductId {
-            try await transferPublicListing(
-                from: outgoing,
-                to: family.defaultVariantProductId,
-                family: family,
-                commandId: commandId
-            )
-        }
-
         return try await invokeFamilyCommand(family.commandEnvelope(commandId: commandId))
-    }
-
-    /// Steps 1 and 2 of the listing transfer, through the catalog owner.
-    /// `showInAppMarket` belongs to `validateInventoryChange`; the family
-    /// callable only validates it, so this method must not write it directly.
-    private func transferPublicListing(
-        from outgoingProductId: String,
-        to incomingProductId: String,
-        family: PPAccessoryVariantFamily,
-        commandId: String
-    ) async throws {
-        let outgoingWasListed = family.variant(forProductId: outgoingProductId)?.showInAppMarket ?? false
-        let incomingIsListed = family.variant(forProductId: incomingProductId)?.showInAppMarket ?? false
-
-        if outgoingWasListed {
-            try await setMarketVisibility(
-                productId: outgoingProductId,
-                visible: false,
-                commandId: "\(commandId)-unlist",
-                expectedRevision: family.variant(forProductId: outgoingProductId)?.revision
-            )
-        }
-        if !incomingIsListed {
-            try await setMarketVisibility(
-                productId: incomingProductId,
-                visible: true,
-                commandId: "\(commandId)-list",
-                expectedRevision: family.variant(forProductId: incomingProductId)?.revision
-            )
-        }
-    }
-
-    /// `@MainActor` because `updateCatalogPresentation` is main-actor isolated and
-    /// returns a non-`Sendable` dictionary. Isolating the helper keeps that result
-    /// from crossing an actor boundary; the response is not needed here, because
-    /// the family command that follows re-reads the authoritative state.
-    @MainActor
-    private func setMarketVisibility(
-        productId: String,
-        visible: Bool,
-        commandId: String,
-        expectedRevision: Int?
-    ) async throws {
-        _ = try await PPLivePetInventoryService.updateCatalogPresentation(
-            productID: productId,
-            values: ["showInAppMarket": visible],
-            commandID: commandId,
-            expectedRevision: (expectedRevision ?? 0) > 0 ? expectedRevision : nil
-        )
     }
 
     private func invokeFamilyCommand(_ envelope: [String: Any]) async throws -> PPAccessoryVariantSaveResult {

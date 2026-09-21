@@ -11,6 +11,7 @@
 "Inventory_CountScopeTooLarge" = "Choose a shelf, category, or spot count with at most 100 items.";
 "Inventory_CountScopeEmpty" = "There are no inventory items in the selected count scope.";
 "Inventory_ProjectionUnavailable" = "Branch inventory could not be verified. Refresh before changing stock.";
+"Inventory_RevisionUpdatedRetry" = "The catalog revision has been refreshed to the latest. Tap Save Changes to proceed.";
 "AdminLoginTitle"              = "Admin Login";
 "Email"                        = "Email";
 "EmailPlaceholder"             = "Enter email";
@@ -9786,8 +9787,9 @@
 "Inventory_Family_HasOutOfStock" = "A colour is out of stock";
 "Inventory_Family_HasLowStock" = "Low stock";
 "Inventory_Family_ArchivedCount" = "%@ archived";
-"Inventory_Family_Expand_Hint" = "Show each colour to manage its stock";
+"Inventory_Family_Expand_Hint" = "Choose a color to show its price, stock, and actions";
 "Inventory_Family_Collapse_Hint" = "Collapse colours";
+"Inventory_Family_SelectColour_Hint" = "Shows this color’s price, stock, and actions";
 "Inventory_Family_Summary_A11y" = "%@, %@ colours, %@ available in total";
 
 
@@ -9807,3 +9809,98 @@
 "Variant_Preset_Palettes" = "Harmonized Color Palettes";
 
 "CatalogCategorySyncError" = "Couldn't update the item category";
+
+
+/* Variant commerce hardening */
+"Variant_Add_Action" = "Add Color";
+"Variant_Add_Hint" = "Creates a separate sellable item with its own price and identifiers, then links it to this product.";
+"Variant_Add_Title" = "Add Color";
+"Variant_Add_Create" = "Create Color";
+"Variant_Add_Color" = "Color";
+"Variant_Add_Color_A11y" = "Selected color %@. Tap to change";
+"Variant_Add_Pricing" = "Color Pricing";
+"Variant_Add_Wholesale" = "Separate wholesale price";
+"Variant_Add_Identifiers" = "Inventory Identity";
+"Variant_Add_SKU_Placeholder" = "e.g. BAG-BLU";
+"Variant_Add_Barcode_Placeholder" = "Scan or enter this color barcode";
+"Variant_Add_SafetyNote" = "The color is created with zero stock and no images. Add stock and media from this color record so every movement stays linked to the correct sellable item.";
+"Variant_Add_Failed" = "Could not finish adding the color. No duplicate item was created; you can retry safely.";
+"Variant_Add_SaveFamilyFirst" = "Save the current product color first, then add another color.";
+"Variant_Add_InvalidPrice" = "Enter a valid selling price for the new color.";
+"Variant_Add_Confirmed" = "Color added and confirmed.";
+"Variant_RetailPrice" = "Retail Price";
+"Variant_WholesalePrice" = "Wholesale Price";
+"Variant_iPad_Colours" = "Product Colors";
+"Inventory_Family_PriceRange_Format" = "%@ – %@";
+"Inventory_Family_Price_A11y" = "Price range: %@";
+"Inventory_Family_Price_A11y_Suffix" = ", price range %@";
+"Variant_Price_A11y" = "Price %@";
+"Variant_OpenProduct_Failed" = "Could not open this color record";
+"Variant_Section_Count_Format" = "%@ colors · %@ available";
+"BranchCommerce_ProjectionMissing" = "The branch price could not be confirmed for some products. Save branch pricing again before selling.";
+
+/* Inventory product cells */
+"InventoryCell_SelectBranch" = "Select a branch to adjust availability";
+"InventoryCell_Loading" = "Loading branch availability";
+"InventoryCell_Unconfirmed" = "Unconfirmed balance · Pull to refresh";
+"InventoryCell_Missing" = "Branch balance unavailable";
+"InventoryCell_Unnamed" = "Unnamed product";
+"InventoryCell_Available" = "Available";
+"InventoryCell_Low" = "Low stock";
+"InventoryCell_CatalogQuantity" = "Catalog quantity";
+"InventoryCell_LotTracking" = "Tracked by lot and expiry";
+"InventoryCell_Lots" = "Lots & expiry";
+"InventoryCell_AnimalRecords" = "Animal records";
+"InventoryCell_OpenHint" = "Opens product details and actions";
+"InventoryCell_QuantityHint" = "Opens the quantity keypad";
+"InventoryCell_Decrease" = "Decrease quantity by one";
+"InventoryCell_Increase" = "Increase quantity by one";
+"InventoryCell_QuantityChanged" = "The balance has changed";
+"InventoryCell_QuantityChangedDetail" = "Review the current balance before adjusting it again.";
+"InventoryCell_WholesaleMargin" = "Wholesale difference %@%%";
+"InventoryCell_ReadbackPending" = "The adjustment was accepted, but the balance could not be confirmed. Pull to refresh before adjusting this product again.";
+"InventoryCell_ReadOnly" = "Read only";
+"InventoryCell_Inactive" = "Product inactive";
+"InventoryCell_PreviousPrice" = "Previous price";
+"InventoryCell_PhotoCount" = "Photo count %@";
+
+/* Variant Atelier & Studio Reinvention */
+"Variant_Stock_InStock" = "In Stock";
+"Variant_Stock_OutOfStock" = "Out of Stock";
+"Variant_Stock_Low" = "Low Stock";
+"Variant_Identifier_Unset" = "Not Set";
+"Variant_Order_Index_Format" = "Order: %@ of %@";
+"Variant_Copied_Hex" = "Color HEX Copied";
+"Variant_OpenProduct_Subtitle" = "Open color record for stock, pricing, and suppliers";
+"Variant_Media_Empty_Tip" = "Add color-specific photos to display when customers select this color.";
+"Variant_Reorder_Title" = "Display Order";
+"Variant_Color_Spec_Title" = "Color Specifications & Specs";
+"Variant_Spec_Retail" = "Retail Price";
+"Variant_Spec_Wholesale" = "Wholesale Price";
+"Variant_Spec_Stock" = "Stock Status";
+"Variant_Spec_SKU" = "Item SKU";
+"Variant_Spec_Barcode" = "Barcode";
+"Variant_Quick_SetDefault" = "Make Default";
+
+/* Variant Studio Sheet Keys */
+"Variant_Studio_CreateTitle" = "Add New Color";
+"Variant_Studio_EditTitle" = "Color Studio: %@";
+"Variant_Studio_Save" = "Save Changes";
+"Variant_Studio_SaveFailed" = "Could not save changes. No data was lost; please try again.";
+"Variant_Studio_UpdateSuccess" = "Color updated and saved successfully.";
+"Variant_Studio_Stock_Title" = "Stock & Available Quantity";
+"Variant_Studio_Stock_InStock_Format" = "In Stock (%@ units)";
+"Variant_Studio_Stock_Low_Format" = "Low Stock (%@ units)";
+"Variant_Studio_Stock_Zero" = "Out of Stock (0 units)";
+"Variant_Studio_Photos_Title" = "Color Photos";
+"Variant_Studio_Photos_Subtitle" = "Dedicated photos for this color. Displayed when a customer selects this variant.";
+"Variant_Studio_Photos_Add" = "Add Photos";
+"Variant_Studio_Photos_Primary" = "Primary";
+"Variant_Studio_Photos_MakePrimary" = "Tap any photo to make it the primary cover";
+"Variant_Studio_Custom_Palette" = "Full Color Studio";
+"Variant_Studio_Margin_Delta" = "Price Delta: %@ (Margin: %@%%)";
+"Variant_Studio_SafetyNote" = "Every stock adjustment and photo set is securely linked directly to this variant product.";
+"Variant_Studio_OpenFullRecord" = "Open Full Product Record in Catalog";
+"Variant_Studio_Banner_Subtitle" = "Instant studio for color, photos, stock, pricing, and identifiers";
+"CatalogIntake_GeneratePPBarcode" = "Generate PP Barcode";
+"Validation_Duplicate" = "Duplicate";

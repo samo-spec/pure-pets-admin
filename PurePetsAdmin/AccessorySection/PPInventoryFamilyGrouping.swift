@@ -6,14 +6,15 @@
 //  instead of once per colour.
 //
 //  ── Why grouping, not replacing ────────────────────────────────────────────
-//  A family row is a *wrapper* around the same per-colour cards the list already
-//  renders. That is deliberate and it is the whole safety argument:
+//  A family row is a navigation wrapper around the same exact per-colour
+//  `PetAccessory` records the inventory list already owns. Expanding selects ONE
+//  color and shows a compact child inspector rather than stacking full duplicate
+//  product cards. The safety argument is unchanged:
 //
 //    • every stock action (adjust, lots, damage, cycle count, quarantine,
-//      transfer, POS hand-off, delete) stays bound to the exact `PetAccessory`
-//      it was already bound to, so none of those call sites change;
+//      transfer, POS hand-off, delete) stays bound to the exact `PetAccessory`;
 //    • an ambiguous "which colour did you mean?" mutation is not representable,
-//      because no action is ever offered on the family row itself;
+//      because family-level UI only selects a member and never mutates stock;
 //    • a product with no family renders through the identical code path it used
 //      before, so existing behaviour is untouched.
 //
@@ -97,19 +98,40 @@ enum PPInventoryDisplayGroup: Identifiable {
 /// Collapsed header for one colour family.
 ///
 /// Presents merchandising identity and a per-colour availability summary. It
-/// deliberately exposes **no** stock action: expanding reveals the real
-/// per-colour cards, which own every mutation.
+/// deliberately exposes **no** family-level stock mutation: a color selection
+/// expands one exact sellable member into the compact child inspector owned by
+/// the inventory list.
 struct PPInventoryFamilyRow: View {
     let members: [PetAccessory]
     @Binding var isExpanded: Bool
+    @Binding var selectedProductId: String
     /// Live availability for one colour, supplied by the list so the family row
     /// uses the same branch projection as every other row rather than a second
     /// source of truth.
     let availability: (PetAccessory) -> Int
+    /// Branch-effective default retail price for this exact color product.
+    /// Returning nil means the price is unresolved and must not be invented.
+    let retailPrice: (PetAccessory) -> Double?
     let lowStockThreshold: Int
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var defaultMember: PetAccessory {
         members.first { $0.isDefaultVariant } ?? members[0]
+    }
+
+    /// While expanded, the parent vitrine follows the selected sellable color.
+    /// Collapsed families return to the default marketplace member so the list
+    /// remains stable and immediately recognizable.
+    private var heroMember: PetAccessory {
+        guard isExpanded else { return defaultMember }
+        return members.first { $0.accessoryID == selectedProductId } ?? defaultMember
+    }
+
+    /// A quiet category cue distinguishes a logical colour family from the
+    /// concrete stock cards revealed below it without inventing new state.
+    private var familyAccent: Color {
+        CategorySpecimenAuraTheme.resolve(for: defaultMember).accentTint
     }
 
     private var activeMembers: [PetAccessory] {
@@ -122,6 +144,22 @@ struct PPInventoryFamilyRow: View {
 
     private var archivedCount: Int {
         members.count - activeMembers.count
+    }
+
+    private var resolvedPrices: [Double] {
+        activeMembers.compactMap(retailPrice).filter { $0.isFinite && $0 >= 0 }.sorted()
+    }
+
+    private var priceSummary: String? {
+        guard let minimum = resolvedPrices.first, let maximum = resolvedPrices.last else { return nil }
+        if abs(maximum - minimum) < 0.005 {
+            return PetAccessory.formatCurrency(NSNumber(value: minimum))
+        }
+        return String(
+            format: Language.get("Inventory_Family_PriceRange_Format", alter: "%@ – %@"),
+            PetAccessory.formatCurrency(NSNumber(value: minimum)),
+            PetAccessory.formatCurrency(NSNumber(value: maximum))
+        )
     }
 
     private var hasLowStockColour: Bool {
@@ -139,33 +177,61 @@ struct PPInventoryFamilyRow: View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
+                if reduceMotion {
+                    isExpanded.toggle()
+                } else {
+                    withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
+                }
             } label: {
                 header
+                    .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilitySummary)
             .accessibilityHint(isExpanded
                 ? Language.get("Inventory_Family_Collapse_Hint", alter: "طي الألوان")
-                : Language.get("Inventory_Family_Expand_Hint", alter: "إظهار كل لون لإدارة مخزونه"))
+                : Language.get("Inventory_Family_Expand_Hint", alter: "اختر لوناً لعرض مخزونه وسعره وإجراءاته"))
             .accessibilityAddTraits(.isButton)
 
             swatchSummary
         }
         .padding(12)
-        .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(AdminSurface.card)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [familyAccent.opacity(0.10), familyAccent.opacity(0.025), .clear],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                }
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(AdminSurface.hairline, lineWidth: 1)
+                .strokeBorder(familyAccent.opacity(isExpanded ? 0.34 : 0.22), lineWidth: isExpanded ? 1.25 : 1)
         )
+        .overlay(alignment: .leading) {
+            Capsule(style: .continuous)
+                .fill(familyAccent.opacity(isExpanded ? 0.90 : 0.62))
+                .frame(width: 3)
+                .padding(.vertical, 14)
+                .accessibilityHidden(true)
+        }
     }
 
     private var header: some View {
         HStack(spacing: 12) {
-            // Family hero image is the default colour's primary image — the same
-            // asset the marketplace shows for the product.
-            AsyncImage(url: PetAccessory.firstImageURL(for: defaultMember)) { phase in
+            // The hero follows the selected color while expanded and returns to
+            // the default marketplace member when the family is collapsed.
+            AsyncImage(url: PetAccessory.firstImageURL(for: heroMember)) { phase in
                 switch phase {
                 case .success(let image):
                     image.resizable().aspectRatio(contentMode: .fill)
@@ -201,6 +267,23 @@ struct PPInventoryFamilyRow: View {
                     ))
                     .font(AdminType.caption2)
                     .foregroundStyle(totalAvailable <= 0 ? AdminSurface.crimson : AdminCommandInk.secondary)
+                }
+
+                if let priceSummary {
+                    HStack(spacing: 4) {
+                        Image(systemName: resolvedPrices.count > 1 && (resolvedPrices.last ?? 0) != (resolvedPrices.first ?? 0)
+                            ? "arrow.left.and.right"
+                            : "tag.fill")
+                            .font(.system(size: 9, weight: .semibold))
+                        Text(priceSummary.normalizedEnglishDigits)
+                            .font(AdminType.caption2Bold)
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .accessibilityLabel(String(
+                        format: Language.get("Inventory_Family_Price_A11y", alter: "نطاق السعر: %@"),
+                        priceSummary
+                    ))
                 }
 
                 if hasLowStockColour || hasOutOfStockColour || archivedCount > 0 {
@@ -239,8 +322,13 @@ struct PPInventoryFamilyRow: View {
             // needs no mirroring for Arabic.
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                 .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(AdminCommandInk.secondary)
-                .frame(width: 44, height: 44)
+                .foregroundStyle(familyAccent)
+                .frame(width: 48, height: 48)
+                .background(familyAccent.opacity(0.12), in: Circle())
+                .overlay {
+                    Circle()
+                        .strokeBorder(familyAccent.opacity(0.22), lineWidth: 0.75)
+                }
         }
     }
 
@@ -255,7 +343,9 @@ struct PPInventoryFamilyRow: View {
         .background(tint.opacity(0.12), in: Capsule())
     }
 
-    /// Per-colour availability. Swatch plus text, never swatch alone.
+    /// Per-colour selector. The rail is the family navigation surface: tapping
+    /// a color selects that exact product and opens its compact child inspector.
+    /// Swatch plus text is always used; color is never the only identifier.
     private var swatchSummary: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
@@ -263,50 +353,107 @@ struct PPInventoryFamilyRow: View {
                     let colour = member.variantColorDictionary
                         .flatMap { PPAccessoryVariantColor(dictionary: $0) }
                     let quantity = availability(member)
+                    let isSelected = member.accessoryID == selectedProductId
 
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(colour.map { Color(uiColor: $0.uiColor) } ?? AdminSurface.control)
-                            .frame(width: 14, height: 14)
-                            .overlay(
-                                Circle().strokeBorder(
-                                    (colour?.requiresContrastBorder ?? true)
-                                        ? AdminSurface.primaryText.opacity(0.3)
-                                        : Color.clear,
-                                    lineWidth: 1
+                    Button {
+                        UISelectionFeedbackGenerator().selectionChanged()
+                        if reduceMotion {
+                            selectedProductId = member.accessoryID
+                            isExpanded = true
+                        } else {
+                            withAnimation(.easeOut(duration: 0.18)) {
+                                selectedProductId = member.accessoryID
+                                isExpanded = true
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            ZStack {
+                                Circle()
+                                    .fill(colour.map { Color(uiColor: $0.uiColor) } ?? AdminSurface.control)
+                                    .frame(width: 16, height: 16)
+                                Circle()
+                                    .strokeBorder(
+                                        (colour?.requiresContrastBorder ?? true)
+                                            ? AdminSurface.primaryText.opacity(0.32)
+                                            : Color.clear,
+                                        lineWidth: 1
+                                    )
+                                    .frame(width: 16, height: 16)
+                                if isSelected {
+                                    Circle()
+                                        .strokeBorder(familyAccent, lineWidth: 2)
+                                        .frame(width: 22, height: 22)
+                                }
+                            }
+                            .frame(width: 22, height: 22)
+
+                            Text(colour?.localizedName ?? (member.sku ?? member.accessoryID))
+                                .font(isSelected ? AdminType.caption2Bold : AdminType.caption2)
+                                .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminCommandInk.secondary)
+                                .lineLimit(1)
+
+                            Text(verbatim: "\(quantity.englishDigits)")
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(
+                                    member.isArchived
+                                        ? AdminCommandInk.tertiary
+                                        : quantity <= 0
+                                            ? AdminSurface.crimson
+                                            : quantity <= lowStockThreshold
+                                                ? AdminSurface.amber
+                                                : AdminSurface.emerald
                                 )
-                            )
 
-                        Text(colour?.localizedName ?? (member.sku ?? member.accessoryID))
-                            .font(AdminType.caption2)
-                            .foregroundStyle(AdminCommandInk.secondary)
-                            .lineLimit(1)
-
-                        Text(verbatim: "\(quantity.englishDigits)")
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(
-                                member.isArchived
-                                    ? AdminCommandInk.tertiary
-                                    : quantity <= 0
-                                        ? AdminSurface.crimson
-                                        : quantity <= lowStockThreshold
-                                            ? AdminSurface.amber
-                                            : AdminSurface.emerald
-                            )
+                            if let price = retailPrice(member) {
+                                Text(verbatim: "·")
+                                    .foregroundStyle(AdminCommandInk.tertiary)
+                                Text(PetAccessory.formatCurrency(NSNumber(value: price)).normalizedEnglishDigits)
+                                    .font(AdminType.caption2Bold)
+                                    .foregroundStyle(AdminSurface.primaryText)
+                                    .lineLimit(1)
+                                    .environment(\.layoutDirection, .leftToRight)
+                            }
+                        }
+                        .padding(.horizontal, 9)
+                        .frame(minHeight: 44)
+                        .background(
+                            isSelected ? familyAccent.opacity(0.16) : familyAccent.opacity(0.07),
+                            in: Capsule()
+                        )
+                        .overlay {
+                            Capsule()
+                                .strokeBorder(
+                                    familyAccent.opacity(isSelected ? 0.58 : 0.18),
+                                    lineWidth: isSelected ? 1.25 : 0.75
+                                )
+                        }
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(AdminSurface.control, in: Capsule())
-                    .opacity(member.isArchived ? 0.5 : 1)
+                    .buttonStyle(.plain)
+                    .opacity(member.isArchived ? 0.55 : 1)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(colourAccessibilityLabel(
                         colour: colour,
                         member: member,
                         quantity: quantity
                     ))
+                    .accessibilityHint(Language.get(
+                        "Inventory_Family_SelectColour_Hint",
+                        alter: "يعرض سعر ومخزون وإجراءات هذا اللون"
+                    ))
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
                 }
             }
-            .padding(.vertical, 1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+        }
+        .background(
+            familyAccent.opacity(0.045),
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(familyAccent.opacity(0.14), lineWidth: 0.75)
         }
     }
 
@@ -326,6 +473,12 @@ struct PPInventoryFamilyRow: View {
                 NSNumber(value: quantity)
             ))
         }
+        if let price = retailPrice(member) {
+            parts.append(String(
+                format: Language.get("Variant_Price_A11y", alter: "السعر %@"),
+                PetAccessory.formatCurrency(NSNumber(value: price))
+            ))
+        }
         if member.isDefaultVariant {
             parts.append(Language.get("Variant_State_Default", alter: "اللون الافتراضي"))
         }
@@ -333,7 +486,7 @@ struct PPInventoryFamilyRow: View {
     }
 
     private var accessibilitySummary: String {
-        String(
+        var text = String(
             format: Language.get(
                 "Inventory_Family_Summary_A11y",
                 alter: "%@، %@ ألوان، %@ متوفر إجمالاً"
@@ -342,5 +495,12 @@ struct PPInventoryFamilyRow: View {
             NSNumber(value: activeMembers.count),
             NSNumber(value: totalAvailable)
         )
+        if let priceSummary {
+            text += String(
+                format: Language.get("Inventory_Family_Price_A11y_Suffix", alter: "، نطاق السعر %@"),
+                priceSummary
+            )
+        }
+        return text
     }
 }
