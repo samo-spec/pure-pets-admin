@@ -863,16 +863,32 @@ enum PPLivePetInventoryService {
         // Only public-safe metadata crosses the client boundary; actor, owner,
         // branch, lifecycle, timestamps, stock, cost, and projection fields are
         // resolved or derived by Infra.
+        //
+        // The allowlist is the security boundary and is deliberately kept. What
+        // changed is the failure mode: an unlisted key used to be dropped
+        // silently by a `filter`, so a caller that passed a field this command
+        // does not own — a colour-variant identity field, for example — got a
+        // successful save that quietly omitted it. An unexpected key is a
+        // contract violation in the calling code, so it now fails loudly instead
+        // of being discarded.
         let allowedKeys: Set<String> = [
             "name", "nameEn", "desc", "descEn", "sku", "barcode", "category",
             "price", "sellPrice", "finalPrice", "discountPercent", "discountAmount",
             "wholesalePrice", "petMainCategoryID", "petSubCategoryID", "condition",
+            // Both spellings are accepted by the backend update allowlist. Added
+            // so the accessory category can be updated through the callable
+            // instead of the direct merge write it used to need.
+            "AccessoryCategoryID", "accessoryCategoryID",
             "weight", "weightUnit", "size", "imageURLsArray", "imageMeta", "isNew",
             "hasOffer", "showInAppMarket", "active", "inventoryTrackingPolicy",
             "expiryDate", "reorderLevel", "keywords", "birdColor", "relatedAccessories",
             "shelfLifeDays", "guaranteedShelfLifeDays", "expiryCutoffDays"
         ]
-        let sanitizedValues = values.filter { allowedKeys.contains($0.key) }
+        let rejectedKeys = values.keys.filter { !allowedKeys.contains($0) }.sorted()
+        guard rejectedKeys.isEmpty else {
+            throw PPLivePetServiceError.unsupportedCatalogFields(rejectedKeys)
+        }
+        let sanitizedValues = values
         guard !sanitizedValues.isEmpty else {
             throw PPLivePetServiceError.invalidResponse
         }
@@ -943,6 +959,10 @@ enum PPLivePetServiceError: LocalizedError {
     case truncatedReservations
     case missingSellingPrice
     case notAuthenticated
+    /// A caller passed catalog fields this command does not own. Surfaced rather
+    /// than silently dropped, so a field can never appear saved when it was not
+    /// sent.
+    case unsupportedCatalogFields([String])
 
     var errorDescription: String? {
         switch self {
@@ -956,6 +976,12 @@ enum PPLivePetServiceError: LocalizedError {
             return Language.get("LivePet_Error_MissingUnitPrice", alter: "حدد سعر بيع صالحاً للحيوان قبل حجزه أو بيعه.")
         case .notAuthenticated:
             return Language.get("LivePet_Error_NotAuthenticated", alter: "يجب تسجيل الدخول بحساب موظف معتمد لإجراء هذه العملية.")
+        case .unsupportedCatalogFields(let fields):
+            let template = Language.get(
+                "Inventory_UnsupportedCatalogFields",
+                alter: "هذه الحقول لا تُحدَّث من هذه الشاشة ولم يتم الحفظ: %@."
+            )
+            return String(format: template, fields.joined(separator: ", "))
         }
     }
 }
@@ -1736,6 +1762,12 @@ final class PPFirestoreListenerToken: @unchecked Sendable {
 final class PPInventoryListViewModel: ObservableObject {
     @Published private(set) var allItems: [PetAccessory] = []
     @Published private(set) var filteredItems: [PetAccessory] = []
+    /// `filteredItems` collapsed so one logical product appears once.
+    ///
+    /// A colour family becomes a single grouping row whose children are the same
+    /// per-colour cards as before; a product with no family stays a plain row.
+    /// Derived from the already-loaded items, so grouping costs no extra reads.
+    @Published private(set) var displayGroups: [PPInventoryDisplayGroup] = []
     @Published var branches: [PPInventoryBranchOption] = []
     @Published var searchText: String = ""
     @Published fileprivate var activeFilter: InventoryFilter = .all
@@ -1816,6 +1848,7 @@ final class PPInventoryListViewModel: ObservableObject {
         activeTab = tab
         allItems = []
         filteredItems = []
+        displayGroups = []
         startListening()
     }
 
@@ -1919,6 +1952,7 @@ final class PPInventoryListViewModel: ObservableObject {
             return a.accessoryID > b.accessoryID
         }
         filteredItems = result
+        displayGroups = PPInventoryDisplayGroup.grouped(result)
     }
 
     private func itemDiscountValue(_ item: PetAccessory) -> Double {
@@ -2076,6 +2110,7 @@ final class PPInventoryListViewModel: ObservableObject {
         pendingDeletedIDs.insert(docID)
         allItems.removeAll { $0.accessoryID == docID }
         filteredItems.removeAll { $0.accessoryID == docID }
+        displayGroups = PPInventoryDisplayGroup.grouped(filteredItems)
         applyFilter()
         objectWillChange.send()
 
@@ -2141,16 +2176,21 @@ struct PPInventoryListView: View {
     private let session: AdminSession?
     @StateObject private var viewModel: PPInventoryListViewModel
     @ObservedObject private var branchProjection = PPBranchInventoryService.shared
+    @ObservedObject private var branchContext = BranchContextStore.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.dismiss) private var dismiss
     private let onPushViewController: (UIViewController) -> Void
     private let onDismiss: (() -> Void)?
     private let showsCatalogSwitcher: Bool
 
-    @State private var spinAngle: Double = 0
     @FocusState private var isSearchFocused: Bool
+    @State private var keyboardHeight: CGFloat = 0
     @State private var showingBranchSwitcherSheet: Bool = false
     @State private var itemForDamage: PetAccessory? = nil
+    /// Families the operator has expanded. Collapsed by default so the list
+    /// shows one row per logical product until a colour is actually needed.
+    @State private var expandedFamilyIds: Set<String> = []
     @State private var itemForQuarantine: PetAccessory? = nil
     @State private var itemForLots: PetAccessory? = nil
     @State private var showCycleCountStudio: Bool = false
@@ -2270,16 +2310,11 @@ struct PPInventoryListView: View {
         GeometryReader { geometry in
             let isRegular = geometry.size.width >= 760
 
-            ZStack(alignment: .top) {
+            ZStack(alignment: .bottom) {
                 AdminSurface.background.ignoresSafeArea()
 
                 VStack(spacing: 0) {
                     sovereignHeaderBar
-                        .frame(maxWidth: isRegular ? 980 : .infinity)
-                        .frame(maxWidth: .infinity)
-
-                    PPAdminBranchSwitcherBar(style: .compact)
-                        .padding(.vertical, 4)
                         .frame(maxWidth: isRegular ? 980 : .infinity)
                         .frame(maxWidth: .infinity)
 
@@ -2289,50 +2324,59 @@ struct PPInventoryListView: View {
                             .frame(maxWidth: .infinity)
                     }
 
-                    if viewModel.isLoading && viewModel.allItems.isEmpty {
-                        ScrollView(.vertical, showsIndicators: false) {
-                            loadingSkeletonView
-                                .padding(.horizontal, AdminSpacing.screenMargin)
-                                .padding(.top, 10)
-                                .padding(.bottom, 64)
-                                .frame(maxWidth: isRegular ? 980 : .infinity)
-                                .frame(maxWidth: .infinity)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if viewModel.allItems.isEmpty {
-                        flagshipCatalogEmptyStateView(isRegular: isRegular)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        ScrollView(.vertical, showsIndicators: false) {
-                            LazyVStack(spacing: 16) {
-                                apexTelemetryRadar
-                                searchAndFilterMatrix
+                    ScrollView(.vertical, showsIndicators: false) {
+                        LazyVStack(spacing: AdminSpacing.base) {
+                            inventoryHero
 
+                            if viewModel.isLoading && viewModel.allItems.isEmpty {
+                                loadingSkeletonView
+                                    .accessibilityHidden(true)
+                            } else if viewModel.allItems.isEmpty && viewModel.errorMessage != nil {
+                                inventoryUnavailableState
+                            } else if viewModel.allItems.isEmpty {
+                                flagshipCatalogEmptyStateView(isRegular: isRegular)
+                            } else {
                                 if viewModel.filteredItems.isEmpty {
                                     filterEmptyStateCard
                                 } else {
                                     itemsListSection
                                 }
                             }
-                            .padding(.horizontal, AdminSpacing.screenMargin)
-                            .padding(.top, 10)
-                            .padding(.bottom, 64)
-                            .frame(maxWidth: isRegular ? 980 : .infinity)
-                            .frame(maxWidth: .infinity)
                         }
-                        .scrollDismissesKeyboardCompat()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .refreshable {
-                            await viewModel.refresh()
-                        }
+                        .padding(.horizontal, AdminSpacing.screenMargin)
+                        .padding(.top, 10)
+                        .padding(.bottom, 115)
+                        .frame(maxWidth: isRegular ? 980 : .infinity)
+                        .frame(maxWidth: .infinity)
+                    }
+                    .scrollDismissesKeyboardCompat()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .refreshable {
+                        await refreshHero()
                     }
                 }
                 .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+
+                if !viewModel.allItems.isEmpty {
+                    bottomFloatingSearchDock(isRegular: isRegular, safeBottom: geometry.safeAreaInsets.bottom)
+                }
             }
         }
         .ignoresSafeArea()
         .dismissKeyboardOnTapOutside()
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
+            if let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
+                withAnimation(.easeOut(duration: 0.25)) {
+                    keyboardHeight = frame.height
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            withAnimation(.easeOut(duration: 0.25)) {
+                keyboardHeight = 0
+            }
+        }
         .sheet(isPresented: $showingBranchSwitcherSheet) {
             PPBranchSelectionGateView()
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
@@ -2609,166 +2653,385 @@ struct PPInventoryListView: View {
         .padding(.vertical, 6)
     }
 
-    // MARK: - Apex Live Telemetry Radar
+    // MARK: - Branch Inventory Hero
 
-    private var apexTelemetryRadar: some View {
-        VStack(spacing: 14) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(Color(uiColor: .ppSuccess))
-                            .frame(width: 8, height: 8)
-                            .shadow(color: Color(uiColor: .ppSuccess).opacity(0.8), radius: 4, x: 0, y: 0)
-                        Text(Language.get("Inventory_Live_Radar", alter: "رصد المخزون الحي • مزامنة لحظية"))
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(Color(uiColor: .ppSuccess))
-                    }
+    private var heroIsAwaitingBranch: Bool {
+        let selectedID = branchContext.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines)
+        return selectedID != branchProjection.currentBranchId || branchProjection.isLoading
+    }
 
-                    Text(viewModel.activeTab.title)
-                        .font(AdminType.title2)
-                        .foregroundColor(AdminSurface.primaryText)
+    private var heroHasMetrics: Bool {
+        !heroIsAwaitingBranch &&
+        branchProjection.inventoryError == nil &&
+        branchProjection.settingsError == nil &&
+        !(viewModel.allItems.isEmpty && (viewModel.isLoading || viewModel.errorMessage != nil))
+    }
 
-                    if viewModel.totalValuation > 0 {
-                        Text(verbatim: String(format: Language.get("Inventory_Valuation_Format", alter: "القيمة الإجمالية للمخزون: %.2f ر.ق"), viewModel.totalValuation).normalizedEnglishDigits)
-                            .font(AdminType.caption1)
-                            .foregroundColor(AdminCommandInk.secondary)
-                    }
-
-                    if viewModel.unpricedItemsCount > 0 {
-                        Label {
-                            Text(verbatim:
-                                String(
-                                    format: Language.get(
-                                        "Inventory_Unpriced_Items_Format",
-                                        alter: "لم يُحدَّد سعر البيع لعدد %@ من الأصناف. لا تشملها قيمة المخزون."
-                                    ),
-                                    viewModel.unpricedItemsCount.englishDigits
-                                ).normalizedEnglishDigits
-                            )
-                        } icon: {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                        }
-                        .font(AdminType.caption2)
-                        .foregroundStyle(Color(uiColor: .ppWarning))
-                        .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-
-                Spacer(minLength: 8)
-
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    withAnimation(.easeInOut(duration: 0.6)) {
-                        spinAngle += 360
-                    }
-                    Task {
-                        await viewModel.refresh()
-                    }
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(AdminSurface.control)
-                            .frame(width: 38, height: 38)
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(AdminSurface.primary)
-                            .rotationEffect(.degrees(spinAngle))
-                    }
-                }
-                .buttonStyle(CatalogPressStyle())
-                .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
-            }
-
-            // 4-Tile Telemetry Deck (Adaptive with ViewThatFits for small screens)
-            ViewThatFits(in: .horizontal) {
-                // Primary: 4-tile single row (Standard iPhone & iPad)
-                HStack(spacing: 8) {
-                    telemetryTile(
-                        filter: .inStock,
-                        title: Language.get("InStock", alter: "متوفر"),
-                        count: viewModel.inStockCount,
-                        color: Color(uiColor: .ppSuccess),
-                        icon: "checkmark.circle.fill"
-                    )
-                    telemetryTile(
-                        filter: .lowStock,
-                        title: Language.get("LowStock", alter: "مخزون حرج"),
-                        count: viewModel.lowStockCount,
-                        color: Color(uiColor: .ppWarning),
-                        icon: "exclamationmark.triangle.fill"
-                    )
-                    telemetryTile(
-                        filter: .outOfStock,
-                        title: Language.get("OutOfStock", alter: "نفذ"),
-                        count: viewModel.outOfStockCount,
-                        color: Color(uiColor: .ppError),
-                        icon: "xmark.octagon.fill"
-                    )
-                    telemetryTile(
-                        filter: .hasOffer,
-                        title: Language.get("Offers", alter: "تخفيضات"),
-                        count: viewModel.offersCount,
-                        color: Color(red: 0.65, green: 0.35, blue: 0.95),
-                        icon: "tag.fill"
-                    )
-                }
-
-                // Fallback: 2x2 grid for compact widths / high dynamic type
-                VStack(spacing: 8) {
-                    HStack(spacing: 8) {
-                        telemetryTile(
-                            filter: .inStock,
-                            title: Language.get("InStock", alter: "متوفر"),
-                            count: viewModel.inStockCount,
-                            color: Color(uiColor: .ppSuccess),
-                            icon: "checkmark.circle.fill"
-                        )
-                        telemetryTile(
-                            filter: .lowStock,
-                            title: Language.get("LowStock", alter: "مخزون حرج"),
-                            count: viewModel.lowStockCount,
-                            color: Color(uiColor: .ppWarning),
-                            icon: "exclamationmark.triangle.fill"
-                        )
-                    }
-                    HStack(spacing: 8) {
-                        telemetryTile(
-                            filter: .outOfStock,
-                            title: Language.get("OutOfStock", alter: "نفذ"),
-                            count: viewModel.outOfStockCount,
-                            color: Color(uiColor: .ppError),
-                            icon: "xmark.octagon.fill"
-                        )
-                        telemetryTile(
-                            filter: .hasOffer,
-                            title: Language.get("Offers", alter: "تخفيضات"),
-                            count: viewModel.offersCount,
-                            color: Color(red: 0.65, green: 0.35, blue: 0.95),
-                            icon: "tag.fill"
-                        )
-                    }
-                }
-            }
-
-            // Proportional Health Spectrum
-            if !viewModel.allItems.isEmpty {
-                stockHealthSpectrum
-            }
+    private var heroStatus: (title: String, symbol: String, color: Color) {
+        if viewModel.errorMessage != nil || branchProjection.inventoryError != nil || branchProjection.settingsError != nil {
+            return (
+                Language.get("InventoryHero_Status_Interrupted", alter: "تعذّر تحديث البيانات"),
+                "exclamationmark.triangle",
+                Color(uiColor: .ppWarning)
+            )
         }
-        .padding(18)
-        .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(AdminSurface.surface)
-                .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 3)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.60), lineWidth: 0.75)
+        if viewModel.isLoading || heroIsAwaitingBranch {
+            return (
+                Language.get("InventoryHero_Status_Loading", alter: "جارٍ تحديث المخزون"),
+                "arrow.triangle.2.circlepath",
+                AdminSurface.primary
+            )
+        }
+        if branchProjection.currentBranchId != nil && !branchProjection.isServerConfirmed {
+            return (
+                Language.get("InventoryHero_Status_Cached", alter: "بيانات محفوظة · بانتظار التأكيد"),
+                "clock",
+                Color(uiColor: .ppWarning)
+            )
+        }
+        if branchProjection.isServerConfirmed {
+            return (
+                Language.get("InventoryHero_Status_Confirmed", alter: "رصيد الفرع مؤكّد"),
+                "checkmark.circle",
+                Color(uiColor: .ppSuccess)
+            )
+        }
+        return (
+            Language.get("InventoryHero_Status_Catalog", alter: "عرض الكتالوج"),
+            "square.stack.3d.up",
+            AdminCommandInk.secondary
         )
     }
 
-    private func telemetryTile(
+    private var inventoryHero: some View {
+        // Capture each aggregate once per render. No new listeners or queries.
+        let available = viewModel.inStockCount
+        let low = viewModel.lowStockCount
+        let out = viewModel.outOfStockCount
+        let offers = viewModel.offersCount
+        let total = viewModel.totalCount
+        let newCount = viewModel.allItems.filter { $0.condition == .new }.count
+        let usedCount = viewModel.allItems.filter { $0.condition == .used }.count
+        let unpriced = viewModel.unpricedItemsCount
+        let valuation = viewModel.totalValuation
+
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: AdminSpacing.md) {
+                PPAdminBranchSwitcherBar(style: .embeddedHero, horizontalPadding: 0)
+                    .frame(maxWidth: .infinity)
+                heroRefreshButton
+            }
+            .padding(.horizontal, AdminSpacing.base)
+            .padding(.vertical, AdminSpacing.md)
+            .background(Color.white)
+
+            Rectangle()
+                .fill(Color(uiColor: .separator).opacity(0.35))
+                .frame(height: AdminStroke.hairline)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: AdminSpacing.base) {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: AdminSpacing.base) {
+                        heroValuation(valuation, total: total, unpriced: unpriced)
+                        heroAvailability(available: available, total: total)
+                    }
+                } else {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .top, spacing: AdminSpacing.lg) {
+                            heroValuation(valuation, total: total, unpriced: unpriced)
+                                .fixedSize(horizontal: true, vertical: false)
+                            Spacer(minLength: AdminSpacing.sm)
+                            heroAvailability(available: available, total: total)
+                                .fixedSize(horizontal: true, vertical: false)
+                        }
+                        VStack(alignment: .leading, spacing: AdminSpacing.base) {
+                            heroValuation(valuation, total: total, unpriced: unpriced)
+                            heroAvailability(available: available, total: total)
+                        }
+                    }
+                }
+
+                inventoryHealthBand(available: available, low: low, out: out)
+                    .padding(.top, AdminSpacing.xs)
+
+                // One continuous ledger; selected filters have an underline as
+                // well as a tint, so selection never depends on color alone.
+                LazyVGrid(
+                    columns: Array(
+                        repeating: GridItem(.flexible(), spacing: AdminSpacing.sm, alignment: .leading),
+                        count: dynamicTypeSize >= .accessibility3 ? 1 : (dynamicTypeSize.isAccessibilitySize ? 2 : 4)
+                    ),
+                    alignment: .leading,
+                    spacing: AdminSpacing.md
+                ) {
+                    heroMetric(
+                        filter: .inStock,
+                        title: Language.get("InStock", alter: "متوفر"),
+                        count: available,
+                        color: Color(uiColor: .ppSuccess),
+                        icon: "checkmark.circle"
+                    )
+                    heroMetric(
+                        filter: .lowStock,
+                        title: Language.get("InventoryHero_Low", alter: "منخفض"),
+                        count: low,
+                        color: Color(uiColor: .ppWarning),
+                        icon: "exclamationmark.triangle"
+                    )
+                    heroMetric(
+                        filter: .outOfStock,
+                        title: Language.get("InventoryHero_Out", alter: "نافد"),
+                        count: out,
+                        color: Color(uiColor: .ppError),
+                        icon: "minus.circle"
+                    )
+                    heroMetric(
+                        filter: .hasOffer,
+                        title: Language.get("Offers", alter: "تخفيضات"),
+                        count: offers,
+                        color: AdminSurface.primary,
+                        icon: "tag"
+                    )
+                }
+                .disabled(!heroHasMetrics || total == 0)
+
+                LazyVGrid(
+                    columns: Array(
+                        repeating: GridItem(.flexible(), spacing: AdminSpacing.sm),
+                        count: dynamicTypeSize.isAccessibilitySize ? 1 : 3
+                    ),
+                    spacing: AdminSpacing.sm
+                ) {
+                    heroCatalogFilter(.all, count: total)
+                    heroCatalogFilter(.conditionNew, count: newCount)
+                    heroCatalogFilter(.conditionUsed, count: usedCount)
+                }
+                .disabled(!heroHasMetrics || total == 0)
+
+                if heroHasMetrics && low > 0 {
+                    Text(Language.get(
+                        "InventoryHero_LowIncluded",
+                        alter: "الأصناف منخفضة المخزون ضمن المتوفر."
+                    ))
+                    .font(AdminType.caption1)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if heroHasMetrics && unpriced > 0 {
+                    Label {
+                        Text(verbatim: String(
+                            format: Language.get(
+                                "Inventory_Unpriced_Items_Format",
+                                alter: "لم يُحدَّد سعر البيع لعدد %@ من الأصناف. لا تشملها قيمة المخزون."
+                            ),
+                            unpriced.englishDigits
+                        ).normalizedEnglishDigits)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle")
+                            .foregroundStyle(Color(uiColor: .ppWarning))
+                    }
+                    .font(AdminType.caption1)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if heroHasMetrics {
+                    Text(verbatim: String(
+                        format: Language.get("Inventory_Showing_Count", alter: "%@ معروض"),
+                        viewModel.filteredItems.count.englishDigits
+                    ).normalizedEnglishDigits)
+                    .font(AdminType.caption1)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("inventory.hero.visible-count")
+                }
+            }
+            .padding(AdminSpacing.base)
+        }
+        .multilineTextAlignment(.leading)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
+                .strokeBorder(Color.black.opacity(0.06), lineWidth: 1)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+        .shadow(color: Color.black.opacity(0.04), radius: 12, x: 0, y: 4)
+        .shadow(color: Color.black.opacity(0.02), radius: 3, x: 0, y: 1)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("inventory.hero")
+    }
+
+    private var heroRefreshButton: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            Task { await refreshHero() }
+        } label: {
+            Group {
+                if viewModel.isLoading && !reduceMotion {
+                    ProgressView()
+                        .tint(AdminSurface.primary)
+                } else {
+                    Image(systemName: viewModel.isLoading ? "hourglass" : "arrow.clockwise")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+            }
+            .frame(width: AdminTouchTarget.comfortable, height: AdminTouchTarget.comfortable)
+            .background(Color.white, in: Circle())
+            .overlay {
+                Circle().strokeBorder(Color.black.opacity(0.08), lineWidth: AdminStroke.hairline)
+            }
+            .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 1.5)
+            .contentShape(Circle())
+        }
+        .buttonStyle(CatalogPressStyle())
+        .disabled(viewModel.isLoading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
+        .accessibilityValue(viewModel.isLoading
+            ? Language.get("InventoryHero_Status_Loading", alter: "جارٍ تحديث المخزون")
+            : "")
+        .accessibilityIdentifier("inventory.hero.refresh")
+    }
+
+    private func refreshHero() async {
+        guard !viewModel.isLoading else { return }
+        if branchProjection.inventoryError != nil || branchProjection.settingsError != nil {
+            branchProjection.bindToBranch(branchProjection.currentBranchId)
+        }
+        await viewModel.refresh()
+    }
+
+    private func heroValuation(_ valuation: Double, total: Int, unpriced: Int) -> some View {
+        let hasValue = heroHasMetrics && (total == 0 || unpriced < total)
+        let title = unpriced > 0
+            ? Language.get("InventoryHero_PricedValue", alter: "قيمة الأصناف المسعّرة")
+            : Language.get("InventoryHero_Value", alter: "قيمة المخزون")
+        let amount = hasValue
+            ? valuation.formatted(.number.precision(.fractionLength(2)).locale(Locale(identifier: "en_US")))
+            : "—"
+        let currency = Language.get("Currency", alter: "ر.ق")
+
+        return VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+            Text(title)
+                .font(AdminType.footnote)
+                .foregroundStyle(AdminCommandInk.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.xs) {
+                Text(verbatim: amount)
+                    .font(PPBrandFont.bold(size: 36, relativeTo: .largeTitle))
+                    .monospacedDigit()
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.55)
+                    .environment(\.layoutDirection, .leftToRight)
+                    .layoutPriority(1)
+                Text(currency)
+                    .font(AdminType.footnote)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .fixedSize()
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(hasValue
+            ? "\(amount) \(currency)"
+            : Language.get("InventoryHero_ValueUnavailable", alter: "القيمة غير متاحة"))
+        .accessibilityIdentifier("inventory.hero.valuation")
+    }
+
+    private func heroAvailability(available: Int, total: Int) -> some View {
+        let hasRatio = heroHasMetrics && total > 0
+        let percentage = hasRatio
+            ? (Double(available) / Double(total)).formatted(.percent.precision(.fractionLength(0)).locale(Locale(identifier: "en_US")))
+            : "—"
+        let detail = String(
+            format: Language.get("InventoryHero_CountFraction", alter: "%@ من %@ صنف"),
+            available.englishDigits,
+            total.englishDigits
+        ).normalizedEnglishDigits
+
+        return VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+            Text(Language.get("InventoryHero_Availability", alter: "نسبة التوفر"))
+                .font(AdminType.footnote)
+                .foregroundStyle(AdminCommandInk.secondary)
+            Text(verbatim: percentage)
+                .font(PPBrandFont.bold(size: 28, relativeTo: .title))
+                .monospacedDigit()
+                .foregroundStyle(AdminSurface.primaryText)
+                .environment(\.layoutDirection, .leftToRight)
+            if hasRatio {
+                Text(verbatim: detail)
+                    .font(AdminType.caption1)
+                    .foregroundStyle(AdminCommandInk.secondary)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Language.get("InventoryHero_Availability", alter: "نسبة التوفر"))
+        .accessibilityValue(hasRatio
+            ? "\(percentage), \(detail)"
+            : Language.get("InventoryHero_DataUnavailable", alter: "لا تتوفر بيانات"))
+    }
+
+    private func heroCatalogFilter(_ filter: InventoryFilter, count: Int) -> some View {
+        let isSelected = viewModel.activeFilter == filter
+
+        return Button {
+            guard !isSelected else { return }
+            UISelectionFeedbackGenerator().selectionChanged()
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+                viewModel.activeFilter = filter
+            }
+        } label: {
+            HStack(spacing: AdminSpacing.xs) {
+                Text(filter.defaultTitle)
+                    .font(AdminType.captionBold)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                Text(verbatim: heroHasMetrics ? count.englishDigits : "—")
+                    .font(AdminType.caption1Bold)
+                    .monospacedDigit()
+                    .fixedSize()
+                    .environment(\.layoutDirection, .leftToRight)
+            }
+            .foregroundStyle(AdminSurface.primaryText)
+            .multilineTextAlignment(.leading)
+            .padding(.horizontal, AdminSpacing.sm)
+            .padding(.vertical, AdminSpacing.sm)
+            .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum)
+            .background(
+                isSelected ? Color(uiColor: .systemGray6) : Color.white,
+                in: RoundedRectangle(cornerRadius: AdminRadius.small)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.small)
+                    .strokeBorder(Color.black.opacity(0.06), lineWidth: 0.5)
+            )
+            .overlay(alignment: .bottom) {
+                Capsule()
+                    .fill(isSelected ? AdminSurface.primary : .clear)
+                    .frame(height: 2)
+                    .padding(.horizontal, AdminSpacing.sm)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(CatalogPressStyle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(filter.defaultTitle)
+        .accessibilityValue(heroHasMetrics
+            ? count.englishDigits
+            : Language.get("InventoryHero_DataUnavailable", alter: "لا تتوفر بيانات"))
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        .accessibilityHint(isSelected ? "" : Language.get("DoubleTapToFilter", alter: "اضغط مرتين لتصفية القائمة"))
+        .accessibilityIdentifier("inventory.hero.filter.\(filter.id)")
+    }
+
+    private func heroMetric(
         filter: InventoryFilter,
         title: String,
         count: Int,
@@ -2779,277 +3042,310 @@ struct PPInventoryListView: View {
 
         return Button {
             UISelectionFeedbackGenerator().selectionChanged()
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
-                if viewModel.activeFilter == filter {
-                    viewModel.activeFilter = .all
-                } else {
-                    viewModel.activeFilter = filter
-                }
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+                viewModel.activeFilter = isSelected ? .all : filter
             }
         } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Image(systemName: icon)
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(color)
-                    Spacer()
-                    Text(verbatim: count.englishDigits)
-                        .font(PPBrandFont.bold(size: 18))
-                        .foregroundStyle(color)
-                        .minimumScaleFactor(0.80)
-                }
-                HStack(spacing: 4) {
-                    Text(title)
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(isSelected ? color : AdminCommandInk.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
-
-                    if isSelected {
-                        Circle()
-                            .fill(color)
-                            .frame(width: 4.5, height: 4.5)
-                            .transition(.scale.combined(with: .opacity))
-                    }
-                }
+            VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(count > 0 || isSelected ? color : AdminCommandInk.secondary)
+                    .accessibilityHidden(true)
+                Text(verbatim: heroHasMetrics ? count.englishDigits : "—")
+                    .font(AdminType.title2)
+                    .monospacedDigit()
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .environment(\.layoutDirection, .leftToRight)
+                Text(title)
+                    .font(AdminType.captionBold)
+                    .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminCommandInk.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(color.opacity(isSelected ? 0.18 : 0.08))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(
-                        color.opacity(isSelected ? 0.90 : 0.22),
-                        lineWidth: isSelected ? 1.5 : 0.75
-                    )
-            )
-            .shadow(color: isSelected ? color.opacity(0.22) : Color.clear, radius: 6, x: 0, y: 3)
-            .scaleEffect(isSelected ? 1.02 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.75), value: isSelected)
+            .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum, alignment: .leading)
+            .padding(.horizontal, AdminSpacing.xs)
+            .padding(.vertical, AdminSpacing.sm)
+            .background(isSelected ? Color.white : .clear, in: RoundedRectangle(cornerRadius: AdminRadius.small))
+            .overlay(alignment: .bottom) {
+                Capsule()
+                    .fill(isSelected ? color : .clear)
+                    .frame(height: 2)
+            }
+            .contentShape(Rectangle())
         }
         .buttonStyle(CatalogPressStyle())
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title), \(count)")
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : [.isButton])
-        .accessibilityHint(isSelected ?
-            Language.get("DoubleTapToDeselect", alter: "اضغط مرتين لإلغاء التصفية") :
-            Language.get("DoubleTapToFilter", alter: "اضغط مرتين لتصفية القائمة")
-        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(filter.defaultTitle)
+        .accessibilityValue(heroHasMetrics
+            ? count.englishDigits
+            : Language.get("InventoryHero_DataUnavailable", alter: "لا تتوفر بيانات"))
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        .accessibilityHint(isSelected
+            ? Language.get("DoubleTapToDeselect", alter: "اضغط مرتين لإلغاء التصفية")
+            : Language.get("DoubleTapToFilter", alter: "اضغط مرتين لتصفية القائمة"))
+        .accessibilityIdentifier("inventory.hero.filter.\(filter.id)")
     }
 
-    private var stockHealthSpectrum: some View {
-        let total = max(1, viewModel.totalCount)
-        let inStockFrac = CGFloat(viewModel.inStockCount) / CGFloat(total)
-        let lowStockFrac = CGFloat(viewModel.lowStockCount) / CGFloat(total)
-        let outStockFrac = CGFloat(viewModel.outOfStockCount) / CGFloat(total)
+    private func inventoryHealthBand(available: Int, low: Int, out: Int) -> some View {
+        // Low inventory is already included in available. Chart segments must
+        // form a partition, otherwise the old bar overflowed and hid warnings.
+        let healthy = max(0, available - low)
+        let counts = [healthy, low, out]
+        let colors = [Color(uiColor: .ppSuccess), Color(uiColor: .ppWarning), Color(uiColor: .ppError)]
+        let total = max(1, counts.reduce(0, +))
+        let segmentCount = counts.filter { $0 > 0 }.count
 
-        return VStack(spacing: 4) {
-            GeometryReader { proxy in
-                HStack(spacing: 2) {
-                    if inStockFrac > 0 {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Color(uiColor: .ppSuccess))
-                            .frame(width: max(4, proxy.size.width * inStockFrac))
-                    }
-                    if lowStockFrac > 0 {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Color(uiColor: .ppWarning))
-                            .frame(width: max(4, proxy.size.width * lowStockFrac))
-                    }
-                    if outStockFrac > 0 {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Color(uiColor: .ppError))
-                            .frame(width: max(4, proxy.size.width * outStockFrac))
-                    }
-                }
-            }
-            .frame(height: 5)
-            .clipShape(Capsule())
-            .background(AdminSurface.control, in: Capsule())
-
-            HStack {
-                Text(verbatim: String(format: Language.get("Inventory_Available_Ratio", alter: "نسبة التوفر: %.0f%%"), (CGFloat(viewModel.inStockCount) / CGFloat(total)) * 100.0).normalizedEnglishDigits)
-                    .font(AdminType.caption2)
-                    .foregroundStyle(AdminCommandInk.tertiary)
-                Spacer()
-                Text(verbatim: String(format: Language.get("Inventory_Showing_Count", alter: "%@ معروض"), viewModel.filteredItems.count.englishDigits).normalizedEnglishDigits)
-                    .font(AdminType.caption2Bold)
-                    .foregroundStyle(AdminSurface.primary)
-            }
-        }
-        .padding(.top, 2)
-    }
-
-    // MARK: - Search & Filter Matrix
-
-    private var searchAndFilterMatrix: some View {
-        VStack(spacing: 10) {
-            // Liquid Search Field
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(AdminCommandInk.secondary)
-
-                TextField(
-                    Language.get("Inventory_Search_Placeholder", alter: "ابحث بالاسم، الباركود، المتجر، أو المعرّف..."),
-                    text: $viewModel.searchText
-                )
-                .font(AdminType.callout)
-                .foregroundStyle(AdminSurface.primaryText)
-                .focused($isSearchFocused)
-
-                if !viewModel.searchText.isEmpty {
-                    Button {
-                        viewModel.searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(AdminCommandInk.tertiary)
-                    }
-                }
-
-                AdminBarcodeScanButton { scanned in
-                    viewModel.searchText = scanned
-                    isSearchFocused = false
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(AdminSurface.surface)
-                    .shadow(color: Color.black.opacity(0.02), radius: 6, x: 0, y: 2)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(
-                        isSearchFocused ? AdminSurface.primary : Color(uiColor: .ppSurfaceBorder).opacity(0.6),
-                        lineWidth: isSearchFocused ? 1.5 : 0.75
-                    )
-            )
-
-            // Horizontal Filter Chips
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(InventoryFilter.allCases) { filter in
-                        let isSelected = viewModel.activeFilter == filter
-                        let count: Int = {
-                            switch filter {
-                            case .all: return viewModel.totalCount
-                            case .inStock: return viewModel.inStockCount
-                            case .lowStock: return viewModel.lowStockCount
-                            case .outOfStock: return viewModel.outOfStockCount
-                            case .hasOffer: return viewModel.offersCount
-                            case .conditionNew: return viewModel.allItems.filter { $0.condition == .new }.count
-                            case .conditionUsed: return viewModel.allItems.filter { $0.condition == .used }.count
-                            }
-                        }()
-
-                        Button {
-                            UISelectionFeedbackGenerator().selectionChanged()
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                                viewModel.activeFilter = filter
-                            }
-                        } label: {
-                            HStack(spacing: 5) {
-                                Image(systemName: filter.iconName)
-                                    .font(.system(size: 11, weight: isSelected ? .bold : .medium))
-                                Text(filter.defaultTitle)
-                                    .font(isSelected ? AdminType.captionBold : AdminType.caption1)
-
-                                Text(verbatim: count.englishDigits)
-                                    .font(PPBrandFont.bold(size: 11))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(
-                                        isSelected
-                                            ? Color.white.opacity(0.25)
-                                            : AdminSurface.primary.opacity(0.12),
-                                        in: Capsule(style: .continuous)
-                                    )
-                            }
-                            .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(
-                                isSelected
-                                    ? AnyView(Capsule(style: .continuous).fill(AdminSurface.primary))
-                                    : AnyView(Capsule(style: .continuous).fill(AdminSurface.control))
-                            )
-                            .overlay(
-                                Capsule(style: .continuous)
-                                    .strokeBorder(
-                                        isSelected ? Color.clear : Color(uiColor: .ppSurfaceBorder).opacity(0.5),
-                                        lineWidth: 0.75
-                                    )
-                            )
+        return GeometryReader { proxy in
+            if heroHasMetrics {
+                let usableWidth = max(0, proxy.size.width - CGFloat(max(0, segmentCount - 1)) * 3)
+                HStack(spacing: 3) {
+                    ForEach(counts.indices, id: \.self) { index in
+                        if counts[index] > 0 {
+                            Capsule()
+                                .fill(colors[index])
+                                .frame(width: usableWidth * CGFloat(counts[index]) / CGFloat(total))
                         }
-                        .buttonStyle(CatalogPressStyle())
                     }
                 }
-                .padding(.vertical, 2)
             }
         }
+        .frame(height: 6)
+        .background(Color(uiColor: .systemGray5), in: Capsule())
+        .clipShape(Capsule())
+        .accessibilityHidden(true)
+    }
+
+    private var inventoryUnavailableState: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+            Label(
+                Language.get("InventoryHero_Unavailable_Title", alter: "تعذّر تحميل المخزون"),
+                systemImage: "exclamationmark.triangle"
+            )
+            .font(AdminType.headline)
+            Text(Language.get(
+                "InventoryHero_Unavailable_Detail",
+                alter: "لم نتمكن من تأكيد بيانات الكتالوج. أعد المحاولة باستخدام زر التحديث أعلاه."
+            ))
+            .font(AdminType.body)
+            .foregroundStyle(AdminCommandInk.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .multilineTextAlignment(.leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(AdminSpacing.base)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+    }
+
+    // MARK: - Category-Defining Bottom Floating Search Dock
+
+    @ViewBuilder
+    private func bottomFloatingSearchDock(isRegular: Bool, safeBottom: CGFloat) -> some View {
+        HStack(spacing: 10) {
+            // Interactive Search Glass with live focus animation
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 16, weight: isSearchFocused ? .bold : .semibold))
+                .foregroundStyle(isSearchFocused ? AdminSurface.primary : AdminCommandInk.secondary)
+                .scaleEffect(isSearchFocused ? 1.08 : 1.0)
+                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSearchFocused)
+                .accessibilityHidden(true)
+
+            // Fluid Search Input
+            TextField(
+                Language.get("Inventory_Search_Placeholder", alter: "ابحث بالاسم، الباركود، المتجر، أو المعرّف..."),
+                text: $viewModel.searchText
+            )
+            .font(AdminType.callout)
+            .foregroundStyle(AdminSurface.primaryText)
+            .focused($isSearchFocused)
+            .submitLabel(.search)
+            .onSubmit {
+                isSearchFocused = false
+            }
+
+            // Dynamic Live Match Counter Pill (when query is entered)
+            if !viewModel.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                HStack(spacing: 3) {
+                    Text(String(format: Language.get("Inventory_Search_Count", alter: "%@ صنف"), "\(viewModel.filteredItems.count)".normalizedEnglishDigits))
+                        .font(AdminType.caption2.weight(.bold))
+                        .foregroundStyle(viewModel.filteredItems.isEmpty ? Color(uiColor: .ppWarning) : AdminSurface.primary)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(viewModel.filteredItems.isEmpty ? Color(uiColor: .ppWarning).opacity(0.12) : AdminSurface.primarySoft)
+                )
+                .transition(.asymmetric(insertion: .scale(scale: 0.85).combined(with: .opacity), removal: .opacity))
+
+                // Instant Clear Button
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    viewModel.searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(AdminCommandInk.tertiary)
+                }
+                .buttonStyle(.plain)
+                .transition(.scale.combined(with: .opacity))
+                .accessibilityLabel(Language.get("Clear_Search", alter: "إلغاء التصفية وإظهار الكل"))
+            }
+
+            // Dismiss Keyboard Action when keyboard is up & focused
+            if isSearchFocused {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    isSearchFocused = false
+                } label: {
+                    Image(systemName: "keyboard.chevron.compact.down")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(AdminSurface.primary)
+                        .frame(width: 32, height: 32)
+                        .background(AdminSurface.primarySoft, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .transition(.scale.combined(with: .opacity))
+                .accessibilityLabel(Language.get("Dismiss_Keyboard", alter: "إخفاء لوحة المفاتيح"))
+            }
+
+            // Integrated Barcode Viewfinder Reticle Button
+            AdminBarcodeScanButton { scanned in
+                viewModel.searchText = scanned
+                isSearchFocused = false
+            }
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 8)
+        .padding(.vertical, 8)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(.ultraThinMaterial)
+
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(AdminSurface.surface.opacity(0.92))
+            }
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(
+                    isSearchFocused ? AdminSurface.primary : Color(uiColor: .separator).opacity(0.35),
+                    lineWidth: isSearchFocused ? 1.5 : 0.75
+                )
+        )
+        .shadow(
+            color: isSearchFocused ? AdminSurface.primary.opacity(0.18) : Color.black.opacity(0.09),
+            radius: isSearchFocused ? 20 : 14,
+            x: 0,
+            y: isSearchFocused ? 8 : 5
+        )
+        .shadow(color: Color.black.opacity(0.04), radius: 3, x: 0, y: 1)
+        .frame(maxWidth: isRegular ? 640 : .infinity)
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.bottom, keyboardHeight > 0 ? (keyboardHeight + 10) : max(safeBottom, 14))
+        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: isSearchFocused)
+        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: viewModel.searchText.isEmpty)
+        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: keyboardHeight)
     }
 
     // MARK: - Items List Section
 
     @ViewBuilder
     private var itemsListSection: some View {
-        ForEach(viewModel.filteredItems, id: \.accessoryID) { item in
-            FlagshipInventoryCard(
-                item: item,
-                canManageStock: canManageStock,
-                canDeleteStock: canDeleteStock,
-                canReleaseQuarantine: canReleaseQuarantine,
-                onTap: {
-                    openItemDetail(for: item)
-                },
-                onEdit: {
-                    openEditEditor(for: item)
-                },
-                onAdjustQuantity: { delta in
-                    viewModel.adjustQuantity(by: delta, for: item)
-                },
-                onToggleStock: {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    viewModel.toggleStockAvailability(for: item)
-                },
-                onDelete: {
-                    confirmDelete(item: item)
-                },
-                onRecordDamage: {
-                    if item.isLivePet {
-                        openItemDetail(for: item)
-                    } else {
-                        itemForDamage = item
+        ForEach(viewModel.displayGroups) { group in
+            switch group {
+            case .single(let item):
+                inventoryCard(for: item)
+            case .family(let familyId, let members):
+                VStack(spacing: 8) {
+                    PPInventoryFamilyRow(
+                        members: members,
+                        isExpanded: Binding(
+                            get: { expandedFamilyIds.contains(familyId) },
+                            set: { isOn in
+                                if isOn { expandedFamilyIds.insert(familyId) }
+                                else { expandedFamilyIds.remove(familyId) }
+                            }
+                        ),
+                        // Same branch projection the per-colour rows use, so the
+                        // family summary can never disagree with its children.
+                        availability: { member in
+                            PPBranchInventoryService.shared.availableStock(
+                                for: member.accessoryID,
+                                fallback: member.quantity
+                            )
+                        },
+                        lowStockThreshold: 3
+                    )
+
+                    // Expanding reveals the real per-colour cards. Every stock
+                    // action stays bound to an exact product, so no mutation is
+                    // ever ambiguous about which colour it targets.
+                    if expandedFamilyIds.contains(familyId) {
+                        ForEach(members, id: \.accessoryID) { member in
+                            inventoryCard(for: member)
+                                .padding(.leading, 12)
+                        }
                     }
-                },
-                onQuarantineStudio: {
-                    itemForQuarantine = item
-                },
-                onManageLots: {
-                    if item.isLivePet {
-                        openItemDetail(for: item)
-                    } else {
-                        itemForLots = item
-                    }
-                },
-                onOpenActionMenu: {
-                    itemForActionMenu = item
                 }
-            )
+            }
         }
+    }
+
+    /// The per-product card, unchanged. Extracted so a family group and a
+    /// standalone product render through exactly the same path.
+    @ViewBuilder
+    private func inventoryCard(for item: PetAccessory) -> some View {
+        FlagshipInventoryCard(
+            item: item,
+            canManageStock: canManageStock,
+            canDeleteStock: canDeleteStock,
+            canReleaseQuarantine: canReleaseQuarantine,
+            onTap: {
+                openItemDetail(for: item)
+            },
+            onEdit: {
+                openEditEditor(for: item)
+            },
+            onAdjustQuantity: { delta in
+                viewModel.adjustQuantity(by: delta, for: item)
+            },
+            onToggleStock: {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                viewModel.toggleStockAvailability(for: item)
+            },
+            onDelete: {
+                confirmDelete(item: item)
+            },
+            onRecordDamage: {
+                if item.isLivePet {
+                    openItemDetail(for: item)
+                } else {
+                    itemForDamage = item
+                }
+            },
+            onQuarantineStudio: {
+                itemForQuarantine = item
+            },
+            onManageLots: {
+                if item.isLivePet {
+                    openItemDetail(for: item)
+                } else {
+                    itemForLots = item
+                }
+            },
+            onOpenActionMenu: {
+                itemForActionMenu = item
+            }
+        )
     }
 
     // MARK: - Flagship Empty State View (Zero Catalog Items)
 
     @ViewBuilder
     private func flagshipCatalogEmptyStateView(isRegular: Bool) -> some View {
-        ScrollView(.vertical, showsIndicators: false) {
+        Group {
             VStack(spacing: 24) {
                 Spacer(minLength: 28)
 
@@ -3255,10 +3551,6 @@ struct PPInventoryListView: View {
                 Spacer(minLength: 40)
             }
             .frame(maxWidth: isRegular ? 640 : .infinity)
-            .padding(.horizontal, AdminSpacing.screenMargin)
-        }
-        .refreshable {
-            await viewModel.refresh()
         }
     }
 
@@ -5749,18 +6041,31 @@ public struct PPBarcodeStudioSheet: View {
         isSaving = true
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
-        Firestore.firestore().collection("petAccessories").document(item.accessoryID).setData([
-            "barcode": trimmed,
-            "updatedAt": FieldValue.serverTimestamp()
-        ], merge: true) { error in
-            isSaving = false
-            if let error = error {
-                PPAlertHelper.showError(
-                    in: nil,
-                    title: Language.get("Error", alter: "خطأ"),
-                    subtitle: error.localizedDescription
+        // Routed through the catalog callable rather than written directly.
+        //
+        // A direct `setData` bypassed the entire server chain: no permission
+        // re-check, no duplicate-barcode scan, no revision guard and no audit
+        // record. Barcode uniqueness matters more now that each colour of a
+        // product carries its own code, and `barcode` is already accepted by
+        // updateCatalogPresentation, so there is no reason to write around it.
+        let productId = item.accessoryID
+        let expectedRevision = item.revision
+        Task { @MainActor in
+            do {
+                let response = try await PPLivePetInventoryService.updateCatalogPresentation(
+                    productID: productId,
+                    values: ["barcode": trimmed],
+                    commandID: "barcode-\(productId)-\(UUID().uuidString)",
+                    expectedRevision: expectedRevision > 0 ? expectedRevision : nil
                 )
-            } else {
+                // Adopt the confirmed revision. Without this the local copy stays
+                // stale, so a second barcode edit in the same session sends an
+                // outdated `expectedRevision` and is refused by the revision guard.
+                let confirmedRevision = PPLivePetInventoryService.integer(response["revision"])
+                if confirmedRevision > 0 {
+                    item.revision = confirmedRevision
+                }
+                isSaving = false
                 item.barcode = trimmed
                 originalBarcode = trimmed
                 onBarcodeUpdated?(trimmed)
@@ -5773,6 +6078,13 @@ public struct PPBarcodeStudioSheet: View {
                         showSaveSuccessBanner = false
                     }
                 }
+            } catch {
+                isSaving = false
+                await PPAlertHelper.showError(
+                    in: nil,
+                    title: Language.get("Error", alter: "خطأ"),
+                    subtitle: error.localizedDescription
+                )
             }
         }
     }
@@ -16011,11 +16323,13 @@ private struct PPStockTransferSheet: View {
 // MARK: - Press Style
 
 private struct CatalogPressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1.0)
             .opacity(configuration.isPressed ? 0.85 : 1.0)
-            .animation(.easeInOut(duration: 0.15), value: configuration.isPressed)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: configuration.isPressed)
     }
 }
 

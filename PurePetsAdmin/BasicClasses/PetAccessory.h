@@ -102,6 +102,32 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) BOOL isDeleted;
 @property (nonatomic, assign) BOOL isDisabled;
 
+#pragma mark - Colour-variant identity (server-owned, read-only)
+
+// These fields are written exclusively by the upsertProductVariantFamily Cloud
+// Function and are rejected by firestore.rules if a client claims or changes
+// them. They are parsed here so the Admin editor can read family membership,
+// but they are deliberately NOT emitted by -toFirestoreDictionary: family
+// membership decides which physical stock pool, lot chain and refund target a
+// sale resolves to, so a second writer would be an inventory-integrity defect.
+//
+// Empty productFamilyId means the product is a standalone (legacy) accessory.
+@property (nonatomic, copy, nullable) NSString *productFamilyId;
+@property (nonatomic, assign) NSInteger variantSchemaVersion;
+@property (nonatomic, assign) BOOL isVariant;
+@property (nonatomic, assign) BOOL isDefaultVariant;
+@property (nonatomic, assign) NSInteger variantSortOrder;
+/// Raw `variantAttributes.color` map: { id, nameAr, nameEn, hex }.
+@property (nonatomic, strong, nullable) NSDictionary<NSString *, id> *variantColorDictionary;
+
+/// YES when this product belongs to a colour family.
+@property (nonatomic, readonly) BOOL belongsToVariantFamily;
+
+/// Swift-friendly alias for the historically capitalized `AccessoryCategoryID`.
+/// The original name is intentionally preserved as the Firestore field identity;
+/// this alias only avoids relying on Clang importer capitalization from Swift.
+@property (nonatomic, readonly, copy, nullable) NSString *catalogCategoryIdentifier;
+
 // Computed type helpers
 @property (nonatomic, readonly) BOOL isLivePet;
 @property (nonatomic, readonly) BOOL isFood;

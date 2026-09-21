@@ -532,6 +532,17 @@ extension PetAccessory {
 
 struct POSCartItem: Identifiable, Equatable {
     let id = UUID()
+    /// A **frozen** copy of the product, taken when the line was added.
+    ///
+    /// This deliberately is not the live `PetAccessory` from the catalog
+    /// listener. Holding the live object meant an edit to the product mid-sale —
+    /// a price change, a rename, a new primary image — silently mutated the open
+    /// cart and the figures `lineTotal` and `unitPriceDisplay` derive from it.
+    ///
+    /// Freezing at insertion fixes that without changing any pricing logic. Live
+    /// stock is unaffected: `pos_branchStock()` resolves through
+    /// `PPBranchInventoryService` by `accessoryID`, so the branch projection
+    /// stays authoritative and only its fallback is frozen.
     let accessory: PetAccessory
     var quantity: Int = 1 // groupQuantity
 
@@ -1337,6 +1348,55 @@ final class POSFastSellViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Scanned code resolution
+
+    /// Outcome of resolving a scanned code.
+    ///
+    /// Explicitly three-valued. A scan must never be answered by "the first
+    /// thing that matched": with per-colour barcodes, silently picking one of
+    /// several candidates would sell and deduct the wrong colour.
+    enum POSScanResolution {
+        case resolved(PetAccessory)
+        case ambiguous([PetAccessory])
+        case notFound
+    }
+
+    /// Resolves a scanned code to exactly one sellable product.
+    ///
+    /// Deliberately **exact**, case-insensitive, barcode before SKU — unlike the
+    /// typed-search filters above, which stay substring-based because a human
+    /// typing "bag" wants every bag. A substring scan matched `BLUE-011` when
+    /// `BLUE-01` was scanned, which is precisely the failure per-colour codes
+    /// make dangerous.
+    ///
+    /// The server guarantees no two colours *within one family* share a SKU or
+    /// barcode, so intra-family ambiguity cannot occur. Collisions across
+    /// unrelated products still can, and are surfaced rather than guessed.
+    func resolveScannedCode(_ rawCode: String) -> POSScanResolution {
+        let needle = rawCode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !needle.isEmpty else { return .notFound }
+
+        let sellable = allAccessories.filter { $0.pos_isSellable }
+
+        // Barcode is the scanner's native identifier, so it wins outright: a SKU
+        // that happens to equal another product's barcode must not compete.
+        let barcodeMatches = sellable.filter { ($0.barcode ?? "").lowercased() == needle }
+        if barcodeMatches.count == 1 { return .resolved(barcodeMatches[0]) }
+        if barcodeMatches.count > 1 { return .ambiguous(barcodeMatches) }
+
+        let skuMatches = sellable.filter { ($0.sku ?? "").lowercased() == needle }
+        if skuMatches.count == 1 { return .resolved(skuMatches[0]) }
+        if skuMatches.count > 1 { return .ambiguous(skuMatches) }
+
+        // Last resort: the document id, which the previous substring search also
+        // accepted. Exact only.
+        let idMatches = sellable.filter { $0.accessoryID.lowercased() == needle }
+        if idMatches.count == 1 { return .resolved(idMatches[0]) }
+        if idMatches.count > 1 { return .ambiguous(idMatches) }
+
+        return .notFound
+    }
+
     /// Mirrors Infra's `subtotal = roundMoney(subtotal + lineTotal)` accumulation
     /// so the asserted subtotal can never drift outside the server's tolerance.
     var cartSubtotal: Double {
@@ -1495,7 +1555,7 @@ final class POSFastSellViewModel: ObservableObject {
                 return false
             }
 
-            var item = POSCartItem(accessory: accessory, quantity: 1)
+            var item = POSCartItem(accessory: PetAccessory.deepCopy(from: accessory), quantity: 1)
             item.salesChannel = salesChannel.rawValue
             item.quantityGroupID = activeGroup.id
             item.quantityGroupNameAr = activeGroup.nameAr
@@ -1548,7 +1608,7 @@ final class POSFastSellViewModel: ObservableObject {
             updated.quantity = unitIDs.count
             cartItems.append(updated)
         } else {
-            var item = POSCartItem(accessory: product, quantity: unitIDs.count)
+            var item = POSCartItem(accessory: PetAccessory.deepCopy(from: product), quantity: unitIDs.count)
             item.inventoryMode = kPOSIndividualInventoryMode
             item.unitIDs = unitIDs
             item.unitRingTags = ringTags
@@ -1609,7 +1669,7 @@ final class POSFastSellViewModel: ObservableObject {
             cartItems.append(existing)
         } else {
             let item = POSCartItem(
-                accessory: accessory,
+                accessory: PetAccessory.deepCopy(from: accessory),
                 quantity: 1,
                 inventoryMode: kPOSIndividualInventoryMode,
                 unitIDs: [unitID],
@@ -2322,6 +2382,9 @@ struct AdminPOSFastSellView: View {
     @State private var showsDiscountSheet = false
     @State private var showsCategoryLens = false
     @State private var lastScannedCode: String?
+    /// Products a scanned code resolved to when it matched more than one.
+    /// Non-empty means the operator must choose; nothing is added until they do.
+    @State private var scanAmbiguousMatches: [PetAccessory] = []
     @State private var animalSearchQuery = ""
     @State private var quantityEditingItem: POSCartItem? = nil
 
@@ -2598,13 +2661,44 @@ struct AdminPOSFastSellView: View {
                     guard !normalized.isEmpty else { return }
                     viewModel.catalogSearchText = normalized
                     lastScannedCode = normalized
-                    UIAccessibility.post(
-                        notification: .announcement,
-                        argument: String(
-                            format: Language.get("POS_Scanner_Detected_Format", alter: "تم التقاط الرمز %@"),
-                            normalized
+
+                    // A scan is a resolution, not a search. Exact-match first and
+                    // act on the outcome; only fall back to letting the operator
+                    // pick from the filtered grid when the code is genuinely
+                    // ambiguous or unknown.
+                    switch viewModel.resolveScannedCode(normalized) {
+                    case .resolved(let product):
+                        scanAmbiguousMatches = []
+                        UIAccessibility.post(
+                            notification: .announcement,
+                            argument: String(
+                                format: Language.get("POS_Scanner_Resolved_Format", alter: "تم تحديد %@"),
+                                product.name
+                            )
                         )
-                    )
+                        commitScannedSelection(product)
+                    case .ambiguous(let matches):
+                        // Never auto-pick. Two products sharing a code is a data
+                        // problem the operator has to settle, and guessing would
+                        // deduct the wrong stock.
+                        scanAmbiguousMatches = matches
+                        UIAccessibility.post(
+                            notification: .announcement,
+                            argument: Language.get(
+                                "POS_Scanner_Ambiguous",
+                                alter: "الرمز مرتبط بأكثر من منتج. اختر المنتج الصحيح."
+                            )
+                        )
+                    case .notFound:
+                        scanAmbiguousMatches = []
+                        UIAccessibility.post(
+                            notification: .announcement,
+                            argument: String(
+                                format: Language.get("POS_Scanner_Detected_Format", alter: "تم التقاط الرمز %@"),
+                                normalized
+                            )
+                        )
+                    }
                 },
                 onCancel: {
                     isShowingScanner = false
@@ -3075,7 +3169,74 @@ struct AdminPOSFastSellView: View {
 
     @ViewBuilder
     private var commandStatusView: some View {
-        if viewModel.isCatalogLoading && viewModel.allAccessories.isEmpty {
+        if !scanAmbiguousMatches.isEmpty {
+            // A scanned code matched more than one sellable product. The operator
+            // picks; nothing is added on their behalf.
+            VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                HStack(spacing: AdminSpacing.sm) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(AdminSurface.amber)
+                    Text(Language.get(
+                        "POS_Scanner_Ambiguous",
+                        alter: "الرمز مرتبط بأكثر من منتج. اختر المنتج الصحيح."
+                    ))
+                    .font(AdminType.caption)
+                    .foregroundColor(AdminSurface.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button {
+                        scanAmbiguousMatches = []
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(AdminCommandInk.tertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Language.get("Dismiss", alter: "إغلاق"))
+                }
+
+                ForEach(scanAmbiguousMatches, id: \.accessoryID) { candidate in
+                    Button {
+                        scanAmbiguousMatches = []
+                        commitScannedSelection(candidate)
+                    } label: {
+                        HStack(spacing: AdminSpacing.sm) {
+                            if let colour = candidate.variantColorDictionary
+                                .flatMap({ PPAccessoryVariantColor(dictionary: $0) }) {
+                                Circle()
+                                    .fill(Color(uiColor: colour.uiColor))
+                                    .frame(width: 14, height: 14)
+                                    .overlay(
+                                        Circle().strokeBorder(
+                                            colour.requiresContrastBorder
+                                                ? AdminSurface.primaryText.opacity(0.3)
+                                                : Color.clear,
+                                            lineWidth: 1
+                                        )
+                                    )
+                                // Swatch plus text, never swatch alone.
+                                Text(colour.localizedName)
+                                    .font(AdminType.caption2Bold)
+                                    .foregroundColor(AdminSurface.primaryText)
+                            }
+                            Text(candidate.name)
+                                .font(AdminType.caption)
+                                .foregroundColor(AdminSurface.primaryText)
+                                .lineLimit(1)
+                            Spacer()
+                            Text(verbatim: candidate.sku ?? candidate.accessoryID)
+                                .font(AdminType.caption2.monospaced())
+                                .foregroundColor(AdminCommandInk.tertiary)
+                                .environment(\.layoutDirection, .leftToRight)
+                        }
+                        .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, AdminSpacing.sm)
+            .padding(.vertical, AdminSpacing.xs)
+            .background(AdminSurface.amber.opacity(0.10))
+        } else if viewModel.isCatalogLoading && viewModel.allAccessories.isEmpty {
             HStack(spacing: AdminSpacing.sm) {
                 ProgressView()
                     .scaleEffect(0.8)
@@ -3254,6 +3415,20 @@ struct AdminPOSFastSellView: View {
         }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         runFlyToCart(accessory: accessory, from: rect)
+    }
+
+    /// Commits a scanned resolution to the cart.
+    ///
+    /// A scan must obey the same rule as a catalog tap: an individually tracked
+    /// live pet is never added by quantity, it has to resolve to an exact animal.
+    /// Both scan outcomes route through here so the guard cannot be bypassed by
+    /// the scanner the way it was when each path called `addToCart` directly.
+    private func commitScannedSelection(_ accessory: PetAccessory) {
+        if accessory.pos_isIndividuallyTrackedLivePet {
+            openUnitPicker(for: accessory)
+            return
+        }
+        _ = viewModel.addToCart(accessory)
     }
 
     private func openUnitPicker(for accessory: PetAccessory) {
@@ -8102,6 +8277,33 @@ struct POSPriceReconciliationSheet: View {
                             .padding(.vertical, 2)
                             .background(AdminSurface.control, in: Capsule(style: .continuous))
                             .foregroundColor(AdminSurface.secondaryText)
+                    }
+
+                    if let colour = cartItem?.accessory.variantColorDictionary
+                        .flatMap({ PPAccessoryVariantColor(dictionary: $0) }) {
+                        // Colour identity on the cart row. Swatch plus text, so a
+                        // line is never identified by a coloured dot alone.
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color(uiColor: colour.uiColor))
+                                .frame(width: 10, height: 10)
+                                .overlay(
+                                    Circle().strokeBorder(
+                                        colour.requiresContrastBorder
+                                            ? AdminSurface.primaryText.opacity(0.35)
+                                            : Color.clear,
+                                        lineWidth: 0.8
+                                    )
+                                )
+                            Text(colour.localizedName)
+                                .font(.system(size: 10, weight: .semibold))
+                        }
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(AdminSurface.control, in: Capsule(style: .continuous))
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(colour.accessibilityName)
                     }
 
                     if let code = cartItem?.accessory.barcode ?? cartItem?.accessory.sku, !code.isEmpty {

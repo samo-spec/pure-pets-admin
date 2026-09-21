@@ -1371,6 +1371,18 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     var isFood: Bool { selectedKind == .typeFood }
     var isLivePet: Bool { selectedKind == .typeLivePets }
+
+    /// Whether the colour-variant section applies to the product being edited.
+    ///
+    /// Requires an existing product: a family groups sellable `petAccessories`
+    /// documents, so there is nothing to group while the product is still being
+    /// created. Live pets are excluded because they are individually tracked and
+    /// the server refuses them on the colour axis.
+    var supportsColourVariants: Bool {
+        guard !isLivePet else { return false }
+        guard let accessory = editingAccessory else { return false }
+        return !accessory.accessoryID.isEmpty
+    }
     var isEditingLivePet: Bool { isLivePet && editingAccessory != nil }
     var isIndividualLivePet: Bool { isLivePet && liveInventoryMode == .individual }
     var isAwaitingCatalogSync: Bool { pendingCatalogSyncProductID != nil }
@@ -1624,19 +1636,80 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     func loadCostSummaryIfAvailable() {
         guard let acc = editingAccessory, !acc.accessoryID.isEmpty else { return }
+
+        // Live pets never hydrate catalog cost.
+        //
+        // This mirrors `loadCommerceIfAvailable`'s own not-applicable guard and the
+        // three facts that already place live-pet cost out of band:
+        //   1. `validate()` skips cost validation entirely when `isLivePet`.
+        //   2. Neither live-pet pricing scene renders a cost field, so anything
+        //      hydrated here is invisible — it cannot be read or corrected.
+        //   3. `saveAccessory` routes every live pet to `finalizeLivePetSave`
+        //      before `prepareProductSave`, and no live-pet *update* payload
+        //      carries `costPrice` — the server would reject it outright
+        //      (validateInventoryChange.js:2076). Live-pet cost is recorded only
+        //      by protected intake on create and by individual-unit records.
+        //
+        // So this was never a failing save; it was invisible work with two real
+        // costs. `PPLivePetIntakeJourney.onAppear` called this for every live-pet
+        // edit, and the resulting `costPriceText` write fired `updateUnsavedChanges()`
+        // through its `didSet` — marking an untouched live pet dirty and arming the
+        // discard-changes prompt — after spending a callable plus Firestore reads on
+        // a value with nowhere to go.
+        //
+        // `accessKindType` is the right predicate: PetAccessory.m already folds
+        // `product_type: "live"` / `isLivePet` into `AccessTypeLivePet`, so the
+        // client classifies as live everything the server's `getStoredProductType`
+        // does. `fetchDirectDocCostFallback` needs no separate guard — its only
+        // call site is inside this method.
+        guard !isLivePet else { return }
+
+        // Cost is permission-gated, not merely permission-hidden.
+        // `firestore.rules:2922` allows `stockMovements` reads only for
+        // `stock.cost.view`, and `getInventoryCostSummary` is wrapped in
+        // `requireInventoryPermission(request, "stock.cost.view")`. Without this
+        // gate the editor issued a callable and up to two Firestore reads that were
+        // guaranteed to be denied for staff who cannot see cost. `canViewStockCosts`
+        // is a superset of `stock.cost.view` (admin OR stock.manage OR stock.create
+        // OR stock.view OR stock.cost.view), so it can never suppress a read the
+        // server would have allowed — it only skips ones it would have refused.
+        // Every other cost surface in this editor is already gated on this flag.
+        //
+        // Skip only when the operator is *known* to lack cost authority.
+        // `canViewStockCosts` also returns false when the staff cache is simply not
+        // hydrated yet, which is absence of data, not a denial. The other cost
+        // surfaces read the flag from a SwiftUI body and so re-evaluate once the
+        // cache lands; this runs once on appear, so treating an unhydrated cache as
+        // a denial would suppress hydration for the entire editor session — the very
+        // symptom being fixed. When identity is unknown, let the server decide: both
+        // the callable and the rules fail closed.
+        if PPStaffAuth.shared().cachedCurrentStaff != nil, !canViewStockCosts { return }
+
         let accID = acc.accessoryID
 
         // 1. Immediately hydrate if PetAccessory model already has costPrice > 0
-        if let cost = acc.costPrice, cost.doubleValue > 0 {
-            let current = costPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if current.isEmpty || current == "0" || current == "0.00" {
-                costPriceText = String(format: "%g", cost.doubleValue)
-            }
+        if let cost = acc.costPrice, cost.doubleValue > 0, isCostFieldStillUnset {
+            costPriceText = String(format: "%g", cost.doubleValue)
         }
 
-        // 2. Fetch authoritative cost summary via Cloud Function
-        let branchId = (selectedStoreID.isEmpty || selectedStoreID == "main_store") ? nil : selectedStoreID
-        PPInventoryCommandService.shared.fetchCostSummary(productId: accID, branchId: branchId) { [weak self] summary, _ in
+        // 2. Fetch authoritative cost summary via Cloud Function.
+        //
+        // The branch must be named whenever one can be resolved. A branch-scoped
+        // operator that sends no branch is refused with `BRANCH_ID_REQUIRED`
+        // (inventoryCostSummary.js) precisely so cost cannot leak across scopes —
+        // and the previous `selectedStoreID`-only resolution produced nil for the
+        // common `main_store` / not-yet-chosen case, so the authoritative callable
+        // failed and control fell through to the direct-read fallback below. That
+        // is the likeliest reason cost appeared not to retrieve at all. Resolve the
+        // branch with the same precedence the save path uses at `saveAccessory`.
+        let resolvedCostBranchId: String? = {
+            for candidate in [selectedStoreID, acc.branchID ?? "", BranchContextStore.shared.activeBranch?.branchID ?? ""] {
+                let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty, trimmed != "main_store" { return trimmed }
+            }
+            return nil
+        }()
+        PPInventoryCommandService.shared.fetchCostSummary(productId: accID, branchId: resolvedCostBranchId) { [weak self] summary, _ in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 let resolvedCost: Double? = {
@@ -1649,33 +1722,45 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                     return nil
                 }()
                 if let cost = resolvedCost {
-                    let current = self.costPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if current.isEmpty || current == "0" || current == "0.00" {
+                    if self.isCostFieldStillUnset {
                         self.costPriceText = String(format: "%g", cost)
                     }
+                    // The draft is refreshed even when the operator has already
+                    // typed a cost: `saveAccessory` re-reads `costPriceText`, so
+                    // this only keeps a stale zero on the draft from surviving.
                     if self.editingAccessory?.costPrice == nil || self.editingAccessory?.costPrice?.doubleValue == 0 {
                         self.editingAccessory?.costPrice = NSNumber(value: cost)
                     }
                     return
                 }
 
-                // 3. Fallback: Direct Firestore doc read if still empty
-                let current = self.costPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
-                if current.isEmpty || current == "0" || current == "0.00" {
-                    self.fetchDirectDocCostFallback(productId: accID)
+                // 3. Fallback: direct reads, only while the field is still unset.
+                if self.isCostFieldStillUnset {
+                    self.fetchDirectDocCostFallback(productId: accID, branchId: resolvedCostBranchId)
                 }
             }
         }
     }
 
-    private func fetchDirectDocCostFallback(productId: String) {
+    /// Last-resort cost resolution when `getInventoryCostSummary` returned nothing.
+    ///
+    /// Tier 1 is legacy cost still sitting on the catalog document — the shape the
+    /// server's own migration action exists to delete. Tier 2 is the latest inbound
+    /// movement that recorded a cost, which is where cost legitimately lives.
+    private func fetchDirectDocCostFallback(productId: String, branchId: String?) {
         Firestore.firestore().collection("petAccessories").document(productId).getDocument { [weak self] snap, _ in
-            guard let self = self, let snap = snap, snap.exists, let data = snap.data() else { return }
-            DispatchQueue.main.async {
-                let current = self.costPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard current.isEmpty || current == "0" || current == "0.00" else { return }
+            guard let self = self else { return }
 
-                var foundCost: Double? = nil
+            // Parse off the main actor, then make exactly one hop to apply.
+            //
+            // `costPriceText` is main-actor isolated, so reading it here to decide
+            // staleness both raced the field the operator may be typing into and is
+            // a hard error under Swift 6 concurrency. Extracting first and checking
+            // staleness inside the hop makes the check authoritative: the value is
+            // read and written in the same main-actor turn, and the movement query
+            // below is only issued if the field is genuinely still empty.
+            var foundCost: Double? = nil
+            if let snap = snap, snap.exists, let data = snap.data() {
                 let costCandidates: [Any?] = [
                     data["costPrice"],
                     data["cost_price"],
@@ -1703,12 +1788,84 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                         break
                     }
                 }
+            }
+
+            DispatchQueue.main.async {
+                guard self.isCostFieldStillUnset else { return }
                 if let cost = foundCost {
-                    self.costPriceText = String(format: "%g", cost)
-                    self.editingAccessory?.costPrice = NSNumber(value: cost)
+                    self.applyResolvedCost(cost)
+                    return
                 }
+                self.fetchLatestInboundMovementCost(productId: productId, branchId: branchId)
             }
         }
+    }
+
+    /// Resolves cost from the newest inbound movement that recorded one.
+    ///
+    /// Two corrections over a plain `productId` scan:
+    ///
+    /// 1. Branch scope. `getInventoryCostSummary` refuses to answer a branch-scoped
+    ///    operator that did not name its branch, on the stated grounds that
+    ///    returning another branch's movement would disclose cost across scopes.
+    ///    `firestore.rules:2922` enforces `stock.cost.view` but not branch scope, so
+    ///    an unfiltered client scan would have re-opened exactly the disclosure the
+    ///    callable closes. When no branch resolves — a global operator on
+    ///    main_store — every branch is legitimately in scope and no filter applies.
+    ///
+    /// 2. Bounded, server-ordered read. The previous query fetched every movement
+    ///    for the product and sorted in memory; a long-lived product can carry
+    ///    thousands. `productId == · type == · timestamp DESC` is served by the
+    ///    composite index already present in `firestore/indexes.json`, and all eight
+    ///    server writers of `type: "stock_in"` set `timestamp`, so nothing is
+    ///    silently excluded by the ordering.
+    ///
+    /// The branch match stays client-side on purpose: adding `branchId` to the query
+    /// would demand a fourth index field that is not deployed. Matching after the
+    /// fetch can only narrow the result, so the failure direction is a missing value
+    /// rather than another branch's cost.
+    private func fetchLatestInboundMovementCost(productId: String, branchId: String?) {
+        let scopedBranch = branchId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let movementsQuery: Query = Firestore.firestore().collection("stockMovements")
+            .whereField("productId", isEqualTo: productId)
+            .whereField("type", isEqualTo: "stock_in")
+            .order(by: "timestamp", descending: true)
+            .limit(to: 50)
+        movementsQuery.getDocuments { [weak self] movesSnap, _ in
+            guard let self = self, let docs = movesSnap?.documents, !docs.isEmpty else { return }
+
+            let resolved = docs.compactMap { d -> (cost: Double, at: Date)? in
+                let mData = d.data()
+                guard (mData["type"] as? String) == "stock_in" else { return nil }
+                if !scopedBranch.isEmpty {
+                    let moveBranch = (mData["branchId"] as? String)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    guard moveBranch.isEmpty || moveBranch == scopedBranch else { return nil }
+                }
+                let num = (mData["costPrice"] as? NSNumber) ?? (mData["costPrice"] as? Double).map { NSNumber(value: $0) }
+                guard let costVal = num?.doubleValue, costVal.isFinite, costVal > 0 else { return nil }
+                let ts = (mData["timestamp"] as? Timestamp)?.dateValue() ?? Date.distantPast
+                return (costVal, ts)
+            }.sorted { $0.at > $1.at }.first
+
+            guard let latest = resolved else { return }
+            DispatchQueue.main.async {
+                guard self.isCostFieldStillUnset else { return }
+                self.applyResolvedCost(latest.cost)
+            }
+        }
+    }
+
+    /// True while the operator has not supplied a cost, so hydration may fill it in.
+    private var isCostFieldStillUnset: Bool {
+        let current = costPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return current.isEmpty || current == "0" || current == "0.00"
+    }
+
+    /// Single place hydration writes cost, so the field and the draft never diverge.
+    private func applyResolvedCost(_ cost: Double) {
+        costPriceText = String(format: "%g", cost)
+        editingAccessory?.costPrice = NSNumber(value: cost)
     }
 
     func persistCommerceRecord(for productID: String) {
@@ -2999,7 +3156,13 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         }
     }
 
-    private static func prepareAccessoryImageForUpload(_ source: UIImage) -> PreparedAccessoryImagePayload? {
+    /// Normalizes an image for upload: downscale to 1,800px longest edge and
+    /// compress under the Storage rule limit.
+    ///
+    /// Internal rather than private so the per-colour media service uses the
+    /// exact same normalization. Two different preparation paths would produce
+    /// inconsistent file sizes and quality for the same product.
+    static func prepareAccessoryImageForUpload(_ source: UIImage) -> PreparedAccessoryImagePayload? {
         guard source.size.width > 0, source.size.height > 0 else { return nil }
 
         let longestEdge = max(source.size.width, source.size.height)
@@ -3397,10 +3560,41 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
                         let pId = confirmed.accessoryID ?? accessory.accessoryID ?? ""
                         if let catID = accessory.accessoryCategoryID, !catID.isEmpty, !pId.isEmpty {
-                            Firestore.firestore().collection("petAccessories").document(pId).setData([
-                                "AccessoryCategoryID": catID,
-                                "accessoryCategoryID": catID
-                            ], merge: true)
+                            // Keep the operator's selection in the local model.
+                            // `commitSavedAccessory` adopted the authoritative
+                            // readback, which was taken *before* this write, so it
+                            // does not carry the category yet.
+                            self.editingAccessory?.accessoryCategoryID = catID
+
+                            // Routed through the catalog callable instead of a
+                            // direct merge write. `prepareProductSave` only sends
+                            // the category on create, so an update previously
+                            // wrote around the server entirely — skipping the
+                            // permission re-check, revision guard and audit
+                            // record. Both key spellings are in the backend's
+                            // update allowlist, so the callable accepts it.
+                            Task { @MainActor in
+                                do {
+                                    _ = try await PPLivePetInventoryService.updateCatalogPresentation(
+                                        productID: pId,
+                                        values: ["AccessoryCategoryID": catID],
+                                        commandID: "category-\(pId)-\(UUID().uuidString)",
+                                        expectedRevision: confirmed.revision > 0 ? confirmed.revision : nil
+                                    )
+                                } catch {
+                                    // The product itself saved; only this category
+                                    // follow-up failed. Surfaced rather than
+                                    // discarded — a silent drop is the same failure
+                                    // mode Phase 3b removed from the save path.
+                                    PPHUD.showError(
+                                        Language.get(
+                                            "CatalogCategorySyncError",
+                                            alter: "تعذر تحديث تصنيف الصنف"
+                                        ),
+                                        subtitle: error.localizedDescription
+                                    )
+                                }
+                            }
                         }
 
                         // Media cleanup is safe only after authoritative readback
@@ -3473,7 +3667,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         original.descEn = saved.descEn
         original.sku = saved.sku
         original.barcode = saved.barcode
-        original.costPrice = saved.costPrice
+        original.costPrice = saved.costPrice ?? (decimalValue(costPriceText).map { NSNumber(value: $0) }) ?? original.costPrice
         original.price = saved.price
         original.wholesalePrice = saved.wholesalePrice
         original.hasCommerceConfig = saved.hasCommerceConfig
@@ -3632,7 +3826,11 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             if let wp = accessory.wholesalePrice, wp.doubleValue > 0 {
                 catalogValues["wholesalePrice"] = wp
             }
-            catalogValues["hasCommerceConfig"] = true
+            // `hasCommerceConfig` is deliberately not sent. It is a server-owned
+            // projection flag written only by upsertProductCommerce, it is absent
+            // from the backend's update allowlist, and it was already being
+            // dropped by the client allowlist below — so sending it was dead
+            // weight that a strict field check would now reject.
         }
 
         let unitPayloads: [[String: Any]] = livePetUnits.map { unit in
@@ -4346,10 +4544,22 @@ struct PPBilingualInputField: View {
     }
 
     private var canShowPuryTranslator: Bool {
-        if selectedLanguage == .english {
-            return hasArabicText || !englishText.isEmpty
+        hasArabicText || hasEnglishText || (!contextAttributes.isEmpty && !itemType.isEmpty)
+    }
+
+    private var puryButtonTitle: String {
+        if hasArabicText && !hasEnglishText {
+            return Language.isRTL() ? "ترجمة للإنجليزية" : "To English"
+        } else if !hasArabicText && hasEnglishText {
+            return Language.isRTL() ? "ترجمة للعربية" : "To Arabic"
+        } else if hasArabicText && hasEnglishText {
+            if selectedLanguage == .arabic {
+                return Language.isRTL() ? "ترجمة للإنجليزية" : "To English"
+            } else {
+                return Language.isRTL() ? "ترجمة للعربية" : "To Arabic"
+            }
         } else {
-            return !hasArabicText && hasEnglishText
+            return Language.isRTL() ? "اقتراح بالذكاء" : "Suggest"
         }
     }
 
@@ -4485,7 +4695,7 @@ struct PPBilingualInputField: View {
                         .scaleEffect(0.65)
                         .tint(Color(red: 16/255, green: 185/255, blue: 129/255))
                 } else {
-                    Text(Language.isRTL() ? "ترجمة" : "Translate")
+                    Text(puryButtonTitle)
                         .font(AdminType.caption2Bold)
                         .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
                 }
@@ -4507,11 +4717,40 @@ struct PPBilingualInputField: View {
     }
 
     private func translateNameWithPury() {
-        let sourceLang = selectedLanguage == .english ? "ar" : "en"
-        let targetLang = selectedLanguage == .english ? "en" : "ar"
-        let sourceText = sourceLang == "ar" ? arabicText : englishText
+        let sourceLang: String
+        let targetLang: String
+        let sourceText: String
+        let task: PuryAuthoringTask
 
-        guard !sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        if hasArabicText && !hasEnglishText {
+            sourceLang = "ar"
+            targetLang = "en"
+            sourceText = arabicText
+            task = .translate
+        } else if !hasArabicText && hasEnglishText {
+            sourceLang = "en"
+            targetLang = "ar"
+            sourceText = englishText
+            task = .translate
+        } else if hasArabicText && hasEnglishText {
+            if selectedLanguage == .arabic {
+                sourceLang = "ar"
+                targetLang = "en"
+                sourceText = arabicText
+            } else {
+                sourceLang = "en"
+                targetLang = "ar"
+                sourceText = englishText
+            }
+            task = .translate
+        } else {
+            sourceLang = selectedLanguage == .arabic ? "ar" : "en"
+            targetLang = selectedLanguage == .arabic ? "en" : "ar"
+            sourceText = ""
+            task = .improveName
+        }
+
+        if task == .translate && sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             return
         }
@@ -4522,7 +4761,7 @@ struct PPBilingualInputField: View {
         Task { @MainActor in
             do {
                 let response = try await PuryAdminService.shared.requestAuthoring(
-                    task: .translate,
+                    task: task,
                     itemType: itemType,
                     sourceLanguage: sourceLang,
                     targetLanguage: targetLang,
@@ -4533,14 +4772,28 @@ struct PPBilingualInputField: View {
                     attributes: contextAttributes
                 )
 
-                if targetLang == "en", let en = response.nameEn, !en.isEmpty {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                        englishText = en
+                if task == .translate {
+                    if targetLang == "en", let en = response.nameEn, !en.isEmpty {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            englishText = en
+                        }
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    } else if targetLang == "ar", let ar = response.nameAr, !ar.isEmpty {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            arabicText = ar
+                        }
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
                     }
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                } else if targetLang == "ar", let ar = response.nameAr, !ar.isEmpty {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                        arabicText = ar
+                } else {
+                    if let ar = response.nameAr, !ar.isEmpty {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            arabicText = ar
+                        }
+                    }
+                    if let en = response.nameEn, !en.isEmpty {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            englishText = en
+                        }
                     }
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                 }
@@ -4699,15 +4952,21 @@ struct PPBilingualTextEditorField: View {
 
     private var writerButtonLabel: String {
         if selectedLanguage == .arabic {
-            return hasArabicText
-                ? (Language.isRTL() ? "تحسين مع بيوري" : "Enhance with Pury")
-                : (Language.isRTL() ? "صياغة بيوري" : "Write with Pury")
+            if !hasArabicText && hasEnglishText {
+                return Language.isRTL() ? "ترجمة للعربية" : "Translate to Arabic"
+            } else if hasArabicText {
+                return Language.isRTL() ? "تحسين مع بيوري" : "Enhance with Pury"
+            } else {
+                return Language.isRTL() ? "صياغة بيوري" : "Write with Pury"
+            }
         } else {
-            return hasArabicText && !hasEnglishText
-                ? (Language.isRTL() ? "ترجمة وصياغة" : "Translate & Write")
-                : (hasEnglishText
-                    ? (Language.isRTL() ? "تحسين بالإنجليزية" : "Enhance English")
-                    : (Language.isRTL() ? "صياغة بيوري" : "Write with Pury"))
+            if hasArabicText && !hasEnglishText {
+                return Language.isRTL() ? "ترجمة وصياغة" : "Translate & Write"
+            } else if hasEnglishText {
+                return Language.isRTL() ? "تحسين بالإنجليزية" : "Enhance English"
+            } else {
+                return Language.isRTL() ? "صياغة بيوري" : "Write with Pury"
+            }
         }
     }
 
@@ -4941,11 +5200,35 @@ struct PPBilingualTextEditorField: View {
         }
 
         let isEnglishTarget = (selectedLanguage == .english)
-        let targetLang = isEnglishTarget ? "en" : "ar"
-        let sourceLang = "ar"
+        let targetLang: String
+        let sourceLang: String
+        let authoringTask: PuryAuthoringTask
 
-        let isTranslatingFromArabic = isEnglishTarget && hasArabicText && !hasEnglishText
-        let authoringTask: PuryAuthoringTask = isTranslatingFromArabic ? .translate : .generateDescription
+        if isEnglishTarget {
+            targetLang = "en"
+            if hasArabicText && !hasEnglishText {
+                sourceLang = "ar"
+                authoringTask = .translate
+            } else if hasEnglishText {
+                sourceLang = "en"
+                authoringTask = .generateDescription
+            } else {
+                sourceLang = hasArabicText ? "ar" : "en"
+                authoringTask = .generateDescription
+            }
+        } else {
+            targetLang = "ar"
+            if !hasArabicText && hasEnglishText {
+                sourceLang = "en"
+                authoringTask = .translate
+            } else if hasArabicText {
+                sourceLang = "ar"
+                authoringTask = .generateDescription
+            } else {
+                sourceLang = hasEnglishText ? "en" : "ar"
+                authoringTask = .generateDescription
+            }
+        }
 
         isGenerating = true
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -5076,7 +5359,10 @@ struct PPAccessoryEditorScreen: View {
     @State private var showDiscountPad: Bool = false
     @State private var quantityAlertText: String = ""
     @State private var bilingualLanguage: PPBilingualLanguage = .arabic
-    
+    /// Owns the colour-variant workspace. One instance per editor screen so the
+    /// draft, its baseline and any retained command id survive stage switches.
+    @StateObject private var variantSectionModel = PPAccessoryVariantSectionModel()
+
     enum FormField: Hashable {
         case name, desc, price, discountPercent, discountAmount, quantity, passport, weight, wholesalePrice
     }
@@ -5701,6 +5987,18 @@ struct PPAccessoryEditorScreen: View {
         VStack(spacing: 16) {
             // Studio Media Deck
             mediaAssetVaultDeck
+
+            // Colour variants. Shown only for an existing, non-live product:
+            // a colour family groups sellable product documents, so there is
+            // nothing to group until the product exists, and live pets are
+            // individually tracked and excluded from the colour axis.
+            if viewModel.supportsColourVariants {
+                PPAccessoryVariantSection(model: variantSectionModel)
+                    .task(id: viewModel.editingAccessory?.accessoryID) {
+                        guard let accessory = viewModel.editingAccessory else { return }
+                        await variantSectionModel.load(for: accessory)
+                    }
+            }
 
             // Core Nomenclature & Description
             coreInformationDeck
@@ -16667,11 +16965,11 @@ private struct PPAccessoryExpirySentinel: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(Language.get("CatalogIntake_ExpiryToggle", alter: "للصنف تاريخ انتهاء صلاحية"))
-                        .font(AdminType.calloutBold)
+                        .font(PPBrandFont.bold(size: 15.5, relativeTo: .callout))
                         .foregroundStyle(AdminSurface.primaryText)
 
                     Text(Language.get("CatalogIntake_ExpiryHint", alter: "فعّلها عندما تكون الصلاحية مطبوعة على العبوة لحساب دورة الصلاحية."))
-                        .font(AdminType.caption)
+                        .font(PPBrandFont.regular(size: 12.5, relativeTo: .caption))
                         .foregroundStyle(AdminSurface.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -16695,13 +16993,13 @@ private struct PPAccessoryExpirySentinel: View {
                             .foregroundStyle(health.color)
 
                         Text(health.text)
-                            .font(AdminType.captionBold)
+                            .font(PPBrandFont.bold(size: 12.5, relativeTo: .caption))
                             .foregroundStyle(health.color)
 
                         Spacer()
 
                         Text(verbatim: expiryDateFormatted.normalizedEnglishDigits)
-                            .font(PPBrandFont.bold(size: 12))
+                            .font(PPBrandFont.bold(size: 12.5, relativeTo: .caption))
                             .foregroundStyle(AdminSurface.primaryText)
                     }
                     .padding(.horizontal, 10)
@@ -16724,9 +17022,13 @@ private struct PPAccessoryExpirySentinel: View {
                     }
 
                     // Native Compact DatePicker
-                    HStack {
-                        Label(Language.get("CatalogIntake_ExpiryDate", alter: "تاريخ انتهاء الصلاحية"), systemImage: "calendar")
-                            .font(AdminType.calloutBold)
+                    HStack(spacing: 8) {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(AdminSurface.primary)
+
+                        Text(Language.get("CatalogIntake_ExpiryDate", alter: "تاريخ انتهاء الصلاحية"))
+                            .font(PPBrandFont.bold(size: 14.5, relativeTo: .callout))
                             .foregroundStyle(AdminSurface.primaryText)
 
                         Spacer()
@@ -16763,6 +17065,9 @@ private struct PPAccessoryExpirySentinel: View {
                     lineWidth: 0.8
                 )
         )
+        .onAppear {
+            PPBrandFont.registerIfNeeded()
+        }
     }
 
     private var expiryDateFormatted: String {
@@ -16783,7 +17088,9 @@ private struct PPAccessoryExpirySentinel: View {
             }
         } label: {
             Text(label)
-                .font(.system(size: 11.5, weight: .semibold))
+                .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
                 .foregroundStyle(AdminSurface.primary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
@@ -16809,6 +17116,12 @@ private struct PPAccessoryFoodIntakeJourney: View {
     @State private var quantityAlertText: String = ""
     @State private var bilingualLanguage: PPBilingualLanguage = .arabic
     @State private var showStepsAppSwitcher: Bool = false
+
+    /// Owns the colour-variant workspace for the accessory/food journey. One
+    /// instance per screen so the draft, its baseline and any retained command id
+    /// survive stage switches. Mirrors the `PPAccessoryEditorScreen` hook so both
+    /// entry paths into the editor expose the same Variants & Media section.
+    @StateObject private var variantSectionModel = PPAccessoryVariantSectionModel()
 
     private enum FocusedField: Hashable {
         case name
@@ -17334,6 +17647,18 @@ private struct PPAccessoryFoodIntakeJourney: View {
         ) {
             VStack(spacing: AdminSpacing.sectionSpacing) {
                 mediaCanvas
+
+                // Colour variants. Shown only for an existing, non-live product:
+                // a colour family groups sellable product documents, so there is
+                // nothing to group until the product exists, and live pets are
+                // individually tracked and excluded from the colour axis.
+                if viewModel.supportsColourVariants {
+                    PPAccessoryVariantSection(model: variantSectionModel)
+                        .task(id: viewModel.editingAccessory?.accessoryID) {
+                            guard let accessory = viewModel.editingAccessory else { return }
+                            await variantSectionModel.load(for: accessory)
+                        }
+                }
 
                 Divider().background(AdminSurface.hairline)
 

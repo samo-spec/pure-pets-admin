@@ -5346,8 +5346,25 @@
 "LivePets" = "حيوانات حية";
 "Total_Items_Format" = "%@ صنف مسجل";
 "Inventory_Live_Radar" = "رصد المخزون الحي • مزامنة لحظية";
+"InventoryHero_Status_Interrupted" = "تعذّر تحديث البيانات";
+"InventoryHero_Status_Loading" = "جارٍ تحديث المخزون";
+"InventoryHero_Status_Cached" = "بيانات محفوظة · بانتظار التأكيد";
+"InventoryHero_Status_Confirmed" = "رصيد الفرع مؤكّد";
+"InventoryHero_Status_Catalog" = "عرض الكتالوج";
+"InventoryHero_Value" = "قيمة المخزون";
+"InventoryHero_PricedValue" = "قيمة الأصناف المسعّرة";
+"InventoryHero_ValueUnavailable" = "القيمة غير متاحة";
+"InventoryHero_Availability" = "نسبة التوفر";
+"InventoryHero_CountFraction" = "%@ من %@ صنف";
+"InventoryHero_Low" = "منخفض";
+"InventoryHero_LowIncluded" = "الأصناف منخفضة المخزون ضمن المتوفر.";
+"InventoryHero_Out" = "نافد";
+"InventoryHero_DataUnavailable" = "لا تتوفر بيانات";
+"InventoryHero_Unavailable_Title" = "تعذّر تحميل المخزون";
+"InventoryHero_Unavailable_Detail" = "لم نتمكن من تأكيد بيانات الكتالوج. أعد المحاولة باستخدام زر التحديث أعلاه.";
+"DoubleTapToDeselect" = "اضغط مرتين لإلغاء التصفية";
+"DoubleTapToFilter" = "اضغط مرتين لتصفية القائمة";
 "Inventory_Valuation_Format" = "القيمة الإجمالية للمخزون: %.2f ر.ق";
-"Inventory_Unpriced_Items_Format" = "لم يُحدَّد سعر البيع لعدد %@ من الأصناف. لا تشملها قيمة المخزون.";
 "InStock" = "متوفر";
 "LowStock" = "مخزون حرج";
 "OutOfStock" = "نفذ";
@@ -5357,6 +5374,8 @@
 "Inventory_Available_Ratio" = "نسبة التوفر: %.0f%%";
 "Inventory_Showing_Count" = "%@ معروض";
 "Inventory_Search_Placeholder" = "ابحث بالاسم، الباركود، المتجر، أو المعرّف...";
+"Inventory_Search_Count" = "%@ صنف";
+"Dismiss_Keyboard" = "إخفاء لوحة المفاتيح";
 "Condition_New" = "جديد";
 "Condition_Used" = "مستعمل";
 "All" = "الكل";
@@ -5755,6 +5774,9 @@
 
 /* Multi-Branch Context & Access Control */
 "BranchContext_Switcher_Title" = "تبديل فرع العمل";
+"BranchContext_SingleBranch_Locked" = "فرع معتمد";
+"BranchContext_SingleBranch_Hint" = "هذا هو فرع العمل الوحيد المعتمد لهذا الحساب.";
+"BranchContext_NoBranches_Hint" = "لا يوجد فرع عمل متاح لهذا الحساب حالياً.";
 "BranchContext_Switcher_Message" = "اختر الفرع لتفعيل سياق العمليات وعرض البيانات الخاصة به.";
 "BranchContext_AllBranches_Global" = "جميع الفروع (وصول شامل)";
 "BranchContext_SelectBranch_Prompt" = "يرجى تحديد الفرع";
@@ -9709,3 +9731,148 @@
 "Inventory_Lot_ValidFromFuture" = "تاريخ بدء الصلاحية لا يمكن أن يكون في المستقبل.";
 "Inventory_Lot_InvalidPolicy" = "لا يمكن إنشاء تشغيلات لأصناف تتبع الوحدات الفردية.";
 "Inventory_Lot_Unavailable" = "التشغيلة المحددة غير متوفرة أو غير صالحة.";
+
+
+/* ── Accessory colour variants ── */
+"Variant_State_Archived" = "مؤرشف";
+"Variant_State_OutOfStock" = "غير متوفر";
+"Variant_State_AvailableCount" = "%@ متوفر";
+"Variant_State_Default" = "اللون الافتراضي";
+"Variant_State_Selected" = "محدد";
+
+"Variant_Error_ColorIdentifier" = "معرف اللون غير صالح.";
+"Variant_Error_ColorNameAr" = "اسم اللون بالعربية مطلوب.";
+"Variant_Error_ColorNameEn" = "اسم اللون بالإنجليزية مطلوب.";
+"Variant_Error_ColorHex" = "قيمة اللون غير صالحة.";
+"Variant_Error_FamilyName" = "اسم المنتج مطلوب.";
+"Variant_Error_NoVariants" = "أضف لونًا واحدًا على الأقل.";
+"Variant_Error_TooMany" = "الحد الأقصى %@ لون.";
+"Variant_Error_LivePet" = "الحيوانات الحية لا تدعم الألوان المتعددة.";
+"Variant_Error_AllArchived" = "يجب أن يبقى لون واحد نشطًا.";
+"Variant_Error_DefaultMissing" = "اختر اللون الافتراضي.";
+"Variant_Error_DefaultArchived" = "اللون الافتراضي مؤرشف. اختر لونًا نشطًا.";
+"Variant_Error_DuplicateColor" = "اللون %@ مستخدم أكثر من مرة.";
+"Variant_Error_DuplicateSku" = "رمز SKU مكرر بين %@ و %@.";
+"Variant_Error_DuplicateBarcode" = "الباركود مكرر بين %@ و %@.";
+"Variant_Error_NonDefaultPublished" = "أوقف عرض اللون %@ في المتجر قبل الحفظ.";
+"Variant_Error_ArchivedWithStock" = "اللون %@ لا يزال يحتوي على مخزون ولا يمكن أرشفته.";
+
+"Variant_Error_DuplicateColorServer" = "هذا اللون مستخدم بالفعل في هذا المنتج.";
+"Variant_Error_DuplicateProductServer" = "نفس المنتج مضاف أكثر من مرة.";
+"Variant_Error_DuplicateSkuServer" = "رمز SKU مستخدم بلون آخر. لكل لون رمز خاص.";
+"Variant_Error_DuplicateBarcodeServer" = "الباركود مستخدم بلون آخر. لكل لون باركود خاص.";
+"Variant_Error_DefaultRequiredServer" = "يجب تحديد لون افتراضي نشط.";
+"Variant_Error_DefaultArchivedServer" = "اللون الافتراضي مؤرشف. اختر لونًا نشطًا أولًا.";
+"Variant_Error_ArchivedWithStockServer" = "لا يمكن أرشفة لون لا يزال يحتوي على مخزون.";
+"Variant_Error_KindMismatchServer" = "كل ألوان المنتج يجب أن تكون من نفس النوع.";
+"Variant_Error_LivePetServer" = "الحيوانات الحية تُتابع فرديًا ولا تدعم الألوان المتعددة.";
+"Variant_Error_ConsumerVisibilityServer" = "اللون غير الافتراضي معروض في المتجر. أوقف عرضه ثم اعرض اللون الافتراضي الجديد قبل الحفظ.";
+"Variant_Error_ProductClaimedServer" = "هذا المنتج ينتمي بالفعل إلى مجموعة ألوان أخرى.";
+"Variant_Error_ProductMissingServer" = "أحد الألوان لم يعد موجودًا. أعد تحميل البيانات.";
+"Variant_Error_FamilyMissingServer" = "مجموعة الألوان غير موجودة. أعد تحميل البيانات.";
+"Variant_Error_FamilyArchivedServer" = "مجموعة الألوان مؤرشفة ولا يمكن تعديلها.";
+"Variant_Error_StaleRevisionServer" = "عدّل موظف آخر هذا المنتج أثناء تعديلك. أعد التحميل وقارن قبل الحفظ.";
+"Variant_Error_CommandConflictServer" = "تم تنفيذ عملية أخرى بنفس المعرف. أعد التحميل للتحقق من النتيجة.";
+"Variant_Error_ContractMismatchServer" = "إصدار التطبيق غير متوافق مع الخادم. حدّث التطبيق.";
+"Variant_Error_PermissionDenied" = "لا تملك صلاحية تعديل ألوان هذا المنتج.";
+"Variant_Error_Unauthenticated" = "انتهت الجلسة. أعد تسجيل الدخول.";
+"Variant_Error_Transport" = "تعذر إكمال العملية. تحقق من الاتصال وأعد المحاولة.";
+"Variant_Error_Unknown" = "تعذر حفظ الألوان.";
+
+
+/* Inventory — rejected-field failures (fail closed, never silently dropped) */
+"Inventory_UnsupportedFields_Generic" = "رفض الخادم بعض الحقول. لم يتم الحفظ. حدّث التطبيق وحاول مرة أخرى.";
+"Inventory_UnsupportedFields_Named" = "رفض الخادم هذه الحقول ولم يتم الحفظ: %@. حدّث التطبيق.";
+"Inventory_UnsupportedCatalogFields" = "هذه الحقول لا تُحدَّث من هذه الشاشة ولم يتم الحفظ: %@.";
+
+
+/* ── Accessory colour variants — editor section ── */
+"Variant_Section_Title" = "الألوان والوسائط";
+"Variant_Section_Summary_A11y" = "%@ لون، %@ متوفر إجمالاً";
+"Variant_Loading" = "جاري تحميل الألوان...";
+"Variant_Availability" = "المتوفر";
+"Variant_Save" = "حفظ الألوان";
+"Discard" = "تجاهل";
+
+"Variant_Convert_Explainer" = "هذا المنتج بلون واحد. أضف لونًا لتحويله إلى مجموعة ألوان دون فقدان المخزون أو السجل.";
+"Variant_Convert_Action" = "تحديد لون هذا المنتج";
+"Variant_Convert_Hint" = "يحدد لون المنتج الحالي قبل إضافة ألوان أخرى.";
+"Variant_Convert_ColorAssigned" = "تم تحديد لون هذا المنتج. يمكنك تغيير اللون أو حفظ الألوان للمتابعة.";
+"Variant_Selected_Badge" = "اللون المحدد";
+"Variant_Convert_Selected_A11y" = "اللون المحدد: %@، رمز اللون: %@";
+"Variant_Convert_Selected_Hint" = "اضغط لتعديل أو تغيير اللون المحدد لهذا المنتج.";
+
+"Variant_Action_EditColor" = "تغيير اللون";
+"Variant_Action_MakeDefault" = "تعيين كافتراضي";
+"Variant_Action_Archive" = "أرشفة";
+"Variant_Action_Restore" = "استعادة";
+"Variant_Action_MoveEarlier" = "تحريك للأمام";
+"Variant_Action_MoveLater" = "تحريك للخلف";
+"Variant_OpenProduct" = "تعديل سعر ومخزون وصور هذا اللون";
+
+"Variant_ChooseColor" = "اختيار اللون";
+"Variant_Library" = "مكتبة الألوان";
+"Variant_Custom" = "لون مخصص";
+"Variant_NameAr" = "الاسم بالعربية";
+"Variant_NameEn" = "الاسم بالإنجليزية";
+"Variant_Hex" = "قيمة اللون";
+"Variant_AlreadyUsed" = "مستخدم بالفعل";
+"Variant_Error_ColorTaken" = "هذا اللون مستخدم بالفعل في هذا المنتج.";
+
+"Variant_Save_Confirmed" = "تم حفظ الألوان.";
+"Variant_Save_AlreadyApplied" = "كانت هذه التغييرات محفوظة بالفعل.";
+"Variant_Recovery_Reload" = "إعادة التحميل والمقارنة";
+"Variant_Recovery_Retry" = "إعادة المحاولة";
+"Variant_Recovery_TransferListing" = "نقل العرض ثم الحفظ";
+"Variant_Recovery_Refresh" = "تحديث للتحقق";
+"Variant_Recovery_DraftKept" = "تم الاحتفاظ بتعديلاتك.";
+"Variant_Error_InvalidFamilyId" = "معرف مجموعة الألوان غير صالح.";
+"Variant_Error_InvalidResponse" = "تعذر تأكيد استجابة الخادم. أعد التحميل للتحقق.";
+
+
+/* ── Accessory colour variants — per-colour media ── */
+"Variant_Media_Title" = "صور هذا اللون";
+"Variant_Media_Empty" = "لا توجد صور لهذا اللون بعد.";
+"Variant_Media_Primary" = "الرئيسية";
+"Variant_Media_MakePrimary" = "تعيين كصورة رئيسية";
+"Variant_Media_Remove" = "إزالة الصورة";
+"Variant_Media_Pending" = "غير محفوظة";
+"Variant_Media_Uploaded" = "تم الرفع";
+"Variant_Media_Save" = "حفظ الصور";
+"Variant_Media_Saved" = "تم حفظ صور اللون.";
+"Variant_Media_Add_A11y" = "إضافة صورة للون %@";
+"Variant_Media_Primary_A11y" = "الصورة الرئيسية للون %@";
+"Variant_Media_Item_A11y" = "صورة %@ للون %@";
+"Variant_Media_NotAuthenticated" = "يجب تسجيل الدخول لتحميل الصور.";
+"Variant_Media_BadImage" = "تعذر تجهيز إحدى الصور. اختر صورة أخرى.";
+"Variant_Media_UploadFailed" = "فشل تحميل الصور. تم الاحتفاظ باختيارك، أعد المحاولة.";
+"Variant_Media_TooMany" = "الحد الأقصى %@ صور لكل لون.";
+
+
+/* ── Accessory colour variants — inventory list grouping ── */
+"Inventory_Family_ColourCount" = "%@ ألوان";
+"Inventory_Family_TotalAvailable" = "%@ متوفر";
+"Inventory_Family_HasOutOfStock" = "لون غير متوفر";
+"Inventory_Family_HasLowStock" = "مخزون منخفض";
+"Inventory_Family_ArchivedCount" = "%@ مؤرشف";
+"Inventory_Family_Expand_Hint" = "إظهار كل لون لإدارة مخزونه";
+"Inventory_Family_Collapse_Hint" = "طي الألوان";
+"Inventory_Family_Summary_A11y" = "%@، %@ ألوان، %@ متوفر إجمالاً";
+
+
+/* ── POS — exact scan resolution ── */
+"POS_Scanner_Resolved_Format" = "تم تحديد %@";
+"POS_Scanner_Ambiguous" = "الرمز مرتبط بأكثر من منتج. اختر المنتج الصحيح.";
+
+/* ── Color Atelier Studio ── */
+"Variant_Palette_Neutrals" = "الأساسيات والمحايدة";
+"Variant_Palette_Warm" = "الدرجات الدافئة والحيوية";
+"Variant_Palette_Cool" = "الدرجات الباردة والعميقة";
+"Variant_Spectrum_Picker" = "لوحة الألوان التفاعلية";
+"Variant_Contrast_Optimal" = "تباين ممتاز (مقروء بوضوح)";
+"Variant_Contrast_Attention" = "قد يحتاج لإطار تباين";
+"Variant_Hex_Copied" = "تم نسخ رمز اللون";
+"Variant_Custom_Section" = "استوديو التخصيص والمسميات";
+"Variant_Preset_Palettes" = "المجموعات اللونية المتناسقة";
+
+"CatalogCategorySyncError" = "تعذر تحديث تصنيف الصنف";

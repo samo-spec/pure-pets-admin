@@ -686,7 +686,7 @@ public struct PPLivePetBasicDataEditorView: View {
                             .environment(\.layoutDirection, .rightToLeft)
                             .multilineTextAlignment(.leading) // In RTL layout, leading is on the RIGHT
 
-                        if !nameEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && nameAr.isEmpty {
+                        if canShowLivePetTranslator {
                             puryLivePetTranslateButton
                         }
                     }
@@ -712,7 +712,7 @@ public struct PPLivePetBasicDataEditorView: View {
                             .environment(\.layoutDirection, .leftToRight)
                             .multilineTextAlignment(.leading) // In LTR layout, leading is on the LEFT
 
-                        if !nameAr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        if canShowLivePetTranslator {
                             puryLivePetTranslateButton
                         }
                     }
@@ -858,6 +858,34 @@ public struct PPLivePetBasicDataEditorView: View {
 
     // MARK: - Pury Inline Translation & World-Class Authoring
 
+    private var hasArabicName: Bool {
+        !nameAr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var hasEnglishName: Bool {
+        !nameEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var canShowLivePetTranslator: Bool {
+        hasArabicName || hasEnglishName || selectedSpeciesID > 0
+    }
+
+    private var puryLivePetTranslateTitle: String {
+        if hasArabicName && !hasEnglishName {
+            return Language.isRTL() ? "ترجمة للإنجليزية" : "To English"
+        } else if !hasArabicName && hasEnglishName {
+            return Language.isRTL() ? "ترجمة للعربية" : "To Arabic"
+        } else if hasArabicName && hasEnglishName {
+            if selectedLanguage == .arabic {
+                return Language.isRTL() ? "ترجمة للإنجليزية" : "To English"
+            } else {
+                return Language.isRTL() ? "ترجمة للعربية" : "To Arabic"
+            }
+        } else {
+            return Language.isRTL() ? "اقتراح بالذكاء" : "Suggest"
+        }
+    }
+
     private var puryLivePetTranslateButton: some View {
         Button {
             translateLivePetNameWithPury()
@@ -876,7 +904,7 @@ public struct PPLivePetBasicDataEditorView: View {
                         .scaleEffect(0.65)
                         .tint(Color(red: 16/255, green: 185/255, blue: 129/255))
                 } else {
-                    Text(Language.isRTL() ? "ترجمة" : "Translate")
+                    Text(puryLivePetTranslateTitle)
                         .font(AdminType.caption2Bold)
                         .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
                 }
@@ -898,12 +926,40 @@ public struct PPLivePetBasicDataEditorView: View {
     }
 
     private func translateLivePetNameWithPury() {
-        let isEnglishTarget = (selectedLanguage == .english)
-        let sourceLang = isEnglishTarget ? "ar" : "en"
-        let targetLang = isEnglishTarget ? "en" : "ar"
-        let sourceText = isEnglishTarget ? nameAr : nameEn
+        let sourceLang: String
+        let targetLang: String
+        let sourceText: String
+        let task: PuryAuthoringTask
 
-        guard !sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        if hasArabicName && !hasEnglishName {
+            sourceLang = "ar"
+            targetLang = "en"
+            sourceText = nameAr
+            task = .translate
+        } else if !hasArabicName && hasEnglishName {
+            sourceLang = "en"
+            targetLang = "ar"
+            sourceText = nameEn
+            task = .translate
+        } else if hasArabicName && hasEnglishName {
+            if selectedLanguage == .arabic {
+                sourceLang = "ar"
+                targetLang = "en"
+                sourceText = nameAr
+            } else {
+                sourceLang = "en"
+                targetLang = "ar"
+                sourceText = nameEn
+            }
+            task = .translate
+        } else {
+            sourceLang = selectedLanguage == .arabic ? "ar" : "en"
+            targetLang = selectedLanguage == .arabic ? "en" : "ar"
+            sourceText = ""
+            task = .improveName
+        }
+
+        if task == .translate && sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             impactFeedback.impactOccurred()
             return
         }
@@ -911,15 +967,13 @@ public struct PPLivePetBasicDataEditorView: View {
         isTranslatingName = true
         impactFeedback.impactOccurred()
 
-        let speciesName = availableMainKinds.first(
-            where: { $0.id == selectedSpeciesID
-            })?.kindName ?? ""
+        let speciesName = availableMainKinds.first(where: { $0.id == selectedSpeciesID })?.kindName ?? ""
         let breedName = availableSubKinds.first(where: { $0.id == selectedSubKindID })?.subKindName ?? ""
 
         Task { @MainActor in
             do {
                 let response = try await PuryAdminService.shared.requestAuthoring(
-                    task: .translate,
+                    task: task,
                     itemType: "live_pet",
                     sourceLanguage: sourceLang,
                     targetLanguage: targetLang,
@@ -933,14 +987,28 @@ public struct PPLivePetBasicDataEditorView: View {
                     ]
                 )
 
-                if targetLang == "en", let en = response.nameEn, !en.isEmpty {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                        nameEn = en
+                if task == .translate {
+                    if targetLang == "en", let en = response.nameEn, !en.isEmpty {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            nameEn = en
+                        }
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    } else if targetLang == "ar", let ar = response.nameAr, !ar.isEmpty {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            nameAr = ar
+                        }
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
                     }
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                } else if targetLang == "ar", let ar = response.nameAr, !ar.isEmpty {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                        nameAr = ar
+                } else {
+                    if let ar = response.nameAr, !ar.isEmpty {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            nameAr = ar
+                        }
+                    }
+                    if let en = response.nameEn, !en.isEmpty {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            nameEn = en
+                        }
                     }
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                 }
@@ -952,17 +1020,31 @@ public struct PPLivePetBasicDataEditorView: View {
         }
     }
 
+    private var hasArabicDesc: Bool {
+        !descAr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var hasEnglishDesc: Bool {
+        !descEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private var livePetWriterLabel: String {
         if selectedLanguage == .arabic {
-            return !descAr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? (Language.isRTL() ? "تحسين مع بيوري" : "Enhance with Pury")
-                : (Language.isRTL() ? "صياغة بيوري" : "Write with Pury")
+            if !hasArabicDesc && hasEnglishDesc {
+                return Language.isRTL() ? "ترجمة للعربية" : "Translate to Arabic"
+            } else if hasArabicDesc {
+                return Language.isRTL() ? "تحسين مع بيوري" : "Enhance with Pury"
+            } else {
+                return Language.isRTL() ? "صياغة بيوري" : "Write with Pury"
+            }
         } else {
-            return !descAr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && descEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? (Language.isRTL() ? "ترجمة وصياغة" : "Translate & Write")
-                : (!descEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    ? (Language.isRTL() ? "تحسين بالإنجليزية" : "Enhance English")
-                    : (Language.isRTL() ? "صياغة بيوري" : "Write with Pury"))
+            if hasArabicDesc && !hasEnglishDesc {
+                return Language.isRTL() ? "ترجمة وصياغة" : "Translate & Write"
+            } else if hasEnglishDesc {
+                return Language.isRTL() ? "تحسين بالإنجليزية" : "Enhance English"
+            } else {
+                return Language.isRTL() ? "صياغة بيوري" : "Write with Pury"
+            }
         }
     }
 
@@ -1028,12 +1110,36 @@ public struct PPLivePetBasicDataEditorView: View {
 
     private func generateLivePetDescriptionWithPury() {
         let isEnglishTarget = (selectedLanguage == .english)
-        let hasArDesc = !descAr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let hasEnDesc = !descEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let targetLang: String
+        let sourceLang: String
+        let authoringTask: PuryAuthoringTask
 
-        let isTranslatingFromArabic = isEnglishTarget && hasArDesc && !hasEnDesc
-        let authoringTask: PuryAuthoringTask = isTranslatingFromArabic ? .translate : .generateDescription
-        let targetLang = isEnglishTarget ? "en" : "ar"
+        if isEnglishTarget {
+            targetLang = "en"
+            if hasArabicDesc && !hasEnglishDesc {
+                sourceLang = "ar"
+                authoringTask = .translate
+            } else if hasEnglishDesc {
+                sourceLang = "en"
+                authoringTask = .generateDescription
+            } else {
+                sourceLang = hasArabicDesc ? "ar" : "en"
+                authoringTask = .generateDescription
+            }
+        } else {
+            targetLang = "ar"
+            if !hasArabicDesc && hasEnglishDesc {
+                // User has English description and is translating to Arabic!
+                sourceLang = "en"
+                authoringTask = .translate
+            } else if hasArabicDesc {
+                sourceLang = "ar"
+                authoringTask = .generateDescription
+            } else {
+                sourceLang = hasEnglishDesc ? "en" : "ar"
+                authoringTask = .generateDescription
+            }
+        }
 
         isGeneratingDesc = true
         impactFeedback.impactOccurred()
@@ -1054,7 +1160,7 @@ public struct PPLivePetBasicDataEditorView: View {
                 let response = try await PuryAdminService.shared.requestAuthoring(
                     task: authoringTask,
                     itemType: "live_pet",
-                    sourceLanguage: "ar",
+                    sourceLanguage: sourceLang,
                     targetLanguage: targetLang,
                     currentText: [
                         "nameAr": nameAr,

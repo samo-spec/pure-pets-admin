@@ -154,6 +154,34 @@ public actor PuryAdminService {
         return try parseChatResponse(from: dict)
     }
 
+    // MARK: - Authoring Cache & Deduplication (Sub-Millisecond Fast Path)
+
+    private var authoringCache: [String: PuryAuthoringResponse] = [:]
+    private var authoringCacheOrder: [String] = []
+    private let maxAuthoringCacheCount = 200
+    private var inFlightAuthoring: [String: Task<PuryAuthoringResponse, Error>] = [:]
+
+    private func makeAuthoringCacheKey(
+        task: PuryAuthoringTask,
+        itemType: String,
+        sourceLanguage: String,
+        targetLanguage: String,
+        currentText: [String: String],
+        attributes: [String: String]
+    ) -> String {
+        let nameAr = currentText["nameAr"] ?? ""
+        let nameEn = currentText["nameEn"] ?? ""
+        let descAr = currentText["descAr"] ?? ""
+        let descEn = currentText["descEn"] ?? ""
+        let sortedAttrs = attributes.keys.sorted().map { "\($0):\(attributes[$0] ?? "")" }.joined(separator: "|")
+        return "\(task.rawValue)_\(itemType)_\(sourceLanguage)_\(targetLanguage)_\(nameAr)_\(nameEn)_\(descAr)_\(descEn)_\(sortedAttrs)"
+    }
+
+    public func clearAuthoringCache() {
+        authoringCache.removeAll()
+        authoringCacheOrder.removeAll()
+    }
+
     // MARK: - Authoring Callable
 
     public func requestAuthoring(
@@ -168,38 +196,78 @@ public actor PuryAdminService {
             throw PuryError.unauthenticated
         }
 
-        let client = PuryClientInfo(locale: sourceLanguage)
-        var clientDict: [String: Any] = [
-            "platform": client.platform,
-            "locale": sourceLanguage
-        ]
-        if let v = client.appVersion { clientDict["appVersion"] = v }
-        if let b = client.buildNumber { clientDict["buildNumber"] = b }
-
-        let payload: [String: Any] = [
-            "task": task.rawValue,
-            "itemType": itemType,
-            "sourceLanguage": sourceLanguage,
-            "targetLanguage": targetLanguage,
-            "currentText": currentText,
-            "attributes": attributes,
-            "client": clientDict
-        ]
-
-        let dict = try await executeCallable(
-            name: "puryAdminAuthor",
-            payload: payload,
-            timeoutInterval: authoringTimeoutInterval
+        let cacheKey = makeAuthoringCacheKey(
+            task: task,
+            itemType: itemType,
+            sourceLanguage: sourceLanguage,
+            targetLanguage: targetLanguage,
+            currentText: currentText,
+            attributes: attributes
         )
-        return PuryAuthoringResponse(
-            nameAr: dict["nameAr"] as? String,
-            nameEn: dict["nameEn"] as? String,
-            descAr: dict["descAr"] as? String,
-            descEn: dict["descEn"] as? String,
-            limitations: dict["limitations"] as? [String],
-            factsUsed: dict["factsUsed"] as? [String],
-            task: dict["task"] as? String ?? task.rawValue
-        )
+
+        // 1. Sub-millisecond Cache Hit (< 1ms)
+        if let cached = authoringCache[cacheKey] {
+            return cached
+        }
+
+        // 2. In-flight Request Deduplication / Coalescing
+        if let ongoing = inFlightAuthoring[cacheKey] {
+            return try await ongoing.value
+        }
+
+        let networkTask = Task<PuryAuthoringResponse, Error> {
+            let client = PuryClientInfo(locale: sourceLanguage)
+            var clientDict: [String: Any] = [
+                "platform": client.platform,
+                "locale": sourceLanguage
+            ]
+            if let v = client.appVersion { clientDict["appVersion"] = v }
+            if let b = client.buildNumber { clientDict["buildNumber"] = b }
+
+            let payload: [String: Any] = [
+                "task": task.rawValue,
+                "itemType": itemType,
+                "sourceLanguage": sourceLanguage,
+                "targetLanguage": targetLanguage,
+                "currentText": currentText,
+                "attributes": attributes,
+                "client": clientDict
+            ]
+
+            let dict = try await self.executeCallable(
+                name: "puryAdminAuthor",
+                payload: payload,
+                timeoutInterval: self.authoringTimeoutInterval
+            )
+            return PuryAuthoringResponse(
+                nameAr: dict["nameAr"] as? String,
+                nameEn: dict["nameEn"] as? String,
+                descAr: dict["descAr"] as? String,
+                descEn: dict["descEn"] as? String,
+                limitations: dict["limitations"] as? [String],
+                factsUsed: dict["factsUsed"] as? [String],
+                task: dict["task"] as? String ?? task.rawValue
+            )
+        }
+
+        inFlightAuthoring[cacheKey] = networkTask
+
+        do {
+            let response = try await networkTask.value
+            inFlightAuthoring.removeValue(forKey: cacheKey)
+
+            // Cache result with LRU bounding
+            authoringCache[cacheKey] = response
+            authoringCacheOrder.append(cacheKey)
+            if authoringCacheOrder.count > maxAuthoringCacheCount {
+                let oldest = authoringCacheOrder.removeFirst()
+                authoringCache.removeValue(forKey: oldest)
+            }
+            return response
+        } catch {
+            inFlightAuthoring.removeValue(forKey: cacheKey)
+            throw error
+        }
     }
 
     // MARK: - Core Callable Execution

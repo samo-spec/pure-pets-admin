@@ -473,6 +473,14 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     return @(finalPrice);
 }
 
+- (BOOL)belongsToVariantFamily {
+    return self.productFamilyId.length > 0;
+}
+
+- (NSString *)catalogCategoryIdentifier {
+    return self.AccessoryCategoryID;
+}
+
 - (NSString *)stockStatusText {
     NSInteger qty = [self normalizedQuantity];
     if (qty <= 0) {
@@ -563,6 +571,14 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         _nameEn = PPAccessoryStringValueForKeys(dict, (@[@"nameEn", @"name_en", @"titleEn", @"title_en"]));
         _revision = MAX(0, PPAccessoryInteger(dict[@"revision"]));
         _sku = PPAccessoryStringValueForKeys(dict, (@[@"sku", @"SKU", @"itemSku"]));
+        // `barcode` is declared in the header and written by -toFirestoreDictionary,
+        // but had no read branch here, so a stored barcode never round-tripped into
+        // the model: every read reset it to the empty string set in -init. That made
+        // a scanned code invisible to the editor and to any colour-variant workflow
+        // that depends on a per-variant barcode. Aliases mirror the `sku` precedent
+        // above rather than inventing new server keys — the backend payload
+        // allowlist recognises `barcode` only.
+        _barcode = PPAccessoryStringValueForKeys(dict, (@[@"barcode", @"barCode", @"bar_code", @"itemBarcode"]));
         NSArray<NSString *> *costKeys = @[
             @"costPrice", @"cost_price", @"cost",
             @"buyPrice", @"buy_price",
@@ -813,6 +829,23 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         _reservedQuantity = MAX(0, PPAccessoryInteger(dict[@"reservedQuantity"]));
         _isArchived = PPAccessoryBool(dict[@"isArchived"]);
         _blurHash = PPAccessoryTrimmedString(dict[@"blurHash"]);
+
+        // Colour-variant identity. Server-owned: parsed for display and editing
+        // context only, never written back from this model.
+        _productFamilyId = PPAccessoryStringValueForKeys(dict, (@[@"productFamilyId"]));
+        _variantSchemaVersion = PPAccessoryInteger(dict[@"variantSchemaVersion"]);
+        _isVariant = PPAccessoryBool(dict[@"isVariant"]);
+        _isDefaultVariant = PPAccessoryBool(dict[@"isDefaultVariant"]);
+        _variantSortOrder = MAX(0, PPAccessoryInteger(dict[@"variantSortOrder"]));
+        _variantColorDictionary = ({
+            NSDictionary *attributes = [dict[@"variantAttributes"] isKindOfClass:NSDictionary.class]
+                ? dict[@"variantAttributes"]
+                : nil;
+            NSDictionary *color = [attributes[@"color"] isKindOfClass:NSDictionary.class]
+                ? attributes[@"color"]
+                : nil;
+            color ? [color copy] : nil;
+        });
         
         _accessKindType = ({
             NSInteger rawKind = PPAccessoryInteger(dict[@"accessKindType"]);
@@ -888,12 +921,27 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     copy.revision = source.revision;
     copy.sku = [source.sku copy];
     copy.barcode = [source.barcode copy];
+    // Colour-variant identity travels with the copy so the editor keeps its
+    // family context while mutating a draft. It is still never serialized.
+    copy.productFamilyId = [source.productFamilyId copy];
+    copy.variantSchemaVersion = source.variantSchemaVersion;
+    copy.isVariant = source.isVariant;
+    copy.isDefaultVariant = source.isDefaultVariant;
+    copy.variantSortOrder = source.variantSortOrder;
+    copy.variantColorDictionary = [source.variantColorDictionary copy];
     copy.costPrice = [source.costPrice copy];
     if (source.hasResolvedSellingPrice) {
         copy.price = [source.price copy];
     }
     copy.discountPercent = [source.discountPercent copy];
     copy.discountAmount = [source.discountAmount copy];
+    // Commerce pricing must survive the copy: POS freezes the cart line with
+    // `deepCopyFrom:`, and `pos_allQuantityGroups`/`pos_defaultWholesaleGroup`
+    // resolve wholesale pricing from these. Omitting them silently priced a
+    // frozen line at retail even when a wholesale group applied.
+    copy.wholesalePrice = [source.wholesalePrice copy];
+    copy.hasCommerceConfig = source.hasCommerceConfig;
+    copy.quantityGroups = [source.quantityGroups copy];
     copy.weightText = [source.weightText copy];
     copy.weight = [source.weight copy];
     copy.weightUnit = [source.weightUnit copy];

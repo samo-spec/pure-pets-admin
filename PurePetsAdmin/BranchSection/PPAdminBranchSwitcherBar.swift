@@ -8,9 +8,11 @@
 
 import SwiftUI
 
-public enum PPBranchSwitcherStyle {
+public enum PPBranchSwitcherStyle: Equatable {
     case compact
     case prominentHero
+    /// An unboxed identity control for a hero that owns its surrounding surface.
+    case embeddedHero
 }
 
 public struct PPAdminBranchSwitcherBar: View {
@@ -36,6 +38,8 @@ public struct PPAdminBranchSwitcherBar: View {
             switch style {
             case .compact, .prominentHero:
                 compactCapsule
+            case .embeddedHero:
+                embeddedHeroIdentity
             }
         }
         .frame(maxWidth: .infinity)
@@ -95,20 +99,30 @@ public struct PPAdminBranchSwitcherBar: View {
     }
 
     private var branchSwitcherAccessibilityLabel: String {
-        Language.get("BranchContext_Switcher_Title", alter: "تبديل فرع العمل")
+        if style == .embeddedHero && !canSwitchBranch {
+            return branchContextLabel
+        }
+        return Language.get("BranchContext_Switcher_Title", alter: "تبديل فرع العمل")
     }
 
     private var branchSwitcherAccessibilityValue: String {
+        let name = style == .embeddedHero ? embeddedBranchName : contextStore.currentBranchDisplayName
         guard let branchCode else {
-            return contextStore.currentBranchDisplayName
+            return name
         }
-        return "\(contextStore.currentBranchDisplayName), \(branchCode)"
+        return "\(name), \(branchCode)"
     }
 
     private var branchSwitcherAccessibilityHint: String {
+        if style == .embeddedHero && contextStore.availableBranches.isEmpty {
+            return Language.get(
+                "BranchContext_NoBranches_Hint",
+                alter: "لا يوجد فرع عمل متاح لهذا الحساب حالياً."
+            )
+        }
         if !canSwitchBranch {
             return Language.get(
-                "BranchContext_SingleBranch_Locked",
+                "BranchContext_SingleBranch_Hint",
                 alter: "هذا هو فرع العمل الوحيد المعتمد لهذا الحساب."
             )
         }
@@ -127,7 +141,7 @@ public struct PPAdminBranchSwitcherBar: View {
     }
 
     private func configureBeaconMotion() {
-        guard !accessibilityReduceMotion, hasResolvedContext else {
+        guard style != .embeddedHero, !accessibilityReduceMotion, hasResolvedContext else {
             isBeaconPulsing = false
             return
         }
@@ -141,6 +155,47 @@ public struct PPAdminBranchSwitcherBar: View {
                 isBeaconPulsing = true
             }
         }
+    }
+
+    // MARK: - Embedded Hero Identity
+
+    private var embeddedBranchName: String {
+        let name = contextStore.activeBranch?.localizedName() ?? contextStore.currentBranchDisplayName
+        return name.isEmpty
+            ? Language.get("BranchContext_SelectBranch_Prompt", alter: "يرجى تحديد الفرع")
+            : name
+    }
+
+    private var embeddedHeroIdentity: some View {
+        HStack(alignment: .center, spacing: AdminSpacing.md) {
+            Image(systemName: branchSymbolName)
+                .font(.system(size: 19, weight: .semibold))
+                .foregroundStyle(AdminSurface.primary)
+                .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                .background(AdminSurface.primarySoft, in: RoundedRectangle(cornerRadius: AdminRadius.medium))
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: AdminSpacing.xxs) {
+                Text(branchContextLabel)
+                    .font(AdminType.caption1)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                Text(embeddedBranchName)
+                    .font(AdminType.headline)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+            }
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Image(systemName: canSwitchBranch ? "chevron.up.chevron.down" : "lock.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(canSwitchBranch ? AdminSurface.primary : AdminCommandInk.secondary)
+                .accessibilityHidden(true)
+        }
+        .padding(.vertical, AdminSpacing.xs)
+        .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum, alignment: .leading)
+        .contentShape(Rectangle())
     }
 
     // MARK: - Compact Branch Identity Island

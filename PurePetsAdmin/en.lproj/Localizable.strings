@@ -4429,7 +4429,7 @@
 "Staff_Role_Delete_Confirm_Title" = "Delete this custom role?";
 "Staff_Role_Delete_Confirm_Message_Format" = "Deleting %@ permanently removes this role definition. Review affected staff assignments before continuing.";
 "Inventory_Price_Unavailable" = "Price unavailable";
-"Inventory_Unpriced_Items_Format" = "%ld items are awaiting a selling price. Inventory valuation excludes them.";
+"Inventory_Unpriced_Items_Format" = "%@ items are awaiting a selling price. Inventory valuation excludes them.";
 
 /* Fast Sell receipt */
 "POS_Receipt_Title" = "Sales receipt";
@@ -5287,8 +5287,25 @@
 "LivePets" = "Live Pets";
 "Total_Items_Format" = "%@ registered items";
 "Inventory_Live_Radar" = "Live Stock Radar • Real-time Sync";
+"InventoryHero_Status_Interrupted" = "Could not update inventory";
+"InventoryHero_Status_Loading" = "Updating inventory";
+"InventoryHero_Status_Cached" = "Saved data · awaiting confirmation";
+"InventoryHero_Status_Confirmed" = "Branch quantities confirmed";
+"InventoryHero_Status_Catalog" = "Catalog overview";
+"InventoryHero_Value" = "Inventory value";
+"InventoryHero_PricedValue" = "Value of priced items";
+"InventoryHero_ValueUnavailable" = "Value unavailable";
+"InventoryHero_Availability" = "Availability";
+"InventoryHero_CountFraction" = "%@ of %@ items";
+"InventoryHero_Low" = "Low";
+"InventoryHero_LowIncluded" = "Low inventory is included in available.";
+"InventoryHero_Out" = "Out";
+"InventoryHero_DataUnavailable" = "Data unavailable";
+"InventoryHero_Unavailable_Title" = "Inventory could not load";
+"InventoryHero_Unavailable_Detail" = "We could not confirm the catalog data. Try again using the refresh button above.";
+"DoubleTapToDeselect" = "Double-tap to clear this filter";
+"DoubleTapToFilter" = "Double-tap to filter the list";
 "Inventory_Valuation_Format" = "Total inventory valuation: %.2f QAR";
-"Inventory_Unpriced_Items_Format" = "%ld items are awaiting a selling price. Inventory valuation excludes them.";
 "InStock" = "In Stock";
 "LowStock" = "Low Stock";
 "OutOfStock" = "Out of Stock";
@@ -5298,6 +5315,8 @@
 "Inventory_Available_Ratio" = "Availability: %.0f%%";
 "Inventory_Showing_Count" = "%@ listed";
 "Inventory_Search_Placeholder" = "Search by name, barcode, store, or ID...";
+"Inventory_Search_Count" = "%@ items";
+"Dismiss_Keyboard" = "Dismiss keyboard";
 "Condition_New" = "New";
 "Condition_Used" = "Used";
 "All" = "All";
@@ -5696,6 +5715,9 @@
 
 /* Multi-Branch Context & Access Control */
 "BranchContext_Switcher_Title" = "Switch Working Branch";
+"BranchContext_SingleBranch_Locked" = "Assigned branch";
+"BranchContext_SingleBranch_Hint" = "This is the only working branch authorized for this account.";
+"BranchContext_NoBranches_Hint" = "No working branch is currently available for this account.";
 "BranchContext_Switcher_Message" = "Select a branch to set your operational context and scope data views.";
 "BranchContext_AllBranches_Global" = "All Branches (Global Access)";
 "BranchContext_SelectBranch_Prompt" = "Select Branch";
@@ -9640,3 +9662,148 @@
 "Inventory_Lot_ValidFromFuture" = "Validity start date cannot be in the future.";
 "Inventory_Lot_InvalidPolicy" = "Lots cannot be created for individually tracked items.";
 "Inventory_Lot_Unavailable" = "The selected lot is unavailable or invalid.";
+
+
+/* ── Accessory colour variants ── */
+"Variant_State_Archived" = "Archived";
+"Variant_State_OutOfStock" = "Out of stock";
+"Variant_State_AvailableCount" = "%@ available";
+"Variant_State_Default" = "Default colour";
+"Variant_State_Selected" = "Selected";
+
+"Variant_Error_ColorIdentifier" = "The colour identifier is not valid.";
+"Variant_Error_ColorNameAr" = "The Arabic colour name is required.";
+"Variant_Error_ColorNameEn" = "The English colour name is required.";
+"Variant_Error_ColorHex" = "The colour value is not valid.";
+"Variant_Error_FamilyName" = "The product name is required.";
+"Variant_Error_NoVariants" = "Add at least one colour.";
+"Variant_Error_TooMany" = "A product supports at most %@ colours.";
+"Variant_Error_LivePet" = "Live pets do not support multiple colours.";
+"Variant_Error_AllArchived" = "At least one colour must stay active.";
+"Variant_Error_DefaultMissing" = "Choose the default colour.";
+"Variant_Error_DefaultArchived" = "The default colour is archived. Choose an active colour.";
+"Variant_Error_DuplicateColor" = "Colour %@ is used more than once.";
+"Variant_Error_DuplicateSku" = "SKU is duplicated between %@ and %@.";
+"Variant_Error_DuplicateBarcode" = "Barcode is duplicated between %@ and %@.";
+"Variant_Error_NonDefaultPublished" = "Unlist colour %@ from the store before saving.";
+"Variant_Error_ArchivedWithStock" = "Colour %@ still holds stock and cannot be archived.";
+
+"Variant_Error_DuplicateColorServer" = "This colour is already used by this product.";
+"Variant_Error_DuplicateProductServer" = "The same product is added more than once.";
+"Variant_Error_DuplicateSkuServer" = "That SKU belongs to another colour. Each colour needs its own.";
+"Variant_Error_DuplicateBarcodeServer" = "That barcode belongs to another colour. Each colour needs its own.";
+"Variant_Error_DefaultRequiredServer" = "An active default colour is required.";
+"Variant_Error_DefaultArchivedServer" = "The default colour is archived. Choose an active colour first.";
+"Variant_Error_ArchivedWithStockServer" = "A colour that still holds stock cannot be archived.";
+"Variant_Error_KindMismatchServer" = "All colours of a product must be the same product type.";
+"Variant_Error_LivePetServer" = "Live pets are tracked individually and do not support multiple colours.";
+"Variant_Error_ConsumerVisibilityServer" = "A non-default colour is listed in the store. Unlist it, list the new default colour, then save.";
+"Variant_Error_ProductClaimedServer" = "This product already belongs to another colour group.";
+"Variant_Error_ProductMissingServer" = "One of the colours no longer exists. Reload the data.";
+"Variant_Error_FamilyMissingServer" = "The colour group was not found. Reload the data.";
+"Variant_Error_FamilyArchivedServer" = "The colour group is archived and cannot be edited.";
+"Variant_Error_StaleRevisionServer" = "Another staff member changed this product while you were editing. Reload and compare before saving.";
+"Variant_Error_CommandConflictServer" = "A different operation already used this command id. Reload to check the result.";
+"Variant_Error_ContractMismatchServer" = "This app version is not compatible with the server. Update the app.";
+"Variant_Error_PermissionDenied" = "You do not have permission to edit this product's colours.";
+"Variant_Error_Unauthenticated" = "Your session expired. Sign in again.";
+"Variant_Error_Transport" = "The operation could not be completed. Check your connection and try again.";
+"Variant_Error_Unknown" = "The colours could not be saved.";
+
+
+/* Inventory — rejected-field failures (fail closed, never silently dropped) */
+"Inventory_UnsupportedFields_Generic" = "The server rejected some fields. Nothing was saved. Update the app and try again.";
+"Inventory_UnsupportedFields_Named" = "The server rejected these fields and nothing was saved: %@. Update the app.";
+"Inventory_UnsupportedCatalogFields" = "These fields are not updated from this screen and nothing was saved: %@.";
+
+
+/* ── Accessory colour variants — editor section ── */
+"Variant_Section_Title" = "Colours & media";
+"Variant_Section_Summary_A11y" = "%@ colours, %@ available in total";
+"Variant_Loading" = "Loading colours…";
+"Variant_Availability" = "Available";
+"Variant_Save" = "Save colours";
+"Discard" = "Discard";
+
+"Variant_Convert_Explainer" = "This product has a single colour. Add a colour to turn it into a colour group without losing stock or history.";
+"Variant_Convert_Action" = "Set this product's colour";
+"Variant_Convert_Hint" = "Names the current product's colour before other colours are added.";
+"Variant_Convert_ColorAssigned" = "Colour selected for this product. You can change the colour or save colours to continue.";
+"Variant_Selected_Badge" = "Selected colour";
+"Variant_Convert_Selected_A11y" = "Selected colour: %@, hex code: %@";
+"Variant_Convert_Selected_Hint" = "Tap to edit or change the selected colour for this product.";
+
+"Variant_Action_EditColor" = "Change colour";
+"Variant_Action_MakeDefault" = "Make default";
+"Variant_Action_Archive" = "Archive";
+"Variant_Action_Restore" = "Restore";
+"Variant_Action_MoveEarlier" = "Move earlier";
+"Variant_Action_MoveLater" = "Move later";
+"Variant_OpenProduct" = "Edit this colour's price, stock and photos";
+
+"Variant_ChooseColor" = "Choose colour";
+"Variant_Library" = "Colour library";
+"Variant_Custom" = "Custom colour";
+"Variant_NameAr" = "Arabic name";
+"Variant_NameEn" = "English name";
+"Variant_Hex" = "Colour value";
+"Variant_AlreadyUsed" = "Already used";
+"Variant_Error_ColorTaken" = "This colour is already used by this product.";
+
+"Variant_Save_Confirmed" = "Colours saved.";
+"Variant_Save_AlreadyApplied" = "These changes were already saved.";
+"Variant_Recovery_Reload" = "Reload and compare";
+"Variant_Recovery_Retry" = "Try again";
+"Variant_Recovery_TransferListing" = "Move listing, then save";
+"Variant_Recovery_Refresh" = "Refresh to check";
+"Variant_Recovery_DraftKept" = "Your edits were kept.";
+"Variant_Error_InvalidFamilyId" = "The colour group identifier is not valid.";
+"Variant_Error_InvalidResponse" = "The server response could not be confirmed. Reload to check.";
+
+
+/* ── Accessory colour variants — per-colour media ── */
+"Variant_Media_Title" = "Photos for this colour";
+"Variant_Media_Empty" = "This colour has no photos yet.";
+"Variant_Media_Primary" = "Primary";
+"Variant_Media_MakePrimary" = "Make primary photo";
+"Variant_Media_Remove" = "Remove photo";
+"Variant_Media_Pending" = "Not saved";
+"Variant_Media_Uploaded" = "Uploaded";
+"Variant_Media_Save" = "Save photos";
+"Variant_Media_Saved" = "Colour photos saved.";
+"Variant_Media_Add_A11y" = "Add a photo for %@";
+"Variant_Media_Primary_A11y" = "Primary photo for %@";
+"Variant_Media_Item_A11y" = "Photo %@ for %@";
+"Variant_Media_NotAuthenticated" = "Sign in to upload photos.";
+"Variant_Media_BadImage" = "One of the photos could not be prepared. Choose another.";
+"Variant_Media_UploadFailed" = "Photo upload failed. Your selection was kept — try again.";
+"Variant_Media_TooMany" = "At most %@ photos per colour.";
+
+
+/* ── Accessory colour variants — inventory list grouping ── */
+"Inventory_Family_ColourCount" = "%@ colours";
+"Inventory_Family_TotalAvailable" = "%@ available";
+"Inventory_Family_HasOutOfStock" = "A colour is out of stock";
+"Inventory_Family_HasLowStock" = "Low stock";
+"Inventory_Family_ArchivedCount" = "%@ archived";
+"Inventory_Family_Expand_Hint" = "Show each colour to manage its stock";
+"Inventory_Family_Collapse_Hint" = "Collapse colours";
+"Inventory_Family_Summary_A11y" = "%@, %@ colours, %@ available in total";
+
+
+/* ── POS — exact scan resolution ── */
+"POS_Scanner_Resolved_Format" = "Selected %@";
+"POS_Scanner_Ambiguous" = "That code matches more than one product. Choose the right one.";
+
+/* ── Color Atelier Studio ── */
+"Variant_Palette_Neutrals" = "Essential Neutrals";
+"Variant_Palette_Warm" = "Warm & Energetic";
+"Variant_Palette_Cool" = "Cool & Deep";
+"Variant_Spectrum_Picker" = "Interactive Color Spectrum";
+"Variant_Contrast_Optimal" = "Optimal Contrast (Clear)";
+"Variant_Contrast_Attention" = "May need contrast border";
+"Variant_Hex_Copied" = "Hex code copied";
+"Variant_Custom_Section" = "Custom Color Studio";
+"Variant_Preset_Palettes" = "Harmonized Color Palettes";
+
+"CatalogCategorySyncError" = "Couldn't update the item category";

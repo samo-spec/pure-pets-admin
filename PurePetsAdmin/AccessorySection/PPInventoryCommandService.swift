@@ -161,6 +161,20 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
             "showInAppMarket": accessory.showInAppMarket,
             "active": accessory.active
         ]
+        // Image metadata (width/height per asset) was previously dropped here:
+        // only the URL array was sent, so the server never received dimensions
+        // and a client could not rely on them coming back. `imageMeta` is
+        // allowlisted by validateInventoryChange for both create and update, so
+        // it is safe to send, and per-colour media needs it.
+        //
+        // `blurHash` is deliberately NOT sent. It is absent from both backend
+        // payload allowlists and is server-owned — forced to "" on create at
+        // validateInventoryChange.js:469 — so sending it would be rejected with
+        // INVENTORY_UNKNOWN_FIELDS and, since Phase 3b, that now fails the whole
+        // save closed instead of being silently stripped.
+        if let imageMeta = accessory.imageMeta, !imageMeta.isEmpty {
+            payload["imageMeta"] = imageMeta
+        }
         if !isUpdate {
             if let catID = accessory.accessoryCategoryID, !catID.isEmpty {
                 payload["AccessoryCategoryID"] = catID
@@ -168,7 +182,31 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
             payload["quantity"] = accessory.quantity
             payload["product_type"] = accessory.accessKindType == .typeLivePets ? "live" : "normal"
             payload["accessKindType"] = accessory.accessKindType.rawValue
-            if let costPrice = accessory.costPrice { payload["costPrice"] = costPrice }
+        }
+        // Cost is deliberately **not** sent for live pets.
+        //
+        // Sending it for a normal product is correct and valuable: on update the
+        // server records a `stockMovements` entry with
+        // `movementCategory: "cost_adjustment"` / `reason: "catalog_update_cost"`
+        // (validateInventoryChange.js:2304-2317), which is the durable, non-public
+        // home for cost — and is exactly what the editor's cost fallback reads
+        // back. It is always scrubbed from the world-readable catalog document
+        // (`delete updatePayload.costPrice`, :2084) and is never stored on create
+        // either (destructured out at :1107).
+        //
+        // For a live pet the same field is rejected outright on update (:2076,
+        // "Live-pet costs must be recorded through protected intake or
+        // individual-unit records"). Live-pet cost is legitimate only on the
+        // protected create action and on individual-unit records.
+        //
+        // This is a boundary assertion, not a bug fix: `saveAccessory` routes every
+        // live pet to `finalizeLivePetSave` before reaching here, so no live pet
+        // travels this path today. But `prepareProductSave` is public on a shared
+        // service and accepts any `PetAccessory`, so the invariant is enforced
+        // where the payload is actually built rather than left to the caller.
+        let isLiveProduct = accessory.accessKindType == .typeLivePets
+        if !isLiveProduct, let costPrice = accessory.costPrice {
+            payload["costPrice"] = costPrice
         }
         if let sku = accessory.sku, !sku.isEmpty { payload["sku"] = sku }
         if let barcode = accessory.barcode, !barcode.isEmpty { payload["barcode"] = barcode }
@@ -223,39 +261,24 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
         let boxed = PPSendableRequest(data: request)
         functions.httpsCallable("validateInventoryChange").call(boxed.data) { [weak self] result, error in
             if let error = error {
-                let nsError = error as NSError
-                let errMsg = nsError.localizedDescription
-                // Self-healing fallback: If backend rejects specific fields as unsupported on update/create,
-                // automatically strip them from the payload and retry once.
-                if errMsg.contains("unsupported fields:") {
-                    if let prefixRange = errMsg.range(of: "unsupported fields:") {
-                        let fieldsStr = String(errMsg[prefixRange.upperBound...])
-                            .trimmingCharacters(in: CharacterSet(charactersIn: ". "))
-                        let badFields = fieldsStr.components(separatedBy: ",")
-                            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                        
-                        var cleanedRequest = boxed.data
-                        var cleanedPayload = (boxed.data["payload"] as? [String: Any]) ?? [:]
-                        for field in badFields {
-                            cleanedPayload.removeValue(forKey: field)
-                        }
-                        cleanedRequest["payload"] = cleanedPayload
-                        let cleanedBoxed = PPSendableRequest(data: cleanedRequest)
-                        self?.functions.httpsCallable("validateInventoryChange").call(cleanedBoxed.data) { retryResult, retryError in
-                            if let retryError = retryError {
-                                completion(nil, retryError)
-                                return
-                            }
-                            self?.parseCommandResponse(
-                                result: retryResult,
-                                commandId: commandId,
-                                productId: productId,
-                                action: action,
-                                completion: completion
-                            )
-                        }
-                        return
-                    }
+                // Fail closed on an unsupported-field rejection.
+                //
+                // This previously self-healed: it matched the *localized*
+                // `localizedDescription` for "unsupported fields:", stripped
+                // those top-level payload keys, and retried once with the SAME
+                // commandId. Because the retry then flowed through the normal
+                // success path, the editor reported "saved" for a product whose
+                // rejected fields never reached Firestore — a silent data-loss
+                // path that also depended on server message wording and on the
+                // device locale.
+                //
+                // A rejected field now surfaces as an explicit failure naming
+                // the fields, read from the server's structured details rather
+                // than from message text. The operator keeps their draft and can
+                // act; nothing is discarded on their behalf.
+                if let rejection = PPInventoryCommandService.unsupportedFieldRejection(from: error) {
+                    completion(nil, rejection)
+                    return
                 }
                 completion(nil, error)
                 return
@@ -268,6 +291,53 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
                 completion: completion
             )
         }
+    }
+
+    /// Domain for client-side inventory command failures raised by this facade.
+    @objc public static let errorDomain = "pp.inventory.command"
+    /// Raised when the backend rejected one or more payload fields outright.
+    @objc public static let unsupportedFieldsErrorCode = 422
+
+    /// Recognizes the backend's unsupported-field rejection.
+    ///
+    /// Matches on the structured `domainCode` the callable sends
+    /// (`INVENTORY_UNKNOWN_FIELDS`), never on the localized message. Returns nil
+    /// for every other failure so the original error is propagated unchanged.
+    static func unsupportedFieldRejection(from error: Error) -> NSError? {
+        let nsError = error as NSError
+        let details = (nsError.userInfo["details"] as? [String: Any])
+            ?? (nsError.userInfo["FIRFunctionsErrorDetailsKey"] as? [String: Any])
+            ?? [:]
+        guard (details["domainCode"] as? String) == "INVENTORY_UNKNOWN_FIELDS" else { return nil }
+
+        let fields = (details["fields"] as? [String])?
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty } ?? []
+
+        let message: String
+        if fields.isEmpty {
+            message = Language.get(
+                "Inventory_UnsupportedFields_Generic",
+                alter: "رفض الخادم بعض الحقول. لم يتم الحفظ. حدّث التطبيق وحاول مرة أخرى."
+            )
+        } else {
+            let template = Language.get(
+                "Inventory_UnsupportedFields_Named",
+                alter: "رفض الخادم هذه الحقول ولم يتم الحفظ: %@. حدّث التطبيق."
+            )
+            message = String(format: template, fields.joined(separator: ", "))
+        }
+
+        return NSError(
+            domain: PPInventoryCommandService.errorDomain,
+            code: PPInventoryCommandService.unsupportedFieldsErrorCode,
+            userInfo: [
+                NSLocalizedDescriptionKey: message,
+                "domainCode": "INVENTORY_UNKNOWN_FIELDS",
+                "fields": fields,
+                NSUnderlyingErrorKey: nsError,
+            ]
+        )
     }
 
     private func parseCommandResponse(
