@@ -97,6 +97,12 @@ import Foundation
         public static let duplicateCombination = "VARIANT_DUPLICATE_COMBINATION"
         public static let optionReferenceInvalid = "VARIANT_OPTION_REFERENCE_INVALID"
         public static let optionDefinitionsInvalid = "VARIANT_DEFINITIONS_INVALID"
+        public static let optionsNotEnabled = "VARIANT_OPTIONS_NOT_ENABLED"
+        public static let publicationNotReady = "VARIANT_PUBLICATION_NOT_READY"
+        public static let clientUpgradeRequired = "VARIANT_CLIENT_UPGRADE_REQUIRED"
+        public static let providerUpgradeRequired = "VARIANT_PROVIDER_UPGRADE_REQUIRED"
+        public static let branchLimit = "VARIANT_BRANCH_LIMIT"
+        public static let removalRequiresArchive = "VARIANT_REMOVAL_REQUIRES_ARCHIVE"
     }
 
     // MARK: - Mapping
@@ -298,6 +304,54 @@ import Foundation
                 Language.get(
                     "Variant_Error_OptionInvalidServer",
                     alter: "توجد بيانات غير صالحة في تعريف الخيارات أو قيمها."
+                ),
+                .correctInput
+            )
+        case Code.optionsNotEnabled:
+            return (
+                Language.get(
+                    "Variant_Error_OptionsNotEnabledServer",
+                    alter: "خيارات المنتجات غير مفعّلة في إعدادات النظام حالياً."
+                ),
+                .fatal
+            )
+        case Code.publicationNotReady:
+            return (
+                Language.get(
+                    "Variant_Error_PublicationNotReadyServer",
+                    alter: "يجب تفعيل عرض الخيارات للعملاء في النظام قبل نشر هذا الصنف."
+                ),
+                .fatal
+            )
+        case Code.clientUpgradeRequired:
+            return (
+                Language.get(
+                    "Variant_Error_ClientUpgradeRequiredServer",
+                    alter: "يتطلب هذا الصنف تحديث التطبيق إلى أحدث إصدار."
+                ),
+                .fatal
+            )
+        case Code.providerUpgradeRequired:
+            return (
+                Language.get(
+                    "Variant_Error_ProviderUpgradeRequiredServer",
+                    alter: "تخصيص الخيارات لمزودي الخدمة يتطلب مساراً متوافقاً."
+                ),
+                .correctInput
+            )
+        case Code.branchLimit:
+            return (
+                Language.get(
+                    "Variant_Error_BranchLimitServer",
+                    alter: "يتجاوز هذا المنتج الحد المسموح لنطاق الفروع المتاح."
+                ),
+                .fatal
+            )
+        case Code.removalRequiresArchive:
+            return (
+                Language.get(
+                    "Variant_Error_RemovalRequiresArchiveServer",
+                    alter: "يرجى أرشفة المتغير بدلاً من حذفه مباشرة للحفاظ على سلامة المخزون."
                 ),
                 .correctInput
             )

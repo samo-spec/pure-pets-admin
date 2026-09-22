@@ -930,7 +930,7 @@ import UIKit
     @objc public let revision: Int
     /// True when this is a synthetic wrapper around a product that has no
     /// family on the server. Determines whether a save is `create` or `update`.
-    @objc public let isLegacySingleVariant: Bool
+    @objc public var isLegacySingleVariant: Bool
 
     @objc public init(
         familyId: String,

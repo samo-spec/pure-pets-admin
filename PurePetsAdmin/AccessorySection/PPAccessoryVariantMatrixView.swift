@@ -820,7 +820,7 @@ struct PPAccessoryBulkPricingSheet: View {
     }
 }
 
-// MARK: - Create Combination Sheet
+// MARK: - Category-Defining Variant Studio Workbench
 
 struct PPAccessoryCreateCombinationSheet: View {
     let combination: PPAccessoryMatrixCombination
@@ -828,112 +828,872 @@ struct PPAccessoryCreateCombinationSheet: View {
     let onCreate: (String, String, Double, Double?, Int, [UIImage]) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.layoutDirection) private var layoutDirection
+
     @State private var skuText = ""
     @State private var barcodeText = ""
     @State private var retailPriceText = ""
     @State private var wholesalePriceText = ""
-    @State private var quantityText = "0"
+    @State private var quantity = 0
+    @State private var stagedImages: [UIImage] = []
+    @State private var isPresentingPhotoPicker = false
     @State private var isSubmitting = false
+    @State private var showSkuCopiedToast = false
+    @State private var showBarcodeCopiedToast = false
+
+    private var retailPrice: Double {
+        Double(retailPriceText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+    }
+
+    private var wholesalePrice: Double? {
+        let trimmed = wholesalePriceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return Double(trimmed)
+    }
+
+    private var isPriceValid: Bool {
+        retailPrice > 0
+    }
+
+    private var isWholesaleExceedingRetail: Bool {
+        if let wholesale = wholesalePrice, wholesale > retailPrice && retailPrice > 0 {
+            return true
+        }
+        return false
+    }
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section(header: Text(Language.get("Variant_Combination_Details", alter: "تفاصيل التوليفة"))) {
-                    HStack {
-                        Text(Language.get("Variant_Combination_Title", alter: "الخيارات"))
+            ZStack(alignment: .bottom) {
+                // Background
+                AdminSurface.background
+                    .ignoresSafeArea()
+
+                // Main Scrollable Canvas
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // 1. Luminous Combination Identity Card (Hero DNA)
+                        combinationHeroDNASurface
+
+                        // 2. Commercial Pricing & Live Profit Engine
+                        commercialPricingSurface
+
+                        // 3. Tactile Stock & Inventory Vault
+                        inventoryVaultSurface
+
+                        // 4. Studio Identification & Barcode Lab
+                        identificationBarcodeSurface
+
+                        // 5. Variant Media Atelier
+                        mediaAtelierSurface
+
+                        // Extra bottom clearance for floating action dock
                         Spacer()
-                        Text(combination.localizedTitle)
-                            .font(AdminType.calloutBold)
+                            .frame(height: 100)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
+                }
+
+                // Sticky Frosted Studio Action Dock
+                studioActionDock
+            }
+            .navigationTitle(Language.get("Variant_Studio_Hero_Title", alter: "إنشاء وتثبيت المتغير"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        dismiss()
+                    } label: {
+                        Text(Language.get("Cancel", alter: "إلغاء"))
+                            .font(AdminType.callout)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                }
+            }
+            .sheet(isPresented: $isPresentingPhotoPicker) {
+                let remaining = max(1, 6 - stagedImages.count)
+                PPVariantImagePickerSheet(maxSelection: remaining) { picked in
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                        stagedImages.append(contentsOf: picked)
+                    }
+                    isPresentingPhotoPicker = false
+                }
+            }
+            .onAppear {
+                setupDefaults()
+            }
+        }
+    }
+
+    // MARK: - 1. Luminous Combination Identity Card (Hero DNA)
+
+    private var combinationHeroDNASurface: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Parent Family Context Header
+            HStack(spacing: 8) {
+                Image(systemName: "square.grid.2x2.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+                Text(family?.name ?? Language.get("Variant_Combination_Details", alter: "تفاصيل التوليفة"))
+                    .font(AdminType.footnote)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .lineLimit(1)
+                Spacer()
+                Text(Language.get("Variant_Studio_Option_Capsule", alter: "خصائص التوليفة"))
+                    .font(AdminType.captionRegular)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(AdminSurface.control, in: Capsule())
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+
+            // Hero Combination Representation
+            HStack(spacing: 14) {
+                // Swatch / Glyph Halo
+                if let colorValue = combination.colorValue,
+                   let hex = colorValue.hex {
+                    ZStack {
+                        Circle()
+                            .fill(Color(hex: hex))
+                            .frame(width: 44, height: 44)
+                            .shadow(color: Color(hex: hex).opacity(0.35), radius: 8, x: 0, y: 4)
+                        Circle()
+                            .strokeBorder(Color.white.opacity(0.8), lineWidth: 2)
+                            .frame(width: 44, height: 44)
+                    }
+                } else {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(AdminSurface.control)
+                            .frame(width: 44, height: 44)
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 20, weight: .semibold))
                             .foregroundStyle(AdminSurface.primary)
                     }
                 }
 
-                Section(header: Text(Language.get("Variant_Pricing_Stock", alter: "السعر والمخزون"))) {
-                    HStack {
-                        Text(Language.get("Price_Retail", alter: "سعر البيع"))
-                        Spacer()
-                        TextField("0.00", text: $retailPriceText)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
-                        Text(Language.get("QAR", alter: "ر.ق"))
-                            .foregroundStyle(AdminCommandInk.secondary)
-                    }
+                // Combination Title & Subtitle
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(combination.localizedTitle)
+                        .font(AdminType.title3Bold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(2)
 
-                    HStack {
-                        Text(Language.get("Price_Wholesale", alter: "سعر الجملة (اختياري)"))
-                        Spacer()
-                        TextField("0.00", text: $wholesalePriceText)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
-                        Text(Language.get("QAR", alter: "ر.ق"))
-                            .foregroundStyle(AdminCommandInk.secondary)
-                    }
-
-                    HStack {
-                        Text(Language.get("Inventory_Initial_Quantity", alter: "الكمية الأولية"))
-                        Spacer()
-                        TextField("0", text: $quantityText)
-                            .keyboardType(.numberPad)
-                            .multilineTextAlignment(.trailing)
+                    if !combination.secondaryOptionsSummary.isEmpty {
+                        Text(combination.secondaryOptionsSummary)
+                            .font(AdminType.captionRegular)
+                            .foregroundStyle(AdminSurface.secondaryText)
                     }
                 }
 
-                Section(header: Text(Language.get("Variant_Identifiers", alter: "الرموز والباركود"))) {
-                    HStack {
-                        Text("SKU")
-                        TextField(Language.get("SKU_Placeholder", alter: "رمز الصنف"), text: $skuText)
-                            .multilineTextAlignment(.trailing)
-                    }
-
-                    HStack {
-                        Text(Language.get("Barcode", alter: "الباركود"))
-                        TextField(Language.get("Barcode_Placeholder", alter: "الباركود الدولي"), text: $barcodeText)
-                            .multilineTextAlignment(.trailing)
-                    }
-
-                    Button {
-                        barcodeText = "PP\(Int(Date().timeIntervalSince1970))"
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    } label: {
-                        Label(Language.get("CatalogIntake_GeneratePPBarcode", alter: "توليد باركود PP"), systemImage: "barcode.viewfinder")
-                            .font(AdminType.footnote)
-                    }
-                }
+                Spacer()
             }
-            .navigationTitle(Language.get("Variant_Create_Title", alter: "إنشاء متغير جديد"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(Language.get("Cancel", alter: "إلغاء")) {
-                        dismiss()
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(Language.get("Create", alter: "إنشاء")) {
-                        guard let retail = Double(retailPriceText), retail > 0 else { return }
-                        let wholesale = Double(wholesalePriceText)
-                        let qty = Int(quantityText) ?? 0
-                        isSubmitting = true
-                        onCreate(skuText, barcodeText, retail, wholesale, qty, [])
-                    }
-                    .disabled(Double(retailPriceText) == nil || (Double(retailPriceText) ?? 0) <= 0 || isSubmitting)
-                }
-            }
-            .onAppear {
-                // Auto-suggest template price and SKU prefix if existing variants exist
-                if let first = family?.variants.first {
-                    if let retail = first.retailPrice?.doubleValue, retailPriceText.isEmpty {
-                        retailPriceText = String(format: "%.2f", retail)
-                    }
-                    if let wholesale = first.wholesalePrice?.doubleValue, wholesalePriceText.isEmpty {
-                        wholesalePriceText = String(format: "%.2f", wholesale)
-                    }
-                    if !first.sku.isEmpty && skuText.isEmpty {
-                        let suffix = combination.optionValues.map(\.canonicalValue).joined(separator: "-")
-                        skuText = "\(first.sku)-\(suffix)"
+
+            // Option Pills Grid
+            if !combination.optionValues.isEmpty {
+                Divider()
+                    .background(AdminSurface.hairline)
+
+                FlowLayout(spacing: 8) {
+                    ForEach(combination.optionValues) { optionValue in
+                        HStack(spacing: 6) {
+                            if let hex = optionValue.hex {
+                                Circle()
+                                    .fill(Color(hex: hex))
+                                    .frame(width: 10, height: 10)
+                            } else {
+                                Image(systemName: iconForOptionValue(optionValue))
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(AdminSurface.primary)
+                            }
+
+                            Text(optionValue.localizedName)
+                                .font(AdminType.captionRegular)
+                                .foregroundStyle(AdminSurface.primaryText)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                     }
                 }
             }
         }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
+    }
+
+    // MARK: - 2. Commercial Pricing & Live Profit Engine
+
+    private var commercialPricingSurface: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header with Match Base Price Chip
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "tag.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                    Text(Language.get("Variant_Pricing_Stock", alter: "السعر والمخزون"))
+                        .font(AdminType.headlineBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+
+                Spacer()
+
+                if let baseRetail = family?.variants.first?.retailPrice?.doubleValue, baseRetail > 0 {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        retailPriceText = String(format: "%.2f", baseRetail)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.system(size: 10, weight: .bold))
+                            Text(Language.get("Variant_Studio_Match_Base_Price", alter: "مطابقة سعر الأساس"))
+                                .font(AdminType.captionRegular)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(AdminSurface.control, in: Capsule())
+                        .foregroundStyle(AdminSurface.primary)
+                    }
+                }
+            }
+
+            // Retail Price Field (Hero Input)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(Language.get("Price_Retail", alter: "سعر البيع"))
+                    .font(AdminType.footnote)
+                    .foregroundStyle(AdminSurface.secondaryText)
+
+                HStack(spacing: 8) {
+                    Text(Language.get("QAR", alter: "ر.ق"))
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.primary)
+
+                    TextField("0.00", text: $retailPriceText)
+                        .keyboardType(.decimalPad)
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .multilineTextAlignment(layoutDirection == .rightToLeft ? .leading : .leading)
+
+                    if !retailPriceText.isEmpty {
+                        Button {
+                            retailPriceText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                        }
+                    }
+                }
+                .padding(12)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
+            }
+
+            // Wholesale Price Field (Cost)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(Language.get("Price_Wholesale", alter: "سعر الجملة (اختياري)"))
+                    .font(AdminType.footnote)
+                    .foregroundStyle(AdminSurface.secondaryText)
+
+                HStack(spacing: 8) {
+                    Text(Language.get("QAR", alter: "ر.ق"))
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.secondaryText)
+
+                    TextField("0.00", text: $wholesalePriceText)
+                        .keyboardType(.decimalPad)
+                        .font(.system(size: 18, weight: .medium, design: .rounded))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .multilineTextAlignment(layoutDirection == .rightToLeft ? .leading : .leading)
+
+                    if !wholesalePriceText.isEmpty {
+                        Button {
+                            wholesalePriceText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                        }
+                    }
+                }
+                .padding(12)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
+            }
+
+            // Live Profit Engine Card
+            if let wholesale = wholesalePrice, wholesale > 0 && retailPrice > 0 {
+                if isWholesaleExceedingRetail {
+                    // Warning Pill
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(AdminSurface.amber)
+                        Text(Language.get("Variant_Studio_Margin_Warning", alter: "تنبيه: سعر الجملة أعلى من سعر البيع!"))
+                            .font(AdminType.captionRegular)
+                            .foregroundStyle(AdminSurface.amber)
+                        Spacer()
+                    }
+                    .padding(10)
+                    .background(AdminSurface.amber.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(AdminSurface.amber.opacity(0.3), lineWidth: 1))
+                } else {
+                    let profit = retailPrice - wholesale
+                    let marginPct = (profit / retailPrice) * 100
+                    let markup = retailPrice / wholesale
+
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(Language.get("Variant_Studio_Margin_Profit", alter: "هامش الربح"))
+                                .font(AdminType.captionRegular)
+                                .foregroundStyle(AdminSurface.secondaryText)
+                            Text(String(format: "+%.2f %@", profit, Language.get("QAR", alter: "ر.ق")))
+                                .font(AdminType.calloutBold)
+                                .foregroundStyle(AdminSurface.emerald)
+                        }
+
+                        Spacer()
+
+                        VStack(alignment: .center, spacing: 2) {
+                            Text("%")
+                                .font(AdminType.captionRegular)
+                                .foregroundStyle(AdminSurface.secondaryText)
+                            Text(String(format: "%.1f%%", marginPct))
+                                .font(AdminType.calloutBold)
+                                .foregroundStyle(AdminSurface.emerald)
+                        }
+
+                        Spacer()
+
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(Language.get("Variant_Studio_Margin_Markup", alter: "مضاعف التكلفة"))
+                                .font(AdminType.captionRegular)
+                                .foregroundStyle(AdminSurface.secondaryText)
+                            Text(String(format: "%.2fx", markup))
+                                .font(AdminType.calloutBold)
+                                .foregroundStyle(AdminSurface.primary)
+                        }
+                    }
+                    .padding(12)
+                    .background(AdminSurface.emerald.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(AdminSurface.emerald.opacity(0.2), lineWidth: 1))
+                }
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
+    }
+
+    // MARK: - 3. Tactile Stock & Inventory Vault
+
+    private var inventoryVaultSurface: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "shippingbox.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                    Text(Language.get("Inventory_Initial_Quantity", alter: "الكمية الأولية"))
+                        .font(AdminType.headlineBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+
+                Spacer()
+
+                // Health Badge
+                if quantity == 0 {
+                    Text(Language.get("Variant_Studio_Stock_Out", alter: "غير متوفر بالمخزن"))
+                        .font(AdminType.captionRegular)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(AdminSurface.control, in: Capsule())
+                        .foregroundStyle(AdminSurface.secondaryText)
+                } else if quantity <= 5 {
+                    Text(Language.get("Variant_Studio_Stock_Low", alter: "مخزون محدود"))
+                        .font(AdminType.captionRegular)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(AdminSurface.amber.opacity(0.15), in: Capsule())
+                        .foregroundStyle(AdminSurface.amber)
+                } else {
+                    Text(Language.get("Variant_Studio_Stock_Good", alter: "مخزون وافر"))
+                        .font(AdminType.captionRegular)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(AdminSurface.emerald.opacity(0.15), in: Capsule())
+                        .foregroundStyle(AdminSurface.emerald)
+                }
+            }
+
+            // Stepper Counter Row
+            HStack(spacing: 16) {
+                // Minus Button
+                Button {
+                    if quantity > 0 {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        quantity -= 1
+                    }
+                } label: {
+                    Image(systemName: "minus")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(quantity > 0 ? AdminSurface.primaryText : AdminSurface.secondaryText.opacity(0.5))
+                        .frame(width: 44, height: 44)
+                        .background(AdminSurface.control, in: Circle())
+                }
+                .disabled(quantity <= 0)
+
+                Spacer()
+
+                // Display
+                Text("\(quantity)")
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .foregroundStyle(AdminSurface.primaryText)
+
+                Spacer()
+
+                // Plus Button
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    quantity += 1
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                        .frame(width: 44, height: 44)
+                        .background(AdminSurface.control, in: Circle())
+                }
+            }
+            .padding(.horizontal, 12)
+
+            // Quick Stock Increment Chips
+            HStack(spacing: 8) {
+                ForEach([0, 5, 10, 25, 50, 100], id: \.self) { amount in
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        if amount == 0 {
+                            quantity = 0
+                        } else {
+                            quantity += amount
+                        }
+                    } label: {
+                        Text(amount == 0 ? "0" : "+\(amount)")
+                            .font(AdminType.captionRegular)
+                            .foregroundStyle(amount == 0 && quantity == 0 ? AdminSurface.primary : AdminSurface.primaryText)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .stroke(amount == 0 && quantity == 0 ? AdminSurface.primary : AdminSurface.hairline, lineWidth: 1)
+                            )
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
+    }
+
+    // MARK: - 4. Studio Identification & Barcode Lab
+
+    private var identificationBarcodeSurface: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "barcode.viewfinder")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                    Text(Language.get("Variant_Identifiers", alter: "الرموز والباركود"))
+                        .font(AdminType.headlineBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+
+                Spacer()
+
+                // Generate PP Barcode Action
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    barcodeText = "PP\(Int(Date().timeIntervalSince1970))"
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 11, weight: .bold))
+                        Text(Language.get("CatalogIntake_GeneratePPBarcode", alter: "توليد باركود PP"))
+                            .font(AdminType.captionRegular)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                    .foregroundStyle(AdminSurface.primary)
+                }
+            }
+
+            // SKU Input Row
+            VStack(alignment: .leading, spacing: 6) {
+                Text("SKU")
+                    .font(AdminType.footnote)
+                    .foregroundStyle(AdminSurface.secondaryText)
+
+                HStack(spacing: 8) {
+                    Image(systemName: "number")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(AdminSurface.secondaryText)
+
+                    TextField(Language.get("SKU_Placeholder", alter: "رمز الصنف"), text: $skuText)
+                        .font(.system(size: 14, weight: .medium, design: .monospaced))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .multilineTextAlignment(layoutDirection == .rightToLeft ? .leading : .leading)
+
+                    if !skuText.isEmpty {
+                        Button {
+                            UIPasteboard.general.string = skuText
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            showSkuCopiedToast = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                showSkuCopiedToast = false
+                            }
+                        } label: {
+                            Image(systemName: showSkuCopiedToast ? "checkmark.circle.fill" : "doc.on.doc")
+                                .font(.system(size: 14))
+                                .foregroundStyle(showSkuCopiedToast ? AdminSurface.emerald : AdminSurface.secondaryText)
+                        }
+                    }
+                }
+                .padding(12)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
+            }
+
+            // International Barcode Input Row
+            VStack(alignment: .leading, spacing: 6) {
+                Text(Language.get("Barcode", alter: "الباركود"))
+                    .font(AdminType.footnote)
+                    .foregroundStyle(AdminSurface.secondaryText)
+
+                HStack(spacing: 8) {
+                    Image(systemName: "barcode")
+                        .font(.system(size: 14))
+                        .foregroundStyle(AdminSurface.secondaryText)
+
+                    TextField(Language.get("Barcode_Placeholder", alter: "الباركود الدولي"), text: $barcodeText)
+                        .font(.system(size: 14, weight: .medium, design: .monospaced))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .multilineTextAlignment(layoutDirection == .rightToLeft ? .leading : .leading)
+
+                    if !barcodeText.isEmpty {
+                        Button {
+                            UIPasteboard.general.string = barcodeText
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            showBarcodeCopiedToast = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                showBarcodeCopiedToast = false
+                            }
+                        } label: {
+                            Image(systemName: showBarcodeCopiedToast ? "checkmark.circle.fill" : "doc.on.doc")
+                                .font(.system(size: 14))
+                                .foregroundStyle(showBarcodeCopiedToast ? AdminSurface.emerald : AdminSurface.secondaryText)
+                        }
+                    }
+                }
+                .padding(12)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
+            }
+
+            // Simulated Barcode Hologram
+            if !barcodeText.isEmpty {
+                VStack(spacing: 6) {
+                    SimulatedBarcodeGraphic(barcode: barcodeText)
+                        .frame(height: 38)
+                        .padding(.top, 4)
+
+                    Text(barcodeText)
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .tracking(2)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(12)
+                .background(Color.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
+                .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
+    }
+
+    // MARK: - 5. Variant Media Atelier
+
+    private var mediaAtelierSurface: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "photo.stack.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                    Text(Language.get("Variant_Studio_Media_Title", alter: "صور المتغير"))
+                        .font(AdminType.headlineBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+
+                Spacer()
+
+                // Add Photo Button
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    isPresentingPhotoPicker = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 10, weight: .bold))
+                        Text(Language.get("Variant_Studio_Media_Add", alter: "إضافة صور"))
+                            .font(AdminType.captionRegular)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(AdminSurface.control, in: Capsule())
+                    .foregroundStyle(AdminSurface.primary)
+                }
+            }
+
+            // Image Thumbnails Scroll
+            if !stagedImages.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(Array(stagedImages.enumerated()), id: \.offset) { index, image in
+                            ZStack(alignment: .topTrailing) {
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 72, height: 72)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .stroke(AdminSurface.hairline, lineWidth: 1)
+                                    )
+
+                                Button {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                        _ = stagedImages.remove(at: index)
+                                    }
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 18))
+                                        .foregroundStyle(AdminSurface.crimson, Color.white)
+                                }
+                                .offset(x: 6, y: -6)
+                            }
+                            .padding(.top, 6)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            } else {
+                // Empty Media Strip / Add Prompt
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    isPresentingPhotoPicker = true
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "photo.badge.plus")
+                            .font(.system(size: 20))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                        Text(Language.get("Variant_Studio_Media_Add", alter: "إضافة صور للمتغير (اختياري)"))
+                            .font(AdminType.footnote)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                        Spacer()
+                    }
+                    .padding(14)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(AdminSurface.hairline, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
+    }
+
+    // MARK: - 6. Sticky Studio Action Dock
+
+    private var studioActionDock: some View {
+        VStack(spacing: 0) {
+            Divider()
+                .background(AdminSurface.hairline)
+
+            HStack(spacing: 12) {
+                // Confirmation / Create Button
+                Button {
+                    guard isPriceValid && !isSubmitting else { return }
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    isSubmitting = true
+                    onCreate(skuText, barcodeText, retailPrice, wholesalePrice, quantity, stagedImages)
+                } label: {
+                    HStack(spacing: 8) {
+                        if isSubmitting {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 16, weight: .bold))
+                        }
+
+                        Text(Language.get("Variant_Studio_Create_Action", alter: "إنشاء المتغير وتثبيته في المصفوفة"))
+                            .font(AdminType.calloutBold)
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(
+                        isPriceValid
+                            ? AdminSurface.primary
+                            : AdminSurface.primary.opacity(0.4),
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    )
+                    .shadow(
+                        color: isPriceValid ? AdminSurface.primary.opacity(0.3) : Color.clear,
+                        radius: 8, x: 0, y: 4
+                    )
+                }
+                .disabled(!isPriceValid || isSubmitting)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 24)
+        }
+        .background(.ultraThinMaterial)
+    }
+
+    // MARK: - Helpers
+
+    private func setupDefaults() {
+        if let first = family?.variants.first {
+            if let retail = first.retailPrice?.doubleValue, retailPriceText.isEmpty {
+                retailPriceText = String(format: "%.2f", retail)
+            }
+            if let wholesale = first.wholesalePrice?.doubleValue, wholesalePriceText.isEmpty {
+                wholesalePriceText = String(format: "%.2f", wholesale)
+            }
+            if !first.sku.isEmpty && skuText.isEmpty {
+                let suffix = combination.optionValues.map(\.canonicalValue).joined(separator: "-")
+                skuText = "\(first.sku)-\(suffix)"
+            }
+        }
+
+        if barcodeText.isEmpty {
+            barcodeText = "PP\(Int(Date().timeIntervalSince1970))"
+        }
+    }
+
+    private func iconForOptionValue(_ value: PPAccessoryOptionValue) -> String {
+        let canonical = value.canonicalValue.lowercased()
+        if canonical.contains("size") || ["xs", "s", "m", "l", "xl", "xxl"].contains(canonical) {
+            return "ruler"
+        }
+        if canonical.contains("kg") || canonical.contains("g") || canonical.contains("lb") {
+            return "scalemass"
+        }
+        if value.unit != nil {
+            return "scalemass"
+        }
+        return "slider.horizontal.2.square"
     }
 }
+
+// MARK: - FlowLayout & Simulated Barcode Visualizer
+
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 0
+        var height: CGFloat = 0
+        var x: CGFloat = 0
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > width && x > 0 {
+                x = 0
+                height += rowHeight + spacing
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        height += rowHeight
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > bounds.maxX && x > bounds.minX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+    }
+}
+
+private struct SimulatedBarcodeGraphic: View {
+    let barcode: String
+
+    var body: some View {
+        GeometryReader { proxy in
+            let bars = generateBars(width: proxy.size.width)
+            HStack(spacing: 2) {
+                ForEach(Array(bars.enumerated()), id: \.offset) { _, width in
+                    Rectangle()
+                        .fill(Color.black.opacity(0.85))
+                        .frame(width: max(1, width))
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private func generateBars(width: CGFloat) -> [CGFloat] {
+        var seed: UInt64 = 5381
+        for byte in barcode.utf8 {
+            seed = ((seed << 5) &+ seed) &+ UInt64(byte)
+        }
+
+        var result: [CGFloat] = []
+        var total: CGFloat = 0
+        var state = seed
+
+        while total < width - 10 {
+            state = state &* 6364136223846793005 &+ 1442695040888963407
+            let barWidth: CGFloat = CGFloat((state % 3) + 1)
+            result.append(barWidth)
+            total += barWidth + 2
+        }
+        return result
+    }
+}
+

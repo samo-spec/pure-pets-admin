@@ -1145,28 +1145,30 @@ struct PPVariantSegmentedSwitch: View {
                         }
                     }
                 } label: {
-                    HStack(spacing: 7) {
+                    HStack(spacing: 5) {
                         Image(systemName: tabIcon(for: tab))
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 12.5, weight: .semibold))
                             .foregroundStyle(isSelected ? AdminSurface.primary : AdminSurface.secondaryText)
 
                         Text(tab.localizedTitle)
-                            .font(isSelected ? PPBrandFont.bold(size: 13.5) : PPBrandFont.medium(size: 13.5))
+                            .font(isSelected ? PPBrandFont.bold(size: 13) : PPBrandFont.medium(size: 13))
                             .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminSurface.secondaryText)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.80)
 
                         // Micro Count Badge
                         let count = badgeCount(for: tab)
                         Text("\(count)")
                             .font(PPBrandFont.bold(size: 10.5))
                             .foregroundStyle(isSelected ? AdminSurface.primary : AdminSurface.secondaryText)
-                            .padding(.horizontal, 6)
+                            .padding(.horizontal, 5)
                             .padding(.vertical, 2)
                             .background(
                                 Capsule()
                                     .fill(isSelected ? AdminSurface.primary.opacity(0.12) : AdminSurface.container)
                             )
                     }
+                    .padding(.horizontal, 4)
                     .frame(maxWidth: .infinity)
                     .frame(height: 38)
                     .contentShape(Rectangle())
@@ -1604,11 +1606,13 @@ struct PPAccessoryVariantSection: View {
             HStack(spacing: 8) {
                 // Colors / Active Variants Pill
                 HStack(spacing: 5) {
-                    Image(systemName: "circle.grid.2x1.fill")
+                    Image(systemName: draft.hasGenericOptions ? "square.grid.2x2.fill" : "circle.grid.2x1.fill")
                         .font(.system(size: 9))
                         .foregroundStyle(AdminSurface.primary)
                     Text(String(
-                        format: Language.get("Inventory_Family_ColourCount", alter: "%@ ألوان"),
+                        format: draft.hasGenericOptions
+                            ? Language.get("Inventory_Family_VariantCount", alter: "%@ متغيرات")
+                            : Language.get("Inventory_Family_ColourCount", alter: "%@ ألوان"),
                         NSNumber(value: draft.activeVariantCount)
                     ))
                     .font(PPBrandFont.bold(size: 11.5))
@@ -1865,7 +1869,7 @@ struct PPAccessoryVariantSection: View {
                             HStack(spacing: 8) {
                                 Image(systemName: "slider.horizontal.2.square")
                                     .font(.system(size: 14, weight: .bold))
-                                    .foregroundStyle(AdminSurface.cyan)
+                                    .foregroundStyle(Color.cyan)
                                 Text(Language.get("Options_Convert_Action_Custom", alter: "خيار مخصص..."))
                                     .font(AdminType.caption1Bold)
                                     .foregroundStyle(AdminSurface.primaryText)
@@ -5075,7 +5079,7 @@ fileprivate extension UIColor {
 // equivalents in PPAccessoryEditorView.swift and PPLivePetBasicDataEditorView.swift
 // are both file-private, so they cannot be shared.
 
-private struct PPVariantImagePickerSheet: UIViewControllerRepresentable {
+struct PPVariantImagePickerSheet: UIViewControllerRepresentable {
     let maxSelection: Int
     let onPicked: ([UIImage]) -> Void
     @Environment(\.dismiss) private var dismiss

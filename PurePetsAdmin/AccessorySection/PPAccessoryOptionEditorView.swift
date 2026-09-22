@@ -514,6 +514,7 @@ struct PPAccessoryOptionEditorView: View {
                 .font(AdminType.caption1Bold)
                 .foregroundStyle(AdminSurface.primaryText)
                 .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
 
             // Remove button
             if model.canManageVariants {
@@ -672,6 +673,42 @@ fileprivate extension Color {
 
 struct PPOptionTranslationDictionary {
     static let pairs: [(ar: String, en: String, canon: String)] = [
+        // Option Dimensions / Axes
+        ("المقاس", "Size", "size"),
+        ("الحجم", "Size", "size"),
+        ("مقاس", "Size", "size"),
+        ("حجم", "Size", "size"),
+        ("الوزن", "Weight", "weight"),
+        ("وزن", "Weight", "weight"),
+        ("اللون", "Color", "color"),
+        ("لون", "Color", "color"),
+        ("النكهة", "Flavor", "flavor"),
+        ("نكهة", "Flavor", "flavor"),
+        ("المادة", "Material", "material"),
+        ("مادة", "Material", "material"),
+        ("التعبئة", "Packaging", "packaging"),
+        ("تعبئة", "Packaging", "packaging"),
+        ("الرائحة", "Scent", "scent"),
+        ("رائحة", "Scent", "scent"),
+        ("السعة", "Capacity", "capacity"),
+        ("سعة", "Capacity", "capacity"),
+        ("الموديل", "Model", "model"),
+        ("موديل", "Model", "model"),
+        ("التصميم", "Design", "design"),
+        ("تصميم", "Design", "design"),
+        ("الطول", "Length", "length"),
+        ("طول", "Length", "length"),
+        ("العرض", "Width", "width"),
+        ("عرض", "Width", "width"),
+        ("الارتفاع", "Height", "height"),
+        ("ارتفاع", "Height", "height"),
+        ("الفئة العمرية", "Age Group", "age_group"),
+        ("فئة عمرية", "Age Group", "age_group"),
+        ("حجم السلالة", "Breed Size", "breed_size"),
+        ("الكمية", "Quantity", "quantity"),
+        ("كمية", "Quantity", "quantity"),
+        ("النوع", "Type", "type"),
+        ("نوع", "Type", "type"),
         // Sizes
         ("صغير جداً جداً", "XX-Small", "XXS"),
         ("صغير جداً", "Extra Small", "XS"),
