@@ -1215,37 +1215,199 @@ fileprivate struct PPOptionCardPressStyle: ButtonStyle {
     }
 }
 
-// MARK: - Studio Custom Option Sheet
+// MARK: - Option Studio Flow Layout Helper
+
+fileprivate struct PPOptionChipsFlow: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 320
+        var height: CGFloat = 0
+        var x: CGFloat = 0
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > width && x > 0 {
+                x = 0
+                height += rowHeight + spacing
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        height += rowHeight
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > bounds.maxX && x > bounds.minX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+    }
+}
+
+// MARK: - Category-Defining Option Creation Studio
 
 struct PPAccessoryCustomOptionSheet: View {
     let onAdd: (PPAccessoryOptionDefinition) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    struct PresetCategory: Identifiable {
+    // MARK: - Archetype Models
+    struct PresetCategory: Identifiable, Equatable {
         let id: String
         let icon: String
         let nameAr: String
         let nameEn: String
         let tint: Color
+        let curatedSeeds: [PPOptionSeed]
+    }
+
+    struct PPOptionSeed: Identifiable, Hashable, Equatable {
+        let id: String
+        let canonicalValue: String
+        let nameAr: String
+        let nameEn: String
+        let hex: String?
+        let unit: String?
     }
 
     private let categories: [PresetCategory] = [
-        PresetCategory(id: "size", icon: "ruler.fill", nameAr: "المقاس", nameEn: "Size", tint: .indigo),
-        PresetCategory(id: "weight", icon: "scalemass.fill", nameAr: "الوزن", nameEn: "Weight", tint: .orange),
-        PresetCategory(id: "color", icon: "paintpalette.fill", nameAr: "اللون", nameEn: "Color", tint: .purple),
-        PresetCategory(id: "flavor", icon: "fork.knife", nameAr: "النكهة", nameEn: "Flavor", tint: .green),
-        PresetCategory(id: "material", icon: "cube.fill", nameAr: "المادة", nameEn: "Material", tint: .blue),
-        PresetCategory(id: "packaging", icon: "shippingbox.fill", nameAr: "التعبئة", nameEn: "Packaging", tint: .brown),
-        PresetCategory(id: "scent", icon: "leaf.fill", nameAr: "الرائحة", nameEn: "Scent", tint: .teal),
-        PresetCategory(id: "custom", icon: "slider.horizontal.3", nameAr: "مخصص", nameEn: "Custom", tint: AdminSurface.primary)
+        PresetCategory(
+            id: "size",
+            icon: "ruler.fill",
+            nameAr: "المقاس",
+            nameEn: "Size",
+            tint: .indigo,
+            curatedSeeds: [
+                PPOptionSeed(id: "xs", canonicalValue: "XS", nameAr: "صغير جداً", nameEn: "XS", hex: nil, unit: nil),
+                PPOptionSeed(id: "s", canonicalValue: "S", nameAr: "صغير", nameEn: "Small", hex: nil, unit: nil),
+                PPOptionSeed(id: "m", canonicalValue: "M", nameAr: "وسط", nameEn: "Medium", hex: nil, unit: nil),
+                PPOptionSeed(id: "l", canonicalValue: "L", nameAr: "كبير", nameEn: "Large", hex: nil, unit: nil),
+                PPOptionSeed(id: "xl", canonicalValue: "XL", nameAr: "كبير جداً", nameEn: "XL", hex: nil, unit: nil),
+                PPOptionSeed(id: "2xl", canonicalValue: "2XL", nameAr: "2XL", nameEn: "2XL", hex: nil, unit: nil),
+            ]
+        ),
+        PresetCategory(
+            id: "weight",
+            icon: "scalemass.fill",
+            nameAr: "الوزن",
+            nameEn: "Weight",
+            tint: .orange,
+            curatedSeeds: [
+                PPOptionSeed(id: "250g", canonicalValue: "250g", nameAr: "٢٥٠ جم", nameEn: "250g", hex: nil, unit: "g"),
+                PPOptionSeed(id: "500g", canonicalValue: "500g", nameAr: "٥٠٠ جم", nameEn: "500g", hex: nil, unit: "g"),
+                PPOptionSeed(id: "1kg", canonicalValue: "1kg", nameAr: "١ كجم", nameEn: "1kg", hex: nil, unit: "kg"),
+                PPOptionSeed(id: "2kg", canonicalValue: "2kg", nameAr: "٢ كجم", nameEn: "2kg", hex: nil, unit: "kg"),
+                PPOptionSeed(id: "5kg", canonicalValue: "5kg", nameAr: "٥ كجم", nameEn: "5kg", hex: nil, unit: "kg"),
+                PPOptionSeed(id: "10kg", canonicalValue: "10kg", nameAr: "١٠ كجم", nameEn: "10kg", hex: nil, unit: "kg"),
+            ]
+        ),
+        PresetCategory(
+            id: "color",
+            icon: "paintpalette.fill",
+            nameAr: "اللون",
+            nameEn: "Color",
+            tint: .purple,
+            curatedSeeds: [
+                PPOptionSeed(id: "black", canonicalValue: "Black", nameAr: "أسود ليلي", nameEn: "Midnight Black", hex: "#18181B", unit: nil),
+                PPOptionSeed(id: "white", canonicalValue: "White", nameAr: "أبيض لؤلؤي", nameEn: "Pearl White", hex: "#F8FAFC", unit: nil),
+                PPOptionSeed(id: "royal_blue", canonicalValue: "Royal Blue", nameAr: "أزرق ملكي", nameEn: "Royal Blue", hex: "#2563EB", unit: nil),
+                PPOptionSeed(id: "emerald", canonicalValue: "Emerald", nameAr: "أخضر زمردي", nameEn: "Emerald Green", hex: "#059669", unit: nil),
+                PPOptionSeed(id: "coral", canonicalValue: "Coral", nameAr: "وردي مرجاني", nameEn: "Coral Pink", hex: "#E11D48", unit: nil),
+                PPOptionSeed(id: "warm_amber", canonicalValue: "Amber", nameAr: "عنبري دافئ", nameEn: "Warm Amber", hex: "#D97706", unit: nil),
+            ]
+        ),
+        PresetCategory(
+            id: "flavor",
+            icon: "fork.knife",
+            nameAr: "النكهة",
+            nameEn: "Flavor",
+            tint: .green,
+            curatedSeeds: [
+                PPOptionSeed(id: "chicken", canonicalValue: "Chicken", nameAr: "دجاج طازج", nameEn: "Fresh Chicken", hex: nil, unit: nil),
+                PPOptionSeed(id: "beef", canonicalValue: "Beef", nameAr: "لحم بقر", nameEn: "Tender Beef", hex: nil, unit: nil),
+                PPOptionSeed(id: "salmon", canonicalValue: "Salmon", nameAr: "سلمون نرويجي", nameEn: "Wild Salmon", hex: nil, unit: nil),
+                PPOptionSeed(id: "tuna", canonicalValue: "Tuna", nameAr: "تونة محيطية", nameEn: "Ocean Tuna", hex: nil, unit: nil),
+                PPOptionSeed(id: "duck", canonicalValue: "Duck", nameAr: "بط بري", nameEn: "Wild Duck", hex: nil, unit: nil),
+                PPOptionSeed(id: "lamb", canonicalValue: "Lamb", nameAr: "لحم ضأن", nameEn: "Tender Lamb", hex: nil, unit: nil),
+            ]
+        ),
+        PresetCategory(
+            id: "material",
+            icon: "cube.fill",
+            nameAr: "المادة",
+            nameEn: "Material",
+            tint: .blue,
+            curatedSeeds: [
+                PPOptionSeed(id: "leather", canonicalValue: "Leather", nameAr: "جلد طبيعي", nameEn: "Genuine Leather", hex: nil, unit: nil),
+                PPOptionSeed(id: "cotton", canonicalValue: "Cotton", nameAr: "قطن عضوي", nameEn: "Organic Cotton", hex: nil, unit: nil),
+                PPOptionSeed(id: "silicone", canonicalValue: "Silicone", nameAr: "سيليكون آمن", nameEn: "Food-Grade Silicone", hex: nil, unit: nil),
+                PPOptionSeed(id: "mesh", canonicalValue: "Mesh", nameAr: "شبك نفاذ", nameEn: "Breathable Mesh", hex: nil, unit: nil),
+                PPOptionSeed(id: "stainless_steel", canonicalValue: "Steel", nameAr: "ستانلس ستيل", nameEn: "Stainless Steel", hex: nil, unit: nil),
+                PPOptionSeed(id: "natural_wood", canonicalValue: "Wood", nameAr: "خشب طبيعي", nameEn: "Natural Wood", hex: nil, unit: nil),
+            ]
+        ),
+        PresetCategory(
+            id: "packaging",
+            icon: "shippingbox.fill",
+            nameAr: "التعبئة",
+            nameEn: "Packaging",
+            tint: .brown,
+            curatedSeeds: [
+                PPOptionSeed(id: "single", canonicalValue: "Single", nameAr: "حبة واحدة", nameEn: "Single Piece", hex: nil, unit: nil),
+                PPOptionSeed(id: "pack_2", canonicalValue: "2-Pack", nameAr: "عبوة ٢ حبة", nameEn: "Pack of 2", hex: nil, unit: nil),
+                PPOptionSeed(id: "pack_3", canonicalValue: "3-Pack", nameAr: "عبوة ٣ حبات", nameEn: "Pack of 3", hex: nil, unit: nil),
+                PPOptionSeed(id: "box_bundle", canonicalValue: "Box", nameAr: "صندوق توفيري", nameEn: "Bundle Box", hex: nil, unit: nil),
+            ]
+        ),
+        PresetCategory(
+            id: "scent",
+            icon: "leaf.fill",
+            nameAr: "الرائحة",
+            nameEn: "Scent",
+            tint: .teal,
+            curatedSeeds: [
+                PPOptionSeed(id: "lavender", canonicalValue: "Lavender", nameAr: "لافندر هادئ", nameEn: "Calming Lavender", hex: nil, unit: nil),
+                PPOptionSeed(id: "mint", canonicalValue: "Fresh Mint", nameAr: "نعناع منعش", nameEn: "Fresh Mint", hex: nil, unit: nil),
+                PPOptionSeed(id: "ocean", canonicalValue: "Ocean Breeze", nameAr: "نسيم البحر", nameEn: "Ocean Breeze", hex: nil, unit: nil),
+                PPOptionSeed(id: "unscented", canonicalValue: "Unscented", nameAr: "بدون رائحة", nameEn: "Unscented", hex: nil, unit: nil),
+            ]
+        ),
+        PresetCategory(
+            id: "custom",
+            icon: "slider.horizontal.3",
+            nameAr: "مخصص",
+            nameEn: "Custom",
+            tint: AdminSurface.primary,
+            curatedSeeds: []
+        )
     ]
 
-    @State private var selectedCategory: String = "custom"
-    @State private var nameAr: String = ""
-    @State private var nameEn: String = ""
-    @State private var key: String = ""
+    // MARK: - Component State
+    @State private var selectedCategoryId: String = "size"
+    @State private var nameAr: String = "المقاس"
+    @State private var nameEn: String = "Size"
+    @State private var key: String = "size"
     @State private var autoDeriveKey: Bool = true
+    @State private var selectedSeeds: [PPOptionSeed] = []
+    @State private var customValueInput: String = ""
+    @State private var translationPulse: Bool = false
 
     var isValid: Bool {
         let ar = nameAr.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1254,141 +1416,340 @@ struct PPAccessoryCustomOptionSheet: View {
     }
 
     var activeCategory: PresetCategory {
-        categories.first(where: { $0.id == selectedCategory }) ?? categories.last!
+        categories.first(where: { $0.id == selectedCategoryId }) ?? categories.first!
+    }
+
+    var isBilingualSynchronized: Bool {
+        let ar = nameAr.trimmingCharacters(in: .whitespacesAndNewlines)
+        let en = nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !ar.isEmpty && !en.isEmpty
+    }
+
+    var translationStateColor: Color {
+        if isBilingualSynchronized {
+            return AdminSurface.emerald
+        }
+        return activeCategory.tint
+    }
+
+    var smartTranslateButtonLabel: String {
+        let ar = nameAr.trimmingCharacters(in: .whitespacesAndNewlines)
+        let en = nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !ar.isEmpty && en.isEmpty {
+            return Language.get("Options_Studio_TranslateToEn", alter: "ترجمة فورية إلى الإنجليزية ✨")
+        } else if !en.isEmpty && ar.isEmpty {
+            return Language.get("Options_Studio_TranslateToAr", alter: "ترجمة فورية إلى العربية ✨")
+        } else if isBilingualSynchronized {
+            return Language.get("Options_Studio_SyncedBadge", alter: "متطابق ومتزامن ✓")
+        }
+        return Language.get("Options_Studio_TapToTranslate", alter: "ترجمة بيوري الذكية ✨")
+    }
+
+    var submitButtonTitle: String {
+        let name = Language.isRTL()
+            ? (nameAr.isEmpty ? nameEn : nameAr)
+            : (nameEn.isEmpty ? nameAr : nameEn)
+        let display = name.isEmpty ? (Language.isRTL() ? "الخيار" : "Option") : name
+
+        if selectedSeeds.isEmpty {
+            return String(format: Language.get("Options_Studio_CreateWithoutValues", alter: "إنشاء خيار %@ في الكتالوج"), display)
+        } else {
+            return String(format: Language.get("Options_Studio_CreateWithCount", alter: "إنشاء خيار %@ مع %d قيم"), display, selectedSeeds.count)
+        }
+    }
+
+    var resolvedKey: String {
+        let finalEn = nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalAr = nameAr.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawKey = key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? (finalEn.isEmpty ? finalAr : finalEn)
+            : key
+        let derived = PPAccessoryOptionValue.derivedIdentifier(fromName: rawKey)
+        return derived.isEmpty ? "custom_opt" : derived
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    // Category Presets Carousel
+                VStack(alignment: .leading, spacing: 20) {
+                    // MARK: 1. Archetype Dimension Selector
                     VStack(alignment: .leading, spacing: 10) {
-                        Text(Language.isRTL() ? "نوع الخيار • OPTION TYPE" : "OPTION TYPE • نوع الخيار")
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(AdminSurface.secondaryText)
-                            .padding(.horizontal, 4)
-
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(categories) { cat in
-                                    let isSelected = (selectedCategory == cat.id)
-                                    Button {
-                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                            selectedCategory = cat.id
-                                            if cat.id != "custom" {
-                                                nameAr = cat.nameAr
-                                                nameEn = cat.nameEn
-                                                key = cat.id
-                                                autoDeriveKey = false
-                                            }
-                                        }
-                                    } label: {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: cat.icon)
-                                                .font(.system(size: 13, weight: .bold))
-                                            Text(Language.isRTL() ? cat.nameAr : cat.nameEn)
-                                                .font(AdminType.captionBold)
-                                        }
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 8)
-                                        .background(
-                                            isSelected ? cat.tint : AdminSurface.card,
-                                            in: Capsule()
-                                        )
-                                        .foregroundStyle(isSelected ? Color.white : AdminSurface.primaryText)
-                                        .overlay(
-                                            Capsule()
-                                                .strokeBorder(isSelected ? Color.clear : AdminSurface.hairline, lineWidth: 1)
-                                        )
-                                        .shadow(color: isSelected ? cat.tint.opacity(0.35) : Color.clear, radius: 6, y: 2)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                            .padding(.horizontal, 4)
-                        }
-                    }
-
-                    // Hero Live Option Preview
-                    VStack(alignment: .leading, spacing: 12) {
                         HStack {
-                            Circle()
-                                .fill(isValid ? AdminSurface.emerald : AdminSurface.amber)
-                                .frame(width: 7, height: 7)
-                            Text(Language.get("Options_Studio_OptionPreview", alter: "معاينة الخيار في النظام"))
+                            Text(Language.get("Options_Studio_DimensionArchetype", alter: Language.isRTL() ? "نوع البعد • OPTION TYPE" : "OPTION TYPE • نوع البعد"))
                                 .font(AdminType.caption2Bold)
                                 .foregroundStyle(AdminSurface.secondaryText)
                             Spacer()
-                            Text("AXIS")
-                                .font(AdminType.caption2.monospaced())
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(activeCategory.tint.opacity(0.12), in: Capsule())
-                                .foregroundStyle(activeCategory.tint)
+                            Text("\(categories.count) " + (Language.isRTL() ? "أنواع" : "types"))
+                                .font(AdminType.caption2)
+                                .foregroundStyle(AdminSurface.secondaryText.opacity(0.7))
+                        }
+                        .padding(.horizontal, 4)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(categories) { cat in
+                                    let isSelected = (selectedCategoryId == cat.id)
+                                    Button {
+                                        selectCategory(cat)
+                                    } label: {
+                                        VStack(spacing: 8) {
+                                            ZStack {
+                                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                                    .fill(isSelected ? cat.tint : cat.tint.opacity(0.12))
+                                                    .frame(width: 44, height: 44)
+                                                    .shadow(color: isSelected ? cat.tint.opacity(0.4) : Color.clear, radius: 6, y: 2)
+
+                                                Image(systemName: cat.icon)
+                                                    .font(.system(size: 19, weight: .bold))
+                                                    .foregroundStyle(isSelected ? Color.white : cat.tint)
+                                            }
+
+                                            VStack(spacing: 2) {
+                                                Text(Language.isRTL() ? cat.nameAr : cat.nameEn)
+                                                    .font(AdminType.captionBold)
+                                                    .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                                                    .lineLimit(1)
+
+                                                Text(Language.isRTL() ? cat.nameEn : cat.nameAr)
+                                                    .font(.system(size: 9, weight: .medium))
+                                                    .foregroundStyle(AdminSurface.secondaryText.opacity(0.7))
+                                                    .lineLimit(1)
+                                            }
+                                        }
+                                        .frame(width: 84)
+                                        .padding(.vertical, 10)
+                                        .padding(.horizontal, 6)
+                                        .background(
+                                            isSelected ? cat.tint.opacity(0.08) : AdminSurface.card,
+                                            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        )
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                                .strokeBorder(isSelected ? cat.tint : AdminSurface.hairline, lineWidth: isSelected ? 1.5 : 1)
+                                        )
+                                        .scaleEffect(isSelected && !reduceMotion ? 1.04 : 1.0)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel(Language.isRTL() ? "\(cat.nameAr)، \(cat.nameEn)" : "\(cat.nameEn), \(cat.nameAr)")
+                                }
+                            }
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 4)
+                        }
+                    }
+
+                    // MARK: 2. Hero Live Axis Hologram Preview Canvas
+                    VStack(alignment: .leading, spacing: 14) {
+                        // Top HUD Ribbon
+                        HStack(spacing: 8) {
+                            HStack(spacing: 5) {
+                                Circle()
+                                    .fill(isValid ? AdminSurface.emerald : AdminSurface.amber)
+                                    .frame(width: 8, height: 8)
+                                    .shadow(color: (isValid ? AdminSurface.emerald : AdminSurface.amber).opacity(0.6), radius: 3)
+                                Text(isValid
+                                     ? Language.get("Options_Studio_StatusReady", alter: "جاهز للإضافة")
+                                     : Language.get("Options_Studio_StatusAwaiting", alter: "بانتظار الاسم"))
+                                    .font(AdminType.caption2Bold)
+                                    .foregroundStyle(isValid ? AdminSurface.emerald : AdminSurface.amber)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background((isValid ? AdminSurface.emerald : AdminSurface.amber).opacity(0.12), in: Capsule())
+
+                            Spacer()
+
+                            HStack(spacing: 4) {
+                                Image(systemName: activeCategory.icon)
+                                    .font(.system(size: 10, weight: .bold))
+                                Text(Language.get("Options_Studio_CatalogAxis", alter: "بُعد كتالوج • AXIS"))
+                                    .font(AdminType.caption2.monospaced())
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(activeCategory.tint.opacity(0.14), in: Capsule())
+                            .foregroundStyle(activeCategory.tint)
+
+                            HStack(spacing: 4) {
+                                Image(systemName: autoDeriveKey ? "lock.fill" : "lock.open.fill")
+                                    .font(.system(size: 9))
+                                Text(resolvedKey)
+                                    .font(AdminType.caption2Bold.monospaced())
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(AdminSurface.control, in: Capsule())
+                            .foregroundStyle(AdminSurface.primaryText)
                         }
 
+                        // Center Archetype Stage
                         HStack(spacing: 14) {
                             ZStack {
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .fill(activeCategory.tint.opacity(0.15))
-                                    .frame(width: 48, height: 48)
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [activeCategory.tint, activeCategory.tint.opacity(0.75)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .frame(width: 52, height: 52)
+                                    .shadow(color: activeCategory.tint.opacity(0.35), radius: 8, y: 3)
+
                                 Image(systemName: activeCategory.icon)
-                                    .font(.system(size: 22, weight: .bold))
-                                    .foregroundStyle(activeCategory.tint)
+                                    .font(.system(size: 24, weight: .bold))
+                                    .foregroundStyle(Color.white)
                             }
 
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(nameAr.isEmpty ? (Language.isRTL() ? "اسم الخيار" : "Option Name") : nameAr)
-                                    .font(AdminType.headline)
-                                    .foregroundStyle(AdminSurface.primaryText)
+                                Text(nameAr.isEmpty ? (Language.isRTL() ? "اسم الخيار بالعربية" : "Option Name (Arabic)") : nameAr)
+                                    .font(AdminType.title3.weight(.bold))
+                                    .foregroundStyle(nameAr.isEmpty ? AdminSurface.secondaryText.opacity(0.6) : AdminSurface.primaryText)
 
                                 Text(nameEn.isEmpty ? "Option Name (English)" : nameEn)
-                                    .font(AdminType.footnote)
-                                    .foregroundStyle(AdminSurface.secondaryText)
+                                    .font(AdminType.subheadline)
+                                    .foregroundStyle(nameEn.isEmpty ? AdminSurface.secondaryText.opacity(0.5) : AdminSurface.secondaryText)
                             }
 
                             Spacer()
 
-                            VStack(alignment: .trailing, spacing: 2) {
-                                Text("key")
-                                    .font(AdminType.caption2)
-                                    .foregroundStyle(AdminSurface.secondaryText.opacity(0.7))
-                                Text(resolvedKey)
-                                    .font(AdminType.captionBold.monospaced())
-                                    .foregroundStyle(AdminSurface.primaryText)
+                            if !selectedSeeds.isEmpty {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "sparkle")
+                                        .font(.system(size: 9))
+                                    Text(String(format: Language.get("Options_Studio_ValuesPreppedCount", alter: "%d قيم مجهزة"), selectedSeeds.count))
+                                        .font(AdminType.caption2Bold)
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(activeCategory.tint.opacity(0.15), in: Capsule())
+                                .foregroundStyle(activeCategory.tint)
                             }
                         }
-                    }
-                    .padding(16)
-                    .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .strokeBorder(activeCategory.tint.opacity(0.25), lineWidth: 1.2)
-                    )
-                    .shadow(color: Color.black.opacity(0.04), radius: 8, y: 3)
 
-                    // Studio Bilingual Inputs Deck
-                    VStack(alignment: .leading, spacing: 14) {
-                        Text(Language.isRTL() ? "بيانات الهوية • IDENTITY" : "IDENTITY • بيانات الهوية")
+                        // Storefront Customer Pill Simulation
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Image(systemName: "eye.fill")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(activeCategory.tint)
+                                Text(Language.get("Options_Studio_StorefrontSimulation", alter: "معاينة ظهور الخيارات في تطبيق المتجر"))
+                                    .font(AdminType.caption2Bold)
+                                    .foregroundStyle(AdminSurface.secondaryText)
+                                Spacer()
+                                Text("\(selectedSeeds.count)")
+                                    .font(AdminType.caption2Bold.monospaced())
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(activeCategory.tint.opacity(0.15), in: Capsule())
+                                    .foregroundStyle(activeCategory.tint)
+                            }
+
+                            if selectedSeeds.isEmpty {
+                                HStack {
+                                    Image(systemName: "info.circle")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(AdminSurface.secondaryText.opacity(0.7))
+                                    Text(Language.get("Options_Studio_StorefrontSimulationEmpty", alter: "لا توجد قيم أولية (يمكن إضافتها لاحقاً)"))
+                                        .font(AdminType.caption2)
+                                        .foregroundStyle(AdminSurface.secondaryText.opacity(0.8))
+                                }
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .padding(.vertical, 10)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                                        .foregroundStyle(AdminSurface.hairline)
+                                )
+                            } else {
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 6) {
+                                        ForEach(selectedSeeds) { seed in
+                                            HStack(spacing: 5) {
+                                                if let hex = seed.hex, !hex.isEmpty {
+                                                    Circle()
+                                                        .fill(Color(hex: hex))
+                                                        .frame(width: 9, height: 9)
+                                                        .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 0.75))
+                                                }
+                                                Text(Language.isRTL() ? seed.nameAr : seed.nameEn)
+                                                    .font(AdminType.captionBold)
+                                                    .foregroundStyle(AdminSurface.primaryText)
+                                            }
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 5)
+                                            .background(AdminSurface.background, in: Capsule())
+                                            .overlay(
+                                                Capsule()
+                                                    .strokeBorder(activeCategory.tint.opacity(0.3), lineWidth: 1)
+                                            )
+                                            .transition(reduceMotion ? .identity : .scale.combined(with: .opacity))
+                                        }
+                                    }
+                                    .padding(.horizontal, 2)
+                                }
+                            }
+                        }
+                        .padding(.top, 4)
+                    }
+                    .padding(18)
+                    .background(
+                        LinearGradient(
+                            colors: [
+                                activeCategory.tint.opacity(colorScheme == .dark ? 0.22 : 0.12),
+                                AdminSurface.card.opacity(0.9)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .strokeBorder(activeCategory.tint.opacity(0.35), lineWidth: 1.5)
+                    )
+                    .shadow(color: Color.black.opacity(0.05), radius: 10, y: 4)
+
+                    // MARK: 3. Connected Spatial Bilingual Input Deck
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(Language.get("Options_Studio_IdentitySection", alter: Language.isRTL() ? "بيانات الهوية اللغوية • BILINGUAL IDENTITY" : "BILINGUAL IDENTITY • بيانات الهوية اللغوية"))
                             .font(AdminType.caption2Bold)
                             .foregroundStyle(AdminSurface.secondaryText)
                             .padding(.horizontal, 4)
 
-                        // Arabic Name Field
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Image(systemName: "globe.asia.australia.fill")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(AdminSurface.emerald)
-                                Text(Language.get("Variant_NameAr", alter: "الاسم بالعربية"))
-                                    .font(AdminType.captionBold)
-                                    .foregroundStyle(AdminSurface.primaryText)
-                            }
+                        VStack(spacing: 0) {
+                            // Arabic Field Cell
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    HStack(spacing: 4) {
+                                        Circle().fill(AdminSurface.emerald).frame(width: 6, height: 6)
+                                        Text("AR • العربية")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundStyle(AdminSurface.emerald)
+                                    }
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(AdminSurface.emerald.opacity(0.12), in: Capsule())
 
-                            HStack {
-                                TextField("مثال: الحجم، النكهة...", text: $nameAr)
-                                    .font(AdminType.calloutBold)
+                                    Text(Language.get("Variant_NameAr", alter: "الاسم بالعربية"))
+                                        .font(AdminType.caption2Bold)
+                                        .foregroundStyle(AdminSurface.secondaryText)
+
+                                    Spacer()
+
+                                    if !nameAr.isEmpty {
+                                        Button {
+                                            nameAr = ""
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .foregroundStyle(AdminSurface.secondaryText.opacity(0.5))
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+
+                                TextField(Language.isRTL() ? "مثال: المقاس، النكهة، المادة..." : "e.g. Size, Flavor, Material...", text: $nameAr)
+                                    .font(AdminType.headline)
                                     .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
                                     .onChange(of: nameAr) { newVal in
                                         if autoDeriveKey && !newVal.isEmpty {
@@ -1398,146 +1759,307 @@ struct PPAccessoryCustomOptionSheet: View {
                                             }
                                         }
                                     }
-
-                                if !nameAr.isEmpty {
-                                    Button {
-                                        nameAr = ""
-                                    } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .foregroundStyle(AdminSurface.secondaryText.opacity(0.5))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
                             }
-                            .padding(12)
-                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .strokeBorder(AdminSurface.hairline, lineWidth: 1)
-                            )
-                        }
+                            .padding(14)
 
-                        // Pury Smart Auto-Translate Bridge
-                        HStack {
-                            Spacer()
-                            Button {
-                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                if !nameAr.isEmpty && nameEn.isEmpty {
-                                    if let tr = PPOptionTranslationDictionary.translate(text: nameAr, isArabicInput: true) {
-                                        nameEn = tr.counterpart
-                                        key = tr.canonical
-                                    } else {
-                                        nameEn = nameAr
+                            // Central Pury Intelligent Neural Bridge
+                            HStack(spacing: 8) {
+                                Rectangle()
+                                    .fill(AdminSurface.hairline)
+                                    .frame(height: 1)
+
+                                Button {
+                                    triggerSmartTranslate()
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "sparkles")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .rotationEffect(.degrees(translationPulse ? 360 : 0))
+
+                                        Text(smartTranslateButtonLabel)
+                                            .font(AdminType.caption2Bold)
                                     }
-                                } else if !nameEn.isEmpty && nameAr.isEmpty {
-                                    if let tr = PPOptionTranslationDictionary.translate(text: nameEn, isArabicInput: false) {
-                                        nameAr = tr.counterpart
-                                        key = tr.canonical
-                                    } else {
-                                        nameAr = nameEn
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        translationStateColor.opacity(0.12),
+                                        in: Capsule()
+                                    )
+                                    .foregroundStyle(translationStateColor)
+                                    .overlay(
+                                        Capsule()
+                                            .strokeBorder(translationStateColor.opacity(0.25), lineWidth: 1)
+                                    )
+                                    .shadow(color: translationPulse ? translationStateColor.opacity(0.4) : Color.clear, radius: 8)
+                                }
+                                .buttonStyle(.plain)
+
+                                Rectangle()
+                                    .fill(AdminSurface.hairline)
+                                    .frame(height: 1)
+                            }
+                            .padding(.horizontal, 12)
+
+                            // English Field Cell
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    HStack(spacing: 4) {
+                                        Circle().fill(AdminSurface.primary).frame(width: 6, height: 6)
+                                        Text("EN • English")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundStyle(AdminSurface.primary)
+                                    }
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+
+                                    Text(Language.get("Variant_NameEn", alter: "الاسم بالإنجليزية"))
+                                        .font(AdminType.caption2Bold)
+                                        .foregroundStyle(AdminSurface.secondaryText)
+
+                                    Spacer()
+
+                                    if !nameEn.isEmpty {
+                                        Button {
+                                            nameEn = ""
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .foregroundStyle(AdminSurface.secondaryText.opacity(0.5))
+                                        }
+                                        .buttonStyle(.plain)
                                     }
                                 }
-                            } label: {
-                                HStack(spacing: 5) {
-                                    Image(systemName: "sparkles")
-                                        .font(.system(size: 11, weight: .bold))
-                                    Text(Language.isRTL() ? "ترجمة بيوري الذكية" : "Pury Smart Translate")
-                                        .font(AdminType.captionBold)
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(AdminSurface.emerald.opacity(0.12), in: Capsule())
-                                .foregroundStyle(AdminSurface.emerald)
-                            }
-                            .buttonStyle(.plain)
-                        }
 
-                        // English Name Field
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Image(systemName: "globe.americas.fill")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(AdminSurface.primary)
-                                Text(Language.get("Variant_NameEn", alter: "الاسم بالإنجليزية"))
-                                    .font(AdminType.captionBold)
-                                    .foregroundStyle(AdminSurface.primaryText)
-                            }
-
-                            HStack {
                                 TextField("e.g. Size, Flavor, Material...", text: $nameEn)
-                                    .font(AdminType.calloutBold)
+                                    .font(AdminType.headline)
                                     .multilineTextAlignment(.leading)
                                     .onChange(of: nameEn) { newVal in
                                         if autoDeriveKey && !newVal.isEmpty {
                                             key = PPAccessoryOptionValue.derivedIdentifier(fromName: newVal)
                                         }
                                     }
+                            }
+                            .padding(14)
+                        }
+                        .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .strokeBorder(AdminSurface.hairline, lineWidth: 1)
+                        )
+                    }
 
-                                if !nameEn.isEmpty {
+                    // MARK: 4. Canonical Key Identifier Station
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: "number.square.fill")
+                                .font(.system(size: 13))
+                                .foregroundStyle(AdminSurface.secondaryText)
+
+                            Text(Language.get("Options_Key_Identifier", alter: "المعرف الأساسي"))
+                                .font(AdminType.captionBold)
+                                .foregroundStyle(AdminSurface.primaryText)
+
+                            Spacer()
+
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    autoDeriveKey.toggle()
+                                    if autoDeriveKey {
+                                        key = resolvedKey
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: autoDeriveKey ? "lock.fill" : "lock.open.fill")
+                                        .font(.system(size: 10))
+                                    Text(autoDeriveKey
+                                         ? (Language.isRTL() ? "توليد تلقائي" : "Auto Derived")
+                                         : (Language.isRTL() ? "تعديل يدوي" : "Manual Edit"))
+                                        .font(AdminType.caption2Bold)
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(autoDeriveKey ? AdminSurface.primary.opacity(0.12) : AdminSurface.amber.opacity(0.12), in: Capsule())
+                                .foregroundStyle(autoDeriveKey ? AdminSurface.primary : AdminSurface.amber)
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        HStack {
+                            Text("key:")
+                                .font(AdminType.caption2.monospaced())
+                                .foregroundStyle(AdminSurface.secondaryText)
+
+                            TextField("e.g. size, flavor, pack_size", text: $key)
+                                .font(AdminType.calloutBold.monospaced())
+                                .disabled(autoDeriveKey)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                                .foregroundStyle(autoDeriveKey ? AdminSurface.secondaryText : AdminSurface.primaryText)
+                        }
+                        .padding(12)
+                        .background(autoDeriveKey ? AdminSurface.backgroundSecondary : AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(AdminSurface.hairline, lineWidth: 1)
+                        )
+
+                        Text(Language.get("Options_Studio_KeyExplanation", alter: "المعرف البرمجي الموحد المستخدم في قاعدة البيانات والربط البرمجي"))
+                            .font(.system(size: 10))
+                            .foregroundStyle(AdminSurface.secondaryText.opacity(0.8))
+                            .padding(.horizontal, 2)
+                    }
+                    .padding(14)
+                    .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(AdminSurface.hairline, lineWidth: 1)
+                    )
+
+                    // MARK: 5. Initial Quick-Seed Values Tray
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "square.grid.2x2.fill")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(activeCategory.tint)
+                                    Text(Language.get("Options_Studio_SeedValuesSection", alter: "القيم الأولية المقترحة • SEED VALUES"))
+                                        .font(AdminType.caption2Bold)
+                                        .foregroundStyle(AdminSurface.secondaryText)
+                                }
+
+                                Text(Language.get("Options_Studio_SeedValuesDesc", alter: "حدد القيم لتجهيز الخيار بها فوراً، أو أضف قيماً مخصصة"))
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(AdminSurface.secondaryText.opacity(0.8))
+                            }
+
+                            Spacer()
+
+                            if !activeCategory.curatedSeeds.isEmpty {
+                                HStack(spacing: 8) {
                                     Button {
-                                        nameEn = ""
+                                        selectAllSeeds()
                                     } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .foregroundStyle(AdminSurface.secondaryText.opacity(0.5))
+                                        Text(Language.get("Options_Studio_SelectAll", alter: "تحديد الكل"))
+                                            .font(AdminType.caption2Bold)
+                                            .foregroundStyle(activeCategory.tint)
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    Text("•")
+                                        .foregroundStyle(AdminSurface.hairline)
+
+                                    Button {
+                                        clearAllSeeds()
+                                    } label: {
+                                        Text(Language.get("Options_Studio_ClearAll", alter: "إلغاء"))
+                                            .font(AdminType.caption2)
+                                            .foregroundStyle(AdminSurface.secondaryText)
                                     }
                                     .buttonStyle(.plain)
                                 }
                             }
-                            .padding(12)
-                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .strokeBorder(AdminSurface.hairline, lineWidth: 1)
-                            )
+                        }
+                        .padding(.horizontal, 4)
+
+                        // Curated Seed Chips Flow
+                        if !activeCategory.curatedSeeds.isEmpty {
+                            PPOptionChipsFlow(spacing: 8) {
+                                ForEach(activeCategory.curatedSeeds) { seed in
+                                    let isSelected = selectedSeeds.contains(where: { $0.id == seed.id })
+                                    Button {
+                                        toggleSeed(seed)
+                                    } label: {
+                                        HStack(spacing: 6) {
+                                            if let hex = seed.hex, !hex.isEmpty {
+                                                Circle()
+                                                    .fill(Color(hex: hex))
+                                                    .frame(width: 10, height: 10)
+                                                    .overlay(Circle().stroke(Color.white, lineWidth: 1))
+                                            }
+                                            Text(Language.isRTL() ? seed.nameAr : seed.nameEn)
+                                                .font(AdminType.captionBold)
+
+                                            if isSelected {
+                                                Image(systemName: "checkmark")
+                                                    .font(.system(size: 9, weight: .bold))
+                                            }
+                                        }
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 7)
+                                        .background(
+                                            isSelected ? activeCategory.tint : AdminSurface.card,
+                                            in: Capsule()
+                                        )
+                                        .foregroundStyle(isSelected ? Color.white : AdminSurface.primaryText)
+                                        .overlay(
+                                            Capsule()
+                                                .strokeBorder(isSelected ? Color.clear : AdminSurface.hairline, lineWidth: 1)
+                                        )
+                                        .shadow(color: isSelected ? activeCategory.tint.opacity(0.3) : Color.clear, radius: 4, y: 1)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
                         }
 
-                        // Key Identifier Field
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Image(systemName: "number.square")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(AdminSurface.secondaryText)
-                                Text(Language.get("Options_Key_Identifier", alter: "المعرف الأساسي"))
-                                    .font(AdminType.captionBold)
-                                    .foregroundStyle(AdminSurface.primaryText)
-                                Spacer()
-                                Button {
-                                    autoDeriveKey.toggle()
-                                } label: {
-                                    HStack(spacing: 3) {
-                                        Image(systemName: autoDeriveKey ? "lock.fill" : "lock.open.fill")
-                                            .font(.system(size: 9))
-                                        Text(autoDeriveKey ? (Language.isRTL() ? "تلقائي" : "Auto") : (Language.isRTL() ? "يدوي" : "Manual"))
-                                            .font(AdminType.caption2Bold)
-                                    }
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
-                                    .background(autoDeriveKey ? AdminSurface.primary.opacity(0.12) : AdminSurface.card, in: Capsule())
-                                    .foregroundStyle(autoDeriveKey ? AdminSurface.primary : AdminSurface.secondaryText)
-                                }
-                                .buttonStyle(.plain)
-                            }
-
-                            TextField("e.g. size, flavor, material", text: $key)
-                                .font(AdminType.callout.monospaced())
-                                .disabled(autoDeriveKey)
-                                .padding(12)
-                                .background(autoDeriveKey ? AdminSurface.backgroundSecondary : AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        // Inline Custom Tag Add Row
+                        HStack(spacing: 8) {
+                            TextField(Language.get("Options_Studio_AddCustomTag", alter: "إضافة قيمة مخصصة..."), text: $customValueInput)
+                                .font(AdminType.callout)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 9)
+                                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                                         .strokeBorder(AdminSurface.hairline, lineWidth: 1)
                                 )
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
+                                .onSubmit {
+                                    addCustomSeed()
+                                }
+
+                            Button {
+                                addCustomSeed()
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 11, weight: .bold))
+                                    Text(Language.get("Options_Studio_AddTagButton", alter: "إضافة"))
+                                        .font(AdminType.captionBold)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 9)
+                                .background(
+                                    customValueInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                        ? AdminSurface.control
+                                        : activeCategory.tint,
+                                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                )
+                                .foregroundStyle(
+                                    customValueInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                        ? AdminSurface.secondaryText.opacity(0.5)
+                                        : Color.white
+                                )
+                            }
+                            .disabled(customValueInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .buttonStyle(.plain)
                         }
                     }
+                    .padding(16)
+                    .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(AdminSurface.hairline, lineWidth: 1)
+                    )
 
-                    Spacer(minLength: 40)
+                    Spacer(minLength: 50)
                 }
                 .padding(20)
             }
             .background(AdminSurface.background.ignoresSafeArea())
-            .navigationTitle(Language.get("Options_Studio_CustomOptionTitle", alter: "استوديو إنشاء خيار"))
+            .navigationTitle(Language.get("Options_Studio_CustomOptionTitle", alter: "استوديو إنشاء خيار جديد"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -1551,9 +2073,15 @@ struct PPAccessoryCustomOptionSheet: View {
                     Button {
                         submit()
                     } label: {
-                        Text(Language.get("Add", alter: "إضافة"))
-                            .font(AdminType.calloutBold)
-                            .foregroundStyle(isValid ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.4))
+                        HStack(spacing: 4) {
+                            Text(Language.get("Add", alter: "إضافة"))
+                                .font(AdminType.calloutBold)
+                            if !selectedSeeds.isEmpty {
+                                Text("(\(selectedSeeds.count))")
+                                    .font(AdminType.caption2Bold)
+                            }
+                        }
+                        .foregroundStyle(isValid ? activeCategory.tint : AdminSurface.secondaryText.opacity(0.4))
                     }
                     .disabled(!isValid)
                 }
@@ -1569,47 +2097,196 @@ struct PPAccessoryCustomOptionSheet: View {
                         HStack(spacing: 8) {
                             Image(systemName: "plus.circle.fill")
                                 .font(.system(size: 16, weight: .bold))
-                            Text(Language.isRTL() ? "إنشاء الخيار في الكتالوج" : "Create Option in Catalog")
+
+                            Text(submitButtonTitle)
                                 .font(AdminType.headline)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
                         .background(
-                            isValid ? AdminSurface.primary : AdminSurface.control,
-                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            isValid
+                                ? LinearGradient(
+                                    colors: [activeCategory.tint, activeCategory.tint.opacity(0.85)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                                : LinearGradient(
+                                    colors: [AdminSurface.control, AdminSurface.control],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                ),
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
                         )
                         .foregroundStyle(isValid ? Color.white : AdminSurface.secondaryText.opacity(0.5))
-                        .shadow(color: isValid ? AdminSurface.primary.opacity(0.35) : Color.clear, radius: 8, y: 3)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(isValid ? Color.white.opacity(0.2) : Color.clear, lineWidth: 1)
+                        )
+                        .shadow(color: isValid ? activeCategory.tint.opacity(0.35) : Color.clear, radius: 10, y: 4)
                     }
                     .disabled(!isValid)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 12)
                 }
-                .background(AdminSurface.backgroundSecondary.opacity(0.95))
+                .background(
+                    AdminSurface.backgroundSecondary.opacity(0.95)
+                        .background(.ultraThinMaterial)
+                )
+            }
+            .onAppear {
+                if let firstCat = categories.first {
+                    selectCategory(firstCat)
+                }
             }
         }
     }
 
-    private var resolvedKey: String {
-        let finalEn = nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
-        let finalAr = nameAr.trimmingCharacters(in: .whitespacesAndNewlines)
-        let rawKey = key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? (finalEn.isEmpty ? finalAr : finalEn)
-            : key
-        return PPAccessoryOptionValue.derivedIdentifier(fromName: rawKey)
+    // MARK: - Actions & Mutations
+    private func selectCategory(_ cat: PresetCategory) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8)) {
+            selectedCategoryId = cat.id
+            if cat.id != "custom" {
+                nameAr = cat.nameAr
+                nameEn = cat.nameEn
+                key = cat.id
+                autoDeriveKey = false
+                selectedSeeds = cat.curatedSeeds
+            } else {
+                nameAr = ""
+                nameEn = ""
+                key = ""
+                autoDeriveKey = true
+                selectedSeeds = []
+            }
+        }
+    }
+
+    private func toggleSeed(_ seed: PPOptionSeed) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.75)) {
+            if let idx = selectedSeeds.firstIndex(where: { $0.id == seed.id }) {
+                selectedSeeds.remove(at: idx)
+            } else {
+                selectedSeeds.append(seed)
+            }
+        }
+    }
+
+    private func selectAllSeeds() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.75)) {
+            selectedSeeds = activeCategory.curatedSeeds
+        }
+    }
+
+    private func clearAllSeeds() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.75)) {
+            selectedSeeds.removeAll()
+        }
+    }
+
+    private func addCustomSeed() {
+        let trimmed = customValueInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+        let slug = PPAccessoryOptionValue.derivedIdentifier(fromName: trimmed)
+        let isAr = Language.isRTL()
+        let translatedCounterpart = isAr
+            ? (PPOptionTranslationDictionary.translate(text: trimmed, isArabicInput: true)?.counterpart ?? trimmed)
+            : (PPOptionTranslationDictionary.translate(text: trimmed, isArabicInput: false)?.counterpart ?? trimmed)
+
+        let newSeed = PPOptionSeed(
+            id: slug.isEmpty ? "val_\(selectedSeeds.count + 1)" : slug,
+            canonicalValue: trimmed,
+            nameAr: isAr ? trimmed : translatedCounterpart,
+            nameEn: isAr ? translatedCounterpart : trimmed,
+            hex: nil,
+            unit: nil
+        )
+        withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8)) {
+            if !selectedSeeds.contains(where: { $0.id == newSeed.id }) {
+                selectedSeeds.append(newSeed)
+            }
+            customValueInput = ""
+        }
+    }
+
+    private func triggerSmartTranslate() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.75)) {
+            translationPulse = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            withAnimation { translationPulse = false }
+        }
+
+        let trimmedAr = nameAr.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedEn = nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if !trimmedAr.isEmpty && trimmedEn.isEmpty {
+            if let tr = PPOptionTranslationDictionary.translate(text: trimmedAr, isArabicInput: true) {
+                nameEn = tr.counterpart
+                if autoDeriveKey { key = tr.canonical }
+            } else {
+                nameEn = trimmedAr
+                if autoDeriveKey { key = PPAccessoryOptionValue.derivedIdentifier(fromName: trimmedAr) }
+            }
+        } else if !trimmedEn.isEmpty && trimmedAr.isEmpty {
+            if let tr = PPOptionTranslationDictionary.translate(text: trimmedEn, isArabicInput: false) {
+                nameAr = tr.counterpart
+                if autoDeriveKey { key = tr.canonical }
+            } else {
+                nameAr = trimmedEn
+                if autoDeriveKey { key = PPAccessoryOptionValue.derivedIdentifier(fromName: trimmedEn) }
+            }
+        } else if !trimmedAr.isEmpty && !trimmedEn.isEmpty {
+            if autoDeriveKey {
+                key = PPAccessoryOptionValue.derivedIdentifier(fromName: trimmedEn)
+            }
+        }
     }
 
     private func submit() {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         let finalAr = nameAr.trimmingCharacters(in: .whitespacesAndNewlines)
         let finalEn = nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
-        let id = resolvedKey
-        let def = PPAccessoryOptionDefinition.custom(
-            id: id,
-            key: id,
-            nameAr: finalAr.isEmpty ? finalEn : finalAr,
-            nameEn: finalEn.isEmpty ? finalAr : finalEn
-        )
+        let k = resolvedKey
+
+        let optionValues: [PPAccessoryOptionValue] = selectedSeeds.enumerated().map { index, seed in
+            PPAccessoryOptionValue(
+                id: seed.id,
+                canonicalValue: seed.canonicalValue,
+                nameAr: seed.nameAr,
+                nameEn: seed.nameEn,
+                sortOrder: index,
+                hex: seed.hex,
+                unit: seed.unit
+            )
+        }
+
+        let def: PPAccessoryOptionDefinition
+        if k == "size" {
+            def = PPAccessoryOptionDefinition.presetSize(values: optionValues)
+        } else if k == "weight" {
+            def = PPAccessoryOptionDefinition.presetWeight(values: optionValues)
+        } else if k == "color" {
+            def = PPAccessoryOptionDefinition.presetColor(values: optionValues)
+        } else if k == "flavor" {
+            def = PPAccessoryOptionDefinition.presetFlavor(values: optionValues)
+        } else if k == "material" {
+            def = PPAccessoryOptionDefinition.presetMaterial(values: optionValues)
+        } else {
+            def = PPAccessoryOptionDefinition.custom(
+                id: k,
+                key: k,
+                nameAr: finalAr.isEmpty ? finalEn : finalAr,
+                nameEn: finalEn.isEmpty ? finalAr : finalEn,
+                values: optionValues
+            )
+        }
+
         onAdd(def)
         dismiss()
     }

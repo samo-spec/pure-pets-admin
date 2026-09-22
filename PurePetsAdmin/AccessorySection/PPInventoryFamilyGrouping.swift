@@ -412,10 +412,10 @@ struct PPInventoryFamilyRow: View {
                             isSelected
                                 ? (requiresContrast ? AdminSurface.control : productAccentColor.opacity(0.16))
                                 : (requiresContrast ? Color.white : productAccentColor.opacity(0.06)),
-                            in: Capsule()
+                            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
                         )
                         .overlay {
-                            Capsule()
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
                                 .strokeBorder(
                                     isSelected
                                         ? (requiresContrast ? AdminSurface.primaryText.opacity(0.65) : productAccentColor.opacity(0.75))

@@ -1697,3 +1697,9 @@ private struct SimulatedBarcodeGraphic: View {
     }
 }
 
+private extension Color {
+    init(hex: String) {
+        let ui = PPAccessoryVariantColor.color(fromHex: hex) ?? .systemGray
+        self.init(uiColor: ui)
+    }
+}

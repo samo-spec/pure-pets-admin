@@ -3292,14 +3292,16 @@ struct PPInventoryListView: View {
                         isExpanded: Binding(
                             get: { expandedFamilyIds.contains(familyId) },
                             set: { isOn in
-                                if isOn {
-                                    expandedFamilyIds.insert(familyId)
-                                    let current = selectedFamilyProductIds[familyId]
-                                    if current == nil || !members.contains(where: { $0.accessoryID == current }) {
-                                        selectedFamilyProductIds[familyId] = defaultMember.accessoryID
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                                    if isOn {
+                                        expandedFamilyIds = [familyId]
+                                        let current = selectedFamilyProductIds[familyId]
+                                        if current == nil || !members.contains(where: { $0.accessoryID == current }) {
+                                            selectedFamilyProductIds[familyId] = defaultMember.accessoryID
+                                        }
+                                    } else {
+                                        expandedFamilyIds.remove(familyId)
                                     }
-                                } else {
-                                    expandedFamilyIds.remove(familyId)
                                 }
                             }
                         ),
@@ -3336,21 +3338,25 @@ struct PPInventoryListView: View {
                     // Changing the rail selection swaps this child in place rather
                     // than stacking full duplicate product cards down the list.
                     if expandedFamilyIds.contains(familyId) {
-                        inventoryVariantInspector(for: selectedMember)
-                            .padding(.horizontal, 12)
-                            .id(selectedMember.accessoryID)
-                            .transition(
-                                reduceMotion
-                                    ? .opacity
-                                    : .asymmetric(
-                                        insertion: .move(edge: .top).combined(with: .opacity),
-                                        removal: .opacity
-                                    )
-                            )
-                            .animation(
-                                reduceMotion ? nil : .easeOut(duration: 0.18),
-                                value: selectedMember.accessoryID
-                            )
+                        HStack(spacing: 0) {
+                            inventoryVariantInspector(for: selectedMember)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(.leading, 14)
+                        .padding(.trailing, 34)
+                        .id(selectedMember.accessoryID)
+                        .transition(
+                            reduceMotion
+                                ? .opacity
+                                : .asymmetric(
+                                    insertion: .move(edge: .top).combined(with: .opacity),
+                                    removal: .opacity
+                                )
+                        )
+                        .animation(
+                            reduceMotion ? nil : .easeOut(duration: 0.18),
+                            value: selectedMember.accessoryID
+                        )
                     }
                 }
             }
@@ -3382,7 +3388,7 @@ struct PPInventoryListView: View {
             item: item,
             sellingPrice: sellingPrice,
             quantity: hasBranch ? record?.availableQuantity : max(0, item.quantity),
-            branchName: hasBranch ? (branchContext.activeBranch?.localizedName() ?? "") : item.resolvedBranchName(),
+            branchName: "",
             stockState: state,
             canManageStock: canAccessInventoryCell(kStaffPermStockManage, branchID: hasBranch ? selectedBranch : nil),
             onOpen: { openItemDetail(for: item) },

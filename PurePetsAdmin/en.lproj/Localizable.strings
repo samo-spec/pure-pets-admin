@@ -9988,6 +9988,9 @@
 "Options_Studio_SyncedBadge" = "Synchronized ✓";
 "Options_Studio_TranslateToEn" = "Instant English Translation ✨";
 "Options_Studio_TranslateToAr" = "Instant Arabic Translation ✨";
+"Common_Close" = "Close";
+"MoveEarlier" = "Move earlier";
+"MoveLater" = "Move later";
 
 /* Variant Matrix — Phase 6 */
 "Options_Tab_Variants_Matrix" = "Matrix & Variants";

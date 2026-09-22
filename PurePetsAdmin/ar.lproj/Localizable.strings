@@ -10056,6 +10056,9 @@
 "Options_Studio_SyncedBadge" = "متطابق ومتزامن ✓";
 "Options_Studio_TranslateToEn" = "ترجمة فورية إلى الإنجليزية ✨";
 "Options_Studio_TranslateToAr" = "ترجمة فورية إلى العربية ✨";
+"Common_Close" = "إغلاق";
+"MoveEarlier" = "تحريك للأمام";
+"MoveLater" = "تحريك للخلف";
 
 /* Variant Matrix — Phase 6 */
 "Options_Tab_Variants_Matrix" = "المصفوفة والمتغيرات";
