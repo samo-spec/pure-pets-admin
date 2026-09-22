@@ -149,8 +149,11 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
     }
 
     private func apply(loaded family: PPAccessoryVariantFamily) {
+        family.autoBindMissingOptionSelections()
         baseline = family
-        draft = family.copyForEditing()
+        let workingDraft = family.copyForEditing()
+        workingDraft.autoBindMissingOptionSelections()
+        draft = workingDraft
         if selectedProductId.isEmpty || family.variant(forProductId: selectedProductId) == nil {
             selectedProductId = family.defaultVariantProductId.isEmpty
                 ? (family.variants.first?.productId ?? "")
@@ -325,8 +328,52 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
             hasResolvedRetailPrice: existing.hasResolvedRetailPrice,
             showInAppMarket: existing.showInAppMarket,
             revision: existing.revision,
-            media: existing.media
+            media: existing.media,
+            selectedOptions: [PPAccessoryVariantContract.axisColor: color.identifier],
+            combinationKey: "\(PPAccessoryVariantContract.axisColor)=\(color.identifier)"
         )
+        if draft.optionDefinitions.isEmpty {
+            draft.optionDefinitions = [PPAccessoryOptionDefinition.synthesizeColorOption(fromVariants: draft.variants)]
+        }
+        draft.autoBindMissingOptionSelections()
+        self.draft = draft
+        revalidate()
+    }
+
+    /// Converts a standalone single-variant product into a multi-option family using the chosen option definition
+    /// (e.g. Size, Weight/Scale, Flavor, Material, or Custom) without requiring color first.
+    func convertWithPresetOption(_ option: PPAccessoryOptionDefinition) {
+        guard let draft else { return }
+        draft.isLegacySingleVariant = false
+        draft.optionDefinitions = [option]
+
+        if let firstVariant = draft.variants.first {
+            let initialColor = firstVariant.color.identifier.isEmpty
+                ? PPAccessoryVariantColor.standardNeutral
+                : firstVariant.color
+            let defaultValId = option.values.first?.id ?? ""
+            let updatedVariant = PPAccessoryVariant(
+                productId: firstVariant.productId,
+                color: initialColor,
+                sortOrder: firstVariant.sortOrder,
+                isArchived: firstVariant.isArchived,
+                isDefault: true,
+                sku: firstVariant.sku,
+                barcode: firstVariant.barcode,
+                primaryImageURL: firstVariant.primaryImageURL,
+                quantity: firstVariant.quantity,
+                retailPrice: firstVariant.retailPrice,
+                wholesalePrice: firstVariant.wholesalePrice,
+                hasResolvedRetailPrice: firstVariant.hasResolvedRetailPrice,
+                showInAppMarket: firstVariant.showInAppMarket,
+                revision: firstVariant.revision,
+                media: firstVariant.media,
+                selectedOptions: [option.id: defaultValId],
+                combinationKey: "\(option.id)=\(defaultValId)"
+            )
+            draft.variants = [updatedVariant]
+        }
+        draft.autoBindMissingOptionSelections()
         self.draft = draft
         revalidate()
     }
@@ -387,6 +434,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         newOption.sortOrder = updated.count
         updated.append(newOption)
         draft.optionDefinitions = updated
+        draft.autoBindMissingOptionSelections()
         self.draft = draft
         revalidate()
     }
@@ -399,6 +447,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
             opt.sortOrder = index
         }
         draft.optionDefinitions = updated
+        draft.autoBindMissingOptionSelections()
         self.draft = draft
         revalidate()
     }
@@ -436,6 +485,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         newValue.sortOrder = updatedValues.count
         updatedValues.append(newValue)
         option.values = updatedValues
+        draft.autoBindMissingOptionSelections()
         self.draft = draft
         revalidate()
     }
@@ -446,8 +496,11 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         let option = draft.optionDefinitions[optIndex]
         var updatedValues = option.values
         updatedValues.removeAll { $0.id == valueId }
-        for (i, val) in updatedValues.enumerated() { val.sortOrder = i }
+        for (index, val) in updatedValues.enumerated() {
+            val.sortOrder = index
+        }
         option.values = updatedValues
+        draft.autoBindMissingOptionSelections()
         self.draft = draft
         revalidate()
     }
@@ -918,12 +971,14 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
     }
 
     func revalidate() {
+        draft?.autoBindMissingOptionSelections()
         validationMessages = draft?.validationMessages() ?? []
     }
 
     func discardChanges() {
         guard let baseline else { return }
         draft = baseline.copyForEditing()
+        draft?.autoBindMissingOptionSelections()
         validationMessages = []
         failure = nil
     }
@@ -932,6 +987,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
 
     func save() async {
         guard let draft else { return }
+        draft.autoBindMissingOptionSelections()
         revalidate()
         guard validationMessages.isEmpty else { return }
 
@@ -951,7 +1007,9 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
             pendingCommandId = nil
             confirmation = result.idempotent
                 ? Language.get("Variant_Save_AlreadyApplied", alter: "كانت هذه التغييرات محفوظة بالفعل.")
-                : Language.get("Variant_Save_Confirmed", alter: "تم حفظ الألوان.")
+                : (draft.hasGenericOptions
+                    ? Language.get("Options_Save_Confirmed", alter: "تم حفظ خيارات ومتغيرات المنتج.")
+                    : Language.get("Variant_Save_Confirmed", alter: "تم حفظ الألوان."))
             // Reload from the server so the editor shows the confirmed state,
             // including the family id minted by a create.
             let reloaded = try await PPAccessoryVariantService.shared.loadFamily(familyId: result.familyId)
@@ -1228,6 +1286,7 @@ struct PPAccessoryVariantSection: View {
     @State private var activeStudioMode: VariantStudioMode? = nil
     @State private var copiedHexBanner: String? = nil
     @State private var isPresentingCustomOptionSheet = false
+    @State private var isPresentingOptionPalette = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -1368,6 +1427,23 @@ struct PPAccessoryVariantSection: View {
                 isPresentingCustomOptionSheet = false
             }
         }
+        .sheet(isPresented: $isPresentingOptionPalette) {
+            if let draft = model.draft {
+                PPOptionPresetActionSheet(
+                    draft: draft,
+                    onSelectPreset: { preset in
+                        model.addOption(preset)
+                        isPresentingOptionPalette = false
+                    },
+                    onSelectCustom: {
+                        isPresentingOptionPalette = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            isPresentingCustomOptionSheet = true
+                        }
+                    }
+                )
+            }
+        }
     }
 
     private var modePicker: some View {
@@ -1498,8 +1574,9 @@ struct PPAccessoryVariantSection: View {
                 alter: "ينشئ صنفاً مستقلاً بالسعر والرمز الخاصين بهذا اللون ثم يربطه بالمنتج."
             ))
         } else {
-            Menu {
-                presetOptionButtons(draft: draft)
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                isPresentingOptionPalette = true
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "plus.circle.fill")
@@ -1515,80 +1592,10 @@ struct PPAccessoryVariantSection: View {
                     Capsule().strokeBorder(AdminSurface.primary.opacity(0.28), lineWidth: 1)
                 )
             }
+            .buttonStyle(.plain)
             .foregroundStyle(AdminSurface.primary)
             .disabled(draft.optionDefinitions.count >= PPAccessoryVariantContract.maxOptionsPerFamily)
             .accessibilityLabel(Language.get("Options_Add_Option", alter: "إضافة خيار"))
-        }
-    }
-
-    @ViewBuilder
-    private func presetOptionButtons(draft: PPAccessoryVariantFamily) -> some View {
-        let existingKeys = Set(draft.optionDefinitions.map(\.key))
-
-        if !existingKeys.contains("color") {
-            Button {
-                model.addOption(PPAccessoryOptionDefinition.presetColor())
-            } label: {
-                Label(
-                    Language.get("Options_Preset_Color", alter: "اللون"),
-                    systemImage: "paintpalette.fill"
-                )
-            }
-        }
-
-        if !existingKeys.contains("size") {
-            Button {
-                model.addOption(PPAccessoryOptionDefinition.presetSize())
-            } label: {
-                Label(
-                    Language.get("Options_Preset_Size", alter: "المقاس"),
-                    systemImage: "ruler.fill"
-                )
-            }
-        }
-
-        if !existingKeys.contains("weight") {
-            Button {
-                model.addOption(PPAccessoryOptionDefinition.presetWeight())
-            } label: {
-                Label(
-                    Language.get("Options_Preset_Weight", alter: "الوزن"),
-                    systemImage: "scalemass.fill"
-                )
-            }
-        }
-
-        if !existingKeys.contains("material") {
-            Button {
-                model.addOption(PPAccessoryOptionDefinition.presetMaterial())
-            } label: {
-                Label(
-                    Language.get("Options_Preset_Material", alter: "المادة"),
-                    systemImage: "cube.box.fill"
-                )
-            }
-        }
-
-        if !existingKeys.contains("flavor") {
-            Button {
-                model.addOption(PPAccessoryOptionDefinition.presetFlavor())
-            } label: {
-                Label(
-                    Language.get("Options_Preset_Flavor", alter: "النكهة"),
-                    systemImage: "fork.knife"
-                )
-            }
-        }
-
-        Divider()
-
-        Button {
-            isPresentingCustomOptionSheet = true
-        } label: {
-            Label(
-                Language.get("Options_Preset_Custom", alter: "خيار مخصص..."),
-                systemImage: "slider.horizontal.3"
-            )
         }
     }
 
@@ -1764,7 +1771,7 @@ struct PPAccessoryVariantSection: View {
         let selectedColor = firstVariant?.color
         let hasSelectedColor = selectedColor != nil && !selectedColor!.identifier.isEmpty
 
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 14) {
             if hasSelectedColor, let color = selectedColor {
                 Text(Language.get(
                     "Variant_Convert_ColorAssigned",
@@ -1776,31 +1783,100 @@ struct PPAccessoryVariantSection: View {
 
                 selectedColorCard(color, variant: firstVariant)
             } else {
-                Text(Language.get(
-                    "Variant_Convert_Explainer",
-                    alter: "هذا المنتج بلون واحد. أضف لونًا لتحويله إلى مجموعة ألوان دون فقدان المخزون أو السجل."
-                ))
-                .font(AdminType.footnote)
-                .foregroundStyle(AdminCommandInk.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(Language.get("Options_Convert_Title", alter: "خيارات وتوليفات المنتج"))
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+
+                    Text(Language.get("Options_Convert_Subtitle", alter: "اختر نوع المتغيرات التي يتوفر بها هذا المنتج للبدء (المقاسات، الأوزان، الألوان، النكهات...):"))
+                        .font(AdminType.caption1)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 if model.canManageVariants {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        editingProductId = firstVariant?.productId
-                        isPresentingColorEditor = true
-                    } label: {
-                        Label(
-                            Language.get("Variant_Convert_Action", alter: "تحديد لون هذا المنتج"),
-                            systemImage: "paintpalette.fill"
-                        )
-                        .font(AdminType.calloutBold)
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                        // 1. Size Button
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            model.convertWithPresetOption(.presetSize(values: PPAccessoryOptionDefinition.standardSizes))
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "ruler.fill")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(AdminSurface.emerald)
+                                Text(Language.get("Options_Convert_Action_Size", alter: "المقاسات"))
+                                    .font(AdminType.caption1Bold)
+                                    .foregroundStyle(AdminSurface.primaryText)
+                                Spacer()
+                            }
+                            .padding(11)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+
+                        // 2. Weight Button
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            model.convertWithPresetOption(.presetWeight(values: PPAccessoryOptionDefinition.standardWeights))
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "scalemass.fill")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(AdminSurface.amber)
+                                Text(Language.get("Options_Convert_Action_Weight", alter: "الأوزان والحجم"))
+                                    .font(AdminType.caption1Bold)
+                                    .foregroundStyle(AdminSurface.primaryText)
+                                Spacer()
+                            }
+                            .padding(11)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+
+                        // 3. Color Button
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            editingProductId = firstVariant?.productId
+                            isPresentingColorEditor = true
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "paintpalette.fill")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(AdminSurface.primary)
+                                Text(Language.get("Options_Convert_Action_Color", alter: "الألوان"))
+                                    .font(AdminType.caption1Bold)
+                                    .foregroundStyle(AdminSurface.primaryText)
+                                Spacer()
+                            }
+                            .padding(11)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+
+                        // 4. Custom Option Button
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            isPresentingCustomOptionSheet = true
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "slider.horizontal.2.square")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(AdminSurface.cyan)
+                                Text(Language.get("Options_Convert_Action_Custom", alter: "خيار مخصص..."))
+                                    .font(AdminType.caption1Bold)
+                                    .foregroundStyle(AdminSurface.primaryText)
+                                Spacer()
+                            }
+                            .padding(11)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityHint(Language.get(
-                        "Variant_Convert_Hint",
-                        alter: "يحدد لون المنتج الحالي قبل إضافة ألوان أخرى."
-                    ))
                 }
             }
         }
@@ -3091,7 +3167,9 @@ struct PPAccessoryVariantSection: View {
                     }
                 } else {
                     Label(
-                        Language.get("Variant_Save", alter: "حفظ الألوان"),
+                        model.draft?.hasGenericOptions == true
+                            ? Language.get("Options_Save_Changes", alter: "حفظ الخيارات والمتغيرات")
+                            : Language.get("Variant_Save", alter: "حفظ الألوان"),
                         systemImage: "checkmark.circle.fill"
                     )
                     .font(AdminType.calloutBold)

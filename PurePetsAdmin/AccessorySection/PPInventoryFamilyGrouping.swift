@@ -128,10 +128,10 @@ struct PPInventoryFamilyRow: View {
         return members.first { $0.accessoryID == selectedProductId } ?? defaultMember
     }
 
-    /// A quiet category cue distinguishes a logical colour family from the
+    /// A quiet brand cue distinguishes a logical colour family from the
     /// concrete stock cards revealed below it without inventing new state.
     private var familyAccent: Color {
-        CategorySpecimenAuraTheme.resolve(for: defaultMember).accentTint
+        AdminSurface.primary
     }
 
     private var activeMembers: [PetAccessory] {
@@ -313,13 +313,8 @@ struct PPInventoryFamilyRow: View {
             // needs no mirroring for Arabic.
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                 .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(familyAccent)
-                .frame(width: 48, height: 48)
-                .background(familyAccent.opacity(0.12), in: Circle())
-                .overlay {
-                    Circle()
-                        .strokeBorder(familyAccent.opacity(0.22), lineWidth: 0.75)
-                }
+                .foregroundStyle(AdminCommandInk.secondary)
+                .frame(width: 32, height: 32)
         }
     }
 
@@ -343,6 +338,8 @@ struct PPInventoryFamilyRow: View {
                 ForEach(members, id: \.accessoryID) { member in
                     let colour = member.variantColorDictionary
                         .flatMap { PPAccessoryVariantColor(dictionary: $0) }
+                    let productAccentColor: Color = colour.map { Color(uiColor: $0.uiColor) } ?? AdminSurface.primary
+                    let requiresContrast = colour?.requiresContrastBorder ?? false
                     let quantity = availability(member)
                     let isSelected = member.accessoryID == selectedProductId
 
@@ -373,7 +370,10 @@ struct PPInventoryFamilyRow: View {
                                     .frame(width: 16, height: 16)
                                 if isSelected {
                                     Circle()
-                                        .strokeBorder(familyAccent, lineWidth: 2)
+                                        .strokeBorder(
+                                            requiresContrast ? AdminSurface.primaryText : productAccentColor,
+                                            lineWidth: 2
+                                        )
                                         .frame(width: 22, height: 22)
                                 }
                             }
@@ -409,14 +409,18 @@ struct PPInventoryFamilyRow: View {
                         .padding(.horizontal, 9)
                         .frame(minHeight: 44)
                         .background(
-                            isSelected ? familyAccent.opacity(0.16) : familyAccent.opacity(0.07),
+                            isSelected
+                                ? (requiresContrast ? AdminSurface.control : productAccentColor.opacity(0.16))
+                                : (requiresContrast ? Color.white : productAccentColor.opacity(0.06)),
                             in: Capsule()
                         )
                         .overlay {
                             Capsule()
                                 .strokeBorder(
-                                    familyAccent.opacity(isSelected ? 0.58 : 0.18),
-                                    lineWidth: isSelected ? 1.25 : 0.75
+                                    isSelected
+                                        ? (requiresContrast ? AdminSurface.primaryText.opacity(0.65) : productAccentColor.opacity(0.75))
+                                        : (requiresContrast ? AdminSurface.hairline : productAccentColor.opacity(0.22)),
+                                    lineWidth: isSelected ? 1.5 : 0.75
                                 )
                         }
                     }

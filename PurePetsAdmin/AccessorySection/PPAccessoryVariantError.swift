@@ -93,6 +93,10 @@ import Foundation
         public static let livePetUnsupported = "VARIANT_LIVE_PET_UNSUPPORTED"
         public static let consumerVisibility = "VARIANT_CONSUMER_VISIBILITY_CONFLICT"
         public static let archivedWithStock = "VARIANT_ARCHIVED_WITH_STOCK"
+        public static let selectionIncomplete = "VARIANT_SELECTION_INCOMPLETE"
+        public static let duplicateCombination = "VARIANT_DUPLICATE_COMBINATION"
+        public static let optionReferenceInvalid = "VARIANT_OPTION_REFERENCE_INVALID"
+        public static let optionDefinitionsInvalid = "VARIANT_DEFINITIONS_INVALID"
     }
 
     // MARK: - Mapping
@@ -273,6 +277,30 @@ import Foundation
                 alter: "إصدار التطبيق غير متوافق مع الخادم. حدّث التطبيق."
             )
             return (fields.isEmpty ? base : "\(base) (\(fields))", .fatal)
+        case Code.selectionIncomplete:
+            return (
+                Language.get(
+                    "Variant_Error_SelectionIncomplete",
+                    alter: "يجب تحديد قيمة لكل خيار في جميع المتغيرات. انتقل إلى المصفوفة لتعيينها."
+                ),
+                .correctInput
+            )
+        case Code.duplicateCombination:
+            return (
+                Language.get(
+                    "Variant_Error_DuplicateCombinationServer",
+                    alter: "توجد توليفة خيارات مكررة بين متغيرين. لكل متغير توليفة فريدة."
+                ),
+                .correctInput
+            )
+        case Code.optionReferenceInvalid, Code.optionDefinitionsInvalid:
+            return (
+                Language.get(
+                    "Variant_Error_OptionInvalidServer",
+                    alter: "توجد بيانات غير صالحة في تعريف الخيارات أو قيمها."
+                ),
+                .correctInput
+            )
         default:
             // Unknown code: fail closed. Never assume a newer server error is
             // benign or retryable.

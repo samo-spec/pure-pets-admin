@@ -237,17 +237,11 @@ public struct PPLivePetBasicDataEditorView: View {
             }
             .sheet(isPresented: $showImagePicker) {
                 PPImagePickerSheet(maxSelection: 8) { pickedImages in
-                    let wasEmpty = localImages.isEmpty && remoteImageURLs.isEmpty
                     for img in pickedImages {
                         let local = LocalSpecimenImage(image: img)
                         localImages.append(local)
                         if primaryImageIdentifier.isEmpty {
                             primaryImageIdentifier = local.id.uuidString
-                        }
-                    }
-                    if wasEmpty, let first = pickedImages.first, nameAr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && nameEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Task {
-                            await runPuryVisionIntake(for: first)
                         }
                     }
                 }
@@ -736,19 +730,6 @@ public struct PPLivePetBasicDataEditorView: View {
                         .foregroundStyle(currentText.count > 80 ? AdminSurface.crimson : AdminSurface.secondaryText.opacity(0.7))
                 }
 
-                if puryActiveFocusTarget == .name {
-                    HStack(spacing: 6) {
-                        PuryAvatar(size: 18, isLiving: true, isThinking: true, showStatusRing: true)
-                        Text(puryVisionStatusMessage)
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12), in: Capsule())
-                    .transition(.scale.combined(with: .opacity))
-                }
-
                 ZStack {
                     // Arabic Name Field (Aligned Right)
                     HStack(spacing: 8) {
@@ -826,19 +807,6 @@ public struct PPLivePetBasicDataEditorView: View {
                     Text("\(currentText.count)/1000")
                         .font(Font.custom("Beiruti-Regular", size: 12))
                         .foregroundStyle(currentText.count > 1000 ? AdminSurface.crimson : AdminSurface.secondaryText.opacity(0.7))
-                }
-
-                if puryActiveFocusTarget == .description {
-                    HStack(spacing: 6) {
-                        PuryAvatar(size: 18, isLiving: true, isThinking: true, showStatusRing: true)
-                        Text(puryVisionStatusMessage)
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12), in: Capsule())
-                    .transition(.scale.combined(with: .opacity))
                 }
 
                 ZStack(alignment: .bottomTrailing) {
@@ -994,35 +962,15 @@ public struct PPLivePetBasicDataEditorView: View {
         Button {
             translateLivePetNameWithPury()
         } label: {
-            HStack(spacing: 5) {
-                PuryAvatar(
-                    size: 24,
-                    isLiving: true,
-                    isThinking: isTranslatingName,
-                    showStatusRing: true,
-                    showAmbientAura: isTranslatingName
-                )
-
-                if isTranslatingName {
-                    ProgressView()
-                        .scaleEffect(0.65)
-                        .tint(Color(red: 16/255, green: 185/255, blue: 129/255))
-                } else {
-                    Text(puryLivePetTranslateTitle)
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
-                }
-            }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            .background(
-                Capsule()
-                    .fill(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12))
+            PuryAvatar(
+                size: 24,
+                isLiving: true,
+                isThinking: isTranslatingName,
+                showStatusRing: true,
+                showAmbientAura: isTranslatingName
             )
-            .overlay(
-                Capsule()
-                    .strokeBorder(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.35), lineWidth: 0.75)
-            )
+            .frame(width: 32, height: 32)
+            .contentShape(Rectangle())
         }
         .buttonStyle(PuryCompactPressStyle())
         .disabled(isTranslatingName)
@@ -1338,56 +1286,15 @@ public struct PPLivePetBasicDataEditorView: View {
         Button {
             generateLivePetDescriptionWithPury()
         } label: {
-            HStack(spacing: 6) {
-                PuryAvatar(
-                    size: 22,
-                    isLiving: true,
-                    isThinking: isGeneratingDesc,
-                    showStatusRing: true,
-                    showAmbientAura: isGeneratingDesc
-                )
-
-                if isGeneratingDesc {
-                    HStack(spacing: 4) {
-                        ProgressView()
-                            .scaleEffect(0.65)
-                            .tint(Color(red: 16/255, green: 185/255, blue: 129/255))
-                        Text(Language.isRTL() ? "جارٍ الصياغة..." : "Crafting...")
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
-                    }
-                } else {
-                    HStack(spacing: 4) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
-                        Text(livePetWriterLabel)
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
-                    }
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                Capsule()
-                    .fill(Color(uiColor: .systemBackground).opacity(0.92))
+            PuryAvatar(
+                size: 24,
+                isLiving: true,
+                isThinking: isGeneratingDesc,
+                showStatusRing: true,
+                showAmbientAura: isGeneratingDesc
             )
-            .overlay(
-                Capsule()
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.45),
-                                Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.18)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
-            )
-            .shadow(color: Color.black.opacity(0.08), radius: 4, x: 0, y: 2)
+            .frame(width: 32, height: 32)
+            .contentShape(Rectangle())
         }
         .buttonStyle(PuryCompactPressStyle())
         .disabled(isGeneratingDesc)

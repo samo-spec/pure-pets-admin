@@ -13,6 +13,7 @@ import UIKit
 // MARK: - Active Sheet Enum
 
 enum PPAccessoryOptionSheetItem: Identifiable {
+    case optionPalette
     case addCustomOption
     case addCustomValue(option: PPAccessoryOptionDefinition)
     case colorLibrary(optionId: String)
@@ -20,6 +21,8 @@ enum PPAccessoryOptionSheetItem: Identifiable {
 
     var id: String {
         switch self {
+        case .optionPalette:
+            return "optionPalette"
         case .addCustomOption:
             return "addCustomOption"
         case .addCustomValue(let option):
@@ -62,6 +65,22 @@ struct PPAccessoryOptionEditorView: View {
         }
         .sheet(item: $activeSheet) { item in
             switch item {
+            case .optionPalette:
+                if let draft = model.draft {
+                    PPOptionPresetActionSheet(
+                        draft: draft,
+                        onSelectPreset: { preset in
+                            model.addOption(preset)
+                            activeSheet = nil
+                        },
+                        onSelectCustom: {
+                            activeSheet = nil
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                activeSheet = .addCustomOption
+                            }
+                        }
+                    )
+                }
             case .addCustomOption:
                 PPAccessoryCustomOptionSheet { newOption in
                     model.addOption(newOption)
@@ -162,22 +181,24 @@ struct PPAccessoryOptionEditorView: View {
             Spacer(minLength: 8)
 
             if let draft = model.draft, model.canManageVariants {
-                Menu {
-                    presetOptionButtons(draft: draft)
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    activeSheet = .optionPalette
                 } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: "plus")
+                        Image(systemName: "plus.circle.fill")
                             .font(.system(size: 13, weight: .bold))
                         Text(Language.get("Options_Add_Option", alter: "إضافة خيار"))
-                            .font(AdminType.caption1Bold)
+                            .font(PPBrandFont.bold(size: 12.5))
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
                     .background(AdminSurface.primary.opacity(0.12), in: Capsule())
                     .overlay(
-                        Capsule().strokeBorder(AdminSurface.primary.opacity(0.25), lineWidth: 1)
+                        Capsule().strokeBorder(AdminSurface.primary.opacity(0.28), lineWidth: 1)
                     )
                 }
+                .buttonStyle(.plain)
                 .foregroundStyle(AdminSurface.primary)
                 .disabled(draft.optionDefinitions.count >= PPAccessoryVariantContract.maxOptionsPerFamily)
                 .accessibilityLabel(Language.get("Options_Add_Option", alter: "إضافة خيار"))
@@ -285,37 +306,25 @@ struct PPAccessoryOptionEditorView: View {
             }
 
             if model.canManageVariants {
-                HStack(spacing: 8) {
-                    Button {
-                        model.addOption(.presetColor())
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "paintpalette.fill")
-                            Text(Language.get("Options_Preset_Color", alter: "اللون"))
-                        }
-                        .font(AdminType.caption1Bold)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .background(AdminSurface.container, in: Capsule())
-                        .foregroundStyle(AdminSurface.primaryText)
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    activeSheet = .optionPalette
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 14, weight: .bold))
+                        Text(Language.get("Options_Add_Option", alter: "إضافة خيار"))
+                            .font(PPBrandFont.bold(size: 13))
                     }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        model.addOption(.presetSize())
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "ruler.fill")
-                            Text(Language.get("Options_Preset_Size", alter: "المقاس"))
-                        }
-                        .font(AdminType.caption1Bold)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .background(AdminSurface.container, in: Capsule())
-                        .foregroundStyle(AdminSurface.primaryText)
-                    }
-                    .buttonStyle(.plain)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                    .overlay(
+                        Capsule().strokeBorder(AdminSurface.primary.opacity(0.28), lineWidth: 1)
+                    )
                 }
+                .buttonStyle(.plain)
+                .foregroundStyle(AdminSurface.primary)
                 .padding(.top, 4)
             }
         }
@@ -787,6 +796,386 @@ struct PPOptionColorPreset: Identifiable {
         PPOptionColorPreset(id: "sand", hex: "#D4B996", nameAr: "رملي بيج", nameEn: "Desert Sand"),
         PPOptionColorPreset(id: "sky", hex: "#38BDF8", nameAr: "سماوي ناعم", nameEn: "Sky Blue"),
     ]
+}
+
+// MARK: - Studio Option Preset Action Sheet (Atelier Option Palette Drawer)
+
+struct PPOptionPresetActionSheet: View {
+    let draft: PPAccessoryVariantFamily
+    let onSelectPreset: (PPAccessoryOptionDefinition) -> Void
+    let onSelectCustom: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    struct OptionPresetItem: Identifiable {
+        let id: String
+        let key: String
+        let icon: String
+        let nameAr: String
+        let nameEn: String
+        let hintAr: String
+        let hintEn: String
+        let gradientColors: [Color]
+        let strokeColor: Color
+        let createDefinition: () -> PPAccessoryOptionDefinition
+    }
+
+    private var presets: [OptionPresetItem] {
+        [
+            OptionPresetItem(
+                id: "size",
+                key: "size",
+                icon: "ruler.fill",
+                nameAr: "المقاس",
+                nameEn: "Size",
+                hintAr: "مثل: S، M، L، XL",
+                hintEn: "e.g. S, M, L, XL",
+                gradientColors: [Color.indigo.opacity(0.22), Color.indigo.opacity(0.08)],
+                strokeColor: Color.indigo.opacity(0.30),
+                createDefinition: { PPAccessoryOptionDefinition.presetSize() }
+            ),
+            OptionPresetItem(
+                id: "weight",
+                key: "weight",
+                icon: "scalemass.fill",
+                nameAr: "الوزن",
+                nameEn: "Weight",
+                hintAr: "مثل: 2 كجم، 5 كجم",
+                hintEn: "e.g. 2kg, 5kg",
+                gradientColors: [Color.orange.opacity(0.22), Color.orange.opacity(0.08)],
+                strokeColor: Color.orange.opacity(0.30),
+                createDefinition: { PPAccessoryOptionDefinition.presetWeight() }
+            ),
+            OptionPresetItem(
+                id: "material",
+                key: "material",
+                icon: "cube.box.fill",
+                nameAr: "المادة",
+                nameEn: "Material",
+                hintAr: "مثل: جلد، قماش، معدن",
+                hintEn: "e.g. Leather, Nylon, Steel",
+                gradientColors: [Color.blue.opacity(0.22), Color.blue.opacity(0.08)],
+                strokeColor: Color.blue.opacity(0.30),
+                createDefinition: { PPAccessoryOptionDefinition.presetMaterial() }
+            ),
+            OptionPresetItem(
+                id: "flavor",
+                key: "flavor",
+                icon: "fork.knife",
+                nameAr: "النكهة",
+                nameEn: "Flavor",
+                hintAr: "مثل: دجاج، سلمون، لحم",
+                hintEn: "e.g. Chicken, Salmon, Beef",
+                gradientColors: [Color.green.opacity(0.22), Color.green.opacity(0.08)],
+                strokeColor: Color.green.opacity(0.30),
+                createDefinition: { PPAccessoryOptionDefinition.presetFlavor() }
+            ),
+            OptionPresetItem(
+                id: "color",
+                key: "color",
+                icon: "paintpalette.fill",
+                nameAr: "اللون",
+                nameEn: "Color",
+                hintAr: "مثل: أحمر، أزرق، أسود",
+                hintEn: "e.g. Red, Blue, Black",
+                gradientColors: [Color.purple.opacity(0.22), Color.purple.opacity(0.08)],
+                strokeColor: Color.purple.opacity(0.30),
+                createDefinition: { PPAccessoryOptionDefinition.presetColor() }
+            )
+        ]
+    }
+
+    private var remainingCapacity: Int {
+        max(0, PPAccessoryVariantContract.maxOptionsPerFamily - draft.optionDefinitions.count)
+    }
+
+    private var isAtCapacity: Bool {
+        remainingCapacity <= 0
+    }
+
+    private func isAlreadyAdded(preset: OptionPresetItem) -> Bool {
+        draft.optionDefinitions.contains { $0.key == preset.key || $0.id == preset.key }
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // Header Deck
+                headerView
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
+                    .padding(.bottom, 14)
+
+                Divider()
+                    .overlay(AdminSurface.hairline)
+
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 16) {
+                        // Presets Section Title & Status
+                        HStack {
+                            Text(Language.isRTL() ? "الخيارات الجاهزة" : "PRESET OPTIONS")
+                                .font(PPBrandFont.bold(size: 11.5))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                                .textCase(.uppercase)
+
+                            Spacer()
+
+                            if isAtCapacity {
+                                Text(Language.get("Options_Max_Reached", alter: "تم الوصول للحد الأقصى (3)"))
+                                    .font(PPBrandFont.medium(size: 11))
+                                    .foregroundStyle(AdminSurface.amber)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 14)
+
+                        // 2-Column Preset Grid
+                        LazyVGrid(
+                            columns: [
+                                GridItem(.flexible(), spacing: 12),
+                                GridItem(.flexible(), spacing: 12)
+                            ],
+                            spacing: 12
+                        ) {
+                            ForEach(presets) { preset in
+                                presetCard(preset: preset)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+
+                        // Custom Option Launchpad
+                        customOptionLaunchpad
+                            .padding(.horizontal, 16)
+                            .padding(.top, 4)
+                            .padding(.bottom, 20)
+                    }
+                }
+            }
+            .background(AdminSurface.background)
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+            .presentationDetents([.height(490), .medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    // MARK: - Header View
+
+    private var headerView: some View {
+        HStack(alignment: .center, spacing: 12) {
+            // Chromatic Studio Jewel Badge
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                AdminSurface.primary.opacity(0.18),
+                                AdminSurface.primary.opacity(0.06)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 42, height: 42)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(AdminSurface.primary.opacity(0.25), lineWidth: 0.75)
+                    )
+
+                Image(systemName: "slider.horizontal.2.square.on.square")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primary)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(Language.get("Options_Add_Modal_Title", alter: "إضافة خيار للمنتج"))
+                    .font(PPBrandFont.bold(size: 17))
+                    .foregroundStyle(AdminSurface.primaryText)
+
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(isAtCapacity ? AdminSurface.amber : AdminSurface.emerald)
+                        .frame(width: 6, height: 6)
+
+                    Text(String(
+                        format: Language.get("Options_Remaining_Capacity", alter: "متبقي %d من %d خيارات"),
+                        remainingCapacity,
+                        PPAccessoryVariantContract.maxOptionsPerFamily
+                    ))
+                    .font(PPBrandFont.medium(size: 11.5))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            // Close Button
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .frame(width: 30, height: 30)
+                    .background(AdminSurface.control, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Language.get("Common_Close", alter: "إغلاق"))
+        }
+    }
+
+    // MARK: - Preset Card
+
+    private func presetCard(preset: OptionPresetItem) -> some View {
+        let added = isAlreadyAdded(preset: preset)
+        let disabled = added || isAtCapacity
+        let name = Language.isRTL() ? preset.nameAr : preset.nameEn
+        let hint = Language.isRTL() ? preset.hintAr : preset.hintEn
+
+        return Button {
+            guard !disabled else { return }
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onSelectPreset(preset.createDefinition())
+            dismiss()
+        } label: {
+            HStack(spacing: 10) {
+                // Preset Jewel Icon
+                ZStack {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(LinearGradient(
+                            colors: preset.gradientColors,
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ))
+                        .frame(width: 38, height: 38)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                .strokeBorder(preset.strokeColor, lineWidth: 0.75)
+                        )
+
+                    Image(systemName: preset.icon)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(preset.gradientColors.first ?? AdminSurface.primary)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Text(name)
+                            .font(PPBrandFont.bold(size: 14))
+                            .foregroundStyle(disabled ? AdminSurface.secondaryText : AdminSurface.primaryText)
+                            .lineLimit(1)
+
+                        if added {
+                            Text(Language.get("Options_Already_Added", alter: "مضاف"))
+                                .font(PPBrandFont.bold(size: 9))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1.5)
+                                .background(AdminSurface.container, in: Capsule())
+                        }
+                    }
+
+                    Text(hint)
+                        .font(PPBrandFont.regular(size: 10.5))
+                        .foregroundStyle(AdminSurface.secondaryText.opacity(0.85))
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(
+                        added ? AdminSurface.hairline.opacity(0.5) : AdminSurface.hairline,
+                        lineWidth: 0.75
+                    )
+            )
+            .opacity(disabled ? 0.60 : 1.0)
+        }
+        .buttonStyle(PPOptionCardPressStyle())
+        .disabled(disabled)
+        .accessibilityLabel("\(name), \(hint)\(added ? ", " + Language.get("Options_Already_Added", alter: "مضاف") : "")")
+    }
+
+    // MARK: - Custom Option Launchpad
+
+    private var customOptionLaunchpad: some View {
+        Button {
+            guard !isAtCapacity else { return }
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            dismiss()
+            onSelectCustom()
+        } label: {
+            HStack(spacing: 12) {
+                // Primary Chromatic Jewel
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    AdminSurface.primary.opacity(0.18),
+                                    AdminSurface.primary.opacity(0.08)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 42, height: 42)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(AdminSurface.primary.opacity(0.30), lineWidth: 0.75)
+                        )
+
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(Language.get("Options_Preset_Custom", alter: "خيار مخصص..."))
+                        .font(PPBrandFont.bold(size: 15))
+                        .foregroundStyle(isAtCapacity ? AdminSurface.secondaryText : AdminSurface.primaryText)
+
+                    Text(Language.get("Options_Preset_Custom_Desc", alter: "عرّف خياراً خاصاً كالحجم، الطول، الرائحة، أو التعبئة"))
+                        .font(PPBrandFont.regular(size: 11.5))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: Language.isRTL() ? "chevron.backward" : "chevron.forward")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .frame(width: 28, height: 28)
+                    .background(AdminSurface.control, in: Circle())
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(AdminSurface.primary.opacity(0.20), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 2)
+            .opacity(isAtCapacity ? 0.6 : 1.0)
+        }
+        .buttonStyle(PPOptionCardPressStyle())
+        .disabled(isAtCapacity)
+        .accessibilityLabel(Language.get("Options_Preset_Custom", alter: "خيار مخصص..."))
+    }
+}
+
+fileprivate struct PPOptionCardPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+    }
 }
 
 // MARK: - Studio Custom Option Sheet

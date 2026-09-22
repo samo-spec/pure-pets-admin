@@ -3979,9 +3979,9 @@ struct CategorySpecimenAuraTheme {
         // General Accessories Archetype
         let catDisplay = item.accessoryCategoryName ?? item.category ?? (item.petMainCategoryID > 0 ? (MainKindsModel.kindName(forID: item.petMainCategoryID) ?? "") : "")
         return CategorySpecimenAuraTheme(
-            gradient: [Color(red: 96/255, green: 165/255, blue: 250/255), Color(red: 37/255, green: 99/255, blue: 235/255)],
+            gradient: [AdminSurface.primary.opacity(0.8), AdminSurface.primary],
             glyphName: "sparkles",
-            accentTint: Color(red: 37/255, green: 99/255, blue: 235/255),
+            accentTint: AdminSurface.primary,
             categoryName: catDisplay.isEmpty ? Language.get("Accessory", alter: "إكسسوار") : catDisplay
         )
     }
@@ -4028,7 +4028,7 @@ private struct PPInventoryVariantChildInspector: View {
     }
 
     private var accent: Color {
-        CategorySpecimenAuraTheme.resolve(for: item).accentTint
+        colour.map { Color(uiColor: $0.uiColor) } ?? AdminSurface.primary
     }
 
     private var variantTitle: String {

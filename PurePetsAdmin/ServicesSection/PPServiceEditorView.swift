@@ -963,56 +963,15 @@ public struct PPServiceCorePropositionCard: View {
         Button {
             generateServiceDescriptionWithPury()
         } label: {
-            HStack(spacing: 6) {
-                PuryAvatar(
-                    size: 22,
-                    isLiving: true,
-                    isThinking: isGeneratingDesc,
-                    showStatusRing: true,
-                    showAmbientAura: isGeneratingDesc
-                )
-
-                if isGeneratingDesc {
-                    HStack(spacing: 4) {
-                        ProgressView()
-                            .scaleEffect(0.65)
-                            .tint(Color(red: 16/255, green: 185/255, blue: 129/255))
-                        Text(Language.isRTL() ? "جارٍ الصياغة..." : "Crafting...")
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
-                    }
-                } else {
-                    HStack(spacing: 4) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
-                        Text(viewModel.serviceDescription.isEmpty ? (Language.isRTL() ? "صياغة بيوري" : "Write with Pury") : (Language.isRTL() ? "تحسين مع بيوري" : "Enhance with Pury"))
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
-                    }
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                Capsule()
-                    .fill(Color(uiColor: .systemBackground).opacity(0.92))
+            PuryAvatar(
+                size: 24,
+                isLiving: true,
+                isThinking: isGeneratingDesc,
+                showStatusRing: true,
+                showAmbientAura: isGeneratingDesc
             )
-            .overlay(
-                Capsule()
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.45),
-                                Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.18)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
-            )
-            .shadow(color: Color.black.opacity(0.08), radius: 4, x: 0, y: 2)
+            .frame(width: 32, height: 32)
+            .contentShape(Rectangle())
         }
         .buttonStyle(PuryCompactPressStyle())
         .disabled(isGeneratingDesc)

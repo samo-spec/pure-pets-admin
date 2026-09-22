@@ -2516,11 +2516,6 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             pickedImageUploadIDs.append(UUID())
             pickedImages.append(image)
         }
-        if let first = images.first, name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && nameEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            Task { @MainActor [weak self] in
-                await self?.runPuryVisionIntake(for: first)
-            }
-        }
     }
 
     // MARK: - Pury Intelligent Sequential Vision Intake
@@ -4881,35 +4876,15 @@ struct PPBilingualInputField: View {
         Button {
             translateNameWithPury()
         } label: {
-            HStack(spacing: 5) {
-                PuryAvatar(
-                    size: 24,
-                    isLiving: true,
-                    isThinking: isTranslating,
-                    showStatusRing: true,
-                    showAmbientAura: isTranslating
-                )
-
-                if isTranslating {
-                    ProgressView()
-                        .scaleEffect(0.65)
-                        .tint(Color(red: 16/255, green: 185/255, blue: 129/255))
-                } else {
-                    Text(puryButtonTitle)
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
-                }
-            }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            .background(
-                Capsule()
-                    .fill(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12))
+            PuryAvatar(
+                size: 24,
+                isLiving: true,
+                isThinking: isTranslating,
+                showStatusRing: true,
+                showAmbientAura: isTranslating
             )
-            .overlay(
-                Capsule()
-                    .strokeBorder(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.35), lineWidth: 0.75)
-            )
+            .frame(width: 32, height: 32)
+            .contentShape(Rectangle())
         }
         .buttonStyle(PuryCompactPressStyle())
         .disabled(isTranslating)
@@ -5323,56 +5298,15 @@ struct PPBilingualTextEditorField: View {
         Button {
             generateDescriptionWithPury()
         } label: {
-            HStack(spacing: 6) {
-                PuryAvatar(
-                    size: 22,
-                    isLiving: true,
-                    isThinking: isGenerating,
-                    showStatusRing: true,
-                    showAmbientAura: isGenerating
-                )
-
-                if isGenerating {
-                    HStack(spacing: 4) {
-                        ProgressView()
-                            .scaleEffect(0.65)
-                            .tint(Color(red: 16/255, green: 185/255, blue: 129/255))
-                        Text(Language.isRTL() ? "جارٍ الصياغة..." : "Crafting...")
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
-                    }
-                } else {
-                    HStack(spacing: 4) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
-                        Text(writerButtonLabel)
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
-                    }
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                Capsule()
-                    .fill(Color(uiColor: .systemBackground).opacity(0.92))
+            PuryAvatar(
+                size: 24,
+                isLiving: true,
+                isThinking: isGenerating,
+                showStatusRing: true,
+                showAmbientAura: isGenerating
             )
-            .overlay(
-                Capsule()
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.45),
-                                Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.18)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
-            )
-            .shadow(color: Color.black.opacity(0.08), radius: 4, x: 0, y: 2)
+            .frame(width: 32, height: 32)
+            .contentShape(Rectangle())
         }
         .buttonStyle(PuryCompactPressStyle())
         .disabled(isGenerating)
@@ -10681,19 +10615,6 @@ private struct PPLivePetIntakeJourney: View {
 
                 Divider().background(AdminSurface.hairline)
 
-                if viewModel.puryActiveFocusTarget == .name {
-                    HStack(spacing: 6) {
-                        PuryAvatar(size: 18, isLiving: true, isThinking: true, showStatusRing: true)
-                        Text(viewModel.puryVisionStatusMessage)
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12), in: Capsule())
-                    .transition(.scale.combined(with: .opacity))
-                }
-
                 PPBilingualInputField(
                     title: tr("LivePetIntake_NameLabel", "اسم الحيوان أو الصنف"),
                     isRequired: true,
@@ -10724,19 +10645,6 @@ private struct PPLivePetIntakeJourney: View {
                 .id(FocusedField.name)
 
                 taxonomyControls
-
-                if viewModel.puryActiveFocusTarget == .description {
-                    HStack(spacing: 6) {
-                        PuryAvatar(size: 18, isLiving: true, isThinking: true, showStatusRing: true)
-                        Text(viewModel.puryVisionStatusMessage)
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12), in: Capsule())
-                    .transition(.scale.combined(with: .opacity))
-                }
 
                 PPBilingualTextEditorField(
                     title: tr("LivePetIntake_DescriptionLabel", "وصف مختصر"),
@@ -18078,19 +17986,6 @@ private struct PPAccessoryFoodIntakeJourney: View {
 
                 Divider().background(AdminSurface.hairline)
 
-                if viewModel.puryActiveFocusTarget == .name {
-                    HStack(spacing: 6) {
-                        PuryAvatar(size: 18, isLiving: true, isThinking: true, showStatusRing: true)
-                        Text(viewModel.puryVisionStatusMessage)
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12), in: Capsule())
-                    .transition(.scale.combined(with: .opacity))
-                }
-
                 PPBilingualInputField(
                     title: tr("CatalogIntake_NameLabel", "اسم الصنف"),
                     isRequired: true,
@@ -18119,19 +18014,6 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     }
                 )
                 .id(FocusedField.name)
-
-                if viewModel.puryActiveFocusTarget == .description {
-                    HStack(spacing: 6) {
-                        PuryAvatar(size: 18, isLiving: true, isThinking: true, showStatusRing: true)
-                        Text(viewModel.puryVisionStatusMessage)
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12), in: Capsule())
-                    .transition(.scale.combined(with: .opacity))
-                }
 
                 PPBilingualTextEditorField(
                     title: tr("CatalogIntake_DescriptionLabel", "الوصف"),

@@ -158,6 +158,13 @@ import UIKit
         normalizedHex(value).range(of: "^#[0-9A-F]{6}$", options: .regularExpression) != nil
     }
 
+    @objc public static let standardNeutral = PPAccessoryVariantColor(
+        identifier: "standard",
+        nameAr: "افتراضي",
+        nameEn: "Standard",
+        hex: "#8E8E93"
+    )
+
     /// Server-side validation is authoritative. This mirrors it so the operator
     /// sees the problem before a round trip, never to replace it.
     @objc public var validationMessage: String? {
@@ -1181,9 +1188,12 @@ import UIKit
             messages.append(Language.get("Variant_Error_AllArchived", alter: "يجب أن يبقى لون واحد نشطًا."))
         }
 
-        for variant in variants {
-            if let message = variant.color.validationMessage {
-                messages.append("\(variant.color.accessibilityName.isEmpty ? variant.productId : variant.color.accessibilityName): \(message)")
+        let hasColorOption = optionDefinitions.contains { $0.isColorOption }
+        if !hasGenericOptions || hasColorOption {
+            for variant in variants {
+                if let message = variant.color.validationMessage {
+                    messages.append("\(variant.color.accessibilityName.isEmpty ? variant.productId : variant.color.accessibilityName): \(message)")
+                }
             }
         }
 
@@ -1216,8 +1226,11 @@ import UIKit
         var seenSkus: [String: String] = [:]
         var seenBarcodes: [String: String] = [:]
 
+        let hasColorOption = optionDefinitions.contains { $0.isColorOption }
+        let isSingleAxisColor = !hasGenericOptions || (optionDefinitions.count == 1 && hasColorOption)
+
         for variant in variants {
-            if !variant.color.identifier.isEmpty {
+            if isSingleAxisColor && !variant.color.identifier.isEmpty {
                 if seenColors.contains(variant.color.identifier) {
                     let template = Language.get("Variant_Error_DuplicateColor", alter: "اللون %@ مستخدم أكثر من مرة.")
                     messages.append(String(format: template, variant.color.accessibilityName))
@@ -1241,6 +1254,21 @@ import UIKit
                     messages.append(String(format: template, owner, variant.color.accessibilityName))
                 }
                 seenBarcodes[barcode] = variant.color.accessibilityName
+            }
+        }
+
+        if hasGenericOptions {
+            var seenCombinations: Set<String> = []
+            for variant in variants {
+                let key = variant.combinationKey.isEmpty
+                    ? PPAccessoryVariantFamily.combinationKey(from: variant.selectedOptions)
+                    : variant.combinationKey
+                if !key.isEmpty {
+                    if seenCombinations.contains(key) {
+                        messages.append(Language.get("Options_Error_Duplicate_Combination", alter: "توجد توليفة خيارات مكررة بين متغيرين. لكل متغير توليفة فريدة."))
+                    }
+                    seenCombinations.insert(key)
+                }
             }
         }
 
@@ -1284,7 +1312,62 @@ import UIKit
             }
         }
 
+        if hasGenericOptions {
+            let activeDefs = optionDefinitions.filter { !$0.values.isEmpty }
+            for variant in variants {
+                for def in activeDefs {
+                    let valId = variant.selectedOptions[def.id] ?? variant.selectedOptions[def.key]
+                    if valId == nil || valId!.isEmpty {
+                        let template = Language.get("Options_Error_Incomplete_Variant", alter: "المتغير %@ ينقصه تحديد قيمة للخيار %@. انتقل إلى المصفوفة لتعيينها.")
+                        messages.append(String(format: template, variant.accessibilityLabel(isSelected: false), def.localizedName))
+                    }
+                }
+            }
+        }
+
         return messages
+    }
+
+    /// Intelligently ensures that every variant in the family has a valid selected option value
+    /// for every active option definition. When a new option axis is introduced (e.g. Size or Weight),
+    /// this automatically binds existing variants to the first value of that option, preserving
+    /// complete data integrity and preventing server rejection.
+    @objc public func autoBindMissingOptionSelections() {
+        guard !optionDefinitions.isEmpty, !variants.isEmpty else { return }
+
+        let colorDef = optionDefinitions.first { $0.isColorOption }
+
+        for variant in variants {
+            var selected = variant.selectedOptions
+
+            if let colorDef, (selected[colorDef.id] == nil || selected[colorDef.id]?.isEmpty == true) {
+                let colId = variant.color.identifier
+                if !colId.isEmpty && colorDef.values.contains(where: { $0.id == colId }) {
+                    selected[colorDef.id] = colId
+                } else if let firstVal = colorDef.values.first {
+                    selected[colorDef.id] = firstVal.id
+                }
+            }
+
+            for def in optionDefinitions where !def.values.isEmpty {
+                let currentVal = selected[def.id] ?? selected[def.key]
+                if currentVal == nil || currentVal!.isEmpty || !def.values.contains(where: { $0.id == currentVal }) {
+                    if let firstVal = def.values.first {
+                        selected[def.id] = firstVal.id
+                    }
+                }
+            }
+
+            let validIds = Set(optionDefinitions.map(\.id)).union(Set(optionDefinitions.map(\.key)))
+            for key in Array(selected.keys) {
+                if !validIds.contains(key) {
+                    selected.removeValue(forKey: key)
+                }
+            }
+
+            variant.selectedOptions = selected
+            variant.combinationKey = PPAccessoryVariantFamily.combinationKey(from: selected)
+        }
     }
 
     @objc public var isValid: Bool { validationMessages().isEmpty }
