@@ -215,7 +215,10 @@ extension PetAccessory {
                     return 0
                 }
             } else {
-                if !itemBranch.isEmpty && itemBranch != "main_store" && itemBranch != branchId {
+                if branchId != "main_store" && branchId != "all_branches" {
+                    if itemBranch == branchId {
+                        return max(0, quantity)
+                    }
                     return 0
                 }
             }

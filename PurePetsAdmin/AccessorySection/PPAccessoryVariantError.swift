@@ -96,8 +96,12 @@ import Foundation
         public static let archivedWithStock = "VARIANT_ARCHIVED_WITH_STOCK"
         public static let selectionIncomplete = "VARIANT_SELECTION_INCOMPLETE"
         public static let duplicateCombination = "VARIANT_DUPLICATE_COMBINATION"
+        public static let identityImmutable = "VARIANT_IDENTITY_IMMUTABLE"
         public static let optionReferenceInvalid = "VARIANT_OPTION_REFERENCE_INVALID"
         public static let optionDefinitionsInvalid = "VARIANT_DEFINITIONS_INVALID"
+        public static let optionsInvalid = "VARIANT_OPTIONS_INVALID"
+        public static let duplicateOption = "VARIANT_DUPLICATE_OPTION"
+        public static let duplicateValue = "VARIANT_DUPLICATE_VALUE"
         public static let optionsNotEnabled = "VARIANT_OPTIONS_NOT_ENABLED"
         public static let publicationNotReady = "VARIANT_PUBLICATION_NOT_READY"
         public static let clientUpgradeRequired = "VARIANT_CLIENT_UPGRADE_REQUIRED"
@@ -292,6 +296,11 @@ import Foundation
                 ),
                 .correctInput
             )
+        case Code.identityImmutable:
+            return (
+                Language.get("Options_Error_IdentityImmutable", alter: "لا يمكن تغيير قيمة خيار محفوظ لصنف موجود. أنشئ متغيرًا جديدًا للتوليفة الجديدة للحفاظ على المخزون والسجل."),
+                .correctInput
+            )
         case Code.duplicateCombination:
             return (
                 Language.get(
@@ -300,7 +309,7 @@ import Foundation
                 ),
                 .correctInput
             )
-        case Code.optionReferenceInvalid, Code.optionDefinitionsInvalid:
+        case Code.optionReferenceInvalid, Code.optionDefinitionsInvalid, Code.optionsInvalid, Code.duplicateOption, Code.duplicateValue:
             return (
                 Language.get(
                     "Variant_Error_OptionInvalidServer",

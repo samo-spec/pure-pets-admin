@@ -5796,6 +5796,12 @@
 "BranchContext_Global_Title" = "وصول شامل لكافة الفروع";
 "BranchContext_Global_Subtitle" = "عرض جميع العمليات والمخزون دون حصر بفرع محدد";
 "BranchContext_No_Results" = "لا توجد فروع مطابقة للبحث";
+"BranchContext_Close" = "إغلاق اختيار الفرع";
+"BranchContext_Search_Clear" = "مسح البحث";
+"BranchContext_Refresh" = "تحديث الفروع";
+"BranchContext_Selected_Field" = "الفرع المختار";
+"BranchContext_Select_Hint" = "اضغط لاختيار هذا الفرع";
+"BranchContext_Selection_Failed" = "تعذر اختيار الفرع. حدّث القائمة وحاول مجدداً.";
 
 /* Enterprise Staff Roles */
 "StaffRole_SuperAdmin" = "مدير عام";
@@ -7668,6 +7674,8 @@
 "AdminPOS_Status_AuditMode" = "وضع التدقيق";
 "AdminPOS_Status_Syncing" = "مزامنة...";
 "AdminPOS_RefreshTelemetry" = "تحديث بيانات نقطة البيع";
+"AdminPOS_ExpandTelemetry" = "توسيع تفاصيل المبيعات";
+"AdminPOS_CollapseTelemetry" = "طي تفاصيل المبيعات";
 "AdminPOS_TodaySales_Title" = "إجمالي مبيعات اليوم";
 "AdminPOS_Metric_Receipts" = "الفواتير";
 "AdminPOS_Metric_AOV" = "متوسط الفاتورة";
@@ -10156,7 +10164,7 @@
 "Options_Convert_Action_Flavor" = "النكهات";
 "Options_Convert_Action_Material" = "المواد";
 "Options_Convert_Action_Custom" = "خيار مخصص...";
-"Options_Error_Incomplete_Variant" = "المتغير %@ ينقصه تحديد قيمة للخيار %@. انتقل إلى المصفوفة لتعيينها.";
+"Options_Error_Incomplete_Variant" = "المتغير %@: اختر قيمة للخيار %@.";
 "Options_Error_Duplicate_Combination" = "توجد توليفة خيارات مكررة بين متغيرين. لكل متغير توليفة فريدة.";
 "Variant_Error_OptionsNotEnabledServer" = "خيارات المنتجات غير مفعّلة في إعدادات النظام حالياً.";
 "Variant_Error_PublicationNotReadyServer" = "يجب تفعيل عرض الخيارات للعملاء في النظام قبل نشر هذا الصنف.";
@@ -10210,3 +10218,22 @@
 "Variant_Bulk_Shift_Title" = "التغير في متوسط السعر";
 "Variant_Bulk_Cost_Tip" = "أدخل سعر الجملة لعرض هامش الربح والتحليلات المالية فورياً.";
 "Price_Unset" = "غير محدد";
+"Variant_Studio_Options_Title" = "خيارات ومواصفات هذا المتغير";
+"Variant_Studio_Options_Subtitle" = "حدد قيمة كل خيار لربط هذا المتغير بالمواصفات المحددة بدقة داخل النظام.";
+"Options_Error_IdentityImmutable" = "لا يمكن تغيير قيمة خيار محفوظ لصنف موجود. أنشئ متغيرًا جديدًا للتوليفة الجديدة للحفاظ على المخزون والسجل.";
+"Options_Error_LastOption" = "احتفظ بخيار واحد على الأقل لهذه المجموعة.";
+"Options_Error_RemoveCollapsesVariants" = "هذا الخيار يميّز بين أصناف موجودة. حذفه سيجعل توليفاتها متطابقة؛ احتفظ به لحماية مخزون كل صنف.";
+"Options_Error_ValueInUse" = "هذه القيمة مرتبطة بصنف موجود. احتفظ بها، ويمكنك أرشفة الصنف من المصفوفة عند عدم الحاجة إليه.";
+"Options_Value_InUse_Title" = "القيمة مستخدمة";
+"Options_Assign_Existing" = "حدد قيمة الخيار لكل صنف موجود";
+"Options_Assign_Choose" = "اختر قيمة";
+"Options_Save_AwaitingReadback" = "استلم الخادم الحفظ، وتعذر تأكيد البيانات المحدثة. أعد المحاولة للتحقق من نفس العملية.";
+"Options_Error_Incomplete" = "اختر قيمة لكل خيار قبل إنشاء المتغير.";
+"Options_Create_Pending" = "هناك إنشاء متغير بانتظار التأكيد. أعد محاولة المتغير السابق بنفس بياناته قبل إنشاء متغير آخر.";
+"Options_Cannot_Delete_Title" = "تعذر حذف الخيار";
+"Options_GoToMatrix_Resolve" = "انتقل إلى تبويب المتغيرات لحل التعارض ←";
+"Variant_Delete_From_Family" = "حذف المتغير من المجموعة";
+"Variant_Delete_Confirm_Title" = "حذف المتغير من المجموعة";
+"Variant_Delete_Confirm_Message" = "هل أنت متأكد من إزالة هذا المتغير من مجموعة المنتج؟ لن يتم حذف المنتج نفسه من النظام بل سيفك ارتباطه بالمجموعة.";
+"Variant_Delete_Confirmed" = "تم حذف المتغير من المجموعة بنجاح.";
+"Variant_Error_CannotDeleteOnlyVariant" = "لا يمكن حذف المتغير الوحيد في المنتج.";

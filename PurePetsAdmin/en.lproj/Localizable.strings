@@ -5737,6 +5737,12 @@
 "BranchContext_Global_Title" = "Global Multi-Branch Access";
 "BranchContext_Global_Subtitle" = "View all platform operations without branch boundaries";
 "BranchContext_No_Results" = "No branches match your search";
+"BranchContext_Close" = "Close branch picker";
+"BranchContext_Search_Clear" = "Clear search";
+"BranchContext_Refresh" = "Refresh branches";
+"BranchContext_Selected_Field" = "Selected branch";
+"BranchContext_Select_Hint" = "Double-tap to choose this branch";
+"BranchContext_Selection_Failed" = "Could not select this branch. Refresh the list and try again.";
 
 /* Enterprise Staff Roles */
 "StaffRole_SuperAdmin" = "Super Admin";
@@ -7609,6 +7615,8 @@
 "AdminPOS_Status_AuditMode" = "Audit Mode Only";
 "AdminPOS_Status_Syncing" = "Syncing...";
 "AdminPOS_RefreshTelemetry" = "Refresh POS telemetry";
+"AdminPOS_ExpandTelemetry" = "Expand sales telemetry";
+"AdminPOS_CollapseTelemetry" = "Collapse sales telemetry";
 "AdminPOS_TodaySales_Title" = "Today's Gross Sales";
 "AdminPOS_Metric_Receipts" = "Receipts";
 "AdminPOS_Metric_AOV" = "Avg Receipt";
@@ -10088,7 +10096,7 @@
 "Options_Convert_Action_Flavor" = "Flavors";
 "Options_Convert_Action_Material" = "Materials";
 "Options_Convert_Action_Custom" = "Custom Option...";
-"Options_Error_Incomplete_Variant" = "Variant %@ is missing a selection for %@. Configure it in the Matrix tab.";
+"Options_Error_Incomplete_Variant" = "Variant %@: choose a value for %@.";
 "Options_Error_Duplicate_Combination" = "Duplicate option combination found between variants.";
 "Variant_Error_OptionsNotEnabledServer" = "Product options are not enabled in system settings.";
 "Variant_Error_PublicationNotReadyServer" = "Customer option selection must be enabled before publishing this product.";
@@ -10142,3 +10150,22 @@
 "Variant_Bulk_Shift_Title" = "Average Price Shift";
 "Variant_Bulk_Cost_Tip" = "Enter wholesale cost to unlock real-time margin & profit analytics.";
 "Price_Unset" = "Not set";
+"Variant_Studio_Options_Title" = "Variant Options & Attributes";
+"Variant_Studio_Options_Subtitle" = "Select the exact value for each option dimension to bind this variant within the catalog.";
+"Options_Error_IdentityImmutable" = "An existing item's saved option value cannot be changed. Create a new variant for the new combination to preserve stock and history.";
+"Options_Error_LastOption" = "Keep at least one option for this family.";
+"Options_Error_RemoveCollapsesVariants" = "This option distinguishes existing items. Removing it would give them identical combinations; keep it to protect each item's stock.";
+"Options_Error_ValueInUse" = "This value belongs to an existing item. Keep it, and archive the item in the matrix when it is no longer needed.";
+"Options_Value_InUse_Title" = "Value in use";
+"Options_Assign_Existing" = "Choose this option's value for each existing item";
+"Options_Assign_Choose" = "Choose a value";
+"Options_Save_AwaitingReadback" = "The server accepted the save, but the updated data could not be confirmed. Retry to verify the same operation.";
+"Options_Error_Incomplete" = "Choose a value for every option before creating the variant.";
+"Options_Create_Pending" = "A variant creation is awaiting confirmation. Retry the previous variant with the same details before creating another.";
+"Options_Cannot_Delete_Title" = "Cannot Delete Option";
+"Options_GoToMatrix_Resolve" = "Go to Variants Tab to Resolve Conflict →";
+"Variant_Delete_From_Family" = "Delete Variant from Group";
+"Variant_Delete_Confirm_Title" = "Delete Variant from Group";
+"Variant_Delete_Confirm_Message" = "Are you sure you want to remove this variant from this product family? The product itself will not be deleted, but it will be unlinked from the group.";
+"Variant_Delete_Confirmed" = "Variant removed from group successfully.";
+"Variant_Error_CannotDeleteOnlyVariant" = "Cannot delete the only variant in a product.";

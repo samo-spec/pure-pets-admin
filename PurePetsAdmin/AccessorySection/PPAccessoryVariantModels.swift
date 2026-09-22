@@ -994,19 +994,27 @@ import UIKit
 
     /// Payload entry the generic options callable expects (contractVersion: 3).
     @objc public func genericPayload() -> [String: Any] {
-        var options = selectedOptions
-        if options.isEmpty {
-            options = [PPAccessoryVariantContract.axisColor: color.identifier]
-        }
         return [
             "productId": productId,
-            "selectedOptions": options,
+            "selectedOptions": selectedOptions,
             "sortOrder": sortOrder,
             "isArchived": isArchived,
         ]
     }
 
     @objc public var isSellable: Bool { !isArchived }
+
+    /// Refresh only the catalog record this editor just wrote. Other members
+    /// retain their observed revisions so concurrent staff edits still conflict.
+    func refreshingCatalog(from product: PetAccessory) -> PPAccessoryVariant {
+        PPAccessoryVariant(productId: productId, color: color, sortOrder: sortOrder,
+            isArchived: isArchived, isDefault: isDefault, sku: product.sku ?? "", barcode: product.barcode ?? "",
+            primaryImageURL: PetAccessory.firstImageURL(for: product)?.absoluteString ?? "", quantity: product.quantity,
+            retailPrice: product.hasResolvedSellingPrice ? product.finalPrice : nil, wholesalePrice: product.wholesalePrice,
+            hasResolvedRetailPrice: product.hasResolvedSellingPrice, showInAppMarket: product.showInAppMarket,
+            revision: product.revision, media: (product.imageURLsArray ?? []).map { PPAccessoryVariantMedia(remoteURL: $0) },
+            selectedOptions: selectedOptions, combinationKey: combinationKey)
+    }
 
     /// VoiceOver label: colour, then availability, then selection state. Never
     /// just the colour, and never only a swatch.
@@ -1036,6 +1044,8 @@ import UIKit
             && sortOrder == other.sortOrder
             && isArchived == other.isArchived
             && isDefault == other.isDefault
+            && selectedOptions == other.selectedOptions
+            && combinationKey == other.combinationKey
     }
 
     public override var hash: Int {
@@ -1067,6 +1077,8 @@ import UIKit
     @objc public var active: Bool
     @objc public let isArchived: Bool
     @objc public var optionDefinitions: [PPAccessoryOptionDefinition]
+    /// A schema-2 family stays on envelope 3 even when only Color remains.
+    @objc public var schemaVersion: Int
     /// Family revision observed at load, required for an update.
     @objc public var revision: Int
     /// True when this is a synthetic wrapper around a product that has no
@@ -1090,7 +1102,8 @@ import UIKit
         isArchived: Bool = false,
         revision: Int = 0,
         isLegacySingleVariant: Bool = false,
-        optionDefinitions: [PPAccessoryOptionDefinition] = []
+        optionDefinitions: [PPAccessoryOptionDefinition] = [],
+        schemaVersion: Int = 1
     ) {
         self.familyId = familyId
         self.name = name
@@ -1112,6 +1125,7 @@ import UIKit
         self.isArchived = isArchived
         self.revision = max(0, revision)
         self.isLegacySingleVariant = isLegacySingleVariant
+        self.schemaVersion = schemaVersion
         self.optionDefinitions = optionDefinitions.sorted { lhs, rhs in
             lhs.sortOrder == rhs.sortOrder ? lhs.id < rhs.id : lhs.sortOrder < rhs.sortOrder
         }
@@ -1218,7 +1232,8 @@ import UIKit
             isArchived: (document["isArchived"] as? Bool) ?? false,
             revision: (document["revision"] as? NSNumber)?.intValue ?? 0,
             isLegacySingleVariant: false,
-            optionDefinitions: optionDefinitions
+            optionDefinitions: optionDefinitions,
+            schemaVersion: (document["schemaVersion"] as? NSNumber)?.intValue ?? 1
         )
     }
 
@@ -1343,8 +1358,7 @@ import UIKit
             messages.append(Language.get("Variant_Error_AllArchived", alter: "يجب أن يبقى لون واحد نشطًا."))
         }
 
-        let hasColorOption = optionDefinitions.contains { $0.isColorOption }
-        if !hasGenericOptions || hasColorOption {
+        if !hasGenericOptions {
             for variant in variants {
                 if let message = variant.color.validationMessage {
                     messages.append("\(variant.color.accessibilityName.isEmpty ? variant.productId : variant.color.accessibilityName): \(message)")
@@ -1372,7 +1386,54 @@ import UIKit
             messages.append(String(format: template, variant.color.accessibilityName))
         }
 
-        return messages
+        var seen = Set<String>()
+        return messages.filter { seen.insert($0).inserted }
+    }
+
+    /// Retained dimensions keep their existing values and sellable identity.
+    func identityChangeMessage(comparedTo baseline: PPAccessoryVariantFamily?) -> String? {
+        guard hasGenericOptions, let baseline, !baseline.familyId.isEmpty, !baseline.isLegacySingleVariant else { return nil }
+        let retained = Set(optionDefinitions.map(\.id)).intersection(baseline.optionDefinitions.map(\.id))
+        for variant in variants {
+            guard let old = baseline.variant(forProductId: variant.productId) else { continue }
+            for id in retained {
+                if let before = old.selectedOptions[id], let after = variant.selectedOptions[id], before != after {
+                    return Language.get("Options_Error_IdentityImmutable", alter: "لا يمكن تغيير قيمة خيار محفوظ لصنف موجود. أنشئ متغيرًا جديدًا للتوليفة الجديدة للحفاظ على المخزون والسجل.")
+                }
+            }
+        }
+        return nil
+    }
+
+    func optionRemovalMessage(id: String) -> String? {
+        let remaining = optionDefinitions.filter { $0.id != id }
+        if remaining.isEmpty {
+            return Language.get("Options_Error_LastOption", alter: "احتفظ بخيار واحد على الأقل لهذه المجموعة.")
+        }
+        var keys = Set<String>()
+        let remainingHasColor = remaining.contains { $0.isColorOption }
+        let remainingHasGeneric = !remaining.filter { !$0.isColorOption }.isEmpty
+
+        for variant in variants {
+            var selection: [String: String] = [:]
+            for definition in remaining {
+                if let value = variant.selectedOptions[definition.id] ?? variant.selectedOptions[definition.key], !value.isEmpty {
+                    selection[definition.id] = value
+                } else if definition.isColorOption && !variant.color.identifier.isEmpty {
+                    selection[definition.id] = variant.color.identifier
+                }
+            }
+            let key: String
+            if !remainingHasGeneric && remainingHasColor {
+                key = variant.color.identifier.isEmpty ? (selection.values.first ?? "") : variant.color.identifier
+            } else {
+                key = Self.combinationKey(from: selection)
+            }
+            if !key.isEmpty && !keys.insert(key).inserted {
+                return Language.get("Options_Error_RemoveCollapsesVariants", alter: "هذا الخيار يميّز بين أصناف موجودة. حذفه سيجعل توليفاتها متطابقة؛ احتفظ به لحماية مخزون كل صنف.")
+            }
+        }
+        return nil
     }
 
     private func duplicateMessages() -> [String] {
@@ -1381,8 +1442,7 @@ import UIKit
         var seenSkus: [String: String] = [:]
         var seenBarcodes: [String: String] = [:]
 
-        let hasColorOption = optionDefinitions.contains { $0.isColorOption }
-        let isSingleAxisColor = !hasGenericOptions || (optionDefinitions.count == 1 && hasColorOption)
+        let isSingleAxisColor = !hasGenericOptions
 
         for variant in variants {
             if isSingleAxisColor && !variant.color.identifier.isEmpty {
@@ -1415,10 +1475,11 @@ import UIKit
         if hasGenericOptions {
             var seenCombinations: Set<String> = []
             for variant in variants {
-                let key = variant.combinationKey.isEmpty
-                    ? PPAccessoryVariantFamily.combinationKey(from: variant.selectedOptions)
-                    : variant.combinationKey
-                if !key.isEmpty {
+                let complete = optionDefinitions.allSatisfy { definition in
+                    definition.values.contains { $0.id == variant.selectedOptions[definition.id] }
+                }
+                let key = PPAccessoryVariantFamily.combinationKey(from: variant.selectedOptions)
+                if complete && !key.isEmpty {
                     if seenCombinations.contains(key) {
                         messages.append(Language.get("Options_Error_Duplicate_Combination", alter: "توجد توليفة خيارات مكررة بين متغيرين. لكل متغير توليفة فريدة."))
                     }
@@ -1472,9 +1533,12 @@ import UIKit
             for variant in variants {
                 for def in activeDefs {
                     let valId = variant.selectedOptions[def.id] ?? variant.selectedOptions[def.key]
-                    if valId == nil || valId!.isEmpty {
-                        let template = Language.get("Options_Error_Incomplete_Variant", alter: "المتغير %@ ينقصه تحديد قيمة للخيار %@. انتقل إلى المصفوفة لتعيينها.")
-                        messages.append(String(format: template, variant.accessibilityLabel(isSelected: false), def.localizedName))
+                    if valId == nil || !def.values.contains(where: { $0.id == valId }) {
+                        let template = Language.get("Options_Error_Incomplete_Variant", alter: "المتغير %@: اختر قيمة للخيار %@.")
+                        let variantName = variant.color.localizedName.isEmpty
+                            ? (variant.sku.isEmpty ? variant.productId : variant.sku)
+                            : variant.color.localizedName
+                        messages.append(String(format: template, variantName, def.localizedName))
                     }
                 }
             }
@@ -1483,40 +1547,21 @@ import UIKit
         return messages
     }
 
-    /// Intelligently ensures that every variant in the family has a valid selected option value
-    /// for every active option definition. When a new option axis is introduced (e.g. Size or Weight),
-    /// this automatically binds existing variants to the first value of that option, preserving
-    /// complete data integrity and preventing server rejection.
+    /// Canonicalize IDs without guessing between sizes or reassigning a removed
+    /// value. A sole new value is unambiguous; multiple choices require an
+    /// explicit selection in the option card before saving.
     @objc public func autoBindMissingOptionSelections() {
         guard !optionDefinitions.isEmpty, !variants.isEmpty else { return }
 
-        let colorDef = optionDefinitions.first { $0.isColorOption }
-
         for variant in variants {
-            var selected = variant.selectedOptions
-
-            if let colorDef, (selected[colorDef.id] == nil || selected[colorDef.id]?.isEmpty == true) {
-                let colId = variant.color.identifier
-                if !colId.isEmpty && colorDef.values.contains(where: { $0.id == colId }) {
-                    selected[colorDef.id] = colId
-                } else if let firstVal = colorDef.values.first {
-                    selected[colorDef.id] = firstVal.id
-                }
-            }
-
-            for def in optionDefinitions where !def.values.isEmpty {
-                let currentVal = selected[def.id] ?? selected[def.key]
-                if currentVal == nil || currentVal!.isEmpty || !def.values.contains(where: { $0.id == currentVal }) {
-                    if let firstVal = def.values.first {
-                        selected[def.id] = firstVal.id
-                    }
-                }
-            }
-
-            let validIds = Set(optionDefinitions.map(\.id)).union(Set(optionDefinitions.map(\.key)))
-            for key in Array(selected.keys) {
-                if !validIds.contains(key) {
-                    selected.removeValue(forKey: key)
+            var selected: [String: String] = [:]
+            for def in optionDefinitions {
+                if let value = variant.selectedOptions[def.id] ?? variant.selectedOptions[def.key], !value.isEmpty {
+                    selected[def.id] = value
+                } else if def.isColorOption && def.values.contains(where: { $0.id == variant.color.identifier }) {
+                    selected[def.id] = variant.color.identifier
+                } else if def.values.count == 1 {
+                    selected[def.id] = def.values[0].id
                 }
             }
 
@@ -1528,6 +1573,7 @@ import UIKit
     @objc public var isValid: Bool { validationMessages().isEmpty }
 
     @objc public var hasGenericOptions: Bool {
+        if schemaVersion >= 2 { return true }
         if optionDefinitions.count > 1 { return true }
         if let first = optionDefinitions.first, first.key != PPAccessoryVariantContract.axisColor { return true }
         return false
@@ -1714,7 +1760,8 @@ import UIKit
                     },
                     sortOrder: opt.sortOrder
                 )
-            }
+            },
+            schemaVersion: schemaVersion
         )
     }
 
@@ -2560,5 +2607,3 @@ public extension PetAccessory {
         return .color
     }
 }
-
-

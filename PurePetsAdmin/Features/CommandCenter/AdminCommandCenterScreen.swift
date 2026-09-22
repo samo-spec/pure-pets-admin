@@ -3295,6 +3295,7 @@ private struct CommandPOSiPhoneCockpit: View {
 
     @State private var showsQuickExpenseSheet: Bool = false
     @State private var isRadarPulsing: Bool = false
+    @State private var isTelemetryExpanded: Bool = false
     @Environment(\.colorScheme) private var colorScheme
 
     private let emerald = Color(red: 0.05, green: 0.72, blue: 0.51)
@@ -3310,12 +3311,15 @@ private struct CommandPOSiPhoneCockpit: View {
                 .padding(.top, 13)
                 .padding(.bottom, 11)
 
-            specularHairline
+            if isTelemetryExpanded {
+                specularHairline
 
-            // Telemetry Chamber: Gross Sales, KPI Trio, & Tender Spectrum
-            fiscalTelemetryChamber
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
+                // Telemetry Chamber: Gross Sales, KPI Trio, & Tender Spectrum
+                fiscalTelemetryChamber
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .transition(reduceMotion ? .identity : .opacity.combined(with: .move(edge: .top)))
+            }
 
             specularHairline
 
@@ -3328,6 +3332,7 @@ private struct CommandPOSiPhoneCockpit: View {
         .overlay(cardBorder)
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .shadow(color: emerald.opacity(colorScheme == .dark ? 0.22 : 0.08), radius: 12, y: 4)
+        .animation(reduceMotion ? .none : .spring(response: 0.35, dampingFraction: 0.82), value: isTelemetryExpanded)
         .onAppear {
             guard !reduceMotion else { return }
             withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
@@ -3416,19 +3421,39 @@ private struct CommandPOSiPhoneCockpit: View {
                     .lineLimit(1)
             }
 
-            Button(action: {
-                telemetryStore.retry()
-            }) {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 10.5, weight: .bold))
-                    .foregroundStyle(emerald)
-                    .rotationEffect(.degrees(telemetryStore.state == .loading && !reduceMotion ? 360 : 0))
-                    .animation(telemetryStore.state == .loading && !reduceMotion ? .linear(duration: 1.0).repeatForever(autoreverses: false) : .default, value: telemetryStore.state)
-                    .frame(width: 26, height: 26)
-                    .background(emerald.opacity(colorScheme == .dark ? 0.16 : 0.08), in: Circle())
+            // Action controls: Refresh & Collapse/Expand
+            HStack(spacing: 6) {
+                Button(action: {
+                    telemetryStore.retry()
+                }) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 10.5, weight: .bold))
+                        .foregroundStyle(emerald)
+                        .rotationEffect(.degrees(telemetryStore.state == .loading && !reduceMotion ? 360 : 0))
+                        .animation(telemetryStore.state == .loading && !reduceMotion ? .linear(duration: 1.0).repeatForever(autoreverses: false) : .default, value: telemetryStore.state)
+                        .frame(width: 26, height: 26)
+                        .background(emerald.opacity(colorScheme == .dark ? 0.16 : 0.08), in: Circle())
+                }
+                .buttonStyle(CommandPOSCardPressStyle(scale: 0.90, pressedOpacity: 0.8))
+                .accessibilityLabel(Language.get("AdminPOS_RefreshTelemetry", alter: "تحديث بيانات نقطة البيع"))
+
+                Button(action: {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(reduceMotion ? .none : .spring(response: 0.35, dampingFraction: 0.82)) {
+                        isTelemetryExpanded.toggle()
+                    }
+                }) {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10.5, weight: .bold))
+                        .foregroundStyle(emerald)
+                        .rotationEffect(.degrees(isTelemetryExpanded ? 180 : 0))
+                        .animation(reduceMotion ? .none : .spring(response: 0.35, dampingFraction: 0.82), value: isTelemetryExpanded)
+                        .frame(width: 26, height: 26)
+                        .background(emerald.opacity(colorScheme == .dark ? 0.16 : 0.08), in: Circle())
+                }
+                .buttonStyle(CommandPOSCardPressStyle(scale: 0.90, pressedOpacity: 0.8))
+                .accessibilityLabel(isTelemetryExpanded ? Language.get("AdminPOS_CollapseTelemetry", alter: "طي تفاصيل المبيعات") : Language.get("AdminPOS_ExpandTelemetry", alter: "توسيع تفاصيل المبيعات"))
             }
-            .buttonStyle(CommandPOSCardPressStyle(scale: 0.90, pressedOpacity: 0.8))
-            .accessibilityLabel(Language.get("AdminPOS_RefreshTelemetry", alter: "تحديث بيانات نقطة البيع"))
         }
     }
 

@@ -97,11 +97,15 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
     /// Retained so a `retrySameCommand` recovery reuses the exact key the server
     /// already bound, rather than minting a new one and risking a second effect.
     private var pendingCommandId: String?
+    @Published private var pendingSaveDraft: PPAccessoryVariantFamily?
+    var isEditingLocked: Bool { isSaving || isCreatingVariant || pendingSaveDraft != nil }
     /// Add Color uses two independent idempotent commands: catalog create first,
     /// then family attach. Retain both across retries so an ambiguous response
     /// can never duplicate a product or family effect.
     private var pendingVariantCreateCommandId: String?
     private var pendingVariantAttachCommandId: String?
+    private var pendingVariantAttachDraft: PPAccessoryVariantFamily?
+    private var pendingVariantCreationIntent: [String: String]?
     private var pendingCreatedVariantProduct: PetAccessory?
 
     var canManageVariants: Bool { PPAccessoryVariantService.shared.canManageVariants }
@@ -254,8 +258,10 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
     /// `validateInventoryChange`, then deletes objects the confirmed state no
     /// longer references. A failed upload keeps the operator's selection and the
     /// URLs that already succeeded, so a retry never duplicates objects.
-    func saveMedia(forProductId productId: String, expectedRevision: Int? = nil) async {
-        guard let variant = draft?.variant(forProductId: productId) else { return }
+    func saveMedia(forProductId productId: String, expectedRevision: Int? = nil, color: PPAccessoryVariantColor? = nil) async {
+        let variant = draft?.variant(forProductId: productId)
+        guard let mediaColor = variant?.color ?? color,
+              let revision = expectedRevision ?? variant?.revision else { return }
         isSavingMedia = true
         failure = nil
         confirmation = nil
@@ -269,7 +275,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
             try await PPAccessoryVariantMediaService.shared.uploadStagedImages(
                 &staged,
                 productId: productId,
-                colorId: variant.color.identifier
+                colorId: mediaColor.identifier
             )
             // Retain whatever succeeded before attempting the catalog write.
             stagedImages[productId] = staged
@@ -284,7 +290,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
             try await PPAccessoryVariantMediaService.shared.persist(
                 commit,
                 commandId: commandId,
-                expectedRevision: expectedRevision ?? variant.revision
+                expectedRevision: revision
             )
 
             // Catalog state is confirmed, so unreferenced objects can go.
@@ -321,6 +327,12 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
     func updateColor(_ color: PPAccessoryVariantColor, forProductId productId: String) {
         guard let draft, let index = draft.variants.firstIndex(where: { $0.productId == productId }) else { return }
         let existing = draft.variants[index]
+        var updatedOptions = existing.selectedOptions
+        if let colorDef = draft.optionDefinitions.first(where: { $0.isColorOption }) {
+            updatedOptions[colorDef.id] = color.identifier
+        }
+        updatedOptions[PPAccessoryVariantContract.axisColor] = color.identifier
+        let updatedKey = PPAccessoryVariantFamily.combinationKey(from: updatedOptions)
         draft.variants[index] = PPAccessoryVariant(
             productId: existing.productId,
             color: color,
@@ -337,8 +349,8 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
             showInAppMarket: existing.showInAppMarket,
             revision: existing.revision,
             media: existing.media,
-            selectedOptions: [PPAccessoryVariantContract.axisColor: color.identifier],
-            combinationKey: "\(PPAccessoryVariantContract.axisColor)=\(color.identifier)"
+            selectedOptions: updatedOptions,
+            combinationKey: updatedKey
         )
         if draft.optionDefinitions.isEmpty {
             draft.optionDefinitions = [PPAccessoryOptionDefinition.synthesizeColorOption(fromVariants: draft.variants)]
@@ -431,6 +443,35 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         revalidate()
     }
 
+    func removeVariant(productId: String) {
+        guard let draft else { return }
+        guard draft.variants.count > 1 else {
+            failure = PPAccessoryVariantFailureState(
+                message: Language.get("Variant_Error_CannotDeleteOnlyVariant", alter: "لا يمكن حذف المتغير الوحيد في المنتج."),
+                recovery: .correctInput
+            )
+            return
+        }
+        guard let targetIndex = draft.variants.firstIndex(where: { $0.productId == productId }) else { return }
+        let targetVariant = draft.variants[targetIndex]
+        let isDefault = targetVariant.isDefault
+        draft.variants.remove(at: targetIndex)
+        for (pos, _) in draft.variants.enumerated() {
+            draft.variants[pos].sortOrder = pos
+        }
+        if isDefault, let first = draft.variants.first {
+            first.isDefault = true
+            draft.defaultVariantProductId = first.productId
+        }
+        if selectedProductId == productId {
+            selectedProductId = draft.variants.first?.productId ?? ""
+        }
+        draft.autoBindMissingOptionSelections()
+        self.draft = draft
+        confirmation = Language.get("Variant_Delete_Confirmed", alter: "تم حذف المتغير من المجموعة بنجاح.")
+        revalidate()
+    }
+
     // MARK: - Options Mutations
 
     func addOption(_ option: PPAccessoryOptionDefinition) {
@@ -449,6 +490,10 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
 
     func removeOption(withId id: String) {
         guard let draft else { return }
+        if let message = draft.optionRemovalMessage(id: id) {
+            failure = PPAccessoryVariantFailureState(message: message, recovery: .correctInput)
+            return
+        }
         var updated = draft.optionDefinitions
         updated.removeAll { $0.id == id }
         for (index, opt) in updated.enumerated() {
@@ -500,6 +545,10 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
 
     func removeOptionValue(valueId: String, fromOptionWithId optionId: String) {
         guard let draft else { return }
+        guard !isOptionValueInUse(valueId: valueId, optionId: optionId) else {
+            failure = PPAccessoryVariantFailureState(message: Language.get("Options_Error_ValueInUse", alter: "هذه القيمة مرتبطة بصنف موجود. احتفظ بها، ويمكنك أرشفة الصنف من المصفوفة عند عدم الحاجة إليه."), recovery: .correctInput)
+            return
+        }
         guard let optIndex = draft.optionDefinitions.firstIndex(where: { $0.id == optionId }) else { return }
         let option = draft.optionDefinitions[optIndex]
         var updatedValues = option.values
@@ -553,6 +602,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
     /// this family through the family owner. No direct Firestore catalog write occurs.
     func createAndAttachVariant(
         color: PPAccessoryVariantColor,
+        selectedOptions: [String: String] = [:],
         sku: String,
         barcode: String,
         retailPrice: Double,
@@ -560,9 +610,16 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         quantity: Int = 0,
         images: [UIImage] = []
     ) async -> Bool {
-        if let current = draft, current.familyId.isEmpty {
+        guard canManageVariants, !isSaving, !isCreatingVariant else { return false }
+        // Persist newly added sizes/options before loading the family for the
+        // attach transaction; otherwise the new combination references old data.
+        if draft?.familyId.isEmpty == true || isDirty || pendingSaveDraft != nil {
             await save()
-            guard failure == nil, let saved = draft, !saved.familyId.isEmpty else {
+            guard failure == nil, !isDirty, pendingSaveDraft == nil,
+                  let saved = draft, !saved.familyId.isEmpty else {
+                if failure == nil, let message = validationMessages.first {
+                    failure = PPAccessoryVariantFailureState(message: message, recovery: .correctInput)
+                }
                 return false
             }
         }
@@ -578,13 +635,44 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
             )
             return false
         }
-        guard color.validationMessage == nil,
-              !usedColorIdentifiers.contains(color.identifier) else {
+        guard color.validationMessage == nil else {
+            failure = PPAccessoryVariantFailureState(
+                message: color.validationMessage ?? "",
+                recovery: .correctInput
+            )
+            return false
+        }
+        if !current.hasGenericOptions && usedColorIdentifiers.contains(color.identifier) {
             failure = PPAccessoryVariantFailureState(
                 message: Language.get("Variant_Error_ColorTaken", alter: "هذا اللون مستخدم بالفعل في هذا المنتج."),
                 recovery: .correctInput
             )
             return false
+        }
+        var requestedOptions: [String: String] = [:]
+        if current.hasGenericOptions {
+            for option in current.optionDefinitions {
+                let valueId = selectedOptions[option.id] ?? selectedOptions[option.key]
+                    ?? (option.isColorOption ? color.identifier : "")
+                guard option.values.contains(where: { $0.id == valueId }) else {
+                    failure = PPAccessoryVariantFailureState(
+                        message: Language.get("Options_Error_Incomplete", alter: "اختر قيمة لكل خيار قبل إنشاء المتغير."),
+                        recovery: .correctInput
+                    )
+                    return false
+                }
+                requestedOptions[option.id] = valueId
+            }
+            let requestedKey = PPAccessoryVariantFamily.combinationKey(from: requestedOptions)
+            if current.variants.contains(where: { PPAccessoryVariantFamily.combinationKey(from: $0.selectedOptions) == requestedKey }) {
+                failure = PPAccessoryVariantFailureState(
+                    message: Language.get("Variant_Error_CombinationTaken", alter: "هذه التوليفة مستخدمة بالفعل في هذا المنتج."),
+                    recovery: .correctInput
+                )
+                return false
+            }
+        } else {
+            requestedOptions[PPAccessoryVariantContract.axisColor] = color.identifier
         }
         guard retailPrice.isFinite, retailPrice > 0,
               wholesalePrice == nil || (wholesalePrice!.isFinite && wholesalePrice! > 0) else {
@@ -594,6 +682,24 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
             )
             return false
         }
+
+        let creationIntent = [
+            "familyId": current.familyId,
+            "selection": PPAccessoryVariantFamily.combinationKey(from: requestedOptions),
+            "sku": sku.trimmingCharacters(in: .whitespacesAndNewlines),
+            "barcode": barcode.trimmingCharacters(in: .whitespacesAndNewlines),
+            "retailPrice": String(retailPrice),
+            "wholesalePrice": wholesalePrice.map { String($0) } ?? "",
+            "quantity": String(max(0, quantity))
+        ]
+        if let pendingVariantCreationIntent, pendingVariantCreationIntent != creationIntent {
+            failure = PPAccessoryVariantFailureState(
+                message: Language.get("Options_Create_Pending", alter: "هناك إنشاء متغير بانتظار التأكيد. أعد محاولة المتغير السابق بنفس بياناته قبل إنشاء متغير آخر."),
+                recovery: .correctInput
+            )
+            return false
+        }
+        pendingVariantCreationIntent = creationIntent
 
         isCreatingVariant = true
         failure = nil
@@ -627,9 +733,12 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
             }
 
             // Upload media for new product if photos were provided
-            if !images.isEmpty {
-                addImages(images, forProductId: product.accessoryID)
-                await saveMedia(forProductId: product.accessoryID)
+            if !images.isEmpty, originalImageURLs[product.accessoryID] == nil {
+                if staged(forProductId: product.accessoryID).isEmpty {
+                    addImages(images, forProductId: product.accessoryID)
+                }
+                await saveMedia(forProductId: product.accessoryID, expectedRevision: product.revision, color: color)
+                guard failure == nil else { return false }
             }
 
             // Reload before attaching so a concurrent family edit is merged into
@@ -641,20 +750,34 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
                 confirmation = Language.get("Variant_Add_Confirmed", alter: "تمت إضافة اللون وحفظه.")
                 return true
             }
-            if latest.variants.contains(where: { $0.color.identifier == color.identifier }) {
+
+            var finalOptions = requestedOptions
+            if let colorDef = latest.optionDefinitions.first(where: { $0.isColorOption }) {
+                finalOptions[colorDef.id] = color.identifier
+            }
+            if !latest.hasGenericOptions { finalOptions[PPAccessoryVariantContract.axisColor] = color.identifier }
+            let combinationKey = PPAccessoryVariantFamily.combinationKey(from: finalOptions)
+
+            if latest.hasGenericOptions {
+                if latest.variants.contains(where: { $0.combinationKey == combinationKey }) {
+                    throw PPAccessoryVariantServiceError.validationFailed([
+                        Language.get("Variant_Error_CombinationTaken", alter: "هذه التوليفة مستخدمة بالفعل في هذا المنتج.")
+                    ])
+                }
+            } else if latest.variants.contains(where: { $0.color.identifier == color.identifier }) {
                 throw PPAccessoryVariantServiceError.validationFailed([
                     Language.get("Variant_Error_ColorTaken", alter: "هذا اللون مستخدم بالفعل في هذا المنتج.")
                 ])
             }
 
-            let refreshedProduct = (try? await PPAccessoryVariantService.shared.loadProduct(productId: product.accessoryID)) ?? product
+            let refreshedProduct = try await PPAccessoryVariantService.shared.loadProduct(productId: product.accessoryID)
             let nextSort = (latest.variants.map(\.sortOrder).max() ?? -1) + 1
             latest.variants.append(PPAccessoryVariant(
                 productId: refreshedProduct.accessoryID,
                 color: color,
                 sortOrder: nextSort,
                 isArchived: false,
-                isDefault: false,
+                isDefault: latest.variants.isEmpty,
                 sku: refreshedProduct.sku ?? "",
                 barcode: refreshedProduct.barcode ?? "",
                 primaryImageURL: PetAccessory.firstImageURL(for: refreshedProduct)?.absoluteString ?? "",
@@ -664,17 +787,27 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
                 hasResolvedRetailPrice: refreshedProduct.hasResolvedSellingPrice,
                 showInAppMarket: false,
                 revision: refreshedProduct.revision,
-                media: (refreshedProduct.imageURLsArray ?? []).map { PPAccessoryVariantMedia(remoteURL: $0) }
+                media: (refreshedProduct.imageURLsArray ?? []).map { PPAccessoryVariantMedia(remoteURL: $0) },
+                selectedOptions: finalOptions,
+                combinationKey: combinationKey
             ))
+            latest.autoBindMissingOptionSelections()
+
             let attachCommandId = pendingVariantAttachCommandId
                 ?? "variant-family-attach-\(current.familyId)-\(UUID().uuidString)"
             pendingVariantAttachCommandId = attachCommandId
-            _ = try await PPAccessoryVariantService.shared.saveFamily(latest, commandId: attachCommandId)
+            let attachDraft = pendingVariantAttachDraft ?? latest.copyForEditing()
+            pendingVariantAttachDraft = attachDraft
+            let attached = try await PPAccessoryVariantService.shared.saveFamily(attachDraft, commandId: attachCommandId)
             do {
-                let reloaded = try await PPAccessoryVariantService.shared.loadFamily(familyId: current.familyId)
+                let reloaded = try await PPAccessoryVariantService.shared.loadFamily(familyId: current.familyId, minimumRevision: attached.revision)
+                guard reloaded.variant(forProductId: refreshedProduct.accessoryID) != nil else {
+                    throw PPAccessoryVariantServiceError.invalidResponse
+                }
                 apply(loaded: reloaded)
             } catch {
-                apply(loaded: latest)
+                failure = PPAccessoryVariantFailureState(message: Language.get("Options_Save_AwaitingReadback", alter: "استلم الخادم الحفظ، وتعذر تأكيد البيانات المحدثة. أعد المحاولة للتحقق من نفس العملية."), recovery: .retrySameCommand)
+                return false
             }
             selectedProductId = refreshedProduct.accessoryID
             clearPendingVariantCreation()
@@ -683,11 +816,19 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         } catch {
             let state = PPAccessoryVariantFailureState(error: error)
             failure = state
+            if !state.allowsSameCommandRetry {
+                pendingVariantAttachCommandId = nil
+                pendingVariantAttachDraft = nil
+                if pendingCreatedVariantProduct == nil {
+                    pendingVariantCreateCommandId = nil
+                    pendingVariantCreationIntent = nil
+                }
+            }
             return false
         }
     }
 
-    /// Creates a standalone product and attaches it as a combination variant under envelope 3 / schema 2.
+    /// Matrix creation uses the same ordered save and retry path as the studio.
     func createAndAttachCombinationVariant(
         selectedOptions: [String: String],
         color: PPAccessoryVariantColor?,
@@ -698,116 +839,17 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         quantity: Int = 0,
         images: [UIImage] = []
     ) async -> Bool {
-        if let current = draft, current.familyId.isEmpty {
-            await save()
-            guard failure == nil, let saved = draft, !saved.familyId.isEmpty else {
-                return false
-            }
-        }
-        guard let current = draft, !current.familyId.isEmpty else {
-            failure = PPAccessoryVariantFailureState(
-                message: Language.get("Variant_Add_SaveFamilyFirst", alter: "احفظ المنتج الحالي أولاً."),
-                recovery: .correctInput
-            )
-            return false
-        }
-        guard retailPrice.isFinite, retailPrice > 0,
-              wholesalePrice == nil || (wholesalePrice!.isFinite && wholesalePrice! > 0) else {
-            failure = PPAccessoryVariantFailureState(
-                message: Language.get("Variant_Add_InvalidPrice", alter: "أدخل سعر بيع صالحاً للمتغير الجديد."),
-                recovery: .correctInput
-            )
-            return false
-        }
-
-        let combinationKey = PPAccessoryVariantFamily.combinationKey(from: selectedOptions)
-        if current.variants.contains(where: { $0.combinationKey == combinationKey }) {
-            failure = PPAccessoryVariantFailureState(
-                message: Language.get("Variant_Error_CombinationTaken", alter: "هذه التوليفة مستخدمة بالفعل في هذا المنتج."),
-                recovery: .correctInput
-            )
-            return false
-        }
-
-        isCreatingVariant = true
-        failure = nil
-        confirmation = nil
-        defer { isCreatingVariant = false }
-
-        do {
-            guard let templateProductId = current.defaultVariantProductId.isEmpty
-                ? current.variants.first?.productId
-                : current.defaultVariantProductId else {
-                throw PPAccessoryVariantServiceError.invalidResponse
-            }
-            let template = try await PPAccessoryVariantService.shared.loadProduct(productId: templateProductId)
-            let createCommandId = "variant-comb-create-\(current.familyId)-\(UUID().uuidString)"
-
-            let product = try await PPAccessoryVariantService.shared.createStandaloneVariantProduct(
-                template: template,
-                sku: sku,
-                barcode: barcode,
-                retailPrice: retailPrice,
-                wholesalePrice: wholesalePrice,
-                quantity: max(0, quantity),
-                commandId: createCommandId
-            )
-
-            if !images.isEmpty {
-                addImages(images, forProductId: product.accessoryID)
-                await saveMedia(forProductId: product.accessoryID)
-            }
-
-            let latest = try await PPAccessoryVariantService.shared.loadFamily(familyId: current.familyId)
-            if latest.variant(forProductId: product.accessoryID) != nil {
-                apply(loaded: latest)
-                confirmation = Language.get("Variant_Add_Confirmed", alter: "تم إنشاء المتغير وحفظه.")
-                return true
-            }
-
-            let resolvedColor = color ?? PPAccessoryVariantColor(
-                identifier: selectedOptions["color"] ?? "standard",
-                nameAr: "افتراضي",
-                nameEn: "Standard",
-                hex: "#7F7F7F"
-            )
-
-            let nextSort = (latest.variants.map(\.sortOrder).max() ?? -1) + 1
-            latest.variants.append(PPAccessoryVariant(
-                productId: product.accessoryID,
-                color: resolvedColor,
-                sortOrder: nextSort,
-                isArchived: false,
-                isDefault: latest.variants.isEmpty,
-                sku: product.sku ?? "",
-                barcode: product.barcode ?? "",
-                primaryImageURL: PetAccessory.firstImageURL(for: product)?.absoluteString ?? "",
-                quantity: product.quantity,
-                retailPrice: product.hasResolvedSellingPrice ? product.finalPrice : nil,
-                wholesalePrice: product.wholesalePrice,
-                hasResolvedRetailPrice: product.hasResolvedSellingPrice,
-                showInAppMarket: false,
-                revision: product.revision,
-                media: (product.imageURLsArray ?? []).map { PPAccessoryVariantMedia(remoteURL: $0) },
-                selectedOptions: selectedOptions,
-                combinationKey: combinationKey
-            ))
-
-            let attachCommandId = "variant-comb-attach-\(current.familyId)-\(UUID().uuidString)"
-            _ = try await PPAccessoryVariantService.shared.saveFamily(latest, commandId: attachCommandId)
-            do {
-                let reloaded = try await PPAccessoryVariantService.shared.loadFamily(familyId: current.familyId)
-                apply(loaded: reloaded)
-            } catch {
-                apply(loaded: latest)
-            }
-            selectedProductId = product.accessoryID
-            confirmation = Language.get("Variant_Add_Confirmed", alter: "تم إنشاء المتغير وحفظه.")
-            return true
-        } catch {
-            failure = PPAccessoryVariantFailureState(error: error)
-            return false
-        }
+        let resolvedColor = color ?? PPAccessoryVariantColor(
+            identifier: selectedOptions["color"] ?? "standard",
+            nameAr: "افتراضي",
+            nameEn: "Standard",
+            hex: "#7F7F7F"
+        )
+        return await createAndAttachVariant(
+            color: resolvedColor, selectedOptions: selectedOptions,
+            sku: sku, barcode: barcode, retailPrice: retailPrice,
+            wholesalePrice: wholesalePrice, quantity: quantity, images: images
+        )
     }
 
     /// Applies bulk prices to multiple member variants through audited command facades.
@@ -888,6 +930,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
     func updateVariant(
         productId: String,
         color: PPAccessoryVariantColor,
+        selectedOptions: [String: String]? = nil,
         sku: String,
         barcode: String,
         retailPrice: Double,
@@ -896,15 +939,32 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         newImages: [UIImage] = [],
         retainedURLs: [String]? = nil
     ) async -> Bool {
-        guard let current = draft else { return false }
+        guard draft != nil, !isEditingLocked else { return false }
         isSaving = true
         failure = nil
         confirmation = nil
         defer { isSaving = false }
 
         do {
-            // 1. Update color in family draft
+            // 1. Update color and selected options in family draft
             updateColor(color, forProductId: productId)
+            if let selectedOptions, let currentDraft = draft, let idx = currentDraft.variants.firstIndex(where: { $0.productId == productId }) {
+                var opts = selectedOptions
+                if let colorDef = currentDraft.optionDefinitions.first(where: { $0.isColorOption }) {
+                    opts[colorDef.id] = color.identifier
+                }
+                opts[PPAccessoryVariantContract.axisColor] = color.identifier
+                currentDraft.variants[idx].selectedOptions = opts
+                currentDraft.variants[idx].combinationKey = PPAccessoryVariantFamily.combinationKey(from: opts)
+                currentDraft.autoBindMissingOptionSelections()
+                self.draft = currentDraft
+            }
+
+            revalidate()
+            guard validationMessages.isEmpty else {
+                failure = PPAccessoryVariantFailureState(message: validationMessages[0], recovery: .correctInput)
+                return false
+            }
 
             // 2. Load underlying product and apply catalog updates
             let product = try await PPAccessoryVariantService.shared.loadProduct(productId: productId)
@@ -969,14 +1029,23 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
             }
             if hasMediaChanges(forProductId: productId) {
                 await saveMedia(forProductId: productId, expectedRevision: saveResult.revision)
+                guard failure == nil else { return false }
             }
+
+            // Our own catalog/media write advanced this member's revision.
+            // Use authoritative readback before the subsequent family command.
+            let confirmedProduct = try await PPAccessoryVariantService.shared.loadProduct(productId: productId)
+            guard confirmedProduct.revision >= saveResult.revision,
+                  let pendingDraft = draft,
+                  let index = pendingDraft.variants.firstIndex(where: { $0.productId == productId }) else {
+                throw PPAccessoryVariantServiceError.invalidResponse
+            }
+            pendingDraft.variants[index] = pendingDraft.variants[index].refreshingCatalog(from: confirmedProduct)
+            self.draft = pendingDraft
 
             // 4. Save family to sync color and variant ordering/attributes
             await save()
-
-            // 5. Reload family
-            let reloaded = try await PPAccessoryVariantService.shared.loadFamily(familyId: current.familyId)
-            apply(loaded: reloaded)
+            guard failure == nil, pendingSaveDraft == nil, !isDirty else { return false }
             selectedProductId = productId
             confirmation = Language.get("Variant_Studio_UpdateSuccess", alter: "تم حفظ وتحديث اللون بنجاح.")
             return true
@@ -989,6 +1058,8 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
     private func clearPendingVariantCreation() {
         pendingVariantCreateCommandId = nil
         pendingVariantAttachCommandId = nil
+        pendingVariantAttachDraft = nil
+        pendingVariantCreationIntent = nil
         pendingCreatedVariantProduct = nil
     }
 
@@ -1000,10 +1071,41 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
 
     func revalidate() {
         draft?.autoBindMissingOptionSelections()
-        validationMessages = draft?.validationMessages() ?? []
+        var messages = draft?.validationMessages() ?? []
+        if let message = draft?.identityChangeMessage(comparedTo: baseline) { messages.append(message) }
+        var seen = Set<String>()
+        validationMessages = messages.filter { seen.insert($0).inserted }
+        if failure?.recovery == .correctInput { failure = nil }
+        if isDirty { confirmation = nil }
+    }
+
+    func showsAssignments(for option: PPAccessoryOptionDefinition) -> Bool {
+        guard let draft else { return false }
+        let isNewDimension = baseline?.optionDefinitions.contains(where: { $0.id == option.id }) != true
+        return isNewDimension || draft.variants.contains { variant in
+            !option.values.contains { $0.id == variant.selectedOptions[option.id] }
+        }
+    }
+
+    func selectOptionValue(_ valueId: String, optionId: String, productId: String) {
+        guard canManageVariants, !isEditingLocked, let draft,
+              let definition = draft.optionDefinitions.first(where: { $0.id == optionId }),
+              definition.values.contains(where: { $0.id == valueId }),
+              let variant = draft.variant(forProductId: productId) else { return }
+        if let baseline, !baseline.familyId.isEmpty,
+           baseline.optionDefinitions.contains(where: { $0.id == optionId }),
+           let previous = baseline.variant(forProductId: productId)?.selectedOptions[optionId], previous != valueId {
+            failure = PPAccessoryVariantFailureState(message: Language.get("Options_Error_IdentityImmutable", alter: "لا يمكن تغيير قيمة خيار محفوظ لصنف موجود. أنشئ متغيرًا جديدًا للتوليفة الجديدة للحفاظ على المخزون والسجل."), recovery: .correctInput)
+            return
+        }
+        variant.selectedOptions[optionId] = valueId
+        variant.combinationKey = PPAccessoryVariantFamily.combinationKey(from: variant.selectedOptions)
+        self.draft = draft
+        revalidate()
     }
 
     func discardChanges() {
+        guard !isEditingLocked else { return }
         guard let baseline else { return }
         draft = baseline.copyForEditing()
         draft?.autoBindMissingOptionSelections()
@@ -1014,10 +1116,13 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
     // MARK: Save
 
     func save() async {
-        guard let draft else { return }
-        draft.autoBindMissingOptionSelections()
-        revalidate()
-        guard validationMessages.isEmpty else { return }
+        guard let workingDraft = pendingSaveDraft ?? draft else { return }
+        if pendingSaveDraft == nil {
+            workingDraft.autoBindMissingOptionSelections()
+            revalidate()
+            guard validationMessages.isEmpty else { return }
+        }
+        let draft = workingDraft.copyForEditing()
 
         isSaving = true
         failure = nil
@@ -1026,40 +1131,37 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
 
         let commandId = pendingCommandId ?? "variant-family-\(UUID().uuidString)"
         pendingCommandId = commandId
+        pendingSaveDraft = draft
 
         do {
             let result = try await PPAccessoryVariantService.shared.saveFamily(
                 draft,
                 commandId: commandId
             )
-            pendingCommandId = nil
-            confirmation = result.idempotent
-                ? Language.get("Variant_Save_AlreadyApplied", alter: "كانت هذه التغييرات محفوظة بالفعل.")
-                : (draft.hasGenericOptions
-                    ? Language.get("Options_Save_Confirmed", alter: "تم حفظ خيارات ومتغيرات المنتج.")
-                    : Language.get("Variant_Save_Confirmed", alter: "تم حفظ الألوان."))
-            failure = nil
-
-            // Reload from the server so the editor shows the confirmed state,
-            // including the family id minted by a create.
+            // Acceptance is not authoritative readback. Retain the exact draft
+            // and command through ambiguity; never invent catalog revisions.
             do {
-                let reloaded = try await PPAccessoryVariantService.shared.loadFamily(familyId: result.familyId)
+                let reloaded = try await PPAccessoryVariantService.shared.loadFamily(familyId: result.familyId, minimumRevision: result.revision)
                 apply(loaded: reloaded)
+                pendingCommandId = nil
+                pendingSaveDraft = nil
+                failure = nil
+                confirmation = result.idempotent
+                    ? Language.get("Variant_Save_AlreadyApplied", alter: "كانت هذه التغييرات محفوظة بالفعل.")
+                    : Language.get("Options_Save_Confirmed", alter: "تم حفظ خيارات ومتغيرات المنتج.")
             } catch {
-                // If read-back experienced a transient Firestore replica lag,
-                // do not show an error banner when the write actually succeeded!
-                draft.familyId = result.familyId
-                draft.revision = max(draft.revision + 1, result.revision)
-                draft.isLegacySingleVariant = false
-                baseline = draft.copyForEditing()
-                self.draft = draft
+                confirmation = nil
+                failure = PPAccessoryVariantFailureState(message: Language.get("Options_Save_AwaitingReadback", alter: "استلم الخادم الحفظ، وتعذر تأكيد البيانات المحدثة. أعد المحاولة للتحقق من نفس العملية."), recovery: .retrySameCommand)
             }
         } catch {
             confirmation = nil
             let state = PPAccessoryVariantFailureState(error: error)
             // Only a same-command retry may reuse the key. Any other outcome
             // must not reuse it: the server may already have bound it.
-            if !state.allowsSameCommandRetry { pendingCommandId = nil }
+            if !state.allowsSameCommandRetry {
+                pendingCommandId = nil
+                pendingSaveDraft = nil
+            }
             failure = state
             if !state.validationMessages.isEmpty { validationMessages = state.validationMessages }
         }
@@ -1477,11 +1579,14 @@ struct PPAccessoryVariantSection: View {
             } else if model.isLegacyUngrouped {
                 legacyHeader
                 conversionInvitation
+                    .disabled(model.isEditingLocked)
             } else if let draft = model.draft {
                 studioControlDeck(for: draft)
+                    .disabled(model.isEditingLocked)
 
                 if selectedTab == .options {
                     PPAccessoryOptionEditorView(model: model, showHeader: false)
+                        .disabled(model.isEditingLocked)
                 } else {
                     if draft.hasGenericOptions || presentationMode == .matrix {
                         VStack(alignment: .leading, spacing: 12) {
@@ -1492,6 +1597,7 @@ struct PPAccessoryVariantSection: View {
                                 model: model,
                                 onOpenVariantProduct: onOpenVariantProduct
                             )
+                            .disabled(model.isEditingLocked)
                         }
                     } else {
                         VStack(alignment: .leading, spacing: 12) {
@@ -1556,9 +1662,10 @@ struct PPAccessoryVariantSection: View {
                     return []
                 }(),
                 existingVariants: model.draft?.variants ?? [],
-                onCreate: { color, sku, barcode, retail, wholesale, quantity, images in
+                onCreate: { color, options, sku, barcode, retail, wholesale, quantity, images in
                     await model.createAndAttachVariant(
                         color: color,
+                        selectedOptions: options,
                         sku: sku,
                         barcode: barcode,
                         retailPrice: retail,
@@ -1567,10 +1674,11 @@ struct PPAccessoryVariantSection: View {
                         images: images
                     )
                 },
-                onUpdate: { productId, color, sku, barcode, retail, wholesale, quantity, newImages, retainedURLs in
+                onUpdate: { productId, color, options, sku, barcode, retail, wholesale, quantity, newImages, retainedURLs in
                     await model.updateVariant(
                         productId: productId,
                         color: color,
+                        selectedOptions: options,
                         sku: sku,
                         barcode: barcode,
                         retailPrice: retail,
@@ -1585,7 +1693,8 @@ struct PPAccessoryVariantSection: View {
                 },
                 errorMessage: {
                     model.failure?.message
-                }
+                },
+                optionDefinitions: model.draft?.optionDefinitions ?? []
             )
         }
         .sheet(isPresented: $isPresentingColorEditor) {
@@ -3229,17 +3338,36 @@ struct PPAccessoryVariantSection: View {
     // MARK: - Validation, Failure & Confirmation
 
     private var validationList: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             ForEach(model.validationMessages, id: \.self) { message in
                 HStack(alignment: .top, spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 12))
                         .foregroundStyle(AdminSurface.amber)
                     Text(message)
-                        .font(AdminType.caption)
+                        .font(PPBrandFont.regular(size: 12.5))
                         .foregroundStyle(AdminSurface.primaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+            }
+
+            if selectedTab == .options {
+                Button {
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.80)) {
+                        selectedTab = .variants
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Text(Language.get("Options_GoToMatrix_Resolve", alter: "انتقل إلى تبويب المتغيرات لحل التعارض"))
+                            .font(PPBrandFont.bold(size: 12))
+                        Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                            .font(.system(size: 10, weight: .bold))
+                    }
+                    .foregroundStyle(AdminSurface.primary)
+                    .padding(.top, 2)
+                }
+                .buttonStyle(.plain)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -3330,6 +3458,7 @@ struct PPAccessoryVariantSection: View {
             }
             .font(AdminType.calloutBold)
             .buttonStyle(.bordered)
+            .disabled(model.isEditingLocked)
 
             Spacer()
 
@@ -3405,15 +3534,17 @@ struct PPAccessoryVariantStudioSheet: View {
     let isSubmitting: Bool
     let existingStagedImages: [UIImage]
     let existingVariants: [PPAccessoryVariant]
-    let onCreate: (PPAccessoryVariantColor, String, String, Double, Double?, Int, [UIImage]) async -> Bool
-    let onUpdate: (String, PPAccessoryVariantColor, String, String, Double, Double?, Int, [UIImage], [String]?) async -> Bool
+    let onCreate: (PPAccessoryVariantColor, [String: String], String, String, Double, Double?, Int, [UIImage]) async -> Bool
+    let onUpdate: (String, PPAccessoryVariantColor, [String: String], String, String, Double, Double?, Int, [UIImage], [String]?) async -> Bool
     var onOpenFullRecord: ((String) -> Void)? = nil
     var errorMessage: (() -> String?)? = nil
+    var optionDefinitions: [PPAccessoryOptionDefinition] = []
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var color: PPAccessoryVariantColor
+    @State private var selectedOptions: [String: String]
     @State private var sku: String
     @State private var barcode: String
     @State private var retailPriceText: String
@@ -3437,10 +3568,11 @@ struct PPAccessoryVariantStudioSheet: View {
         isSubmitting: Bool,
         existingStagedImages: [UIImage] = [],
         existingVariants: [PPAccessoryVariant] = [],
-        onCreate: @escaping (PPAccessoryVariantColor, String, String, Double, Double?, Int, [UIImage]) async -> Bool,
-        onUpdate: @escaping (String, PPAccessoryVariantColor, String, String, Double, Double?, Int, [UIImage], [String]?) async -> Bool,
+        onCreate: @escaping (PPAccessoryVariantColor, [String: String], String, String, Double, Double?, Int, [UIImage]) async -> Bool,
+        onUpdate: @escaping (String, PPAccessoryVariantColor, [String: String], String, String, Double, Double?, Int, [UIImage], [String]?) async -> Bool,
         onOpenFullRecord: ((String) -> Void)? = nil,
-        errorMessage: (() -> String?)? = nil
+        errorMessage: (() -> String?)? = nil,
+        optionDefinitions: [PPAccessoryOptionDefinition] = []
     ) {
         self.mode = mode
         self.usedColorIdentifiers = usedColorIdentifiers
@@ -3451,7 +3583,9 @@ struct PPAccessoryVariantStudioSheet: View {
         self.onUpdate = onUpdate
         self.onOpenFullRecord = onOpenFullRecord
         self.errorMessage = errorMessage
+        self.optionDefinitions = optionDefinitions
 
+        var initialOptions: [String: String] = [:]
         switch mode {
         case .create:
             let defaultColor = PPAccessoryVariantColorLibrary.entries.first
@@ -3465,6 +3599,13 @@ struct PPAccessoryVariantStudioSheet: View {
             _quantity = State(initialValue: 0)
             _stagedImages = State(initialValue: [])
             _retainedRemoteURLs = State(initialValue: [])
+            for def in optionDefinitions where !def.isColorOption && !def.values.isEmpty {
+                if let first = def.values.first {
+                    initialOptions[def.id] = first.id
+                    initialOptions[def.key] = first.id
+                }
+            }
+            _selectedOptions = State(initialValue: initialOptions)
         case .edit(let variant):
             _color = State(initialValue: variant.color)
             _sku = State(initialValue: variant.sku)
@@ -3477,6 +3618,17 @@ struct PPAccessoryVariantStudioSheet: View {
             _quantity = State(initialValue: max(0, variant.quantity))
             _stagedImages = State(initialValue: existingStagedImages)
             _retainedRemoteURLs = State(initialValue: variant.media.map(\.remoteURL).filter { !$0.isEmpty })
+            initialOptions = variant.selectedOptions
+            for def in optionDefinitions where !def.isColorOption && !def.values.isEmpty {
+                let current = initialOptions[def.id] ?? initialOptions[def.key]
+                if current == nil || current!.isEmpty {
+                    if let first = def.values.first {
+                        initialOptions[def.id] = first.id
+                        initialOptions[def.key] = first.id
+                    }
+                }
+            }
+            _selectedOptions = State(initialValue: initialOptions)
         }
     }
 
@@ -3487,6 +3639,32 @@ struct PPAccessoryVariantStudioSheet: View {
     private var wholesalePrice: Double? {
         guard wholesaleEnabled else { return nil }
         return Double(wholesalePriceText.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private var hasGenericOptions: Bool {
+        !optionDefinitions.filter { !$0.isColorOption && !$0.values.isEmpty }.isEmpty
+    }
+
+    private var currentCombinationKey: String {
+        var opts = selectedOptions
+        if let colorDef = optionDefinitions.first(where: { $0.isColorOption }) {
+            opts[colorDef.id] = color.identifier
+        }
+        opts[PPAccessoryVariantContract.axisColor] = color.identifier
+        return PPAccessoryVariantFamily.combinationKey(from: opts)
+    }
+
+    private var combinationConflictMessage: String? {
+        guard hasGenericOptions else { return nil }
+        let currentKey = currentCombinationKey
+        for v in existingVariants {
+            if case .edit(let current) = mode, v.productId == current.productId { continue }
+            let vKey = v.combinationKey.isEmpty ? PPAccessoryVariantFamily.combinationKey(from: v.selectedOptions) : v.combinationKey
+            if vKey == currentKey {
+                return Language.get("Variant_Error_CombinationTaken", alter: "هذه التوليفة مستخدمة بالفعل في هذا المنتج.")
+            }
+        }
+        return nil
     }
 
     private var barcodeConflictMessage: String? {
@@ -3519,14 +3697,18 @@ struct PPAccessoryVariantStudioSheet: View {
 
     private var canSubmit: Bool {
         guard !isSubmitting, !localSubmitting else { return false }
-        if mode.isEdit {
-            if case .edit(let v) = mode {
-                if color.identifier != v.color.identifier && usedColorIdentifiers.contains(color.identifier) {
-                    return false
-                }
-            }
+        if hasGenericOptions {
+            if combinationConflictMessage != nil { return false }
         } else {
-            if usedColorIdentifiers.contains(color.identifier) { return false }
+            if mode.isEdit {
+                if case .edit(let v) = mode {
+                    if color.identifier != v.color.identifier && usedColorIdentifiers.contains(color.identifier) {
+                        return false
+                    }
+                }
+            } else {
+                if usedColorIdentifiers.contains(color.identifier) { return false }
+            }
         }
         if barcodeConflictMessage != nil { return false }
         if skuConflictMessage != nil { return false }
@@ -3542,6 +3724,7 @@ struct PPAccessoryVariantStudioSheet: View {
             ScrollView {
                 VStack(spacing: 16) {
                     chromaticAtelierCard
+                    genericOptionsCard
                     photosAtelierCard
                     stockQuantityDialCard
                     commercePricingCard
@@ -3560,18 +3743,17 @@ struct PPAccessoryVariantStudioSheet: View {
                 .padding(16)
             }
             .background(AdminSurface.background.ignoresSafeArea())
-            .navigationTitle(mode.navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text(mode.navigationTitle)
                         .font(PPBrandFont.bold(size: 18, relativeTo: .headline))
-                        .foregroundStyle(AdminCommandInk.primary)
+                        .foregroundStyle(AdminSurface.primaryText)
                 }
                 ToolbarItem(placement: .cancellationAction) {
                     Button(Language.get("Cancel", alter: "إلغاء")) { dismiss() }
                         .disabled(localSubmitting || isSubmitting)
-                        .font(AdminType.callout)
+                        .font(PPBrandFont.medium(size: 15))
                         .foregroundStyle(AdminCommandInk.secondary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -3584,7 +3766,7 @@ struct PPAccessoryVariantStudioSheet: View {
                             Text(mode.isEdit
                                  ? Language.get("Variant_Studio_Save", alter: "حفظ التعديلات")
                                  : Language.get("Variant_Add_Create", alter: "إنشاء اللون"))
-                                .font(AdminType.calloutBold)
+                                .font(PPBrandFont.bold(size: 15))
                         }
                     }
                     .disabled(!canSubmit)
@@ -3716,7 +3898,7 @@ struct PPAccessoryVariantStudioSheet: View {
                 HStack(spacing: 10) {
                     ForEach(presetColors, id: \.identifier) { preset in
                         let isSelected = color.identifier == preset.identifier
-                        let isTaken = usedColorIdentifiers.contains(preset.identifier) &&
+                        let isTaken = !hasGenericOptions && usedColorIdentifiers.contains(preset.identifier) &&
                             (!mode.isEdit || (mode.isEdit && preset.identifier != color.identifier))
 
                         Button {
@@ -3788,6 +3970,114 @@ struct PPAccessoryVariantStudioSheet: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(AdminSurface.hairline, lineWidth: 1)
         )
+    }
+
+    // MARK: - 1.5. Generic Options & Specifications Card
+
+    @ViewBuilder
+    private var genericOptionsCard: some View {
+        let activeGenericDefs = optionDefinitions.filter { !$0.isColorOption && !$0.values.isEmpty }
+        if !activeGenericDefs.isEmpty {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 8) {
+                    Image(systemName: "slider.horizontal.2.square.on.square")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                    Text(Language.get("Variant_Studio_Options_Title", alter: "خيارات ومواصفات هذا المتغير"))
+                        .font(PPBrandFont.bold(size: 15))
+                        .foregroundStyle(AdminSurface.primaryText)
+                    Spacer()
+                }
+
+                Text(Language.get("Variant_Studio_Options_Subtitle", alter: "حدد قيمة كل خيار لربط هذا المتغير بالمواصفات المحددة بدقة داخل النظام."))
+                    .font(PPBrandFont.regular(size: 12))
+                    .foregroundStyle(AdminCommandInk.secondary)
+
+                ForEach(activeGenericDefs, id: \.id) { def in
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(def.localizedName)
+                                .font(PPBrandFont.bold(size: 13))
+                                .foregroundStyle(AdminSurface.primaryText)
+
+                            Spacer()
+
+                            let chosenValId = selectedOptions[def.id] ?? selectedOptions[def.key]
+                            if let chosenVal = def.values.first(where: { $0.id == chosenValId }) {
+                                Text(chosenVal.localizedName)
+                                    .font(PPBrandFont.bold(size: 12))
+                                    .foregroundStyle(AdminSurface.primary)
+                                    .padding(.horizontal, 9)
+                                    .padding(.vertical, 3)
+                                    .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+                            }
+                        }
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(def.values, id: \.id) { val in
+                                    let isSelected = (selectedOptions[def.id] == val.id) || (selectedOptions[def.key] == val.id)
+                                    Button {
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                        withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                                            selectedOptions[def.id] = val.id
+                                            selectedOptions[def.key] = val.id
+                                        }
+                                    } label: {
+                                        HStack(spacing: 6) {
+                                            if isSelected {
+                                                Image(systemName: "checkmark")
+                                                    .font(.system(size: 10, weight: .black))
+                                            }
+                                            Text(val.localizedName)
+                                                .font(isSelected ? PPBrandFont.bold(size: 13) : PPBrandFont.medium(size: 13))
+                                        }
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 8)
+                                        .background(
+                                            isSelected ? AdminSurface.primary : AdminSurface.control,
+                                            in: Capsule()
+                                        )
+                                        .overlay(
+                                            Capsule().strokeBorder(
+                                                isSelected ? AdminSurface.primary : AdminSurface.hairline,
+                                                lineWidth: 1
+                                            )
+                                        )
+                                        .foregroundStyle(isSelected ? Color.white : AdminSurface.primaryText)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.vertical, 3)
+                        }
+                    }
+                    if def.id != activeGenericDefs.last?.id {
+                        Divider().foregroundStyle(AdminSurface.hairline)
+                    }
+                }
+
+                if let conflict = combinationConflictMessage {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(AdminSurface.crimson)
+                        Text(conflict)
+                            .font(PPBrandFont.medium(size: 12))
+                            .foregroundStyle(AdminSurface.crimson)
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(AdminSurface.crimson.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+            }
+            .padding(14)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(combinationConflictMessage != nil ? AdminSurface.crimson : AdminSurface.hairline, lineWidth: combinationConflictMessage != nil ? 1.5 : 1)
+            )
+        }
     }
 
     // MARK: - 2. Color Photos Darkroom & Atelier Card
@@ -4205,7 +4495,7 @@ struct PPAccessoryVariantStudioSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label(Language.get("Variant_Add_Pricing", alter: "تسعير هذا اللون"), systemImage: "tag.fill")
-                    .font(AdminType.subheadlineBold)
+                    .font(PPBrandFont.bold(size: 15))
                     .foregroundStyle(AdminSurface.primaryText)
                 Spacer()
             }
@@ -4218,7 +4508,8 @@ struct PPAccessoryVariantStudioSheet: View {
 
             Toggle(isOn: $wholesaleEnabled.animation(reduceMotion ? nil : .easeInOut(duration: 0.16))) {
                 Text(Language.get("Variant_Add_Wholesale", alter: "سعر جملة مستقل"))
-                    .font(AdminType.footnoteBold)
+                    .font(PPBrandFont.bold(size: 13))
+                    .foregroundStyle(AdminSurface.primaryText)
             }
 
             if wholesaleEnabled {
@@ -4240,7 +4531,7 @@ struct PPAccessoryVariantStudioSheet: View {
                             String(format: "%.2f QAR", delta).normalizedEnglishDigits,
                             "\(marginPercent)".normalizedEnglishDigits
                         ))
-                        .font(AdminType.caption2Bold)
+                        .font(PPBrandFont.bold(size: 12))
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
@@ -4265,17 +4556,17 @@ struct PPAccessoryVariantStudioSheet: View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(AdminType.caption2Bold)
-                    .foregroundStyle(AdminCommandInk.secondary)
+                    .font(PPBrandFont.bold(size: 13))
+                    .foregroundStyle(AdminSurface.primaryText)
                 Text(Language.get("QAR", alter: "ر.ق"))
-                    .font(AdminType.caption2)
+                    .font(PPBrandFont.medium(size: 11))
                     .foregroundStyle(AdminCommandInk.tertiary)
             }
             Spacer()
             TextField("0.00", text: text)
                 .keyboardType(.decimalPad)
                 .multilineTextAlignment(.trailing)
-                .font(AdminType.calloutBold.monospacedDigit())
+                .font(.system(size: 16, weight: .bold, design: .rounded))
                 .frame(width: 130)
                 .padding(.horizontal, 12)
                 .frame(minHeight: 44)
@@ -4290,22 +4581,22 @@ struct PPAccessoryVariantStudioSheet: View {
     private var identifiersCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             Label(Language.get("Variant_Add_Identifiers", alter: "هوية اللون في المخزون"), systemImage: "barcode.viewfinder")
-                .font(AdminType.subheadlineBold)
+                .font(PPBrandFont.bold(size: 15))
                 .foregroundStyle(AdminSurface.primaryText)
 
             // Barcode Section with Camera Scanner & PP Generator
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
                     Text(Language.get("CatalogIntake_BarcodeLabel", alter: "الباركود"))
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(AdminCommandInk.secondary)
+                        .font(PPBrandFont.bold(size: 13))
+                        .foregroundStyle(AdminSurface.primaryText)
 
                     if barcodeConflictMessage != nil {
                         HStack(spacing: 3) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.system(size: 9, weight: .bold))
                             Text(Language.get("Validation_Duplicate", alter: "مكرر"))
-                                .font(AdminType.caption2Bold)
+                                .font(PPBrandFont.bold(size: 11))
                         }
                         .foregroundStyle(AdminSurface.crimson)
                         .padding(.horizontal, 6)
@@ -4391,7 +4682,7 @@ struct PPAccessoryVariantStudioSheet: View {
                             .foregroundStyle(AdminSurface.crimson)
                             .padding(.top, 1)
                         Text(conflict)
-                            .font(AdminType.caption1Bold)
+                            .font(PPBrandFont.bold(size: 12))
                             .foregroundStyle(AdminSurface.crimson)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -4404,15 +4695,15 @@ struct PPAccessoryVariantStudioSheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
                     Text(Language.get("CatalogIntake_SKULabel", alter: "رمز المنتج (SKU)"))
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(AdminCommandInk.secondary)
+                        .font(PPBrandFont.bold(size: 13))
+                        .foregroundStyle(AdminSurface.primaryText)
 
                     if skuConflictMessage != nil {
                         HStack(spacing: 3) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.system(size: 9, weight: .bold))
                             Text(Language.get("Validation_Duplicate", alter: "مكرر"))
-                                .font(AdminType.caption2Bold)
+                                .font(PPBrandFont.bold(size: 11))
                         }
                         .foregroundStyle(AdminSurface.crimson)
                         .padding(.horizontal, 6)
@@ -4426,7 +4717,7 @@ struct PPAccessoryVariantStudioSheet: View {
                         generateVariantSKU()
                     } label: {
                         Label(Language.get("Generate_SKU_Auto", alter: "توليد SKU"), systemImage: "wand.and.stars")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(PPBrandFont.bold(size: 12))
                             .foregroundStyle(AdminSurface.primary)
                     }
                     .buttonStyle(.plain)
@@ -4485,7 +4776,7 @@ struct PPAccessoryVariantStudioSheet: View {
                             .foregroundStyle(AdminSurface.crimson)
                             .padding(.top, 1)
                         Text(conflict)
-                            .font(AdminType.caption1Bold)
+                            .font(PPBrandFont.bold(size: 12))
                             .foregroundStyle(AdminSurface.crimson)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -4550,7 +4841,7 @@ struct PPAccessoryVariantStudioSheet: View {
             ),
             systemImage: "checkmark.shield.fill"
         )
-        .font(AdminType.caption)
+        .font(PPBrandFont.regular(size: 12))
         .foregroundStyle(AdminCommandInk.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
@@ -4559,7 +4850,7 @@ struct PPAccessoryVariantStudioSheet: View {
 
     private func failureBanner(_ message: String) -> some View {
         Label(message, systemImage: "exclamationmark.triangle.fill")
-            .font(AdminType.footnote)
+            .font(PPBrandFont.medium(size: 13))
             .foregroundStyle(AdminSurface.crimson)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
@@ -4578,6 +4869,7 @@ struct PPAccessoryVariantStudioSheet: View {
             case .create:
                 success = await onCreate(
                     color,
+                    selectedOptions,
                     sku,
                     barcode,
                     retailPrice,
@@ -4589,6 +4881,7 @@ struct PPAccessoryVariantStudioSheet: View {
                 success = await onUpdate(
                     variant.productId,
                     color,
+                    selectedOptions,
                     sku,
                     barcode,
                     retailPrice,

@@ -113,7 +113,10 @@ struct PPInventoryFamilyRow: View {
     /// Returning nil means the price is unresolved and must not be invented.
     let retailPrice: (PetAccessory) -> Double?
     let lowStockThreshold: Int
+    var showsAccentLine: Bool = true
 
+    @ObservedObject private var branchInventory = PPBranchInventoryService.shared
+    @ObservedObject private var branchContext = BranchContextStore.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var defaultMember: PetAccessory {
@@ -178,13 +181,14 @@ struct PPInventoryFamilyRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 0) {
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                if reduceMotion {
+                // Single source of truth for the disclosure curve. The list used to
+                // wrap this same binding in a different spring, so one tap drove two
+                // competing animations.
+                withAnimation(AdminAnimation.motion(AdminAnimation.disclosure, reduceMotion: reduceMotion)) {
                     isExpanded.toggle()
-                } else {
-                    withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
                 }
             } label: {
                 header
@@ -194,6 +198,9 @@ struct PPInventoryFamilyRow: View {
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
+            .padding(.horizontal, 14)
+            .padding(.top, 14)
+            .padding(.bottom, 12)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilitySummary)
             .accessibilityHint(isExpanded
@@ -203,18 +210,18 @@ struct PPInventoryFamilyRow: View {
 
             swatchSummary
         }
-        .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color.white)
         )
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(AdminSurface.borderSubtle.opacity(0.65), lineWidth: 0.75)
         )
         .shadow(color: .black.opacity(0.03), radius: 8, x: 0, y: 3)
         .overlay(alignment: .leading) {
-            if isExpanded {
+            if isExpanded && showsAccentLine {
                 Capsule(style: .continuous)
                     .fill(familyAccent.opacity(0.95))
                     .frame(width: 3.5)
@@ -316,12 +323,23 @@ struct PPInventoryFamilyRow: View {
 
             Spacer(minLength: 4)
 
-            // Disclosure points down when collapsed and up when expanded, so it
-            // needs no mirroring for Arabic.
-            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+            // A single glyph that rotates, rather than two glyphs swapped. Swapping
+            // `chevron.down` for `chevron.up` pops — there is no intermediate state,
+            // so the indicator teleports while the panel below it animates. Rotating
+            // one chevron ties the indicator to the same spring as the disclosure.
+            //
+            // `chevron.down` rotated 180° is visually identical to `chevron.up`, and
+            // a vertical chevron needs no RTL mirroring.
+            Image(systemName: "chevron.down")
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(AdminCommandInk.secondary)
+                .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                .animation(
+                    AdminAnimation.motion(AdminAnimation.disclosure, reduceMotion: reduceMotion),
+                    value: isExpanded
+                )
                 .frame(width: 32, height: 32)
+                .accessibilityHidden(true)
         }
     }
 
@@ -340,139 +358,140 @@ struct PPInventoryFamilyRow: View {
     /// a color selects that exact product and opens its compact child inspector.
     /// Swatch plus text is always used; color is never the only identifier.
     private var swatchSummary: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(members, id: \.accessoryID) { member in
-                    let hasRealColor = member.pos_hasRealColor
-                    let colour = hasRealColor ? member.pos_variantColor : nil
-                    let productAccentColor: Color = colour.map { Color(uiColor: $0.uiColor) } ?? AdminSurface.primary
-                    let requiresContrast = colour?.requiresContrastBorder ?? false
-                    let quantity = availability(member)
-                    let isSelected = member.accessoryID == selectedProductId
-                    let shortBadge = member.pos_variantShortBadge
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(AdminSurface.borderSubtle.opacity(0.55))
+                .frame(height: 0.5)
 
-                    Button {
-                        UISelectionFeedbackGenerator().selectionChanged()
-                        if reduceMotion {
-                            selectedProductId = member.accessoryID
-                            isExpanded = true
-                        } else {
-                            withAnimation(.easeOut(duration: 0.18)) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(members, id: \.accessoryID) { member in
+                        let hasRealColor = member.pos_hasRealColor
+                        let colour = hasRealColor ? member.pos_variantColor : nil
+                        let productAccentColor: Color = colour.map { Color(uiColor: $0.uiColor) } ?? AdminSurface.primary
+                        let requiresContrast = colour?.requiresContrastBorder ?? false
+                        let quantity = availability(member)
+                        let isSelected = !selectedProductId.isEmpty && member.accessoryID == selectedProductId
+                        let shortBadge = member.pos_variantShortBadge
+
+                        Button {
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            if reduceMotion {
                                 selectedProductId = member.accessoryID
                                 isExpanded = true
+                            } else {
+                                withAnimation(.easeOut(duration: 0.18)) {
+                                    selectedProductId = member.accessoryID
+                                    isExpanded = true
+                                }
                             }
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            if hasRealColor, let colour = colour {
-                                ZStack {
-                                    Circle()
-                                        .fill(Color(uiColor: colour.uiColor))
-                                        .frame(width: 16, height: 16)
-                                    Circle()
-                                        .strokeBorder(
-                                            colour.requiresContrastBorder
-                                                ? AdminSurface.primaryText.opacity(0.32)
-                                                : Color.clear,
-                                            lineWidth: 1
-                                        )
-                                        .frame(width: 16, height: 16)
-                                    if isSelected {
+                        } label: {
+                            HStack(spacing: 5) {
+                                if hasRealColor, let colour = colour {
+                                    ZStack {
+                                        Circle()
+                                            .fill(Color(uiColor: colour.uiColor))
+                                            .frame(width: 12, height: 12)
                                         Circle()
                                             .strokeBorder(
-                                                requiresContrast ? AdminSurface.primaryText : productAccentColor,
-                                                lineWidth: 2
+                                                colour.requiresContrastBorder
+                                                    ? AdminSurface.primaryText.opacity(0.32)
+                                                    : Color.clear,
+                                                lineWidth: 1
                                             )
-                                            .frame(width: 22, height: 22)
+                                            .frame(width: 12, height: 12)
+                                        if isSelected {
+                                            Circle()
+                                                .strokeBorder(
+                                                    requiresContrast ? AdminSurface.primaryText : productAccentColor,
+                                                    lineWidth: 1.5
+                                                )
+                                                .frame(width: 16, height: 16)
+                                        }
                                     }
+                                    .frame(width: 16, height: 16)
+                                } else if !shortBadge.isEmpty {
+                                    Text(shortBadge)
+                                        .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                                        .foregroundStyle(isSelected ? AdminSurface.primary : AdminCommandInk.secondary)
+                                        .padding(.horizontal, 3.5)
+                                        .padding(.vertical, 1.5)
+                                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                .strokeBorder(isSelected ? AdminSurface.primary : AdminSurface.hairline, lineWidth: isSelected ? 1 : 0.5)
+                                        )
+                                } else {
+                                    Image(systemName: member.pos_variantDimension.outlineSymbolName)
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(isSelected ? AdminSurface.primary : AdminCommandInk.secondary)
+                                        .frame(width: 14, height: 14)
                                 }
-                                .frame(width: 22, height: 22)
-                            } else if !shortBadge.isEmpty {
-                                Text(shortBadge)
-                                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                                    .foregroundStyle(isSelected ? AdminSurface.primary : AdminCommandInk.secondary)
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 2)
-                                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                            .strokeBorder(isSelected ? AdminSurface.primary : AdminSurface.hairline, lineWidth: isSelected ? 1.2 : 0.5)
-                                    )
-                            } else {
-                                Image(systemName: member.pos_variantDimension.outlineSymbolName)
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(isSelected ? AdminSurface.primary : AdminCommandInk.secondary)
-                                    .frame(width: 18, height: 18)
-                            }
 
-                            Text(member.pos_variantDisplayName)
-                                .font(isSelected ? AdminType.caption2Bold : AdminType.caption2)
-                                .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminCommandInk.secondary)
-                                .lineLimit(1)
-
-                            Text(verbatim: "\(quantity.englishDigits)")
-                                .font(AdminType.caption2Bold)
-                                .foregroundStyle(
-                                    member.isArchived
-                                        ? AdminCommandInk.tertiary
-                                        : quantity <= 0
-                                            ? AdminSurface.crimson
-                                            : quantity <= lowStockThreshold
-                                                ? AdminSurface.amber
-                                                : AdminSurface.emerald
-                                )
-
-                            if let price = retailPrice(member) {
-                                Text(verbatim: "·")
-                                    .foregroundStyle(AdminCommandInk.tertiary)
-                                Text(PetAccessory.formatCurrency(NSNumber(value: price)).normalizedEnglishDigits)
-                                    .font(AdminType.caption2Bold)
-                                    .foregroundStyle(AdminSurface.primaryText)
+                                Text(member.pos_variantDisplayName)
+                                    .font(isSelected ? AdminType.caption2Bold : AdminType.caption2)
+                                    .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminCommandInk.secondary)
                                     .lineLimit(1)
-                                    .environment(\.layoutDirection, .leftToRight)
+
+                                Text(verbatim: "\(quantity.englishDigits)")
+                                    .font(AdminType.caption2Bold)
+                                    .foregroundStyle(
+                                        member.isArchived
+                                            ? AdminCommandInk.tertiary
+                                            : quantity <= 0
+                                                ? AdminSurface.crimson
+                                                : quantity <= lowStockThreshold
+                                                    ? AdminSurface.amber
+                                                    : AdminSurface.emerald
+                                    )
+
+                                if let price = retailPrice(member) {
+                                    Text(verbatim: "·")
+                                        .font(.system(size: 9, weight: .semibold))
+                                        .foregroundStyle(AdminCommandInk.tertiary)
+                                    Text(PetAccessory.formatCurrency(NSNumber(value: price)).normalizedEnglishDigits)
+                                        .font(AdminType.caption2Bold)
+                                        .foregroundStyle(AdminSurface.primaryText)
+                                        .lineLimit(1)
+                                        .environment(\.layoutDirection, .leftToRight)
+                                }
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4.5)
+                            .background(
+                                isSelected
+                                    ? (requiresContrast ? AdminSurface.control : productAccentColor.opacity(0.16))
+                                    : (requiresContrast ? Color.white : productAccentColor.opacity(0.06)),
+                                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            )
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .strokeBorder(
+                                        isSelected
+                                            ? (requiresContrast ? AdminSurface.primaryText.opacity(0.65) : productAccentColor.opacity(0.75))
+                                            : (requiresContrast ? AdminSurface.hairline : productAccentColor.opacity(0.22)),
+                                        lineWidth: isSelected ? 1.5 : 0.75
+                                    )
                             }
                         }
-                        .padding(.horizontal, 9)
-                        .frame(minHeight: 44)
-                        .background(
-                            isSelected
-                                ? (requiresContrast ? AdminSurface.control : productAccentColor.opacity(0.16))
-                                : (requiresContrast ? Color.white : productAccentColor.opacity(0.06)),
-                            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        )
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .strokeBorder(
-                                    isSelected
-                                        ? (requiresContrast ? AdminSurface.primaryText.opacity(0.65) : productAccentColor.opacity(0.75))
-                                        : (requiresContrast ? AdminSurface.hairline : productAccentColor.opacity(0.22)),
-                                    lineWidth: isSelected ? 1.5 : 0.75
-                                )
-                        }
+                        .buttonStyle(.plain)
+                        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .opacity(member.isArchived ? 0.55 : 1)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(colourAccessibilityLabel(
+                            colour: colour,
+                            member: member,
+                            quantity: quantity
+                        ))
+                        .accessibilityHint(familyDimension.selectHint)
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
                     }
-                    .buttonStyle(.plain)
-                    .opacity(member.isArchived ? 0.55 : 1)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(colourAccessibilityLabel(
-                        colour: colour,
-                        member: member,
-                        quantity: quantity
-                    ))
-                    .accessibilityHint(familyDimension.selectHint)
-                    .accessibilityAddTraits(isSelected ? .isSelected : [])
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 7)
         }
-        .background(
-            AdminSurface.control.opacity(0.5),
-            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(AdminSurface.hairline.opacity(0.6), lineWidth: 0.75)
-        }
+        .background(AdminSurface.control.opacity(0.35))
     }
 
     private func colourAccessibilityLabel(

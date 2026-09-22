@@ -24,6 +24,7 @@ public struct PPInventoryActionMenuSheet: View {
     var onRecordMortality: (() -> Void)? = nil
     var onLiveIntake: (() -> Void)? = nil
     var onToggleAppMarket: (() -> Void)? = nil
+    var onRevertToNormal: (() -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -40,7 +41,8 @@ public struct PPInventoryActionMenuSheet: View {
         onOpenPOS: (() -> Void)? = nil,
         onRecordMortality: (() -> Void)? = nil,
         onLiveIntake: (() -> Void)? = nil,
-        onToggleAppMarket: (() -> Void)? = nil
+        onToggleAppMarket: (() -> Void)? = nil,
+        onRevertToNormal: (() -> Void)? = nil
     ) {
         self.item = item
         self.onEdit = onEdit
@@ -54,6 +56,7 @@ public struct PPInventoryActionMenuSheet: View {
         self.onRecordMortality = onRecordMortality
         self.onLiveIntake = onLiveIntake
         self.onToggleAppMarket = onToggleAppMarket
+        self.onRevertToNormal = onRevertToNormal
     }
 
     private var imageURL: URL? {
@@ -83,8 +86,11 @@ public struct PPInventoryActionMenuSheet: View {
             if let branchRecord = PPBranchInventoryService.shared.inventory(for: item.accessoryID) {
                 return branchRecord.availableQuantity
             }
-            let itemBranch = (item.storeID ?? item.branchID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if !itemBranch.isEmpty && itemBranch != "main_store" && itemBranch != activeBranch {
+            if activeBranch != "main_store" && activeBranch != "all_branches" {
+                let itemBranch = (item.storeID ?? item.branchID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if itemBranch == activeBranch {
+                    return max(0, item.quantity)
+                }
                 return 0
             }
         }
@@ -173,7 +179,7 @@ public struct PPInventoryActionMenuSheet: View {
                 // Quick Operational Actions Grid
                 quickActionsSection
 
-                if canDeleteStock {
+                if canDeleteStock || (item.belongsToVariantFamily && onRevertToNormal != nil) {
                     destructiveZone
                 }
             }
@@ -464,31 +470,58 @@ public struct PPInventoryActionMenuSheet: View {
     // MARK: - Guarded Destructive Zone
 
     private var destructiveZone: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 8) {
             Divider()
                 .background(AdminSurface.hairline)
                 .padding(.top, 4)
 
-            Button(role: .destructive) {
-                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                dismiss()
-                onDelete()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "trash.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                    Text(item.isLivePet ? Language.get("LivePet_Delete_Guarded", alter: "حذف السجل الحي نهائياً من المخزون") : Language.get("Delete_Specimen_Guarded", alter: "حذف الصنف نهائياً من المخزون"))
-                        .font(PPBrandFont.bold(size: 14))
+            // Revert Group Variant to Normal Single Product
+            if item.belongsToVariantFamily, let onRevertToNormal = onRevertToNormal {
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    dismiss()
+                    onRevertToNormal()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                        Text(Language.get("Variant_RevertToNormal_Action", alter: "إلغاء المتغيرات والتحويل لمنتج عادي"))
+                            .font(PPBrandFont.bold(size: 14))
+                    }
+                    .foregroundColor(Color(uiColor: .ppWarning))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+                    .background(Color(uiColor: .ppWarning).opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(Color(uiColor: .ppWarning).opacity(0.3), lineWidth: 1)
+                    )
                 }
-                .foregroundColor(Color(uiColor: .ppError))
-                .frame(maxWidth: .infinity)
-                .frame(height: 46)
-                .background(Color(uiColor: .ppError).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .buttonStyle(SpecimenActionPressStyle())
             }
-            .buttonStyle(SpecimenActionPressStyle())
-            .padding(.top, 8)
-            .padding(.bottom, 24)
+
+            if canDeleteStock {
+                Button(role: .destructive) {
+                    UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                    dismiss()
+                    onDelete()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "trash.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text(item.isLivePet ? Language.get("LivePet_Delete_Guarded", alter: "حذف السجل الحي نهائياً من المخزون") : Language.get("Delete_Specimen_Guarded", alter: "حذف الصنف نهائياً من المخزون"))
+                            .font(PPBrandFont.bold(size: 14))
+                    }
+                    .foregroundColor(Color(uiColor: .ppError))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+                    .background(Color(uiColor: .ppError).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(SpecimenActionPressStyle())
+            }
         }
+        .padding(.top, 4)
+        .padding(.bottom, 24)
     }
 
     // MARK: - 🖥️ iPad Spatial Inspection Deck (Desktop-Class Dual-Pane Stage)
@@ -708,7 +741,29 @@ public struct PPInventoryActionMenuSheet: View {
                                 .buttonStyle(SpecimenActionPressStyle())
                             }
                         }
-                        .padding(.top, 4)
+                        if item.belongsToVariantFamily, let onRevertToNormal = onRevertToNormal {
+                            Button {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                dismiss()
+                                onRevertToNormal()
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+                                        .font(.system(size: 13, weight: .bold))
+                                    Text(Language.get("Variant_RevertToNormal_Action", alter: "إلغاء المتغيرات والتحويل لمنتج عادي"))
+                                        .font(PPBrandFont.bold(size: 13))
+                                }
+                                .foregroundColor(Color(uiColor: .ppWarning))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 40)
+                                .background(Color(uiColor: .ppWarning).opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .strokeBorder(Color(uiColor: .ppWarning).opacity(0.3), lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(SpecimenActionPressStyle())
+                        }
 
                         if canDeleteStock {
                             // Destructive Danger Strip

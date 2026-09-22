@@ -1779,7 +1779,7 @@ final class PPInventoryListViewModel: ObservableObject {
     private var listener: PPFirestoreListenerToken?
     private var listenerGeneration = UUID()
     private var refreshContinuation: CheckedContinuation<Void, Never>?
-    private var branchInventoryCancellable: AnyCancellable?
+    private var branchInventoryCancellables: [AnyCancellable] = []
     @Published private(set) var pendingQuantityItemIDs = Set<String>()
     private var pendingDeletedIDs = Set<String>()
 
@@ -1789,8 +1789,11 @@ final class PPInventoryListViewModel: ObservableObject {
             if let branchRecord = PPBranchInventoryService.shared.inventory(for: item.accessoryID) {
                 return branchRecord.availableQuantity
             }
-            let itemBranch = (item.storeID ?? item.branchID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if !itemBranch.isEmpty && itemBranch != "main_store" && itemBranch != activeBranch {
+            if activeBranch != "main_store" && activeBranch != "all_branches" {
+                let itemBranch = (item.storeID ?? item.branchID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if itemBranch == activeBranch {
+                    return max(0, item.quantity)
+                }
                 return 0
             }
         }
@@ -1827,12 +1830,26 @@ final class PPInventoryListViewModel: ObservableObject {
             self.activeTab = .accessories
         }
 
-        branchInventoryCancellable = PPBranchInventoryService.shared.$inventoryMap
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.objectWillChange.send()
-                self?.applyFilter()
-            }
+        branchInventoryCancellables = [
+            PPBranchInventoryService.shared.$inventoryMap
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    self?.objectWillChange.send()
+                    self?.applyFilter()
+                },
+            PPBranchInventoryService.shared.$currentBranchId
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    self?.objectWillChange.send()
+                    self?.applyFilter()
+                },
+            BranchContextStore.shared.$activeBranch
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    self?.objectWillChange.send()
+                    self?.applyFilter()
+                }
+        ]
     }
 
     var currentKind: AccessKindType {
@@ -2163,6 +2180,42 @@ final class PPInventoryListViewModel: ObservableObject {
         }
     }
 
+    func revertVariantFamilyToNormal(item: PetAccessory) {
+        let familyId = (item.productFamilyId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !familyId.isEmpty else { return }
+
+        PPHUD.showIndeterminate(in: nil, title: Language.get("Saving", alter: "جاري الحفظ..."), subtitle: nil)
+        Task { @MainActor in
+            do {
+                try await PPAccessoryVariantService.shared.dissolveFamily(
+                    familyId: familyId,
+                    retainedProductId: item.accessoryID,
+                    deleteOtherVariants: true
+                )
+
+                item.productFamilyId = nil
+                item.isVariant = false
+                item.isDefaultVariant = false
+                item.variantSortOrder = 0
+
+                await self.refresh()
+
+                PPHUD.dismiss()
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                PPHUD.showSuccess(
+                    Language.get("Success", alter: "نجاح"),
+                    subtitle: Language.get("Variant_RevertToNormal_Success", alter: "تم تحويل المنتج إلى صنف عادي وإلغاء المتغيرات بنجاح.")
+                )
+            } catch {
+                PPHUD.dismiss()
+                PPHUD.showError(
+                    Language.get("Error", alter: "خطأ"),
+                    subtitle: error.localizedDescription
+                )
+            }
+        }
+    }
+
     func toggleActive(_ item: PetAccessory) {
         let docID = item.accessoryID
         guard !docID.isEmpty else { return }
@@ -2218,6 +2271,23 @@ struct PPInventoryListView: View {
     @State private var itemForLots: PetAccessory? = nil
     @State private var showCycleCountStudio: Bool = false
     @State private var itemForActionMenu: PetAccessory? = nil
+
+    // MARK: Screen choreography (entrance · filter swap · row reveal)
+    //
+    /// Drives the one-shot entrance. Sections read this to rise into place; it is
+    /// never reset, so returning from a sheet does not replay the animation.
+    @State private var hasAppeared: Bool = false
+    /// Closes the staggered-reveal window once the first screenful has arrived.
+    ///
+    /// This is the detail that makes a `LazyVStack` stagger safe: without it,
+    /// every row re-runs its entrance each time it is recycled back into view,
+    /// so scrolling a long inventory list turns into a slot machine. After the
+    /// initial reveal the rows render flat.
+    @State private var initialRevealComplete: Bool = false
+    /// Increments on every filter or search change. Used as the animation value
+    /// for the list so SwiftUI diffs one coherent transition per filter change
+    /// rather than animating each row independently.
+    @State private var filterGeneration: Int = 0
 
     private var staff: PPStaffDoc? { PPStaffAuth.shared().cachedCurrentStaff }
     private var canManageStock: Bool {
@@ -2340,16 +2410,19 @@ struct PPInventoryListView: View {
                     sovereignHeaderBar
                         .frame(maxWidth: isRegular ? 980 : .infinity)
                         .frame(maxWidth: .infinity)
+                        .inventoryEntrance(step: 0, hasAppeared: hasAppeared, reduceMotion: reduceMotion)
 
                     if showsCatalogSwitcher {
                         catalogHorizonSwitcher
                             .frame(maxWidth: isRegular ? 980 : .infinity)
                             .frame(maxWidth: .infinity)
+                            .inventoryEntrance(step: 1, hasAppeared: hasAppeared, reduceMotion: reduceMotion)
                     }
 
                     ScrollView(.vertical, showsIndicators: false) {
                         LazyVStack(spacing: AdminSpacing.base) {
                             inventoryHero
+                                .inventoryEntrance(step: 2, hasAppeared: hasAppeared, reduceMotion: reduceMotion)
 
                             if viewModel.isLoading && viewModel.allItems.isEmpty {
                                 loadingSkeletonView
@@ -2361,11 +2434,22 @@ struct PPInventoryListView: View {
                             } else {
                                 if viewModel.filteredItems.isEmpty {
                                     filterEmptyStateCard
+                                        // An empty result is a *replacement* for the
+                                        // list, so it crossfades in place rather than
+                                        // sliding, which would read as navigation.
+                                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
                                 } else {
                                     itemsListSection
                                 }
                             }
                         }
+                        // One coherent transition per filter change. Keyed to the
+                        // generation counter rather than to the item array so a
+                        // background projection refresh does not animate the list.
+                        .animation(
+                            AdminAnimation.motion(AdminAnimation.filterSwap, reduceMotion: reduceMotion),
+                            value: filterGeneration
+                        )
                         .padding(.horizontal, AdminSpacing.screenMargin)
                         .padding(.top, 10)
                         .padding(.bottom, 115)
@@ -2519,15 +2603,53 @@ struct PPInventoryListView: View {
 
         .onAppear {
             viewModel.startListening()
+            startEntranceChoreography()
         }
         .onDisappear {
             viewModel.stopListening()
         }
         .onChange(of: viewModel.searchText) { _ in
-            viewModel.applyFilter()
+            // Wrapped so `ForEach` diffing animates the insert/remove/move set as
+            // one gesture. `applyFilter()` mutating published state outside an
+            // animation transaction is why filtering used to snap.
+            withAnimation(AdminAnimation.motion(AdminAnimation.filterSwap, reduceMotion: reduceMotion)) {
+                viewModel.applyFilter()
+                filterGeneration += 1
+            }
         }
         .onChange(of: viewModel.activeFilter) { _ in
-            viewModel.applyFilter()
+            withAnimation(AdminAnimation.motion(AdminAnimation.filterSwap, reduceMotion: reduceMotion)) {
+                viewModel.applyFilter()
+                filterGeneration += 1
+            }
+        }
+    }
+
+    /// Runs the entrance once and then closes the staggered-reveal window.
+    ///
+    /// Reduce Motion short-circuits to the settled state immediately — it does not
+    /// play a faster animation, because the setting asks for *no* motion, not less.
+    private func startEntranceChoreography() {
+        guard !hasAppeared else { return }
+
+        if reduceMotion {
+            hasAppeared = true
+            initialRevealComplete = true
+            return
+        }
+
+        withAnimation(AdminAnimation.screenEntrance) {
+            hasAppeared = true
+        }
+
+        // Close the window once the last staggered row could have arrived. Held in
+        // state rather than inferred per-row so recycled rows render flat.
+        let settleAfter = AdminAnimation.staggerDelay(
+            index: AdminAnimation.maxStaggeredRows,
+            reduceMotion: false
+        ) + 0.4
+        DispatchQueue.main.asyncAfter(deadline: .now() + settleAfter) {
+            initialRevealComplete = true
         }
     }
 
@@ -3272,23 +3394,30 @@ struct PPInventoryListView: View {
 
     @ViewBuilder
     private var itemsListSection: some View {
-        ForEach(viewModel.displayGroups) { group in
-            switch group {
-            case .single(let item):
-                inventoryCard(for: item)
-            case .family(let familyId, let members):
-                let defaultMember = members.first(where: { $0.isDefaultVariant }) ?? members[0]
-                let selectedMember = members.first(where: {
-                    $0.accessoryID == selectedFamilyProductIds[familyId]
-                }) ?? defaultMember
+        // `enumerated` drives the reveal stagger only. Identity still comes from
+        // the group's own `id`, so filtering moves rows rather than rebuilding them.
+        ForEach(Array(viewModel.displayGroups.enumerated()), id: \.element.id) { index, group in
+            Group {
+                switch group {
+                case .single(let item):
+                    inventoryCard(for: item)
+                case .family(let familyId, let members):
+                    let defaultMember = members.first(where: { $0.isDefaultVariant }) ?? members[0]
+                    let selectedMember = members.first(where: {
+                        $0.accessoryID == selectedFamilyProductIds[familyId]
+                    }) ?? defaultMember
+                    let isExpanded = expandedFamilyIds.contains(familyId)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    PPInventoryFamilyRow(
-                        members: members,
-                        isExpanded: Binding(
-                            get: { expandedFamilyIds.contains(familyId) },
-                            set: { isOn in
-                                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        PPInventoryFamilyRow(
+                            members: members,
+                            isExpanded: Binding(
+                                get: { expandedFamilyIds.contains(familyId) },
+                                set: { isOn in
+                                    // No `withAnimation` here. The row owns the
+                                    // disclosure animation; wrapping the binding as
+                                    // well meant two curves drove one gesture and
+                                    // fought each other on every tap.
                                     if isOn {
                                         expandedFamilyIds = [familyId]
                                         let current = selectedFamilyProductIds[familyId]
@@ -3297,61 +3426,97 @@ struct PPInventoryListView: View {
                                         }
                                     } else {
                                         expandedFamilyIds.remove(familyId)
+                                        selectedFamilyProductIds.removeValue(forKey: familyId)
                                     }
                                 }
-                            }
-                        ),
-                        selectedProductId: Binding(
-                            get: {
-                                let current = selectedFamilyProductIds[familyId]
-                                return members.contains(where: { $0.accessoryID == current })
-                                    ? (current ?? defaultMember.accessoryID)
-                                    : defaultMember.accessoryID
+                            ),
+                            selectedProductId: Binding(
+                                get: {
+                                    guard let current = selectedFamilyProductIds[familyId],
+                                          members.contains(where: { $0.accessoryID == current }) else {
+                                        return ""
+                                    }
+                                    return current
+                                },
+                                set: { selectedFamilyProductIds[familyId] = $0 }
+                            ),
+                            // Same branch projection the selected color inspector uses,
+                            // so family totals and child detail cannot disagree.
+                            availability: { member in
+                                viewModel.effectiveStock(for: member)
                             },
-                            set: { selectedFamilyProductIds[familyId] = $0 }
-                        ),
-                        // Same branch projection the selected color inspector uses,
-                        // so family totals and child detail cannot disagree.
-                        availability: { member in
-                            PPBranchInventoryService.shared.availableStock(
-                                for: member.accessoryID,
-                                fallback: member.quantity
-                            )
-                        },
-                        retailPrice: { member in
-                            guard member.hasResolvedSellingPrice else { return nil }
-                            let fallback = member.finalPrice.doubleValue
-                            let resolved = PPBranchInventoryService.shared.effectiveSellingPrice(
-                                for: member.accessoryID,
-                                fallbackPrice: fallback
-                            )
-                            return resolved > 0 ? resolved : nil
-                        },
-                        lowStockThreshold: 3
-                    )
+                            retailPrice: { member in
+                                guard member.hasResolvedSellingPrice else { return nil }
+                                let fallback = member.finalPrice.doubleValue
+                                let resolved = PPBranchInventoryService.shared.effectiveSellingPrice(
+                                    for: member.accessoryID,
+                                    fallbackPrice: fallback
+                                )
+                                return resolved > 0 ? resolved : nil
+                            },
+                            lowStockThreshold: 3,
+                            showsAccentLine: false
+                        )
 
-                    // One product family unfolds into ONE exact color inspector.
-                    // Changing the rail selection swaps this child in place rather
-                    // than stacking full duplicate product cards down the list.
-                    if expandedFamilyIds.contains(familyId) {
-                        inventoryVariantInspector(for: selectedMember)
-                            .padding(.trailing, 32)
-                            .id(selectedMember.accessoryID)
-                            .transition(
-                                reduceMotion
-                                    ? .opacity
-                                    : .asymmetric(
-                                        insertion: .move(edge: .top).combined(with: .opacity),
-                                        removal: .opacity
-                                    )
-                            )
-                            .animation(
-                                reduceMotion ? nil : .easeOut(duration: 0.18),
-                                value: selectedMember.accessoryID
-                            )
+                        // One product family unfolds into ONE exact color inspector.
+                        // Changing the rail selection swaps this child in place rather
+                        // than stacking full duplicate product cards down the list.
+                        if isExpanded {
+                            inventoryVariantInspector(for: selectedMember, showsAccentLine: false)
+                                .padding(.trailing, 32)
+                                .id(selectedMember.accessoryID)
+                                .transition(
+                                    reduceMotion
+                                        ? .opacity
+                                        : .asymmetric(
+                                            insertion: .move(edge: .top).combined(with: .opacity),
+                                            removal: .opacity
+                                        )
+                                )
+                                // Swapping colour inside an already-open family is a
+                                // smaller event than opening one, so it stays a quick
+                                // crossfade rather than re-running the disclosure spring.
+                                .animation(
+                                    AdminAnimation.motion(AdminAnimation.fast, reduceMotion: reduceMotion),
+                                    value: selectedMember.accessoryID
+                                )
+                        }
                     }
+                    .overlay(alignment: .leading) {
+                        if isExpanded {
+                            Capsule(style: .continuous)
+                                .fill(AdminSurface.primary.opacity(0.95))
+                                .frame(width: 3.5)
+                                .padding(.top, 14)
+                                .padding(.bottom, 12)
+                                .accessibilityHidden(true)
+                                .transition(.opacity)
+                        }
+                    }
+                    // The whole group animates as one unit on disclosure, so the
+                    // rows below it move with the child rather than jumping after it.
+                    .animation(
+                        AdminAnimation.motion(AdminAnimation.disclosure, reduceMotion: reduceMotion),
+                        value: isExpanded
+                    )
                 }
             }
+            .inventoryRowReveal(
+                index: index,
+                hasAppeared: hasAppeared,
+                revealComplete: initialRevealComplete,
+                reduceMotion: reduceMotion
+            )
+            // Rows arriving or leaving on a filter change read as replacement, not
+            // navigation: they fade and settle in place instead of flying in.
+            .transition(
+                reduceMotion
+                    ? .opacity
+                    : .asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.985)),
+                        removal: .opacity
+                    )
+            )
         }
     }
 
@@ -3359,7 +3524,7 @@ struct PPInventoryListView: View {
     /// same branch projection and mutation closures as the full inventory card,
     /// but does not repeat family-level product identity or imagery.
     @ViewBuilder
-    private func inventoryVariantInspector(for item: PetAccessory) -> some View {
+    private func inventoryVariantInspector(for item: PetAccessory, showsAccentLine: Bool = true) -> some View {
         let selectedBranch = branchContext.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let hasBranch = !selectedBranch.isEmpty && selectedBranch != "main_store"
         let matchesBranch = branchProjection.currentBranchId == selectedBranch
@@ -3379,10 +3544,11 @@ struct PPInventoryListView: View {
         PPInventoryVariantChildInspector(
             item: item,
             sellingPrice: sellingPrice,
-            quantity: hasBranch ? record?.availableQuantity : max(0, item.quantity),
+            quantity: hasBranch ? (record?.availableQuantity ?? 0) : max(0, item.quantity),
             branchName: "",
             stockState: state,
             canManageStock: canAccessInventoryCell(kStaffPermStockManage, branchID: hasBranch ? selectedBranch : nil),
+            showsAccentLine: showsAccentLine,
             onOpen: { openItemDetail(for: item) },
             onEdit: { openEditEditor(for: item) },
             onAdjustQuantity: { delta in
@@ -3410,7 +3576,7 @@ struct PPInventoryListView: View {
         FlagshipInventoryCard(
             item: item,
             sellingPrice: sellingPrice,
-            quantity: hasBranch ? record?.availableQuantity : max(0, item.quantity),
+            quantity: hasBranch ? (record?.availableQuantity ?? 0) : max(0, item.quantity),
             reservedQuantity: hasBranch ? (record?.reservedQuantity ?? 0) : max(0, item.reservedQuantity),
             branchName: hasBranch ? (branchContext.activeBranch?.localizedName() ?? "") : item.resolvedBranchName(),
             stockState: state,
@@ -3473,7 +3639,7 @@ struct PPInventoryListView: View {
         if !matchesBranch || branchProjection.isLoading { return .loading }
         if viewModel.pendingQuantityItemIDs.contains(item.accessoryID) { return .pending }
         if !branchProjection.isServerConfirmed || branchProjection.inventoryError != nil { return .unconfirmed }
-        return record == nil ? .missing : .ready
+        return .ready
     }
 
     // MARK: - Flagship Empty State View (Zero Catalog Items)
@@ -4014,6 +4180,7 @@ private struct PPInventoryVariantChildInspector: View {
     let branchName: String
     let stockState: PPInventoryCellStockState
     let canManageStock: Bool
+    var showsAccentLine: Bool = true
     let onOpen: () -> Void
     let onEdit: () -> Void
     let onAdjustQuantity: (Int) -> Void
@@ -4138,11 +4305,13 @@ private struct PPInventoryVariantChildInspector: View {
                 .strokeBorder(AdminSurface.borderSubtle.opacity(0.65), lineWidth: 0.75)
         }
         .overlay(alignment: .leading) {
-            Capsule(style: .continuous)
-                .fill(AdminSurface.primary.opacity(0.95))
-                .frame(width: 3.5)
-                .padding(.vertical, 12)
-                .accessibilityHidden(true)
+            if showsAccentLine {
+                Capsule(style: .continuous)
+                    .fill(AdminSurface.primary.opacity(0.95))
+                    .frame(width: 3.5)
+                    .padding(.vertical, 12)
+                    .accessibilityHidden(true)
+            }
         }
         .shadow(color: Color.black.opacity(0.035), radius: 8, x: 0, y: 3)
     }

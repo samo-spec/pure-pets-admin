@@ -429,15 +429,22 @@ public final class PPBranchInventoryService: ObservableObject {
 
     /// Returns available stock from the active branch projection.
     /// If an explicit branch record exists in `inventoryMap`, its available quantity is authoritative.
-    /// If no branch-specific record exists, falls back to the catalog quantity for unsegmented stock.
+    /// If no branch-specific record exists, falls back to the catalog quantity for unsegmented stock
+    /// in `main_store` or global view, returning 0 for unstocked secondary branches.
     public func availableStock(for productId: String, fallback: Int = 0) -> Int {
         guard let currentBranchId = currentBranchId?.trimmingCharacters(in: .whitespacesAndNewlines), !currentBranchId.isEmpty else {
+            return fallback
+        }
+        if currentBranchId == "all_branches" {
             return fallback
         }
         if let record = inventoryMap[productId] {
             return record.availableQuantity
         }
-        return max(0, fallback)
+        if currentBranchId == "main_store" {
+            return max(0, fallback)
+        }
+        return 0
     }
 
     /// Resolves the effective DEFAULT RETAIL price from the same branch commerce

@@ -50,6 +50,7 @@ struct PPAccessoryVariantMatrixView: View {
     @State private var activeSheet: PPAccessoryMatrixSheetItem?
     @State private var collapsedGroupIds: Set<String> = []
     @State private var copiedTextBanner: String?
+    @State private var variantToDelete: PPAccessoryVariant? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -69,84 +70,111 @@ struct PPAccessoryVariantMatrixView: View {
             }
         }
         .sheet(item: $activeSheet) { item in
-            switch item {
-            case .bulkPricing(let group):
-                PPAccessoryBulkPricingSheet(
-                    group: group,
-                    allVariants: model.draft?.variants ?? [],
-                    onApply: { retail, wholesale, productIds in
-                        Task {
-                            _ = await model.applyBulkPricing(
-                                retailPrice: retail,
-                                wholesalePrice: wholesale,
-                                forProductIds: productIds
-                            )
-                            activeSheet = nil
+            Group {
+                switch item {
+                case .bulkPricing(let group):
+                    PPAccessoryBulkPricingSheet(
+                        group: group,
+                        allVariants: model.draft?.variants ?? [],
+                        onApply: { retail, wholesale, productIds in
+                            Task {
+                                _ = await model.applyBulkPricing(
+                                    retailPrice: retail,
+                                    wholesalePrice: wholesale,
+                                    forProductIds: productIds
+                                )
+                                activeSheet = nil
+                            }
                         }
-                    }
-                )
-            case .createCombination(let combination):
-                PPAccessoryCreateCombinationSheet(
-                    combination: combination,
-                    family: model.draft,
-                    onCreate: { sku, barcode, retail, wholesale, quantity, images in
-                        Task {
-                            let resolvedColor = combination.colorValue.flatMap { PPAccessoryVariantColor(optionValue: $0) }
-                            _ = await model.createAndAttachCombinationVariant(
-                                selectedOptions: combination.selectedOptions,
-                                color: resolvedColor,
+                    )
+                case .createCombination(let combination):
+                    PPAccessoryCreateCombinationSheet(
+                        combination: combination,
+                        family: model.draft,
+                        errorMessage: { model.failure?.message },
+                        onCreate: { sku, barcode, retail, wholesale, quantity, images in
+                                let resolvedColor = combination.colorValue.flatMap { PPAccessoryVariantColor(optionValue: $0) }
+                                let succeeded = await model.createAndAttachCombinationVariant(
+                                    selectedOptions: combination.selectedOptions,
+                                    color: resolvedColor,
+                                    sku: sku,
+                                    barcode: barcode,
+                                    retailPrice: retail,
+                                    wholesalePrice: wholesale,
+                                    quantity: quantity,
+                                    images: images
+                                )
+                                if succeeded { activeSheet = nil }
+                                return succeeded
+                        }
+                    )
+                case .editVariant(let variant):
+                    PPAccessoryVariantStudioSheet(
+                        mode: .edit(variant),
+                        usedColorIdentifiers: model.usedColorIdentifiers,
+                        isSubmitting: model.isCreatingVariant || model.isSaving,
+                        existingStagedImages: (model.stagedImages[variant.productId] ?? []).map(\.image),
+                        existingVariants: model.draft?.variants ?? [],
+                        onCreate: { _, _, _, _, _, _, _, _ in false },
+                        onUpdate: { productId, color, options, sku, barcode, retail, wholesale, quantity, newImages, retainedURLs in
+                            await model.updateVariant(
+                                productId: productId,
+                                color: color,
+                                selectedOptions: options,
                                 sku: sku,
                                 barcode: barcode,
                                 retailPrice: retail,
                                 wholesalePrice: wholesale,
                                 quantity: quantity,
-                                images: images
+                                newImages: newImages,
+                                retainedURLs: retainedURLs
                             )
+                        },
+                        onOpenFullRecord: { productId in
                             activeSheet = nil
+                            onOpenVariantProduct?(productId)
+                        },
+                        errorMessage: {
+                            model.failure?.message
+                        },
+                        optionDefinitions: model.draft?.optionDefinitions ?? []
+                    )
+                case .manageLots(let variant, let accessory):
+                    InventoryLotsSheet(
+                        item: accessory,
+                        branchId: BranchContextStore.shared.activeBranch?.branchID ?? accessory.resolvedBranchID(),
+                        onLotsChanged: {
+                            Task {
+                                await model.reload()
+                            }
                         }
-                    }
-                )
-            case .editVariant(let variant):
-                PPAccessoryVariantStudioSheet(
-                    mode: .edit(variant),
-                    usedColorIdentifiers: model.usedColorIdentifiers,
-                    isSubmitting: model.isCreatingVariant || model.isSaving,
-                    existingStagedImages: (model.stagedImages[variant.productId] ?? []).map(\.image),
-                    existingVariants: model.draft?.variants ?? [],
-                    onCreate: { _, _, _, _, _, _, _ in false },
-                    onUpdate: { productId, color, sku, barcode, retail, wholesale, quantity, newImages, retainedURLs in
-                        await model.updateVariant(
-                            productId: productId,
-                            color: color,
-                            sku: sku,
-                            barcode: barcode,
-                            retailPrice: retail,
-                            wholesalePrice: wholesale,
-                            quantity: quantity,
-                            newImages: newImages,
-                            retainedURLs: retainedURLs
-                        )
-                    },
-                    onOpenFullRecord: { productId in
-                        activeSheet = nil
-                        onOpenVariantProduct?(productId)
-                    },
-                    errorMessage: {
-                        model.failure?.message
-                    }
-                )
-            case .manageLots(let variant, let accessory):
-                InventoryLotsSheet(
-                    item: accessory,
-                    branchId: BranchContextStore.shared.activeBranch?.branchID ?? accessory.resolvedBranchID(),
-                    onLotsChanged: {
-                        Task {
-                            await model.reload()
-                        }
-                    }
-                )
-                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+                    )
+                }
             }
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
+        .confirmationDialog(
+            Language.get("Variant_Delete_Confirm_Title", alter: "حذف المتغير من المجموعة"),
+            isPresented: Binding(
+                get: { variantToDelete != nil },
+                set: { if !$0 { variantToDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(Language.get("Delete", alter: "حذف"), role: .destructive) {
+                if let v = variantToDelete {
+                    model.removeVariant(productId: v.productId)
+                }
+                variantToDelete = nil
+            }
+            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {
+                variantToDelete = nil
+            }
+        } message: {
+            Text(Language.get(
+                "Variant_Delete_Confirm_Message",
+                alter: "هل أنت متأكد من إزالة هذا المتغير من مجموعة المنتج؟ لن يتم حذف المنتج نفسه من النظام بل سيفك ارتباطه بالمجموعة."
+            ))
         }
     }
 
@@ -399,7 +427,7 @@ struct PPAccessoryVariantMatrixView: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     activeSheet = .bulkPricing(group: group)
                 } label: {
-                    Image(systemName: "tag.badge.plus")
+                    Image(systemName: "plus.circle")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(AdminSurface.primary)
                         .frame(width: 32, height: 32)
@@ -709,6 +737,23 @@ struct PPAccessoryVariantMatrixView: View {
                 format: Language.get("Variant_Lots_A11y", alter: "تشغيلات ومخزون متغير %@"),
                 combination.localizedTitle
             ))
+
+            // Delete / Detach Variant from Family
+            if model.canManageVariants && (model.draft?.variants.count ?? 0) > 1 && !variant.isDefault {
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    variantToDelete = variant
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(AdminSurface.crimson)
+                        .frame(width: 32, height: 32)
+                        .background(AdminSurface.crimson.opacity(0.10), in: Circle())
+                        .overlay(Circle().strokeBorder(AdminSurface.crimson.opacity(0.2), lineWidth: 0.6))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Language.get("Variant_Delete_From_Family", alter: "حذف المتغير من المجموعة"))
+            }
         }
     }
 
@@ -920,24 +965,30 @@ struct PPAccessoryBulkPricingSheet: View {
                 // 5. Frosted Glass Action Dock
                 studioActionDock
             }
-            .navigationTitle(Language.get("Variant_Bulk_Pricing_Title", alter: "تسعير جماعي"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(Language.get("Variant_Bulk_Pricing_Title", alter: "تسعير جماعي"))
+                        .font(PPBrandFont.bold(size: 18, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         dismiss()
                     } label: {
                         Text(Language.get("Cancel", alter: "إلغاء"))
-                            .font(AdminType.callout)
+                            .font(PPBrandFont.medium(size: 15, relativeTo: .callout))
                             .foregroundStyle(AdminSurface.secondaryText)
                     }
                 }
             }
             .onAppear {
+                PPBrandFont.registerIfNeeded()
                 setupInitialValues()
             }
         }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
     // MARK: - 1. Scope & Command Identity Surface
@@ -1213,6 +1264,7 @@ struct PPAccessoryBulkPricingSheet: View {
                 Text(Language.get("Price_Retail", alter: "سعر البيع"))
                     .font(AdminType.footnote)
                     .foregroundStyle(AdminSurface.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 HStack(spacing: 8) {
                     Text(Language.get("QAR", alter: "ر.ق"))
@@ -1223,7 +1275,7 @@ struct PPAccessoryBulkPricingSheet: View {
                         .keyboardType(.decimalPad)
                         .font(.system(size: 28, weight: .bold, design: .rounded))
                         .foregroundStyle(AdminSurface.primaryText)
-                        .multilineTextAlignment(layoutDirection == .rightToLeft ? .leading : .leading)
+                        .multilineTextAlignment(.leading)
 
                     if !retailPriceText.isEmpty {
                         Button {
@@ -1331,7 +1383,7 @@ struct PPAccessoryBulkPricingSheet: View {
                         .keyboardType(.decimalPad)
                         .font(.system(size: 18, weight: .medium, design: .rounded))
                         .foregroundStyle(AdminSurface.primaryText)
-                        .multilineTextAlignment(layoutDirection == .rightToLeft ? .leading : .leading)
+                        .multilineTextAlignment(.leading)
 
                     if !wholesalePriceText.isEmpty {
                         Button {
@@ -1611,7 +1663,8 @@ struct PPAccessoryBulkPricingSheet: View {
 struct PPAccessoryCreateCombinationSheet: View {
     let combination: PPAccessoryMatrixCombination
     let family: PPAccessoryVariantFamily?
-    let onCreate: (String, String, Double, Double?, Int, [UIImage]) -> Void
+    let errorMessage: () -> String?
+    let onCreate: (String, String, Double, Double?, Int, [UIImage]) async -> Bool
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.layoutDirection) private var layoutDirection
@@ -1673,6 +1726,16 @@ struct PPAccessoryCreateCombinationSheet: View {
                         // 5. Variant Media Atelier
                         mediaAtelierSurface
 
+                        if let message = errorMessage() {
+                            Label(message, systemImage: "exclamationmark.circle")
+                                .font(AdminType.callout)
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(14)
+                                .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+                                .accessibilityIdentifier("options.create.failure")
+                        }
+
                         // Extra bottom clearance for floating action dock
                         Spacer()
                             .frame(height: 100)
@@ -1684,16 +1747,20 @@ struct PPAccessoryCreateCombinationSheet: View {
                 // Sticky Frosted Studio Action Dock
                 studioActionDock
             }
-            .navigationTitle(Language.get("Variant_Studio_Hero_Title", alter: "إنشاء وتثبيت المتغير"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(Language.get("Variant_Studio_Hero_Title", alter: "إنشاء وتثبيت المتغير"))
+                        .font(PPBrandFont.bold(size: 18, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         dismiss()
                     } label: {
                         Text(Language.get("Cancel", alter: "إلغاء"))
-                            .font(AdminType.callout)
+                            .font(PPBrandFont.medium(size: 15, relativeTo: .callout))
                             .foregroundStyle(AdminSurface.secondaryText)
                     }
                 }
@@ -1708,9 +1775,11 @@ struct PPAccessoryCreateCombinationSheet: View {
                 }
             }
             .onAppear {
+                PPBrandFont.registerIfNeeded()
                 setupDefaults()
             }
         }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
     // MARK: - 1. Luminous Combination Identity Card (Hero DNA)
@@ -1852,6 +1921,7 @@ struct PPAccessoryCreateCombinationSheet: View {
                 Text(Language.get("Price_Retail", alter: "سعر البيع"))
                     .font(AdminType.footnote)
                     .foregroundStyle(AdminSurface.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 HStack(spacing: 8) {
                     Text(Language.get("QAR", alter: "ر.ق"))
@@ -1862,7 +1932,7 @@ struct PPAccessoryCreateCombinationSheet: View {
                         .keyboardType(.decimalPad)
                         .font(.system(size: 22, weight: .bold, design: .rounded))
                         .foregroundStyle(AdminSurface.primaryText)
-                        .multilineTextAlignment(layoutDirection == .rightToLeft ? .leading : .leading)
+                        .multilineTextAlignment(.leading)
 
                     if !retailPriceText.isEmpty {
                         Button {
@@ -1884,6 +1954,7 @@ struct PPAccessoryCreateCombinationSheet: View {
                 Text(Language.get("Price_Wholesale", alter: "سعر الجملة (اختياري)"))
                     .font(AdminType.footnote)
                     .foregroundStyle(AdminSurface.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 HStack(spacing: 8) {
                     Text(Language.get("QAR", alter: "ر.ق"))
@@ -1894,7 +1965,7 @@ struct PPAccessoryCreateCombinationSheet: View {
                         .keyboardType(.decimalPad)
                         .font(.system(size: 18, weight: .medium, design: .rounded))
                         .foregroundStyle(AdminSurface.primaryText)
-                        .multilineTextAlignment(layoutDirection == .rightToLeft ? .leading : .leading)
+                        .multilineTextAlignment(.leading)
 
                     if !wholesalePriceText.isEmpty {
                         Button {
@@ -2037,9 +2108,15 @@ struct PPAccessoryCreateCombinationSheet: View {
                 Spacer()
 
                 // Display
-                Text("\(quantity)")
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
-                    .foregroundStyle(AdminSurface.primaryText)
+                VStack(spacing: 2) {
+                    Text(verbatim: "\(quantity.englishDigits)")
+                        .font(PPBrandFont.bold(size: 30, relativeTo: .title))
+                        .foregroundStyle(quantity > 0 ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                        .monospacedDigit()
+                    Text(Language.get("Piece", alter: "حبة"))
+                        .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
 
                 Spacer()
 
@@ -2068,8 +2145,8 @@ struct PPAccessoryCreateCombinationSheet: View {
                             quantity += amount
                         }
                     } label: {
-                        Text(amount == 0 ? "0" : "+\(amount)")
-                            .font(AdminType.captionRegular)
+                        Text(verbatim: amount == 0 ? "0" : "+\(amount.englishDigits)")
+                            .font(PPBrandFont.medium(size: 13, relativeTo: .caption))
                             .foregroundStyle(amount == 0 && quantity == 0 ? AdminSurface.primary : AdminSurface.primaryText)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
@@ -2127,6 +2204,7 @@ struct PPAccessoryCreateCombinationSheet: View {
                 Text("SKU")
                     .font(AdminType.footnote)
                     .foregroundStyle(AdminSurface.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 HStack(spacing: 8) {
                     Image(systemName: "number")
@@ -2136,7 +2214,7 @@ struct PPAccessoryCreateCombinationSheet: View {
                     TextField(Language.get("SKU_Placeholder", alter: "رمز الصنف"), text: $skuText)
                         .font(.system(size: 14, weight: .medium, design: .monospaced))
                         .foregroundStyle(AdminSurface.primaryText)
-                        .multilineTextAlignment(layoutDirection == .rightToLeft ? .leading : .leading)
+                        .multilineTextAlignment(.leading)
 
                     if !skuText.isEmpty {
                         Button {
@@ -2163,6 +2241,7 @@ struct PPAccessoryCreateCombinationSheet: View {
                 Text(Language.get("Barcode", alter: "الباركود"))
                     .font(AdminType.footnote)
                     .foregroundStyle(AdminSurface.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 HStack(spacing: 8) {
                     Image(systemName: "barcode")
@@ -2172,7 +2251,7 @@ struct PPAccessoryCreateCombinationSheet: View {
                     TextField(Language.get("Barcode_Placeholder", alter: "الباركود الدولي"), text: $barcodeText)
                         .font(.system(size: 14, weight: .medium, design: .monospaced))
                         .foregroundStyle(AdminSurface.primaryText)
-                        .multilineTextAlignment(layoutDirection == .rightToLeft ? .leading : .leading)
+                        .multilineTextAlignment(.leading)
 
                     if !barcodeText.isEmpty {
                         Button {
@@ -2329,7 +2408,10 @@ struct PPAccessoryCreateCombinationSheet: View {
                     guard isPriceValid && !isSubmitting else { return }
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     isSubmitting = true
-                    onCreate(skuText, barcodeText, retailPrice, wholesalePrice, quantity, stagedImages)
+                    Task {
+                        _ = await onCreate(skuText, barcodeText, retailPrice, wholesalePrice, quantity, stagedImages)
+                        isSubmitting = false
+                    }
                 } label: {
                     HStack(spacing: 8) {
                         if isSubmitting {

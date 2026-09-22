@@ -73,11 +73,11 @@ import FirebaseFunctions
     /// stock and identifiers. Members are fetched by id list (chunked `in`
     /// query) rather than by a `productFamilyId` query, so the read stays a
     /// bounded, index-free two-step instead of an N+1 fetch.
-    public func loadFamily(familyId: String) async throws -> PPAccessoryVariantFamily {
+    public func loadFamily(familyId: String, minimumRevision: Int = 0) async throws -> PPAccessoryVariantFamily {
         let trimmed = familyId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw PPAccessoryVariantServiceError.invalidFamilyIdentifier }
 
-        let snapshot = try await db.collection("ProductFamilies").document(trimmed).getDocument()
+        let snapshot = try await db.collection("ProductFamilies").document(trimmed).getDocument(source: .server)
         guard snapshot.exists, let data = snapshot.data() else {
             throw PPAccessoryVariantServiceError.familyNotFound
         }
@@ -88,6 +88,10 @@ import FirebaseFunctions
             .filter { !$0.isEmpty } ?? []
 
         let products = try await loadProducts(ids: productIds)
+        guard products.count == productIds.count,
+              ((data["revision"] as? NSNumber)?.intValue ?? 0) >= minimumRevision else {
+            throw PPAccessoryVariantServiceError.invalidResponse
+        }
 
         guard let family = PPAccessoryVariantFamily.family(
             fromDocument: data,
@@ -124,7 +128,7 @@ import FirebaseFunctions
         for chunk in stride(from: 0, to: ids.count, by: 30).map({ Array(ids[$0..<min($0 + 30, ids.count)]) }) {
             let snapshot = try await db.collection("petAccessories")
                 .whereField(FieldPath.documentID(), in: chunk)
-                .getDocuments()
+                .getDocuments(source: .server)
             for document in snapshot.documents {
                 result[document.documentID] = PetAccessory(
                     dictionary: document.data(),
@@ -140,7 +144,7 @@ import FirebaseFunctions
     public func loadProduct(productId: String) async throws -> PetAccessory {
         let trimmed = productId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw PPAccessoryVariantServiceError.invalidFamilyIdentifier }
-        let snapshot = try await db.collection("petAccessories").document(trimmed).getDocument()
+        let snapshot = try await db.collection("petAccessories").document(trimmed).getDocument(source: .server)
         guard snapshot.exists, let data = snapshot.data() else {
             throw PPAccessoryVariantServiceError.familyNotFound
         }
@@ -262,12 +266,36 @@ import FirebaseFunctions
         _ family: PPAccessoryVariantFamily,
         commandId: String
     ) async throws -> PPAccessoryVariantSaveResult {
+        family.autoBindMissingOptionSelections()
         let messages = family.validationMessages()
         if !messages.isEmpty {
             throw PPAccessoryVariantServiceError.validationFailed(messages)
         }
 
         return try await invokeFamilyCommand(family.commandEnvelope(commandId: commandId))
+    }
+
+    /// Dissolves a variant family, reverting the retained product to a standalone
+    /// regular item and removing all sibling variants for this family from inventory.
+    @objc public func dissolveFamily(
+        familyId: String,
+        retainedProductId: String,
+        deleteOtherVariants: Bool = true
+    ) async throws {
+        let trimmedFamilyId = familyId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedFamilyId.isEmpty else {
+            throw PPAccessoryVariantServiceError.invalidFamilyIdentifier
+        }
+        let commandId = "dissolve-\(trimmedFamilyId)-\(UUID().uuidString)"
+        let envelope: [String: Any] = [
+            "contractVersion": PPAccessoryVariantContract.contractVersionGeneric,
+            "action": "dissolve",
+            "familyId": trimmedFamilyId,
+            "retainedProductId": retainedProductId.trimmingCharacters(in: .whitespacesAndNewlines),
+            "deleteOtherVariants": deleteOtherVariants,
+            "commandId": commandId
+        ]
+        _ = try await invokeFamilyCommand(envelope)
     }
 
     private func invokeFamilyCommand(_ envelope: [String: Any]) async throws -> PPAccessoryVariantSaveResult {

@@ -2,24 +2,20 @@
 //  PPBranchSelectionGateView.swift
 //  PurePetsAdmin
 //
-//  Reimagined from absolute first principles for PurePets Flagship Admin.
-//  Category-defining Spatial Branch Selection Deck with Live Telemetry,
-//  Instant Search, Active Context Showcase, and Backend Synchronization.
-//
 
 import SwiftUI
 
+/// A single, branch-scoped decision surface. The branch manager remains the
+/// authority for eligible branches and for changing the working context.
 public struct PPBranchSelectionGateView: View {
-    @ObservedObject var contextStore = BranchContextStore.shared
+    @ObservedObject private var contextStore = BranchContextStore.shared
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var searchText = ""
-    @State private var selectedBranchAnimID: String? = nil
-    @State private var isBeaconPulsing = false
-    @State private var settingDefaultBranchID: String? = nil
-    @State private var showDefaultSuccessToast = false
+    @State private var selectionError: String?
+    @State private var selectionInProgress = false
 
     public var customTitle: String? = nil
     public var customSubtitle: String? = nil
@@ -41,610 +37,316 @@ public struct PPBranchSelectionGateView: View {
         self.onSelectBranch = onSelectBranch
     }
 
-    private var heroBranch: PPBranchModel? {
-        if let selID = selectedBranchID, !selID.isEmpty {
-            return contextStore.availableBranches.first { $0.branchID == selID } ?? contextStore.activeBranch
-        }
-        return contextStore.activeBranch
+    private var chosenBranchID: String? {
+        if let selectedBranchID, !selectedBranchID.isEmpty { return selectedBranchID }
+        return contextStore.activeBranch?.branchID
     }
 
-    private var filteredBranches: [PPBranchModel] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if query.isEmpty {
-            return contextStore.availableBranches
+    private var sheetDetents: Set<PresentationDetent> {
+        guard !dynamicTypeSize.isAccessibilitySize, contextStore.availableBranches.count < 5 else {
+            return [.large]
         }
-        return contextStore.availableBranches.filter { branch in
-            branch.localizedName().lowercased().contains(query) ||
-            branch.code.lowercased().contains(query) ||
-            branch.address.lowercased().contains(query) ||
-            branch.phone.lowercased().contains(query)
+        let branchCount = max(1, contextStore.availableBranches.count)
+        let height = CGFloat(300 + branchCount * 104 + (branchCount == 1 ? 34 : 0))
+        return [.height(height), .large]
+    }
+
+    private var visibleBranches: [PPBranchModel] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let matches = query.isEmpty ? contextStore.availableBranches : contextStore.availableBranches.filter {
+            $0.localizedName().localizedCaseInsensitiveContains(query) ||
+            $0.code.localizedCaseInsensitiveContains(query) ||
+            $0.address.localizedCaseInsensitiveContains(query) ||
+            $0.phone.localizedCaseInsensitiveContains(query)
         }
+        guard let chosenBranchID else { return matches }
+        // Keep the branch in use at the top without duplicating it in a hero.
+        return matches.filter { $0.branchID == chosenBranchID } +
+            matches.filter { $0.branchID != chosenBranchID }
     }
 
     public var body: some View {
         NavigationView {
-            ZStack(alignment: .bottom) {
-                // Background
-                Color(uiColor: .systemGroupedBackground)
-                    .ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    heading
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 20) {
-                        // ── Ambient Spatial Canopy Header ────────────────────
-                        canopyHeader
-
-                        // ── Real-Time Search & Filter Bar ────────────────────
-                        searchBar
-
-                        // ── Currently Active Horizon (Hero Card) ─────────────
-                        if let current = heroBranch, searchText.isEmpty {
-                            activeBranchHeroShowcase(branch: current)
-                        }
-
-                        // ── Available Approved Branches Deck ────────────────
-                        availableBranchesDeck
+                    if contextStore.availableBranches.count > 3 || !searchText.isEmpty {
+                        searchField
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 60)
-                }
 
-                // Default Sync Toast
-                if showDefaultSuccessToast {
-                    defaultSuccessToast
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .padding(.bottom, 24)
-                }
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    if !contextStore.needsBranchSelection {
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            dismiss()
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                        }
+                    branchChoices
+
+                    if let selectionError {
+                        Label(selectionError, systemImage: "exclamationmark.circle.fill")
+                            .font(.custom("Beiruti-Medium", size: 15, relativeTo: .body))
+                            .foregroundStyle(Color(uiColor: .systemRed))
+                            .accessibilityAddTraits(.updatesFrequently)
                     }
                 }
+                .frame(maxWidth: 560, alignment: .leading)
+                .padding(.horizontal, 22)
+                .padding(.top, 20)
+                .padding(.bottom, 40)
+                .frame(maxWidth: .infinity)
             }
+            .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+            .navigationBarHidden(true)
             .interactiveDismissDisabled(contextStore.needsBranchSelection)
         }
         .navigationViewStyle(.stack)
+        .presentationDetents(sheetDetents)
+        .presentationDragIndicator(.visible)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .onAppear {
-            contextStore.reload()
-            guard !accessibilityReduceMotion else {
-                isBeaconPulsing = false
-                return
-            }
-            withAnimation(
-                .easeInOut(duration: 1.8)
-                .repeatForever(autoreverses: true)
-            ) {
-                isBeaconPulsing = true
-            }
-        }
-        .onChange(of: accessibilityReduceMotion) { reduced in
-            if reduced {
-                isBeaconPulsing = false
-            }
-        }
+        .onAppear { contextStore.reload() }
+        .onChange(of: contextStore.availableBranches.count) { _ in selectionError = nil }
     }
 
-    // ── Canopy Header ─────────────────────────────────────────────────────
-
-    private var canopyHeader: some View {
-        VStack(spacing: 12) {
-            // Layered Floating Architectural Beacon
-            ZStack {
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                AdminSurface.primary.opacity(isBeaconPulsing ? 0.28 : 0.12),
-                                AdminSurface.primary.opacity(0.02)
-                            ],
-                            center: .center,
-                            startRadius: 10,
-                            endRadius: 45
-                        )
-                    )
-                    .frame(width: 86, height: 86)
-                    .scaleEffect(isBeaconPulsing ? 1.08 : 0.95)
-
-                Circle()
-                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                    .frame(width: 58, height: 58)
-                    .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 3)
-                    .overlay(
-                        Circle()
-                            .stroke(AdminSurface.primary.opacity(0.25), lineWidth: 1)
-                    )
-
-                Image(systemName: "building.2.crop.circle.fill")
-                    .font(.system(size: 32, weight: .bold))
-                    .foregroundStyle(AdminSurface.primary)
-            }
-            .padding(.top, 8)
-
-            VStack(spacing: 6) {
-                Text(customTitle ?? (Language.isRTL() ? "نطاق العمليات والفرع النشط" : "Operational Scope & Branch"))
-                    .font(Font.custom("Beiruti-Bold", size: 22))
-                    .foregroundColor(.primary)
-
-                Text(customSubtitle ?? (Language.isRTL()
-                     ? "حدد فرع العمل لربط العمليات، المخزون، ونقاط البيع. يتم تعيين الفرع المختار كافتراضي للعمليات السحابية."
-                     : "Choose your active working branch. Operations, inventory, and POS run under this branch and sync as default."))
-                    .font(Font.custom("Beiruti-Regular", size: 13.5))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 16)
-            }
-
-            // Telemetry Chips Row
-            HStack(spacing: 8) {
-                HStack(spacing: 4) {
-                    Image(systemName: "checkmark.shield.fill")
-                        .font(.system(size: 10))
-                    Text("\(contextStore.availableBranches.count) " + (Language.isRTL() ? "فروع مصرح بها" : "Authorized Branches"))
-                        .font(Font.custom("Beiruti-Bold", size: 11.5))
-                }
-                .foregroundColor(AdminSurface.primary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4.5)
-                .background(AdminSurface.primary.opacity(0.08))
-                .cornerRadius(6)
-
-                if contextStore.isGlobal {
-                    HStack(spacing: 4) {
-                        Image(systemName: "globe.badge.chevron.backward")
-                            .font(.system(size: 10))
-                        Text(Language.isRTL() ? "وصول إداري شامل" : "Global Admin Access")
-                            .font(Font.custom("Beiruti-Bold", size: 11.5))
+    private var heading: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center) {
+                if !contextStore.needsBranchSelection {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Color(uiColor: .secondaryLabel))
+                            .frame(width: 44, height: 44)
+                            .background(Color(uiColor: .secondarySystemGroupedBackground), in: Circle())
                     }
-                    .foregroundColor(.emerald600)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4.5)
-                    .background(Color.emerald600.opacity(0.1))
-                    .cornerRadius(6)
+                    .accessibilityLabel(Language.get("BranchContext_Close", alter: nil))
                 }
+
+                Spacer()
+
+                Image(systemName: "building.2.fill")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primary)
+                    .frame(width: 44, height: 44)
+                    .background(AdminSurface.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 14))
+                    .accessibilityHidden(true)
             }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(customTitle ?? Language.get("BranchContext_Gate_Title", alter: nil))
+                    .font(.custom("Beiruti-Bold", size: 28, relativeTo: .title))
+                    .foregroundStyle(Color(uiColor: .label))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(customSubtitle ?? Language.get("BranchContext_Gate_Subtitle", alter: nil))
+                    .font(.custom("Beiruti-Regular", size: 16, relativeTo: .body))
+                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .multilineTextAlignment(.leading)
         }
     }
 
-    // ── Search & Filter Bar ───────────────────────────────────────────────
-
-    private var searchBar: some View {
+    private var searchField: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(.secondary)
+                .foregroundStyle(Color(uiColor: .secondaryLabel))
 
-            TextField(
-                Language.isRTL() ? "بحث بالاسم، الرمز (PP-1)، أو العنوان..." : "Search by name, code, or address...",
-                text: $searchText
-            )
-            .font(Font.custom("Beiruti-Medium", size: 14))
-            .autocapitalization(.none)
-            .disableAutocorrection(true)
+            TextField(Language.get("BranchContext_Search_Placeholder", alter: nil), text: $searchText)
+                .font(.custom("Beiruti-Medium", size: 16, relativeTo: .body))
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+                .accessibilityLabel(Language.get("BranchContext_Search_Placeholder", alter: nil))
 
             if !searchText.isEmpty {
                 Button {
                     searchText = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(Color(uiColor: .secondaryLabel))
+                        .frame(width: 44, height: 44)
                 }
+                .accessibilityLabel(Language.get("BranchContext_Search_Clear", alter: nil))
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                .shadow(color: Color.black.opacity(0.03), radius: 4, x: 0, y: 1)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color(uiColor: .separator).opacity(0.4), lineWidth: 0.75)
-        )
+        .padding(.leading, 16)
+        .padding(.trailing, 4)
+        .frame(minHeight: 54)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color(uiColor: .separator).opacity(0.45)))
     }
 
-    // ── Active Branch Hero Showcase ───────────────────────────────────────
-
-    private func activeBranchHeroShowcase(branch: PPBranchModel) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                HStack(spacing: 6) {
-                    ZStack {
-                        Circle()
-                            .fill(Color.emerald600.opacity(isBeaconPulsing ? 0.35 : 0.15))
-                            .frame(width: 12, height: 12)
-                            .scaleEffect(isBeaconPulsing ? 1.3 : 0.85)
-
-                        Circle()
-                            .fill(Color.emerald600)
-                            .frame(width: 6, height: 6)
-                    }
-
-                    Text(onSelectBranch != nil
-                         ? (Language.isRTL() ? "الفرع المختار حالياً" : "Currently Selected Branch")
-                         : (Language.isRTL() ? "الفرع النشط حالياً للجلسة" : "Current Active Session Branch"))
-                        .font(Font.custom("Beiruti-Bold", size: 12))
-                        .foregroundColor(Color.emerald600)
-                }
+    private var branchChoices: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(Language.get("BranchContext_Available_Section", alter: nil))
+                    .font(.custom("Beiruti-Bold", size: 18, relativeTo: .headline))
+                    .foregroundStyle(Color(uiColor: .label))
 
                 Spacer()
 
-                if branch.isDefault {
-                    HStack(spacing: 3) {
-                        Image(systemName: "star.fill")
-                            .font(.system(size: 8.5))
-                        Text(Language.isRTL() ? "الافتراضي للنظام" : "System Default")
-                            .font(Font.custom("Beiruti-Bold", size: 10.5))
-                    }
-                    .foregroundColor(.amber600)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(Color.amber600.opacity(0.12))
-                    .cornerRadius(5)
-                }
+                Text("\(visibleBranches.count)")
+                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+                    .accessibilityLabel(Language.get("BranchContext_Available_Section", alter: nil))
+                    .accessibilityValue("\(visibleBranches.count)")
             }
 
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(AdminSurface.primary)
-                        .frame(width: 44, height: 44)
-                        .shadow(color: AdminSurface.primary.opacity(0.3), radius: 6, x: 0, y: 3)
-
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundColor(.white)
+            if visibleBranches.isEmpty {
+                emptyBranches
+            } else {
+                LazyVStack(spacing: 10) {
+                    ForEach(visibleBranches, id: \.branchID) { branch in
+                        branchRow(branch)
+                    }
                 }
 
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 8) {
-                        Text(branch.localizedName())
-                            .font(Font.custom("Beiruti-Bold", size: 17))
-                            .foregroundColor(.primary)
+                if contextStore.availableBranches.count == 1 && searchText.isEmpty {
+                    Text(Language.get("BranchContext_SingleBranch_Hint", alter: nil))
+                        .font(.custom("Beiruti-Regular", size: 14, relativeTo: .footnote))
+                        .foregroundStyle(Color(uiColor: .secondaryLabel))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 2)
+                }
+            }
+        }
+    }
 
-                        Text(branch.code)
-                            .font(.system(size: 10.5, weight: .bold, design: .monospaced))
-                            .foregroundColor(AdminSurface.primary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(AdminSurface.primary.opacity(0.1))
-                            .cornerRadius(4)
+    private var emptyBranches: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Image(systemName: searchText.isEmpty ? "building.2.slash" : "magnifyingglass")
+                .font(.system(size: 22, weight: .medium))
+                .foregroundStyle(AdminSurface.primary)
+
+            Text(Language.get(searchText.isEmpty ? "BranchContext_NoBranches_Hint" : "BranchContext_No_Results", alter: nil))
+                .font(.custom("Beiruti-Medium", size: 16, relativeTo: .body))
+                .foregroundStyle(Color(uiColor: .secondaryLabel))
+                .fixedSize(horizontal: false, vertical: true)
+
+            if searchText.isEmpty {
+                Button(Language.get("BranchContext_Refresh", alter: nil)) { contextStore.reload() }
+                    .font(.custom("Beiruti-Bold", size: 15, relativeTo: .body))
+                    .foregroundStyle(AdminSurface.primary)
+                    .frame(minHeight: 44)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20))
+    }
+
+    private func branchRow(_ branch: PPBranchModel) -> some View {
+        let selected = branch.branchID == chosenBranchID
+        let isDefault = branch.isDefault || branch.branchID == contextStore.currentStaff?.defaultBranchID
+
+        return Button {
+            select(branch)
+        } label: {
+            HStack(alignment: .center, spacing: 13) {
+                Image(systemName: "building.2")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(selected ? Color.white : AdminSurface.primary)
+                    .frame(width: 46, height: 46)
+                    .background(selected ? AdminSurface.primary : AdminSurface.primary.opacity(0.10),
+                                in: RoundedRectangle(cornerRadius: 15))
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(branch.localizedName())
+                            .font(.custom("Beiruti-Bold", size: 19, relativeTo: .headline))
+                            .foregroundStyle(Color(uiColor: .label))
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if isDefault {
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color(uiColor: .systemOrange))
+                                .accessibilityLabel(Language.get("BranchContext_DefaultBadge", alter: nil))
+                        }
                     }
 
                     if !branch.address.isEmpty {
                         Text(branch.address)
-                            .font(Font.custom("Beiruti-Regular", size: 12))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
+                            .font(.custom("Beiruti-Regular", size: 14, relativeTo: .subheadline))
+                            .foregroundStyle(Color(uiColor: .secondaryLabel))
+                            .lineLimit(2)
                     }
-                }
-            }
-        }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(AdminSurface.primary.opacity(0.35), lineWidth: 1.25)
-        )
-    }
 
-    // ── Global Enterprise Access Card ─────────────────────────────────────
-
-    private var globalAccessOptionCard: some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            contextStore.clear()
-            dismiss()
-        } label: {
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.blue.opacity(0.15), Color.purple.opacity(0.15)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 44, height: 44)
-
-                    Image(systemName: "globe.americas.fill")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(.blue)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(Language.isRTL() ? "وصول شامل لكافة الفروع" : "Global Enterprise View")
-                        .font(Font.custom("Beiruti-Bold", size: 16))
-                        .foregroundColor(.primary)
-
-                    Text(Language.isRTL()
-                         ? "عرض جميع البيانات والعمليات دون تصفية جغرافية"
-                         : "View all platform data without branch boundaries")
-                        .font(Font.custom("Beiruti-Regular", size: 12))
-                        .foregroundColor(.secondary)
-                }
-
-                Spacer()
-
-                if contextStore.activeBranch == nil {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.blue)
-                } else {
-                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Color(uiColor: .tertiaryLabel))
-                }
-            }
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                    .shadow(color: Color.black.opacity(0.03), radius: 4, x: 0, y: 1)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(contextStore.activeBranch == nil ? Color.blue.opacity(0.4) : Color(uiColor: .separator).opacity(0.3), lineWidth: 1)
-            )
-        }
-        .buttonStyle(CardPressFeedbackStyle())
-    }
-
-    // ── Available Branches Deck ───────────────────────────────────────────
-
-    private var availableBranchesDeck: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(Language.isRTL() ? "الفروع المتاحة" : "Available Branches")
-                    .font(Font.custom("Beiruti-Bold", size: 14.5))
-                    .foregroundColor(AdminCommandInk.secondary)
-
-                Spacer()
-
-                Text("\(filteredBranches.count)")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color(uiColor: .tertiarySystemGroupedBackground))
-                    .cornerRadius(4)
-            }
-            .padding(.horizontal, 4)
-
-            if filteredBranches.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "building.2.slash")
-                        .font(.system(size: 32))
-                        .foregroundColor(.secondary.opacity(0.6))
-                    Text(Language.isRTL() ? "لا توجد فروع مطابقة للبحث" : "No branches match your search")
-                        .font(Font.custom("Beiruti-Medium", size: 13.5))
-                        .foregroundColor(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 32)
-            } else {
-                VStack(spacing: 12) {
-                    ForEach(filteredBranches, id: \.branchID) { branch in
-                        branchInteractiveCard(for: branch)
-                    }
-                }
-            }
-        }
-    }
-
-    private func branchInteractiveCard(for branch: PPBranchModel) -> some View {
-        let isSelected: Bool = {
-            if let selID = selectedBranchID, !selID.isEmpty {
-                return branch.branchID == selID
-            }
-            return contextStore.activeBranch?.branchID == branch.branchID
-        }()
-        let isDefault = branch.isDefault || branch.branchID == contextStore.currentStaff?.defaultBranchID
-
-        return Button {
-            selectBranchWithFeedback(branch)
-        } label: {
-            HStack(spacing: 14) {
-                // Leading Architecture Avatar
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(
-                            isSelected
-                            ? LinearGradient(
-                                colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.85)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                              )
-                            : LinearGradient(
-                                colors: [
-                                    Color(uiColor: .tertiarySystemGroupedBackground),
-                                    Color(uiColor: .secondarySystemGroupedBackground)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                              )
-                        )
-                        .frame(width: 48, height: 48)
-                        .shadow(color: isSelected ? AdminSurface.primary.opacity(0.3) : Color.clear, radius: 6, x: 0, y: 3)
-
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "building.2.fill")
-                        .font(.system(size: isSelected ? 22 : 19, weight: .bold))
-                        .foregroundColor(isSelected ? .white : AdminSurface.primary)
-                }
-
-                // Center Information Stack
-                VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 8) {
-                        Text(branch.localizedName())
-                            .font(Font.custom("Beiruti-Bold", size: 16))
-                            .foregroundColor(.primary)
-
-                        Spacer()
-
-                        Text(branch.code)
-                            .font(.system(size: 10.5, weight: .bold, design: .monospaced))
-                            .foregroundColor(isSelected ? AdminSurface.primary : .secondary)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2.5)
-                            .background(
-                                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                    .fill(isSelected ? AdminSurface.primary.opacity(0.12) : Color(uiColor: .tertiarySystemGroupedBackground))
-                            )
+                        if !branch.code.isEmpty {
+                            Text(branch.code)
+                                .font(.system(.caption2, design: .monospaced, weight: .medium))
+                                .environment(\.layoutDirection, .leftToRight)
+                        }
+                        Text(branch.localizedStockModeName())
+                            .font(.custom("Beiruti-Medium", size: 12, relativeTo: .caption))
                     }
-
-                    if !branch.address.isEmpty {
-                        HStack(spacing: 4) {
-                            Image(systemName: "mappin.and.ellipse")
-                                .font(.system(size: 9.5))
-                                .foregroundColor(Color(uiColor: .tertiaryLabel))
-                            Text(branch.address)
-                                .font(Font.custom("Beiruti-Regular", size: 12))
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                        }
-                    }
-
-                    // Bottom Badges Row
-                    HStack(spacing: 6) {
-                        if isDefault {
-                            HStack(spacing: 3) {
-                                Image(systemName: "star.fill")
-                                    .font(.system(size: 8))
-                                Text(Language.isRTL() ? "الافتراضي" : "Default")
-                                    .font(Font.custom("Beiruti-Bold", size: 10.5))
-                            }
-                            .foregroundColor(.amber600)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.amber600.opacity(0.12))
-                            .cornerRadius(4)
-                        }
-
-                        HStack(spacing: 3) {
-                            Image(systemName: "shippingbox.fill")
-                                .font(.system(size: 8))
-                            Text(branch.localizedStockModeName())
-                                .font(Font.custom("Beiruti-Medium", size: 10.5))
-                        }
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color(uiColor: .tertiarySystemGroupedBackground))
-                        .cornerRadius(4)
-
-                        if !branch.phone.isEmpty {
-                            HStack(spacing: 3) {
-                                Image(systemName: "phone.fill")
-                                    .font(.system(size: 7.5))
-                                Text(branch.phone)
-                                    .font(.system(size: 9.5, design: .monospaced))
-                            }
-                            .foregroundColor(Color(uiColor: .tertiaryLabel))
-                        }
-                    }
+                    .foregroundStyle(Color(uiColor: .secondaryLabel))
                 }
 
-                // Trailing Selection Cue
-                VStack {
-                    if isSelected {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(AdminSurface.primary)
-                    } else {
-                        Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(Color(uiColor: .tertiaryLabel))
-                    }
-                }
+                Spacer(minLength: 0)
+
+                Image(systemName: selected ? "checkmark.circle.fill" : "chevron.forward")
+                    .font(.system(size: selected ? 20 : 14, weight: .semibold))
+                    .foregroundStyle(selected ? AdminSurface.primary : Color(uiColor: .tertiaryLabel))
+                    .accessibilityHidden(true)
             }
-            .padding(14)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                    .shadow(color: Color.black.opacity(isSelected ? 0.07 : 0.03), radius: 8, x: 0, y: 2)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(
-                        isSelected
-                        ? AdminSurface.primary
-                        : Color(uiColor: .separator).opacity(0.3),
-                        lineWidth: isSelected ? 1.75 : 0.6
-                    )
-            )
+            .padding(15)
+            .frame(maxWidth: .infinity, minHeight: 86, alignment: .leading)
+            .background(selected ? AdminSurface.primary.opacity(0.075) : Color(uiColor: .secondarySystemGroupedBackground),
+                        in: RoundedRectangle(cornerRadius: 22))
+            .overlay(RoundedRectangle(cornerRadius: 22)
+                .stroke(selected ? AdminSurface.primary.opacity(0.48) : Color(uiColor: .separator).opacity(0.4),
+                        lineWidth: selected ? 1.5 : 0.7))
+            .contentShape(RoundedRectangle(cornerRadius: 22))
         }
-        .buttonStyle(CardPressFeedbackStyle())
+        .buttonStyle(PPBranchGatePressStyle())
+        .disabled(selectionInProgress)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(branch.localizedName())
+        .accessibilityValue(selected ? Language.get(onSelectBranch == nil ? "BranchContext_Current_Active" : "BranchContext_Selected_Field", alter: nil) : branch.localizedStockModeName())
+        .accessibilityHint(Language.get("BranchContext_Select_Hint", alter: nil))
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
-    private func selectBranchWithFeedback(_ branch: PPBranchModel) {
-        UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-
-        if let onSelect = onSelectBranch {
-            onSelect(branch)
-        } else {
-            _ = contextStore.selectBranch(branch)
+    private func select(_ branch: PPBranchModel) {
+        guard !selectionInProgress else { return }
+        guard contextStore.availableBranches.contains(where: { $0.branchID == branch.branchID }) else {
+            selectionError = Language.get("BranchContext_Selection_Failed", alter: nil)
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
         }
-        selectedBranchAnimID = branch.branchID
 
-        // Smooth dismissal after brief visual confirmation
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+        selectionInProgress = true
+        selectionError = nil
+        if let onSelectBranch {
+            onSelectBranch(branch)
+        } else if !contextStore.selectBranch(branch) {
+            selectionInProgress = false
+            selectionError = Language.get("BranchContext_Selection_Failed", alter: nil)
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
+        }
+
+        UISelectionFeedbackGenerator().selectionChanged()
+        if reduceMotion {
             dismiss()
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) { dismiss() }
         }
-    }
-
-    // ── Toast ─────────────────────────────────────────────────────────────
-
-    private var defaultSuccessToast: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "star.fill")
-                .foregroundColor(.amber600)
-            Text(Language.isRTL() ? "تم تعيين الفرع كافتراضي في النظام" : "Branch set as default across system")
-                .font(Font.custom("Beiruti-Bold", size: 13))
-                .foregroundColor(.primary)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(
-            Capsule(style: .continuous)
-                .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                .shadow(color: Color.black.opacity(0.12), radius: 12, x: 0, y: 4)
-        )
     }
 }
 
-// MARK: - Card Press Feedback Button Style
-
-fileprivate struct CardPressFeedbackStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+private struct PPBranchGatePressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed && !accessibilityReduceMotion ? 0.98 : 1.0)
-            .opacity(configuration.isPressed ? 0.9 : 1.0)
-            .animation(accessibilityReduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.8), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: configuration.isPressed)
     }
 }
 
+// Used by other established Admin views as well as this branch surface.
 extension Color {
     static let emerald600 = Color(red: 5/255, green: 150/255, blue: 105/255)
     static let amber600 = Color(red: 217/255, green: 119/255, blue: 6/255)
 }
-

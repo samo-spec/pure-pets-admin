@@ -48,6 +48,7 @@ struct PPAccessoryOptionEditorView: View {
     @State private var optionToDelete: PPAccessoryOptionDefinition?
     @State private var valueToDelete: (optionId: String, value: PPAccessoryOptionValue)?
     @State private var showDeleteValueWarning = false
+    @State private var optionRemovalErrorMessage: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -118,7 +119,11 @@ struct PPAccessoryOptionEditorView: View {
         ) {
             Button(Language.get("Delete", alter: "حذف"), role: .destructive) {
                 if let opt = optionToDelete {
-                    model.removeOption(withId: opt.id)
+                    if let error = model.draft?.optionRemovalMessage(id: opt.id) {
+                        optionRemovalErrorMessage = error
+                    } else {
+                        model.removeOption(withId: opt.id)
+                    }
                 }
                 optionToDelete = nil
             }
@@ -131,24 +136,31 @@ struct PPAccessoryOptionEditorView: View {
                 alter: "هل أنت متأكد من حذف هذا الخيار؟ لن يتم حذف المنتجات الحالية المرتبطة به."
             ))
         }
+        .alert(
+            Language.get("Options_Cannot_Delete_Title", alter: "تعذر حذف الخيار"),
+            isPresented: Binding(
+                get: { optionRemovalErrorMessage != nil },
+                set: { if !$0 { optionRemovalErrorMessage = nil } }
+            )
+        ) {
+            Button(Language.get("Common_OK", alter: "حسنًا"), role: .cancel) {
+                optionRemovalErrorMessage = nil
+            }
+        } message: {
+            Text(optionRemovalErrorMessage ?? "")
+        }
         .confirmationDialog(
-            Language.get("Delete", alter: "حذف"),
+            Language.get("Options_Value_InUse_Title", alter: "القيمة مستخدمة"),
             isPresented: $showDeleteValueWarning,
             titleVisibility: .visible
         ) {
-            Button(Language.get("Delete", alter: "حذف"), role: .destructive) {
-                if let target = valueToDelete {
-                    model.removeOptionValue(valueId: target.value.id, fromOptionWithId: target.optionId)
-                }
-                valueToDelete = nil
-            }
-            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {
+            Button(Language.get("OK", alter: "حسنًا"), role: .cancel) {
                 valueToDelete = nil
             }
         } message: {
             Text(Language.get(
-                "Options_Value_Delete_InUse_Warning",
-                alter: "هذه القيمة مستخدمة بالفعل في بعض المتغيرات. هل أنت متأكد من حذفها؟"
+                "Options_Error_ValueInUse",
+                alter: "هذه القيمة مرتبطة بصنف موجود. احتفظ بها، ويمكنك أرشفة الصنف من المصفوفة عند عدم الحاجة إليه."
             ))
         }
     }
@@ -405,8 +417,8 @@ struct PPAccessoryOptionEditorView: View {
                     }
                 }
 
-                // Delete option button
-                if model.canManageVariants {
+                // Delete option button (only allowed when more than 1 option exists)
+                if model.canManageVariants && totalCount > 1 {
                     Button {
                         optionToDelete = option
                     } label: {
@@ -431,6 +443,9 @@ struct PPAccessoryOptionEditorView: View {
             if model.canManageVariants && option.values.count < PPAccessoryVariantContract.maxValuesPerOption {
                 presetsAndAddRow(for: option)
             }
+            if model.showsAssignments(for: option), !option.values.isEmpty {
+                optionAssignments(for: option)
+            }
         }
         .padding(14)
         .background(AdminSurface.card)
@@ -439,6 +454,66 @@ struct PPAccessoryOptionEditorView: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(AdminSurface.hairline, lineWidth: 1)
         )
+    }
+
+    private func optionAssignments(for option: PPAccessoryOptionDefinition) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(Language.get("Options_Assign_Existing", alter: "حدد قيمة الخيار لكل صنف موجود"))
+                .font(AdminType.caption1)
+                .foregroundStyle(AdminSurface.secondaryText)
+            ForEach(model.draft?.variants ?? [], id: \.productId) { variant in
+                let selected = option.values.first { $0.id == variant.selectedOptions[option.id] }
+                let title = assignmentTitle(for: variant, excluding: option.id)
+                Menu {
+                    ForEach(option.values, id: \.id) { value in
+                        Button {
+                            model.selectOptionValue(value.id, optionId: option.id, productId: variant.productId)
+                        } label: {
+                            if selected?.id == value.id { Label(value.localizedName, systemImage: "checkmark") }
+                            else { Text(value.localizedName) }
+                        }
+                    }
+                } label: {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 10) {
+                            Text(title).multilineTextAlignment(.leading)
+                            Spacer(minLength: 8)
+                            assignmentValue(selected?.localizedName)
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(title).multilineTextAlignment(.leading)
+                            assignmentValue(selected?.localizedName)
+                        }
+                    }
+                    .font(AdminType.caption1Bold)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .disabled(!model.canManageVariants || model.isSaving)
+                .accessibilityLabel("\(title), \(option.localizedName)")
+                .accessibilityValue(selected?.localizedName ?? Language.get("Options_Assign_Choose", alter: "اختر قيمة"))
+                .accessibilityIdentifier("options.assign.\(variant.productId).\(option.id)")
+            }
+        }
+        .padding(10)
+        .background(AdminSurface.container, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func assignmentValue(_ value: String?) -> some View {
+        HStack(spacing: 6) {
+            Text(value ?? Language.get("Options_Assign_Choose", alter: "اختر قيمة"))
+            Image(systemName: "chevron.up.chevron.down").font(.system(size: 10, weight: .semibold))
+        }
+        .foregroundStyle(AdminSurface.primary)
+    }
+
+    private func assignmentTitle(for variant: PPAccessoryVariant, excluding optionId: String) -> String {
+        let names = (model.draft?.optionDefinitions ?? []).filter { $0.id != optionId }.compactMap { definition in
+            definition.values.first { $0.id == variant.selectedOptions[definition.id] }?.localizedName
+        }
+        var parts = names
+        if !variant.sku.isEmpty { parts.append(variant.sku) }
+        return parts.isEmpty ? variant.productId : parts.joined(separator: " · ")
     }
 
     // MARK: - Option Icon
@@ -1779,6 +1854,7 @@ struct PPAccessoryCustomOptionSheet: View {
 
                                 TextField(Language.isRTL() ? "مثال: المقاس، النكهة، المادة..." : "e.g. Size, Flavor, Material...", text: $nameAr)
                                     .font(PPBrandFont.bold(size: 16, relativeTo: .headline))
+                                    .environment(\.layoutDirection, .rightToLeft)
                                     .multilineTextAlignment(.leading)
                                     .onChange(of: nameAr) { newVal in
                                         if autoDeriveKey && !newVal.isEmpty {
@@ -1927,8 +2003,10 @@ struct PPAccessoryCustomOptionSheet: View {
                                 .autocorrectionDisabled()
                                 .textInputAutocapitalization(.never)
                                 .environment(\.layoutDirection, .leftToRight)
+                                .multilineTextAlignment(.leading)
                                 .foregroundStyle(autoDeriveKey ? AdminSurface.secondaryText : AdminSurface.primaryText)
                         }
+                        .environment(\.layoutDirection, .leftToRight)
                         .padding(12)
                         .background(autoDeriveKey ? AdminSurface.backgroundSecondary : AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .overlay(
@@ -2369,6 +2447,7 @@ struct PPAccessoryCustomValueSheet: View {
     @State private var weightAmount: String = ""
     @State private var autoDeriveCanonical: Bool = true
     @State private var selectedPresetId: String? = nil
+    @State private var isHexCopied: Bool = false
 
     private let weightUnits: [(id: String, ar: String, en: String)] = [
         ("g", "جم", "g"),
@@ -2518,49 +2597,61 @@ struct PPAccessoryCustomValueSheet: View {
         }
     }
 
+    // MARK: - Atmospheric Studio Canvas
+
+    private var auraColor: Color {
+        if isColor {
+            return Color(hex: hex)
+        }
+        return optionTint
+    }
+
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    // HERO: Live Holographic Preview Card
-                    liveHolographicPreviewCard
+            ZStack {
+                // Atmospheric Dynamic Radial Glow Canvas
+                AdminSurface.background.ignoresSafeArea()
 
-                    // SMART PRESETS CAROUSEL (If available)
-                    if !smartPresets.isEmpty {
-                        smartPresetsCarousel
-                    }
+                RadialGradient(
+                    colors: [auraColor.opacity(0.12), auraColor.opacity(0.02), Color.clear],
+                    center: .top,
+                    startRadius: 10,
+                    endRadius: 400
+                )
+                .ignoresSafeArea()
 
-                    // CONTEXTUAL SPECIAL CONTROLS: Weight or Color
-                    if isWeight {
-                        weightUnitSelectorCard
-                    } else if isColor {
-                        colorPaletteCard
-                    }
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // 1. HERO: The Interactive Specimen Stage
+                        liveSpecimenStageSurface
 
-                    // STUDIO BILINGUAL IDENTITY INPUTS
-                    bilingualIdentityInputs
-
-                    // Duplicate Warning Banner
-                    if isDuplicate {
-                        HStack(spacing: 8) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 14))
-                                .foregroundStyle(AdminSurface.amber)
-                            Text(String(format: Language.get("Options_Studio_DuplicateWarning", alter: "هذه القيمة موجودة مسبقاً في هذا الخيار (%@)."), derivedId))
-                                .font(AdminType.footnote)
-                                .foregroundStyle(AdminSurface.amber)
+                        // 2. SMART PRESETS CONSTELLATION (If available for this option)
+                        if !smartPresets.isEmpty {
+                            smartPresetConstellationSurface
                         }
-                        .padding(14)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(AdminSurface.amber.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
-                        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(AdminSurface.amber.opacity(0.3), lineWidth: 1))
-                    }
 
-                    Spacer(minLength: 50)
+                        // 3. CONTEXTUAL SYNTHESIZER: Chromatic Studio (Color) or Metric Synthesizer (Weight)
+                        if isColor {
+                            chromaticStudioSurface
+                        } else if isWeight {
+                            metricWeightSynthesizerSurface
+                        }
+
+                        // 4. NEURAL BILINGUAL COMPOSER (Identity Card)
+                        bilingualNeuralComposerSurface
+
+                        // 5. DUPLICATE INTEGRITY BANNER
+                        if isDuplicate {
+                            duplicateWarningSurface
+                        }
+
+                        Spacer(minLength: 60)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .padding(.bottom, 24)
                 }
-                .padding(20)
             }
-            .background(AdminSurface.background.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -2568,25 +2659,37 @@ struct PPAccessoryCustomValueSheet: View {
                         dismiss()
                     }
                     .font(PPBrandFont.medium(size: 15, relativeTo: .callout))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(AdminSurface.control, in: Capsule())
                     .foregroundStyle(AdminSurface.secondaryText)
                 }
+
                 ToolbarItem(placement: .principal) {
                     HStack(spacing: 6) {
                         Image(systemName: optionIcon)
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(optionTint)
                         Text(String(format: Language.get("Options_Studio_AddValueTo", alter: "إضافة إلى %@"), optionTitle))
-                            .font(PPBrandFont.bold(size: 17, relativeTo: .headline))
+                            .font(PPBrandFont.bold(size: 16.5, relativeTo: .headline))
                             .foregroundStyle(AdminSurface.primaryText)
                     }
                 }
+
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
                         submit()
                     } label: {
                         Text(Language.get("Add", alter: "إضافة"))
                             .font(PPBrandFont.bold(size: 15, relativeTo: .callout))
-                            .foregroundStyle(isValid && !isDuplicate ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.4))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 6)
+                            .background(
+                                isValid && !isDuplicate ? optionTint : AdminSurface.control,
+                                in: Capsule()
+                            )
+                            .foregroundStyle(isValid && !isDuplicate ? Color.white : AdminSurface.secondaryText.opacity(0.4))
+                            .shadow(color: isValid && !isDuplicate ? optionTint.opacity(0.3) : Color.clear, radius: 4, y: 2)
                     }
                     .disabled(!isValid || isDuplicate)
                 }
@@ -2598,69 +2701,125 @@ struct PPAccessoryCustomValueSheet: View {
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
-    // MARK: - Live Holographic Preview Card
+    // MARK: - 1. Live Specimen Stage Surface
 
-    private var liveHolographicPreviewCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
+    private var liveSpecimenStageSurface: some View {
+        VStack(spacing: 16) {
+            // Stage Header Bar
             HStack {
                 HStack(spacing: 6) {
-                    Circle()
-                        .fill(isValid ? AdminSurface.emerald : AdminSurface.amber)
-                        .frame(width: 7, height: 7)
-                    Text(Language.get("Options_Studio_ValuePreview", alter: "معاينة حية للقيمة"))
-                        .font(AdminType.caption2Bold)
+                    Image(systemName: optionIcon)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(optionTint)
+                    Text(Language.get("Options_Studio_ValuePreview", alter: "معاينة القيمة الحية"))
+                        .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
                         .foregroundStyle(AdminSurface.secondaryText)
                 }
 
                 Spacer()
 
-                // Customer Storefront Pill Simulation
+                // Dynamic Status Pill
                 HStack(spacing: 5) {
-                    Image(systemName: "cart.fill")
-                        .font(.system(size: 9))
-                    Text(Language.get("Options_Studio_CustomerView", alter: "عرض المتجر"))
-                        .font(AdminType.caption2Bold)
+                    if isDuplicate {
+                        Circle().fill(AdminSurface.amber).frame(width: 7, height: 7)
+                        Text(Language.get("Options_Studio_Status_Duplicate", alter: "مكرر مسبقاً"))
+                            .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
+                            .foregroundStyle(AdminSurface.amber)
+                    } else if isValid {
+                        Circle().fill(AdminSurface.emerald).frame(width: 7, height: 7)
+                        Text(Language.get("Options_Studio_Status_Ready", alter: "جاهز للإضافة ✨"))
+                            .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
+                            .foregroundStyle(AdminSurface.emerald)
+                    } else {
+                        Circle().fill(AdminSurface.secondaryText.opacity(0.5)).frame(width: 7, height: 7)
+                        Text(Language.get("Options_Studio_Status_Drafting", alter: "قيد التشكيل ✍️"))
+                            .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(AdminSurface.primary.opacity(0.12), in: Capsule())
-                .foregroundStyle(AdminSurface.primary)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(
+                    isDuplicate ? AdminSurface.amber.opacity(0.12) :
+                    (isValid ? AdminSurface.emerald.opacity(0.12) : AdminSurface.control),
+                    in: Capsule()
+                )
             }
 
-            // Main Interactive Stage
+            // Interactive Specimen Centerpiece
             HStack(spacing: 16) {
-                // Leading Visual Avatar
+                // Visual Specimen Orb
                 if isColor {
                     ZStack {
                         Circle()
+                            .fill(Color(hex: hex).opacity(0.35))
+                            .frame(width: 66, height: 66)
+                            .blur(radius: 8)
+
+                        Circle()
                             .fill(Color(hex: hex))
-                            .frame(width: 50, height: 50)
-                            .overlay(Circle().strokeBorder(Color.white.opacity(0.4), lineWidth: 2))
-                            .shadow(color: Color(hex: hex).opacity(0.4), radius: 6, y: 2)
+                            .frame(width: 58, height: 58)
+                            .overlay(
+                                Circle()
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [Color.white.opacity(0.55), Color.white.opacity(0.0)],
+                                            startPoint: .topLeading,
+                                            endPoint: .center
+                                        )
+                                    )
+                            )
+                            .overlay(
+                                Circle()
+                                    .strokeBorder(isLightColor(hexString: hex) ? Color.black.opacity(0.15) : Color.white.opacity(0.5), lineWidth: 2)
+                            )
+                            .shadow(color: Color(hex: hex).opacity(0.45), radius: 8, y: 3)
 
                         Circle()
                             .strokeBorder(AdminSurface.hairline, lineWidth: 1)
-                            .frame(width: 54, height: 54)
+                            .frame(width: 64, height: 64)
                     }
                 } else if isWeight {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(Color.orange.opacity(0.12))
-                            .frame(width: 50, height: 50)
-                        VStack(spacing: 1) {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.orange.opacity(0.2), Color.orange.opacity(0.08)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 60, height: 60)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                    .strokeBorder(Color.orange.opacity(0.35), lineWidth: 1.5)
+                            )
+
+                        VStack(spacing: 2) {
                             Image(systemName: "scalemass.fill")
-                                .font(.system(size: 16, weight: .bold))
+                                .font(.system(size: 18, weight: .bold))
                                 .foregroundStyle(Color.orange)
                             Text(unit.isEmpty ? "kg" : unit)
-                                .font(AdminType.caption2.monospaced())
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
                                 .foregroundStyle(Color.orange)
                         }
                     }
                 } else {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(optionTint.opacity(0.12))
-                            .frame(width: 50, height: 50)
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [optionTint.opacity(0.2), optionTint.opacity(0.08)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 60, height: 60)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                    .strokeBorder(optionTint.opacity(0.35), lineWidth: 1.5)
+                            )
+
                         Image(systemName: optionIcon)
                             .font(.system(size: 22, weight: .bold))
                             .foregroundStyle(optionTint)
@@ -2668,71 +2827,131 @@ struct PPAccessoryCustomValueSheet: View {
                 }
 
                 // Bilingual Typography Showcase
-                VStack(alignment: .leading, spacing: 3) {
-                    let displayAr = nameAr.isEmpty ? (Language.isRTL() ? "اسم القيمة" : "Value Name") : nameAr
-                    let displayEn = nameEn.isEmpty ? "Value Name (EN)" : nameEn
+                VStack(alignment: .leading, spacing: 4) {
+                    let displayAr = nameAr.isEmpty ? (Language.isRTL() ? "اسم القيمة بالعربية" : "Arabic Value Name") : nameAr
+                    let displayEn = nameEn.isEmpty ? "English Value Name" : nameEn
 
                     Text(Language.isRTL() ? displayAr : displayEn)
-                        .font(AdminType.title3Bold)
-                        .foregroundStyle(AdminSurface.primaryText)
+                        .font(PPBrandFont.bold(size: 20, relativeTo: .title3))
+                        .foregroundStyle(nameAr.isEmpty && nameEn.isEmpty ? AdminSurface.secondaryText.opacity(0.6) : AdminSurface.primaryText)
+                        .lineLimit(1)
 
                     Text(Language.isRTL() ? displayEn : displayAr)
-                        .font(AdminType.subheadline)
+                        .font(PPBrandFont.medium(size: 14, relativeTo: .subheadline))
                         .foregroundStyle(AdminSurface.secondaryText)
+                        .lineLimit(1)
+
+                    HStack(spacing: 4) {
+                        Image(systemName: "number")
+                            .font(.system(size: 8, weight: .bold))
+                        Text(derivedId)
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 6))
+                    .foregroundStyle(AdminSurface.secondaryText)
                 }
 
                 Spacer()
-
-                // Customer Selection Chip Simulation
-                VStack(alignment: .trailing, spacing: 4) {
-                    let pillText = !canonicalValue.isEmpty ? canonicalValue : (!nameEn.isEmpty ? nameEn : nameAr)
-                    HStack(spacing: 5) {
-                        if isColor {
-                            Circle()
-                                .fill(Color(hex: hex))
-                                .frame(width: 10, height: 10)
-                        }
-                        Text(pillText.isEmpty ? "—" : pillText)
-                            .font(AdminType.footnoteBold)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(AdminSurface.primary, in: Capsule())
-                    .foregroundStyle(Color.white)
-                    .shadow(color: AdminSurface.primary.opacity(0.25), radius: 4, y: 2)
-
-                    Text(derivedId)
-                        .font(AdminType.caption2.monospaced())
-                        .foregroundStyle(AdminSurface.secondaryText.opacity(0.7))
-                }
             }
+
+            // Customer Storefront Simulation Stage
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 5) {
+                    Image(systemName: "storefront.fill")
+                        .font(.system(size: 10, weight: .bold))
+                    Text(Language.get("Options_Studio_CustomerView", alter: "معاينة تجربة العميل في المتجر"))
+                        .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
+                    Spacer()
+                    Text(Language.isRTL() ? "تفاعلي • Live Pill" : "Live Pill • Interactive")
+                        .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(AdminSurface.secondaryText.opacity(0.8))
+                }
+                .foregroundStyle(optionTint)
+
+                HStack(spacing: 8) {
+                    if isColor {
+                        Circle()
+                            .fill(Color(hex: hex))
+                            .frame(width: 14, height: 14)
+                            .overlay(Circle().strokeBorder(isLightColor(hexString: hex) ? Color.black.opacity(0.2) : Color.white.opacity(0.4), lineWidth: 1))
+                            .shadow(color: Color(hex: hex).opacity(0.4), radius: 2, y: 1)
+                    } else if isWeight {
+                        Image(systemName: "scalemass.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Color.orange)
+                    } else if option?.isSizeOption == true {
+                        Image(systemName: "ruler.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(optionTint)
+                    }
+
+                    let pillText: String = {
+                        if Language.isRTL() {
+                            if !nameAr.isEmpty { return nameAr }
+                            if !canonicalValue.isEmpty { return canonicalValue }
+                            if !nameEn.isEmpty { return nameEn }
+                            return "اختر القيمة"
+                        } else {
+                            if !nameEn.isEmpty { return nameEn }
+                            if !canonicalValue.isEmpty { return canonicalValue }
+                            if !nameAr.isEmpty { return nameAr }
+                            return "Select Option"
+                        }
+                    }()
+
+                    Text(pillText)
+                        .font(PPBrandFont.bold(size: 13.5, relativeTo: .callout))
+                        .foregroundStyle(AdminSurface.primaryText)
+
+                    if isColor && !nameEn.isEmpty && !nameAr.isEmpty {
+                        Text("•")
+                            .font(.system(size: 8))
+                            .foregroundStyle(AdminSurface.secondaryText.opacity(0.4))
+                        Text(Language.isRTL() ? nameEn : nameAr)
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(AdminSurface.control, in: Capsule())
+                .overlay(
+                    Capsule()
+                        .strokeBorder(optionTint.opacity(0.35), lineWidth: 1.2)
+                )
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(AdminSurface.backgroundSecondary.opacity(0.6), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .padding(18)
-        .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(
                     LinearGradient(
-                        colors: [optionTint.opacity(0.35), AdminSurface.hairline],
+                        colors: [auraColor.opacity(0.4), AdminSurface.hairline],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
                     lineWidth: 1.5
                 )
         )
-        .shadow(color: Color.black.opacity(0.04), radius: 10, y: 4)
+        .shadow(color: auraColor.opacity(0.08), radius: 14, y: 5)
     }
 
-    // MARK: - Smart Presets Carousel
+    // MARK: - 2. Smart Presets Constellation Surface
 
-    private var smartPresetsCarousel: some View {
+    private var smartPresetConstellationSurface: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: "sparkles")
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(AdminSurface.primary)
-                Text(Language.get("Options_Studio_Presets", alter: "اقتراحات ذكية جاهزة"))
-                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(optionTint)
+                Text(Language.get("Options_Studio_Presets", alter: "اقتراحات ذكية جاهزة للتثبيت"))
+                    .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
                     .foregroundStyle(AdminSurface.secondaryText)
             }
             .padding(.horizontal, 4)
@@ -2758,15 +2977,15 @@ struct PPAccessoryCustomValueSheet: View {
                         } label: {
                             HStack(spacing: 6) {
                                 Text(preset.canon)
-                                    .font(AdminType.captionBold)
+                                    .font(PPBrandFont.bold(size: 13, relativeTo: .callout))
                                 Text("•")
                                     .font(.system(size: 8))
                                     .opacity(0.4)
                                 Text(Language.isRTL() ? preset.ar : preset.en)
-                                    .font(AdminType.caption)
+                                    .font(PPBrandFont.medium(size: 12, relativeTo: .caption))
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
                             .background(
                                 isSelected ? optionTint : AdminSurface.card,
                                 in: Capsule()
@@ -2776,7 +2995,7 @@ struct PPAccessoryCustomValueSheet: View {
                                 Capsule()
                                     .strokeBorder(isSelected ? Color.clear : AdminSurface.hairline, lineWidth: 1)
                             )
-                            .shadow(color: isSelected ? optionTint.opacity(0.3) : Color.clear, radius: 4, y: 2)
+                            .shadow(color: isSelected ? optionTint.opacity(0.35) : Color.clear, radius: 5, y: 2)
                         }
                         .buttonStyle(.plain)
                     }
@@ -2786,17 +3005,179 @@ struct PPAccessoryCustomValueSheet: View {
         }
     }
 
-    // MARK: - Weight / Unit Selector Card
+    // MARK: - 3A. Curated Chromatic Studio Surface (Color Picker)
 
-    private var weightUnitSelectorCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+    private var chromaticStudioSurface: some View {
+        VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Image(systemName: "scalemass.fill")
-                    .font(.system(size: 11))
+                HStack(spacing: 6) {
+                    Image(systemName: "paintpalette.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Color.purple)
+                    Text(Language.get("Options_Studio_ColorPicker", alter: "لوحة الألوان المعتمدة"))
+                        .font(PPBrandFont.bold(size: 13, relativeTo: .caption))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+
+                Spacer()
+
+                Text(hex.uppercased())
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 3)
+                    .background(Color(hex: hex).opacity(0.18), in: Capsule())
+                    .foregroundStyle(Color(hex: hex))
+            }
+
+            // 12 Curated Colors Grid with spring scaling and dynamic contrast checkmark
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 10) {
+                ForEach(PPOptionColorPreset.all) { cp in
+                    let isSelected = (hex.uppercased() == cp.hex.uppercased())
+                    let isLight = isLightColor(hexString: cp.hex)
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            selectedPresetId = cp.id
+                            hex = cp.hex
+                            nameAr = cp.nameAr
+                            nameEn = cp.nameEn
+                            canonicalValue = cp.id
+                            autoDeriveCanonical = false
+                        }
+                    } label: {
+                        ZStack {
+                            if isSelected {
+                                Circle()
+                                    .fill(cp.color.opacity(0.35))
+                                    .frame(width: 44, height: 44)
+                                    .blur(radius: 4)
+                            }
+
+                            Circle()
+                                .fill(cp.color)
+                                .frame(width: 38, height: 38)
+                                .overlay(
+                                    Circle()
+                                        .strokeBorder(isLight ? Color.black.opacity(0.18) : Color.white.opacity(0.5), lineWidth: 1.5)
+                                )
+                                .shadow(color: cp.color.opacity(0.35), radius: isSelected ? 5 : 2, y: 2)
+
+                            if isSelected {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 14, weight: .heavy))
+                                    .foregroundStyle(isLight ? Color.black.opacity(0.85) : Color.white)
+                            }
+                        }
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            Circle()
+                                .strokeBorder(isSelected ? AdminSurface.primary : Color.clear, lineWidth: 2)
+                        )
+                        .scaleEffect(isSelected ? 1.08 : 1.0)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Language.isRTL() ? cp.nameAr : cp.nameEn)
+                }
+            }
+
+            // Unified Hex Synthesizer Bar
+            HStack(spacing: 10) {
+                // Live Swatch Tile
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color(hex: hex))
+                    .frame(width: 38, height: 38)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(isLightColor(hexString: hex) ? Color.black.opacity(0.2) : Color.white.opacity(0.5), lineWidth: 1.5)
+                    )
+                    .shadow(color: Color(hex: hex).opacity(0.3), radius: 3, y: 1)
+
+                // Monospaced Hex Field
+                HStack(spacing: 6) {
+                    Text("#")
+                        .font(.system(size: 15, weight: .bold, design: .monospaced))
+                        .foregroundStyle(AdminSurface.secondaryText)
+
+                    TextField("RRGGBB", text: Binding(
+                        get: { hex.replacingOccurrences(of: "#", with: "") },
+                        set: { raw in
+                            let cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+                            hex = "#\(cleaned)"
+                        }
+                    ))
+                    .font(.system(size: 15, weight: .bold, design: .monospaced))
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.characters)
+                    .environment(\.layoutDirection, .leftToRight)
+                    .multilineTextAlignment(.leading)
+                }
+                .environment(\.layoutDirection, .leftToRight)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(AdminSurface.hairline, lineWidth: 1)
+                )
+
+                // Quick Copy Hex Button with tactile feedback
+                Button {
+                    UIPasteboard.general.string = hex
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+                        isHexCopied = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+                        withAnimation {
+                            isHexCopied = false
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: isHexCopied ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 12, weight: .bold))
+                        Text(isHexCopied ? (Language.isRTL() ? "تم النسخ" : "Copied") : (Language.isRTL() ? "نسخ" : "Copy"))
+                            .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(isHexCopied ? AdminSurface.emerald.opacity(0.15) : AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .foregroundStyle(isHexCopied ? AdminSurface.emerald : AdminSurface.primaryText)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(isHexCopied ? AdminSurface.emerald.opacity(0.3) : AdminSurface.hairline, lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
+    }
+
+    // MARK: - 3B. Metric Weight Synthesizer Surface
+
+    private var metricWeightSynthesizerSurface: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "scalemass.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Color.orange)
+                    Text(Language.get("Options_Studio_QuickUnits", alter: "الوحدة والكمية القياسية"))
+                        .font(PPBrandFont.bold(size: 13, relativeTo: .caption))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+
+                Spacer()
+
+                Text("\(weightAmount.isEmpty ? "0" : weightAmount) \(unit)")
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 3)
+                    .background(Color.orange.opacity(0.18), in: Capsule())
                     .foregroundStyle(Color.orange)
-                Text(Language.get("Options_Studio_QuickUnits", alter: "الوحدة والكمية القياسية"))
-                    .font(AdminType.caption2Bold)
-                    .foregroundStyle(AdminSurface.secondaryText)
             }
 
             // Quick Units Chips
@@ -2812,10 +3193,10 @@ struct PPAccessoryCustomValueSheet: View {
                     } label: {
                         VStack(spacing: 2) {
                             Text(Language.isRTL() ? u.ar : u.en)
-                                .font(AdminType.captionBold)
+                                .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
                             Text(u.id)
-                                .font(AdminType.caption2.monospaced())
-                                .opacity(0.7)
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .opacity(0.8)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
@@ -2833,13 +3214,13 @@ struct PPAccessoryCustomValueSheet: View {
                 }
             }
 
-            // Numeric Stepper / Direct Weight Input
-            HStack(spacing: 12) {
+            // Direct Weight Input + Increments
+            HStack(spacing: 10) {
                 HStack {
                     Image(systemName: "scalemass")
                         .foregroundStyle(AdminSurface.secondaryText)
-                    TextField(Language.isRTL() ? "الوزن بالأرقام (مثال: 500 أو 2)" : "Numeric weight (e.g. 500, 2)", text: $weightAmount)
-                        .font(AdminType.calloutBold)
+                    TextField(Language.isRTL() ? "الوزن (مثال: 500 أو 2)" : "Numeric weight (e.g. 500, 2)", text: $weightAmount)
+                        .font(PPBrandFont.bold(size: 15, relativeTo: .callout))
                         .keyboardType(.decimalPad)
                         .onChange(of: weightAmount) { _ in
                             updateWeightFields()
@@ -2849,18 +3230,18 @@ struct PPAccessoryCustomValueSheet: View {
                 .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
 
-                // Quick Increment Buttons
-                HStack(spacing: 6) {
-                    ForEach(["+100", "+500", "+1k"], id: \.self) { inc in
+                // Quick Quantum Increments
+                HStack(spacing: 5) {
+                    ForEach(["+100", "+250", "+500", "+1k"], id: \.self) { inc in
                         Button {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             applyWeightIncrement(inc)
                         } label: {
                             Text(inc)
-                                .font(AdminType.caption2Bold)
-                                .padding(.horizontal, 8)
+                                .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
+                                .padding(.horizontal, 7)
                                 .padding(.vertical, 10)
-                                .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                                 .foregroundStyle(AdminSurface.primaryText)
                                 .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
                         }
@@ -2870,141 +3251,68 @@ struct PPAccessoryCustomValueSheet: View {
             }
         }
         .padding(16)
-        .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
+        .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
     }
 
-    private func updateWeightFields() {
-        let clean = weightAmount.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty else { return }
-        canonicalValue = "\(clean)\(unit)"
-        nameEn = "\(clean)\(unit)"
-        if unit == "kg" {
-            nameAr = "\(clean) كجم"
-        } else if unit == "g" {
-            nameAr = "\(clean) جم"
-        } else {
-            nameAr = "\(clean) \(unit)"
-        }
-    }
+    // MARK: - 4. Neural Bilingual Composer Surface (Identity Card)
 
-    private func applyWeightIncrement(_ inc: String) {
-        let cur = Double(weightAmount) ?? 0
-        let addition: Double = inc == "+100" ? 100 : (inc == "+500" ? 500 : 1000)
-        let newVal = cur + addition
-        weightAmount = (newVal.truncatingRemainder(dividingBy: 1) == 0) ? String(Int(newVal)) : String(newVal)
-        updateWeightFields()
-    }
-
-    // MARK: - Color Palette Card
-
-    private var colorPaletteCard: some View {
+    private var bilingualNeuralComposerSurface: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Image(systemName: "paintpalette.fill")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.purple)
-                Text(Language.get("Options_Studio_ColorPicker", alter: "لوحة الألوان المعتمدة"))
-                    .font(AdminType.caption2Bold)
-                    .foregroundStyle(AdminSurface.secondaryText)
-                Spacer()
-                Text(hex)
-                    .font(AdminType.captionBold.monospaced())
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color(hex: hex).opacity(0.15), in: Capsule())
-                    .foregroundStyle(Color(hex: hex))
-            }
-
-            // 12 Curated Colors Grid
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 10) {
-                ForEach(PPOptionColorPreset.all) { cp in
-                    let isSelected = (hex.uppercased() == cp.hex.uppercased())
-                    Button {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            hex = cp.hex
-                            nameAr = cp.nameAr
-                            nameEn = cp.nameEn
-                            canonicalValue = cp.id
-                            autoDeriveCanonical = false
-                        }
-                    } label: {
-                        ZStack {
-                            Circle()
-                                .fill(cp.color)
-                                .frame(width: 38, height: 38)
-                                .overlay(Circle().strokeBorder(Color.white.opacity(0.5), lineWidth: 1.5))
-                                .shadow(color: cp.color.opacity(0.4), radius: isSelected ? 5 : 1, y: 1)
-
-                            if isSelected {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundStyle(Color.white)
-                            }
-                        }
-                        .padding(2)
-                        .overlay(
-                            Circle()
-                                .strokeBorder(isSelected ? AdminSurface.primary : Color.clear, lineWidth: 2)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            // Manual Hex Input Bar
-            HStack(spacing: 10) {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(hex: hex))
-                    .frame(width: 32, height: 32)
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(AdminSurface.hairline, lineWidth: 1))
-
-                HStack {
-                    Text("#")
-                        .font(AdminType.calloutBold.monospaced())
-                        .foregroundStyle(AdminSurface.secondaryText)
-                    TextField("RRGGBB", text: Binding(
-                        get: { hex.replacingOccurrences(of: "#", with: "") },
-                        set: { hex = "#\($0.trimmingCharacters(in: .whitespacesAndNewlines))" }
-                    ))
-                    .font(AdminType.calloutBold.monospaced())
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                }
-                .padding(10)
-                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(AdminSurface.hairline, lineWidth: 1))
-            }
-        }
-        .padding(16)
-        .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
-    }
-
-    // MARK: - Bilingual Identity Inputs
-
-    private var bilingualIdentityInputs: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(Language.isRTL() ? "بيانات القيمة • VALUE IDENTITY" : "VALUE IDENTITY • بيانات القيمة")
-                .font(PPBrandFont.bold(size: 12, relativeTo: .caption2))
-                .foregroundStyle(AdminSurface.secondaryText)
-                .padding(.horizontal, 4)
-
-            // Arabic Name Field
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Image(systemName: "globe.asia.australia.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(AdminSurface.emerald)
-                    Text(Language.get("Variant_NameAr", alter: "الاسم بالعربية"))
-                        .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
+            // Header with Integrated Pury Smart Translate Beam
+            HStack(alignment: .center) {
+                HStack(spacing: 6) {
+                    Image(systemName: "character.book.closed.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                    Text(Language.get("Options_Studio_BilingualTitle", alter: "بيانات الهوية اللغوية"))
+                        .font(PPBrandFont.bold(size: 13.5, relativeTo: .headline))
                         .foregroundStyle(AdminSurface.primaryText)
                 }
 
-                HStack {
-                    TextField("مثال: كبير، ٥٠٠ جم، دجاج...", text: $nameAr)
+                Spacer()
+
+                let canTranslate = (!nameAr.isEmpty && nameEn.isEmpty) || (!nameEn.isEmpty && nameAr.isEmpty)
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    runSmartTranslate()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 11, weight: .bold))
+                        Text(Language.get("Options_Studio_SmartTranslate", alter: "ترجمة بيوري الذكية"))
+                            .font(PPBrandFont.bold(size: 11.5, relativeTo: .caption))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(
+                        canTranslate ? AdminSurface.emerald.opacity(0.18) : AdminSurface.control,
+                        in: Capsule()
+                    )
+                    .foregroundStyle(canTranslate ? AdminSurface.emerald : AdminSurface.secondaryText)
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(canTranslate ? AdminSurface.emerald.opacity(0.4) : AdminSurface.hairline, lineWidth: 1)
+                    )
+                    .shadow(color: canTranslate ? AdminSurface.emerald.opacity(0.2) : Color.clear, radius: 4, y: 2)
+                }
+                .buttonStyle(.plain)
+            }
+
+            // Arabic Name Input (الاسم بالعربية)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 5) {
+                    Text("🇸🇦")
+                        .font(.system(size: 12))
+                    Text(Language.get("Variant_NameAr", alter: "الاسم بالعربية"))
+                        .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+
+                HStack(spacing: 8) {
+                    TextField(Language.isRTL() ? "مثال: أزرق ملكي، كبير، ٥٠٠ جم..." : "e.g. أزرق ملكي، كبير...", text: $nameAr)
                         .font(PPBrandFont.bold(size: 15, relativeTo: .callout))
+                        .environment(\.layoutDirection, .rightToLeft)
                         .multilineTextAlignment(.leading)
                         .onChange(of: nameAr) { newVal in
                             if autoDeriveCanonical && !newVal.isEmpty {
@@ -3027,46 +3335,66 @@ struct PPAccessoryCustomValueSheet: View {
                         .buttonStyle(.plain)
                     }
                 }
+                .environment(\.layoutDirection, .rightToLeft)
                 .padding(12)
-                .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(!nameAr.isEmpty ? AdminSurface.emerald.opacity(0.3) : AdminSurface.hairline, lineWidth: 1)
+                )
             }
 
-            // Pury Smart Auto-Translate Bridge
-            HStack {
-                Spacer()
+            // Central Pury Intelligent Neural Bridge
+            HStack(spacing: 8) {
+                Rectangle()
+                    .fill(AdminSurface.hairline)
+                    .frame(height: 1)
+
+                let canTranslate = !nameAr.isEmpty || !nameEn.isEmpty
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     runSmartTranslate()
                 } label: {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 6) {
                         Image(systemName: "sparkles")
                             .font(.system(size: 11, weight: .bold))
                         Text(Language.get("Options_Studio_SmartTranslate", alter: "ترجمة بيوري الذكية"))
-                            .font(PPBrandFont.bold(size: 11.5, relativeTo: .caption))
+                            .font(PPBrandFont.bold(size: 11.5, relativeTo: .caption2))
                     }
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 14)
                     .padding(.vertical, 6)
-                    .background(AdminSurface.emerald.opacity(0.12), in: Capsule())
-                    .foregroundStyle(AdminSurface.emerald)
+                    .background(
+                        canTranslate ? AdminSurface.emerald.opacity(0.18) : AdminSurface.control,
+                        in: Capsule()
+                    )
+                    .foregroundStyle(canTranslate ? AdminSurface.emerald : AdminSurface.secondaryText)
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(canTranslate ? AdminSurface.emerald.opacity(0.4) : AdminSurface.hairline, lineWidth: 1)
+                    )
+                    .shadow(color: canTranslate ? AdminSurface.emerald.opacity(0.2) : Color.clear, radius: 6, y: 2)
                 }
                 .buttonStyle(.plain)
-            }
 
-            // English Name Field
+                Rectangle()
+                    .fill(AdminSurface.hairline)
+                    .frame(height: 1)
+            }
+            .padding(.horizontal, 4)
+
+            // English Name Input (Name in English)
             VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Image(systemName: "globe.americas.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(AdminSurface.primary)
+                HStack(spacing: 5) {
+                    Text("🇺🇸")
+                        .font(.system(size: 12))
                     Text(Language.get("Variant_NameEn", alter: "الاسم بالإنجليزية"))
                         .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
-                        .foregroundStyle(AdminSurface.primaryText)
+                        .foregroundStyle(AdminSurface.secondaryText)
                 }
 
-                HStack {
-                    TextField("e.g. Large, 500g, Chicken...", text: $nameEn)
-                        .font(PPBrandFont.bold(size: 15, relativeTo: .callout))
+                HStack(spacing: 8) {
+                    TextField("e.g. Royal Blue, Large, 500g...", text: $nameEn)
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
                         .environment(\.layoutDirection, .leftToRight)
                         .multilineTextAlignment(.leading)
                         .onChange(of: nameEn) { newVal in
@@ -3090,83 +3418,184 @@ struct PPAccessoryCustomValueSheet: View {
                         .buttonStyle(.plain)
                     }
                 }
+                .environment(\.layoutDirection, .leftToRight)
                 .padding(12)
-                .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(!nameEn.isEmpty ? AdminSurface.primary.opacity(0.3) : AdminSurface.hairline, lineWidth: 1)
+                )
             }
 
-            // Canonical Value / Identifier Field
+            // Technical Blueprint Drawer: Canonical Machine Identifier (Slug)
             VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Image(systemName: "number.square")
-                        .font(.system(size: 11))
+                HStack(spacing: 6) {
+                    Image(systemName: "cpu")
+                        .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(AdminSurface.secondaryText)
-                    Text(Language.get("Options_Canonical_Value", alter: "القيمة الأساسية / المعرف"))
-                        .font(AdminType.captionBold)
-                        .foregroundStyle(AdminSurface.primaryText)
+                    Text(Language.get("Options_Canonical_Value", alter: "المعرف البرمجي الموحد (Slug)"))
+                        .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
+                        .foregroundStyle(AdminSurface.secondaryText)
+
                     Spacer()
+
                     Button {
-                        autoDeriveCanonical.toggle()
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            autoDeriveCanonical.toggle()
+                        }
                     } label: {
-                        HStack(spacing: 3) {
+                        HStack(spacing: 4) {
                             Image(systemName: autoDeriveCanonical ? "lock.fill" : "lock.open.fill")
-                                .font(.system(size: 9))
-                            Text(autoDeriveCanonical ? (Language.isRTL() ? "تلقائي" : "Auto") : (Language.isRTL() ? "يدوي" : "Manual"))
-                                .font(AdminType.caption2Bold)
+                                .font(.system(size: 9, weight: .bold))
+                            Text(autoDeriveCanonical ? (Language.isRTL() ? "توليد تلقائي" : "Auto Slug") : (Language.isRTL() ? "تخصيص يدوي" : "Manual Slug"))
+                                .font(PPBrandFont.bold(size: 10.5, relativeTo: .caption2))
                         }
                         .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
+                        .padding(.vertical, 4)
                         .background(autoDeriveCanonical ? AdminSurface.primary.opacity(0.12) : AdminSurface.card, in: Capsule())
                         .foregroundStyle(autoDeriveCanonical ? AdminSurface.primary : AdminSurface.secondaryText)
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(autoDeriveCanonical ? AdminSurface.primary.opacity(0.25) : AdminSurface.hairline, lineWidth: 1)
+                        )
                     }
                     .buttonStyle(.plain)
                 }
 
-                TextField("e.g. M, 500g, chicken", text: $canonicalValue)
-                    .font(AdminType.callout.monospaced())
-                    .disabled(autoDeriveCanonical)
-                    .padding(12)
-                    .background(autoDeriveCanonical ? AdminSurface.backgroundSecondary : AdminSurface.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(AdminSurface.hairline, lineWidth: 1)
-                    )
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
+                HStack(spacing: 8) {
+                    Image(systemName: "tag.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(AdminSurface.secondaryText.opacity(0.7))
+
+                    TextField("e.g. royal_blue, 500g, chicken", text: $canonicalValue)
+                        .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                        .disabled(autoDeriveCanonical)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .environment(\.layoutDirection, .leftToRight)
+                        .multilineTextAlignment(.leading)
+                        .foregroundStyle(autoDeriveCanonical ? AdminSurface.secondaryText : AdminSurface.primaryText)
+                }
+                .environment(\.layoutDirection, .leftToRight)
+                .padding(11)
+                .background(autoDeriveCanonical ? AdminSurface.backgroundSecondary.opacity(0.7) : AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(AdminSurface.hairline, lineWidth: 1)
+                )
             }
         }
+        .padding(18)
+        .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
     }
 
-    // MARK: - Sticky Action Dock
+    // MARK: - 5. Duplicate Warning Surface
+
+    private var duplicateWarningSurface: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(AdminSurface.amber)
+            Text(String(format: Language.get("Options_Studio_DuplicateWarning", alter: "هذه القيمة موجودة مسبقاً في هذا الخيار (%@)."), derivedId))
+                .font(PPBrandFont.medium(size: 13, relativeTo: .footnote))
+                .foregroundStyle(AdminSurface.amber)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AdminSurface.amber.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(AdminSurface.amber.opacity(0.3), lineWidth: 1))
+    }
+
+    // MARK: - 6. Sticky Action Dock
 
     private var stickyActionDock: some View {
         VStack(spacing: 0) {
             Divider()
                 .background(AdminSurface.hairline)
 
-            Button {
-                submit()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 16, weight: .bold))
-                    Text(Language.get("Options_Studio_AddValueAction", alter: "إضافة القيمة إلى الخيار"))
-                        .font(AdminType.headline)
+            VStack(spacing: 8) {
+                Button {
+                    submit()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: isValid && !isDuplicate ? "sparkles" : "plus.circle.fill")
+                            .font(.system(size: 16, weight: .bold))
+                        Text(Language.get("Options_Studio_AddValueAction", alter: "إضافة القيمة إلى الخيار"))
+                            .font(PPBrandFont.bold(size: 16, relativeTo: .headline))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(
+                        isValid && !isDuplicate ?
+                            AnyShapeStyle(
+                                LinearGradient(
+                                    colors: [optionTint, optionTint.opacity(0.85)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            ) :
+                            AnyShapeStyle(AdminSurface.control),
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    )
+                    .foregroundStyle(isValid && !isDuplicate ? Color.white : AdminSurface.secondaryText.opacity(0.45))
+                    .shadow(color: isValid && !isDuplicate ? optionTint.opacity(0.35) : Color.clear, radius: 10, y: 4)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(
-                    isValid && !isDuplicate ? optionTint : AdminSurface.control,
-                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                )
-                .foregroundStyle(isValid && !isDuplicate ? Color.white : AdminSurface.secondaryText.opacity(0.5))
-                .shadow(color: isValid && !isDuplicate ? optionTint.opacity(0.35) : Color.clear, radius: 8, y: 3)
+                .disabled(!isValid || isDuplicate)
+
+                if !isValid && !nameAr.isEmpty && isColor && (hex.count < 4 || !hex.hasPrefix("#")) {
+                    Text(Language.get("Options_Studio_HexPrompt", alter: "يرجى تحديد أو إدخال كود لون Hex صالح"))
+                        .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
+                        .foregroundStyle(AdminSurface.amber)
+                }
             }
-            .disabled(!isValid || isDuplicate)
             .padding(.horizontal, 20)
-            .padding(.vertical, 12)
+            .padding(.top, 12)
+            .padding(.bottom, 10)
         }
-        .background(AdminSurface.backgroundSecondary.opacity(0.96))
+        .background(.ultraThinMaterial)
+    }
+
+    // MARK: - Logic Helpers
+
+    private func isLightColor(hexString: String) -> Bool {
+        let clean = hexString.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: clean).scanHexInt64(&int)
+        let r, g, b: Double
+        switch clean.count {
+        case 3:
+            (r, g, b) = (Double((int >> 8) * 17) / 255.0, Double((int >> 4 & 0xF) * 17) / 255.0, Double((int & 0xF) * 17) / 255.0)
+        case 6:
+            (r, g, b) = (Double(int >> 16) / 255.0, Double(int >> 8 & 0xFF) / 255.0, Double(int & 0xFF) / 255.0)
+        default:
+            return false
+        }
+        let luminance = 0.299 * r + 0.587 * g + 0.114 * b
+        return luminance > 0.65
+    }
+
+    private func updateWeightFields() {
+        let clean = weightAmount.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        canonicalValue = "\(clean)\(unit)"
+        nameEn = "\(clean)\(unit)"
+        if unit == "kg" {
+            nameAr = "\(clean) كجم"
+        } else if unit == "g" {
+            nameAr = "\(clean) جم"
+        } else {
+            nameAr = "\(clean) \(unit)"
+        }
+    }
+
+    private func applyWeightIncrement(_ inc: String) {
+        let cur = Double(weightAmount) ?? 0
+        let addition: Double = inc == "+100" ? 100 : (inc == "+250" ? 250 : (inc == "+500" ? 500 : 1000))
+        let newVal = cur + addition
+        weightAmount = (newVal.truncatingRemainder(dividingBy: 1) == 0) ? String(Int(newVal)) : String(newVal)
+        updateWeightFields()
     }
 
     private func runSmartTranslate() {
@@ -3186,6 +3615,18 @@ struct PPAccessoryCustomValueSheet: View {
                 if canonicalValue.isEmpty || autoDeriveCanonical { canonicalValue = tr.canonical }
             } else {
                 nameAr = en
+            }
+        } else if !ar.isEmpty && !en.isEmpty {
+            if Language.isRTL() {
+                if let tr = PPOptionTranslationDictionary.translate(text: ar, isArabicInput: true) {
+                    nameEn = tr.counterpart
+                    if canonicalValue.isEmpty || autoDeriveCanonical { canonicalValue = tr.canonical }
+                }
+            } else {
+                if let tr = PPOptionTranslationDictionary.translate(text: en, isArabicInput: false) {
+                    nameAr = tr.counterpart
+                    if canonicalValue.isEmpty || autoDeriveCanonical { canonicalValue = tr.canonical }
+                }
             }
         }
     }
