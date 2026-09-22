@@ -65,6 +65,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
     /// Editable working copy.
     @Published var draft: PPAccessoryVariantFamily?
     @Published var selectedProductId: String = ""
+    @Published private(set) var rootAccessory: PetAccessory?
 
     @Published private(set) var isLoading = false
     @Published private(set) var isSaving = false
@@ -114,6 +115,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
     // MARK: Load
 
     func load(for accessory: PetAccessory) async {
+        rootAccessory = accessory
         isLoading = true
         failure = nil
         defer { isLoading = false }
@@ -133,6 +135,16 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
                   + " domain=\(nsError.domain) code=\(nsError.code)"
                   + " error=\(error.localizedDescription)")
             failure = PPAccessoryVariantFailureState(error: error)
+        }
+    }
+
+    func loadAccessory(forProductId productId: String) async throws -> PetAccessory {
+        try await PPAccessoryVariantService.shared.loadProduct(productId: productId)
+    }
+
+    func reload() async {
+        if let root = rootAccessory {
+            await load(for: root)
         }
     }
 
@@ -347,6 +359,11 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         revalidate()
     }
 
+    func toggleArchive(forProductId productId: String) {
+        guard let current = draft?.variant(forProductId: productId) else { return }
+        setArchived(!current.isArchived, forProductId: productId)
+    }
+
     func move(productId: String, by offset: Int) {
         guard let draft, let index = draft.variants.firstIndex(where: { $0.productId == productId }) else { return }
         let target = index + offset
@@ -357,6 +374,117 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         }
         self.draft = draft
         revalidate()
+    }
+
+    // MARK: - Options Mutations
+
+    func addOption(_ option: PPAccessoryOptionDefinition) {
+        guard let draft else { return }
+        guard draft.optionDefinitions.count < PPAccessoryVariantContract.maxOptionsPerFamily else { return }
+        guard !draft.optionDefinitions.contains(where: { $0.id == option.id || $0.key == option.key }) else { return }
+        var updated = draft.optionDefinitions
+        var newOption = option
+        newOption.sortOrder = updated.count
+        updated.append(newOption)
+        draft.optionDefinitions = updated
+        self.draft = draft
+        revalidate()
+    }
+
+    func removeOption(withId id: String) {
+        guard let draft else { return }
+        var updated = draft.optionDefinitions
+        updated.removeAll { $0.id == id }
+        for (index, opt) in updated.enumerated() {
+            opt.sortOrder = index
+        }
+        draft.optionDefinitions = updated
+        self.draft = draft
+        revalidate()
+    }
+
+    func moveOptionEarlier(id: String) {
+        guard let draft else { return }
+        guard let index = draft.optionDefinitions.firstIndex(where: { $0.id == id }), index > 0 else { return }
+        var updated = draft.optionDefinitions
+        updated.swapAt(index, index - 1)
+        for (i, opt) in updated.enumerated() { opt.sortOrder = i }
+        draft.optionDefinitions = updated
+        self.draft = draft
+        revalidate()
+    }
+
+    func moveOptionLater(id: String) {
+        guard let draft else { return }
+        guard let index = draft.optionDefinitions.firstIndex(where: { $0.id == id }), index < draft.optionDefinitions.count - 1 else { return }
+        var updated = draft.optionDefinitions
+        updated.swapAt(index, index + 1)
+        for (i, opt) in updated.enumerated() { opt.sortOrder = i }
+        draft.optionDefinitions = updated
+        self.draft = draft
+        revalidate()
+    }
+
+    func addOptionValue(_ value: PPAccessoryOptionValue, toOptionWithId optionId: String) {
+        guard let draft else { return }
+        guard let optIndex = draft.optionDefinitions.firstIndex(where: { $0.id == optionId }) else { return }
+        let option = draft.optionDefinitions[optIndex]
+        guard option.values.count < PPAccessoryVariantContract.maxValuesPerOption else { return }
+        guard !option.values.contains(where: { $0.id == value.id || $0.canonicalValue.lowercased() == value.canonicalValue.lowercased() }) else { return }
+        var updatedValues = option.values
+        var newValue = value
+        newValue.sortOrder = updatedValues.count
+        updatedValues.append(newValue)
+        option.values = updatedValues
+        self.draft = draft
+        revalidate()
+    }
+
+    func removeOptionValue(valueId: String, fromOptionWithId optionId: String) {
+        guard let draft else { return }
+        guard let optIndex = draft.optionDefinitions.firstIndex(where: { $0.id == optionId }) else { return }
+        let option = draft.optionDefinitions[optIndex]
+        var updatedValues = option.values
+        updatedValues.removeAll { $0.id == valueId }
+        for (i, val) in updatedValues.enumerated() { val.sortOrder = i }
+        option.values = updatedValues
+        self.draft = draft
+        revalidate()
+    }
+
+    func moveOptionValueEarlier(valueId: String, inOptionWithId optionId: String) {
+        guard let draft else { return }
+        guard let optIndex = draft.optionDefinitions.firstIndex(where: { $0.id == optionId }) else { return }
+        let option = draft.optionDefinitions[optIndex]
+        guard let valIndex = option.values.firstIndex(where: { $0.id == valueId }), valIndex > 0 else { return }
+        var updatedValues = option.values
+        updatedValues.swapAt(valIndex, valIndex - 1)
+        for (i, val) in updatedValues.enumerated() { val.sortOrder = i }
+        option.values = updatedValues
+        self.draft = draft
+        revalidate()
+    }
+
+    func moveOptionValueLater(valueId: String, inOptionWithId optionId: String) {
+        guard let draft else { return }
+        guard let optIndex = draft.optionDefinitions.firstIndex(where: { $0.id == optionId }) else { return }
+        let option = draft.optionDefinitions[optIndex]
+        guard let valIndex = option.values.firstIndex(where: { $0.id == valueId }), valIndex < option.values.count - 1 else { return }
+        var updatedValues = option.values
+        updatedValues.swapAt(valIndex, valIndex + 1)
+        for (i, val) in updatedValues.enumerated() { val.sortOrder = i }
+        option.values = updatedValues
+        self.draft = draft
+        revalidate()
+    }
+
+    func isOptionValueInUse(valueId: String, optionId: String) -> Bool {
+        guard let draft else { return false }
+        for variant in draft.variants {
+            if variant.selectedOptions[optionId] == valueId { return true }
+            if optionId == PPAccessoryVariantContract.axisColor && variant.color.identifier == valueId { return true }
+        }
+        return false
     }
 
     /// Creates a standalone catalog record through the inventory command owner
@@ -486,6 +614,192 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
             failure = state
             return false
         }
+    }
+
+    /// Creates a standalone product and attaches it as a combination variant under envelope 3 / schema 2.
+    func createAndAttachCombinationVariant(
+        selectedOptions: [String: String],
+        color: PPAccessoryVariantColor?,
+        sku: String,
+        barcode: String,
+        retailPrice: Double,
+        wholesalePrice: Double?,
+        quantity: Int = 0,
+        images: [UIImage] = []
+    ) async -> Bool {
+        guard let current = draft, !current.familyId.isEmpty else {
+            failure = PPAccessoryVariantFailureState(
+                message: Language.get("Variant_Add_SaveFamilyFirst", alter: "احفظ المنتج الحالي أولاً."),
+                recovery: .correctInput
+            )
+            return false
+        }
+        guard retailPrice.isFinite, retailPrice > 0,
+              wholesalePrice == nil || (wholesalePrice!.isFinite && wholesalePrice! > 0) else {
+            failure = PPAccessoryVariantFailureState(
+                message: Language.get("Variant_Add_InvalidPrice", alter: "أدخل سعر بيع صالحاً للمتغير الجديد."),
+                recovery: .correctInput
+            )
+            return false
+        }
+
+        let combinationKey = PPAccessoryVariantFamily.combinationKey(from: selectedOptions)
+        if current.variants.contains(where: { $0.combinationKey == combinationKey }) {
+            failure = PPAccessoryVariantFailureState(
+                message: Language.get("Variant_Error_CombinationTaken", alter: "هذه التوليفة مستخدمة بالفعل في هذا المنتج."),
+                recovery: .correctInput
+            )
+            return false
+        }
+
+        isCreatingVariant = true
+        failure = nil
+        confirmation = nil
+        defer { isCreatingVariant = false }
+
+        do {
+            guard let templateProductId = current.defaultVariantProductId.isEmpty
+                ? current.variants.first?.productId
+                : current.defaultVariantProductId else {
+                throw PPAccessoryVariantServiceError.invalidResponse
+            }
+            let template = try await PPAccessoryVariantService.shared.loadProduct(productId: templateProductId)
+            let createCommandId = "variant-comb-create-\(current.familyId)-\(UUID().uuidString)"
+
+            let product = try await PPAccessoryVariantService.shared.createStandaloneVariantProduct(
+                template: template,
+                sku: sku,
+                barcode: barcode,
+                retailPrice: retailPrice,
+                wholesalePrice: wholesalePrice,
+                quantity: max(0, quantity),
+                commandId: createCommandId
+            )
+
+            if !images.isEmpty {
+                addImages(images, forProductId: product.accessoryID)
+                await saveMedia(forProductId: product.accessoryID)
+            }
+
+            let latest = try await PPAccessoryVariantService.shared.loadFamily(familyId: current.familyId)
+            if latest.variant(forProductId: product.accessoryID) != nil {
+                apply(loaded: latest)
+                confirmation = Language.get("Variant_Add_Confirmed", alter: "تم إنشاء المتغير وحفظه.")
+                return true
+            }
+
+            let resolvedColor = color ?? PPAccessoryVariantColor(
+                identifier: selectedOptions["color"] ?? "standard",
+                nameAr: "افتراضي",
+                nameEn: "Standard",
+                hex: "#7F7F7F"
+            )
+
+            let nextSort = (latest.variants.map(\.sortOrder).max() ?? -1) + 1
+            latest.variants.append(PPAccessoryVariant(
+                productId: product.accessoryID,
+                color: resolvedColor,
+                sortOrder: nextSort,
+                isArchived: false,
+                isDefault: latest.variants.isEmpty,
+                sku: product.sku ?? "",
+                barcode: product.barcode ?? "",
+                primaryImageURL: PetAccessory.firstImageURL(for: product)?.absoluteString ?? "",
+                quantity: product.quantity,
+                retailPrice: product.hasResolvedSellingPrice ? product.finalPrice : nil,
+                wholesalePrice: product.wholesalePrice,
+                hasResolvedRetailPrice: product.hasResolvedSellingPrice,
+                showInAppMarket: false,
+                revision: product.revision,
+                media: (product.imageURLsArray ?? []).map { PPAccessoryVariantMedia(remoteURL: $0) },
+                selectedOptions: selectedOptions,
+                combinationKey: combinationKey
+            ))
+
+            let attachCommandId = "variant-comb-attach-\(current.familyId)-\(UUID().uuidString)"
+            _ = try await PPAccessoryVariantService.shared.saveFamily(latest, commandId: attachCommandId)
+            let reloaded = try await PPAccessoryVariantService.shared.loadFamily(familyId: current.familyId)
+            apply(loaded: reloaded)
+            selectedProductId = product.accessoryID
+            confirmation = Language.get("Variant_Add_Confirmed", alter: "تم إنشاء المتغير وحفظه.")
+            return true
+        } catch {
+            failure = PPAccessoryVariantFailureState(error: error)
+            return false
+        }
+    }
+
+    /// Applies bulk prices to multiple member variants through audited command facades.
+    func applyBulkPricing(
+        retailPrice: Double,
+        wholesalePrice: Double?,
+        forProductIds productIds: [String]
+    ) async -> Bool {
+        guard !productIds.isEmpty else { return false }
+        isSaving = true
+        failure = nil
+        confirmation = nil
+        defer { isSaving = false }
+
+        var successCount = 0
+        for productId in productIds {
+            do {
+                let product = try await PPAccessoryVariantService.shared.loadProduct(productId: productId)
+                product.price = NSNumber(value: retailPrice)
+                product.wholesalePrice = wholesalePrice.map { NSNumber(value: $0) }
+                let retailMinor = Int((retailPrice * 100.0).rounded())
+                let wholesaleMinor = wholesalePrice.map { Int(($0 * 100.0).rounded()) }
+
+                var singleGroup: [String: Any] = [
+                    "id": "single",
+                    "nameAr": "حبة",
+                    "nameEn": "Single",
+                    "unitsPerGroup": 1,
+                    "barcode": product.barcode?.isEmpty == false ? product.barcode! : NSNull(),
+                    "sku": product.sku?.isEmpty == false ? product.sku! : NSNull(),
+                    "sortOrder": 0,
+                    "retailEnabled": true,
+                    "wholesaleEnabled": wholesaleMinor != nil,
+                    "retailPriceMinor": retailMinor,
+                    "wholesalePriceMinor": wholesaleMinor ?? NSNull(),
+                    "defaultForRetail": true,
+                    "defaultForWholesale": wholesaleMinor != nil,
+                    "active": true,
+                ]
+                if wholesaleMinor == nil { singleGroup["wholesalePriceMinor"] = NSNull() }
+                let commerce: [String: Any] = [
+                    "currency": "QAR",
+                    "baseUnit": ["id": "piece", "nameAr": "قطعة", "nameEn": "Piece"],
+                    "quantityGroups": [singleGroup],
+                ]
+                let branchId = (product.branchID ?? product.storeID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let commandId = "bulk-price-\(productId)-\(UUID().uuidString)"
+                _ = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<PPInventoryCommandResult, Error>) in
+                    PPInventoryCommandService.shared.saveProduct(
+                        accessory: product,
+                        branchId: branchId.isEmpty ? nil : branchId,
+                        commerce: commerce,
+                        expectedRevision: product.revision > 0 ? product.revision : nil,
+                        commandId: commandId
+                    ) { result, error in
+                        if let error { continuation.resume(throwing: error) }
+                        else if let result, result.success { continuation.resume(returning: result) }
+                        else { continuation.resume(throwing: PPAccessoryVariantServiceError.invalidResponse) }
+                    }
+                }
+                successCount += 1
+            } catch {
+                print("[PPAccessoryVariantSection] bulk pricing failed for \(productId): \(error)")
+            }
+        }
+
+        if let familyId = draft?.familyId, !familyId.isEmpty {
+            if let reloaded = try? await PPAccessoryVariantService.shared.loadFamily(familyId: familyId) {
+                apply(loaded: reloaded)
+            }
+        }
+        confirmation = Language.get("Variant_BulkPricing_Success", alter: "تم تحديث أسعار المتغيرات بنجاح.")
+        return successCount > 0
     }
 
     /// Updates an existing variant's color, pricing, quantity, SKU, barcode, and photos.
@@ -750,6 +1064,116 @@ struct PPAccessoryVariantFailureState {
     }
 }
 
+// MARK: - Studio Segmented Switch
+
+struct PPVariantSegmentedSwitch: View {
+    @Binding var selectedTab: PPAccessoryVariantSection.VariantSectionTab
+    let draft: PPAccessoryVariantFamily
+    @Namespace private var switchNamespace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(PPAccessoryVariantSection.VariantSectionTab.allCases) { tab in
+                let isSelected = (selectedTab == tab)
+                Button {
+                    guard selectedTab != tab else { return }
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    if reduceMotion {
+                        selectedTab = tab
+                    } else {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.80)) {
+                            selectedTab = tab
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: tabIcon(for: tab))
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(isSelected ? AdminSurface.primary : AdminSurface.secondaryText)
+
+                        Text(tab.localizedTitle)
+                            .font(isSelected ? PPBrandFont.bold(size: 13.5) : PPBrandFont.medium(size: 13.5))
+                            .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                            .lineLimit(1)
+
+                        // Micro Count Badge
+                        let count = badgeCount(for: tab)
+                        Text("\(count)")
+                            .font(PPBrandFont.bold(size: 10.5))
+                            .foregroundStyle(isSelected ? AdminSurface.primary : AdminSurface.secondaryText)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule()
+                                    .fill(isSelected ? AdminSurface.primary.opacity(0.12) : AdminSurface.container)
+                            )
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 38)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PPVariantTabPressButtonStyle())
+                .background {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .fill(AdminSurface.surface)
+                            .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 2)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+                            )
+                            .matchedGeometryEffect(id: "STUDIO_TAB_ACTIVE_THUMB", in: switchNamespace)
+                    }
+                }
+                .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
+                .accessibilityLabel(tabAccessibilityLabel(for: tab, isSelected: isSelected))
+            }
+        }
+        .padding(4)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(AdminSurface.control)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.5)
+        )
+    }
+
+    private func tabIcon(for tab: PPAccessoryVariantSection.VariantSectionTab) -> String {
+        switch tab {
+        case .options:
+            return "slider.horizontal.2.square.on.square"
+        case .variants:
+            return "paintpalette.fill"
+        }
+    }
+
+    private func badgeCount(for tab: PPAccessoryVariantSection.VariantSectionTab) -> Int {
+        switch tab {
+        case .options:
+            return draft.optionDefinitions.count
+        case .variants:
+            return draft.activeVariantCount
+        }
+    }
+
+    private func tabAccessibilityLabel(for tab: PPAccessoryVariantSection.VariantSectionTab, isSelected: Bool) -> String {
+        let count = badgeCount(for: tab)
+        let selectedState = isSelected ? Language.get("Common_Selected", alter: "محدد") : ""
+        return "\(tab.localizedTitle), \(count), \(selectedState)"
+    }
+}
+
+fileprivate struct PPVariantTabPressButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+    }
+}
+
 // MARK: - Section view
 
 struct PPAccessoryVariantSection: View {
@@ -763,35 +1187,91 @@ struct PPAccessoryVariantSection: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    enum VariantSectionTab: String, CaseIterable, Identifiable {
+        case options
+        case variants
+
+        var id: String { rawValue }
+
+        var localizedTitle: String {
+            switch self {
+            case .options:
+                return Language.get("Options_Tab_Options", alter: "الخيارات")
+            case .variants:
+                return Language.get("Options_Tab_Variants_Matrix", alter: "المصفوفة والمتغيرات")
+            }
+        }
+    }
+
+    enum VariantPresentationMode: String, CaseIterable, Identifiable {
+        case matrix
+        case atelier
+
+        var id: String { rawValue }
+
+        var localizedTitle: String {
+            switch self {
+            case .matrix:
+                return Language.get("Variant_Mode_Matrix", alter: "المصفوفة")
+            case .atelier:
+                return Language.get("Variant_Mode_Atelier", alter: "الاستوديو")
+            }
+        }
+    }
+
+    @State private var selectedTab: VariantSectionTab = .options
+    @State private var presentationMode: VariantPresentationMode = .matrix
     @State private var isPresentingColorEditor = false
     @State private var editingProductId: String?
     @State private var isPresentingMediaPicker = false
     @State private var mediaTargetProductId: String?
     @State private var activeStudioMode: VariantStudioMode? = nil
     @State private var copiedHexBanner: String? = nil
+    @State private var isPresentingCustomOptionSheet = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            header
-
             if model.isLoading {
+                loadingHeader
                 loadingRow
             } else if model.isLegacyUngrouped {
+                legacyHeader
                 conversionInvitation
             } else if let draft = model.draft {
-                if horizontalSizeClass == .regular && !dynamicTypeSize.isAccessibilitySize {
-                    HStack(alignment: .top, spacing: 16) {
-                        iPadVariantRail(for: draft)
-                            .frame(width: 220)
-                        if let variant = model.selectedVariant {
-                            variantWorkspace(variant, in: draft)
-                                .frame(maxWidth: .infinity, alignment: .topLeading)
-                        }
-                    }
+                studioControlDeck(for: draft)
+
+                if selectedTab == .options {
+                    PPAccessoryOptionEditorView(model: model, showHeader: false)
                 } else {
-                    swatchRail(for: draft)
-                    if let variant = model.selectedVariant {
-                        variantWorkspace(variant, in: draft)
+                    if draft.hasGenericOptions || presentationMode == .matrix {
+                        VStack(alignment: .leading, spacing: 12) {
+                            if !draft.hasGenericOptions {
+                                modePicker
+                            }
+                            PPAccessoryVariantMatrixView(
+                                model: model,
+                                onOpenVariantProduct: onOpenVariantProduct
+                            )
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 12) {
+                            modePicker
+                            if horizontalSizeClass == .regular && !dynamicTypeSize.isAccessibilitySize {
+                                HStack(alignment: .top, spacing: 16) {
+                                    iPadVariantRail(for: draft)
+                                        .frame(width: 220)
+                                    if let variant = model.selectedVariant {
+                                        variantWorkspace(variant, in: draft)
+                                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                                    }
+                                }
+                            } else {
+                                swatchRail(for: draft)
+                                if let variant = model.selectedVariant {
+                                    variantWorkspace(variant, in: draft)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -882,129 +1362,361 @@ struct PPAccessoryVariantSection: View {
                 isPresentingColorEditor = false
             }
         }
+        .sheet(isPresented: $isPresentingCustomOptionSheet) {
+            PPAccessoryCustomOptionSheet { newOption in
+                model.addOption(newOption)
+                isPresentingCustomOptionSheet = false
+            }
+        }
     }
 
-    // MARK: - Header & Telemetry
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 10) {
-                // Chromatic studio badge
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(AdminSurface.primary.opacity(0.12))
-                        .frame(width: 38, height: 38)
-
-                    Image(systemName: "paintpalette.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(AdminSurface.primary)
+    private var modePicker: some View {
+        HStack {
+            Spacer()
+            Picker("", selection: $presentationMode) {
+                ForEach(VariantPresentationMode.allCases) { mode in
+                    Text(mode.localizedTitle).tag(mode)
                 }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 200)
+        }
+        .padding(.vertical, 2)
+    }
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(Language.get("Variant_Section_Title", alter: "الألوان والوسائط"))
-                        .font(AdminType.headlineBold)
-                        .foregroundStyle(AdminSurface.primaryText)
+    // MARK: - Atelier Studio Command Deck
 
-                    if let draft = model.draft, !model.isLegacyUngrouped {
-                        telemetryStrip(for: draft)
-                    }
-                }
+    private func studioControlDeck(for draft: PPAccessoryVariantFamily) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Tier 1: Studio Identity & Dynamic Context Action
+            identityAndActionRow(for: draft)
 
-                Spacer(minLength: 8)
+            // Tier 2: Live Telemetry HUD Strip
+            telemetryHUD(for: draft)
 
-                if let draft = model.draft, !model.isLegacyUngrouped, model.canManageVariants {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        activeStudioMode = .create
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 14, weight: .bold))
-                            Text(Language.get("Variant_Add_Action", alter: "إضافة لون"))
-                                .font(AdminType.caption1Bold)
-                                .lineLimit(1)
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(AdminSurface.primary.opacity(0.12), in: Capsule())
-                        .overlay(
-                            Capsule()
-                                .strokeBorder(AdminSurface.primary.opacity(0.25), lineWidth: 1)
+            // Tier 3: Studio Custom Segmented Switch
+            PPVariantSegmentedSwitch(
+                selectedTab: $selectedTab,
+                draft: draft
+            )
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(AdminSurface.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 3)
+    }
+
+    private func identityAndActionRow(for draft: PPAccessoryVariantFamily) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            // Chromatic Studio Jewel Badge
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                AdminSurface.primary.opacity(0.18),
+                                AdminSurface.primary.opacity(0.06)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
                         )
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(AdminSurface.primary)
-                    .disabled(
-                        model.isCreatingVariant ||
-                        model.isSaving ||
-                        draft.variantCount >= PPAccessoryVariantContract.maxVariantsPerFamily
                     )
-                    .accessibilityHint(Language.get(
-                        "Variant_Add_Hint",
-                        alter: "ينشئ صنفاً مستقلاً بالسعر والرمز الخاصين بهذا اللون ثم يربطه بالمنتج."
+                    .frame(width: 42, height: 42)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(AdminSurface.primary.opacity(0.25), lineWidth: 0.75)
+                    )
+
+                Image(systemName: selectedTab == .variants ? "paintpalette.fill" : "slider.horizontal.2.square.on.square")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primary)
+                    .animation(.easeInOut(duration: 0.2), value: selectedTab)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(selectedTab == .variants
+                     ? Language.get("Variant_Section_Title", alter: "الألوان والوسائط")
+                     : Language.get("Options_Section_Title", alter: "خيارات المنتج"))
+                    .font(PPBrandFont.bold(size: 18))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .animation(.easeInOut(duration: 0.2), value: selectedTab)
+
+                Text(selectedTab == .variants
+                     ? Language.get("Variant_Section_Subtitle", alter: "إدارة الألوان والصور والمخزون لكل متغير")
+                     : Language.get("Options_Section_Subtitle", alter: "عرّف الخيارات مثل الألوان والمقاسات والأوزان وقيم كل خيار."))
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .lineLimit(1)
+                    .animation(.easeInOut(duration: 0.2), value: selectedTab)
+            }
+
+            Spacer(minLength: 8)
+
+            if model.canManageVariants {
+                contextualActionButton(for: draft)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func contextualActionButton(for draft: PPAccessoryVariantFamily) -> some View {
+        if selectedTab == .variants {
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                activeStudioMode = .create
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 13, weight: .bold))
+                    Text(Language.get("Variant_Add_Action", alter: "إضافة لون"))
+                        .font(PPBrandFont.bold(size: 12.5))
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                .overlay(
+                    Capsule().strokeBorder(AdminSurface.primary.opacity(0.28), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(AdminSurface.primary)
+            .disabled(
+                model.isCreatingVariant ||
+                model.isSaving ||
+                draft.variantCount >= PPAccessoryVariantContract.maxVariantsPerFamily
+            )
+            .accessibilityLabel(Language.get("Variant_Add_Action", alter: "إضافة لون"))
+            .accessibilityHint(Language.get(
+                "Variant_Add_Hint",
+                alter: "ينشئ صنفاً مستقلاً بالسعر والرمز الخاصين بهذا اللون ثم يربطه بالمنتج."
+            ))
+        } else {
+            Menu {
+                presetOptionButtons(draft: draft)
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 13, weight: .bold))
+                    Text(Language.get("Options_Add_Option", alter: "إضافة خيار"))
+                        .font(PPBrandFont.bold(size: 12.5))
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                .overlay(
+                    Capsule().strokeBorder(AdminSurface.primary.opacity(0.28), lineWidth: 1)
+                )
+            }
+            .foregroundStyle(AdminSurface.primary)
+            .disabled(draft.optionDefinitions.count >= PPAccessoryVariantContract.maxOptionsPerFamily)
+            .accessibilityLabel(Language.get("Options_Add_Option", alter: "إضافة خيار"))
+        }
+    }
+
+    @ViewBuilder
+    private func presetOptionButtons(draft: PPAccessoryVariantFamily) -> some View {
+        let existingKeys = Set(draft.optionDefinitions.map(\.key))
+
+        if !existingKeys.contains("color") {
+            Button {
+                model.addOption(PPAccessoryOptionDefinition.presetColor())
+            } label: {
+                Label(
+                    Language.get("Options_Preset_Color", alter: "اللون"),
+                    systemImage: "paintpalette.fill"
+                )
+            }
+        }
+
+        if !existingKeys.contains("size") {
+            Button {
+                model.addOption(PPAccessoryOptionDefinition.presetSize())
+            } label: {
+                Label(
+                    Language.get("Options_Preset_Size", alter: "المقاس"),
+                    systemImage: "ruler.fill"
+                )
+            }
+        }
+
+        if !existingKeys.contains("weight") {
+            Button {
+                model.addOption(PPAccessoryOptionDefinition.presetWeight())
+            } label: {
+                Label(
+                    Language.get("Options_Preset_Weight", alter: "الوزن"),
+                    systemImage: "scalemass.fill"
+                )
+            }
+        }
+
+        if !existingKeys.contains("material") {
+            Button {
+                model.addOption(PPAccessoryOptionDefinition.presetMaterial())
+            } label: {
+                Label(
+                    Language.get("Options_Preset_Material", alter: "المادة"),
+                    systemImage: "cube.box.fill"
+                )
+            }
+        }
+
+        if !existingKeys.contains("flavor") {
+            Button {
+                model.addOption(PPAccessoryOptionDefinition.presetFlavor())
+            } label: {
+                Label(
+                    Language.get("Options_Preset_Flavor", alter: "النكهة"),
+                    systemImage: "fork.knife"
+                )
+            }
+        }
+
+        Divider()
+
+        Button {
+            isPresentingCustomOptionSheet = true
+        } label: {
+            Label(
+                Language.get("Options_Preset_Custom", alter: "خيار مخصص..."),
+                systemImage: "slider.horizontal.3"
+            )
+        }
+    }
+
+    private func telemetryHUD(for draft: PPAccessoryVariantFamily) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                // Colors / Active Variants Pill
+                HStack(spacing: 5) {
+                    Image(systemName: "circle.grid.2x1.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(AdminSurface.primary)
+                    Text(String(
+                        format: Language.get("Inventory_Family_ColourCount", alter: "%@ ألوان"),
+                        NSNumber(value: draft.activeVariantCount)
+                    ))
+                    .font(PPBrandFont.bold(size: 11.5))
+                    .foregroundStyle(AdminSurface.primaryText)
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(AdminSurface.control, in: Capsule())
+                .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.6))
+
+                // Stock Health Status Pill
+                let stockColor = stockIndicatorColor(for: draft.totalAvailableQuantity)
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(stockColor)
+                        .frame(width: 7, height: 7)
+                        .shadow(color: stockColor.opacity(0.4), radius: 2)
+
+                    Text(String(
+                        format: Language.get("Inventory_Family_TotalAvailable", alter: "%@ متوفر"),
+                        NSNumber(value: draft.totalAvailableQuantity)
+                    ))
+                    .font(PPBrandFont.bold(size: 11.5))
+                    .foregroundStyle(stockColor)
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(stockColor.opacity(0.08), in: Capsule())
+                .overlay(Capsule().strokeBorder(stockColor.opacity(0.2), lineWidth: 0.6))
+
+                // Price Spectrum Pill
+                if let summary = familyPriceSummary(draft) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "tag.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(AdminSurface.amber)
+                        Text(summary.normalizedEnglishDigits)
+                            .font(PPBrandFont.bold(size: 11.5))
+                            .foregroundStyle(AdminSurface.primaryText)
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(AdminSurface.control, in: Capsule())
+                    .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.6))
+                    .accessibilityLabel(String(
+                        format: Language.get("Inventory_Family_Price_A11y", alter: "نطاق السعر: %@"),
+                        summary
                     ))
                 }
+
+                // Options Capacity Pill
+                HStack(spacing: 5) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 9))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    Text(String(
+                        format: Language.get("Options_Capacity_Format", alter: "%d / %d خيارات"),
+                        draft.optionDefinitions.count,
+                        PPAccessoryVariantContract.maxOptionsPerFamily
+                    ))
+                    .font(PPBrandFont.bold(size: 11.5))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(AdminSurface.control, in: Capsule())
+                .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.6))
             }
+            .padding(.vertical, 1)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func stockIndicatorColor(for qty: Int) -> Color {
+        if qty > 5 {
+            return AdminSurface.emerald
+        } else if qty > 0 {
+            return AdminSurface.amber
+        } else {
+            return AdminSurface.crimson
         }
     }
 
-    private func telemetryStrip(for draft: PPAccessoryVariantFamily) -> some View {
-        HStack(spacing: 6) {
-            // Colors Count Pill
-            HStack(spacing: 4) {
-                Image(systemName: "circle.grid.2x1.fill")
-                    .font(.system(size: 8))
+    private var legacyHeader: some View {
+        HStack(alignment: .center, spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(AdminSurface.primary.opacity(0.12))
+                    .frame(width: 38, height: 38)
+
+                Image(systemName: "paintpalette.fill")
+                    .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(AdminSurface.primary)
-                Text(String(
-                    format: Language.get("Inventory_Family_ColourCount", alter: "%@ ألوان"),
-                    NSNumber(value: draft.activeVariantCount)
-                ))
-                .font(AdminType.caption2Bold)
             }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(AdminSurface.surface, in: Capsule())
-            .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
 
-            // Stock Status Pill
-            HStack(spacing: 4) {
-                Circle()
-                    .fill(draft.totalAvailableQuantity > 0 ? AdminSurface.emerald : AdminSurface.crimson)
-                    .frame(width: 6, height: 6)
-                Text(String(
-                    format: Language.get("Inventory_Family_TotalAvailable", alter: "%@ متوفر"),
-                    NSNumber(value: draft.totalAvailableQuantity)
-                ))
-                .font(AdminType.caption2Bold)
-                .foregroundStyle(draft.totalAvailableQuantity > 0 ? AdminSurface.emerald : AdminSurface.crimson)
-            }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(AdminSurface.surface, in: Capsule())
-            .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+            Text(Language.get("Variant_Section_Title", alter: "الألوان والوسائط"))
+                .font(AdminType.headlineBold)
+                .foregroundStyle(AdminSurface.primaryText)
 
-            // Price Spectrum Pill
-            if let summary = familyPriceSummary(draft) {
-                HStack(spacing: 4) {
-                    Image(systemName: "tag.fill")
-                        .font(.system(size: 8))
-                        .foregroundStyle(AdminSurface.amber)
-                    Text(summary.normalizedEnglishDigits)
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(AdminSurface.primaryText)
-                }
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
-                .background(AdminSurface.surface, in: Capsule())
-                .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
-                .accessibilityLabel(String(
-                    format: Language.get("Inventory_Family_Price_A11y", alter: "نطاق السعر: %@"),
-                    summary
-                ))
-            }
+            Spacer()
         }
-        .foregroundStyle(AdminCommandInk.secondary)
-        .accessibilityElement(children: .combine)
+    }
+
+    private var loadingHeader: some View {
+        HStack(alignment: .center, spacing: 10) {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(AdminSurface.control)
+                .frame(width: 38, height: 38)
+
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(AdminSurface.control)
+                .frame(width: 140, height: 20)
+
+            Spacer()
+        }
     }
 
     private func effectiveRetailPrice(for variant: PPAccessoryVariant) -> Double? {
@@ -2431,7 +3143,7 @@ enum VariantStudioMode: Identifiable {
     }
 }
 
-private struct PPAccessoryVariantStudioSheet: View {
+struct PPAccessoryVariantStudioSheet: View {
     let mode: VariantStudioMode
     let usedColorIdentifiers: Set<String>
     let isSubmitting: Bool

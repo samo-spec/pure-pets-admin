@@ -126,6 +126,8 @@
 		B0A200292FAA000100B0A01A /* PPAccessoryVariantMediaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A200282FAA000100B0A019 /* PPAccessoryVariantMediaService.swift */; };
 		B0A200252FAA000100B0A016 /* PPAccessoryVariantService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A200242FAA000100B0A015 /* PPAccessoryVariantService.swift */; };
 		B0A200272FAA000100B0A018 /* PPAccessoryVariantSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A200262FAA000100B0A017 /* PPAccessoryVariantSection.swift */; };
+		B0A200312FAA000100B0A021 /* PPAccessoryOptionEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A200302FAA000100B0A020 /* PPAccessoryOptionEditorView.swift */; };
+		B0A200332FAA000100B0A023 /* PPAccessoryVariantMatrixView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A200322FAA000100B0A022 /* PPAccessoryVariantMatrixView.swift */; };
 		B0A200212FAA000100B0A012 /* PPAccessoryVariantModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A200202FAA000100B0A011 /* PPAccessoryVariantModels.swift */; };
 		B0A200232FAA000100B0A014 /* PPAccessoryVariantError.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A200222FAA000100B0A013 /* PPAccessoryVariantError.swift */; };
 		B1F2E7D32C99BE04EF9D5A2E /* Pods_PurePetsAdmin.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 380FB3B9B3805FA82F10A7E3 /* Pods_PurePetsAdmin.framework */; };
@@ -549,6 +551,8 @@
 		B0A200282FAA000100B0A019 /* PPAccessoryVariantMediaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPAccessoryVariantMediaService.swift; sourceTree = "<group>"; };
 		B0A200242FAA000100B0A015 /* PPAccessoryVariantService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPAccessoryVariantService.swift; sourceTree = "<group>"; };
 		B0A200262FAA000100B0A017 /* PPAccessoryVariantSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPAccessoryVariantSection.swift; sourceTree = "<group>"; };
+		B0A200302FAA000100B0A020 /* PPAccessoryOptionEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPAccessoryOptionEditorView.swift; sourceTree = "<group>"; };
+		B0A200322FAA000100B0A022 /* PPAccessoryVariantMatrixView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPAccessoryVariantMatrixView.swift; sourceTree = "<group>"; };
 		B0A200202FAA000100B0A011 /* PPAccessoryVariantModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPAccessoryVariantModels.swift; sourceTree = "<group>"; };
 		B0A200222FAA000100B0A013 /* PPAccessoryVariantError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPAccessoryVariantError.swift; sourceTree = "<group>"; };
 		B4B25A3F0AC9C2AC1635B8EF /* PPImageCollectionRow.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPImageCollectionRow.h; sourceTree = "<group>"; };
@@ -1959,6 +1963,8 @@
 				B0A200282FAA000100B0A019 /* PPAccessoryVariantMediaService.swift */,
 				B0A200242FAA000100B0A015 /* PPAccessoryVariantService.swift */,
 				B0A200262FAA000100B0A017 /* PPAccessoryVariantSection.swift */,
+				B0A200302FAA000100B0A020 /* PPAccessoryOptionEditorView.swift */,
+				B0A200322FAA000100B0A022 /* PPAccessoryVariantMatrixView.swift */,
 				B0A200202FAA000100B0A011 /* PPAccessoryVariantModels.swift */,
 				B0A200222FAA000100B0A013 /* PPAccessoryVariantError.swift */,
 			);
@@ -2571,6 +2577,8 @@
 				B0A200292FAA000100B0A01A /* PPAccessoryVariantMediaService.swift in Sources */,
 				B0A200252FAA000100B0A016 /* PPAccessoryVariantService.swift in Sources */,
 				B0A200272FAA000100B0A018 /* PPAccessoryVariantSection.swift in Sources */,
+				B0A200312FAA000100B0A021 /* PPAccessoryOptionEditorView.swift in Sources */,
+				B0A200332FAA000100B0A023 /* PPAccessoryVariantMatrixView.swift in Sources */,
 				B0A200212FAA000100B0A012 /* PPAccessoryVariantModels.swift in Sources */,
 				B0A200232FAA000100B0A014 /* PPAccessoryVariantError.swift in Sources */,
 				A5E100042FF1000100A5E004 /* PPHeroApexBridge.m in Sources */,

@@ -78,6 +78,11 @@ public struct PPLivePetBasicDataEditorView: View {
     @State private var isGeneratingDesc: Bool = false
     @FocusState private var activeField: EditorField?
 
+    // MARK: - State: Pury Vision Intake
+    @State private var isPuryVisionActive: Bool = false
+    @State private var puryVisionStatusMessage: String = ""
+    @State private var puryActiveFocusTarget: PuryFocusTarget? = nil
+
     // MARK: - State: Taxonomy (Species & Breed)
     @State private var availableMainKinds: [MainKindsModel] = []
     @State private var selectedSpeciesID: Int = 0
@@ -174,6 +179,23 @@ public struct PPLivePetBasicDataEditorView: View {
                             }
                         }
                     }
+                    .onChange(of: puryActiveFocusTarget) { target in
+                        guard let target = target else { return }
+                        switch target {
+                        case .media:
+                            withAnimation(.easeInOut(duration: 0.28)) {
+                                proxy.scrollTo("section_photos", anchor: .top)
+                            }
+                        case .name:
+                            withAnimation(.easeInOut(duration: 0.28)) {
+                                proxy.scrollTo("section_identity", anchor: .center)
+                            }
+                        case .description:
+                            withAnimation(.easeInOut(duration: 0.28)) {
+                                proxy.scrollTo("section_identity", anchor: .center)
+                            }
+                        }
+                    }
                 }
 
                 // Sticky Bottom Action Dock
@@ -215,11 +237,17 @@ public struct PPLivePetBasicDataEditorView: View {
             }
             .sheet(isPresented: $showImagePicker) {
                 PPImagePickerSheet(maxSelection: 8) { pickedImages in
+                    let wasEmpty = localImages.isEmpty && remoteImageURLs.isEmpty
                     for img in pickedImages {
                         let local = LocalSpecimenImage(image: img)
                         localImages.append(local)
                         if primaryImageIdentifier.isEmpty {
                             primaryImageIdentifier = local.id.uuidString
+                        }
+                    }
+                    if wasEmpty, let first = pickedImages.first, nameAr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && nameEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Task {
+                            await runPuryVisionIntake(for: first)
                         }
                     }
                 }
@@ -389,6 +417,38 @@ public struct PPLivePetBasicDataEditorView: View {
                 Spacer()
 
                 let totalCount = remoteImageURLs.count + localImages.count
+                if totalCount > 0 {
+                    Button {
+                        if let first = localImages.first?.image {
+                            Task { await runPuryVisionIntake(for: first) }
+                        } else if let firstURL = remoteImageURLs.first {
+                            Task { await runPuryVisionIntake(fromURL: firstURL) }
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            PuryAvatar(
+                                size: 20,
+                                isLiving: true,
+                                isThinking: isPuryVisionActive,
+                                showStatusRing: true
+                            )
+                            Text(isPuryVisionActive ? puryVisionStatusMessage : Language.get("Pury_Vision_SmartFill", alter: "تعبئة ذكية مع بيوري"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                        }
+                        .padding(.horizontal, 10)
+                        .frame(height: 30)
+                        .background(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12), in: Capsule())
+                        .overlay(
+                            Capsule().strokeBorder(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.35), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(PuryCompactPressStyle())
+                }
+
                 Text("\(totalCount) \(Language.get("Photos", alter: "صور"))")
                     .font(Font.custom("Beiruti-Medium", size: 13))
                     .foregroundStyle(AdminSurface.secondaryText)
@@ -676,6 +736,19 @@ public struct PPLivePetBasicDataEditorView: View {
                         .foregroundStyle(currentText.count > 80 ? AdminSurface.crimson : AdminSurface.secondaryText.opacity(0.7))
                 }
 
+                if puryActiveFocusTarget == .name {
+                    HStack(spacing: 6) {
+                        PuryAvatar(size: 18, isLiving: true, isThinking: true, showStatusRing: true)
+                        Text(puryVisionStatusMessage)
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12), in: Capsule())
+                    .transition(.scale.combined(with: .opacity))
+                }
+
                 ZStack {
                     // Arabic Name Field (Aligned Right)
                     HStack(spacing: 8) {
@@ -729,6 +802,15 @@ public struct PPLivePetBasicDataEditorView: View {
                     .accessibilityHidden(selectedLanguage != .english)
                     .id(EditorField.englishName)
                 }
+                .overlay(
+                    Group {
+                        if puryActiveFocusTarget == .name {
+                            RoundedRectangle(cornerRadius: AdminRadius.medium + 4, style: .continuous)
+                                .stroke(Color(red: 16/255, green: 185/255, blue: 129/255), lineWidth: 2)
+                                .shadow(color: Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.6), radius: 8)
+                        }
+                    }
+                )
             }
 
             // Specimen Description Input (Bilingual Dual-Surface Multiline with Embedded Pury Writer)
@@ -744,6 +826,19 @@ public struct PPLivePetBasicDataEditorView: View {
                     Text("\(currentText.count)/1000")
                         .font(Font.custom("Beiruti-Regular", size: 12))
                         .foregroundStyle(currentText.count > 1000 ? AdminSurface.crimson : AdminSurface.secondaryText.opacity(0.7))
+                }
+
+                if puryActiveFocusTarget == .description {
+                    HStack(spacing: 6) {
+                        PuryAvatar(size: 18, isLiving: true, isThinking: true, showStatusRing: true)
+                        Text(puryVisionStatusMessage)
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12), in: Capsule())
+                    .transition(.scale.combined(with: .opacity))
                 }
 
                 ZStack(alignment: .bottomTrailing) {
@@ -826,6 +921,15 @@ public struct PPLivePetBasicDataEditorView: View {
                         .padding(.trailing, 8)
                         .padding(.bottom, 8)
                 }
+                .overlay(
+                    Group {
+                        if puryActiveFocusTarget == .description {
+                            RoundedRectangle(cornerRadius: AdminRadius.medium + 4, style: .continuous)
+                                .stroke(Color(red: 16/255, green: 185/255, blue: 129/255), lineWidth: 2)
+                                .shadow(color: Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.6), radius: 8)
+                        }
+                    }
+                )
             }
         }
         .padding(AdminSpacing.md)
@@ -923,6 +1027,188 @@ public struct PPLivePetBasicDataEditorView: View {
         .buttonStyle(PuryCompactPressStyle())
         .disabled(isTranslatingName)
         .accessibilityLabel(Language.get("Pury_Translate_Name", alter: "ترجمة فورية مع بيوري"))
+    }
+
+    // MARK: - Pury Vision Sequential Intake
+    func runPuryVisionIntake(for image: UIImage) async {
+        guard !isPuryVisionActive else { return }
+
+        await MainActor.run {
+            isPuryVisionActive = true
+            puryActiveFocusTarget = .media
+            puryVisionStatusMessage = Language.get("Pury_Vision_Scanning", alter: "بيوري يحلل الصورة والعبوة...")
+            let haptic = UIImpactFeedbackGenerator(style: .medium)
+            haptic.impactOccurred()
+        }
+
+        let result = await PuryVisionIntakeEngine.shared.extract(from: image, itemType: "live_pet")
+
+        guard result.hasValidIdentity else {
+            await MainActor.run {
+                puryActiveFocusTarget = nil
+                puryVisionStatusMessage = Language.isRTL() ? "تعذر تحديد الاسم" : "Could not identify"
+            }
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            await MainActor.run {
+                isPuryVisionActive = false
+                puryVisionStatusMessage = ""
+            }
+            return
+        }
+
+        // Phase 2: Focus on Name & Translate missing
+        await MainActor.run {
+            puryActiveFocusTarget = .name
+            if selectedLanguage == .arabic {
+                activeField = .arabicName
+            } else {
+                activeField = .englishName
+            }
+            puryVisionStatusMessage = Language.get("Pury_Vision_ExtractingName", alter: "بيوري يسجل اسم المنتج ويترجمه...")
+            let haptic = UIImpactFeedbackGenerator(style: .light)
+            haptic.impactOccurred()
+
+            let detected = result.primaryName
+            if result.isArabic {
+                nameAr = detected
+            } else {
+                nameEn = detected
+            }
+        }
+
+        // Auto-set species taxonomy if detected
+        if let detectedSpecies = result.detectedPetSpecies, selectedSpeciesID == 0 {
+            if let matchedKind = availableMainKinds.first(where: {
+                $0.kindNameAr.localizedCaseInsensitiveContains(detectedSpecies) ||
+                (!($0.kindNameEn.isEmpty) && $0.kindNameEn.localizedCaseInsensitiveContains(detectedSpecies))
+            }) {
+                await MainActor.run {
+                    selectedSpeciesID = matchedKind.id
+                }
+            }
+        }
+
+        var authoringAttrs: [String: String] = [
+            "itemType": "live_pet",
+            "packagingText": result.rawOcrText
+        ]
+        for (k, v) in result.attributes {
+            authoringAttrs[k] = v
+        }
+
+        do {
+            let translationResponse = try await PuryAdminService.shared.requestAuthoring(
+                task: .improveName,
+                itemType: "live_pet",
+                sourceLanguage: result.isArabic ? "ar" : "en",
+                targetLanguage: result.isArabic ? "en" : "ar",
+                currentText: ["nameAr": nameAr, "nameEn": nameEn],
+                attributes: authoringAttrs
+            )
+
+            await MainActor.run {
+                if let ar = translationResponse.nameAr, !ar.isEmpty {
+                    nameAr = ar
+                }
+                if let en = translationResponse.nameEn, !en.isEmpty {
+                    nameEn = en
+                }
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
+        } catch {
+            await MainActor.run {
+                if nameAr.isEmpty && !nameEn.isEmpty {
+                    nameAr = nameEn
+                } else if nameEn.isEmpty && !nameAr.isEmpty {
+                    nameEn = nameAr
+                }
+            }
+        }
+
+        // Brief pause so user visibly sees the name field filled and translated
+        try? await Task.sleep(nanoseconds: 800_000_000)
+
+        // Phase 3: Intelligent Focus on Description Field & Tailored Writing
+        await MainActor.run {
+            puryActiveFocusTarget = .description
+            if selectedLanguage == .arabic {
+                activeField = .arabicDesc
+            } else {
+                activeField = .englishDesc
+            }
+            puryVisionStatusMessage = Language.get("Pury_Vision_WritingDesc", alter: "بيوري يصيغ الوصف الاحترافي...")
+            let haptic = UIImpactFeedbackGenerator(style: .light)
+            haptic.impactOccurred()
+        }
+
+        do {
+            var descAttrs = authoringAttrs
+            if !result.detectedBrand.isEmpty {
+                descAttrs["brand"] = result.detectedBrand
+            }
+            descAttrs["productName"] = nameAr
+            descAttrs["productNameEn"] = nameEn
+
+            let descResponse = try await PuryAdminService.shared.requestAuthoring(
+                task: .generateDescription,
+                itemType: "live_pet",
+                sourceLanguage: "ar",
+                targetLanguage: "en",
+                currentText: [
+                    "nameAr": nameAr,
+                    "nameEn": nameEn,
+                    "descAr": descAr,
+                    "descEn": descEn
+                ],
+                attributes: descAttrs
+            )
+
+            await MainActor.run {
+                if let dAr = descResponse.descAr, !dAr.isEmpty {
+                    descAr = dAr
+                }
+                if let dEn = descResponse.descEn, !dEn.isEmpty {
+                    descEn = dEn
+                }
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
+        } catch {
+            // Fallback gracefully
+        }
+
+        // Phase 4: Success Completion
+        await MainActor.run {
+            puryVisionStatusMessage = Language.get("Pury_Vision_Completed", alter: "اكتمل بنجاح ✓")
+            let haptic = UINotificationFeedbackGenerator()
+            haptic.notificationOccurred(.success)
+        }
+
+        try? await Task.sleep(nanoseconds: 800_000_000)
+
+        await MainActor.run {
+            isPuryVisionActive = false
+            puryActiveFocusTarget = nil
+            puryVisionStatusMessage = ""
+        }
+    }
+
+    func runPuryVisionIntake(fromURL urlString: String) async {
+        guard let url = URL(string: urlString) else { return }
+        await MainActor.run {
+            isPuryVisionActive = true
+            puryActiveFocusTarget = .media
+            puryVisionStatusMessage = Language.get("Pury_Vision_Scanning", alter: "بيوري يجلب الصورة ويحللها...")
+        }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            if let image = UIImage(data: data) {
+                await runPuryVisionIntake(for: image)
+            } else {
+                await MainActor.run { isPuryVisionActive = false }
+            }
+        } catch {
+            await MainActor.run { isPuryVisionActive = false }
+        }
     }
 
     private func translateLivePetNameWithPury() {

@@ -202,26 +202,17 @@ struct PPInventoryFamilyRow: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(AdminSurface.card)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [familyAccent.opacity(0.10), familyAccent.opacity(0.025), .clear],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
+                .fill(Color.white)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(familyAccent.opacity(isExpanded ? 0.34 : 0.22), lineWidth: isExpanded ? 1.25 : 1)
+                .strokeBorder(AdminSurface.borderSubtle.opacity(0.65), lineWidth: 0.75)
         )
+        .shadow(color: .black.opacity(0.03), radius: 8, x: 0, y: 3)
         .overlay(alignment: .leading) {
             Capsule(style: .continuous)
-                .fill(familyAccent.opacity(isExpanded ? 0.90 : 0.62))
-                .frame(width: 3)
+                .fill(familyAccent.opacity(isExpanded ? 0.95 : 0.80))
+                .frame(width: 3.5)
                 .padding(.vertical, 14)
                 .accessibilityHidden(true)
         }
@@ -448,12 +439,12 @@ struct PPInventoryFamilyRow: View {
             .padding(.vertical, 7)
         }
         .background(
-            familyAccent.opacity(0.045),
+            AdminSurface.control.opacity(0.5),
             in: RoundedRectangle(cornerRadius: 12, style: .continuous)
         )
         .overlay {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(familyAccent.opacity(0.14), lineWidth: 0.75)
+                .strokeBorder(AdminSurface.hairline.opacity(0.6), lineWidth: 0.75)
         }
     }
 

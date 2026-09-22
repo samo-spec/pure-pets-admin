@@ -4130,26 +4130,16 @@ private struct PPInventoryVariantChildInspector: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(AdminSurface.surface)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [accent.opacity(0.10), accent.opacity(0.025), .clear],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
+                .fill(Color.white)
         )
         .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(accent.opacity(0.28), lineWidth: 1)
+                .strokeBorder(AdminSurface.borderSubtle.opacity(0.65), lineWidth: 0.75)
         }
         .overlay(alignment: .leading) {
             Capsule(style: .continuous)
-                .fill(accent.opacity(0.78))
-                .frame(width: 3)
+                .fill(accent.opacity(0.85))
+                .frame(width: 3.5)
                 .padding(.vertical, 12)
                 .accessibilityHidden(true)
         }
@@ -4458,7 +4448,7 @@ private struct FlagshipInventoryCard: View {
             operationalPanel
         }
         .padding(12)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .strokeBorder(isHovered ? AdminSurface.primary.opacity(0.40) : AdminSurface.borderSubtle.opacity(0.65), lineWidth: 0.75)

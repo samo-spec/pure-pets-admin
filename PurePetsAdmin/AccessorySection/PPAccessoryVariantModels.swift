@@ -33,13 +33,23 @@ import UIKit
 @objc public final class PPAccessoryVariantContract: NSObject {
     /// Callable that owns every family/variant identity write.
     @objc public static let callableName = "upsertProductVariantFamily"
-    /// Only supported envelope version.
+    /// Legacy envelope version (color-only).
+    @objc public static let contractVersionLegacy = 2
+    /// Generic envelope version (options + combinations).
+    @objc public static let contractVersionGeneric = 3
+    /// Default envelope version for legacy color families.
     @objc public static let contractVersion = 2
-    /// Only supported variant axis today.
+    /// Only supported variant axis for legacy envelope.
     @objc public static let axisColor = "color"
     /// Server bound; a family cannot exceed this, so one transaction always suffices.
     @objc public static let maxVariantsPerFamily = 40
-    /// Schema version stamped on each member product.
+    /// Option axes bound matching Infra productOptionsDomain.js
+    @objc public static let maxOptionsPerFamily = 3
+    /// Option values bound per option axis matching Infra productOptionsDomain.js
+    @objc public static let maxValuesPerOption = 40
+    /// Schema versions.
+    @objc public static let variantSchemaVersionLegacy = 1
+    @objc public static let variantSchemaVersionGeneric = 2
     @objc public static let variantSchemaVersion = 1
 
     /// Live pets are individually tracked and are excluded from colour families.
@@ -68,6 +78,15 @@ import UIKit
         self.nameEn = nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
         self.hex = PPAccessoryVariantColor.normalizedHex(hex)
         super.init()
+    }
+
+    @objc public convenience init(optionValue: PPAccessoryOptionValue) {
+        self.init(
+            identifier: optionValue.id,
+            nameAr: optionValue.nameAr.isEmpty ? optionValue.canonicalValue : optionValue.nameAr,
+            nameEn: optionValue.nameEn.isEmpty ? optionValue.canonicalValue : optionValue.nameEn,
+            hex: optionValue.hex ?? "#7F7F7F"
+        )
     }
 
     /// Parses the `variantAttributes.color` map stamped on a member product, or
@@ -184,7 +203,7 @@ import UIKit
 
     // MARK: Helpers
 
-    private static func string(_ value: Any?) -> String {
+    static func string(_ value: Any?) -> String {
         guard let value else { return "" }
         if let text = value as? String { return text.trimmingCharacters(in: .whitespacesAndNewlines) }
         if let number = value as? NSNumber { return number.stringValue }
@@ -227,7 +246,7 @@ import UIKit
         return String(slug.prefix(64))
     }
 
-    private static func color(fromHex hex: String) -> UIColor? {
+    @objc public static func color(fromHex hex: String) -> UIColor? {
         let normalized = normalizedHex(hex)
         guard normalized.count == 7 else { return nil }
         let digits = normalized.dropFirst()
@@ -239,6 +258,419 @@ import UIKit
             blue: CGFloat(value & 0x0000FF) / 255.0,
             alpha: 1.0
         )
+    }
+}
+
+// MARK: - Option Value
+
+/// A single value for an option definition (e.g. "Black", "S", "500g").
+/// Conforms to Infra productOptionsDomain.js:
+/// { id, canonicalValue, displayName: { ar, en }, sortOrder, metadata: { hex, unit } }
+@objc public final class PPAccessoryOptionValue: NSObject, @unchecked Sendable, Identifiable {
+    @objc public let id: String
+    @objc public var canonicalValue: String
+    @objc public var nameAr: String
+    @objc public var nameEn: String
+    @objc public var sortOrder: Int
+    @objc public var hex: String?
+    @objc public var unit: String?
+
+    @objc public init(
+        id: String,
+        canonicalValue: String,
+        nameAr: String,
+        nameEn: String,
+        sortOrder: Int = 0,
+        hex: String? = nil,
+        unit: String? = nil
+    ) {
+        self.id = PPAccessoryOptionValue.normalizedIdentifier(id)
+        self.canonicalValue = canonicalValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.nameAr = nameAr.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.nameEn = nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.sortOrder = max(0, sortOrder)
+        self.hex = hex.flatMap { PPAccessoryOptionValue.normalizedHex($0) }
+        self.unit = unit?.trimmingCharacters(in: .whitespacesAndNewlines)
+        super.init()
+    }
+
+    @objc public convenience init?(dictionary: [String: Any]?) {
+        guard let dictionary else { return nil }
+        let id = PPAccessoryVariantColor.string(dictionary["id"])
+        guard !id.isEmpty else { return nil }
+        let canonicalValue = PPAccessoryVariantColor.string(dictionary["canonicalValue"])
+        let displayName = dictionary["displayName"] as? [String: Any]
+        let nameAr = PPAccessoryVariantColor.string(displayName?["ar"])
+        let nameEn = PPAccessoryVariantColor.string(displayName?["en"])
+        let sortOrder = (dictionary["sortOrder"] as? NSNumber)?.intValue ?? 0
+        let metadata = dictionary["metadata"] as? [String: Any]
+        let hex = metadata?["hex"] as? String
+        let unit = metadata?["unit"] as? String
+        self.init(
+            id: id,
+            canonicalValue: canonicalValue.isEmpty ? (nameEn.isEmpty ? id : nameEn) : canonicalValue,
+            nameAr: nameAr.isEmpty ? (canonicalValue.isEmpty ? id : canonicalValue) : nameAr,
+            nameEn: nameEn.isEmpty ? (canonicalValue.isEmpty ? id : canonicalValue) : nameEn,
+            sortOrder: sortOrder,
+            hex: hex,
+            unit: unit
+        )
+    }
+
+    @objc public func payload() -> [String: Any] {
+        var payload: [String: Any] = [
+            "id": id,
+            "canonicalValue": canonicalValue.isEmpty ? (nameEn.isEmpty ? id : nameEn) : canonicalValue,
+            "displayName": [
+                "ar": nameAr.isEmpty ? (canonicalValue.isEmpty ? id : canonicalValue) : nameAr,
+                "en": nameEn.isEmpty ? (canonicalValue.isEmpty ? id : canonicalValue) : nameEn
+            ],
+            "sortOrder": sortOrder
+        ]
+        var metadata: [String: Any] = [:]
+        if let hex, !hex.isEmpty { metadata["hex"] = hex }
+        if let unit, !unit.isEmpty { metadata["unit"] = unit }
+        if !metadata.isEmpty { payload["metadata"] = metadata }
+        return payload
+    }
+
+    @objc public var localizedName: String {
+        if Language.isRTL() {
+            return nameAr.isEmpty ? (nameEn.isEmpty ? canonicalValue : nameEn) : nameAr
+        }
+        return nameEn.isEmpty ? (nameAr.isEmpty ? canonicalValue : nameAr) : nameEn
+    }
+
+    @objc public var accessibilityName: String {
+        let name = localizedName
+        if let unit, !unit.isEmpty {
+            return "\(name) (\(unit))"
+        }
+        return name
+    }
+
+    @objc public var isColor: Bool {
+        guard let hex = hex else { return false }
+        return !hex.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    @objc public var uiColor: UIColor? {
+        guard let hex else { return nil }
+        return PPAccessoryVariantColor.color(fromHex: hex)
+    }
+
+    @objc public var requiresContrastBorder: Bool {
+        guard let uiColor else { return false }
+        var white: CGFloat = 0
+        var alpha: CGFloat = 0
+        guard uiColor.getWhite(&white, alpha: &alpha) else { return false }
+        return white > 0.82 || alpha < 0.95
+    }
+
+    @objc public func asVariantColor() -> PPAccessoryVariantColor? {
+        guard let hex = hex, !hex.isEmpty else { return nil }
+        return PPAccessoryVariantColor(
+            identifier: id,
+            nameAr: nameAr.isEmpty ? canonicalValue : nameAr,
+            nameEn: nameEn.isEmpty ? canonicalValue : nameEn,
+            hex: hex
+        )
+    }
+
+    @objc public static func fromVariantColor(_ color: PPAccessoryVariantColor, sortOrder: Int = 0) -> PPAccessoryOptionValue {
+        PPAccessoryOptionValue(
+            id: color.identifier,
+            canonicalValue: color.nameEn.isEmpty ? color.identifier : color.nameEn,
+            nameAr: color.nameAr,
+            nameEn: color.nameEn,
+            sortOrder: sortOrder,
+            hex: color.hex,
+            unit: nil
+        )
+    }
+
+    @objc public func toVariantColor() -> PPAccessoryVariantColor {
+        PPAccessoryVariantColor(
+            identifier: id,
+            nameAr: nameAr.isEmpty ? canonicalValue : nameAr,
+            nameEn: nameEn.isEmpty ? canonicalValue : nameEn,
+            hex: hex ?? "#7F7F7F"
+        )
+    }
+
+    public override func isEqual(_ object: Any?) -> Bool {
+        guard let other = object as? PPAccessoryOptionValue else { return false }
+        return id == other.id
+            && canonicalValue == other.canonicalValue
+            && nameAr == other.nameAr
+            && nameEn == other.nameEn
+            && sortOrder == other.sortOrder
+            && hex == other.hex
+            && unit == other.unit
+    }
+
+    public override var hash: Int {
+        var hasher = Hasher()
+        hasher.combine(id)
+        hasher.combine(canonicalValue)
+        hasher.combine(nameAr)
+        hasher.combine(nameEn)
+        hasher.combine(sortOrder)
+        hasher.combine(hex)
+        hasher.combine(unit)
+        return hasher.finalize()
+    }
+
+    static func normalizedIdentifier(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    static func normalizedHex(_ value: String) -> String? {
+        var candidate = value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard !candidate.isEmpty else { return nil }
+        if !candidate.hasPrefix("#") { candidate = "#" + candidate }
+        if candidate.count == 4 {
+            let components = Array(candidate.dropFirst())
+            candidate = "#" + components.map { "\($0)\($0)" }.joined()
+        }
+        guard candidate.range(of: "^#[0-9A-F]{6}$", options: .regularExpression) != nil else { return nil }
+        return candidate
+    }
+
+    @objc public static func derivedIdentifier(fromName name: String) -> String {
+        let lowered = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let allowed = lowered.unicodeScalars.map { scalar -> Character in
+            if CharacterSet.alphanumerics.contains(scalar) { return Character(scalar) }
+            return "-"
+        }
+        var slug = String(allowed)
+        while slug.contains("--") { slug = slug.replacingOccurrences(of: "--", with: "-") }
+        slug = slug.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        if slug.isEmpty || slug.range(of: "^[a-z0-9]", options: .regularExpression) == nil {
+            slug = "opt-\(abs(name.hashValue % 100000))"
+        }
+        return String(slug.prefix(64))
+    }
+}
+
+// MARK: - Option Definition
+
+/// A single option axis (e.g. "Color", "Size", "Weight").
+/// Conforms to Infra productOptionsDomain.js:
+/// { id, key, displayName: { ar, en }, sortOrder, values: [ProductOptionValue] }
+@objc public final class PPAccessoryOptionDefinition: NSObject, @unchecked Sendable, Identifiable {
+    @objc public let id: String
+    @objc public var key: String
+    @objc public var nameAr: String
+    @objc public var nameEn: String
+    @objc public var values: [PPAccessoryOptionValue]
+    @objc public var sortOrder: Int
+
+    @objc public init(
+        id: String,
+        key: String,
+        nameAr: String,
+        nameEn: String,
+        values: [PPAccessoryOptionValue] = [],
+        sortOrder: Int = 0
+    ) {
+        self.id = PPAccessoryOptionDefinition.normalizedIdentifier(id)
+        self.key = PPAccessoryOptionDefinition.normalizedIdentifier(key)
+        self.nameAr = nameAr.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.nameEn = nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.values = values.sorted { lhs, rhs in
+            lhs.sortOrder == rhs.sortOrder ? lhs.id < rhs.id : lhs.sortOrder < rhs.sortOrder
+        }
+        self.sortOrder = max(0, sortOrder)
+        super.init()
+    }
+
+    @objc public convenience init?(dictionary: [String: Any]?) {
+        guard let dictionary else { return nil }
+        let id = PPAccessoryVariantColor.string(dictionary["id"])
+        guard !id.isEmpty else { return nil }
+        let key = PPAccessoryVariantColor.string(dictionary["key"])
+        let displayName = dictionary["displayName"] as? [String: Any]
+        let nameAr = PPAccessoryVariantColor.string(displayName?["ar"])
+        let nameEn = PPAccessoryVariantColor.string(displayName?["en"])
+        let sortOrder = (dictionary["sortOrder"] as? NSNumber)?.intValue ?? 0
+        let rawValues = (dictionary["values"] as? [Any])?.compactMap { $0 as? [String: Any] } ?? []
+        let values = rawValues.compactMap { PPAccessoryOptionValue(dictionary: $0) }
+        self.init(
+            id: id,
+            key: key.isEmpty ? id : key,
+            nameAr: nameAr.isEmpty ? (nameEn.isEmpty ? key : nameEn) : nameAr,
+            nameEn: nameEn.isEmpty ? (nameAr.isEmpty ? key : nameAr) : nameEn,
+            values: values,
+            sortOrder: sortOrder
+        )
+    }
+
+    @objc public func payload() -> [String: Any] {
+        [
+            "id": id,
+            "key": key,
+            "displayName": [
+                "ar": nameAr.isEmpty ? key : nameAr,
+                "en": nameEn.isEmpty ? key : nameEn
+            ],
+            "sortOrder": sortOrder,
+            "values": values.enumerated().map { index, val in
+                var p = val.payload()
+                p["sortOrder"] = index
+                return p
+            }
+        ]
+    }
+
+    @objc public var localizedName: String {
+        if Language.isRTL() {
+            return nameAr.isEmpty ? (nameEn.isEmpty ? key : nameEn) : nameAr
+        }
+        return nameEn.isEmpty ? (nameAr.isEmpty ? key : nameAr) : nameEn
+    }
+
+    @objc public var isColorOption: Bool { key == "color" }
+    @objc public var isSizeOption: Bool { key == "size" }
+    @objc public var isWeightOption: Bool { key == "weight" }
+    @objc public var isMaterialOption: Bool { key == "material" }
+    @objc public var isFlavorOption: Bool { key == "flavor" }
+
+    public override func isEqual(_ object: Any?) -> Bool {
+        guard let other = object as? PPAccessoryOptionDefinition else { return false }
+        guard id == other.id
+            && key == other.key
+            && nameAr == other.nameAr
+            && nameEn == other.nameEn
+            && sortOrder == other.sortOrder
+            && values.count == other.values.count else { return false }
+        for (index, val) in values.enumerated() {
+            if !val.isEqual(other.values[index]) { return false }
+        }
+        return true
+    }
+
+    public override var hash: Int {
+        var hasher = Hasher()
+        hasher.combine(id)
+        hasher.combine(key)
+        hasher.combine(nameAr)
+        hasher.combine(nameEn)
+        hasher.combine(sortOrder)
+        return hasher.finalize()
+    }
+
+    static func normalizedIdentifier(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    // MARK: - Presets
+
+    @objc public static func presetColor(values: [PPAccessoryOptionValue] = []) -> PPAccessoryOptionDefinition {
+        PPAccessoryOptionDefinition(
+            id: "color",
+            key: "color",
+            nameAr: "اللون",
+            nameEn: "Color",
+            values: values,
+            sortOrder: 0
+        )
+    }
+
+    @objc public static func presetSize(values: [PPAccessoryOptionValue] = []) -> PPAccessoryOptionDefinition {
+        PPAccessoryOptionDefinition(
+            id: "size",
+            key: "size",
+            nameAr: "المقاس",
+            nameEn: "Size",
+            values: values,
+            sortOrder: 1
+        )
+    }
+
+    @objc public static func presetWeight(values: [PPAccessoryOptionValue] = []) -> PPAccessoryOptionDefinition {
+        PPAccessoryOptionDefinition(
+            id: "weight",
+            key: "weight",
+            nameAr: "الوزن",
+            nameEn: "Weight",
+            values: values,
+            sortOrder: 2
+        )
+    }
+
+    @objc public static func presetMaterial(values: [PPAccessoryOptionValue] = []) -> PPAccessoryOptionDefinition {
+        PPAccessoryOptionDefinition(
+            id: "material",
+            key: "material",
+            nameAr: "المادة",
+            nameEn: "Material",
+            values: values,
+            sortOrder: 2
+        )
+    }
+
+    @objc public static func presetFlavor(values: [PPAccessoryOptionValue] = []) -> PPAccessoryOptionDefinition {
+        PPAccessoryOptionDefinition(
+            id: "flavor",
+            key: "flavor",
+            nameAr: "النكهة",
+            nameEn: "Flavor",
+            values: values,
+            sortOrder: 2
+        )
+    }
+
+    @objc public static func custom(
+        id: String,
+        key: String,
+        nameAr: String,
+        nameEn: String,
+        values: [PPAccessoryOptionValue] = [],
+        sortOrder: Int = 0
+    ) -> PPAccessoryOptionDefinition {
+        PPAccessoryOptionDefinition(
+            id: id,
+            key: key,
+            nameAr: nameAr,
+            nameEn: nameEn,
+            values: values,
+            sortOrder: sortOrder
+        )
+    }
+
+    // MARK: - Standard Values Library
+
+    @objc public static let standardSizes: [PPAccessoryOptionValue] = [
+        PPAccessoryOptionValue(id: "xs", canonicalValue: "XS", nameAr: "صغير جداً", nameEn: "XS", sortOrder: 0),
+        PPAccessoryOptionValue(id: "s", canonicalValue: "S", nameAr: "صغير", nameEn: "S", sortOrder: 1),
+        PPAccessoryOptionValue(id: "m", canonicalValue: "M", nameAr: "وسط", nameEn: "M", sortOrder: 2),
+        PPAccessoryOptionValue(id: "l", canonicalValue: "L", nameAr: "كبير", nameEn: "L", sortOrder: 3),
+        PPAccessoryOptionValue(id: "xl", canonicalValue: "XL", nameAr: "كبير جداً", nameEn: "XL", sortOrder: 4),
+        PPAccessoryOptionValue(id: "2xl", canonicalValue: "2XL", nameAr: "2XL", nameEn: "2XL", sortOrder: 5),
+    ]
+
+    @objc public static let standardWeights: [PPAccessoryOptionValue] = [
+        PPAccessoryOptionValue(id: "250g", canonicalValue: "250g", nameAr: "٢٥٠ جم", nameEn: "250g", sortOrder: 0, unit: "g"),
+        PPAccessoryOptionValue(id: "500g", canonicalValue: "500g", nameAr: "٥٠٠ جم", nameEn: "500g", sortOrder: 1, unit: "g"),
+        PPAccessoryOptionValue(id: "1kg", canonicalValue: "1kg", nameAr: "١ كجم", nameEn: "1kg", sortOrder: 2, unit: "kg"),
+        PPAccessoryOptionValue(id: "2kg", canonicalValue: "2kg", nameAr: "٢ كجم", nameEn: "2kg", sortOrder: 3, unit: "kg"),
+        PPAccessoryOptionValue(id: "5kg", canonicalValue: "5kg", nameAr: "٥ كجم", nameEn: "5kg", sortOrder: 4, unit: "kg"),
+        PPAccessoryOptionValue(id: "10kg", canonicalValue: "10kg", nameAr: "١٠ كجم", nameEn: "10kg", sortOrder: 5, unit: "kg"),
+        PPAccessoryOptionValue(id: "15kg", canonicalValue: "15kg", nameAr: "١٥ كجم", nameEn: "15kg", sortOrder: 6, unit: "kg"),
+    ]
+
+    /// Synthesizes a canonical "color" option definition from existing colour variants.
+    @objc public static func synthesizeColorOption(fromVariants variants: [PPAccessoryVariant]) -> PPAccessoryOptionDefinition {
+        var values: [PPAccessoryOptionValue] = []
+        var seen: Set<String> = []
+        for (index, variant) in variants.enumerated() {
+            let colorId = variant.color.identifier
+            guard !colorId.isEmpty, !seen.contains(colorId) else { continue }
+            seen.insert(colorId)
+            values.append(PPAccessoryOptionValue.fromVariantColor(variant.color, sortOrder: index))
+        }
+        return PPAccessoryOptionDefinition.presetColor(values: values)
     }
 }
 
@@ -328,6 +760,8 @@ import UIKit
     @objc public let revision: Int
 
     @objc public var media: [PPAccessoryVariantMedia]
+    @objc public var selectedOptions: [String: String]
+    @objc public var combinationKey: String
 
     @objc public init(
         productId: String,
@@ -344,7 +778,9 @@ import UIKit
         hasResolvedRetailPrice: Bool = false,
         showInAppMarket: Bool = false,
         revision: Int = 0,
-        media: [PPAccessoryVariantMedia] = []
+        media: [PPAccessoryVariantMedia] = [],
+        selectedOptions: [String: String] = [:],
+        combinationKey: String = ""
     ) {
         self.productId = productId.trimmingCharacters(in: .whitespacesAndNewlines)
         self.color = color
@@ -361,6 +797,15 @@ import UIKit
         self.showInAppMarket = showInAppMarket
         self.revision = max(0, revision)
         self.media = media
+        if selectedOptions.isEmpty {
+            self.selectedOptions = [PPAccessoryVariantContract.axisColor: color.identifier]
+            self.combinationKey = "\(PPAccessoryVariantContract.axisColor)=\(color.identifier)"
+        } else {
+            self.selectedOptions = selectedOptions
+            self.combinationKey = combinationKey.isEmpty
+                ? selectedOptions.keys.sorted().map { "\($0)=\(selectedOptions[$0] ?? "")" }.joined(separator: "|")
+                : combinationKey
+        }
         super.init()
     }
 
@@ -383,16 +828,31 @@ import UIKit
             hasResolvedRetailPrice: accessory.hasResolvedSellingPrice,
             showInAppMarket: accessory.showInAppMarket,
             revision: accessory.revision,
-            media: (accessory.imageURLsArray ?? []).map { PPAccessoryVariantMedia(remoteURL: $0) }
+            media: (accessory.imageURLsArray ?? []).map { PPAccessoryVariantMedia(remoteURL: $0) },
+            selectedOptions: [PPAccessoryVariantContract.axisColor: color.identifier],
+            combinationKey: "\(PPAccessoryVariantContract.axisColor)=\(color.identifier)"
         )
     }
 
-    /// Payload entry the callable expects. Only identity and ordering — never a
-    /// catalog field this command does not own.
+    /// Payload entry the legacy callable expects (contractVersion: 2).
     @objc public func payload() -> [String: Any] {
         [
             "productId": productId,
             "color": color.payload(),
+            "sortOrder": sortOrder,
+            "isArchived": isArchived,
+        ]
+    }
+
+    /// Payload entry the generic options callable expects (contractVersion: 3).
+    @objc public func genericPayload() -> [String: Any] {
+        var options = selectedOptions
+        if options.isEmpty {
+            options = [PPAccessoryVariantContract.axisColor: color.identifier]
+        }
+        return [
+            "productId": productId,
+            "selectedOptions": options,
             "sortOrder": sortOrder,
             "isArchived": isArchived,
         ]
@@ -458,6 +918,7 @@ import UIKit
     @objc public var defaultVariantProductId: String
     @objc public var active: Bool
     @objc public let isArchived: Bool
+    @objc public var optionDefinitions: [PPAccessoryOptionDefinition]
     /// Family revision observed at load, required for an update.
     @objc public let revision: Int
     /// True when this is a synthetic wrapper around a product that has no
@@ -480,7 +941,8 @@ import UIKit
         active: Bool = true,
         isArchived: Bool = false,
         revision: Int = 0,
-        isLegacySingleVariant: Bool = false
+        isLegacySingleVariant: Bool = false,
+        optionDefinitions: [PPAccessoryOptionDefinition] = []
     ) {
         self.familyId = familyId
         self.name = name
@@ -502,6 +964,9 @@ import UIKit
         self.isArchived = isArchived
         self.revision = max(0, revision)
         self.isLegacySingleVariant = isLegacySingleVariant
+        self.optionDefinitions = optionDefinitions.sorted { lhs, rhs in
+            lhs.sortOrder == rhs.sortOrder ? lhs.id < rhs.id : lhs.sortOrder < rhs.sortOrder
+        }
         super.init()
     }
 
@@ -570,6 +1035,12 @@ import UIKit
         }
         guard !variants.isEmpty else { return nil }
 
+        let rawOptionDefs = (document["optionDefinitions"] as? [Any])?.compactMap { $0 as? [String: Any] } ?? []
+        var optionDefinitions = rawOptionDefs.compactMap { PPAccessoryOptionDefinition(dictionary: $0) }
+        if optionDefinitions.isEmpty && !variants.isEmpty {
+            optionDefinitions = [PPAccessoryOptionDefinition.synthesizeColorOption(fromVariants: variants)]
+        }
+
         return PPAccessoryVariantFamily(
             familyId: documentID,
             name: (document["name"] as? String) ?? "",
@@ -586,7 +1057,8 @@ import UIKit
             active: (document["active"] as? Bool) ?? true,
             isArchived: (document["isArchived"] as? Bool) ?? false,
             revision: (document["revision"] as? NSNumber)?.intValue ?? 0,
-            isLegacySingleVariant: false
+            isLegacySingleVariant: false,
+            optionDefinitions: optionDefinitions
         )
     }
 
@@ -771,10 +1243,57 @@ import UIKit
                 seenBarcodes[barcode] = variant.color.accessibilityName
             }
         }
+
+        // Validate options
+        if optionDefinitions.count > PPAccessoryVariantContract.maxOptionsPerFamily {
+            let template = Language.get("Options_Error_TooMany", alter: "الحد الأقصى %@ خيارات.")
+            messages.append(String(format: template, NSNumber(value: PPAccessoryVariantContract.maxOptionsPerFamily)))
+        }
+        var seenOptionKeys: Set<String> = []
+        var seenOptionIds: Set<String> = []
+        for option in optionDefinitions {
+            if seenOptionIds.contains(option.id) || seenOptionKeys.contains(option.key) {
+                messages.append(Language.get("Options_Error_Duplicate_Option", alter: "هذا الخيار مكرر."))
+            }
+            seenOptionIds.insert(option.id)
+            seenOptionKeys.insert(option.key)
+
+            if option.values.isEmpty {
+                let template = Language.get("Options_Error_NoValues", alter: "الخيار %@ يحتاج إلى قيمة واحدة على الأقل.")
+                messages.append(String(format: template, option.localizedName))
+            }
+            if option.values.count > PPAccessoryVariantContract.maxValuesPerOption {
+                let template = Language.get("Options_Error_TooManyValues", alter: "الخيار %@ يتجاوز الحد الأقصى (%@ قيمة).")
+                messages.append(String(format: template, option.localizedName, NSNumber(value: PPAccessoryVariantContract.maxValuesPerOption)))
+            }
+
+            var seenValueIds: Set<String> = []
+            var seenCanonicals: Set<String> = []
+            for value in option.values {
+                if seenValueIds.contains(value.id) || seenCanonicals.contains(value.canonicalValue.lowercased()) {
+                    let template = Language.get("Options_Error_Duplicate_Value", alter: "القيمة %@ مكررة في الخيار %@.")
+                    messages.append(String(format: template, value.localizedName, option.localizedName))
+                }
+                seenValueIds.insert(value.id)
+                seenCanonicals.insert(value.canonicalValue.lowercased())
+
+                if option.isColorOption && (value.hex == nil || value.hex?.isEmpty == true) {
+                    let template = Language.get("Options_Error_ColorHexRequired", alter: "اللون %@ يحتاج إلى رمز لون صالح.")
+                    messages.append(String(format: template, value.localizedName))
+                }
+            }
+        }
+
         return messages
     }
 
     @objc public var isValid: Bool { validationMessages().isEmpty }
+
+    @objc public var hasGenericOptions: Bool {
+        if optionDefinitions.count > 1 { return true }
+        if let first = optionDefinitions.first, first.key != PPAccessoryVariantContract.axisColor { return true }
+        return false
+    }
 
     // MARK: Request building
 
@@ -786,11 +1305,12 @@ import UIKit
     /// of overwritten.
     @objc public func commandEnvelope(commandId: String) -> [String: Any] {
         let isCreate = familyId.isEmpty || isLegacySingleVariant
+        let contractVer = hasGenericOptions ? PPAccessoryVariantContract.contractVersionGeneric : PPAccessoryVariantContract.contractVersionLegacy
         var envelope: [String: Any] = [
-            "contractVersion": PPAccessoryVariantContract.contractVersion,
+            "contractVersion": contractVer,
             "commandId": commandId,
             "action": isCreate ? "create" : "update",
-            "payload": payload(),
+            "payload": payload(contractVersion: contractVer),
         ]
         if !isCreate {
             envelope["familyId"] = familyId
@@ -806,19 +1326,27 @@ import UIKit
         return envelope
     }
 
-    @objc public func payload() -> [String: Any] {
+    @objc public func payload(contractVersion: Int = PPAccessoryVariantContract.contractVersionLegacy) -> [String: Any] {
+        let isGeneric = (contractVersion >= PPAccessoryVariantContract.contractVersionGeneric)
         var payload: [String: Any] = [
             "name": name,
             "accessKindType": accessKindType,
-            "variantAxis": variantAxis,
+            "variantAxis": isGeneric ? (optionDefinitions.count == 1 ? optionDefinitions[0].key : "options") : variantAxis,
             "variants": variants.enumerated().map { index, variant -> [String: Any] in
-                var entry = variant.payload()
+                var entry = isGeneric ? variant.genericPayload() : variant.payload()
                 entry["sortOrder"] = index
                 return entry
             },
             "defaultVariantProductId": defaultVariantProductId,
             "active": active,
         ]
+        if isGeneric && !optionDefinitions.isEmpty {
+            payload["optionDefinitions"] = optionDefinitions.enumerated().map { index, def in
+                var p = def.payload()
+                p["sortOrder"] = index
+                return p
+            }
+        }
         // The callable rejects unknown keys, so only send an optional field when
         // it carries a value rather than padding the payload with empties.
         if !nameEn.isEmpty { payload["nameEn"] = nameEn }
@@ -848,11 +1376,15 @@ import UIKit
             || petSubCategoryID != baseline.petSubCategoryID
             || defaultVariantProductId != baseline.defaultVariantProductId
             || active != baseline.active
-            || variants.count != baseline.variants.count {
+            || variants.count != baseline.variants.count
+            || optionDefinitions.count != baseline.optionDefinitions.count {
             return true
         }
         for (index, variant) in variants.enumerated() {
             if !variant.isEqual(baseline.variants[index]) { return true }
+        }
+        for (index, option) in optionDefinitions.enumerated() {
+            if !option.isEqual(baseline.optionDefinitions[index]) { return true }
         }
         return false
     }
@@ -915,14 +1447,322 @@ import UIKit
                     hasResolvedRetailPrice: variant.hasResolvedRetailPrice,
                     showInAppMarket: variant.showInAppMarket,
                     revision: variant.revision,
-                    media: variant.media
+                    media: variant.media,
+                    selectedOptions: variant.selectedOptions,
+                    combinationKey: variant.combinationKey
                 )
             },
             defaultVariantProductId: defaultVariantProductId,
             active: active,
             isArchived: isArchived,
             revision: revision,
-            isLegacySingleVariant: isLegacySingleVariant
+            isLegacySingleVariant: isLegacySingleVariant,
+            optionDefinitions: optionDefinitions.map { opt in
+                PPAccessoryOptionDefinition(
+                    id: opt.id,
+                    key: opt.key,
+                    nameAr: opt.nameAr,
+                    nameEn: opt.nameEn,
+                    values: opt.values.map { val in
+                        PPAccessoryOptionValue(
+                            id: val.id,
+                            canonicalValue: val.canonicalValue,
+                            nameAr: val.nameAr,
+                            nameEn: val.nameEn,
+                            sortOrder: val.sortOrder,
+                            hex: val.hex,
+                            unit: val.unit
+                        )
+                    },
+                    sortOrder: opt.sortOrder
+                )
+            }
         )
     }
+
+    /// Canonical combination key generator from a dictionary of selected options.
+    @objc public static func combinationKey(from selectedOptions: [String: String]) -> String {
+        selectedOptions.keys.sorted().map { "\($0)=\(selectedOptions[$0] ?? "")" }.joined(separator: "|")
+    }
 }
+
+// MARK: - Matrix Models (Phase 6)
+
+@objc public enum PPAccessoryCombinationStatus: Int {
+    case unconfigured = 0
+    case inStock = 1
+    case outOfStock = 2
+    case inactive = 3
+
+    public var localizedName: String {
+        switch self {
+        case .unconfigured:
+            return Language.get("Variant_Status_Unconfigured", alter: "غير مهيأ")
+        case .inStock:
+            return Language.get("Variant_Stock_InStock", alter: "متوفر")
+        case .outOfStock:
+            return Language.get("Variant_Stock_OutOfStock", alter: "نفد من المخزون")
+        case .inactive:
+            return Language.get("Variant_Status_Inactive", alter: "معطل")
+        }
+    }
+}
+
+/// One cell / combination in the product variant matrix.
+/// Can be either an existing sellable variant or an unconfigured potential combination.
+@objc public final class PPAccessoryMatrixCombination: NSObject, Identifiable, @unchecked Sendable {
+    @objc public let combinationKey: String
+    @objc public let selectedOptions: [String: String]
+    @objc public let optionValues: [PPAccessoryOptionValue]
+    @objc public let existingVariant: PPAccessoryVariant?
+    @objc public let status: PPAccessoryCombinationStatus
+
+    public var id: String { combinationKey }
+
+    @objc public init(
+        combinationKey: String,
+        selectedOptions: [String: String],
+        optionValues: [PPAccessoryOptionValue],
+        existingVariant: PPAccessoryVariant?,
+        status: PPAccessoryCombinationStatus
+    ) {
+        self.combinationKey = combinationKey
+        self.selectedOptions = selectedOptions
+        self.optionValues = optionValues
+        self.existingVariant = existingVariant
+        self.status = status
+        super.init()
+    }
+
+    @objc public var productId: String? { existingVariant?.productId }
+    @objc public var isCreated: Bool { existingVariant != nil }
+    @objc public var isArchived: Bool { existingVariant?.isArchived ?? false }
+    @objc public var isDefault: Bool { existingVariant?.isDefault ?? false }
+    @objc public var quantity: Int { existingVariant?.quantity ?? 0 }
+    @objc public var sku: String { existingVariant?.sku ?? "" }
+    @objc public var barcode: String { existingVariant?.barcode ?? "" }
+    @objc public var retailPrice: NSNumber? { existingVariant?.retailPrice }
+    @objc public var wholesalePrice: NSNumber? { existingVariant?.wholesalePrice }
+    @objc public var primaryImageURL: String { existingVariant?.primaryImageURL ?? "" }
+
+    /// Localized title combining values in order (e.g. "أحمر / وسط" or "Red / M")
+    @objc public var localizedTitle: String {
+        if !optionValues.isEmpty {
+            return optionValues.map(\.localizedName).joined(separator: " / ")
+        }
+        if let v = existingVariant {
+            return v.color.localizedName
+        }
+        return combinationKey
+    }
+
+    /// Color swatch value if this combination contains a color
+    @objc public var colorValue: PPAccessoryOptionValue? {
+        optionValues.first(where: { $0.isColor })
+    }
+
+    /// Secondary option label (e.g. size or weight) when primary option is used for grouping
+    @objc public var secondaryOptionsSummary: String {
+        if optionValues.count > 1 {
+            return optionValues.dropFirst().map(\.localizedName).joined(separator: " • ")
+        }
+        return localizedTitle
+    }
+}
+
+/// A group of combinations, typically grouped by the primary option (e.g., Color).
+@objc public final class PPAccessoryMatrixGroup: NSObject, Identifiable, @unchecked Sendable {
+    @objc public let id: String
+    @objc public let primaryValue: PPAccessoryOptionValue?
+    @objc public let primaryDefinition: PPAccessoryOptionDefinition?
+    @objc public let combinations: [PPAccessoryMatrixCombination]
+
+    @objc public init(
+        id: String,
+        primaryValue: PPAccessoryOptionValue?,
+        primaryDefinition: PPAccessoryOptionDefinition?,
+        combinations: [PPAccessoryMatrixCombination]
+    ) {
+        self.id = id
+        self.primaryValue = primaryValue
+        self.primaryDefinition = primaryDefinition
+        self.combinations = combinations
+        super.init()
+    }
+
+    @objc public var totalStock: Int {
+        combinations.reduce(0) { $0 + $1.quantity }
+    }
+
+    @objc public var configuredCount: Int {
+        combinations.filter(\.isCreated).count
+    }
+
+    @objc public var totalCombinationsCount: Int {
+        combinations.count
+    }
+
+    @objc public var activeVariantsCount: Int {
+        combinations.filter { $0.isCreated && !$0.isArchived }.count
+    }
+
+    @objc public var localizedTitle: String {
+        if let val = primaryValue {
+            return val.localizedName
+        }
+        return Language.get("Variant_Matrix_AllVariants", alter: "كافة المتغيرات")
+    }
+
+    @objc public var colorValue: PPAccessoryOptionValue? {
+        if primaryDefinition?.isColorOption == true {
+            return primaryValue
+        }
+        return combinations.first?.colorValue
+    }
+}
+
+// MARK: - Matrix Generation Extension
+
+extension PPAccessoryVariantFamily {
+    /// Generates all valid Cartesian combinations from `optionDefinitions` and correlates each
+    /// with existing variants in the family.
+    @objc public func generateMatrixCombinations() -> [PPAccessoryMatrixCombination] {
+        let activeDefs = optionDefinitions.filter { !$0.values.isEmpty }
+        guard !activeDefs.isEmpty else {
+            // No options defined: present existing variants directly or single standalone
+            return variants.map { variant in
+                let status: PPAccessoryCombinationStatus = variant.isArchived ? .inactive : (variant.quantity > 0 ? .inStock : .outOfStock)
+                return PPAccessoryMatrixCombination(
+                    combinationKey: variant.combinationKey.isEmpty ? variant.productId : variant.combinationKey,
+                    selectedOptions: variant.selectedOptions,
+                    optionValues: [PPAccessoryOptionValue.fromVariantColor(variant.color)],
+                    existingVariant: variant,
+                    status: status
+                )
+            }
+        }
+
+        // Cartesian product of option values
+        var valueCombinations: [[PPAccessoryOptionValue]] = [[]]
+        for def in activeDefs {
+            var next: [[PPAccessoryOptionValue]] = []
+            for existing in valueCombinations {
+                for val in def.values {
+                    next.append(existing + [val])
+                }
+            }
+            valueCombinations = next
+        }
+
+        var matchedVariantIds = Set<String>()
+        var combinations: [PPAccessoryMatrixCombination] = []
+
+        for values in valueCombinations {
+            var selected: [String: String] = [:]
+            for (idx, val) in values.enumerated() {
+                if idx < activeDefs.count {
+                    selected[activeDefs[idx].id] = val.id
+                }
+            }
+            let key = PPAccessoryVariantFamily.combinationKey(from: selected)
+
+            // Match with existing variant
+            let matched = variants.first { v in
+                if !v.combinationKey.isEmpty && v.combinationKey == key { return true }
+                if !v.selectedOptions.isEmpty && v.selectedOptions == selected { return true }
+                if activeDefs.count == 1 && activeDefs[0].isColorOption && v.color.identifier == values.first?.id {
+                    return true
+                }
+                return false
+            }
+
+            if let matched {
+                matchedVariantIds.insert(matched.productId)
+                let status: PPAccessoryCombinationStatus = matched.isArchived
+                    ? .inactive
+                    : (matched.quantity > 0 ? .inStock : .outOfStock)
+                combinations.append(PPAccessoryMatrixCombination(
+                    combinationKey: key,
+                    selectedOptions: selected,
+                    optionValues: values,
+                    existingVariant: matched,
+                    status: status
+                ))
+            } else {
+                combinations.append(PPAccessoryMatrixCombination(
+                    combinationKey: key,
+                    selectedOptions: selected,
+                    optionValues: values,
+                    existingVariant: nil,
+                    status: .unconfigured
+                ))
+            }
+        }
+
+        // Safety: If any existing variant was not matched in the Cartesian product (e.g. legacy or custom combination),
+        // include it so stocked/referenced variants are NEVER lost from view.
+        for variant in variants where !matchedVariantIds.contains(variant.productId) {
+            let status: PPAccessoryCombinationStatus = variant.isArchived
+                ? .inactive
+                : (variant.quantity > 0 ? .inStock : .outOfStock)
+            combinations.append(PPAccessoryMatrixCombination(
+                combinationKey: variant.combinationKey.isEmpty ? variant.productId : variant.combinationKey,
+                selectedOptions: variant.selectedOptions,
+                optionValues: [PPAccessoryOptionValue.fromVariantColor(variant.color)],
+                existingVariant: variant,
+                status: status
+            ))
+        }
+
+        return combinations
+    }
+
+    /// Groups matrix combinations by the primary option (typically Option 1 / Color).
+    @objc public func generateMatrixGroups() -> [PPAccessoryMatrixGroup] {
+        let allCombinations = generateMatrixCombinations()
+        let activeDefs = optionDefinitions.filter { !$0.values.isEmpty }
+
+        guard activeDefs.count >= 2, let primaryDef = activeDefs.first else {
+            // 0 or 1 option: wrap in a single unified group
+            return [
+                PPAccessoryMatrixGroup(
+                    id: "all",
+                    primaryValue: nil,
+                    primaryDefinition: activeDefs.first,
+                    combinations: allCombinations
+                )
+            ]
+        }
+
+        // 2+ options: group by primary option values
+        var groups: [PPAccessoryMatrixGroup] = []
+        for val in primaryDef.values {
+            let matching = allCombinations.filter { comb in
+                comb.selectedOptions[primaryDef.id] == val.id
+            }
+            if !matching.isEmpty {
+                groups.append(PPAccessoryMatrixGroup(
+                    id: val.id,
+                    primaryValue: val,
+                    primaryDefinition: primaryDef,
+                    combinations: matching
+                ))
+            }
+        }
+
+        // Check for any unallocated combinations
+        let groupedKeys = Set(groups.flatMap(\.combinations).map(\.combinationKey))
+        let remaining = allCombinations.filter { !groupedKeys.contains($0.combinationKey) }
+        if !remaining.isEmpty {
+            groups.append(PPAccessoryMatrixGroup(
+                id: "other",
+                primaryValue: nil,
+                primaryDefinition: nil,
+                combinations: remaining
+            ))
+        }
+
+        return groups
+    }
+}
+

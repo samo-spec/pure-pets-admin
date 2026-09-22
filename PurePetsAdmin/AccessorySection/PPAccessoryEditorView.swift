@@ -442,6 +442,23 @@ enum PPPhysicalSpecMode: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+// MARK: - Pury Intelligent Vision Step & Focus
+
+public enum PuryVisionStep: Equatable {
+    case idle
+    case scanning(message: String)
+    case settingName(name: String, isTranslating: Bool)
+    case settingDescription(message: String)
+    case success(message: String)
+    case failed(message: String)
+}
+
+public enum PuryFocusTarget: Equatable {
+    case media
+    case name
+    case description
+}
+
 // MARK: - View Model
 
 @MainActor
@@ -450,6 +467,12 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     let editingAccessory: PetAccessory?
     let showTypeRow: Bool
     let onDismiss: () -> Void
+
+    // MARK: - Pury Intelligent Vision Intake State
+    @Published var isPuryVisionActive: Bool = false
+    @Published var puryVisionStep: PuryVisionStep = .idle
+    @Published var puryVisionStatusMessage: String = ""
+    @Published var puryActiveFocusTarget: PuryFocusTarget? = nil
 
     // MARK: - First-Principles Navigation & Twin State
     @Published var activeStage: PPEditorStage = .identity {
@@ -1419,7 +1442,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         return staff.isAdmin() || staff.hasPermission("nova.view")
     }
 
-    var brand: String { "" }
+    @Published var brand: String = ""
     var price: String { priceText }
 
     func ensureDefaultSingleGroup() {
@@ -2492,6 +2515,153 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             guard canAddImages else { break }
             pickedImageUploadIDs.append(UUID())
             pickedImages.append(image)
+        }
+        if let first = images.first, name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && nameEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            Task { @MainActor [weak self] in
+                await self?.runPuryVisionIntake(for: first)
+            }
+        }
+    }
+
+    // MARK: - Pury Intelligent Sequential Vision Intake
+
+    func runPuryVisionIntake(for image: UIImage) async {
+        guard !isPuryVisionActive else { return }
+        isPuryVisionActive = true
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        let itemTypeString = isLivePet ? "live_pet" : (isFood ? "food" : "accessory")
+
+        // STEP 1: Scan image & extract packaging text / animal species
+        puryVisionStep = .scanning(message: Language.isRTL() ? "بيوري يحلل الصورة ويتعرف على تفاصيل المنتج..." : "Pury is analyzing image & identifying product...")
+        puryActiveFocusTarget = .media
+        puryVisionStatusMessage = Language.isRTL() ? "بيوري يقرأ العبوة..." : "Pury reading packaging..."
+
+        let result = await PuryVisionIntakeEngine.shared.extract(from: image, itemType: itemTypeString)
+
+        guard result.hasValidIdentity else {
+            puryVisionStep = .failed(message: Language.isRTL() ? "لم يتم العثور على اسم منتج واضح في الصورة" : "No clear product name detected in image")
+            puryActiveFocusTarget = nil
+            puryVisionStatusMessage = Language.isRTL() ? "تعذر تحديد الاسم" : "Could not identify"
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            isPuryVisionActive = false
+            puryVisionStep = .idle
+            return
+        }
+
+        if !result.detectedBrand.isEmpty && brand.isEmpty {
+            brand = result.detectedBrand
+        }
+
+        // STEP 2: Intelligent Focus on Name Field & Translation
+        let detected = result.primaryName
+        puryVisionStep = .settingName(name: detected, isTranslating: true)
+        puryActiveFocusTarget = .name
+        puryVisionStatusMessage = Language.isRTL() ? "بيوري يسجل اسم المنتج ويترجمه..." : "Pury is setting & translating name..."
+
+        if result.isArabic {
+            name = detected
+        } else {
+            nameEn = detected
+        }
+
+        var authoringAttrs = self.authoringAttributes
+        for (k, v) in result.attributes {
+            authoringAttrs[k] = v
+        }
+
+        do {
+            let translationResponse = try await PuryAdminService.shared.requestAuthoring(
+                task: .improveName,
+                itemType: itemTypeString,
+                sourceLanguage: result.isArabic ? "ar" : "en",
+                targetLanguage: result.isArabic ? "en" : "ar",
+                currentText: ["nameAr": name, "nameEn": nameEn],
+                attributes: authoringAttrs
+            )
+
+            if let ar = translationResponse.nameAr, !ar.isEmpty {
+                name = ar
+            }
+            if let en = translationResponse.nameEn, !en.isEmpty {
+                nameEn = en
+            }
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        } catch {
+            if name.isEmpty && !nameEn.isEmpty {
+                name = nameEn
+            } else if nameEn.isEmpty && !name.isEmpty {
+                nameEn = name
+            }
+        }
+
+        // Brief pause so user visibly sees the name field filled and translated
+        try? await Task.sleep(nanoseconds: 800_000_000)
+
+        // STEP 3: Intelligent Focus on Description Field & Tailored Writing
+        puryVisionStep = .settingDescription(message: Language.isRTL() ? "بيوري يصيغ وصفاً مخصصاً للمنتج..." : "Pury is crafting tailored description...")
+        puryActiveFocusTarget = .description
+        puryVisionStatusMessage = Language.isRTL() ? "بيوري يصيغ الوصف..." : "Pury is writing description..."
+
+        do {
+            var descAttrs = authoringAttrs
+            descAttrs["brand"] = brand.isEmpty ? result.detectedBrand : brand
+            descAttrs["productName"] = name
+            descAttrs["productNameEn"] = nameEn
+
+            let descResponse = try await PuryAdminService.shared.requestAuthoring(
+                task: .generateDescription,
+                itemType: itemTypeString,
+                sourceLanguage: "ar",
+                targetLanguage: "en",
+                currentText: [
+                    "nameAr": name,
+                    "nameEn": nameEn,
+                    "descAr": desc,
+                    "descEn": descEn
+                ],
+                attributes: descAttrs
+            )
+
+            if let dAr = descResponse.descAr, !dAr.isEmpty {
+                desc = dAr
+            }
+            if let dEn = descResponse.descEn, !dEn.isEmpty {
+                descEn = dEn
+            }
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        } catch {
+            // Fallback gracefully if description network call fails
+        }
+
+        // STEP 4: Success Completion
+        puryVisionStep = .success(message: Language.isRTL() ? "اكتمل التعرف والصياغة بنجاح مع بيوري ✓" : "Identified & authored with Pury ✓")
+        puryActiveFocusTarget = nil
+        puryVisionStatusMessage = Language.isRTL() ? "اكتمل بنجاح ✓" : "Completed ✓"
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+
+        try? await Task.sleep(nanoseconds: 2_500_000_000)
+        isPuryVisionActive = false
+        puryVisionStep = .idle
+    }
+
+    func runPuryVisionIntake(fromURL urlString: String) async {
+        guard let url = URL(string: urlString) else { return }
+        puryVisionStep = .scanning(message: Language.isRTL() ? "تحميل الصورة للتحليل..." : "Downloading image for analysis...")
+        isPuryVisionActive = true
+        puryActiveFocusTarget = .media
+
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            if let image = UIImage(data: data) {
+                await runPuryVisionIntake(for: image)
+            } else {
+                isPuryVisionActive = false
+                puryVisionStep = .idle
+            }
+        } catch {
+            isPuryVisionActive = false
+            puryVisionStep = .idle
         }
     }
 
@@ -9818,6 +9988,19 @@ private struct PPLivePetIntakeJourney: View {
                 .onChange(of: bilingualLanguage) { _ in
                     scrollToFocusedField(proxy: proxy)
                 }
+                .onChange(of: viewModel.puryActiveFocusTarget) { target in
+                    guard let target = target else { return }
+                    switch target {
+                    case .media:
+                        break
+                    case .name:
+                        focusedField = .name
+                        scrollToFocusedField(proxy: proxy, targetField: .name)
+                    case .description:
+                        focusedField = .description
+                        scrollToFocusedField(proxy: proxy, targetField: .description)
+                    }
+                }
             }
             .id(viewModel.activeStage)
             }
@@ -10363,7 +10546,37 @@ private struct PPLivePetIntakeJourney: View {
 
     @ViewBuilder
     private var feedbackArea: some View {
-        if let error = viewModel.errorMessage, !error.isEmpty {
+        if viewModel.isPuryVisionActive {
+            HStack(spacing: 10) {
+                PuryAvatar(
+                    size: 26,
+                    isLiving: true,
+                    isThinking: true,
+                    showStatusRing: true,
+                    showAmbientAura: true
+                )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.isRTL() ? "بيوري الذكي يعمل الآن..." : "Pury Intelligence Active...")
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                    Text(viewModel.puryVisionStatusMessage)
+                        .font(AdminType.footnoteBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                Spacer()
+                ProgressView()
+                    .scaleEffect(0.7)
+                    .tint(Color(red: 16/255, green: 185/255, blue: 129/255))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.35), lineWidth: 1)
+            )
+            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        } else if let error = viewModel.errorMessage, !error.isEmpty {
             feedbackBanner(
                 message: error,
                 symbol: "exclamationmark.triangle.fill",
@@ -10468,6 +10681,19 @@ private struct PPLivePetIntakeJourney: View {
 
                 Divider().background(AdminSurface.hairline)
 
+                if viewModel.puryActiveFocusTarget == .name {
+                    HStack(spacing: 6) {
+                        PuryAvatar(size: 18, isLiving: true, isThinking: true, showStatusRing: true)
+                        Text(viewModel.puryVisionStatusMessage)
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12), in: Capsule())
+                    .transition(.scale.combined(with: .opacity))
+                }
+
                 PPBilingualInputField(
                     title: tr("LivePetIntake_NameLabel", "اسم الحيوان أو الصنف"),
                     isRequired: true,
@@ -10486,9 +10712,31 @@ private struct PPLivePetIntakeJourney: View {
                     },
                     onSubmit: { focusedField = .description }
                 )
+                .overlay(
+                    Group {
+                        if viewModel.puryActiveFocusTarget == .name {
+                            RoundedRectangle(cornerRadius: AdminRadius.medium + 4, style: .continuous)
+                                .stroke(Color(red: 16/255, green: 185/255, blue: 129/255), lineWidth: 2)
+                                .shadow(color: Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.6), radius: 8)
+                        }
+                    }
+                )
                 .id(FocusedField.name)
 
                 taxonomyControls
+
+                if viewModel.puryActiveFocusTarget == .description {
+                    HStack(spacing: 6) {
+                        PuryAvatar(size: 18, isLiving: true, isThinking: true, showStatusRing: true)
+                        Text(viewModel.puryVisionStatusMessage)
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12), in: Capsule())
+                    .transition(.scale.combined(with: .opacity))
+                }
 
                 PPBilingualTextEditorField(
                     title: tr("LivePetIntake_DescriptionLabel", "وصف مختصر"),
@@ -10512,6 +10760,15 @@ private struct PPLivePetIntakeJourney: View {
                         else if focusedField == .description { focusedField = nil }
                     }
                 )
+                .overlay(
+                    Group {
+                        if viewModel.puryActiveFocusTarget == .description {
+                            RoundedRectangle(cornerRadius: AdminRadius.medium + 4, style: .continuous)
+                                .stroke(Color(red: 16/255, green: 185/255, blue: 129/255), lineWidth: 2)
+                                .shadow(color: Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.6), radius: 8)
+                        }
+                    }
+                )
                 .id(FocusedField.description)
             }
         }
@@ -10532,6 +10789,41 @@ private struct PPLivePetIntakeJourney: View {
                     .foregroundStyle(AdminSurface.secondaryText)
                 }
                 Spacer()
+
+                if viewModel.totalImageCount > 0 {
+                    Button {
+                        if let first = viewModel.pickedImages.first {
+                            Task { await viewModel.runPuryVisionIntake(for: first) }
+                        } else if let firstURL = viewModel.existingImageURLs.first {
+                            Task { await viewModel.runPuryVisionIntake(fromURL: firstURL) }
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            PuryAvatar(
+                                size: 20,
+                                isLiving: true,
+                                isThinking: viewModel.isPuryVisionActive,
+                                showStatusRing: true
+                            )
+                            Text(viewModel.isPuryVisionActive
+                                 ? viewModel.puryVisionStatusMessage
+                                 : tr("Pury_Vision_SmartFill", "تعبئة ذكية مع بيوري"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                        }
+                        .padding(.horizontal, 10)
+                        .frame(height: 34)
+                        .background(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12), in: Capsule())
+                        .overlay(
+                            Capsule().strokeBorder(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.35), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
+                }
+
                 if viewModel.canAddImages {
                     Button {
                         focusedField = nil
@@ -17242,6 +17534,19 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     .onChange(of: bilingualLanguage) { _ in
                         scrollToFocusedField(proxy: proxy)
                     }
+                    .onChange(of: viewModel.puryActiveFocusTarget) { target in
+                        guard let target = target else { return }
+                        switch target {
+                        case .media:
+                            break
+                        case .name:
+                            focusedField = .name
+                            scrollToFocusedField(proxy: proxy, targetField: .name)
+                        case .description:
+                            focusedField = .description
+                            scrollToFocusedField(proxy: proxy, targetField: .description)
+                        }
+                    }
                 }
                 .id(viewModel.activeStage)
             }
@@ -17634,7 +17939,37 @@ private struct PPAccessoryFoodIntakeJourney: View {
 
     @ViewBuilder
     private var catalogFeedback: some View {
-        if let error = viewModel.errorMessage, !error.isEmpty {
+        if viewModel.isPuryVisionActive {
+            HStack(spacing: 10) {
+                PuryAvatar(
+                    size: 26,
+                    isLiving: true,
+                    isThinking: true,
+                    showStatusRing: true,
+                    showAmbientAura: true
+                )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.isRTL() ? "بيوري الذكي يعمل الآن..." : "Pury Intelligence Active...")
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                    Text(viewModel.puryVisionStatusMessage)
+                        .font(AdminType.footnoteBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                Spacer()
+                ProgressView()
+                    .scaleEffect(0.7)
+                    .tint(Color(red: 16/255, green: 185/255, blue: 129/255))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.35), lineWidth: 1)
+            )
+            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        } else if let error = viewModel.errorMessage, !error.isEmpty {
             catalogBanner(
                 message: error,
                 symbol: "exclamationmark.triangle.fill",
@@ -17743,6 +18078,19 @@ private struct PPAccessoryFoodIntakeJourney: View {
 
                 Divider().background(AdminSurface.hairline)
 
+                if viewModel.puryActiveFocusTarget == .name {
+                    HStack(spacing: 6) {
+                        PuryAvatar(size: 18, isLiving: true, isThinking: true, showStatusRing: true)
+                        Text(viewModel.puryVisionStatusMessage)
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12), in: Capsule())
+                    .transition(.scale.combined(with: .opacity))
+                }
+
                 PPBilingualInputField(
                     title: tr("CatalogIntake_NameLabel", "اسم الصنف"),
                     isRequired: true,
@@ -17761,7 +18109,29 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     },
                     onSubmit: { focusedField = .description }
                 )
+                .overlay(
+                    Group {
+                        if viewModel.puryActiveFocusTarget == .name {
+                            RoundedRectangle(cornerRadius: AdminRadius.medium + 4, style: .continuous)
+                                .stroke(Color(red: 16/255, green: 185/255, blue: 129/255), lineWidth: 2)
+                                .shadow(color: Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.6), radius: 8)
+                        }
+                    }
+                )
                 .id(FocusedField.name)
+
+                if viewModel.puryActiveFocusTarget == .description {
+                    HStack(spacing: 6) {
+                        PuryAvatar(size: 18, isLiving: true, isThinking: true, showStatusRing: true)
+                        Text(viewModel.puryVisionStatusMessage)
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12), in: Capsule())
+                    .transition(.scale.combined(with: .opacity))
+                }
 
                 PPBilingualTextEditorField(
                     title: tr("CatalogIntake_DescriptionLabel", "الوصف"),
@@ -17783,6 +18153,15 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     onFocusChange: { focused in
                         if focused { focusedField = .description }
                         else if focusedField == .description { focusedField = nil }
+                    }
+                )
+                .overlay(
+                    Group {
+                        if viewModel.puryActiveFocusTarget == .description {
+                            RoundedRectangle(cornerRadius: AdminRadius.medium + 4, style: .continuous)
+                                .stroke(Color(red: 16/255, green: 185/255, blue: 129/255), lineWidth: 2)
+                                .shadow(color: Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.6), radius: 8)
+                        }
                     }
                 )
                 .id(FocusedField.description)
@@ -17882,6 +18261,43 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     .foregroundStyle(AdminSurface.secondaryText)
                 }
                 Spacer()
+
+                if viewModel.totalImageCount > 0 {
+                    Button {
+                        if let first = viewModel.pickedImages.first {
+                            Task { await viewModel.runPuryVisionIntake(for: first) }
+                        } else if let firstURL = viewModel.existingImageURLs.first {
+                            Task { await viewModel.runPuryVisionIntake(fromURL: firstURL) }
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            PuryAvatar(
+                                size: 20,
+                                isLiving: true,
+                                isThinking: viewModel.isPuryVisionActive,
+                                showStatusRing: true
+                            )
+                            Text(viewModel.isPuryVisionActive
+                                 ? viewModel.puryVisionStatusMessage
+                                 : tr("Pury_Vision_SmartFill", "تعبئة ذكية مع بيوري"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                        }
+                        .padding(.horizontal, 10)
+                        .frame(height: 34)
+                        .background(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.12), in: Capsule())
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.35), lineWidth: 0.75)
+                        )
+                    }
+                    .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
+                    .disabled(viewModel.isPuryVisionActive)
+                }
+
                 if viewModel.canAddImages {
                     Button {
                         viewModel.showImagePicker = true
