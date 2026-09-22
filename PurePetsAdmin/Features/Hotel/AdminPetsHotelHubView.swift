@@ -11,6 +11,7 @@ import SwiftUI
 
 public struct AdminPetsHotelHubView: View {
     @StateObject private var viewModel = AdminPetsHotelViewModel.shared
+    @State private var languageCode: String = Language.currentLanguageCode() ?? "en"
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorScheme) private var colorScheme
@@ -141,6 +142,16 @@ public struct AdminPetsHotelHubView: View {
             AdminPetsHotelRoomStatusSheet(room: room, viewModel: viewModel)
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
+        .id(languageCode)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("LanguageDidChangeNotification"))) { _ in
+            languageCode = Language.currentLanguageCode() ?? "en"
+            viewModel.objectWillChange.send()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PPLanguageDidChangeNotification"))) { _ in
+            languageCode = Language.currentLanguageCode() ?? "en"
+            viewModel.objectWillChange.send()
+        }
         .onAppear {
             viewModel.loadHotelOperations()
             viewModel.loadDiagnostics()
@@ -156,12 +167,12 @@ private struct iPhoneHotelHubView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Apex Navigation Bar
+            let liveLabel = Language.get("Hotel_Status_Live", alter: "مباشر")
             AdminSovereignNavigationBar(
                 title: Language.get("Hotel_Title", alter: "فندق ورعاية الحيوانات"),
                 subtitle: BranchContextStore.shared.currentBranchDisplayName.isEmpty
                     ? Language.get("Hotel_Workspace", alter: "مساحة الفندق • مباشر")
-                    : "\(BranchContextStore.shared.currentBranchDisplayName) • مباشر",
+                    : "\(BranchContextStore.shared.currentBranchDisplayName) • \(liveLabel)",
                 statusDotColor: Color(red: 0.16, green: 0.78, blue: 0.48),
                 onBack: {
                     if let onDismiss {
@@ -262,12 +273,12 @@ private struct iPadHotelConsoleView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Apex Panoramic Navigation Bar
+            let dashboardLabel = Language.get("Hotel_Status_Overview_Dashboard", alter: "لوحة التحكم الشاملة")
             AdminSovereignNavigationBar(
                 title: Language.get("Hotel_Title", alter: "فندق ورعاية الحيوانات"),
                 subtitle: BranchContextStore.shared.currentBranchDisplayName.isEmpty
                     ? Language.get("Hotel_Workspace", alter: "مساحة الفندق • مباشر")
-                    : "\(BranchContextStore.shared.currentBranchDisplayName) • لوحة التحكم الشاملة",
+                    : "\(BranchContextStore.shared.currentBranchDisplayName) • \(dashboardLabel)",
                 statusDotColor: Color(red: 0.16, green: 0.78, blue: 0.48),
                 onBack: {
                     if let onDismiss {

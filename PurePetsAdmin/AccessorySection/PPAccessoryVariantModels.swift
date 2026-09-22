@@ -342,10 +342,151 @@ import UIKit
     }
 
     @objc public var localizedName: String {
+        let raw: String
         if Language.isRTL() {
-            return nameAr.isEmpty ? (nameEn.isEmpty ? canonicalValue : nameEn) : nameAr
+            raw = nameAr.isEmpty ? (nameEn.isEmpty ? canonicalValue : nameEn) : nameAr
+        } else {
+            raw = nameEn.isEmpty ? (nameAr.isEmpty ? canonicalValue : nameAr) : nameEn
         }
-        return nameEn.isEmpty ? (nameAr.isEmpty ? canonicalValue : nameAr) : nameEn
+        return PPAccessoryOptionValue.formatSizeNameWithLetter(
+            base: raw,
+            canonicalValue: canonicalValue,
+            id: id,
+            nameAr: nameAr,
+            nameEn: nameEn
+        )
+    }
+
+    /// Detects canonical size code (e.g. "S", "M", "L", "XL", "XS", "2XL") from tokens.
+    @objc public static func detectSizeCode(from string: String) -> String? {
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return nil }
+        let upper = trimmed.uppercased()
+
+        if ["XXS", "XS", "S", "M", "L", "XL", "2XL", "XXL", "3XL", "XXXL", "4XL", "XXXXL"].contains(upper) {
+            if upper == "XXL" { return "2XL" }
+            if upper == "XXXL" { return "3XL" }
+            if upper == "XXXXL" { return "4XL" }
+            return upper
+        }
+
+        if upper == "DOUBLE EXTRA SMALL" { return "XXS" }
+        if upper == "EXTRA SMALL" || upper == "EXTRA-SMALL" { return "XS" }
+        if upper == "SMALL" { return "S" }
+        if upper == "MEDIUM" { return "M" }
+        if upper == "LARGE" { return "L" }
+        if upper == "EXTRA LARGE" || upper == "EXTRA-LARGE" { return "XL" }
+        if upper == "2X LARGE" || upper == "2X-LARGE" { return "2XL" }
+        if upper == "3X LARGE" || upper == "3X-LARGE" { return "3XL" }
+        if upper == "4X LARGE" || upper == "4X-LARGE" { return "4XL" }
+
+        if trimmed == "صغير جداً جداً" { return "XXS" }
+        if trimmed == "صغير جداً" { return "XS" }
+        if trimmed == "صغير" { return "S" }
+        if trimmed == "وسط" || trimmed == "متوسط" { return "M" }
+        if trimmed == "كبير" { return "L" }
+        if trimmed == "كبير جداً" { return "XL" }
+
+        if upper.contains("(XXS)") || upper.contains("-XXS") || upper.contains("• XXS") || upper.hasPrefix("XXS") { return "XXS" }
+        if upper.contains("(XS)") || upper.contains("-XS") || upper.contains("• XS") || upper.hasPrefix("XS") { return "XS" }
+        if upper.contains("(XL)") || upper.contains("-XL") || upper.contains("• XL") || upper.hasPrefix("XL") { return "XL" }
+        if upper.contains("(2XL)") || upper.contains("-2XL") || upper.contains("• 2XL") || upper.hasPrefix("2XL") || upper.contains("XXL") { return "2XL" }
+        if upper.contains("(3XL)") || upper.contains("-3XL") || upper.contains("• 3XL") || upper.hasPrefix("3XL") || upper.contains("XXXL") { return "3XL" }
+        if upper.contains("(4XL)") || upper.contains("-4XL") || upper.contains("• 4XL") || upper.hasPrefix("4XL") || upper.contains("XXXXL") { return "4XL" }
+        if upper.contains("(S)") || upper.contains("-S") || upper.contains("• S") || upper.hasPrefix("S •") || upper.hasPrefix("S-") { return "S" }
+        if upper.contains("(M)") || upper.contains("-M") || upper.contains("• M") || upper.hasPrefix("M •") || upper.hasPrefix("M-") { return "M" }
+        if upper.contains("(L)") || upper.contains("-L") || upper.contains("• L") || upper.hasPrefix("L •") || upper.hasPrefix("L-") { return "L" }
+
+        return nil
+    }
+
+    /// Formats size titles with the size letter in front (e.g. "S • صغير", "L • كبير", "XL • كبير جداً").
+    @objc public static func formatSizeNameWithLetter(
+        base: String,
+        canonicalValue: String,
+        id: String,
+        nameAr: String,
+        nameEn: String
+    ) -> String {
+        let isAr = Language.isRTL()
+        let detected = detectSizeCode(from: canonicalValue)
+            ?? detectSizeCode(from: id)
+            ?? detectSizeCode(from: nameEn)
+            ?? detectSizeCode(from: nameAr)
+            ?? detectSizeCode(from: base)
+
+        guard let code = detected else {
+            return base
+        }
+
+        let trimmedBase = base.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedBase.isEmpty {
+            return isAr ? "\(code) • \(arabicBaseName(for: code))" : "\(code) • \(englishBaseName(for: code))"
+        }
+
+        let upper = trimmedBase.uppercased()
+        if upper.hasPrefix("\(code) •") || upper.hasPrefix("\(code)•")
+            || upper.hasPrefix("\(code) -") || upper.hasPrefix("\(code)-")
+            || upper.hasPrefix("\(code) :") || upper.hasPrefix("\(code):")
+            || (upper.hasPrefix("\(code) ") && !upper.contains("SMALL") && !upper.contains("LARGE")) {
+            return trimmedBase
+        }
+
+        var cleanBase = trimmedBase
+        let legacySuffixes = ["(\(code))", "( \(code) )", "-\(code)", "- \(code)"]
+        for suffix in legacySuffixes {
+            if cleanBase.hasSuffix(suffix) {
+                cleanBase = String(cleanBase.dropLast(suffix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+
+        if isAr {
+            let arWord: String
+            if cleanBase.uppercased() == code || cleanBase.isEmpty {
+                arWord = arabicBaseName(for: code)
+            } else {
+                arWord = cleanBase
+            }
+            return "\(code) • \(arWord)"
+        } else {
+            let enWord: String
+            if cleanBase.uppercased() == code || cleanBase.isEmpty {
+                enWord = englishBaseName(for: code)
+            } else {
+                enWord = cleanBase
+            }
+            return "\(code) • \(enWord)"
+        }
+    }
+
+    private static func arabicBaseName(for code: String) -> String {
+        switch code {
+        case "XXS": return "صغير جداً جداً"
+        case "XS": return "صغير جداً"
+        case "S": return "صغير"
+        case "M": return "وسط"
+        case "L": return "كبير"
+        case "XL": return "كبير جداً"
+        case "2XL": return "كبير جداً"
+        case "3XL": return "كبير جداً"
+        case "4XL": return "كبير جداً"
+        default: return code
+        }
+    }
+
+    private static func englishBaseName(for code: String) -> String {
+        switch code {
+        case "XXS": return "Double Extra Small"
+        case "XS": return "Extra Small"
+        case "S": return "Small"
+        case "M": return "Medium"
+        case "L": return "Large"
+        case "XL": return "Extra Large"
+        case "2XL": return "2X Large"
+        case "3XL": return "3X Large"
+        case "4XL": return "4X Large"
+        default: return code
+        }
     }
 
     @objc public var accessibilityName: String {
@@ -649,12 +790,12 @@ import UIKit
     // MARK: - Standard Values Library
 
     @objc public static let standardSizes: [PPAccessoryOptionValue] = [
-        PPAccessoryOptionValue(id: "xs", canonicalValue: "XS", nameAr: "صغير جداً", nameEn: "XS", sortOrder: 0),
-        PPAccessoryOptionValue(id: "s", canonicalValue: "S", nameAr: "صغير", nameEn: "S", sortOrder: 1),
-        PPAccessoryOptionValue(id: "m", canonicalValue: "M", nameAr: "وسط", nameEn: "M", sortOrder: 2),
-        PPAccessoryOptionValue(id: "l", canonicalValue: "L", nameAr: "كبير", nameEn: "L", sortOrder: 3),
-        PPAccessoryOptionValue(id: "xl", canonicalValue: "XL", nameAr: "كبير جداً", nameEn: "XL", sortOrder: 4),
-        PPAccessoryOptionValue(id: "2xl", canonicalValue: "2XL", nameAr: "2XL", nameEn: "2XL", sortOrder: 5),
+        PPAccessoryOptionValue(id: "xs", canonicalValue: "XS", nameAr: "XS • صغير جداً", nameEn: "XS • Extra Small", sortOrder: 0),
+        PPAccessoryOptionValue(id: "s", canonicalValue: "S", nameAr: "S • صغير", nameEn: "S • Small", sortOrder: 1),
+        PPAccessoryOptionValue(id: "m", canonicalValue: "M", nameAr: "M • وسط", nameEn: "M • Medium", sortOrder: 2),
+        PPAccessoryOptionValue(id: "l", canonicalValue: "L", nameAr: "L • كبير", nameEn: "L • Large", sortOrder: 3),
+        PPAccessoryOptionValue(id: "xl", canonicalValue: "XL", nameAr: "XL • كبير جداً", nameEn: "XL • Extra Large", sortOrder: 4),
+        PPAccessoryOptionValue(id: "2xl", canonicalValue: "2XL", nameAr: "2XL • كبير جداً", nameEn: "2XL • 2X Large", sortOrder: 5),
     ]
 
     @objc public static let standardWeights: [PPAccessoryOptionValue] = [
@@ -911,7 +1052,7 @@ import UIKit
 @objc public final class PPAccessoryVariantFamily: NSObject, @unchecked Sendable {
     /// Empty for a family that has not been created on the server yet, and for
     /// the synthetic legacy single-variant family.
-    @objc public let familyId: String
+    @objc public var familyId: String
     @objc public var name: String
     @objc public var nameEn: String
     @objc public var desc: String
@@ -927,7 +1068,7 @@ import UIKit
     @objc public let isArchived: Bool
     @objc public var optionDefinitions: [PPAccessoryOptionDefinition]
     /// Family revision observed at load, required for an update.
-    @objc public let revision: Int
+    @objc public var revision: Int
     /// True when this is a synthetic wrapper around a product that has no
     /// family on the server. Determines whether a save is `create` or `update`.
     @objc public var isLegacySingleVariant: Bool
@@ -1013,13 +1154,20 @@ import UIKit
             // same server command, so they agree.
             let colorMap = products[productId]?.variantColorDictionary
                 ?? (projection?["color"] as? [String: Any])
-            guard let color = PPAccessoryVariantColor(dictionary: colorMap) else { continue }
+            let color = PPAccessoryVariantColor(dictionary: colorMap) ?? .standardNeutral
 
             let product = products[productId]
+            guard product != nil || projection != nil else { continue }
+
             let sortOrder = (projection?["sortOrder"] as? NSNumber)?.intValue
                 ?? product?.variantSortOrder
                 ?? index
             let archived = (projection?["isArchived"] as? Bool) ?? product?.isArchived ?? false
+
+            let rawSelectedOptions = (projection?["selectedOptions"] as? [String: String])
+                ?? ((projection?["selectedOptions"] as? [String: Any])?.compactMapValues { "\($0)" })
+                ?? [:]
+            let combKey = (projection?["combinationKey"] as? String) ?? ""
 
             variants.append(PPAccessoryVariant(
                 productId: productId,
@@ -1037,7 +1185,9 @@ import UIKit
                 hasResolvedRetailPrice: product?.hasResolvedSellingPrice ?? false,
                 showInAppMarket: product?.showInAppMarket ?? false,
                 revision: product?.revision ?? 0,
-                media: (product?.imageURLsArray ?? []).map { PPAccessoryVariantMedia(remoteURL: $0) }
+                media: (product?.imageURLsArray ?? []).map { PPAccessoryVariantMedia(remoteURL: $0) },
+                selectedOptions: rawSelectedOptions,
+                combinationKey: combKey
             ))
         }
         guard !variants.isEmpty else { return nil }
@@ -1045,7 +1195,10 @@ import UIKit
         let rawOptionDefs = (document["optionDefinitions"] as? [Any])?.compactMap { $0 as? [String: Any] } ?? []
         var optionDefinitions = rawOptionDefs.compactMap { PPAccessoryOptionDefinition(dictionary: $0) }
         if optionDefinitions.isEmpty && !variants.isEmpty {
-            optionDefinitions = [PPAccessoryOptionDefinition.synthesizeColorOption(fromVariants: variants)]
+            let hasRealColors = variants.contains { !$0.color.identifier.isEmpty && $0.color.identifier != "standard" }
+            if hasRealColors {
+                optionDefinitions = [PPAccessoryOptionDefinition.synthesizeColorOption(fromVariants: variants)]
+            }
         }
 
         return PPAccessoryVariantFamily(
@@ -1135,6 +1288,8 @@ import UIKit
 
     @objc public var defaultVariant: PPAccessoryVariant? {
         variants.first { $0.productId == defaultVariantProductId }
+            ?? activeVariants.first
+            ?? variants.first
     }
 
     @objc public var heroImageURL: String {
@@ -1563,6 +1718,10 @@ import UIKit
         )
     }
 
+    @objc public func deepCopy() -> PPAccessoryVariantFamily {
+        copyForEditing()
+    }
+
     /// Canonical combination key generator from a dictionary of selected options.
     @objc public static func combinationKey(from selectedOptions: [String: String]) -> String {
         selectedOptions.keys.sorted().map { "\($0)=\(selectedOptions[$0] ?? "")" }.joined(separator: "|")
@@ -1848,4 +2007,558 @@ extension PPAccessoryVariantFamily {
         return groups
     }
 }
+
+// MARK: - Variant Dimension & Presentation Engine
+
+@objc public enum PPAccessoryVariantDimensionType: Int, Sendable {
+    case color
+    case size
+    case weight
+    case flavor
+    case material
+    case custom
+    case multiple
+
+    public var sfSymbolName: String {
+        switch self {
+        case .color: return "paintpalette.fill"
+        case .size: return "ruler.fill"
+        case .weight: return "scalemass.fill"
+        case .flavor: return "fork.knife"
+        case .material: return "cube.fill"
+        case .custom, .multiple: return "square.stack.fill"
+        }
+    }
+
+    public var outlineSymbolName: String {
+        switch self {
+        case .color: return "paintpalette"
+        case .size: return "ruler"
+        case .weight: return "scalemass"
+        case .flavor: return "fork.knife"
+        case .material: return "cube"
+        case .custom, .multiple: return "square.stack"
+        }
+    }
+
+    public var selectionTitle: String {
+        switch self {
+        case .color:
+            return Language.get("POS_SelectColorVariant", alter: "اختر اللون")
+        case .size:
+            return Language.get("POS_SelectSizeVariant", alter: "اختر المقاس")
+        case .weight:
+            return Language.get("POS_SelectWeightVariant", alter: "اختر الوزن")
+        case .flavor:
+            return Language.get("POS_SelectFlavorVariant", alter: "اختر النكهة")
+        case .material:
+            return Language.get("POS_SelectMaterialVariant", alter: "اختر المادة")
+        case .custom, .multiple:
+            return Language.get("POS_SelectOptionVariant", alter: "اختر الخيار")
+        }
+    }
+
+    public var countOptionsLabel: String {
+        switch self {
+        case .color:
+            return Language.get("POS_VariantsCount", alter: "خيارات ألوان")
+        case .size:
+            return Language.get("POS_VariantsSizeCount", alter: "خيارات مقاس")
+        case .weight:
+            return Language.get("POS_VariantsWeightCount", alter: "خيارات وزن")
+        case .flavor:
+            return Language.get("POS_VariantsFlavorCount", alter: "خيارات نكهة")
+        case .material:
+            return Language.get("POS_VariantsMaterialCount", alter: "خيارات خامة")
+        case .custom, .multiple:
+            return Language.get("POS_VariantsGeneralCount", alter: "خيارات")
+        }
+    }
+
+    public var shortCountFormat: String {
+        switch self {
+        case .color:
+            return Language.get("Inventory_Family_ColourCount", alter: "%@ ألوان")
+        case .size:
+            return Language.get("Inventory_Family_SizeCount", alter: "%@ مقاسات")
+        case .weight:
+            return Language.get("Inventory_Family_WeightCount", alter: "%@ أوزان")
+        case .flavor:
+            return Language.get("Inventory_Family_FlavorCount", alter: "%@ نكهات")
+        case .material:
+            return Language.get("Inventory_Family_MaterialCount", alter: "%@ خامات")
+        case .custom, .multiple:
+            return Language.get("Inventory_Family_OptionCount", alter: "%@ خيارات")
+        }
+    }
+
+    public var outOfStockBadgeText: String {
+        switch self {
+        case .color:
+            return Language.get("Inventory_Family_HasOutOfStock", alter: "لون غير متوفر")
+        case .size:
+            return Language.get("Inventory_Family_HasOutOfStockSize", alter: "مقاس غير متوفر")
+        case .weight:
+            return Language.get("Inventory_Family_HasOutOfStockWeight", alter: "وزن غير متوفر")
+        case .flavor:
+            return Language.get("Inventory_Family_HasOutOfStockFlavor", alter: "نكهة غير متوفرة")
+        case .material:
+            return Language.get("Inventory_Family_HasOutOfStockMaterial", alter: "خامة غير متوفرة")
+        case .custom, .multiple:
+            return Language.get("Inventory_Family_HasOutOfStockOption", alter: "خيار غير متوفر")
+        }
+    }
+
+    public var selectHint: String {
+        switch self {
+        case .color:
+            return Language.get("Inventory_Family_SelectColour_Hint", alter: "يعرض سعر ومخزون وإجراءات هذا اللون")
+        case .size:
+            return Language.get("Inventory_Family_SelectSize_Hint", alter: "يعرض سعر ومخزون وإجراءات هذا المقاس")
+        case .weight:
+            return Language.get("Inventory_Family_SelectWeight_Hint", alter: "يعرض سعر ومخزون وإجراءات هذا الوزن")
+        case .flavor, .material, .custom, .multiple:
+            return Language.get("Inventory_Family_SelectOption_Hint", alter: "يعرض سعر ومخزون وإجراءات هذا الخيار")
+        }
+    }
+
+    public var collapseHint: String {
+        switch self {
+        case .color:
+            return Language.get("Inventory_Family_Collapse_Hint", alter: "طي الألوان")
+        case .size:
+            return Language.get("Inventory_Family_CollapseSize_Hint", alter: "طي المقاسات")
+        case .weight:
+            return Language.get("Inventory_Family_CollapseWeight_Hint", alter: "طي الأوزان")
+        case .flavor, .material, .custom, .multiple:
+            return Language.get("Inventory_Family_CollapseOption_Hint", alter: "طي الخيارات")
+        }
+    }
+
+    public var expandHint: String {
+        switch self {
+        case .color:
+            return Language.get("Inventory_Family_Expand_Hint", alter: "اختر لوناً لعرض سعره ومخزونه وإجراءاته")
+        case .size:
+            return Language.get("Inventory_Family_ExpandSize_Hint", alter: "اختر مقاساً لعرض سعره ومخزونه وإجراءاته")
+        case .weight:
+            return Language.get("Inventory_Family_ExpandWeight_Hint", alter: "اختر وزناً لعرض سعره ومخزونه وإجراءاته")
+        case .flavor, .material, .custom, .multiple:
+            return Language.get("Inventory_Family_ExpandOption_Hint", alter: "اختر خياراً لعرض سعره ومخزونه وإجراءاته")
+        }
+    }
+}
+
+// MARK: - PetAccessory Variant Dimension & Display Extensions
+
+public extension PetAccessory {
+    /// Resolved variant color model from `variantColorDictionary`.
+    var pos_variantColor: PPAccessoryVariantColor? {
+        guard let dict = variantColorDictionary else { return nil }
+        return PPAccessoryVariantColor(dictionary: dict)
+    }
+
+    /// Color display name in the active language.
+    var pos_variantColorName: String {
+        pos_variantColor?.localizedName ?? ""
+    }
+
+    /// Returns true ONLY if this accessory represents a genuine color variant (not a dummy neutral or size).
+    var pos_hasRealColor: Bool {
+        guard let color = pos_variantColor else { return false }
+        let id = color.identifier.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty && id != "standard" && id != "default" && id != "neutral" else {
+            return false
+        }
+
+        // If the color name indicates a size/weight/option rather than a color, it's not a real color.
+        let nameAr = color.nameAr.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let nameEn = color.nameEn.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let knownSizeTokens = ["صغير", "متوسط", "كبير", "xs", "s", "m", "l", "xl", "2xl", "3xl", "4xl", "small", "medium", "large", "free size"]
+        let hasSizeInName = knownSizeTokens.contains { nameAr == $0 || nameEn == $0 || nameAr.hasPrefix($0 + " ") || nameEn.hasPrefix($0 + " ") || nameAr.contains(" " + $0) }
+
+        let knownColorWords = ["أبيض", "ابيض", "اسود", "أسود", "احمر", "أحمر", "ازرق", "أزرق", "اخضر", "أخضر", "اصفر", "أصفر", "بني", "وردي", "برتقالي", "بنفسجي", "رمادي", "كحلي", "بيج", "ذهبي", "فضي", "white", "black", "red", "blue", "green", "yellow", "brown", "pink", "orange", "purple", "gray", "grey", "navy", "beige", "gold", "silver"]
+        let hasRealColorWord = knownColorWords.contains { nameAr.contains($0) || nameEn.contains($0) || id.contains($0) }
+
+        if hasSizeInName && !hasRealColorWord {
+            return false
+        }
+
+        // Check hex: if standard neutral/white (#CCCCCC / #7F7F7F / #8E8E93 / #FFFFFF) and has no explicit color word
+        let hex = color.hex.uppercased()
+        if (hex == "#CCCCCC" || hex == "#7F7F7F" || hex == "#8E8E93" || hex == "#FFFFFF") && !hasRealColorWord {
+            return false
+        }
+
+        return true
+    }
+
+    /// Detects the variant dimension type for this individual product.
+    var pos_variantDimension: PPAccessoryVariantDimensionType {
+        // 1. Check explicit variantAxis from backend / family
+        if let axis = variantAxis?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !axis.isEmpty {
+            switch axis {
+            case "color", "colors", "اللون": return .color
+            case "size", "sizes", "المقاس", "الحجم": return .size
+            case "weight", "weights", "الوزن": return .weight
+            case "flavor", "flavors", "flavour", "flavours", "النكهة", "الطعم": return .flavor
+            case "material", "materials", "المادة", "الخامة": return .material
+            default: break
+            }
+        }
+
+        // 2. Check selectedOptionsSnapshot
+        if let snapshot = selectedOptionsSnapshot, !snapshot.isEmpty {
+            if snapshot.count > 1 { return .multiple }
+            if let first = snapshot.first {
+                let optKey = (first["optionKey"] as? String)?.lowercased() ?? ""
+                if optKey.contains("size") || optKey.contains("مقاس") || optKey.contains("حجم") { return .size }
+                if optKey.contains("weight") || optKey.contains("وزن") { return .weight }
+                if optKey.contains("flavor") || optKey.contains("flavour") || optKey.contains("نكهة") { return .flavor }
+                if optKey.contains("material") || optKey.contains("مادة") || optKey.contains("خامة") { return .material }
+                if optKey.contains("color") || optKey.contains("لون") { return .color }
+            }
+        }
+
+        // 3. Check selectedOptions dictionary keys
+        if let options = selectedOptions, !options.isEmpty {
+            if options.count > 1 { return .multiple }
+            let keys = options.keys.map { $0.lowercased() }
+            if keys.contains(where: { $0.contains("size") || $0.contains("مقاس") || $0.contains("حجم") }) { return .size }
+            if keys.contains(where: { $0.contains("weight") || $0.contains("وزن") }) { return .weight }
+            if keys.contains(where: { $0.contains("flavor") || $0.contains("flavour") || $0.contains("نكهة") }) { return .flavor }
+            if keys.contains(where: { $0.contains("material") || $0.contains("مادة") || $0.contains("خامة") }) { return .material }
+            if keys.contains(where: { $0.contains("color") || $0.contains("لون") }) { return .color }
+        }
+
+        // 4. Check variantCombinationKey
+        if let combo = variantCombinationKey?.lowercased(), !combo.isEmpty {
+            if combo.contains("size=") { return .size }
+            if combo.contains("weight=") { return .weight }
+            if combo.contains("flavor=") || combo.contains("flavour=") { return .flavor }
+            if combo.contains("material=") { return .material }
+            if combo.contains("color=") && !combo.contains("|") { return .color }
+            if combo.contains("|") { return .multiple }
+        }
+
+        // 5. Genuine color check
+        if pos_hasRealColor {
+            return .color
+        }
+
+        // 6. Check size attribute on model
+        if let s = size?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+            return .size
+        }
+
+        // 7. Check weightText or weight on model
+        if let w = weightText?.trimmingCharacters(in: .whitespacesAndNewlines), !w.isEmpty {
+            return .weight
+        }
+        if let wNum = weight, wNum.doubleValue > 0 {
+            return .weight
+        }
+
+        // 8. Check SKU suffix for size or weight
+        if let sku = sku?.uppercased() {
+            let sizeSuffixes = ["-XS", "_XS", "-S", "_S", "-M", "_M", "-L", "_L", "-XL", "_XL", "-2XL", "_2XL", "-XXL", "_XXL", "-3XL", "_3XL", "-4XL", "_4XL"]
+            if sizeSuffixes.contains(where: { sku.hasSuffix($0) }) {
+                return .size
+            }
+            let weightSuffixes = ["-250G", "-500G", "-1KG", "-2KG", "-3KG", "-5KG", "-10KG", "-15KG", "-20KG"]
+            if weightSuffixes.contains(where: { sku.hasSuffix($0) }) {
+                return .weight
+            }
+        }
+
+        // 9. Check color model names for size keywords
+        if let color = pos_variantColor {
+            let nameAr = color.nameAr.lowercased()
+            let nameEn = color.nameEn.lowercased()
+            let sizeKeywords = ["صغير", "متوسط", "كبير", "xs", "small", "medium", "large", "xl"]
+            if sizeKeywords.contains(where: { nameAr.contains($0) || nameEn.contains($0) }) {
+                return .size
+            }
+        }
+
+        return belongsToVariantFamily ? .custom : .color
+    }
+
+    /// Formats standard size codes into localized, friendly names with size letter in front.
+    static func formatStandardSize(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return "" }
+        let code = trimmed.uppercased()
+        let isAr = Language.isRTL()
+        switch code {
+        case "XXS", "DOUBLE EXTRA SMALL":
+            return isAr ? "XXS • صغير جداً جداً" : "XXS • Double Extra Small"
+        case "XS", "EXTRA SMALL", "EXTRA-SMALL":
+            return isAr ? "XS • صغير جداً" : "XS • Extra Small"
+        case "S", "SMALL":
+            return isAr ? "S • صغير" : "S • Small"
+        case "M", "MEDIUM":
+            return isAr ? "M • وسط" : "M • Medium"
+        case "L", "LARGE":
+            return isAr ? "L • كبير" : "L • Large"
+        case "XL", "EXTRA LARGE", "EXTRA-LARGE":
+            return isAr ? "XL • كبير جداً" : "XL • Extra Large"
+        case "2XL", "XXL", "2X LARGE", "2X-LARGE":
+            return isAr ? "2XL • كبير جداً" : "2XL • 2X Large"
+        case "3XL", "XXXL", "3X LARGE", "3X-LARGE":
+            return isAr ? "3XL • كبير جداً" : "3XL • 3X Large"
+        case "4XL", "XXXXL":
+            return isAr ? "4XL • كبير جداً" : "4XL • 4X Large"
+        case "FREE", "FREE SIZE", "FREESIZE":
+            return isAr ? "مقاس موحد" : "Free Size"
+        default:
+            if let detected = PPAccessoryOptionValue.detectSizeCode(from: trimmed) {
+                return formatStandardSize(detected)
+            }
+            return trimmed
+        }
+    }
+
+    /// Extracts short 1-4 character badge for chip/icon display (e.g. "XS", "S", "M", "L", "XL", "1kg").
+    var pos_variantShortBadge: String {
+        // From size property
+        if let s = size?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+            let upper = s.uppercased()
+            if ["XS", "S", "M", "L", "XL", "2XL", "XXL", "3XL", "4XL"].contains(upper) {
+                return upper == "XXL" ? "2XL" : upper
+            }
+        }
+
+        // From SKU suffix
+        if let sku = sku?.uppercased() {
+            let patterns = [
+                ("-4XL", "4XL"), ("-3XL", "3XL"), ("-2XL", "2XL"), ("-XXL", "2XL"),
+                ("-XL", "XL"), ("-XS", "XS"), ("-S", "S"), ("-M", "M"), ("-L", "L"),
+                ("_4XL", "4XL"), ("_3XL", "3XL"), ("_2XL", "2XL"), ("_XXL", "2XL"),
+                ("_XL", "XL"), ("_XS", "XS"), ("_S", "S"), ("_M", "M"), ("_L", "L")
+            ]
+            for (suffix, badge) in patterns {
+                if sku.hasSuffix(suffix) {
+                    return badge
+                }
+            }
+        }
+
+        // From selectedOptions
+        if let options = selectedOptions {
+            for (k, v) in options {
+                if k.lowercased().contains("size"), let strVal = v as? String {
+                    let upper = strVal.uppercased()
+                    if ["XS", "S", "M", "L", "XL", "2XL", "XXL", "3XL", "4XL"].contains(upper) {
+                        return upper == "XXL" ? "2XL" : upper
+                    }
+                }
+            }
+        }
+
+        // From combinationKey
+        if let combo = variantCombinationKey?.uppercased() {
+            for part in combo.components(separatedBy: "|") {
+                let kv = part.components(separatedBy: "=")
+                if kv.count == 2 && kv[0].contains("SIZE") {
+                    let val = kv[1]
+                    if ["XS", "S", "M", "L", "XL", "2XL", "XXL", "3XL", "4XL"].contains(val) {
+                        return val == "XXL" ? "2XL" : val
+                    }
+                }
+            }
+        }
+
+        // From variantColor name if it's a size code
+        if let color = pos_variantColor {
+            let upper = color.identifier.uppercased()
+            if ["XS", "S", "M", "L", "XL", "2XL", "XXL", "3XL", "4XL"].contains(upper) {
+                return upper == "XXL" ? "2XL" : upper
+            }
+        }
+
+        return ""
+    }
+
+    /// Primary human-readable variant value for this product (e.g. "XS • صغير جداً", "أسود", "1 كجم").
+    var pos_variantDisplayName: String {
+        let isAr = Language.isRTL()
+
+        // 1. From selectedOptionsSnapshot
+        if let snapshot = selectedOptionsSnapshot, !snapshot.isEmpty {
+            var labels: [String] = []
+            for option in snapshot {
+                if let nameDict = option["valueName"] as? [String: Any] {
+                    let langKey = isAr ? "ar" : "en"
+                    let val = (nameDict[langKey] as? String) ?? (nameDict["ar"] as? String) ?? (nameDict["en"] as? String) ?? ""
+                    let valId = (option["valueId"] as? String) ?? ""
+                    let candidate = val.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? valId : val
+                    let formatted = PetAccessory.formatStandardSize(candidate)
+                    if !formatted.isEmpty {
+                        labels.append(formatted)
+                        continue
+                    }
+                } else if let nameStr = option["valueName"] as? String, !nameStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    labels.append(PetAccessory.formatStandardSize(nameStr))
+                    continue
+                }
+
+                if let valId = option["valueId"] as? String, !valId.isEmpty {
+                    labels.append(PetAccessory.formatStandardSize(valId))
+                }
+            }
+            if !labels.isEmpty {
+                return labels.joined(separator: " / ")
+            }
+        }
+
+        // 2. From selectedOptions dictionary
+        if let options = selectedOptions, !options.isEmpty {
+            var labels: [String] = []
+            for (k, v) in options {
+                let strVal = "\(v)"
+                if k.lowercased().contains("size") {
+                    labels.append(PetAccessory.formatStandardSize(strVal))
+                } else {
+                    labels.append(strVal)
+                }
+            }
+            if !labels.isEmpty {
+                return labels.joined(separator: " / ")
+            }
+        }
+
+        // 3. From combinationKey
+        if let combo = variantCombinationKey, !combo.isEmpty {
+            let parts = combo.components(separatedBy: "|")
+            var labels: [String] = []
+            for part in parts {
+                let kv = part.components(separatedBy: "=")
+                if kv.count == 2 {
+                    if kv[0].lowercased().contains("size") {
+                        labels.append(PetAccessory.formatStandardSize(kv[1]))
+                    } else {
+                        labels.append(kv[1])
+                    }
+                }
+            }
+            if !labels.isEmpty {
+                return labels.joined(separator: " / ")
+            }
+        }
+
+        // 4. If genuine color, return color's localized name
+        if pos_hasRealColor {
+            let colName = pos_variantColorName
+            if !colName.isEmpty { return colName }
+        }
+
+        // 5. From variantColorDictionary (e.g. legacy family where size was stored in nameAr)
+        if let dict = variantColorDictionary {
+            let raw = isAr ? (dict["nameAr"] as? String) : (dict["nameEn"] as? String)
+            let fallback = (dict["nameAr"] ?? dict["nameEn"]) as? String
+            let candidate = (raw ?? fallback)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !candidate.isEmpty && candidate != self.name && candidate != self.nameEn {
+                return PetAccessory.formatStandardSize(candidate)
+            }
+        }
+
+        // 6. From size property
+        if let s = size?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+            return PetAccessory.formatStandardSize(s)
+        }
+
+        // 7. From weightText property
+        if let w = weightText?.trimmingCharacters(in: .whitespacesAndNewlines), !w.isEmpty {
+            return w
+        }
+
+        // 8. From SKU suffix heuristic (e.g. PP7899254789-XS -> صغير جداً (XS))
+        if let sku = sku {
+            let patterns = [
+                ("-4XL", "4XL"), ("-3XL", "3XL"), ("-2XL", "2XL"), ("-XXL", "2XL"),
+                ("-XL", "XL"), ("-XS", "XS"), ("-S", "S"), ("-M", "M"), ("-L", "L"),
+                ("_4XL", "4XL"), ("_3XL", "3XL"), ("_2XL", "2XL"), ("_XXL", "2XL"),
+                ("_XL", "XL"), ("_XS", "XS"), ("_S", "S"), ("_M", "M"), ("_L", "L")
+            ]
+            for (suffix, code) in patterns {
+                if sku.uppercased().hasSuffix(suffix) {
+                    return PetAccessory.formatStandardSize(code)
+                }
+            }
+            if let lastDash = sku.lastIndex(of: "-") {
+                let suffix = String(sku[sku.index(after: lastDash)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !suffix.isEmpty && suffix.count <= 6 {
+                    return PetAccessory.formatStandardSize(suffix)
+                }
+            }
+        }
+
+        // 9. If default variant, label as "الافتراضي"
+        if isDefaultVariant {
+            return Language.get("POS_DefaultVariant", alter: "الافتراضي")
+        }
+
+        // 10. Fallback to SKU or ID
+        if let s = sku?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+            return s
+        }
+        return accessoryID
+    }
+
+    /// Detects the collective variant dimension across all members in a family.
+    static func detectFamilyDimension(members: [PetAccessory]) -> PPAccessoryVariantDimensionType {
+        guard !members.isEmpty else { return .color }
+
+        // 1. Check if any member has an explicit variantAxis
+        for m in members {
+            if let axis = m.variantAxis?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !axis.isEmpty {
+                switch axis {
+                case "size", "sizes", "المقاس", "الحجم": return .size
+                case "weight", "weights", "الوزن": return .weight
+                case "flavor", "flavors", "flavour", "flavours", "النكهة", "الطعم": return .flavor
+                case "material", "materials", "المادة", "الخامة": return .material
+                case "color", "colors", "اللون": return .color
+                case "options", "multiple": return .multiple
+                default: break
+                }
+            }
+        }
+
+        // 2. Collect dimensions of all members
+        let dimensions = members.map { $0.pos_variantDimension }
+        let uniqueDimensions = Set(dimensions)
+
+        if uniqueDimensions.count > 1 && !uniqueDimensions.contains(.color) {
+            return .multiple
+        }
+
+        if uniqueDimensions.contains(.size) {
+            return .size
+        }
+        if uniqueDimensions.contains(.weight) {
+            return .weight
+        }
+        if uniqueDimensions.contains(.flavor) {
+            return .flavor
+        }
+        if uniqueDimensions.contains(.material) {
+            return .material
+        }
+
+        // Check if any member has genuine color
+        if members.contains(where: { $0.pos_hasRealColor }) {
+            return .color
+        }
+
+        // If no real color and any dimension is custom, return custom
+        if uniqueDimensions.contains(.custom) {
+            return .custom
+        }
+
+        return .color
+    }
+}
+
 

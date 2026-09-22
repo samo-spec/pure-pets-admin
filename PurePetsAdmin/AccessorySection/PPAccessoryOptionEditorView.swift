@@ -86,11 +86,13 @@ struct PPAccessoryOptionEditorView: View {
                     model.addOption(newOption)
                     activeSheet = nil
                 }
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
             case .addCustomValue(let option):
                 PPAccessoryCustomValueSheet(option: option) { newValue in
                     model.addOptionValue(newValue, toOptionWithId: option.id)
                     activeSheet = nil
                 }
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
             case .colorLibrary(let optionId):
                 PPAccessoryVariantColorEditorSheet(
                     initialColor: nil,
@@ -101,6 +103,7 @@ struct PPAccessoryOptionEditorView: View {
                     model.addOptionValue(value, toOptionWithId: optionId)
                     activeSheet = nil
                 }
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
             case .editOption:
                 EmptyView()
             }
@@ -1241,20 +1244,46 @@ fileprivate struct PPOptionChipsFlow: Layout {
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX
-        var y = bounds.minY
-        var rowHeight: CGFloat = 0
+        let isRTL = Language.isRTL()
+        let width = bounds.width
+
+        var rows: [[(subview: LayoutSubview, size: CGSize)]] = []
+        var currentRow: [(subview: LayoutSubview, size: CGSize)] = []
+        var currentRowWidth: CGFloat = 0
 
         for subview in subviews {
             let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > bounds.maxX && x > bounds.minX {
-                x = bounds.minX
-                y += rowHeight + spacing
-                rowHeight = 0
+            if currentRowWidth + size.width > width && !currentRow.isEmpty {
+                rows.append(currentRow)
+                currentRow = [(subview, size)]
+                currentRowWidth = size.width + spacing
+            } else {
+                currentRow.append((subview, size))
+                currentRowWidth += size.width + spacing
             }
-            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
+        }
+        if !currentRow.isEmpty {
+            rows.append(currentRow)
+        }
+
+        var y = bounds.minY
+        for row in rows {
+            let rowHeight = row.map(\.size.height).max() ?? 0
+            if isRTL {
+                var x = bounds.maxX
+                for item in row {
+                    let itemX = x - item.size.width
+                    item.subview.place(at: CGPoint(x: itemX, y: y), proposal: ProposedViewSize(item.size))
+                    x -= (item.size.width + spacing)
+                }
+            } else {
+                var x = bounds.minX
+                for item in row {
+                    item.subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(item.size))
+                    x += item.size.width + spacing
+                }
+            }
+            y += rowHeight + spacing
         }
     }
 }
@@ -1295,12 +1324,12 @@ struct PPAccessoryCustomOptionSheet: View {
             nameEn: "Size",
             tint: .indigo,
             curatedSeeds: [
-                PPOptionSeed(id: "xs", canonicalValue: "XS", nameAr: "صغير جداً", nameEn: "XS", hex: nil, unit: nil),
-                PPOptionSeed(id: "s", canonicalValue: "S", nameAr: "صغير", nameEn: "Small", hex: nil, unit: nil),
-                PPOptionSeed(id: "m", canonicalValue: "M", nameAr: "وسط", nameEn: "Medium", hex: nil, unit: nil),
-                PPOptionSeed(id: "l", canonicalValue: "L", nameAr: "كبير", nameEn: "Large", hex: nil, unit: nil),
-                PPOptionSeed(id: "xl", canonicalValue: "XL", nameAr: "كبير جداً", nameEn: "XL", hex: nil, unit: nil),
-                PPOptionSeed(id: "2xl", canonicalValue: "2XL", nameAr: "2XL", nameEn: "2XL", hex: nil, unit: nil),
+                PPOptionSeed(id: "xs", canonicalValue: "XS", nameAr: "XS • صغير جداً", nameEn: "XS • Extra Small", hex: nil, unit: nil),
+                PPOptionSeed(id: "s", canonicalValue: "S", nameAr: "S • صغير", nameEn: "S • Small", hex: nil, unit: nil),
+                PPOptionSeed(id: "m", canonicalValue: "M", nameAr: "M • وسط", nameEn: "M • Medium", hex: nil, unit: nil),
+                PPOptionSeed(id: "l", canonicalValue: "L", nameAr: "L • كبير", nameEn: "L • Large", hex: nil, unit: nil),
+                PPOptionSeed(id: "xl", canonicalValue: "XL", nameAr: "XL • كبير جداً", nameEn: "XL • Extra Large", hex: nil, unit: nil),
+                PPOptionSeed(id: "2xl", canonicalValue: "2XL", nameAr: "2XL • كبير جداً", nameEn: "2XL • 2X Large", hex: nil, unit: nil),
             ]
         ),
         PresetCategory(
@@ -1476,11 +1505,11 @@ struct PPAccessoryCustomOptionSheet: View {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
                             Text(Language.get("Options_Studio_DimensionArchetype", alter: Language.isRTL() ? "نوع البعد • OPTION TYPE" : "OPTION TYPE • نوع البعد"))
-                                .font(AdminType.caption2Bold)
+                                .font(PPBrandFont.bold(size: 12, relativeTo: .caption2))
                                 .foregroundStyle(AdminSurface.secondaryText)
                             Spacer()
                             Text("\(categories.count) " + (Language.isRTL() ? "أنواع" : "types"))
-                                .font(AdminType.caption2)
+                                .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
                                 .foregroundStyle(AdminSurface.secondaryText.opacity(0.7))
                         }
                         .padding(.horizontal, 4)
@@ -1506,12 +1535,12 @@ struct PPAccessoryCustomOptionSheet: View {
 
                                             VStack(spacing: 2) {
                                                 Text(Language.isRTL() ? cat.nameAr : cat.nameEn)
-                                                    .font(AdminType.captionBold)
+                                                    .font(PPBrandFont.bold(size: 12.5, relativeTo: .caption))
                                                     .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminSurface.secondaryText)
                                                     .lineLimit(1)
 
                                                 Text(Language.isRTL() ? cat.nameEn : cat.nameAr)
-                                                    .font(.system(size: 9, weight: .medium))
+                                                    .font(PPBrandFont.medium(size: 10, relativeTo: .caption2))
                                                     .foregroundStyle(AdminSurface.secondaryText.opacity(0.7))
                                                     .lineLimit(1)
                                             }
@@ -1550,7 +1579,7 @@ struct PPAccessoryCustomOptionSheet: View {
                                 Text(isValid
                                      ? Language.get("Options_Studio_StatusReady", alter: "جاهز للإضافة")
                                      : Language.get("Options_Studio_StatusAwaiting", alter: "بانتظار الاسم"))
-                                    .font(AdminType.caption2Bold)
+                                    .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
                                     .foregroundStyle(isValid ? AdminSurface.emerald : AdminSurface.amber)
                             }
                             .padding(.horizontal, 8)
@@ -1563,7 +1592,7 @@ struct PPAccessoryCustomOptionSheet: View {
                                 Image(systemName: activeCategory.icon)
                                     .font(.system(size: 10, weight: .bold))
                                 Text(Language.get("Options_Studio_CatalogAxis", alter: "بُعد كتالوج • AXIS"))
-                                    .font(AdminType.caption2.monospaced())
+                                    .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
                             }
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
@@ -1574,7 +1603,7 @@ struct PPAccessoryCustomOptionSheet: View {
                                 Image(systemName: autoDeriveKey ? "lock.fill" : "lock.open.fill")
                                     .font(.system(size: 9))
                                 Text(resolvedKey)
-                                    .font(AdminType.caption2Bold.monospaced())
+                                    .font(PPBrandFont.bold(size: 11, relativeTo: .caption2).monospaced())
                             }
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
@@ -1603,11 +1632,11 @@ struct PPAccessoryCustomOptionSheet: View {
 
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(nameAr.isEmpty ? (Language.isRTL() ? "اسم الخيار بالعربية" : "Option Name (Arabic)") : nameAr)
-                                    .font(AdminType.title3.weight(.bold))
+                                    .font(PPBrandFont.bold(size: 20, relativeTo: .title3))
                                     .foregroundStyle(nameAr.isEmpty ? AdminSurface.secondaryText.opacity(0.6) : AdminSurface.primaryText)
 
                                 Text(nameEn.isEmpty ? "Option Name (English)" : nameEn)
-                                    .font(AdminType.subheadline)
+                                    .font(PPBrandFont.medium(size: 14, relativeTo: .subheadline))
                                     .foregroundStyle(nameEn.isEmpty ? AdminSurface.secondaryText.opacity(0.5) : AdminSurface.secondaryText)
                             }
 
@@ -1618,7 +1647,7 @@ struct PPAccessoryCustomOptionSheet: View {
                                     Image(systemName: "sparkle")
                                         .font(.system(size: 9))
                                     Text(String(format: Language.get("Options_Studio_ValuesPreppedCount", alter: "%d قيم مجهزة"), selectedSeeds.count))
-                                        .font(AdminType.caption2Bold)
+                                        .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
                                 }
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
@@ -1634,11 +1663,11 @@ struct PPAccessoryCustomOptionSheet: View {
                                     .font(.system(size: 11, weight: .bold))
                                     .foregroundStyle(activeCategory.tint)
                                 Text(Language.get("Options_Studio_StorefrontSimulation", alter: "معاينة ظهور الخيارات في تطبيق المتجر"))
-                                    .font(AdminType.caption2Bold)
+                                    .font(PPBrandFont.bold(size: 11.5, relativeTo: .caption2))
                                     .foregroundStyle(AdminSurface.secondaryText)
                                 Spacer()
                                 Text("\(selectedSeeds.count)")
-                                    .font(AdminType.caption2Bold.monospaced())
+                                    .font(PPBrandFont.bold(size: 11, relativeTo: .caption2).monospaced())
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
                                     .background(activeCategory.tint.opacity(0.15), in: Capsule())
@@ -1651,7 +1680,7 @@ struct PPAccessoryCustomOptionSheet: View {
                                         .font(.system(size: 11))
                                         .foregroundStyle(AdminSurface.secondaryText.opacity(0.7))
                                     Text(Language.get("Options_Studio_StorefrontSimulationEmpty", alter: "لا توجد قيم أولية (يمكن إضافتها لاحقاً)"))
-                                        .font(AdminType.caption2)
+                                        .font(PPBrandFont.regular(size: 11, relativeTo: .caption2))
                                         .foregroundStyle(AdminSurface.secondaryText.opacity(0.8))
                                 }
                                 .frame(maxWidth: .infinity, alignment: .center)
@@ -1673,7 +1702,7 @@ struct PPAccessoryCustomOptionSheet: View {
                                                         .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 0.75))
                                                 }
                                                 Text(Language.isRTL() ? seed.nameAr : seed.nameEn)
-                                                    .font(AdminType.captionBold)
+                                                    .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
                                                     .foregroundStyle(AdminSurface.primaryText)
                                             }
                                             .padding(.horizontal, 10)
@@ -1713,7 +1742,7 @@ struct PPAccessoryCustomOptionSheet: View {
                     // MARK: 3. Connected Spatial Bilingual Input Deck
                     VStack(alignment: .leading, spacing: 10) {
                         Text(Language.get("Options_Studio_IdentitySection", alter: Language.isRTL() ? "بيانات الهوية اللغوية • BILINGUAL IDENTITY" : "BILINGUAL IDENTITY • بيانات الهوية اللغوية"))
-                            .font(AdminType.caption2Bold)
+                            .font(PPBrandFont.bold(size: 12, relativeTo: .caption2))
                             .foregroundStyle(AdminSurface.secondaryText)
                             .padding(.horizontal, 4)
 
@@ -1724,7 +1753,7 @@ struct PPAccessoryCustomOptionSheet: View {
                                     HStack(spacing: 4) {
                                         Circle().fill(AdminSurface.emerald).frame(width: 6, height: 6)
                                         Text("AR • العربية")
-                                            .font(.system(size: 10, weight: .bold))
+                                            .font(PPBrandFont.bold(size: 10.5, relativeTo: .caption2))
                                             .foregroundStyle(AdminSurface.emerald)
                                     }
                                     .padding(.horizontal, 6)
@@ -1732,7 +1761,7 @@ struct PPAccessoryCustomOptionSheet: View {
                                     .background(AdminSurface.emerald.opacity(0.12), in: Capsule())
 
                                     Text(Language.get("Variant_NameAr", alter: "الاسم بالعربية"))
-                                        .font(AdminType.caption2Bold)
+                                        .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
                                         .foregroundStyle(AdminSurface.secondaryText)
 
                                     Spacer()
@@ -1749,8 +1778,8 @@ struct PPAccessoryCustomOptionSheet: View {
                                 }
 
                                 TextField(Language.isRTL() ? "مثال: المقاس، النكهة، المادة..." : "e.g. Size, Flavor, Material...", text: $nameAr)
-                                    .font(AdminType.headline)
-                                    .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                                    .font(PPBrandFont.bold(size: 16, relativeTo: .headline))
+                                    .multilineTextAlignment(.leading)
                                     .onChange(of: nameAr) { newVal in
                                         if autoDeriveKey && !newVal.isEmpty {
                                             if let tr = PPOptionTranslationDictionary.translate(text: newVal, isArabicInput: true) {
@@ -1777,7 +1806,7 @@ struct PPAccessoryCustomOptionSheet: View {
                                             .rotationEffect(.degrees(translationPulse ? 360 : 0))
 
                                         Text(smartTranslateButtonLabel)
-                                            .font(AdminType.caption2Bold)
+                                            .font(PPBrandFont.bold(size: 11.5, relativeTo: .caption2))
                                     }
                                     .padding(.horizontal, 14)
                                     .padding(.vertical, 6)
@@ -1806,7 +1835,7 @@ struct PPAccessoryCustomOptionSheet: View {
                                     HStack(spacing: 4) {
                                         Circle().fill(AdminSurface.primary).frame(width: 6, height: 6)
                                         Text("EN • English")
-                                            .font(.system(size: 10, weight: .bold))
+                                            .font(PPBrandFont.bold(size: 10.5, relativeTo: .caption2))
                                             .foregroundStyle(AdminSurface.primary)
                                     }
                                     .padding(.horizontal, 6)
@@ -1814,7 +1843,7 @@ struct PPAccessoryCustomOptionSheet: View {
                                     .background(AdminSurface.primary.opacity(0.12), in: Capsule())
 
                                     Text(Language.get("Variant_NameEn", alter: "الاسم بالإنجليزية"))
-                                        .font(AdminType.caption2Bold)
+                                        .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
                                         .foregroundStyle(AdminSurface.secondaryText)
 
                                     Spacer()
@@ -1831,7 +1860,8 @@ struct PPAccessoryCustomOptionSheet: View {
                                 }
 
                                 TextField("e.g. Size, Flavor, Material...", text: $nameEn)
-                                    .font(AdminType.headline)
+                                    .font(PPBrandFont.bold(size: 16, relativeTo: .headline))
+                                    .environment(\.layoutDirection, .leftToRight)
                                     .multilineTextAlignment(.leading)
                                     .onChange(of: nameEn) { newVal in
                                         if autoDeriveKey && !newVal.isEmpty {
@@ -1856,7 +1886,7 @@ struct PPAccessoryCustomOptionSheet: View {
                                 .foregroundStyle(AdminSurface.secondaryText)
 
                             Text(Language.get("Options_Key_Identifier", alter: "المعرف الأساسي"))
-                                .font(AdminType.captionBold)
+                                .font(PPBrandFont.bold(size: 13, relativeTo: .caption))
                                 .foregroundStyle(AdminSurface.primaryText)
 
                             Spacer()
@@ -1876,7 +1906,7 @@ struct PPAccessoryCustomOptionSheet: View {
                                     Text(autoDeriveKey
                                          ? (Language.isRTL() ? "توليد تلقائي" : "Auto Derived")
                                          : (Language.isRTL() ? "تعديل يدوي" : "Manual Edit"))
-                                        .font(AdminType.caption2Bold)
+                                        .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
                                 }
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 4)
@@ -1888,14 +1918,15 @@ struct PPAccessoryCustomOptionSheet: View {
 
                         HStack {
                             Text("key:")
-                                .font(AdminType.caption2.monospaced())
+                                .font(PPBrandFont.bold(size: 12, relativeTo: .caption2).monospaced())
                                 .foregroundStyle(AdminSurface.secondaryText)
 
                             TextField("e.g. size, flavor, pack_size", text: $key)
-                                .font(AdminType.calloutBold.monospaced())
+                                .font(PPBrandFont.bold(size: 14, relativeTo: .callout).monospaced())
                                 .disabled(autoDeriveKey)
                                 .autocorrectionDisabled()
                                 .textInputAutocapitalization(.never)
+                                .environment(\.layoutDirection, .leftToRight)
                                 .foregroundStyle(autoDeriveKey ? AdminSurface.secondaryText : AdminSurface.primaryText)
                         }
                         .padding(12)
@@ -1906,7 +1937,7 @@ struct PPAccessoryCustomOptionSheet: View {
                         )
 
                         Text(Language.get("Options_Studio_KeyExplanation", alter: "المعرف البرمجي الموحد المستخدم في قاعدة البيانات والربط البرمجي"))
-                            .font(.system(size: 10))
+                            .font(PPBrandFont.regular(size: 11, relativeTo: .caption2))
                             .foregroundStyle(AdminSurface.secondaryText.opacity(0.8))
                             .padding(.horizontal, 2)
                     }
@@ -1926,12 +1957,12 @@ struct PPAccessoryCustomOptionSheet: View {
                                         .font(.system(size: 12))
                                         .foregroundStyle(activeCategory.tint)
                                     Text(Language.get("Options_Studio_SeedValuesSection", alter: "القيم الأولية المقترحة • SEED VALUES"))
-                                        .font(AdminType.caption2Bold)
+                                        .font(PPBrandFont.bold(size: 12, relativeTo: .caption2))
                                         .foregroundStyle(AdminSurface.secondaryText)
                                 }
 
                                 Text(Language.get("Options_Studio_SeedValuesDesc", alter: "حدد القيم لتجهيز الخيار بها فوراً، أو أضف قيماً مخصصة"))
-                                    .font(.system(size: 11))
+                                    .font(PPBrandFont.regular(size: 11.5, relativeTo: .caption))
                                     .foregroundStyle(AdminSurface.secondaryText.opacity(0.8))
                             }
 
@@ -1943,7 +1974,7 @@ struct PPAccessoryCustomOptionSheet: View {
                                         selectAllSeeds()
                                     } label: {
                                         Text(Language.get("Options_Studio_SelectAll", alter: "تحديد الكل"))
-                                            .font(AdminType.caption2Bold)
+                                            .font(PPBrandFont.bold(size: 11.5, relativeTo: .caption2))
                                             .foregroundStyle(activeCategory.tint)
                                     }
                                     .buttonStyle(.plain)
@@ -1955,7 +1986,7 @@ struct PPAccessoryCustomOptionSheet: View {
                                         clearAllSeeds()
                                     } label: {
                                         Text(Language.get("Options_Studio_ClearAll", alter: "إلغاء"))
-                                            .font(AdminType.caption2)
+                                            .font(PPBrandFont.medium(size: 11.5, relativeTo: .caption2))
                                             .foregroundStyle(AdminSurface.secondaryText)
                                     }
                                     .buttonStyle(.plain)
@@ -1980,7 +2011,7 @@ struct PPAccessoryCustomOptionSheet: View {
                                                     .overlay(Circle().stroke(Color.white, lineWidth: 1))
                                             }
                                             Text(Language.isRTL() ? seed.nameAr : seed.nameEn)
-                                                .font(AdminType.captionBold)
+                                                .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
 
                                             if isSelected {
                                                 Image(systemName: "checkmark")
@@ -2008,14 +2039,15 @@ struct PPAccessoryCustomOptionSheet: View {
                         // Inline Custom Tag Add Row
                         HStack(spacing: 8) {
                             TextField(Language.get("Options_Studio_AddCustomTag", alter: "إضافة قيمة مخصصة..."), text: $customValueInput)
-                                .font(AdminType.callout)
+                                .font(PPBrandFont.medium(size: 14, relativeTo: .callout))
+                                .multilineTextAlignment(.leading)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 9)
                                 .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                                         .strokeBorder(AdminSurface.hairline, lineWidth: 1)
-                                )
+                                    )
                                 .onSubmit {
                                     addCustomSeed()
                                 }
@@ -2027,7 +2059,7 @@ struct PPAccessoryCustomOptionSheet: View {
                                     Image(systemName: "plus")
                                         .font(.system(size: 11, weight: .bold))
                                     Text(Language.get("Options_Studio_AddTagButton", alter: "إضافة"))
-                                        .font(AdminType.captionBold)
+                                        .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
                                 }
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 9)
@@ -2059,15 +2091,19 @@ struct PPAccessoryCustomOptionSheet: View {
                 .padding(20)
             }
             .background(AdminSurface.background.ignoresSafeArea())
-            .navigationTitle(Language.get("Options_Studio_CustomOptionTitle", alter: "استوديو إنشاء خيار جديد"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(Language.get("Cancel", alter: "إلغاء")) {
                         dismiss()
                     }
-                    .font(AdminType.callout)
+                    .font(PPBrandFont.medium(size: 15, relativeTo: .callout))
                     .foregroundStyle(AdminSurface.secondaryText)
+                }
+                ToolbarItem(placement: .principal) {
+                    Text(Language.get("Options_Studio_CustomOptionTitle", alter: "استوديو إنشاء خيار جديد"))
+                        .font(PPBrandFont.bold(size: 17, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primaryText)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
@@ -2075,10 +2111,10 @@ struct PPAccessoryCustomOptionSheet: View {
                     } label: {
                         HStack(spacing: 4) {
                             Text(Language.get("Add", alter: "إضافة"))
-                                .font(AdminType.calloutBold)
+                                .font(PPBrandFont.bold(size: 15, relativeTo: .callout))
                             if !selectedSeeds.isEmpty {
                                 Text("(\(selectedSeeds.count))")
-                                    .font(AdminType.caption2Bold)
+                                    .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
                             }
                         }
                         .foregroundStyle(isValid ? activeCategory.tint : AdminSurface.secondaryText.opacity(0.4))
@@ -2099,7 +2135,7 @@ struct PPAccessoryCustomOptionSheet: View {
                                 .font(.system(size: 16, weight: .bold))
 
                             Text(submitButtonTitle)
-                                .font(AdminType.headline)
+                                .font(PPBrandFont.bold(size: 16, relativeTo: .headline))
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
@@ -2139,6 +2175,7 @@ struct PPAccessoryCustomOptionSheet: View {
                 }
             }
         }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
     // MARK: - Actions & Mutations
@@ -2415,15 +2452,15 @@ struct PPAccessoryCustomValueSheet: View {
 
         if option?.isSizeOption == true {
             let sizes = [
-                ("xxs", "XXS", "صغير جداً جداً", "XXS"),
-                ("xs", "XS", "صغير جداً", "XS"),
-                ("s", "S", "صغير", "Small"),
-                ("m", "M", "متوسط", "Medium"),
-                ("l", "L", "كبير", "Large"),
-                ("xl", "XL", "كبير جداً", "XL"),
-                ("2xl", "2XL", "2XL", "2XL"),
-                ("3xl", "3XL", "3XL", "3XL"),
-                ("4xl", "4XL", "4XL", "4XL"),
+                ("xxs", "XXS", "XXS • صغير جداً جداً", "XXS • Double Extra Small"),
+                ("xs", "XS", "XS • صغير جداً", "XS • Extra Small"),
+                ("s", "S", "S • صغير", "S • Small"),
+                ("m", "M", "M • وسط", "M • Medium"),
+                ("l", "L", "L • كبير", "L • Large"),
+                ("xl", "XL", "XL • كبير جداً", "XL • Extra Large"),
+                ("2xl", "2XL", "2XL • كبير جداً", "2XL • 2X Large"),
+                ("3xl", "3XL", "3XL • كبير جداً", "3XL • 3X Large"),
+                ("4xl", "4XL", "4XL • كبير جداً", "4XL • 4X Large"),
                 ("one_size", "One Size", "مقاس موحد", "One Size"),
             ]
             for s in sizes { pool.append((s.0, s.1, s.2, s.3, nil, nil)) }
@@ -2530,7 +2567,7 @@ struct PPAccessoryCustomValueSheet: View {
                     Button(Language.get("Cancel", alter: "إلغاء")) {
                         dismiss()
                     }
-                    .font(AdminType.callout)
+                    .font(PPBrandFont.medium(size: 15, relativeTo: .callout))
                     .foregroundStyle(AdminSurface.secondaryText)
                 }
                 ToolbarItem(placement: .principal) {
@@ -2539,7 +2576,7 @@ struct PPAccessoryCustomValueSheet: View {
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(optionTint)
                         Text(String(format: Language.get("Options_Studio_AddValueTo", alter: "إضافة إلى %@"), optionTitle))
-                            .font(AdminType.headline)
+                            .font(PPBrandFont.bold(size: 17, relativeTo: .headline))
                             .foregroundStyle(AdminSurface.primaryText)
                     }
                 }
@@ -2548,7 +2585,7 @@ struct PPAccessoryCustomValueSheet: View {
                         submit()
                     } label: {
                         Text(Language.get("Add", alter: "إضافة"))
-                            .font(AdminType.calloutBold)
+                            .font(PPBrandFont.bold(size: 15, relativeTo: .callout))
                             .foregroundStyle(isValid && !isDuplicate ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.4))
                     }
                     .disabled(!isValid || isDuplicate)
@@ -2950,7 +2987,7 @@ struct PPAccessoryCustomValueSheet: View {
     private var bilingualIdentityInputs: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(Language.isRTL() ? "بيانات القيمة • VALUE IDENTITY" : "VALUE IDENTITY • بيانات القيمة")
-                .font(AdminType.caption2Bold)
+                .font(PPBrandFont.bold(size: 12, relativeTo: .caption2))
                 .foregroundStyle(AdminSurface.secondaryText)
                 .padding(.horizontal, 4)
 
@@ -2961,14 +2998,14 @@ struct PPAccessoryCustomValueSheet: View {
                         .font(.system(size: 11))
                         .foregroundStyle(AdminSurface.emerald)
                     Text(Language.get("Variant_NameAr", alter: "الاسم بالعربية"))
-                        .font(AdminType.captionBold)
+                        .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
                         .foregroundStyle(AdminSurface.primaryText)
                 }
 
                 HStack {
                     TextField("مثال: كبير، ٥٠٠ جم، دجاج...", text: $nameAr)
-                        .font(AdminType.calloutBold)
-                        .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                        .font(PPBrandFont.bold(size: 15, relativeTo: .callout))
+                        .multilineTextAlignment(.leading)
                         .onChange(of: nameAr) { newVal in
                             if autoDeriveCanonical && !newVal.isEmpty {
                                 if let tr = PPOptionTranslationDictionary.translate(text: newVal, isArabicInput: true) {
@@ -3006,7 +3043,7 @@ struct PPAccessoryCustomValueSheet: View {
                         Image(systemName: "sparkles")
                             .font(.system(size: 11, weight: .bold))
                         Text(Language.get("Options_Studio_SmartTranslate", alter: "ترجمة بيوري الذكية"))
-                            .font(AdminType.captionBold)
+                            .font(PPBrandFont.bold(size: 11.5, relativeTo: .caption))
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
@@ -3023,13 +3060,14 @@ struct PPAccessoryCustomValueSheet: View {
                         .font(.system(size: 11))
                         .foregroundStyle(AdminSurface.primary)
                     Text(Language.get("Variant_NameEn", alter: "الاسم بالإنجليزية"))
-                        .font(AdminType.captionBold)
+                        .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
                         .foregroundStyle(AdminSurface.primaryText)
                 }
 
                 HStack {
                     TextField("e.g. Large, 500g, Chicken...", text: $nameEn)
-                        .font(AdminType.calloutBold)
+                        .font(PPBrandFont.bold(size: 15, relativeTo: .callout))
+                        .environment(\.layoutDirection, .leftToRight)
                         .multilineTextAlignment(.leading)
                         .onChange(of: nameEn) { newVal in
                             if autoDeriveCanonical && !newVal.isEmpty {

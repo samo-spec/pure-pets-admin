@@ -243,17 +243,6 @@ extension PetAccessory {
         return PPBranchInventoryService.shared.effectiveSellingPrice(for: accessoryID, fallbackPrice: base)
     }
 
-    /// Resolved variant color model from `variantColorDictionary`.
-    var pos_variantColor: PPAccessoryVariantColor? {
-        guard let dict = variantColorDictionary else { return nil }
-        return PPAccessoryVariantColor(dictionary: dict)
-    }
-
-    /// Color display name in the active language.
-    var pos_variantColorName: String {
-        pos_variantColor?.localizedName ?? ""
-    }
-
     /// Matches query against name, nameEn, accessoryID, sku, barcode, and variant color attributes (with Arabic normalization).
     func pos_matchesSearch(_ rawQuery: String) -> Bool {
         let q = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -344,17 +333,32 @@ enum POSCatalogDisplayItem: Identifiable {
         }
     }
 
-    /// Unique color palette of the family members that have color attributes.
+    /// Unique color palette of the family members that have genuine color attributes.
     var variantColors: [PPAccessoryVariantColor] {
         var seen = Set<String>()
         var list: [PPAccessoryVariantColor] = []
-        for m in members {
+        for m in members where m.pos_hasRealColor {
             if let color = m.pos_variantColor, !seen.contains(color.identifier) {
                 seen.insert(color.identifier)
                 list.append(color)
             }
         }
         return list
+    }
+
+    /// Detected variant dimension for this item or family.
+    var dimension: PPAccessoryVariantDimensionType {
+        switch self {
+        case .single(let item):
+            return item.pos_variantDimension
+        case .family(_, let members, _):
+            return PetAccessory.detectFamilyDimension(members: members)
+        }
+    }
+
+    /// SF Symbol icon name appropriate for this item's dimension.
+    var dimensionIconName: String {
+        dimension.sfSymbolName
     }
 }
 
@@ -1171,6 +1175,18 @@ final class POSVariantPickerState: ObservableObject {
     @Published var primaryAccessory: PetAccessory?
 
     var isPresented: Bool { familyId != nil && !members.isEmpty }
+
+    var dimension: PPAccessoryVariantDimensionType {
+        PetAccessory.detectFamilyDimension(members: members)
+    }
+
+    var navigationTitle: String {
+        dimension.selectionTitle
+    }
+
+    var dimensionCountLabel: String {
+        dimension.countOptionsLabel
+    }
 
     func open(familyId: String, members: [PetAccessory], primary: PetAccessory?) {
         self.familyId = familyId
@@ -5105,8 +5121,10 @@ private struct POSCustomCashSheet: View {
                                                 .font(AdminType.calloutBold)
                                                 .foregroundColor(AdminSurface.primaryText)
 
-                                            if let color = accessory.pos_variantColor {
+                                            if accessory.pos_hasRealColor, let color = accessory.pos_variantColor {
                                                 searchResultColorBadge(for: color)
+                                            } else if accessory.belongsToVariantFamily || accessory.isVariant {
+                                                searchResultDimensionBadge(for: accessory)
                                             }
                                         }
                                         let branchStock = accessory.pos_branchStock()
@@ -5123,7 +5141,9 @@ private struct POSCustomCashSheet: View {
                                 }
                                 .padding(.horizontal, AdminSpacing.base)
                                 .frame(minHeight: AdminTouchTarget.minimum)
+                                .contentShape(Rectangle())
                             }
+                            .buttonStyle(PlainButtonStyle())
                             .disabled(!accessory.pos_isSellable)
 
                             if accessory.accessoryID != viewModel.searchResults.last?.accessoryID {
@@ -5132,11 +5152,11 @@ private struct POSCustomCashSheet: View {
                             }
                         }
                     }
-                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.vertical, AdminSpacing.sm)
                 }
             }
             .background(AdminSurface.background)
-            .navigationTitle(Language.get("POS_Add_Item", alter: "إضافة منتج"))
+            .navigationTitle(Language.get("POS_QuickSearch", alter: "البحث السريع"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -5158,6 +5178,27 @@ private struct POSCustomCashSheet: View {
                     Circle().stroke(color.requiresContrastBorder ? Color.gray.opacity(0.3) : Color.white.opacity(0.3), lineWidth: 0.75)
                 )
             Text(color.localizedName)
+                .font(AdminType.caption2Bold)
+                .foregroundColor(AdminSurface.secondaryText)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(AdminSurface.fieldBackground, in: Capsule())
+    }
+
+    @ViewBuilder
+    private func searchResultDimensionBadge(for accessory: PetAccessory) -> some View {
+        HStack(spacing: 3) {
+            if !accessory.pos_variantShortBadge.isEmpty {
+                Text(accessory.pos_variantShortBadge)
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .foregroundColor(AdminSurface.primary)
+            } else {
+                Image(systemName: accessory.pos_variantDimension.sfSymbolName)
+                    .font(.system(size: 9))
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+            Text(accessory.pos_variantDisplayName)
                 .font(AdminType.caption2Bold)
                 .foregroundColor(AdminSurface.secondaryText)
         }
@@ -5242,7 +5283,7 @@ private struct POSVariantPickerSheet: View {
                                 .lineLimit(2)
 
                             HStack(spacing: 8) {
-                                Text("\(variantPicker.members.count) " + Language.get("POS_VariantsCount", alter: "خيارات ألوان"))
+                                Text("\(variantPicker.members.count) " + variantPicker.dimensionCountLabel)
                                     .font(AdminType.caption)
                                     .foregroundColor(AdminSurface.secondaryText)
 
@@ -5296,7 +5337,7 @@ private struct POSVariantPickerSheet: View {
                 }
             }
             .background(AdminSurface.background)
-            .navigationTitle(Language.get("POS_SelectColorVariant", alter: "اختر اللون"))
+            .navigationTitle(variantPicker.navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -5352,8 +5393,8 @@ private struct POSVariantRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Color Swatch
-            if let color = member.pos_variantColor {
+            // Swatch or Dimension Badge
+            if member.pos_hasRealColor, let color = member.pos_variantColor {
                 ZStack {
                     Circle()
                         .fill(Color(uiColor: color.uiColor))
@@ -5380,20 +5421,46 @@ private struct POSVariantRow: View {
                     }
                 }
             } else {
-                Circle()
-                    .fill(AdminSurface.fieldBackground)
-                    .frame(width: 36, height: 36)
-                    .overlay(
-                        Image(systemName: "paintpalette")
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(AdminSurface.fieldBackground)
+                        .frame(width: 36, height: 36)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(AdminSurface.hairline, lineWidth: 1)
+                        )
+
+                    if !member.pos_variantShortBadge.isEmpty {
+                        Text(member.pos_variantShortBadge)
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundColor(AdminSurface.primary)
+                    } else {
+                        Image(systemName: member.pos_variantDimension.sfSymbolName)
                             .font(.system(size: 14))
                             .foregroundColor(AdminSurface.secondaryText)
-                    )
+                    }
+
+                    if member.isDefaultVariant {
+                        VStack {
+                            Spacer()
+                            HStack {
+                                Spacer()
+                                Image(systemName: "star.fill")
+                                    .font(.system(size: 7))
+                                    .foregroundColor(.yellow)
+                                    .padding(2)
+                                    .background(Color.black.opacity(0.7), in: Circle())
+                            }
+                        }
+                        .frame(width: 38, height: 38)
+                    }
+                }
             }
 
             // Info
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(member.pos_variantColorName.isEmpty ? member.name : member.pos_variantColorName)
+                    Text(member.pos_variantDisplayName)
                         .font(AdminType.calloutBold)
                         .foregroundColor(AdminSurface.primaryText)
 
@@ -6393,24 +6460,39 @@ private struct POSCatalogTile: View {
                         VStack {
                             HStack {
                                 if item.isFamily {
-                                    HStack(spacing: 3) {
-                                        ForEach(item.variantColors.prefix(3), id: \.identifier) { color in
-                                            Circle()
-                                                .fill(Color(uiColor: color.uiColor))
-                                                .frame(width: 7, height: 7)
-                                                .overlay(
-                                                    Circle().stroke(Color.white.opacity(0.8), lineWidth: 0.75)
-                                                )
+                                    if item.dimension == .color && !item.variantColors.isEmpty {
+                                        HStack(spacing: 3) {
+                                            ForEach(item.variantColors.prefix(3), id: \.identifier) { color in
+                                                Circle()
+                                                    .fill(Color(uiColor: color.uiColor))
+                                                    .frame(width: 7, height: 7)
+                                                    .overlay(
+                                                        Circle().stroke(Color.white.opacity(0.8), lineWidth: 0.75)
+                                                    )
+                                            }
+                                            Text("\(item.members.count)")
+                                                .font(.system(size: 9, weight: .bold))
+                                                .foregroundColor(.white)
                                         }
-                                        Text("\(item.members.count)")
-                                            .font(.system(size: 9, weight: .bold))
-                                            .foregroundColor(.white)
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 2.5)
+                                        .background(Color.black.opacity(0.65), in: Capsule())
+                                        .padding(4)
+                                    } else {
+                                        HStack(spacing: 3.5) {
+                                            Image(systemName: item.dimensionIconName)
+                                                .font(.system(size: 8, weight: .bold))
+                                                .foregroundColor(.white)
+                                            Text("\(item.members.count)")
+                                                .font(.system(size: 9, weight: .bold))
+                                                .foregroundColor(.white)
+                                        }
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2.5)
+                                        .background(Color.black.opacity(0.65), in: Capsule())
+                                        .padding(4)
                                     }
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 2.5)
-                                    .background(Color.black.opacity(0.65), in: Capsule())
-                                    .padding(4)
-                                } else if let color = accessory.pos_variantColor {
+                                } else if accessory.pos_hasRealColor, let color = accessory.pos_variantColor {
                                     Circle()
                                         .fill(Color(uiColor: color.uiColor))
                                         .frame(width: 10, height: 10)
@@ -6418,6 +6500,14 @@ private struct POSCatalogTile: View {
                                             Circle().stroke(color.requiresContrastBorder ? Color.gray.opacity(0.3) : Color.white, lineWidth: 1)
                                         )
                                         .shadow(color: Color.black.opacity(0.2), radius: 2, x: 0, y: 1)
+                                        .padding(4)
+                                } else if !accessory.pos_variantShortBadge.isEmpty {
+                                    Text(accessory.pos_variantShortBadge)
+                                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 2)
+                                        .background(Color.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
                                         .padding(4)
                                 }
                                 Spacer()
@@ -6440,7 +6530,7 @@ private struct POSCatalogTile: View {
                             Spacer(minLength: 0)
 
                             if item.isFamily {
-                                Image(systemName: "paintpalette.fill")
+                                Image(systemName: item.dimensionIconName)
                                     .font(.system(size: 9))
                                     .foregroundColor(AdminSurface.primary)
                             }
@@ -6503,7 +6593,7 @@ private struct POSCatalogTile: View {
             .accessibilityLabel("\(accessory.name), \(priceDisplayString), \(stockText)")
             .accessibilityHint(
                 item.isFamily
-                    ? Language.get("POS_SelectColorVariant", alter: "اختر اللون")
+                    ? item.dimension.selectionTitle
                     : (accessory.pos_isIndividuallyTrackedLivePet
                         ? Language.get("POS_ExactAnimalTitle", alter: "اختيار الحيوانات المحددة")
                         : Language.get("POS_AddToCartHint", alter: "إضافة هذا العنصر إلى السلة"))
@@ -6539,7 +6629,7 @@ private struct CartItemRow: View {
                             .font(AdminType.calloutBold)
                             .foregroundColor(AdminSurface.primaryText)
 
-                        if let color = item.accessory.pos_variantColor {
+                        if item.accessory.pos_hasRealColor, let color = item.accessory.pos_variantColor {
                             HStack(spacing: 3) {
                                 Circle()
                                     .fill(Color(uiColor: color.uiColor))
@@ -6548,6 +6638,24 @@ private struct CartItemRow: View {
                                         Circle().stroke(color.requiresContrastBorder ? Color.gray.opacity(0.3) : Color.white.opacity(0.3), lineWidth: 0.5)
                                     )
                                 Text(color.localizedName)
+                                    .font(AdminType.caption2Bold)
+                                    .foregroundColor(AdminSurface.secondaryText)
+                            }
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1.5)
+                            .background(AdminSurface.fieldBackground, in: Capsule())
+                        } else if item.accessory.belongsToVariantFamily || item.accessory.isVariant {
+                            HStack(spacing: 3) {
+                                if !item.accessory.pos_variantShortBadge.isEmpty {
+                                    Text(item.accessory.pos_variantShortBadge)
+                                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                                        .foregroundColor(AdminSurface.primary)
+                                } else {
+                                    Image(systemName: item.accessory.pos_variantDimension.sfSymbolName)
+                                        .font(.system(size: 8))
+                                        .foregroundColor(AdminSurface.secondaryText)
+                                }
+                                Text(item.accessory.pos_variantDisplayName)
                                     .font(AdminType.caption2Bold)
                                     .foregroundColor(AdminSurface.secondaryText)
                             }
@@ -6726,7 +6834,7 @@ private struct POSCartCardRow: View {
                             .lineLimit(1)
                             .truncationMode(.tail)
 
-                        if let color = item.accessory.pos_variantColor {
+                        if item.accessory.pos_hasRealColor, let color = item.accessory.pos_variantColor {
                             HStack(spacing: 3) {
                                 Circle()
                                     .fill(Color(uiColor: color.uiColor))
@@ -6738,6 +6846,24 @@ private struct POSCartCardRow: View {
                                         )
                                     )
                                 Text(color.localizedName)
+                                    .font(Font.custom("Beiruti-Bold", size: 10))
+                            }
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(AdminSurface.fieldBackground, in: Capsule(style: .continuous))
+                            .foregroundColor(AdminSurface.primaryText)
+                        } else if item.accessory.belongsToVariantFamily || item.accessory.isVariant {
+                            HStack(spacing: 3) {
+                                if !item.accessory.pos_variantShortBadge.isEmpty {
+                                    Text(item.accessory.pos_variantShortBadge)
+                                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                                        .foregroundColor(AdminSurface.primary)
+                                } else {
+                                    Image(systemName: item.accessory.pos_variantDimension.sfSymbolName)
+                                        .font(.system(size: 8))
+                                        .foregroundColor(AdminSurface.secondaryText)
+                                }
+                                Text(item.accessory.pos_variantDisplayName)
                                     .font(Font.custom("Beiruti-Bold", size: 10))
                             }
                             .padding(.horizontal, 5)
@@ -8969,31 +9095,48 @@ struct POSPriceReconciliationSheet: View {
                             .foregroundColor(AdminSurface.secondaryText)
                     }
 
-                    if let colour = cartItem?.accessory.variantColorDictionary
-                        .flatMap({ PPAccessoryVariantColor(dictionary: $0) }) {
-                        // Colour identity on the cart row. Swatch plus text, so a
-                        // line is never identified by a coloured dot alone.
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(Color(uiColor: colour.uiColor))
-                                .frame(width: 10, height: 10)
-                                .overlay(
-                                    Circle().strokeBorder(
-                                        colour.requiresContrastBorder
-                                            ? AdminSurface.primaryText.opacity(0.35)
-                                            : Color.clear,
-                                        lineWidth: 0.8
+                    if let accessory = cartItem?.accessory {
+                        if accessory.pos_hasRealColor, let colour = accessory.pos_variantColor {
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(Color(uiColor: colour.uiColor))
+                                    .frame(width: 10, height: 10)
+                                    .overlay(
+                                        Circle().strokeBorder(
+                                            colour.requiresContrastBorder
+                                                ? AdminSurface.primaryText.opacity(0.35)
+                                                : Color.clear,
+                                            lineWidth: 0.8
+                                        )
                                     )
-                                )
-                            Text(colour.localizedName)
-                                .font(.system(size: 10, weight: .semibold))
+                                Text(colour.localizedName)
+                                    .font(.system(size: 10, weight: .semibold))
+                            }
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(AdminSurface.control, in: Capsule(style: .continuous))
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(colour.accessibilityName)
+                        } else if accessory.belongsToVariantFamily || accessory.isVariant {
+                            HStack(spacing: 4) {
+                                if !accessory.pos_variantShortBadge.isEmpty {
+                                    Text(accessory.pos_variantShortBadge)
+                                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                                        .foregroundColor(AdminSurface.primary)
+                                } else {
+                                    Image(systemName: accessory.pos_variantDimension.sfSymbolName)
+                                        .font(.system(size: 8))
+                                        .foregroundColor(AdminSurface.secondaryText)
+                                }
+                                Text(accessory.pos_variantDisplayName)
+                                    .font(.system(size: 10, weight: .semibold))
+                            }
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(AdminSurface.control, in: Capsule(style: .continuous))
+                            .foregroundColor(AdminSurface.secondaryText)
                         }
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 2)
-                        .background(AdminSurface.control, in: Capsule(style: .continuous))
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(colour.accessibilityName)
                     }
 
                     if let code = cartItem?.accessory.barcode ?? cartItem?.accessory.sku, !code.isEmpty {

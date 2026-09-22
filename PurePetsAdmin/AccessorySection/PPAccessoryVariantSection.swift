@@ -70,8 +70,16 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var isSaving = false
     @Published private(set) var validationMessages: [String] = []
-    @Published private(set) var failure: PPAccessoryVariantFailureState?
-    @Published private(set) var confirmation: String?
+    @Published var failure: PPAccessoryVariantFailureState? {
+        didSet {
+            if failure != nil { confirmation = nil }
+        }
+    }
+    @Published var confirmation: String? {
+        didSet {
+            if confirmation != nil { failure = nil }
+        }
+    }
 
     // MARK: Per-colour media
     //
@@ -552,6 +560,12 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         quantity: Int = 0,
         images: [UIImage] = []
     ) async -> Bool {
+        if let current = draft, current.familyId.isEmpty {
+            await save()
+            guard failure == nil, let saved = draft, !saved.familyId.isEmpty else {
+                return false
+            }
+        }
         guard let current = draft,
               !current.isLegacySingleVariant,
               !current.familyId.isEmpty else {
@@ -656,8 +670,12 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
                 ?? "variant-family-attach-\(current.familyId)-\(UUID().uuidString)"
             pendingVariantAttachCommandId = attachCommandId
             _ = try await PPAccessoryVariantService.shared.saveFamily(latest, commandId: attachCommandId)
-            let reloaded = try await PPAccessoryVariantService.shared.loadFamily(familyId: current.familyId)
-            apply(loaded: reloaded)
+            do {
+                let reloaded = try await PPAccessoryVariantService.shared.loadFamily(familyId: current.familyId)
+                apply(loaded: reloaded)
+            } catch {
+                apply(loaded: latest)
+            }
             selectedProductId = refreshedProduct.accessoryID
             clearPendingVariantCreation()
             confirmation = Language.get("Variant_Add_Confirmed", alter: "تمت إضافة اللون وحفظه.")
@@ -680,6 +698,12 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         quantity: Int = 0,
         images: [UIImage] = []
     ) async -> Bool {
+        if let current = draft, current.familyId.isEmpty {
+            await save()
+            guard failure == nil, let saved = draft, !saved.familyId.isEmpty else {
+                return false
+            }
+        }
         guard let current = draft, !current.familyId.isEmpty else {
             failure = PPAccessoryVariantFailureState(
                 message: Language.get("Variant_Add_SaveFamilyFirst", alter: "احفظ المنتج الحالي أولاً."),
@@ -771,8 +795,12 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
 
             let attachCommandId = "variant-comb-attach-\(current.familyId)-\(UUID().uuidString)"
             _ = try await PPAccessoryVariantService.shared.saveFamily(latest, commandId: attachCommandId)
-            let reloaded = try await PPAccessoryVariantService.shared.loadFamily(familyId: current.familyId)
-            apply(loaded: reloaded)
+            do {
+                let reloaded = try await PPAccessoryVariantService.shared.loadFamily(familyId: current.familyId)
+                apply(loaded: reloaded)
+            } catch {
+                apply(loaded: latest)
+            }
             selectedProductId = product.accessoryID
             confirmation = Language.get("Variant_Add_Confirmed", alter: "تم إنشاء المتغير وحفظه.")
             return true
@@ -1010,11 +1038,24 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
                 : (draft.hasGenericOptions
                     ? Language.get("Options_Save_Confirmed", alter: "تم حفظ خيارات ومتغيرات المنتج.")
                     : Language.get("Variant_Save_Confirmed", alter: "تم حفظ الألوان."))
+            failure = nil
+
             // Reload from the server so the editor shows the confirmed state,
             // including the family id minted by a create.
-            let reloaded = try await PPAccessoryVariantService.shared.loadFamily(familyId: result.familyId)
-            apply(loaded: reloaded)
+            do {
+                let reloaded = try await PPAccessoryVariantService.shared.loadFamily(familyId: result.familyId)
+                apply(loaded: reloaded)
+            } catch {
+                // If read-back experienced a transient Firestore replica lag,
+                // do not show an error banner when the write actually succeeded!
+                draft.familyId = result.familyId
+                draft.revision = max(draft.revision + 1, result.revision)
+                draft.isLegacySingleVariant = false
+                baseline = draft.copyForEditing()
+                self.draft = draft
+            }
         } catch {
+            confirmation = nil
             let state = PPAccessoryVariantFailureState(error: error)
             // Only a same-command retry may reuse the key. Any other outcome
             // must not reuse it: the server may already have bound it.
@@ -1027,16 +1068,19 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
     /// Reload used by the `reloadAndCompare` recovery. The draft is deliberately
     /// preserved so the operator can see what they had before deciding.
     func reloadFromServer() async {
-        guard let familyId = baseline?.familyId, !familyId.isEmpty else { return }
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            let reloaded = try await PPAccessoryVariantService.shared.loadFamily(familyId: familyId)
-            baseline = reloaded
-            failure = nil
-            revalidate()
-        } catch {
-            failure = PPAccessoryVariantFailureState(error: error)
+        if let familyId = baseline?.familyId, !familyId.isEmpty {
+            isLoading = true
+            defer { isLoading = false }
+            do {
+                let reloaded = try await PPAccessoryVariantService.shared.loadFamily(familyId: familyId)
+                baseline = reloaded
+                failure = nil
+                revalidate()
+            } catch {
+                failure = PPAccessoryVariantFailureState(error: error)
+            }
+        } else if let root = rootAccessory {
+            await load(for: root)
         }
     }
 }
@@ -1234,6 +1278,141 @@ fileprivate struct PPVariantTabPressButtonStyle: ButtonStyle {
     }
 }
 
+// MARK: - Category-Defining Presentation Mode Switch (Studio vs. Matrix)
+
+struct PPVariantPresentationModeSwitch: View {
+    @Binding var presentationMode: PPAccessoryVariantSection.VariantPresentationMode
+    let draft: PPAccessoryVariantFamily
+    let selectedVariant: PPAccessoryVariant?
+    @Namespace private var modeNamespace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(spacing: 7) {
+            HStack(spacing: 0) {
+                ForEach(PPAccessoryVariantSection.VariantPresentationMode.allCases) { mode in
+                    let isSelected = (presentationMode == mode)
+                    Button {
+                        guard presentationMode != mode else { return }
+                        UISelectionFeedbackGenerator().selectionChanged()
+                        if reduceMotion {
+                            presentationMode = mode
+                        } else {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.80)) {
+                                presentationMode = mode
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: modeIcon(for: mode))
+                                .font(.system(size: 12.5, weight: .semibold))
+                                .foregroundStyle(isSelected ? AdminSurface.primary : AdminCommandInk.secondary)
+
+                            Text(mode.localizedTitle)
+                                .font(isSelected ? PPBrandFont.bold(size: 13.5) : PPBrandFont.medium(size: 13))
+                                .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
+
+                            // Dynamic context micro-badge
+                            switch mode {
+                            case .atelier:
+                                if let variant = selectedVariant {
+                                    HStack(spacing: 4) {
+                                        Circle()
+                                            .fill(Color(uiColor: variant.color.uiColor))
+                                            .frame(width: 9, height: 9)
+                                            .overlay(
+                                                Circle()
+                                                    .strokeBorder(
+                                                        variant.color.requiresContrastBorder ? Color.black.opacity(0.2) : Color.white.opacity(0.8),
+                                                        lineWidth: 0.8
+                                                    )
+                                            )
+                                        Text(variant.color.localizedName)
+                                            .font(PPBrandFont.bold(size: 10))
+                                            .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminCommandInk.secondary)
+                                            .lineLimit(1)
+                                    }
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2.5)
+                                    .background(
+                                        Capsule()
+                                            .fill(isSelected ? AdminSurface.primary.opacity(0.10) : AdminSurface.surface)
+                                    )
+                                }
+                            case .matrix:
+                                Text("\(draft.variants.count)")
+                                    .font(PPBrandFont.bold(size: 10))
+                                    .foregroundStyle(isSelected ? AdminSurface.primary : AdminCommandInk.secondary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2.5)
+                                    .background(
+                                        Capsule()
+                                            .fill(isSelected ? AdminSurface.primary.opacity(0.10) : AdminSurface.surface)
+                                    )
+                            }
+                        }
+                        .padding(.horizontal, 8)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 40)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PPVariantTabPressButtonStyle())
+                    .background {
+                        if isSelected {
+                            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                .fill(AdminSurface.surface)
+                                .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 2)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                        .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+                                )
+                                .matchedGeometryEffect(id: "PRESENTATION_MODE_THUMB", in: modeNamespace)
+                        }
+                    }
+                    .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
+                    .accessibilityLabel(mode.localizedTitle)
+                }
+            }
+            .padding(4)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(AdminSurface.control)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.5)
+            )
+
+            // Dynamic Informative Micro-Caption
+            HStack(spacing: 5) {
+                Image(systemName: presentationMode == .atelier ? "sparkles" : "tablecells.badge.ellipsis")
+                    .font(.system(size: 9.5, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+
+                Text(presentationMode == .atelier
+                    ? Language.get("Variant_Mode_Atelier_Hint", alter: "تعديل تفصيلي للصور والباركود ومخزون المتغير المحدد")
+                    : Language.get("Variant_Mode_Matrix_Hint", alter: "جدول شبكي موحد للتسعير الجماعي وتتبع كافة المتغيرات"))
+                    .font(PPBrandFont.medium(size: 11))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 4)
+            .animation(.easeInOut(duration: 0.20), value: presentationMode)
+        }
+    }
+
+    private func modeIcon(for mode: PPAccessoryVariantSection.VariantPresentationMode) -> String {
+        switch mode {
+        case .atelier:
+            return "paintpalette.fill"
+        case .matrix:
+            return "tablecells.fill"
+        }
+    }
+}
+
 // MARK: - Section view
 
 struct PPAccessoryVariantSection: View {
@@ -1307,7 +1486,7 @@ struct PPAccessoryVariantSection: View {
                     if draft.hasGenericOptions || presentationMode == .matrix {
                         VStack(alignment: .leading, spacing: 12) {
                             if !draft.hasGenericOptions {
-                                modePicker
+                                modePicker(for: draft)
                             }
                             PPAccessoryVariantMatrixView(
                                 model: model,
@@ -1316,7 +1495,7 @@ struct PPAccessoryVariantSection: View {
                         }
                     } else {
                         VStack(alignment: .leading, spacing: 12) {
-                            modePicker
+                            modePicker(for: draft)
                             if horizontalSizeClass == .regular && !dynamicTypeSize.isAccessibilitySize {
                                 HStack(alignment: .top, spacing: 16) {
                                     iPadVariantRail(for: draft)
@@ -1448,17 +1627,12 @@ struct PPAccessoryVariantSection: View {
         }
     }
 
-    private var modePicker: some View {
-        HStack {
-            Spacer()
-            Picker("", selection: $presentationMode) {
-                ForEach(VariantPresentationMode.allCases) { mode in
-                    Text(mode.localizedTitle).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 200)
-        }
+    private func modePicker(for draft: PPAccessoryVariantFamily) -> some View {
+        PPVariantPresentationModeSwitch(
+            presentationMode: $presentationMode,
+            draft: draft,
+            selectedVariant: model.selectedVariant
+        )
         .padding(.vertical, 2)
     }
 

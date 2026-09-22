@@ -74,6 +74,7 @@ import Foundation
     /// listed here is unknown to this client version and is treated as fatal.
     public enum Code {
         public static let unknownFields = "VARIANT_FAMILY_UNKNOWN_FIELDS"
+        public static let optionsUnknownFields = "VARIANT_OPTIONS_UNKNOWN_FIELDS"
         public static let contractVersion = "VARIANT_FAMILY_CONTRACT_VERSION_UNSUPPORTED"
         public static let commandConflict = "VARIANT_FAMILY_COMMAND_CONFLICT"
         public static let staleFamilyRevision = "STALE_FAMILY_REVISION"
@@ -273,7 +274,7 @@ import Foundation
                 ),
                 .treatAsApplied
             )
-        case Code.unknownFields, Code.contractVersion:
+        case Code.unknownFields, Code.optionsUnknownFields, Code.contractVersion:
             // The client sent something this server rejects outright. This is a
             // version mismatch, never something the operator can fix, and it
             // must fail loudly instead of retrying with fields removed.

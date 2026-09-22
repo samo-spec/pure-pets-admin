@@ -441,10 +441,17 @@ struct PPAccessoryVariantMatrixView: View {
     // MARK: - Combination Row
 
     private func matrixCombinationRow(combination: PPAccessoryMatrixCombination) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            // Combination attributes / chips
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 10) {
+            // Header: Title & Default on Leading, Price & Stock on Trailing
+            HStack(alignment: .center, spacing: 8) {
                 HStack(spacing: 6) {
+                    if let color = combination.colorValue, let uiColor = color.uiColor {
+                        Circle()
+                            .fill(Color(uiColor: uiColor))
+                            .frame(width: 10, height: 10)
+                            .overlay(Circle().strokeBorder(color.requiresContrastBorder ? AdminSurface.primaryText.opacity(0.25) : Color.clear, lineWidth: 0.5))
+                    }
+
                     Text(combination.localizedTitle)
                         .font(AdminType.calloutBold)
                         .foregroundStyle(AdminSurface.primaryText)
@@ -464,168 +471,74 @@ struct PPAccessoryVariantMatrixView: View {
                     }
                 }
 
-                // Subtitle: SKU / Barcode or Unconfigured Hint
+                Spacer(minLength: 8)
+
+                // Price & Stock Display
                 if let variant = combination.existingVariant {
-                    HStack(spacing: 8) {
-                        if !variant.sku.isEmpty {
-                            Button {
-                                copyToClipboard(variant.sku, hint: Language.get("SKU_Copied", alter: "تم نسخ SKU"))
-                            } label: {
-                                HStack(spacing: 3) {
-                                    Text("SKU: \(variant.sku)")
-                                        .font(AdminType.caption2)
-                                    Image(systemName: "doc.on.doc")
-                                        .font(.system(size: 8))
-                                }
-                                .foregroundStyle(AdminCommandInk.secondary)
-                            }
-                            .buttonStyle(.plain)
+                    HStack(spacing: 6) {
+                        if let retail = variant.retailPrice {
+                            Text(PetAccessory.formatCurrency(retail))
+                                .font(AdminType.calloutBold)
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .lineLimit(1)
+                                .environment(\.layoutDirection, .leftToRight)
                         }
 
-                        if !variant.barcode.isEmpty {
-                            Button {
-                                copyToClipboard(variant.barcode, hint: Language.get("Barcode_Copied", alter: "تم نسخ الباركود"))
-                            } label: {
-                                HStack(spacing: 3) {
-                                    Image(systemName: "barcode")
-                                        .font(.system(size: 8))
-                                    Text(variant.barcode)
-                                        .font(AdminType.caption2)
-                                }
-                                .foregroundStyle(AdminCommandInk.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-
-                        if variant.sku.isEmpty && variant.barcode.isEmpty {
-                            Text(Language.get("Variant_No_Identifiers", alter: "بدون باركود أو SKU"))
-                                .font(AdminType.caption2)
-                                .foregroundStyle(AdminSurface.amber)
-                        }
+                        statusBadge(for: combination)
                     }
                 } else {
+                    statusBadge(for: combination)
+                }
+            }
+
+            // Identifiers & Actions Row
+            if let variant = combination.existingVariant {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .center, spacing: 8) {
+                        matrixIdentifiersStrip(variant: variant)
+                        Spacer(minLength: 6)
+                        matrixActionsToolbar(combination: combination, variant: variant)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        matrixIdentifiersStrip(variant: variant)
+                        HStack {
+                            Spacer()
+                            matrixActionsToolbar(combination: combination, variant: variant)
+                        }
+                    }
+                }
+            } else {
+                HStack(alignment: .center, spacing: 8) {
                     Text(Language.get("Variant_Not_Created_Yet", alter: "لم يتم إنشاء الصنف بعد في المخزون."))
                         .font(AdminType.caption2)
                         .foregroundStyle(AdminCommandInk.tertiary)
-                }
-            }
+                        .lineLimit(1)
 
-            Spacer(minLength: 8)
+                    Spacer(minLength: 8)
 
-            // Price & Stock Display
-            if let variant = combination.existingVariant {
-                VStack(alignment: .trailing, spacing: 3) {
-                    if let retail = variant.retailPrice {
-                        Text(PetAccessory.formatCurrency(retail))
-                            .font(AdminType.calloutBold)
-                            .foregroundStyle(AdminSurface.primaryText)
-                    }
-
-                    statusBadge(for: combination)
-                }
-            } else {
-                statusBadge(for: combination)
-            }
-
-            // Action Buttons
-            if let variant = combination.existingVariant {
-                HStack(spacing: 6) {
-                    // Quick Active / Inactive Toggle
                     if model.canManageVariants {
                         Button {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            model.toggleArchive(forProductId: variant.productId)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            activeSheet = .createCombination(combination: combination)
                         } label: {
-                            Image(systemName: variant.isArchived ? "eye.slash.fill" : "eye.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(variant.isArchived ? AdminCommandInk.tertiary : AdminSurface.primary)
-                                .frame(width: 34, height: 34)
-                                .background(AdminSurface.control, in: Circle())
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 12, weight: .bold))
+                                Text(Language.get("Variant_Create_Combination", alter: "إنشاء"))
+                                    .font(AdminType.caption1Bold)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(AdminSurface.primary, in: Capsule())
+                            .foregroundStyle(Color.white)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(variant.isArchived
-                            ? Language.get("Variant_Activate", alter: "تفعيل المتغير")
-                            : Language.get("Variant_Deactivate", alter: "تعطيل المتغير")
-                        )
-
-                        // Set Default Variant Action
-                        if !variant.isDefault && !variant.isArchived {
-                            Button {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                model.setDefault(productId: variant.productId)
-                            } label: {
-                                Image(systemName: "star")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(AdminCommandInk.secondary)
-                                    .frame(width: 34, height: 34)
-                                    .background(AdminSurface.control, in: Circle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(Language.get("Variant_Set_Default", alter: "تعيين كافتراضي"))
-                        }
+                        .accessibilityLabel(String(
+                            format: Language.get("Variant_Create_Combination_A11y", alter: "إنشاء متغير جديد للتوليفة %@"),
+                            combination.localizedTitle
+                        ))
                     }
-
-                    // Edit in Studio Button
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        activeSheet = .editVariant(variant: variant)
-                    } label: {
-                        Image(systemName: "slider.horizontal.2.square")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(AdminSurface.primary)
-                            .frame(width: 34, height: 34)
-                            .background(AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(String(
-                        format: Language.get("Variant_Edit_A11y", alter: "تعديل متغير %@"),
-                        combination.localizedTitle
-                    ))
-
-                    // Lots & Inventory Studio Button
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        Task {
-                            if let accessory = try? await model.loadAccessory(forProductId: variant.productId) {
-                                activeSheet = .manageLots(variant: variant, accessory: accessory)
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "shippingbox.fill")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(AdminSurface.primary)
-                            .frame(width: 34, height: 34)
-                            .background(AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(String(
-                        format: Language.get("Variant_Lots_A11y", alter: "تشغيلات ومخزون متغير %@"),
-                        combination.localizedTitle
-                    ))
-                }
-            } else {
-                // Create Combination Button
-                if model.canManageVariants {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        activeSheet = .createCombination(combination: combination)
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 12, weight: .bold))
-                            Text(Language.get("Variant_Create_Combination", alter: "إنشاء"))
-                                .font(AdminType.caption1Bold)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(AdminSurface.primary, in: Capsule())
-                        .foregroundStyle(Color.white)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(String(
-                        format: Language.get("Variant_Create_Combination_A11y", alter: "إنشاء متغير جديد للتوليفة %@"),
-                        combination.localizedTitle
-                    ))
                 }
             }
         }
@@ -641,6 +554,162 @@ struct PPAccessoryVariantMatrixView: View {
                     lineWidth: 1
                 )
         )
+    }
+
+    @ViewBuilder
+    private func matrixIdentifiersStrip(variant: PPAccessoryVariant) -> some View {
+        HStack(spacing: 6) {
+            if !variant.sku.isEmpty {
+                Button {
+                    copyToClipboard(variant.sku, hint: Language.get("SKU_Copied", alter: "تم نسخ SKU"))
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("SKU")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(AdminCommandInk.tertiary)
+                        Text(variant.sku)
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .lineLimit(1)
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 8))
+                            .foregroundStyle(AdminCommandInk.tertiary)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4.5)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .strokeBorder(AdminSurface.hairline, lineWidth: 0.6)
+                    )
+                }
+                .buttonStyle(.plain)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .environment(\.layoutDirection, .leftToRight)
+            }
+
+            if !variant.barcode.isEmpty {
+                Button {
+                    copyToClipboard(variant.barcode, hint: Language.get("Barcode_Copied", alter: "تم نسخ الباركود"))
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "barcode")
+                            .font(.system(size: 10))
+                            .foregroundStyle(AdminCommandInk.tertiary)
+                        Text(variant.barcode)
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .lineLimit(1)
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 8))
+                            .foregroundStyle(AdminCommandInk.tertiary)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4.5)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .strokeBorder(AdminSurface.hairline, lineWidth: 0.6)
+                    )
+                }
+                .buttonStyle(.plain)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .environment(\.layoutDirection, .leftToRight)
+            }
+
+            if variant.sku.isEmpty && variant.barcode.isEmpty {
+                Text(Language.get("Variant_No_Identifiers", alter: "بدون باركود أو SKU"))
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminSurface.amber)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3.5)
+                    .background(AdminSurface.amber.opacity(0.12), in: Capsule())
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func matrixActionsToolbar(combination: PPAccessoryMatrixCombination, variant: PPAccessoryVariant) -> some View {
+        HStack(spacing: 5) {
+            // Quick Active / Inactive Toggle
+            if model.canManageVariants {
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    model.toggleArchive(forProductId: variant.productId)
+                } label: {
+                    Image(systemName: variant.isArchived ? "eye.slash.fill" : "eye.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(variant.isArchived ? AdminCommandInk.tertiary : AdminSurface.primary)
+                        .frame(width: 32, height: 32)
+                        .background(AdminSurface.surface, in: Circle())
+                        .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.6))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(variant.isArchived
+                    ? Language.get("Variant_Activate", alter: "تفعيل المتغير")
+                    : Language.get("Variant_Deactivate", alter: "تعطيل المتغير")
+                )
+
+                // Set Default Variant Action
+                if !variant.isDefault && !variant.isArchived {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        model.setDefault(productId: variant.productId)
+                    } label: {
+                        Image(systemName: "star")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(AdminCommandInk.secondary)
+                            .frame(width: 32, height: 32)
+                            .background(AdminSurface.surface, in: Circle())
+                            .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.6))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Language.get("Variant_Set_Default", alter: "تعيين كافتراضي"))
+                }
+            }
+
+            // Edit in Studio Button
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                activeSheet = .editVariant(variant: variant)
+            } label: {
+                Image(systemName: "slider.horizontal.2.square")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primary)
+                    .frame(width: 32, height: 32)
+                    .background(AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(AdminSurface.primary.opacity(0.2), lineWidth: 0.6))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(
+                format: Language.get("Variant_Edit_A11y", alter: "تعديل متغير %@"),
+                combination.localizedTitle
+            ))
+
+            // Lots & Inventory Studio Button
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                Task {
+                    if let accessory = try? await model.loadAccessory(forProductId: variant.productId) {
+                        activeSheet = .manageLots(variant: variant, accessory: accessory)
+                    }
+                }
+            } label: {
+                Image(systemName: "shippingbox.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primary)
+                    .frame(width: 32, height: 32)
+                    .background(AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(AdminSurface.primary.opacity(0.2), lineWidth: 0.6))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(
+                format: Language.get("Variant_Lots_A11y", alter: "تشغيلات ومخزون متغير %@"),
+                combination.localizedTitle
+            ))
+        }
     }
 
     @ViewBuilder
@@ -737,7 +806,7 @@ struct PPAccessoryVariantMatrixView: View {
     }
 }
 
-// MARK: - Bulk Pricing Sheet
+// MARK: - Category-Defining Bulk Pricing Command Studio
 
 struct PPAccessoryBulkPricingSheet: View {
     let group: PPAccessoryMatrixGroup?
@@ -745,80 +814,797 @@ struct PPAccessoryBulkPricingSheet: View {
     let onApply: (Double, Double?, [String]) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var retailPriceText = ""
-    @State private var wholesalePriceText = ""
-    @State private var isSubmitting = false
+    @Environment(\.layoutDirection) private var layoutDirection
+
+    @State private var retailPriceText: String = ""
+    @State private var wholesalePriceText: String = ""
+    @State private var isSubmitting: Bool = false
 
     private var targetVariants: [PPAccessoryVariant] {
         if let group {
-            return group.combinations.compactMap(\.existingVariant)
+            let found = group.combinations.compactMap(\.existingVariant)
+            if !found.isEmpty {
+                return found
+            }
         }
         return allVariants
     }
 
+    private var retailPrice: Double {
+        Double(retailPriceText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+    }
+
+    private var wholesalePrice: Double? {
+        let trimmed = wholesalePriceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return Double(trimmed)
+    }
+
+    private var isPriceValid: Bool {
+        retailPrice > 0
+    }
+
+    private var totalStockImpacted: Int {
+        targetVariants.reduce(0) { $0 + max(0, $1.quantity) }
+    }
+
+    private var currentAvgRetailPrice: Double {
+        let priced = targetVariants.compactMap { $0.retailPrice?.doubleValue }.filter { $0 > 0 }
+        guard !priced.isEmpty else { return 0 }
+        return priced.reduce(0, +) / Double(priced.count)
+    }
+
+    private var currentAvgWholesalePrice: Double {
+        let costed = targetVariants.compactMap { $0.wholesalePrice?.doubleValue }.filter { $0 > 0 }
+        guard !costed.isEmpty else { return 0 }
+        return costed.reduce(0, +) / Double(costed.count)
+    }
+
+    private var isWholesaleExceedingRetail: Bool {
+        guard let wholesale = wholesalePrice, wholesale > retailPrice && retailPrice > 0 else {
+            return false
+        }
+        return true
+    }
+
+    private var unitProfit: Double {
+        guard let wholesale = wholesalePrice else { return 0 }
+        return retailPrice - wholesale
+    }
+
+    private var grossMarginPct: Double {
+        guard retailPrice > 0, let wholesale = wholesalePrice else { return 0 }
+        return ((retailPrice - wholesale) / retailPrice) * 100.0
+    }
+
+    private var costMarkup: Double {
+        guard let wholesale = wholesalePrice, wholesale > 0 else { return 0 }
+        return retailPrice / wholesale
+    }
+
+    private var avgPriceShift: Double {
+        guard retailPrice > 0, currentAvgRetailPrice > 0 else { return 0 }
+        return retailPrice - currentAvgRetailPrice
+    }
+
     var body: some View {
         NavigationStack {
-            Form {
-                Section(header: Text(Language.get("Variant_BulkPricing_Scope", alter: "نطاق التطبيق"))) {
-                    HStack {
-                        Text(Language.get("Variant_BulkPricing_Target", alter: "المتغيرات المستهدفة"))
-                        Spacer()
-                        Text(group?.localizedTitle ?? Language.get("Variant_BulkPricing_All", alter: "كافة المتغيرات"))
-                            .foregroundStyle(AdminCommandInk.secondary)
-                    }
+            ZStack(alignment: .bottom) {
+                // Background
+                AdminSurface.background
+                    .ignoresSafeArea()
 
-                    HStack {
-                        Text(Language.get("Variant_BulkPricing_Count", alter: "عدد الأصناف"))
+                // Main Scrollable Atelier Canvas
+                ScrollView {
+                    VStack(spacing: 18) {
+                        // 1. Hero Scope & Command Identity Surface
+                        scopeIdentitySurface
+
+                        // 2. Target Variants Horizon Carousel
+                        targetVariantsHorizonSurface
+
+                        // 3. Sculpted Commercial Pricing Engine
+                        commercialPricingEngineSurface
+
+                        // 4. Valuation Shift Projection Card
+                        batchValuationProjectionSurface
+
+                        // Clearance for pinned bottom dock
                         Spacer()
-                        Text("\(targetVariants.count)")
-                            .font(AdminType.calloutBold)
-                            .foregroundStyle(AdminSurface.primary)
+                            .frame(height: 110)
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
                 }
 
-                Section(header: Text(Language.get("Variant_BulkPricing_Values", alter: "الأسعار الجديدة"))) {
-                    HStack {
-                        Text(Language.get("Price_Retail", alter: "سعر البيع"))
-                        Spacer()
-                        TextField("0.00", text: $retailPriceText)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
-                        Text(Language.get("QAR", alter: "ر.ق"))
-                            .foregroundStyle(AdminCommandInk.secondary)
-                    }
-
-                    HStack {
-                        Text(Language.get("Price_Wholesale", alter: "سعر الجملة (اختياري)"))
-                        Spacer()
-                        TextField("0.00", text: $wholesalePriceText)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
-                        Text(Language.get("QAR", alter: "ر.ق"))
-                            .foregroundStyle(AdminCommandInk.secondary)
-                    }
-                }
+                // 5. Frosted Glass Action Dock
+                studioActionDock
             }
             .navigationTitle(Language.get("Variant_Bulk_Pricing_Title", alter: "تسعير جماعي"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(Language.get("Cancel", alter: "إلغاء")) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         dismiss()
+                    } label: {
+                        Text(Language.get("Cancel", alter: "إلغاء"))
+                            .font(AdminType.callout)
+                            .foregroundStyle(AdminSurface.secondaryText)
                     }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(Language.get("Apply", alter: "تطبيق")) {
-                        guard let retail = Double(retailPriceText), retail > 0 else { return }
-                        let wholesale = Double(wholesalePriceText)
-                        isSubmitting = true
-                        onApply(retail, wholesale, targetVariants.map(\.productId))
-                    }
-                    .disabled(Double(retailPriceText) == nil || (Double(retailPriceText) ?? 0) <= 0 || isSubmitting)
-                }
+            }
+            .onAppear {
+                setupInitialValues()
             }
         }
     }
+
+    // MARK: - 1. Scope & Command Identity Surface
+
+    private var scopeIdentitySurface: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 14) {
+                // Chromatic Halo
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.8)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 48, height: 48)
+                        .shadow(color: AdminSurface.primary.opacity(0.3), radius: 8, x: 0, y: 4)
+
+                    Image(systemName: group != nil ? "slider.horizontal.2.square" : "tag.fill")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(group?.localizedTitle ?? Language.get("Variant_BulkPricing_All", alter: "كافة المتغيرات"))
+                            .font(AdminType.title3Bold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .lineLimit(1)
+
+                        if let hex = group?.colorValue?.hex {
+                            Circle()
+                                .fill(Color(hex: hex))
+                                .frame(width: 14, height: 14)
+                                .overlay(Circle().strokeBorder(Color.white.opacity(0.8), lineWidth: 1.5))
+                                .shadow(color: Color(hex: hex).opacity(0.4), radius: 4, x: 0, y: 2)
+                        }
+                    }
+
+                    Text(Language.get("Variant_Bulk_Subtitle", alter: "تسعير ذكي موحد للمتغيرات مع تحليل فوري للهوامش والأرباح."))
+                        .font(AdminType.captionRegular)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+            }
+
+            Divider()
+                .background(AdminSurface.hairline)
+
+            // Telemetry Badges Row
+            HStack(spacing: 8) {
+                // Target Count Pill
+                HStack(spacing: 5) {
+                    Image(systemName: "square.grid.2x2.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                    Text(String(format: Language.get("Variant_Bulk_Target_Count_Format", alter: "%d صنف مستهدف"), targetVariants.count))
+                        .font(AdminType.captionRegular)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(AdminSurface.control, in: Capsule())
+
+                // Impacted Stock Pill
+                HStack(spacing: 5) {
+                    Image(systemName: "shippingbox.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(AdminSurface.emerald)
+                    Text(String(format: Language.get("Variant_Bulk_Total_Stock_Format", alter: "%d وحدة متأثرة"), totalStockImpacted))
+                        .font(AdminType.captionRegular)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(AdminSurface.control, in: Capsule())
+
+                Spacer()
+
+                // Benchmark average if available
+                if currentAvgRetailPrice > 0 {
+                    HStack(spacing: 4) {
+                        Text(String(format: Language.get("Variant_Bulk_Current_Avg_Format", alter: "متوسط: %.2f %@"), currentAvgRetailPrice, Language.get("QAR", alter: "ر.ق")))
+                            .font(AdminType.captionRegular)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(AdminSurface.control.opacity(0.6), in: Capsule())
+                }
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
+    }
+
+    // MARK: - 2. Target Variants Horizon Carousel
+
+    private var targetVariantsHorizonSurface: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "rectangle.stack.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                    Text(Language.get("Variant_Bulk_Target_List_Header", alter: "الأصناف المشمولة بالتسعير"))
+                        .font(AdminType.headlineBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+
+                Spacer()
+
+                Text("\(targetVariants.count)")
+                    .font(AdminType.captionRegular)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(AdminSurface.control, in: Capsule())
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+
+            if targetVariants.isEmpty {
+                HStack {
+                    Spacer()
+                    Text(Language.get("Variant_Matrix_Empty_Title", alter: "لا توجد أصناف في هذا النطاق"))
+                        .font(AdminType.footnote)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    Spacer()
+                }
+                .padding(20)
+                .background(AdminSurface.control.opacity(0.5), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(targetVariants, id: \.productId) { variant in
+                            variantHorizonCard(variant)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
+    }
+
+    private func variantHorizonCard(_ variant: PPAccessoryVariant) -> some View {
+        let currentPrice = variant.retailPrice?.doubleValue ?? 0
+        let qar = Language.get("QAR", alter: "ر.ق")
+
+        return VStack(alignment: .leading, spacing: 8) {
+            // Swatch & Label
+            HStack(spacing: 6) {
+                let hex = variant.color.hex
+                if !hex.isEmpty {
+                    Circle()
+                        .fill(Color(hex: hex))
+                        .frame(width: 12, height: 12)
+                        .overlay(Circle().strokeBorder(Color.white.opacity(0.7), lineWidth: 1))
+                } else {
+                    Circle()
+                        .fill(AdminSurface.control)
+                        .frame(width: 12, height: 12)
+                }
+
+                Text(variant.color.localizedName)
+                    .font(AdminType.captionRegular)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+
+                Spacer()
+
+                // Stock Badge
+                Text("\(variant.quantity)")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(variant.quantity > 0 ? AdminSurface.control : AdminSurface.amber.opacity(0.15), in: Capsule())
+                    .foregroundStyle(variant.quantity > 0 ? AdminSurface.secondaryText : AdminSurface.amber)
+            }
+
+            // SKU if present
+            if !variant.sku.isEmpty {
+                Text(variant.sku)
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .lineLimit(1)
+            }
+
+            Divider()
+                .background(AdminSurface.hairline)
+
+            // Price Transition Live Display
+            VStack(alignment: .leading, spacing: 3) {
+                // Previous price
+                HStack(spacing: 4) {
+                    Text(currentPrice > 0 ? String(format: "%.0f %@", currentPrice, qar) : Language.get("Price_Unset", alter: "غير محدد"))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .strikethrough(retailPrice > 0 && currentPrice > 0)
+
+                    if retailPrice > 0 {
+                        Image(systemName: layoutDirection == .rightToLeft ? "arrow.backward" : "arrow.forward")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(AdminSurface.primary)
+
+                        Text(String(format: "%.0f %@", retailPrice, qar))
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundStyle(AdminSurface.primary)
+                    }
+                }
+
+                // Delta tag
+                if retailPrice > 0 && currentPrice > 0 {
+                    let delta = retailPrice - currentPrice
+                    if abs(delta) > 0.01 {
+                        Text(String(format: "%@%.0f %@", delta > 0 ? "+" : "", delta, qar))
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(delta >= 0 ? AdminSurface.emerald : AdminSurface.amber)
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .frame(width: 148)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
+    }
+
+    // MARK: - 3. Sculpted Commercial Pricing Engine
+
+    private var commercialPricingEngineSurface: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "tag.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                    Text(Language.get("Variant_BulkPricing_Values", alter: "الأسعار الجديدة"))
+                        .font(AdminType.headlineBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+
+                Spacer()
+
+                if currentAvgRetailPrice > 0 {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        retailPriceText = String(format: "%.2f", currentAvgRetailPrice)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.system(size: 10, weight: .bold))
+                            Text(Language.get("Variant_Studio_Match_Base_Price", alter: "مطابقة متوسط السعر"))
+                                .font(AdminType.captionRegular)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(AdminSurface.control, in: Capsule())
+                        .foregroundStyle(AdminSurface.primary)
+                    }
+                }
+            }
+
+            // Hero Retail Price Input Card
+            VStack(alignment: .leading, spacing: 8) {
+                Text(Language.get("Price_Retail", alter: "سعر البيع"))
+                    .font(AdminType.footnote)
+                    .foregroundStyle(AdminSurface.secondaryText)
+
+                HStack(spacing: 8) {
+                    Text(Language.get("QAR", alter: "ر.ق"))
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.primary)
+
+                    TextField("0.00", text: $retailPriceText)
+                        .keyboardType(.decimalPad)
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .multilineTextAlignment(layoutDirection == .rightToLeft ? .leading : .leading)
+
+                    if !retailPriceText.isEmpty {
+                        Button {
+                            retailPriceText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                        }
+                    }
+                }
+                .padding(12)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
+
+                // Micro-Stepper Touch Buttons Row
+                HStack(spacing: 8) {
+                    ForEach([-5.0, -1.0, 1.0, 5.0], id: \.self) { step in
+                        Button {
+                            applyPriceStep(step)
+                        } label: {
+                            Text(String(format: "%@%.0f", step > 0 ? "+" : "", step))
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
+                                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 0.5))
+                        }
+                    }
+                }
+                .padding(.top, 2)
+
+                // Quick Commercial Percentage Presets
+                HStack(spacing: 6) {
+                    ForEach([5, 10, 15, 20], id: \.self) { pct in
+                        Button {
+                            applyPercentagePreset(Double(pct))
+                        } label: {
+                            Text("+\(pct)%")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundStyle(AdminSurface.primary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(AdminSurface.primary.opacity(0.1), in: Capsule())
+                        }
+                    }
+
+                    Spacer()
+
+                    // .99 Ending Button
+                    Button {
+                        applyPsychologicalEnding(0.99)
+                    } label: {
+                        Text(".99")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(AdminSurface.control, in: Capsule())
+                    }
+
+                    // .00 Ending Button
+                    Button {
+                        applyPsychologicalEnding(0.00)
+                    } label: {
+                        Text(".00")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(AdminSurface.control, in: Capsule())
+                    }
+                }
+                .padding(.top, 4)
+            }
+
+            // Wholesale Price Section (Optional Cost Basis)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(Language.get("Price_Wholesale", alter: "سعر الجملة (اختياري)"))
+                        .font(AdminType.footnote)
+                        .foregroundStyle(AdminSurface.secondaryText)
+
+                    Spacer()
+
+                    if currentAvgWholesalePrice > 0 && wholesalePriceText.isEmpty {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            wholesalePriceText = String(format: "%.2f", currentAvgWholesalePrice)
+                        } label: {
+                            Text(Language.get("Variant_Studio_Match_Base_Price", alter: "مطابقة التكلفة"))
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(AdminSurface.primary)
+                        }
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    Text(Language.get("QAR", alter: "ر.ق"))
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.secondaryText)
+
+                    TextField("0.00", text: $wholesalePriceText)
+                        .keyboardType(.decimalPad)
+                        .font(.system(size: 18, weight: .medium, design: .rounded))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .multilineTextAlignment(layoutDirection == .rightToLeft ? .leading : .leading)
+
+                    if !wholesalePriceText.isEmpty {
+                        Button {
+                            wholesalePriceText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                        }
+                    }
+                }
+                .padding(12)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
+            }
+
+            // Live Profit & Margin Telemetry Deck
+            liveProfitTelemetryDeck
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
+    }
+
+    // MARK: - Live Profit Telemetry Deck
+
+    @ViewBuilder
+    private var liveProfitTelemetryDeck: some View {
+        if let wholesale = wholesalePrice, wholesale > 0 && retailPrice > 0 {
+            if isWholesaleExceedingRetail {
+                // Hazard Warning Pill
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(AdminSurface.amber)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("Variant_Bulk_Wholesale_Warning_Title", alter: "تنبيه: سعر الجملة يتجاوز سعر البيع!"))
+                            .font(AdminType.captionRegular)
+                            .foregroundStyle(AdminSurface.amber)
+                        Text(String(format: Language.get("Variant_Bulk_Wholesale_Loss_Format", alter: "خسارة لكل وحدة: -%.2f %@"), wholesale - retailPrice, Language.get("QAR", alter: "ر.ق")))
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundStyle(AdminSurface.amber)
+                    }
+                    Spacer()
+                }
+                .padding(10)
+                .background(AdminSurface.amber.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(AdminSurface.amber.opacity(0.3), lineWidth: 1))
+            } else {
+                HStack(spacing: 12) {
+                    // Margin Pct
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chart.line.uptrend.xyaxis")
+                                .font(.system(size: 10, weight: .bold))
+                            Text(Language.get("Variant_Bulk_Margin_Percent", alter: "نسبة الهامش"))
+                                .font(AdminType.captionRegular)
+                        }
+                        .foregroundStyle(AdminSurface.secondaryText)
+
+                        Text(String(format: "%.1f%%", grossMarginPct))
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.emerald)
+                    }
+
+                    Spacer()
+
+                    // Unit Profit
+                    VStack(alignment: .center, spacing: 2) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "banknote.fill")
+                                .font(.system(size: 10, weight: .bold))
+                            Text(Language.get("Variant_Bulk_Unit_Profit", alter: "الربح الصافي"))
+                                .font(AdminType.captionRegular)
+                        }
+                        .foregroundStyle(AdminSurface.secondaryText)
+
+                        Text(String(format: "+%.2f %@", unitProfit, Language.get("QAR", alter: "ر.ق")))
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.emerald)
+                    }
+
+                    Spacer()
+
+                    // Markup Multiplier
+                    VStack(alignment: .trailing, spacing: 2) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "multiply.circle.fill")
+                                .font(.system(size: 10, weight: .bold))
+                            Text(Language.get("Variant_Bulk_Cost_Multiplier", alter: "مضاعف التكلفة"))
+                                .font(AdminType.captionRegular)
+                        }
+                        .foregroundStyle(AdminSurface.secondaryText)
+
+                        Text(String(format: "%.2fx", costMarkup))
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primary)
+                    }
+                }
+                .padding(12)
+                .background(AdminSurface.emerald.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(AdminSurface.emerald.opacity(0.2), lineWidth: 1))
+            }
+        } else if retailPrice > 0 {
+            HStack(spacing: 6) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 12))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                Text(Language.get("Variant_Bulk_Cost_Tip", alter: "أدخل سعر الجملة لعرض هامش الربح والتحليلات المالية فورياً."))
+                    .font(AdminType.captionRegular)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                Spacer()
+            }
+            .padding(.horizontal, 4)
+        }
+    }
+
+    // MARK: - 4. Valuation Shift Projection Card
+
+    @ViewBuilder
+    private var batchValuationProjectionSurface: some View {
+        if retailPrice > 0 {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 6) {
+                    Image(systemName: "chart.bar.xaxis")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                    Text(Language.get("Variant_Bulk_Projection_Title", alter: "أثر التسعير على المحفظة"))
+                        .font(AdminType.headlineBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+
+                HStack(spacing: 12) {
+                    // Average Price Shift
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(Language.get("Variant_Bulk_Shift_Title", alter: "التغير في متوسط السعر"))
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundStyle(AdminSurface.secondaryText)
+
+                        let delta = avgPriceShift
+                        Text(String(format: "%@%.2f %@", delta >= 0 ? "+" : "", delta, Language.get("QAR", alter: "ر.ق")))
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(delta >= 0 ? AdminSurface.emerald : AdminSurface.amber)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                    // Total Valuation
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(Language.get("Variant_Bulk_Total_Value_Title", alter: "إجمالي قيمة المخزون"))
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundStyle(AdminSurface.secondaryText)
+
+                        let totalValuation = retailPrice * Double(totalStockImpacted)
+                        Text(String(format: "%.0f %@", totalValuation, Language.get("QAR", alter: "ر.ق")))
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+            }
+            .padding(16)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
+        }
+    }
+
+    // MARK: - 5. Frosted Glass Action Dock
+
+    private var studioActionDock: some View {
+        VStack(spacing: 0) {
+            Divider()
+                .background(AdminSurface.hairline)
+
+            HStack(spacing: 12) {
+                // Secondary Cancel Button
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    dismiss()
+                } label: {
+                    Text(Language.get("Cancel", alter: "إلغاء"))
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .frame(width: 84, height: 52)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
+                }
+
+                // Primary Apply Button
+                Button {
+                    guard isPriceValid && !isSubmitting else { return }
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    isSubmitting = true
+                    onApply(retailPrice, wholesalePrice, targetVariants.map(\.productId))
+                } label: {
+                    HStack(spacing: 8) {
+                        if isSubmitting {
+                            ProgressView()
+                                .tint(.white)
+                            Text(Language.get("Variant_Bulk_Applying", alter: "جاري تطبيق الأسعار..."))
+                                .font(AdminType.calloutBold)
+                        } else {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 16, weight: .bold))
+
+                            let title = targetVariants.count > 1
+                                ? String(format: Language.get("Variant_Bulk_Apply_Action_Format", alter: "تطبيق السعر على %d أصناف"), targetVariants.count)
+                                : Language.get("Variant_Bulk_Apply_Single", alter: "تطبيق السعر على الصنف المستهدف")
+
+                            Text(title)
+                                .font(AdminType.calloutBold)
+                        }
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(
+                        isPriceValid
+                            ? AdminSurface.primary
+                            : AdminSurface.primary.opacity(0.4),
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    )
+                    .shadow(
+                        color: isPriceValid ? AdminSurface.primary.opacity(0.3) : Color.clear,
+                        radius: 8, x: 0, y: 4
+                    )
+                }
+                .disabled(!isPriceValid || isSubmitting)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 24)
+        }
+        .background(.ultraThinMaterial)
+    }
+
+    // MARK: - Business Logic & Helpers
+
+    private func setupInitialValues() {
+        if currentAvgRetailPrice > 0 && retailPriceText.isEmpty {
+            retailPriceText = String(format: "%.2f", currentAvgRetailPrice)
+        }
+        if currentAvgWholesalePrice > 0 && wholesalePriceText.isEmpty {
+            wholesalePriceText = String(format: "%.2f", currentAvgWholesalePrice)
+        }
+    }
+
+    private func applyPriceStep(_ step: Double) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let current = retailPrice > 0 ? retailPrice : (currentAvgRetailPrice > 0 ? currentAvgRetailPrice : 10.0)
+        let newPrice = max(1.0, current + step)
+        retailPriceText = String(format: "%.2f", newPrice)
+    }
+
+    private func applyPercentagePreset(_ percent: Double) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let base = currentAvgRetailPrice > 0 ? currentAvgRetailPrice : (retailPrice > 0 ? retailPrice : 50.0)
+        let newPrice = base * (1.0 + (percent / 100.0))
+        retailPriceText = String(format: "%.2f", newPrice)
+    }
+
+    private func applyPsychologicalEnding(_ ending: Double) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let current = retailPrice > 0 ? retailPrice : (currentAvgRetailPrice > 0 ? currentAvgRetailPrice : 50.0)
+        let whole = floor(current)
+        let newPrice = whole + ending
+        retailPriceText = String(format: "%.2f", newPrice)
+    }
 }
+
 
 // MARK: - Category-Defining Variant Studio Workbench
 

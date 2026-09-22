@@ -100,13 +100,21 @@ import FirebaseFunctions
     }
 
     /// Resolves a family for an accessory, falling back to the legacy
-    /// single-variant presentation when the product has never been grouped.
+    /// single-variant presentation when the product has never been grouped,
+    /// or when a referenced family document is missing/orphaned on the server.
     public func resolveFamily(for accessory: PetAccessory) async throws -> PPAccessoryVariantFamily {
         let familyId = (accessory.productFamilyId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !familyId.isEmpty else {
             return PPAccessoryVariantFamily.legacySingleVariant(from: accessory)
         }
-        return try await loadFamily(familyId: familyId)
+        do {
+            return try await loadFamily(familyId: familyId)
+        } catch PPAccessoryVariantServiceError.familyNotFound,
+                PPAccessoryVariantServiceError.invalidFamilyIdentifier {
+            print("[PPAccessoryVariantService] Family \(familyId) missing for accessory \(accessory.accessoryID ?? ""). Self-healing to legacy single-variant.")
+            accessory.productFamilyId = nil
+            return PPAccessoryVariantFamily.legacySingleVariant(from: accessory)
+        }
     }
 
     /// Chunked `in` fetch. Firestore caps `in` at 30 values per query.

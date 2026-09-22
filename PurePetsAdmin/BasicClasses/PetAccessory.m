@@ -846,6 +846,14 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
                 : nil;
             color ? [color copy] : nil;
         });
+        _selectedOptions = [dict[@"selectedOptions"] isKindOfClass:NSDictionary.class]
+            ? [dict[@"selectedOptions"] copy]
+            : nil;
+        _selectedOptionsSnapshot = [dict[@"selectedOptionsSnapshot"] isKindOfClass:NSArray.class]
+            ? [dict[@"selectedOptionsSnapshot"] copy]
+            : nil;
+        _variantCombinationKey = PPAccessoryStringValueForKeys(dict, (@[@"variantCombinationKey"]));
+        _variantAxis = PPAccessoryStringValueForKeys(dict, (@[@"variantAxis"]));
         
         _accessKindType = ({
             NSInteger rawKind = PPAccessoryInteger(dict[@"accessKindType"]);
@@ -929,6 +937,10 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     copy.isDefaultVariant = source.isDefaultVariant;
     copy.variantSortOrder = source.variantSortOrder;
     copy.variantColorDictionary = [source.variantColorDictionary copy];
+    copy.selectedOptions = [source.selectedOptions copy];
+    copy.selectedOptionsSnapshot = [source.selectedOptionsSnapshot copy];
+    copy.variantCombinationKey = [source.variantCombinationKey copy];
+    copy.variantAxis = [source.variantAxis copy];
     copy.costPrice = [source.costPrice copy];
     if (source.hasResolvedSellingPrice) {
         copy.price = [source.price copy];

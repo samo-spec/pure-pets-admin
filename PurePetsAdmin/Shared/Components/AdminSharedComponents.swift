@@ -232,7 +232,7 @@ struct AdminSearchField: View {
                 .accessibilityLabel(Language.get("Clear", alter: nil))
             }
             if showBarcodeScanner || onScannedBarcode != nil {
-                AdminBarcodeScanButton { scanned in
+                AdminBarcodeScanButton(isCircle: true) { scanned in
                     if let onScannedBarcode {
                         onScannedBarcode(scanned)
                     } else {
@@ -1027,10 +1027,12 @@ public typealias PPBeirutiFont = PPBrandFont
 typealias AdminBarcodeScannerScreen = POSBarcodeScannerScreen
 
 struct AdminBarcodeScanButton: View {
+    let isCircle: Bool
     let onScanned: (String) -> Void
     @State private var isShowingScanner = false
 
-    init(onScanned: @escaping (String) -> Void) {
+    init(isCircle: Bool = false, onScanned: @escaping (String) -> Void) {
+        self.isCircle = isCircle
         self.onScanned = onScanned
     }
 
@@ -1038,11 +1040,21 @@ struct AdminBarcodeScanButton: View {
         Button {
             isShowingScanner = true
         } label: {
-            Image(systemName: "barcode.viewfinder")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(AdminSurface.primary)
-                .frame(width: 36, height: 36)
-                .background(AdminSurface.primarySoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            if isCircle {
+                Image(systemName: "barcode.viewfinder")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(AdminSurface.primary)
+                    .frame(width: 36, height: 36)
+                    .background(AdminSurface.primarySoft, in: Circle())
+                    .contentShape(Circle())
+            } else {
+                Image(systemName: "barcode.viewfinder")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(AdminSurface.primary)
+                    .frame(width: 36, height: 36)
+                    .background(AdminSurface.primarySoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
         }
         .accessibilityLabel(Language.get("Scan_Barcode", alter: "مسح الباركود"))
         .accessibilityHint(Language.get("POS_Scan_Barcode_Hint", alter: "يفتح الكاميرا للبحث برمز المنتج"))

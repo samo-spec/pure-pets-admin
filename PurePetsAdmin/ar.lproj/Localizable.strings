@@ -9861,6 +9861,39 @@
 "Inventory_Family_SelectColour_Hint" = "يعرض سعر ومخزون وإجراءات هذا اللون";
 "Inventory_Family_Summary_A11y" = "%@، %@ ألوان، %@ متوفر إجمالاً";
 
+/* ── Dynamic Variant Dimensions (Color, Size, Weight, Flavor, Material, General) ── */
+"POS_SelectColorVariant" = "اختر اللون";
+"POS_SelectSizeVariant" = "اختر المقاس";
+"POS_SelectWeightVariant" = "اختر الوزن";
+"POS_SelectFlavorVariant" = "اختر النكهة";
+"POS_SelectMaterialVariant" = "اختر المادة";
+"POS_SelectOptionVariant" = "اختر الخيار";
+"POS_VariantsCount" = "خيارات ألوان";
+"POS_VariantsSizeCount" = "خيارات مقاس";
+"POS_VariantsWeightCount" = "خيارات وزن";
+"POS_VariantsFlavorCount" = "خيارات نكهة";
+"POS_VariantsMaterialCount" = "خيارات خامة";
+"POS_VariantsGeneralCount" = "خيارات";
+"Inventory_Family_SizeCount" = "%@ مقاسات";
+"Inventory_Family_WeightCount" = "%@ أوزان";
+"Inventory_Family_FlavorCount" = "%@ نكهات";
+"Inventory_Family_MaterialCount" = "%@ خامات";
+"Inventory_Family_OptionCount" = "%@ خيارات";
+"Inventory_Family_HasOutOfStockSize" = "مقاس غير متوفر";
+"Inventory_Family_HasOutOfStockWeight" = "وزن غير متوفر";
+"Inventory_Family_HasOutOfStockFlavor" = "نكهة غير متوفرة";
+"Inventory_Family_HasOutOfStockMaterial" = "خامة غير متوفرة";
+"Inventory_Family_HasOutOfStockOption" = "خيار غير متوفر";
+"Inventory_Family_SelectSize_Hint" = "يعرض سعر ومخزون وإجراءات هذا المقاس";
+"Inventory_Family_SelectWeight_Hint" = "يعرض سعر ومخزون وإجراءات هذا الوزن";
+"Inventory_Family_SelectOption_Hint" = "يعرض سعر ومخزون وإجراءات هذا الخيار";
+"Inventory_Family_CollapseSize_Hint" = "طي المقاسات";
+"Inventory_Family_CollapseWeight_Hint" = "طي الأوزان";
+"Inventory_Family_CollapseOption_Hint" = "طي الخيارات";
+"Inventory_Family_ExpandSize_Hint" = "اختر مقاساً لعرض سعره ومخزونه وإجراءاته";
+"Inventory_Family_ExpandWeight_Hint" = "اختر وزناً لعرض سعره ومخزونه وإجراءاته";
+"Inventory_Family_ExpandOption_Hint" = "اختر خياراً لعرض سعره ومخزونه وإجراءاته";
+
 
 /* ── POS — exact scan resolution ── */
 "POS_Scanner_Resolved_Format" = "تم تحديد %@";
@@ -10064,6 +10097,8 @@
 "Options_Tab_Variants_Matrix" = "المصفوفة والمتغيرات";
 "Variant_Mode_Matrix" = "المصفوفة";
 "Variant_Mode_Atelier" = "الاستوديو";
+"Variant_Mode_Atelier_Hint" = "تعديل تفصيلي للصور والباركود ومخزون المتغير المحدد";
+"Variant_Mode_Matrix_Hint" = "جدول شبكي موحد للتسعير الجماعي وتتبع كافة المتغيرات";
 "Variant_Matrix_Title" = "مصفوفة المتغيرات";
 "Variant_Matrix_Subtitle" = "إدارة أسعار ورموز وحالات التوليفات الناتجة عن الخيارات.";
 "Variant_Bulk_Pricing_Action" = "تسعير جماعي";
@@ -10146,3 +10181,32 @@
 "Variant_Studio_Create_Action" = "إنشاء المتغير وتثبيته في المصفوفة";
 "Variant_Studio_SKU_Copied" = "تم نسخ رمز SKU";
 "Variant_Studio_Barcode_Copied" = "تم نسخ الباركود";
+"Common_Done" = "تم";
+"Hotel_Belongings_Count_Format" = "إجمالي العهد المسجلة: %d أغراض ومحتويات";
+"Hotel_CheckIn_Date" = "تاريخ الدخول";
+"Hotel_Checkout_IncompleteHint" = "يرجى استكمال متطلبات التحقق";
+"Hotel_Guardian_DirectContact" = "بيانات التواصل المباشر مع المالك";
+"Hotel_NoBelongingsRegistered" = "لا توجد أمانات شخصية مسجلة في هذا الحجز";
+"Hotel_Readiness_ProtocolPill" = "بروتوكول التسليم الرباعي المعتمد";
+"Hotel_StayHorizon_Title" = "أفق الإقامة والفترة الفندقية";
+
+/* Bulk Pricing Command Studio */
+"Variant_Bulk_Target_Count_Format" = "%d صنف مستهدف";
+"Variant_Bulk_Total_Stock_Format" = "%d وحدة متأثرة";
+"Variant_Bulk_Target_List_Header" = "الأصناف المشمولة بالتسعير";
+"Variant_Bulk_Quick_Presets" = "نسب تسعير سريعة";
+"Variant_Bulk_Current_Avg_Format" = "متوسط: %.2f %@";
+"Variant_Bulk_Wholesale_Warning_Title" = "تنبيه: سعر الجملة يتجاوز سعر البيع!";
+"Variant_Bulk_Wholesale_Loss_Format" = "خسارة لكل وحدة: -%.2f %@";
+"Variant_Bulk_Margin_Percent" = "نسبة الهامش";
+"Variant_Bulk_Unit_Profit" = "الربح الصافي للوحدة";
+"Variant_Bulk_Cost_Multiplier" = "مضاعف التكلفة";
+"Variant_Bulk_Projection_Title" = "أثر التسعير على المحفظة";
+"Variant_Bulk_Applying" = "جاري تطبيق الأسعار...";
+"Variant_Bulk_Apply_Action_Format" = "تطبيق السعر على %d أصناف";
+"Variant_Bulk_Apply_Single" = "تطبيق السعر على الصنف المستهدف";
+"Variant_Bulk_Subtitle" = "تسعير ذكي موحد للمتغيرات مع تحليل فوري للهوامش والأرباح.";
+"Variant_Bulk_Total_Value_Title" = "إجمالي قيمة المخزون";
+"Variant_Bulk_Shift_Title" = "التغير في متوسط السعر";
+"Variant_Bulk_Cost_Tip" = "أدخل سعر الجملة لعرض هامش الربح والتحليلات المالية فورياً.";
+"Price_Unset" = "غير محدد";

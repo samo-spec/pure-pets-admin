@@ -134,6 +134,10 @@ struct PPInventoryFamilyRow: View {
         AdminSurface.primary
     }
 
+    private var familyDimension: PPAccessoryVariantDimensionType {
+        PetAccessory.detectFamilyDimension(members: members)
+    }
+
     private var activeMembers: [PetAccessory] {
         members.filter { !$0.isArchived }
     }
@@ -193,8 +197,8 @@ struct PPInventoryFamilyRow: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilitySummary)
             .accessibilityHint(isExpanded
-                ? Language.get("Inventory_Family_Collapse_Hint", alter: "طي الألوان")
-                : Language.get("Inventory_Family_Expand_Hint", alter: "اختر لوناً لعرض مخزونه وسعره وإجراءاته"))
+                ? familyDimension.collapseHint
+                : familyDimension.expandHint)
             .accessibilityAddTraits(.isButton)
 
             swatchSummary
@@ -210,11 +214,14 @@ struct PPInventoryFamilyRow: View {
         )
         .shadow(color: .black.opacity(0.03), radius: 8, x: 0, y: 3)
         .overlay(alignment: .leading) {
-            Capsule(style: .continuous)
-                .fill(familyAccent.opacity(isExpanded ? 0.95 : 0.80))
-                .frame(width: 3.5)
-                .padding(.vertical, 14)
-                .accessibilityHidden(true)
+            if isExpanded {
+                Capsule(style: .continuous)
+                    .fill(familyAccent.opacity(0.95))
+                    .frame(width: 3.5)
+                    .padding(.vertical, 14)
+                    .accessibilityHidden(true)
+                    .transition(.opacity)
+            }
         }
     }
 
@@ -243,7 +250,7 @@ struct PPInventoryFamilyRow: View {
 
                 HStack(spacing: 6) {
                     Text(String(
-                        format: Language.get("Inventory_Family_ColourCount", alter: "%@ ألوان"),
+                        format: familyDimension.shortCountFormat,
                         NSNumber(value: activeMembers.count)
                     ))
                     .font(AdminType.caption2Bold)
@@ -281,7 +288,7 @@ struct PPInventoryFamilyRow: View {
                     HStack(spacing: 6) {
                         if hasOutOfStockColour {
                             badge(
-                                Language.get("Inventory_Family_HasOutOfStock", alter: "لون غير متوفر"),
+                                familyDimension.outOfStockBadgeText,
                                 systemImage: "exclamationmark.octagon.fill",
                                 tint: AdminSurface.crimson
                             )
@@ -336,12 +343,13 @@ struct PPInventoryFamilyRow: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(members, id: \.accessoryID) { member in
-                    let colour = member.variantColorDictionary
-                        .flatMap { PPAccessoryVariantColor(dictionary: $0) }
+                    let hasRealColor = member.pos_hasRealColor
+                    let colour = hasRealColor ? member.pos_variantColor : nil
                     let productAccentColor: Color = colour.map { Color(uiColor: $0.uiColor) } ?? AdminSurface.primary
                     let requiresContrast = colour?.requiresContrastBorder ?? false
                     let quantity = availability(member)
                     let isSelected = member.accessoryID == selectedProductId
+                    let shortBadge = member.pos_variantShortBadge
 
                     Button {
                         UISelectionFeedbackGenerator().selectionChanged()
@@ -356,30 +364,48 @@ struct PPInventoryFamilyRow: View {
                         }
                     } label: {
                         HStack(spacing: 6) {
-                            ZStack {
-                                Circle()
-                                    .fill(colour.map { Color(uiColor: $0.uiColor) } ?? AdminSurface.control)
-                                    .frame(width: 16, height: 16)
-                                Circle()
-                                    .strokeBorder(
-                                        (colour?.requiresContrastBorder ?? true)
-                                            ? AdminSurface.primaryText.opacity(0.32)
-                                            : Color.clear,
-                                        lineWidth: 1
-                                    )
-                                    .frame(width: 16, height: 16)
-                                if isSelected {
+                            if hasRealColor, let colour = colour {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color(uiColor: colour.uiColor))
+                                        .frame(width: 16, height: 16)
                                     Circle()
                                         .strokeBorder(
-                                            requiresContrast ? AdminSurface.primaryText : productAccentColor,
-                                            lineWidth: 2
+                                            colour.requiresContrastBorder
+                                                ? AdminSurface.primaryText.opacity(0.32)
+                                                : Color.clear,
+                                            lineWidth: 1
                                         )
-                                        .frame(width: 22, height: 22)
+                                        .frame(width: 16, height: 16)
+                                    if isSelected {
+                                        Circle()
+                                            .strokeBorder(
+                                                requiresContrast ? AdminSurface.primaryText : productAccentColor,
+                                                lineWidth: 2
+                                            )
+                                            .frame(width: 22, height: 22)
+                                    }
                                 }
+                                .frame(width: 22, height: 22)
+                            } else if !shortBadge.isEmpty {
+                                Text(shortBadge)
+                                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                                    .foregroundStyle(isSelected ? AdminSurface.primary : AdminCommandInk.secondary)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 2)
+                                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                            .strokeBorder(isSelected ? AdminSurface.primary : AdminSurface.hairline, lineWidth: isSelected ? 1.2 : 0.5)
+                                    )
+                            } else {
+                                Image(systemName: member.pos_variantDimension.outlineSymbolName)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(isSelected ? AdminSurface.primary : AdminCommandInk.secondary)
+                                    .frame(width: 18, height: 18)
                             }
-                            .frame(width: 22, height: 22)
 
-                            Text(colour?.localizedName ?? (member.sku ?? member.accessoryID))
+                            Text(member.pos_variantDisplayName)
                                 .font(isSelected ? AdminType.caption2Bold : AdminType.caption2)
                                 .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminCommandInk.secondary)
                                 .lineLimit(1)
@@ -432,10 +458,7 @@ struct PPInventoryFamilyRow: View {
                         member: member,
                         quantity: quantity
                     ))
-                    .accessibilityHint(Language.get(
-                        "Inventory_Family_SelectColour_Hint",
-                        alter: "يعرض سعر ومخزون وإجراءات هذا اللون"
-                    ))
+                    .accessibilityHint(familyDimension.selectHint)
                     .accessibilityAddTraits(isSelected ? .isSelected : [])
                 }
             }
@@ -457,7 +480,7 @@ struct PPInventoryFamilyRow: View {
         member: PetAccessory,
         quantity: Int
     ) -> String {
-        var parts: [String] = [colour?.accessibilityName ?? (member.sku ?? member.accessoryID)]
+        var parts: [String] = [member.pos_variantDisplayName]
         if member.isArchived {
             parts.append(Language.get("Variant_State_Archived", alter: "مؤرشف"))
         } else if quantity <= 0 {

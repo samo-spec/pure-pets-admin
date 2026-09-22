@@ -516,15 +516,15 @@ public enum AdminHotelDominantReasonPolicy {
     public static func localizedReason(for code: String) -> String {
         switch code {
         case "main_kind_not_allowed", "species_not_allowed":
-            return "نوع أو فصيلة الحيوان غير مسموح بها في الأجنحة المتاحة."
+            return Language.get("Hotel_Policy_Reason_SpeciesNotAllowed", alter: "نوع أو فصيلة الحيوان غير مسموح بها في الأجنحة المتاحة.")
         case "capacity_exceeded", "dates_conflict":
-            return "جميع الأجنحة المتوافقة محجوزة أو مشغولة خلال التواريخ المحددة."
+            return Language.get("Hotel_Policy_Reason_CapacityOrDates", alter: "جميع الأجنحة المتوافقة محجوزة أو مشغولة خلال التواريخ المحددة.")
         case "unit_out_of_service":
-            return "الأجنحة قيد التنظيف أو الصيانة الدورية حالياً."
+            return Language.get("Hotel_Policy_Reason_OutOfService", alter: "الأجنحة قيد التنظيف أو الصيانة الدورية حالياً.")
         case "shared_occupancy_forbidden":
-            return "الجناح مشغول ولا يسمح بالإشغال المشترك لنزلاء مختلفين."
+            return Language.get("Hotel_Policy_Reason_SharedForbidden", alter: "الجناح مشغول ولا يسمح بالإشغال المشترك لنزلاء مختلفين.")
         default:
-            return "لا توجد أجنحة مطابقة متاحة للشروط المدخلة."
+            return Language.get("Hotel_Policy_Reason_Default", alter: "لا توجد أجنحة مطابقة متاحة للشروط المدخلة.")
         }
     }
 }

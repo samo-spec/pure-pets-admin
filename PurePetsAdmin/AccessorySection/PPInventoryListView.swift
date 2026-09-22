@@ -2905,10 +2905,6 @@ struct PPInventoryListView: View {
             }
             .frame(width: AdminTouchTarget.comfortable, height: AdminTouchTarget.comfortable)
             .background(Color.white, in: Circle())
-            .overlay {
-                Circle().strokeBorder(Color.black.opacity(0.08), lineWidth: AdminStroke.hairline)
-            }
-            .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 1.5)
             .contentShape(Circle())
         }
         .buttonStyle(CatalogPressStyle())
@@ -3233,7 +3229,7 @@ struct PPInventoryListView: View {
             }
 
             // Integrated Barcode Viewfinder Reticle Button
-            AdminBarcodeScanButton { scanned in
+            AdminBarcodeScanButton(isCircle: true) { scanned in
                 viewModel.searchText = scanned
                 isSearchFocused = false
             }
@@ -3286,7 +3282,7 @@ struct PPInventoryListView: View {
                     $0.accessoryID == selectedFamilyProductIds[familyId]
                 }) ?? defaultMember
 
-                VStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 8) {
                     PPInventoryFamilyRow(
                         members: members,
                         isExpanded: Binding(
@@ -3338,25 +3334,21 @@ struct PPInventoryListView: View {
                     // Changing the rail selection swaps this child in place rather
                     // than stacking full duplicate product cards down the list.
                     if expandedFamilyIds.contains(familyId) {
-                        HStack(spacing: 0) {
-                            inventoryVariantInspector(for: selectedMember)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .padding(.leading, 14)
-                        .padding(.trailing, 34)
-                        .id(selectedMember.accessoryID)
-                        .transition(
-                            reduceMotion
-                                ? .opacity
-                                : .asymmetric(
-                                    insertion: .move(edge: .top).combined(with: .opacity),
-                                    removal: .opacity
-                                )
-                        )
-                        .animation(
-                            reduceMotion ? nil : .easeOut(duration: 0.18),
-                            value: selectedMember.accessoryID
-                        )
+                        inventoryVariantInspector(for: selectedMember)
+                            .padding(.trailing, 32)
+                            .id(selectedMember.accessoryID)
+                            .transition(
+                                reduceMotion
+                                    ? .opacity
+                                    : .asymmetric(
+                                        insertion: .move(edge: .top).combined(with: .opacity),
+                                        removal: .opacity
+                                    )
+                            )
+                            .animation(
+                                reduceMotion ? nil : .easeOut(duration: 0.18),
+                                value: selectedMember.accessoryID
+                            )
                     }
                 }
             }
@@ -4038,6 +4030,8 @@ private struct PPInventoryVariantChildInspector: View {
     }
 
     private var variantTitle: String {
+        let name = item.pos_variantDisplayName
+        if !name.isEmpty && name != item.accessoryID { return name }
         if let colour, !colour.localizedName.isEmpty { return colour.localizedName }
         if let sku = item.sku?.trimmingCharacters(in: .whitespacesAndNewlines), !sku.isEmpty { return sku }
         return item.accessoryID
@@ -4133,6 +4127,7 @@ private struct PPInventoryVariantChildInspector: View {
 
             actionDock
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -4144,7 +4139,7 @@ private struct PPInventoryVariantChildInspector: View {
         }
         .overlay(alignment: .leading) {
             Capsule(style: .continuous)
-                .fill(accent.opacity(0.85))
+                .fill(AdminSurface.primary.opacity(0.95))
                 .frame(width: 3.5)
                 .padding(.vertical, 12)
                 .accessibilityHidden(true)
@@ -4159,18 +4154,28 @@ private struct PPInventoryVariantChildInspector: View {
                     .fill(accent.opacity(0.10))
                     .frame(width: 46, height: 46)
 
-                Circle()
-                    .fill(colour.map { Color(uiColor: $0.uiColor) } ?? AdminSurface.control)
-                    .frame(width: 28, height: 28)
-                    .overlay {
-                        Circle()
-                            .strokeBorder(
-                                (colour?.requiresContrastBorder ?? true)
-                                    ? AdminSurface.primaryText.opacity(0.28)
-                                    : Color.white.opacity(0.24),
-                                lineWidth: 1
-                            )
-                    }
+                if item.pos_hasRealColor, let colour = colour {
+                    Circle()
+                        .fill(Color(uiColor: colour.uiColor))
+                        .frame(width: 28, height: 28)
+                        .overlay {
+                            Circle()
+                                .strokeBorder(
+                                    colour.requiresContrastBorder
+                                        ? AdminSurface.primaryText.opacity(0.28)
+                                        : Color.white.opacity(0.24),
+                                    lineWidth: 1
+                                )
+                        }
+                } else if !item.pos_variantShortBadge.isEmpty {
+                    Text(item.pos_variantShortBadge)
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(AdminSurface.primary)
+                } else {
+                    Image(systemName: item.pos_variantDimension.sfSymbolName)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(AdminSurface.primary)
+                }
             }
             .accessibilityHidden(true)
 
@@ -4191,13 +4196,29 @@ private struct PPInventoryVariantChildInspector: View {
 
                 HStack(spacing: 6) {
                     if let sku = item.sku?.trimmingCharacters(in: .whitespacesAndNewlines), !sku.isEmpty {
-                        Text(verbatim: sku)
-                            .font(AdminType.caption2.monospaced())
-                            .foregroundStyle(AdminCommandInk.tertiary)
-                            .environment(\.layoutDirection, .leftToRight)
+                        HStack(spacing: 2) {
+                            Text("SKU:")
+                                .font(.system(size: 8, weight: .bold, design: .rounded))
+                            Text(verbatim: sku)
+                                .font(AdminType.caption2.monospaced())
+                        }
+                        .foregroundStyle(AdminCommandInk.tertiary)
+                        .lineLimit(1)
+                        .environment(\.layoutDirection, .leftToRight)
+                    }
+                    if let barcode = item.barcode?.trimmingCharacters(in: .whitespacesAndNewlines), !barcode.isEmpty {
+                        HStack(spacing: 2) {
+                            Image(systemName: "barcode")
+                                .font(.system(size: 8))
+                            Text(verbatim: barcode)
+                                .font(AdminType.caption2.monospaced())
+                        }
+                        .foregroundStyle(AdminCommandInk.tertiary)
+                        .lineLimit(1)
+                        .environment(\.layoutDirection, .leftToRight)
                     }
                     if !branchName.isEmpty {
-                        if !(item.sku?.isEmpty == false) {
+                        if !(item.sku?.isEmpty == false) && !(item.barcode?.isEmpty == false) {
                             Image(systemName: "building.2")
                                 .font(.system(size: 9, weight: .semibold))
                                 .foregroundStyle(AdminCommandInk.tertiary)
@@ -4295,10 +4316,10 @@ private struct PPInventoryVariantChildInspector: View {
                 }
                 .frame(minHeight: 44)
                 .padding(.horizontal, 12)
-                .background(accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(AdminSurface.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
             .buttonStyle(.plain)
-            .foregroundStyle(accent)
+            .foregroundStyle(AdminSurface.primary)
             .disabled(!canManageStock)
             .opacity(canManageStock ? 1 : 0.45)
             .accessibilityLabel(Language.get("Edit", alter: "تعديل"))
@@ -4651,18 +4672,39 @@ private struct FlagshipInventoryCard: View {
     }
 
     private var technicalIdentity: some View {
-        PPInventoryMetadataLayout(spacing: 12, lineSpacing: 6, direction: layoutDirection) {
-            if let sku = item.sku, !sku.isEmpty {
-                Label(sku, systemImage: "number")
-                    .environment(\.layoutDirection, .leftToRight)
+        PPInventoryMetadataLayout(spacing: 8, lineSpacing: 6, direction: layoutDirection) {
+            if let sku = item.sku?.trimmingCharacters(in: .whitespacesAndNewlines), !sku.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: "number")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(AdminCommandInk.tertiary)
+                    Text(sku)
+                        .font(AdminType.caption.monospaced())
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2.5)
+                .background(AdminSurface.control.opacity(0.7), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                .environment(\.layoutDirection, .leftToRight)
             }
-            if let barcode = item.barcode, !barcode.isEmpty {
-                Label(barcode, systemImage: "barcode")
-                    .environment(\.layoutDirection, .leftToRight)
+            if let barcode = item.barcode?.trimmingCharacters(in: .whitespacesAndNewlines), !barcode.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: "barcode")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(AdminCommandInk.tertiary)
+                    Text(barcode)
+                        .font(AdminType.caption.monospaced())
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2.5)
+                .background(AdminSurface.control.opacity(0.7), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                .environment(\.layoutDirection, .leftToRight)
             }
         }
         .font(AdminType.caption)
-        .foregroundStyle(AdminSurface.secondaryText)
     }
 
     private var priceReadout: some View {

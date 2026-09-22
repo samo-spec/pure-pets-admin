@@ -9792,6 +9792,39 @@
 "Inventory_Family_SelectColour_Hint" = "Shows this color’s price, stock, and actions";
 "Inventory_Family_Summary_A11y" = "%@, %@ colours, %@ available in total";
 
+/* ── Dynamic Variant Dimensions (Color, Size, Weight, Flavor, Material, General) ── */
+"POS_SelectColorVariant" = "Select Color";
+"POS_SelectSizeVariant" = "Select Size";
+"POS_SelectWeightVariant" = "Select Weight";
+"POS_SelectFlavorVariant" = "Select Flavor";
+"POS_SelectMaterialVariant" = "Select Material";
+"POS_SelectOptionVariant" = "Select Option";
+"POS_VariantsCount" = "color options";
+"POS_VariantsSizeCount" = "size options";
+"POS_VariantsWeightCount" = "weight options";
+"POS_VariantsFlavorCount" = "flavor options";
+"POS_VariantsMaterialCount" = "material options";
+"POS_VariantsGeneralCount" = "options";
+"Inventory_Family_SizeCount" = "%@ Sizes";
+"Inventory_Family_WeightCount" = "%@ Weights";
+"Inventory_Family_FlavorCount" = "%@ Flavors";
+"Inventory_Family_MaterialCount" = "%@ Materials";
+"Inventory_Family_OptionCount" = "%@ Options";
+"Inventory_Family_HasOutOfStockSize" = "Size out of stock";
+"Inventory_Family_HasOutOfStockWeight" = "Weight out of stock";
+"Inventory_Family_HasOutOfStockFlavor" = "Flavor out of stock";
+"Inventory_Family_HasOutOfStockMaterial" = "Material out of stock";
+"Inventory_Family_HasOutOfStockOption" = "Option out of stock";
+"Inventory_Family_SelectSize_Hint" = "Shows price, stock, and actions for this size";
+"Inventory_Family_SelectWeight_Hint" = "Shows price, stock, and actions for this weight";
+"Inventory_Family_SelectOption_Hint" = "Shows price, stock, and actions for this option";
+"Inventory_Family_CollapseSize_Hint" = "Collapse sizes";
+"Inventory_Family_CollapseWeight_Hint" = "Collapse weights";
+"Inventory_Family_CollapseOption_Hint" = "Collapse options";
+"Inventory_Family_ExpandSize_Hint" = "Select a size to view its stock, price, and actions";
+"Inventory_Family_ExpandWeight_Hint" = "Select a weight to view its stock, price, and actions";
+"Inventory_Family_ExpandOption_Hint" = "Select an option to view its stock, price, and actions";
+
 
 /* ── POS — exact scan resolution ── */
 "POS_Scanner_Resolved_Format" = "Selected %@";
@@ -9996,6 +10029,8 @@
 "Options_Tab_Variants_Matrix" = "Matrix & Variants";
 "Variant_Mode_Matrix" = "Matrix";
 "Variant_Mode_Atelier" = "Studio";
+"Variant_Mode_Atelier_Hint" = "Detailed editing of images, barcodes, and stock for the selected variant";
+"Variant_Mode_Matrix_Hint" = "Unified grid table for batch pricing and tracking all variants";
 "Variant_Matrix_Title" = "Variant Matrix";
 "Variant_Matrix_Subtitle" = "Manage pricing, identifiers, and status for all option combinations.";
 "Variant_Bulk_Pricing_Action" = "Bulk Pricing";
@@ -10078,3 +10113,32 @@
 "Variant_Studio_Create_Action" = "Create & Attach Variant to Matrix";
 "Variant_Studio_SKU_Copied" = "SKU Copied";
 "Variant_Studio_Barcode_Copied" = "Barcode Copied";
+"Common_Done" = "Done";
+"Hotel_Belongings_Count_Format" = "Total Registered Belongings: %d items";
+"Hotel_CheckIn_Date" = "Check-in Date";
+"Hotel_Checkout_IncompleteHint" = "Please complete verification requirements";
+"Hotel_Guardian_DirectContact" = "Direct Pet Parent Contact Details";
+"Hotel_NoBelongingsRegistered" = "No personal belongings registered for this reservation";
+"Hotel_Readiness_ProtocolPill" = "Approved Quad Delivery Protocol";
+"Hotel_StayHorizon_Title" = "Stay Horizon & Hotel Period";
+
+/* Bulk Pricing Command Studio */
+"Variant_Bulk_Target_Count_Format" = "%d Target Variants";
+"Variant_Bulk_Total_Stock_Format" = "%d Units Impacted";
+"Variant_Bulk_Target_List_Header" = "Target Variants Impacted";
+"Variant_Bulk_Quick_Presets" = "Quick Pricing Presets";
+"Variant_Bulk_Current_Avg_Format" = "Current Avg: %.2f %@";
+"Variant_Bulk_Wholesale_Warning_Title" = "Warning: Wholesale exceeds retail price!";
+"Variant_Bulk_Wholesale_Loss_Format" = "Loss per unit: -%.2f %@";
+"Variant_Bulk_Margin_Percent" = "Gross Margin";
+"Variant_Bulk_Unit_Profit" = "Net Profit / Unit";
+"Variant_Bulk_Cost_Multiplier" = "Cost Multiplier";
+"Variant_Bulk_Projection_Title" = "Portfolio Pricing Shift";
+"Variant_Bulk_Applying" = "Applying Pricing...";
+"Variant_Bulk_Apply_Action_Format" = "Apply Pricing to %d Variants";
+"Variant_Bulk_Apply_Single" = "Apply Pricing to Target Variant";
+"Variant_Bulk_Subtitle" = "Smart unified pricing across variants with real-time margin & profit telemetry.";
+"Variant_Bulk_Total_Value_Title" = "Projected Stock Value";
+"Variant_Bulk_Shift_Title" = "Average Price Shift";
+"Variant_Bulk_Cost_Tip" = "Enter wholesale cost to unlock real-time margin & profit analytics.";
+"Price_Unset" = "Not set";

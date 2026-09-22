@@ -392,6 +392,7 @@ extension UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
+        view.semanticContentAttribute = Language.semanticAttributeForCurrentLanguage()
         pp_embedSwiftUI(AdminPetsHotelHubView { [weak self] in
             guard let self else {
                 PPAdminNavigationFallback.popOrDismiss()
@@ -403,6 +404,7 @@ extension UIViewController {
 
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        view.semanticContentAttribute = Language.semanticAttributeForCurrentLanguage()
         navigationController?.setNavigationBarHidden(true, animated: animated)
     }
 }

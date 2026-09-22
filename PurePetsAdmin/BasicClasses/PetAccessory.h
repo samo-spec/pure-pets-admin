@@ -120,6 +120,18 @@ NS_ASSUME_NONNULL_BEGIN
 /// Raw `variantAttributes.color` map: { id, nameAr, nameEn, hex }.
 @property (nonatomic, strong, nullable) NSDictionary<NSString *, id> *variantColorDictionary;
 
+/// Raw `selectedOptions` map: { [optionKey]: valueId }.
+@property (nonatomic, strong, nullable) NSDictionary<NSString *, id> *selectedOptions;
+
+/// Frozen snapshot of selected options from server: [{ optionKey, optionName, valueId, valueName, hex }].
+@property (nonatomic, strong, nullable) NSArray<NSDictionary<NSString *, id> *> *selectedOptionsSnapshot;
+
+/// Canonical variant combination key, e.g. "size=xs" or "color=black|size=s".
+@property (nonatomic, copy, nullable) NSString *variantCombinationKey;
+
+/// Primary variant axis declared for the family (e.g. "color", "size", "options").
+@property (nonatomic, copy, nullable) NSString *variantAxis;
+
 /// YES when this product belongs to a colour family.
 @property (nonatomic, readonly) BOOL belongsToVariantFamily;
 
