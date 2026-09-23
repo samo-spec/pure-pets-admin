@@ -991,7 +991,10 @@ public struct PPLivePetBasicDataEditorView: View {
 
         let result = await PuryVisionIntakeEngine.shared.extract(from: image, itemType: "live_pet")
 
-        guard result.hasValidIdentity else {
+        let hasExistingName = !nameAr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                              !nameEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        guard result.hasValidIdentity || hasExistingName else {
             await MainActor.run {
                 puryActiveFocusTarget = nil
                 puryVisionStatusMessage = Language.isRTL() ? "تعذر تحديد الاسم" : "Could not identify"
@@ -1017,10 +1020,12 @@ public struct PPLivePetBasicDataEditorView: View {
             haptic.impactOccurred()
 
             let detected = result.primaryName
-            if result.isArabic {
-                nameAr = detected
-            } else {
-                nameEn = detected
+            if !detected.isEmpty {
+                if result.isArabic {
+                    if nameAr.isEmpty { nameAr = detected }
+                } else {
+                    if nameEn.isEmpty { nameEn = detected }
+                }
             }
         }
 
@@ -1089,6 +1094,9 @@ public struct PPLivePetBasicDataEditorView: View {
             haptic.impactOccurred()
         }
 
+        var synthesizedDescAr = ""
+        var synthesizedDescEn = ""
+
         do {
             var descAttrs = authoringAttrs
             if !result.detectedBrand.isEmpty {
@@ -1111,17 +1119,49 @@ public struct PPLivePetBasicDataEditorView: View {
                 attributes: descAttrs
             )
 
-            await MainActor.run {
-                if let dAr = descResponse.descAr, !dAr.isEmpty {
-                    descAr = dAr
-                }
-                if let dEn = descResponse.descEn, !dEn.isEmpty {
-                    descEn = dEn
-                }
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            if let dAr = descResponse.descAr, !dAr.isEmpty {
+                synthesizedDescAr = dAr
+            }
+            if let dEn = descResponse.descEn, !dEn.isEmpty {
+                synthesizedDescEn = dEn
             }
         } catch {
             // Fallback gracefully
+        }
+
+        // GUARANTEE: Description typing NEVER fails if there is image and name!
+        if synthesizedDescAr.isEmpty || synthesizedDescEn.isEmpty {
+            let speciesName = availableMainKinds.first(where: { $0.id == selectedSpeciesID })?.kindName ?? (result.detectedPetSpecies ?? "")
+            let breedName = availableSubKinds.first(where: { $0.id == selectedSubKindID })?.subKindName ?? ""
+            let localFallback = PuryDescriptionSynthesizer.synthesize(
+                itemType: "live_pet",
+                nameAr: nameAr,
+                nameEn: nameEn,
+                category: speciesName,
+                subcategory: breedName,
+                brand: nil,
+                attributes: authoringAttrs
+            )
+            if synthesizedDescAr.isEmpty {
+                synthesizedDescAr = localFallback.descAr
+            }
+            if synthesizedDescEn.isEmpty {
+                synthesizedDescEn = localFallback.descEn
+            }
+        }
+
+        await MainActor.run {
+            if !synthesizedDescAr.isEmpty {
+                withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                    descAr = synthesizedDescAr
+                }
+            }
+            if !synthesizedDescEn.isEmpty {
+                withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                    descEn = synthesizedDescEn
+                }
+            }
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
 
         // Phase 4: Success Completion
@@ -1349,6 +1389,9 @@ public struct PPLivePetBasicDataEditorView: View {
         if !nameEn.isEmpty { attrs["nameEn"] = nameEn }
 
         Task { @MainActor in
+            var targetDescAr = ""
+            var targetDescEn = ""
+
             do {
                 let response = try await PuryAdminService.shared.requestAuthoring(
                     task: authoringTask,
@@ -1364,33 +1407,55 @@ public struct PPLivePetBasicDataEditorView: View {
                     attributes: attrs
                 )
 
-                if isEnglishTarget {
-                    if let en = response.descEn, !en.isEmpty {
-                        withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
-                            descEn = en
-                        }
-                        UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    } else if let ar = response.descAr, !ar.isEmpty && descAr.isEmpty {
-                        withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
-                            descAr = ar
-                        }
-                    }
-                } else {
-                    if let ar = response.descAr, !ar.isEmpty {
-                        withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
-                            descAr = ar
-                        }
-                        UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    }
-                    if let en = response.descEn, !en.isEmpty && descEn.isEmpty {
-                        descEn = en
-                    }
+                if let ar = response.descAr, !ar.isEmpty {
+                    targetDescAr = ar
                 }
-                isGeneratingDesc = false
+                if let en = response.descEn, !en.isEmpty {
+                    targetDescEn = en
+                }
             } catch {
-                isGeneratingDesc = false
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                // Fallback locally
             }
+
+            // GUARANTEE: Description typing NEVER fails if there is a name (and image/context)
+            if targetDescAr.isEmpty || targetDescEn.isEmpty {
+                let fallback = PuryDescriptionSynthesizer.synthesize(
+                    itemType: "live_pet",
+                    nameAr: nameAr,
+                    nameEn: nameEn,
+                    category: speciesName,
+                    subcategory: breedName,
+                    brand: nil,
+                    attributes: attrs
+                )
+                if targetDescAr.isEmpty { targetDescAr = fallback.descAr }
+                if targetDescEn.isEmpty { targetDescEn = fallback.descEn }
+            }
+
+            if isEnglishTarget {
+                if !targetDescEn.isEmpty {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                        descEn = targetDescEn
+                    }
+                    if !targetDescAr.isEmpty && descAr.isEmpty {
+                        withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                            descAr = targetDescAr
+                        }
+                    }
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                }
+            } else {
+                if !targetDescAr.isEmpty {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                        descAr = targetDescAr
+                    }
+                    if !targetDescEn.isEmpty && descEn.isEmpty {
+                        descEn = targetDescEn
+                    }
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                }
+            }
+            isGeneratingDesc = false
         }
     }
 

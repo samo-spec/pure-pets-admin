@@ -2518,6 +2518,100 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Pury Image-to-Name Extraction & Bilingual Synthesis
+
+    func extractNameWithPuryFromImages() async -> Bool {
+        var imagesToAnalyze: [UIImage] = pickedImages
+
+        if imagesToAnalyze.count < 3 && !existingImageURLs.isEmpty {
+            for urlString in existingImageURLs.prefix(3 - imagesToAnalyze.count) {
+                guard let url = URL(string: urlString) else { continue }
+                if let (data, _) = try? await URLSession.shared.data(from: url),
+                   let img = UIImage(data: data) {
+                    imagesToAnalyze.append(img)
+                }
+            }
+        }
+
+        guard !imagesToAnalyze.isEmpty else {
+            return false
+        }
+
+        let itemTypeString = isLivePet ? "live_pet" : (isFood ? "food" : "accessory")
+
+        puryActiveFocusTarget = .name
+
+        let extraction = await PuryVisionIntakeEngine.shared.extractNameFromImages(
+            imagesToAnalyze,
+            itemType: itemTypeString
+        )
+
+        let candidateName = extraction.primaryName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !candidateName.isEmpty else {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                if self.puryActiveFocusTarget == .name {
+                    self.puryActiveFocusTarget = nil
+                }
+            }
+            return false
+        }
+
+        if brand.isEmpty && !extraction.brand.isEmpty {
+            brand = extraction.brand
+        }
+
+        let isArabic = candidateName.unicodeScalars.contains { (0x0600...0x06FF).contains($0.value) }
+
+        var authoringAttrs = self.authoringAttributes
+        if !extraction.brand.isEmpty {
+            authoringAttrs["brand"] = extraction.brand
+        }
+
+        if isArabic {
+            name = candidateName
+        } else {
+            nameEn = candidateName
+        }
+
+        do {
+            let translationResponse = try await PuryAdminService.shared.requestAuthoring(
+                task: .improveName,
+                itemType: itemTypeString,
+                sourceLanguage: isArabic ? "ar" : "en",
+                targetLanguage: isArabic ? "en" : "ar",
+                currentText: ["nameAr": name, "nameEn": nameEn],
+                attributes: authoringAttrs
+            )
+
+            if let ar = translationResponse.nameAr, !ar.isEmpty {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                    name = ar
+                }
+            }
+            if let en = translationResponse.nameEn, !en.isEmpty {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                    nameEn = en
+                }
+            }
+        } catch {
+            if name.isEmpty && !nameEn.isEmpty {
+                name = nameEn
+            } else if nameEn.isEmpty && !name.isEmpty {
+                nameEn = name
+            }
+        }
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            if self.puryActiveFocusTarget == .name {
+                self.puryActiveFocusTarget = nil
+            }
+        }
+
+        return true
+    }
+
     // MARK: - Pury Intelligent Sequential Vision Intake
 
     func runPuryVisionIntake(for image: UIImage) async {
@@ -4795,6 +4889,7 @@ struct PPBilingualInputField: View {
     var itemType: String = "accessory"
     var contextAttributes: [String: String] = [:]
     var enablePuryTranslator: Bool = true
+    var onExtractNameFromImages: (() async -> Bool)? = nil
     var onFocusChange: ((Bool) -> Void)? = nil
     var onSubmit: (() -> Void)? = nil
 
@@ -4815,7 +4910,7 @@ struct PPBilingualInputField: View {
     }
 
     private var canShowPuryTranslator: Bool {
-        hasArabicText || hasEnglishText || (!contextAttributes.isEmpty && !itemType.isEmpty)
+        hasArabicText || hasEnglishText || onExtractNameFromImages != nil || (!contextAttributes.isEmpty && !itemType.isEmpty)
     }
 
     private var puryButtonTitle: String {
@@ -4829,6 +4924,8 @@ struct PPBilingualInputField: View {
             } else {
                 return Language.isRTL() ? "ترجمة للعربية" : "To Arabic"
             }
+        } else if onExtractNameFromImages != nil {
+            return Language.isRTL() ? "استخراج الاسم من الصور" : "Extract Name from Images"
         } else {
             return Language.isRTL() ? "اقتراح بالذكاء" : "Suggest"
         }
@@ -4964,10 +5061,28 @@ struct PPBilingualInputField: View {
         }
         .buttonStyle(PuryCompactPressStyle())
         .disabled(isTranslating)
-        .accessibilityLabel(Language.get("Pury_Translate_Name", alter: "ترجمة فورية مع بيوري"))
+        .accessibilityLabel(puryButtonTitle)
     }
 
     private func translateNameWithPury() {
+        if !hasArabicText && !hasEnglishText, let onExtract = onExtractNameFromImages {
+            isTranslating = true
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            Task { @MainActor in
+                let success = await onExtract()
+                if success {
+                    isTranslating = false
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                } else if !contextAttributes.isEmpty {
+                    await performTextAuthoring(task: .improveName)
+                } else {
+                    isTranslating = false
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                }
+            }
+            return
+        }
+
         let sourceLang: String
         let targetLang: String
         let sourceText: String
@@ -5010,49 +5125,59 @@ struct PPBilingualInputField: View {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
         Task { @MainActor in
-            do {
-                let response = try await PuryAdminService.shared.requestAuthoring(
-                    task: task,
-                    itemType: itemType,
-                    sourceLanguage: sourceLang,
-                    targetLanguage: targetLang,
-                    currentText: [
-                        "nameAr": arabicText,
-                        "nameEn": englishText
-                    ],
-                    attributes: contextAttributes
-                )
+            await performTextAuthoring(task: task, sourceLang: sourceLang, targetLang: targetLang)
+        }
+    }
 
-                if task == .translate {
-                    if targetLang == "en", let en = response.nameEn, !en.isEmpty {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                            englishText = en
-                        }
-                        UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    } else if targetLang == "ar", let ar = response.nameAr, !ar.isEmpty {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                            arabicText = ar
-                        }
-                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    private func performTextAuthoring(
+        task: PuryAuthoringTask,
+        sourceLang: String? = nil,
+        targetLang: String? = nil
+    ) async {
+        let sLang = sourceLang ?? (selectedLanguage == .arabic ? "ar" : "en")
+        let tLang = targetLang ?? (selectedLanguage == .arabic ? "en" : "ar")
+        do {
+            let response = try await PuryAdminService.shared.requestAuthoring(
+                task: task,
+                itemType: itemType,
+                sourceLanguage: sLang,
+                targetLanguage: tLang,
+                currentText: [
+                    "nameAr": arabicText,
+                    "nameEn": englishText
+                ],
+                attributes: contextAttributes
+            )
+
+            if task == .translate {
+                if tLang == "en", let en = response.nameEn, !en.isEmpty {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        englishText = en
                     }
-                } else {
-                    if let ar = response.nameAr, !ar.isEmpty {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                            arabicText = ar
-                        }
-                    }
-                    if let en = response.nameEn, !en.isEmpty {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                            englishText = en
-                        }
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                } else if tLang == "ar", let ar = response.nameAr, !ar.isEmpty {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        arabicText = ar
                     }
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                 }
-                isTranslating = false
-            } catch {
-                isTranslating = false
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            } else {
+                if let ar = response.nameAr, !ar.isEmpty {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        arabicText = ar
+                    }
+                }
+                if let en = response.nameEn, !en.isEmpty {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        englishText = en
+                    }
+                }
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
             }
+            isTranslating = false
+        } catch {
+            isTranslating = false
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
         }
     }
 
@@ -5444,6 +5569,9 @@ struct PPBilingualTextEditorField: View {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
         Task { @MainActor in
+            var targetDescAr = ""
+            var targetDescEn = ""
+
             do {
                 let response = try await PuryAdminService.shared.requestAuthoring(
                     task: authoringTask,
@@ -5459,33 +5587,55 @@ struct PPBilingualTextEditorField: View {
                     attributes: attrs
                 )
 
-                if isEnglishTarget {
-                    if let en = response.descEn, !en.isEmpty {
-                        withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
-                            englishText = en
-                        }
-                        UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    } else if let ar = response.descAr, !ar.isEmpty && arabicText.isEmpty {
-                        withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
-                            arabicText = ar
-                        }
-                    }
-                } else {
-                    if let ar = response.descAr, !ar.isEmpty {
-                        withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
-                            arabicText = ar
-                        }
-                        UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    }
-                    if let en = response.descEn, !en.isEmpty && englishText.isEmpty {
-                        englishText = en
-                    }
+                if let ar = response.descAr, !ar.isEmpty {
+                    targetDescAr = ar
                 }
-                isGenerating = false
+                if let en = response.descEn, !en.isEmpty {
+                    targetDescEn = en
+                }
             } catch {
-                isGenerating = false
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                // Network or callable error - fallback locally
             }
+
+            // GUARANTEE: Description typing NEVER fails if there is a name (and image/context)
+            if targetDescAr.isEmpty || targetDescEn.isEmpty {
+                let fallback = PuryDescriptionSynthesizer.synthesize(
+                    itemType: itemType,
+                    nameAr: effectiveName,
+                    nameEn: itemNameEn,
+                    category: categoryName,
+                    subcategory: subCategoryName,
+                    brand: attrs["brand"],
+                    attributes: attrs
+                )
+                if targetDescAr.isEmpty { targetDescAr = fallback.descAr }
+                if targetDescEn.isEmpty { targetDescEn = fallback.descEn }
+            }
+
+            if isEnglishTarget {
+                if !targetDescEn.isEmpty {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                        englishText = targetDescEn
+                    }
+                    if !targetDescAr.isEmpty && arabicText.isEmpty {
+                        withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                            arabicText = targetDescAr
+                        }
+                    }
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                }
+            } else {
+                if !targetDescAr.isEmpty {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                        arabicText = targetDescAr
+                    }
+                    if !targetDescEn.isEmpty && englishText.isEmpty {
+                        englishText = targetDescEn
+                    }
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                }
+            }
+            isGenerating = false
         }
     }
 
@@ -6398,6 +6548,7 @@ struct PPAccessoryEditorScreen: View {
                 itemType: viewModel.isLivePet ? "live_pet" : (viewModel.isFood ? "food" : "accessory"),
                 contextAttributes: viewModel.authoringAttributes,
                 enablePuryTranslator: true,
+                onExtractNameFromImages: { await viewModel.extractNameWithPuryFromImages() },
                 onFocusChange: { focused in
                     if focused { focusedField = .name }
                     else if focusedField == .name { focusedField = nil }
@@ -10710,6 +10861,7 @@ private struct PPLivePetIntakeJourney: View {
                     itemType: viewModel.isLivePet ? "live_pet" : "accessory",
                     contextAttributes: viewModel.authoringAttributes,
                     enablePuryTranslator: true,
+                    onExtractNameFromImages: { await viewModel.extractNameWithPuryFromImages() },
                     onFocusChange: { focused in
                         if focused { focusedField = .name }
                         else if focusedField == .name { focusedField = nil }
@@ -10781,7 +10933,8 @@ private struct PPLivePetIntakeJourney: View {
                 }
                 Spacer()
 
-                if viewModel.totalImageCount > 0 {
+                // Temporarily hidden per user request: [تعبئة ذكية مع بيوري]
+                if false && viewModel.totalImageCount > 0 {
                     Button {
                         if let first = viewModel.pickedImages.first {
                             Task { await viewModel.runPuryVisionIntake(for: first) }
@@ -18088,6 +18241,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     itemType: viewModel.isLivePet ? "live_pet" : (viewModel.isFood ? "food" : "accessory"),
                     contextAttributes: viewModel.authoringAttributes,
                     enablePuryTranslator: true,
+                    onExtractNameFromImages: { await viewModel.extractNameWithPuryFromImages() },
                     onFocusChange: { focused in
                         if focused { focusedField = .name }
                         else if focusedField == .name { focusedField = nil }
@@ -18234,7 +18388,8 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 }
                 Spacer()
 
-                if viewModel.totalImageCount > 0 {
+                // Temporarily hidden per user request: [تعبئة ذكية مع بيوري]
+                if false && viewModel.totalImageCount > 0 {
                     Button {
                         if let first = viewModel.pickedImages.first {
                             Task { await viewModel.runPuryVisionIntake(for: first) }

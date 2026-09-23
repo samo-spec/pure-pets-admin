@@ -211,37 +211,22 @@ struct PPInventoryFamilyRow: View {
             swatchSummary
         }
         .background(
-            PPFamilyCardShape(
-                topLeading: 18,
-                bottomLeading: isExpanded ? 0 : 18,
-                bottomTrailing: 18,
-                topTrailing: 18
-            )
-            .fill(Color.white)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.white)
         )
         .clipShape(
-            PPFamilyCardShape(
-                topLeading: 18,
-                bottomLeading: isExpanded ? 0 : 18,
-                bottomTrailing: 18,
-                topTrailing: 18
-            )
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
         )
         .overlay(
-            PPFamilyCardShape(
-                topLeading: 18,
-                bottomLeading: isExpanded ? 0 : 18,
-                bottomTrailing: 18,
-                topTrailing: 18
-            )
-            .strokeBorder(AdminSurface.borderSubtle.opacity(0.65), lineWidth: 0.75)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(AdminSurface.borderSubtle.opacity(0.65), lineWidth: 0.75)
         )
         .shadow(color: .black.opacity(0.03), radius: 8, x: 0, y: 3)
-        .overlay(alignment: .leading) {
+        .overlay(alignment: Language.isRTL() ? .leading : .trailing) {
             if isExpanded && showsAccentLine {
                 Capsule(style: .continuous)
                     .fill(familyAccent.opacity(0.95))
-                    .frame(width: 3.5)
+                    .frame(width: 1.5)
                     .padding(.vertical, 14)
                     .accessibilityHidden(true)
                     .transition(.opacity)
@@ -381,7 +366,7 @@ struct PPInventoryFamilyRow: View {
                 .frame(height: 0.5)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     ForEach(members, id: \.accessoryID) { member in
                         let hasRealColor = member.pos_hasRealColor
                         let colour = hasRealColor ? member.pos_variantColor : nil
@@ -403,12 +388,12 @@ struct PPInventoryFamilyRow: View {
                                 }
                             }
                         } label: {
-                            HStack(spacing: 5) {
+                            HStack(spacing: 6) {
                                 if hasRealColor, let colour = colour {
                                     ZStack {
                                         Circle()
                                             .fill(Color(uiColor: colour.uiColor))
-                                            .frame(width: 12, height: 12)
+                                            .frame(width: 14, height: 14)
                                         Circle()
                                             .strokeBorder(
                                                 colour.requiresContrastBorder
@@ -416,42 +401,42 @@ struct PPInventoryFamilyRow: View {
                                                     : Color.clear,
                                                 lineWidth: 1
                                             )
-                                            .frame(width: 12, height: 12)
+                                            .frame(width: 14, height: 14)
                                         if isSelected {
                                             Circle()
                                                 .strokeBorder(
                                                     requiresContrast ? AdminSurface.primaryText : productAccentColor,
                                                     lineWidth: 1.5
                                                 )
-                                                .frame(width: 16, height: 16)
+                                                .frame(width: 18.5, height: 18.5)
                                         }
                                     }
-                                    .frame(width: 16, height: 16)
+                                    .frame(width: 18.5, height: 18.5)
                                 } else if !shortBadge.isEmpty {
                                     Text(shortBadge)
-                                        .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                                        .font(.system(size: 9.5, weight: .bold, design: .rounded))
                                         .foregroundStyle(isSelected ? AdminSurface.primary : AdminCommandInk.secondary)
-                                        .padding(.horizontal, 3.5)
-                                        .padding(.vertical, 1.5)
-                                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                                        .padding(.horizontal, 4.5)
+                                        .padding(.vertical, 2)
+                                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
                                         .overlay(
-                                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                            RoundedRectangle(cornerRadius: 5, style: .continuous)
                                                 .strokeBorder(isSelected ? AdminSurface.primary : AdminSurface.hairline, lineWidth: isSelected ? 1 : 0.5)
                                         )
                                 } else {
                                     Image(systemName: member.pos_variantDimension.outlineSymbolName)
-                                        .font(.system(size: 10, weight: .semibold))
+                                        .font(.system(size: 11.5, weight: .semibold))
                                         .foregroundStyle(isSelected ? AdminSurface.primary : AdminCommandInk.secondary)
-                                        .frame(width: 14, height: 14)
+                                        .frame(width: 16, height: 16)
                                 }
 
                                 Text(member.pos_variantDisplayName)
-                                    .font(isSelected ? AdminType.caption2Bold : AdminType.caption2)
+                                    .font(.system(size: 12.5, weight: isSelected ? .bold : .medium, design: .rounded))
                                     .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminCommandInk.secondary)
                                     .lineLimit(1)
 
                                 Text(verbatim: "\(quantity.englishDigits)")
-                                    .font(AdminType.caption2Bold)
+                                    .font(.system(size: 12.5, weight: .bold, design: .rounded))
                                     .foregroundStyle(
                                         member.isArchived
                                             ? AdminCommandInk.tertiary
@@ -464,25 +449,25 @@ struct PPInventoryFamilyRow: View {
 
                                 if let price = retailPrice(member) {
                                     Text(verbatim: "·")
-                                        .font(.system(size: 9, weight: .semibold))
+                                        .font(.system(size: 10, weight: .semibold))
                                         .foregroundStyle(AdminCommandInk.tertiary)
                                     Text(PetAccessory.formatCurrency(NSNumber(value: price)).normalizedEnglishDigits)
-                                        .font(AdminType.caption2Bold)
+                                        .font(.system(size: 12.5, weight: .bold, design: .rounded))
                                         .foregroundStyle(AdminSurface.primaryText)
                                         .lineLimit(1)
                                         .environment(\.layoutDirection, .leftToRight)
                                 }
                             }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4.5)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
                             .background(
                                 isSelected
                                     ? (requiresContrast ? AdminSurface.control : productAccentColor.opacity(0.16))
                                     : (requiresContrast ? Color.white : productAccentColor.opacity(0.06)),
-                                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                in: RoundedRectangle(cornerRadius: 9.5, style: .continuous)
                             )
                             .overlay {
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                RoundedRectangle(cornerRadius: 9.5, style: .continuous)
                                     .strokeBorder(
                                         isSelected
                                             ? (requiresContrast ? AdminSurface.primaryText.opacity(0.65) : productAccentColor.opacity(0.75))
@@ -492,7 +477,7 @@ struct PPInventoryFamilyRow: View {
                             }
                         }
                         .buttonStyle(.plain)
-                        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .contentShape(RoundedRectangle(cornerRadius: 9.5, style: .continuous))
                         .opacity(member.isArchived ? 0.55 : 1)
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel(colourAccessibilityLabel(
@@ -505,7 +490,7 @@ struct PPInventoryFamilyRow: View {
                     }
                 }
                 .padding(.horizontal, 14)
-                .padding(.vertical, 6)
+                .padding(.vertical, 7.5)
             }
         }
         .background(AdminSurface.control.opacity(0.35))
@@ -582,23 +567,24 @@ func PPFamilyCardShape(
     )
 }
 
-/// Continuous accent spine tracing the leading perimeter of an expanded product family.
-/// Wraps around the top-leading corner of the parent card, runs straight down the leading
-/// edge bridging parent and child, and wraps around the bottom-leading corner of the child inspector.
+/// Continuous accent spine tracing the edge of an expanded product family.
+/// Wraps around the corner of the parent card, runs straight down the edge
+/// bridging parent and child, and wraps around the corner of the child inspector.
 struct FamilyExpandedAccentSpineShape: Shape {
-    var topArmLength: CGFloat = 85
-    var bottomArmLength: CGFloat = 85
+    var topArmLength: CGFloat = 20
+    var bottomArmLength: CGFloat = 18
     var topRadius: CGFloat = 18
     var bottomRadius: CGFloat = 16
-    var lineWidth: CGFloat = 3.5
-    var isRTL: Bool = Language.isRTL()
+    var lineWidth: CGFloat = 1.5
+    var onRightSide: Bool = true
 
     init(
-        topArmLength: CGFloat = 85,
-        bottomArmLength: CGFloat = 85,
+        topArmLength: CGFloat = 20,
+        bottomArmLength: CGFloat = 18,
         topRadius: CGFloat = 18,
         bottomRadius: CGFloat = 16,
-        lineWidth: CGFloat = 3.5,
+        lineWidth: CGFloat = 1.5,
+        onRightSide: Bool = true,
         layoutDirection: LayoutDirection? = nil
     ) {
         self.topArmLength = topArmLength
@@ -606,18 +592,14 @@ struct FamilyExpandedAccentSpineShape: Shape {
         self.topRadius = topRadius
         self.bottomRadius = bottomRadius
         self.lineWidth = lineWidth
-        if let layoutDirection {
-            self.isRTL = layoutDirection == .rightToLeft
-        } else {
-            self.isRTL = Language.isRTL()
-        }
+        self.onRightSide = onRightSide
     }
 
     func path(in rect: CGRect) -> Path {
         var path = Path()
         let halfLine = lineWidth / 2.0
 
-        if isRTL {
+        if onRightSide {
             let rightX = rect.maxX - halfLine
             let topY = rect.minY + halfLine
             let bottomY = rect.maxY - halfLine
@@ -632,7 +614,7 @@ struct FamilyExpandedAccentSpineShape: Shape {
             path.move(to: CGPoint(x: topStartX, y: topY))
             // Horizontal segment to the top arc start
             path.addLine(to: CGPoint(x: rightX - safeTopRadius, y: topY))
-            // Arc around top-leading (top-right) corner
+            // Arc around top-right corner
             path.addArc(
                 center: CGPoint(x: rightX - safeTopRadius, y: topY + safeTopRadius),
                 radius: safeTopRadius,
@@ -640,9 +622,9 @@ struct FamilyExpandedAccentSpineShape: Shape {
                 endAngle: .degrees(0),
                 clockwise: false
             )
-            // Vertical spine down the leading edge bridging parent and child
+            // Vertical spine down the right edge bridging parent and child
             path.addLine(to: CGPoint(x: rightX, y: bottomY - safeBottomRadius))
-            // Arc around bottom-leading (bottom-right) corner
+            // Arc around bottom-right corner
             path.addArc(
                 center: CGPoint(x: rightX - safeBottomRadius, y: bottomY - safeBottomRadius),
                 radius: safeBottomRadius,
@@ -667,7 +649,7 @@ struct FamilyExpandedAccentSpineShape: Shape {
             path.move(to: CGPoint(x: topStartX, y: topY))
             // Horizontal segment to top arc start
             path.addLine(to: CGPoint(x: leftX + safeTopRadius, y: topY))
-            // Arc around top-leading (top-left) corner
+            // Arc around top-left corner
             path.addArc(
                 center: CGPoint(x: leftX + safeTopRadius, y: topY + safeTopRadius),
                 radius: safeTopRadius,
@@ -675,9 +657,9 @@ struct FamilyExpandedAccentSpineShape: Shape {
                 endAngle: .degrees(180),
                 clockwise: true
             )
-            // Vertical spine down leading edge
+            // Vertical spine down left edge
             path.addLine(to: CGPoint(x: leftX, y: bottomY - safeBottomRadius))
-            // Arc around bottom-leading (bottom-left) corner
+            // Arc around bottom-left corner
             path.addArc(
                 center: CGPoint(x: leftX + safeBottomRadius, y: bottomY - safeBottomRadius),
                 radius: safeBottomRadius,

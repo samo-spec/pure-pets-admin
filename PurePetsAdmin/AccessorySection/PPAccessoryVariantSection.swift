@@ -479,6 +479,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         guard let draft else { return }
         guard draft.optionDefinitions.count < PPAccessoryVariantContract.maxOptionsPerFamily else { return }
         guard !draft.optionDefinitions.contains(where: { $0.id == option.id || $0.key == option.key }) else { return }
+        draft.schemaVersion = PPAccessoryVariantContract.variantSchemaVersionGeneric
         var updated = draft.optionDefinitions
         var newOption = option
         newOption.sortOrder = updated.count
@@ -495,6 +496,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
             failure = PPAccessoryVariantFailureState(message: message, recovery: .correctInput)
             return
         }
+        draft.schemaVersion = PPAccessoryVariantContract.variantSchemaVersionGeneric
         var updated = draft.optionDefinitions
         updated.removeAll { $0.id == id }
         for (index, opt) in updated.enumerated() {
@@ -535,6 +537,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         let option = draft.optionDefinitions[optIndex]
         guard option.values.count < PPAccessoryVariantContract.maxValuesPerOption else { return }
         guard !option.values.contains(where: { $0.id == value.id || $0.canonicalValue.lowercased() == value.canonicalValue.lowercased() }) else { return }
+        draft.schemaVersion = PPAccessoryVariantContract.variantSchemaVersionGeneric
         var updatedValues = option.values
         var newValue = value
         newValue.sortOrder = updatedValues.count
@@ -553,6 +556,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         }
         guard let optIndex = draft.optionDefinitions.firstIndex(where: { $0.id == optionId }) else { return }
         let option = draft.optionDefinitions[optIndex]
+        draft.schemaVersion = PPAccessoryVariantContract.variantSchemaVersionGeneric
         var updatedValues = option.values
         updatedValues.removeAll { $0.id == valueId }
         for (index, val) in updatedValues.enumerated() {
@@ -1710,6 +1714,8 @@ struct PPAccessoryVariantSection: View {
             }
             if !model.isLegacyUngrouped && model.canManageVariants {
                 revertToNormalButton
+                    .padding(.top, 4)
+                    .padding(.bottom, 24)
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)

@@ -3501,7 +3501,6 @@ struct PPInventoryListView: View {
                         // than stacking full duplicate product cards down the list.
                         if isExpanded {
                             inventoryVariantInspector(for: selectedMember, showsAccentLine: false)
-                                .padding(.trailing, 32)
                                 .id(selectedMember.accessoryID)
                                 .transition(
                                     reduceMotion
@@ -3523,15 +3522,16 @@ struct PPInventoryListView: View {
                     .overlay {
                         if isExpanded {
                             FamilyExpandedAccentSpineShape(
-                                topArmLength: 85,
-                                bottomArmLength: 85,
+                                topArmLength: 20,
+                                bottomArmLength: 18,
                                 topRadius: 18,
                                 bottomRadius: 16,
-                                lineWidth: 3.5
+                                lineWidth: 1.5,
+                                onRightSide: true
                             )
                             .stroke(
                                 AdminSurface.primary.opacity(0.95),
-                                style: StrokeStyle(lineWidth: 3.5, lineCap: .round, lineJoin: .round)
+                                style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round)
                             )
                             .accessibilityHidden(true)
                             .transition(.opacity)
@@ -4341,36 +4341,21 @@ private struct PPInventoryVariantChildInspector: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(
-            PPFamilyCardShape(
-                topLeading: 0,
-                bottomLeading: 16,
-                bottomTrailing: 16,
-                topTrailing: 16
-            )
-            .fill(Color.white)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white)
         )
         .clipShape(
-            PPFamilyCardShape(
-                topLeading: 0,
-                bottomLeading: 16,
-                bottomTrailing: 16,
-                topTrailing: 16
-            )
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
         )
         .overlay {
-            PPFamilyCardShape(
-                topLeading: 0,
-                bottomLeading: 16,
-                bottomTrailing: 16,
-                topTrailing: 16
-            )
-            .strokeBorder(AdminSurface.borderSubtle.opacity(0.65), lineWidth: 0.75)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(AdminSurface.borderSubtle.opacity(0.65), lineWidth: 0.75)
         }
-        .overlay(alignment: .leading) {
+        .overlay(alignment: Language.isRTL() ? .leading : .trailing) {
             if showsAccentLine {
                 Capsule(style: .continuous)
                     .fill(AdminSurface.primary.opacity(0.95))
-                    .frame(width: 3.5)
+                    .frame(width: 1.5)
                     .padding(.vertical, 12)
                     .accessibilityHidden(true)
             }
@@ -4516,9 +4501,9 @@ private struct PPInventoryVariantChildInspector: View {
             }
 
             Text(quantity.map { $0.englishDigits } ?? "—")
-                .font(AdminType.calloutBold)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
                 .foregroundStyle(AdminSurface.primaryText)
-                .frame(minWidth: 42, minHeight: 44)
+                .frame(minWidth: 36, minHeight: 36)
 
             compactActionButton(
                 systemImage: "plus",
@@ -4529,25 +4514,25 @@ private struct PPInventoryVariantChildInspector: View {
                 onAdjustQuantity(1)
             }
         }
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
         }
     }
 
     private var secondaryActions: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             Button(action: onEdit) {
-                HStack(spacing: 5) {
+                HStack(spacing: 4) {
                     Image(systemName: "pencil")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                     Text(Language.get("Edit", alter: "تعديل"))
                         .font(AdminType.caption2Bold)
                 }
-                .frame(minHeight: 44)
-                .padding(.horizontal, 12)
-                .background(AdminSurface.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .frame(minHeight: 36)
+                .padding(.horizontal, 10)
+                .background(AdminSurface.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             .buttonStyle(.plain)
             .foregroundStyle(AdminSurface.primary)
@@ -4557,12 +4542,12 @@ private struct PPInventoryVariantChildInspector: View {
 
             Button(action: onMore) {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(AdminSurface.primaryText)
-                    .frame(width: 44, height: 44)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .frame(width: 36, height: 36)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
                     }
             }
@@ -4579,9 +4564,9 @@ private struct PPInventoryVariantChildInspector: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(enabled ? AdminSurface.primaryText : AdminCommandInk.tertiary)
-                .frame(width: 44, height: 44)
+                .frame(width: 36, height: 36)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

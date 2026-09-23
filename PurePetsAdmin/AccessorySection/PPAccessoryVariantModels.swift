@@ -528,7 +528,7 @@ import UIKit
     @objc public static func fromVariantColor(_ color: PPAccessoryVariantColor, sortOrder: Int = 0) -> PPAccessoryOptionValue {
         PPAccessoryOptionValue(
             id: color.identifier,
-            canonicalValue: color.nameEn.isEmpty ? color.identifier : color.nameEn,
+            canonicalValue: color.identifier,
             nameAr: color.nameAr,
             nameEn: color.nameEn,
             sortOrder: sortOrder,

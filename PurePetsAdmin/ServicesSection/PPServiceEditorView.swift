@@ -1004,6 +1004,8 @@ public struct PPServiceCorePropositionCard: View {
         }
 
         Task { @MainActor in
+            var targetDescAr = ""
+
             do {
                 let response = try await PuryAdminService.shared.requestAuthoring(
                     task: .generateDescription,
@@ -1018,16 +1020,32 @@ public struct PPServiceCorePropositionCard: View {
                 )
 
                 if let ar = response.descAr, !ar.isEmpty {
-                    withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
-                        viewModel.serviceDescription = ar
-                    }
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    targetDescAr = ar
                 }
-                isGeneratingDesc = false
             } catch {
-                isGeneratingDesc = false
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                // Fallback locally
             }
+
+            // GUARANTEE: Description typing NEVER fails if there is title/context
+            if targetDescAr.isEmpty {
+                let fallback = PuryDescriptionSynthesizer.synthesize(
+                    itemType: "service",
+                    nameAr: viewModel.title,
+                    nameEn: "",
+                    category: viewModel.category,
+                    subcategory: viewModel.serviceType.localizedTitle,
+                    brand: "", attributes: attrs
+                )
+                targetDescAr = fallback.descAr
+            }
+
+            if !targetDescAr.isEmpty {
+                withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                    viewModel.serviceDescription = targetDescAr
+                }
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
+            isGeneratingDesc = false
         }
     }
 }

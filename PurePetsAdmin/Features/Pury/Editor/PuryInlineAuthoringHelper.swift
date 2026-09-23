@@ -11,6 +11,7 @@
 
 import SwiftUI
 import Vision
+import CoreImage
 import FirebaseFunctions
 import FirebaseAuth
 
@@ -361,7 +362,7 @@ public struct PuryDescriptionSynthesizer {
         nameEn: String,
         category: String?,
         subcategory: String?,
-        brand: String?,
+        brand: String? = nil,
         attributes: [String: String]
     ) -> (descAr: String, descEn: String) {
         let cleanNameAr = nameAr.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -741,6 +742,7 @@ public struct PuryVisionExtractionResult: Sendable {
     public let rawOcrText: String
     public let attributes: [String: String]
     public let hasValidIdentity: Bool
+    public var detectedAnimalSpecies: String? { detectedPetSpecies }
 
     public init(
         primaryName: String,
@@ -808,11 +810,12 @@ public actor PuryVisionIntakeEngine {
     ]
 
     public func extract(from image: UIImage, itemType: String) async -> PuryVisionExtractionResult {
-        guard let cgImage = image.cgImage else {
+        guard let prepared = ensureCGImage(for: image) else {
             return .empty
         }
 
-        let cgOrientation = cgImageOrientation(for: image.imageOrientation)
+        let cgImage = prepared.cgImage
+        let cgOrientation = prepared.orientation
 
         // 1. Apple Vision Text Recognition (Neural Engine)
         let ocrLines = await performTextRecognition(on: cgImage, orientation: cgOrientation)
@@ -1255,6 +1258,128 @@ public actor PuryVisionIntakeEngine {
                 continuation.resume(returning: nil)
             }
         }
+    }
+
+    // MARK: - Dedicated Name Extraction from Images (Two-Pass: Text OCR -> Visual Analysis)
+
+    public func extractNameFromImages(
+        _ images: [UIImage],
+        itemType: String
+    ) async -> (primaryName: String, brand: String, isFromText: Bool) {
+        guard !images.isEmpty else {
+            return ("", "", false)
+        }
+
+        var candidateBrand = ""
+
+        // =========================================================================
+        // PASS 1: TEXT RECOGNITION (OCR on Image/s to find Packaging Title & Brand)
+        // =========================================================================
+        for image in images {
+            guard let prepared = ensureCGImage(for: image) else { continue }
+            let ocrLines = await performTextRecognition(on: prepared.cgImage, orientation: prepared.orientation)
+            guard !ocrLines.isEmpty else { continue }
+
+            let packaging = parsePackaging(from: ocrLines)
+            if !packaging.brand.isEmpty && candidateBrand.isEmpty {
+                candidateBrand = packaging.brand
+            }
+
+            if !packaging.productTitle.isEmpty {
+                let resolvedName: String
+                let brandToUse = !packaging.brand.isEmpty ? packaging.brand : candidateBrand
+                if !brandToUse.isEmpty && !packaging.productTitle.localizedCaseInsensitiveContains(brandToUse) {
+                    resolvedName = "\(brandToUse) \(packaging.productTitle)"
+                } else {
+                    resolvedName = packaging.productTitle
+                }
+                let trimmed = resolvedName.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    return (trimmed, brandToUse, true)
+                }
+            }
+        }
+
+        // =========================================================================
+        // PASS 2: VISUAL ANALYSIS ("if not found analize image/s and find the name")
+        // =========================================================================
+        // 2A: On-device Visual Classification (Accessories & Pet Taxonomy)
+        for image in images {
+            guard let prepared = ensureCGImage(for: image) else { continue }
+            let visual = await performVisualClassification(on: prepared.cgImage, orientation: prepared.orientation)
+
+            var resolvedNameAr = ""
+            var resolvedNameEn = ""
+
+            if let acc = visual.detectedAccessory {
+                if let animal = visual.detectedAnimal {
+                    resolvedNameAr = "\(acc.arabicTitle) لـ\(animal.speciesAr)"
+                    resolvedNameEn = "\(animal.speciesEn) \(acc.englishTitle)"
+                } else {
+                    resolvedNameAr = "\(acc.arabicTitle) للحيوانات الأليفة"
+                    resolvedNameEn = "Pet \(acc.englishTitle)"
+                }
+            } else if itemType == "live_pet", let animal = visual.detectedAnimal {
+                resolvedNameAr = animal.arabicName
+                resolvedNameEn = animal.englishName
+            }
+
+            if !resolvedNameAr.isEmpty || !resolvedNameEn.isEmpty {
+                let baseName = Language.isRTL() ? (!resolvedNameAr.isEmpty ? resolvedNameAr : resolvedNameEn) : (!resolvedNameEn.isEmpty ? resolvedNameEn : resolvedNameAr)
+                let finalName: String
+                if !candidateBrand.isEmpty && !baseName.localizedCaseInsensitiveContains(candidateBrand) {
+                    finalName = "\(candidateBrand) \(baseName)"
+                } else {
+                    finalName = baseName
+                }
+                return (finalName, candidateBrand, false)
+            }
+        }
+
+        // 2B: Cloud Gemini Vision Fallback (Via imageSearch Callable across top 2 images)
+        for image in images.prefix(2) {
+            if let cloudVision = await performCloudVisionFallback(image: image) {
+                let name = cloudVision.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !name.isEmpty {
+                    let finalName: String
+                    if !candidateBrand.isEmpty && !name.localizedCaseInsensitiveContains(candidateBrand) {
+                        finalName = "\(candidateBrand) \(name)"
+                    } else {
+                        finalName = name
+                    }
+                    return (finalName, candidateBrand, false)
+                }
+            }
+        }
+
+        // 2C: If only brand was detected from packaging text, return it
+        if !candidateBrand.isEmpty {
+            return (candidateBrand, candidateBrand, true)
+        }
+
+        return ("", "", false)
+    }
+
+    private func ensureCGImage(for image: UIImage) -> (cgImage: CGImage, orientation: CGImagePropertyOrientation)? {
+        if let cg = image.cgImage {
+            return (cg, cgImageOrientation(for: image.imageOrientation))
+        }
+        if let ci = image.ciImage {
+            let context = CIContext()
+            if let cg = context.createCGImage(ci, from: ci.extent) {
+                return (cg, cgImageOrientation(for: image.imageOrientation))
+            }
+        }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1.0
+        let renderer = UIGraphicsImageRenderer(size: image.size, format: format)
+        let rendered = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: image.size))
+        }
+        if let cg = rendered.cgImage {
+            return (cg, .up)
+        }
+        return nil
     }
 
     private func cgImageOrientation(for orientation: UIImage.Orientation) -> CGImagePropertyOrientation {
