@@ -70,6 +70,8 @@ public struct InventoryLotsSheet: View {
     @State private var isLoading: Bool = true
     @State private var errorMessage: String? = nil
     @State private var showingAddLotSheet: Bool = false
+    @State private var lotToEdit: PPInventoryLot? = nil
+    @State private var isDeletingLot: Bool = false
     @State private var selectedFilter: PPLotFilter = .all
     @State private var selectedSort: PPLotSort = .fefo
     @State private var searchQuery: String = ""
@@ -197,6 +199,24 @@ public struct InventoryLotsSheet: View {
                 }
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
             }
+            .sheet(item: $lotToEdit) { lot in
+                EditLotSheet(item: item, lot: lot, branchId: resolvedBranchID) {
+                    onLotsChanged?()
+                    loadLots()
+                }
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+            }
+            .overlay {
+                if isDeletingLot {
+                    FEFOMutationActionHUD(
+                        title: Language.get("Deleting_Lot", alter: "جاري حذف التشغيلة بأمان..."),
+                        subtitle: Language.get("Reverting_Branch_Catalog_Stock", alter: "استرجاع رصيد الوحدات إلى الفرع والكتالوج..."),
+                        iconName: "trash.fill",
+                        isDestructive: true
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                }
+            }
             .onAppear {
                 loadLots()
             }
@@ -212,7 +232,7 @@ public struct InventoryLotsSheet: View {
             iphoneApexBar
 
             if isLoading {
-                loadingSkeletonView
+                FEFOLoadingHubView(item: item, isRegular: false)
             } else if let errorText = errorMessage, lots.isEmpty {
                 errorDiagnosticStateView(errorText: errorText)
             } else if lots.isEmpty {
@@ -279,7 +299,7 @@ public struct InventoryLotsSheet: View {
                     searchAndFilterToolbar
 
                     if isLoading {
-                        loadingSkeletonView
+                        FEFOLoadingHubView(item: item, isRegular: true)
                     } else if let errorText = errorMessage, lots.isEmpty {
                         errorDiagnosticStateView(errorText: errorText)
                     } else if lots.isEmpty {
@@ -909,6 +929,56 @@ public struct InventoryLotsSheet: View {
                     }
                 }
             }
+
+            // Action Buttons Row (Edit & Delete)
+            Divider().background(AdminSurface.hairline)
+
+            HStack(spacing: 8) {
+                // Edit Lot Button
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    lotToEdit = lot
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 11, weight: .bold))
+                        Text(Language.get("Edit_Lot", alter: "تعديل التشغيلة"))
+                            .font(Font.custom("Beiruti-Bold", size: 12))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(AdminSurface.control, in: Capsule())
+                    .foregroundStyle(AdminSurface.primary)
+                }
+
+                Spacer()
+
+                // Delete Lot Button (Only shown if lot is completely untouched/unused)
+                if lot.isPristineUnused {
+                    Button {
+                        promptDeleteConfirmation(for: lot)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "trash.fill")
+                                .font(.system(size: 11, weight: .bold))
+                            Text(Language.get("Delete_Lot", alter: "حذف التشغيلة"))
+                                .font(Font.custom("Beiruti-Bold", size: 12))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color(uiColor: .ppError).opacity(0.12), in: Capsule())
+                        .foregroundStyle(Color(uiColor: .ppError))
+                    }
+                } else {
+                    HStack(spacing: 4) {
+                        Image(systemName: "lock.shield")
+                            .font(.system(size: 10))
+                        Text(Language.get("Lot_In_Use", alter: "قيد الاستهلاك"))
+                            .font(AdminType.caption2)
+                    }
+                    .foregroundStyle(AdminSurface.secondaryText)
+                }
+            }
         }
         .padding(14)
         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -917,6 +987,20 @@ public struct InventoryLotsSheet: View {
                 .strokeBorder(lot.isExpired ? Color(uiColor: .ppError).opacity(0.4) : AdminSurface.hairline, lineWidth: lot.isExpired ? 1.2 : 0.8)
         )
         .contextMenu {
+            Button {
+                lotToEdit = lot
+            } label: {
+                Label(Language.get("Edit_Lot_And_Expiry", alter: "تعديل الكمية والصلاحية"), systemImage: "pencil")
+            }
+
+            if lot.isPristineUnused {
+                Button(role: .destructive) {
+                    promptDeleteConfirmation(for: lot)
+                } label: {
+                    Label(Language.get("Delete_Lot", alter: "حذف التشغيلة"), systemImage: "trash")
+                }
+            }
+
             Button {
                 UIPasteboard.general.string = lot.lotNumber
             } label: {
@@ -1096,19 +1180,36 @@ public struct InventoryLotsSheet: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var loadingSkeletonView: some View {
-        VStack(spacing: 14) {
-            ForEach(0..<4, id: \.self) { _ in
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(AdminSurface.surface)
-                    .frame(height: 110)
-                    .overlay(
-                        ProgressView().tint(AdminSurface.primary)
-                    )
-            }
+    // MARK: - Category-Defining PPAlert Confirmation
+
+    private func promptDeleteConfirmation(for lot: PPInventoryLot) {
+        guard lot.isPristineUnused else {
+            PPAlertHelper.showError(
+                in: nil,
+                title: Language.get("Cannot_Delete_Lot", alter: "لا يمكن حذف التشغيلة"),
+                subtitle: Language.get("Lot_Already_Used_Error", alter: "تم استخدام جزء من هذه التشغيلة بالفعل، لا يمكن حذفها ولكن يمكنك تعديل رصيدها.")
+            )
+            return
         }
-        .padding(AdminSpacing.screenMargin)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        let title = Language.get("Delete_Lot_Title", alter: "حذف التشغيلة")
+        let rawFormat = Language.get("Delete_Lot_Confirmation", alter: "هل أنت متأكد من حذف التشغيلة '%@'؟\nسيتم استرجاع رصيدها بالكامل (%@ وحدة) من رصيد الفرع والكتالوج.")
+        let message = String(format: rawFormat, lot.lotNumber, "\(lot.initialQuantity)".normalizedEnglishDigits)
+
+        PPAlertHelper.showDestructiveConfirmation(
+            in: nil,
+            title: title,
+            subtitle: message,
+            confirmButton: Language.get("Delete", alter: "حذف"),
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "trash.fill"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                executeLotDeletion(lot: lot)
+            },
+            cancelBlock: nil
+        )
     }
 
     // MARK: - Data Operations
@@ -1141,6 +1242,507 @@ public struct InventoryLotsSheet: View {
                 self.isLoading = false
             }
         }
+    }
+
+    private func executeLotDeletion(lot: PPInventoryLot) {
+        guard lot.isPristineUnused else {
+            PPAlertHelper.showError(
+                in: nil,
+                title: Language.get("Cannot_Delete_Lot", alter: "لا يمكن حذف التشغيلة"),
+                subtitle: Language.get("Lot_Already_Used_Error", alter: "تم استخدام جزء من هذه التشغيلة بالفعل، لا يمكن حذفها ولكن يمكنك تعديل رصيدها.")
+            )
+            return
+        }
+
+        isDeletingLot = true
+        Task {
+            do {
+                try await lotService.deleteLot(
+                    branchId: resolvedBranchID,
+                    productId: item.accessoryID,
+                    lotId: lot.lotId,
+                    notes: "Deleted from Admin app"
+                )
+                await MainActor.run {
+                    isDeletingLot = false
+                    lots.removeAll { $0.id == lot.id || $0.lotId == lot.lotId }
+                    onLotsChanged?()
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    PPAlertHelper.showSuccess(
+                        in: nil,
+                        title: Language.get("Lot_Deleted_Success", alter: "تم حذف التشغيلة بنجاح"),
+                        subtitle: String(format: Language.get("Lot_Deleted_Subtitle", alter: "تم خصم %@ وحدة من رصيد الفرع والكتالوج."), "\(lot.initialQuantity)".normalizedEnglishDigits)
+                    )
+                }
+            } catch {
+                await MainActor.run {
+                    isDeletingLot = false
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    PPAlertHelper.showError(
+                        in: nil,
+                        title: Language.get("Error", alter: "خطأ"),
+                        subtitle: PPBranchInventoryErrorHelper.localizedMessage(for: error)
+                    )
+                }
+            }
+}
+
+// MARK: - Category-Defining FEFO Telemetry Loading Hub View
+
+private struct FEFOLoadingHubView: View {
+    let item: PetAccessory
+    var isRegular: Bool = false
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var phaseIndex: Int = 0
+    @State private var rotationAngle: Double = 0
+    @State private var pulseScale: CGFloat = 1.0
+    @State private var shimmerOffset: CGFloat = -1.2
+    @State private var tickerTask: Task<Void, Never>? = nil
+
+    private var statusPhases: [(title: String, icon: String)] {
+        [
+            (Language.get("Loading_Scanning_Lots", alter: "جاري فحص تشغيلات الصنف ومصفوفة الصلاحية..."), "calendar.badge.clock"),
+            (Language.get("Loading_Calculating_FEFO", alter: "ترتيب أولويات الصرف التلقائي الذكي (FEFO)..."), "arrow.triangle.swap"),
+            (Language.get("Loading_Syncing_Inventory", alter: "مزامنة أرصدة الكتالوج وقيود الفرع..."), "shippingbox.and.arrow.backward.fill")
+        ]
+    }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            // 1. Specimen Identity Scaffold
+            identitySkeletonBar
+
+            // 2. Central Orbital Chrono-Radar Hub
+            orbitalChronoRadarCore
+
+            // 3. Shimmering Telemetry & Lots Wireframe
+            telemetryAndLotsWireframe
+        }
+        .padding(.horizontal, isRegular ? 0 : AdminSpacing.screenMargin)
+        .padding(.top, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onAppear {
+            startAnimationPipelines()
+        }
+        .onDisappear {
+            tickerTask?.cancel()
+        }
+    }
+
+    // MARK: - Specimen Identity Skeleton Bar
+    private var identitySkeletonBar: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(AdminSurface.surface)
+                    .frame(width: 44, height: 44)
+
+                Image(systemName: "shippingbox.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primary.opacity(0.4))
+            }
+
+            VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 6) {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(AdminSurface.surface)
+                    .frame(width: 140, height: 14)
+
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(AdminSurface.surface.opacity(0.6))
+                    .frame(width: 90, height: 10)
+            }
+
+            Spacer()
+
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(AdminSurface.surface.opacity(0.7))
+                .frame(width: 72, height: 28)
+        }
+        .padding(14)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.8)
+        )
+        .shimmerEffect(offset: shimmerOffset)
+    }
+
+    // MARK: - Central Orbital Chrono-Radar Hub
+    private var orbitalChronoRadarCore: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                // Expanding Ambient Aura
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                AdminSurface.primary.opacity(0.18),
+                                Color(uiColor: .ppWarning).opacity(0.08),
+                                Color.clear
+                            ],
+                            center: .center,
+                            startRadius: 20,
+                            endRadius: 75
+                        )
+                    )
+                    .frame(width: 150, height: 150)
+                    .scaleEffect(reduceMotion ? 1.0 : pulseScale)
+
+                // Concentric Pulse Rings
+                ForEach(0..<2, id: \.self) { ring in
+                    Circle()
+                        .strokeBorder(
+                            AdminSurface.primary.opacity(0.12 - Double(ring) * 0.05),
+                            lineWidth: 1.2
+                        )
+                        .frame(width: CGFloat(90 + ring * 30), height: CGFloat(90 + ring * 30))
+                        .scaleEffect(reduceMotion ? 1.0 : (pulseScale + CGFloat(ring) * 0.05))
+                }
+
+                // Dynamic Kinetic Orbital Track
+                Circle()
+                    .trim(from: 0.08, to: 0.82)
+                    .stroke(
+                        AngularGradient(
+                            gradient: Gradient(colors: [
+                                AdminSurface.primary,
+                                Color(uiColor: .ppWarning),
+                                AdminSurface.primary.opacity(0.15)
+                            ]),
+                            center: .center
+                        ),
+                        style: StrokeStyle(lineWidth: 3.2, lineCap: .round, dash: [8, 4])
+                    )
+                    .frame(width: 78, height: 78)
+                    .rotationEffect(.degrees(reduceMotion ? 45 : rotationAngle))
+
+                // Inner Glass Core Sphere
+                ZStack {
+                    Circle()
+                        .fill(AdminSurface.surface)
+                        .frame(width: 58, height: 58)
+                        .shadow(color: AdminSurface.primary.opacity(0.18), radius: 12, x: 0, y: 4)
+
+                    Circle()
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [.white.opacity(0.4), AdminSurface.primary.opacity(0.25)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1.2
+                        )
+                        .frame(width: 58, height: 58)
+
+                    // Core Symbol: FEFO Chrono Icon
+                    Image(systemName: "clock.arrow.2.circlepath")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [AdminSurface.primary, Color(uiColor: .ppWarning)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .rotationEffect(.degrees(reduceMotion ? 0 : -rotationAngle * 0.5))
+                }
+            }
+            .frame(height: 120)
+
+            // Dynamic Live Operational Ticker
+            VStack(spacing: 8) {
+                let currentPhase = phaseIndex < statusPhases.count ? statusPhases[phaseIndex] : statusPhases[0]
+                HStack(spacing: 6) {
+                    Image(systemName: currentPhase.icon)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+
+                    Text(currentPhase.title)
+                        .font(Font.custom("Beiruti-Bold", size: 13.5))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .multilineTextAlignment(.center)
+                        .animation(.easeInOut(duration: 0.3), value: phaseIndex)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(AdminSurface.surface, in: Capsule())
+                .overlay(
+                    Capsule()
+                        .strokeBorder(AdminSurface.primary.opacity(0.2), lineWidth: 0.8)
+                )
+
+                // Micro Phase Stepper Dots
+                HStack(spacing: 5) {
+                    ForEach(0..<statusPhases.count, id: \.self) { idx in
+                        Capsule()
+                            .fill(idx == phaseIndex ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.25))
+                            .frame(width: idx == phaseIndex ? 16 : 5, height: 4)
+                            .animation(.spring(response: 0.35, dampingFraction: 0.7), value: phaseIndex)
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(AdminSurface.surface.opacity(0.55))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.8)
+        )
+    }
+
+    // MARK: - Shimmering Telemetry & Lots Wireframe
+    private var telemetryAndLotsWireframe: some View {
+        VStack(spacing: 12) {
+            // 3-Metric Telemetry Ribbon Placeholder
+            HStack(spacing: 10) {
+                ForEach(0..<3, id: \.self) { _ in
+                    VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 6) {
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(AdminSurface.surface.opacity(0.7))
+                            .frame(width: 48, height: 9)
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(AdminSurface.surface)
+                            .frame(width: 32, height: 16)
+                    }
+                    .frame(maxWidth: .infinity, alignment: Language.isRTL() ? .trailing : .leading)
+                    .padding(12)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(AdminSurface.hairline, lineWidth: 0.6)
+                    )
+                }
+            }
+            .shimmerEffect(offset: shimmerOffset)
+
+            // Tactical Lot Card Skeletons
+            ForEach(0..<2, id: \.self) { cardIdx in
+                VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 10) {
+                    HStack {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(AdminSurface.surface.opacity(0.8))
+                            .frame(width: 120, height: 14)
+                        Spacer()
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(AdminSurface.surface.opacity(0.6))
+                            .frame(width: 55, height: 20)
+                    }
+
+                    HStack(spacing: 14) {
+                        VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 4) {
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(AdminSurface.surface.opacity(0.6))
+                                .frame(width: 60, height: 8)
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(AdminSurface.surface)
+                                .frame(width: 80, height: 12)
+                        }
+                        Spacer()
+                        VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 4) {
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(AdminSurface.surface.opacity(0.6))
+                                .frame(width: 50, height: 8)
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(AdminSurface.surface)
+                                .frame(width: 40, height: 12)
+                        }
+                    }
+
+                    // Progress bar placeholder
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(AdminSurface.surface.opacity(0.5))
+                        .frame(height: 6)
+
+                    HStack {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(AdminSurface.surface.opacity(0.7))
+                            .frame(width: 80, height: 24)
+                        Spacer()
+                        if cardIdx == 0 {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(AdminSurface.surface.opacity(0.7))
+                                .frame(width: 70, height: 24)
+                        }
+                    }
+                }
+                .padding(14)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(AdminSurface.hairline, lineWidth: 0.8)
+                )
+                .shimmerEffect(offset: shimmerOffset)
+            }
+        }
+    }
+
+    private func startAnimationPipelines() {
+        guard !reduceMotion else { return }
+
+        withAnimation(.linear(duration: 4.5).repeatForever(autoreverses: false)) {
+            rotationAngle = 360
+        }
+
+        withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
+            pulseScale = 1.08
+        }
+
+        withAnimation(.linear(duration: 1.8).repeatForever(autoreverses: false)) {
+            shimmerOffset = 1.8
+        }
+
+        tickerTask = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_800_000_000)
+                if !Task.isCancelled {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        phaseIndex = (phaseIndex + 1) % max(1, statusPhases.count)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Category-Defining Kinetic Mutation Action HUD
+
+private struct FEFOMutationActionHUD: View {
+    let title: String
+    let subtitle: String?
+    let iconName: String
+    var isDestructive: Bool = false
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var rotation: Double = 0
+    @State private var pulse: CGFloat = 1.0
+
+    var body: some View {
+        ZStack {
+            // Tactile Ambient Blur Dimming
+            Color.black.opacity(0.38)
+                .background(.ultraThinMaterial)
+                .ignoresSafeArea()
+
+            // Continuous Elevated Capsule
+            VStack(spacing: 16) {
+                // Kinetic Dual-Ring Core
+                ZStack {
+                    // Outer Translucent Guide Ring
+                    Circle()
+                        .strokeBorder(
+                            (isDestructive ? Color(uiColor: .ppError) : AdminSurface.primary).opacity(0.15),
+                            lineWidth: 3.5
+                        )
+                        .frame(width: 58, height: 58)
+
+                    // Kinetic Rotating Light Particle Segment
+                    Circle()
+                        .trim(from: 0.1, to: 0.75)
+                        .stroke(
+                            AngularGradient(
+                                gradient: Gradient(colors: [
+                                    isDestructive ? Color(uiColor: .ppError) : AdminSurface.primary,
+                                    (isDestructive ? Color(uiColor: .ppError) : AdminSurface.primary).opacity(0.1)
+                                ]),
+                                center: .center
+                            ),
+                            style: StrokeStyle(lineWidth: 3.5, lineCap: .round)
+                        )
+                        .frame(width: 58, height: 58)
+                        .rotationEffect(.degrees(reduceMotion ? 0 : rotation))
+
+                    // Center Animated Glyph
+                    Image(systemName: iconName)
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(isDestructive ? Color(uiColor: .ppError) : AdminSurface.primary)
+                        .scaleEffect(reduceMotion ? 1.0 : pulse)
+                }
+                .frame(width: 64, height: 64)
+
+                // Contextual Typography
+                VStack(spacing: 4) {
+                    Text(title)
+                        .font(Font.custom("Beiruti-Bold", size: 17))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .multilineTextAlignment(.center)
+
+                    if let sub = subtitle, !sub.isEmpty {
+                        Text(sub)
+                            .font(Font.custom("Beiruti-Regular", size: 13))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+            }
+            .padding(.horizontal, 28)
+            .padding(.vertical, 22)
+            .background(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(AdminSurface.surface)
+                    .shadow(color: Color.black.opacity(0.22), radius: 24, x: 0, y: 12)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                (isDestructive ? Color(uiColor: .ppError) : AdminSurface.primary).opacity(0.35),
+                                AdminSurface.hairline
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.0
+                    )
+            )
+            .padding(.horizontal, 36)
+        }
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.linear(duration: 1.4).repeatForever(autoreverses: false)) {
+                rotation = 360
+            }
+            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                pulse = 1.14
+            }
+        }
+    }
+}
+
+// MARK: - Shimmer View Modifier
+
+private struct PPShimmerModifier: ViewModifier {
+    var offset: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(
+                GeometryReader { geo in
+                    LinearGradient(
+                        colors: [
+                            .clear,
+                            Color.white.opacity(0.18),
+                            .clear
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: geo.size.width * 0.7)
+                    .offset(x: geo.size.width * offset)
+                }
+                .mask(content)
+            )
+    }
+}
+
+extension View {
+    fileprivate func shimmerEffect(offset: CGFloat) -> some View {
+        self.modifier(PPShimmerModifier(offset: offset))
     }
 }
 
@@ -1946,6 +2548,567 @@ private struct SimulatedBatchBarcode: View {
                 Rectangle()
                     .fill(AdminSurface.primaryText.opacity(index % 4 == 0 ? 0.75 : (isThick ? 0.6 : 0.22)))
                     .frame(width: isThick ? 2.2 : 1.1, height: 18)
+            }
+        }
+    }
+}
+
+// MARK: - Edit Lot Sheet (Studio-Grade Quantity & Expiry Editor)
+
+private struct EditLotSheet: View {
+    let item: PetAccessory
+    let lot: PPInventoryLot
+    let branchId: String
+    let onUpdated: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    @State private var quantity: Int
+    @State private var manualQuantityInput: String
+    @State private var expiryDate: Date
+    @State private var notes: String
+    @State private var isSubmitting: Bool = false
+    @State private var errorMessage: String? = nil
+    @State private var isCustomCalendarExpanded: Bool = false
+
+    private var isIPadLayout: Bool {
+        horizontalSizeClass == .regular && UIDevice.current.userInterfaceIdiom == .pad
+    }
+
+    init(item: PetAccessory, lot: PPInventoryLot, branchId: String, onUpdated: @escaping () -> Void) {
+        self.item = item
+        self.lot = lot
+        self.branchId = branchId
+        self.onUpdated = onUpdated
+        _quantity = State(initialValue: lot.initialQuantity)
+        _manualQuantityInput = State(initialValue: "\(lot.initialQuantity)".normalizedEnglishDigits)
+        _expiryDate = State(initialValue: lot.expiryDate ?? Calendar.current.date(byAdding: .month, value: 6, to: Date()) ?? Date())
+        _notes = State(initialValue: "")
+    }
+
+    private var minAllowedQuantity: Int {
+        lot.minAllowedQuantity
+    }
+
+    private var consumedQuantity: Int {
+        lot.consumedQuantity
+    }
+
+    private var delta: Int {
+        quantity - lot.initialQuantity
+    }
+
+    private var resultingAvailable: Int {
+        lot.availableQuantity + delta
+    }
+
+    private var daysUntilExpiry: Int {
+        Calendar.current.dateComponents([.day], from: Date(), to: expiryDate).day ?? 0
+    }
+
+    private var fefoLevel: FEFOSafetyLevel {
+        FEFOSafetyLevel.resolve(days: daysUntilExpiry)
+    }
+
+    private var formattedExpiryDate: String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter.string(from: expiryDate)
+    }
+
+    private var minimumExpiryDate: Date {
+        let calendar = Calendar.current
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: Date())) ?? Date().addingTimeInterval(86400)
+        return tomorrow
+    }
+
+    private var isQuantityValid: Bool {
+        quantity >= minAllowedQuantity && quantity > 0
+    }
+
+    private var isExpiryValid: Bool {
+        expiryDate >= minimumExpiryDate
+    }
+
+    private var hasChanges: Bool {
+        let dateChanged: Bool
+        if let originalDate = lot.expiryDate {
+            dateChanged = Calendar.current.startOfDay(for: expiryDate) != Calendar.current.startOfDay(for: originalDate)
+        } else {
+            dateChanged = true
+        }
+        let qtyChanged = quantity != lot.initialQuantity
+        let notesChanged = !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return qtyChanged || dateChanged || notesChanged
+    }
+
+    private var canSubmit: Bool {
+        hasChanges && isQuantityValid && isExpiryValid && !isSubmitting
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                AdminSurface.background.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: AdminSpacing.lg) {
+                        // Lot Identity Banner
+                        lotHeaderBanner
+
+                        // Consumption & Remaining Stock Radar
+                        consumptionTelemetryCard
+
+                        // Quantity Modification Chamber
+                        quantityModificationCard
+
+                        // Expiry Date Modification Chamber
+                        expiryModificationCard
+
+                        // Notes / Reason Field
+                        notesSectionCard
+
+                        if let errorMessage {
+                            errorBanner(text: errorMessage)
+                        }
+                    }
+                    .padding(.horizontal, isIPadLayout ? 32 : AdminSpacing.screenMargin)
+                    .padding(.top, 16)
+                    .padding(.bottom, 40)
+                }
+            }
+            .navigationTitle(Language.get("Edit_Lot_Title", alter: "تعديل بيانات التشغيلة"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(Language.get("Cancel", alter: "إلغاء")) {
+                        dismiss()
+                    }
+                    .foregroundColor(AdminSurface.secondaryText)
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        submitUpdate()
+                    } label: {
+                        if isSubmitting {
+                            ProgressView()
+                                .tint(AdminSurface.primary)
+                        } else {
+                            Text(Language.get("Save_Changes", alter: "حفظ التعديلات"))
+                                .font(AdminType.subheadlineBold)
+                                .foregroundColor(canSubmit ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.5))
+                        }
+                    }
+                    .disabled(!canSubmit)
+                }
+            }
+        }
+    }
+
+    // MARK: - Subcomponents
+
+    private var lotHeaderBanner: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(AdminSurface.primary.opacity(0.12))
+                    .frame(width: 44, height: 44)
+                Image(systemName: "shippingbox.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(AdminSurface.primary)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.name)
+                    .font(AdminType.headlineBold)
+                    .foregroundColor(AdminSurface.primaryText)
+                    .lineLimit(1)
+
+                HStack(spacing: 8) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "barcode.viewfinder")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(AdminSurface.primary)
+                        Text(lot.lotNumber)
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundStyle(AdminSurface.primaryText)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(AdminSurface.control, in: Capsule())
+
+                    if let sku = item.sku, !sku.isEmpty {
+                        Text("SKU: \(sku)".normalizedEnglishDigits)
+                            .font(AdminType.caption)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                }
+            }
+
+            Spacer()
+
+            // Status Badge
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(lot.statusColor)
+                    .frame(width: 6, height: 6)
+                Text(Language.get(lot.statusLocalizedKey, alter: lot.status))
+                    .font(Font.custom("Beiruti-Bold", size: 11))
+                    .foregroundStyle(lot.statusColor)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(lot.statusColor.opacity(0.10), in: Capsule())
+        }
+        .padding(AdminSpacing.cardPadding)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+        .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline, lineWidth: 1))
+    }
+
+    private var consumptionTelemetryCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label(Language.get("Stock_Consumption_Radar", alter: "رادار الاستهلاك والرصيد المتاح"), systemImage: "chart.bar.xaxis")
+                    .font(AdminType.subheadlineBold)
+                    .foregroundColor(AdminSurface.primaryText)
+                Spacer()
+            }
+
+            Divider().background(AdminSurface.hairline)
+
+            HStack(spacing: 10) {
+                // Registered initial
+                telemetryCell(
+                    title: Language.get("Initial_Stock", alter: "الكمية المسجلة"),
+                    value: "\(lot.initialQuantity)".normalizedEnglishDigits,
+                    color: AdminSurface.primaryText
+                )
+
+                // Consumed
+                telemetryCell(
+                    title: Language.get("Consumed_Stock", alter: "المستهلك / المباع"),
+                    value: "\(consumedQuantity)".normalizedEnglishDigits,
+                    color: consumedQuantity > 0 ? AdminSurface.amber : AdminSurface.secondaryText
+                )
+
+                // Available
+                telemetryCell(
+                    title: Language.get("Available_Stock", alter: "المتاح حالياً"),
+                    value: "\(lot.availableQuantity)".normalizedEnglishDigits,
+                    color: lot.availableQuantity > 0 ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppError)
+                )
+            }
+
+            if consumedQuantity > 0 {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "exclamationmark.shield.fill")
+                        .font(.system(size: 13))
+                        .foregroundColor(AdminSurface.amber)
+                    Text(String(format: Language.get("Lot_Consumed_Warning", alter: "تم استهلاك أو حجز %@ وحدة من هذه التشغيلة مسبقاً. لا يمكن تقليل الكمية الإجمالية إلى أقل من %@ وحدة."), "\(consumedQuantity)".normalizedEnglishDigits, "\(minAllowedQuantity)".normalizedEnglishDigits))
+                        .font(AdminType.caption)
+                        .foregroundColor(AdminSurface.amber)
+                        .lineSpacing(2)
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(AdminSurface.amber.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+            }
+        }
+        .padding(AdminSpacing.cardPadding)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+        .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline, lineWidth: 1))
+    }
+
+    private func telemetryCell(title: String, value: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(title)
+                .font(AdminType.caption2)
+                .foregroundColor(AdminSurface.secondaryText)
+                .lineLimit(1)
+            Text(value)
+                .font(Font.custom("Beiruti-Bold", size: 16))
+                .foregroundColor(color)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var quantityModificationCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label(Language.get("New_Lot_Quantity", alter: "كمية التشغيلة الإجمالية"), systemImage: "number")
+                    .font(AdminType.subheadlineBold)
+                    .foregroundColor(AdminSurface.primaryText)
+                Spacer()
+
+                Text(String(format: Language.get("Min_Allowed_Lot_Quantity", alter: "الحد الأدنى: %@"), "\(minAllowedQuantity)".normalizedEnglishDigits))
+                    .font(AdminType.caption)
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+
+            // Interactive Stepper & Numeric Input
+            HStack(spacing: 12) {
+                // Decrement Button
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    if quantity > minAllowedQuantity {
+                        quantity -= 1
+                        manualQuantityInput = "\(quantity)".normalizedEnglishDigits
+                    }
+                } label: {
+                    Image(systemName: "minus")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(quantity > minAllowedQuantity ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.4))
+                        .frame(width: 44, height: 44)
+                        .background(AdminSurface.control, in: Circle())
+                }
+                .disabled(quantity <= minAllowedQuantity)
+
+                // TextField for Quantity
+                TextField("", text: $manualQuantityInput)
+                    .keyboardType(.numberPad)
+                    .multilineTextAlignment(.center)
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .foregroundColor(isQuantityValid ? AdminSurface.primaryText : AdminSurface.crimson)
+                    .padding(.vertical, 8)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12))
+                    .onChange(of: manualQuantityInput) { newValue in
+                        let cleaned = newValue.normalizedEnglishDigits.filter { "0123456789".contains($0) }
+                        if let parsed = Int(cleaned) {
+                            quantity = parsed
+                        } else if cleaned.isEmpty {
+                            quantity = 0
+                        }
+                    }
+
+                // Increment Button
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    quantity += 1
+                    manualQuantityInput = "\(quantity)".normalizedEnglishDigits
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(AdminSurface.primary)
+                        .frame(width: 44, height: 44)
+                        .background(AdminSurface.control, in: Circle())
+                }
+            }
+
+            // Quick Step Presets
+            HStack(spacing: 8) {
+                quickStepChip(deltaValue: -10, title: "-10")
+                quickStepChip(deltaValue: -5, title: "-5")
+                quickStepChip(deltaValue: 5, title: "+5")
+                quickStepChip(deltaValue: 10, title: "+10")
+                quickStepChip(deltaValue: 50, title: "+50")
+            }
+
+            Divider().background(AdminSurface.hairline)
+
+            // Live Delta Radar
+            if delta != 0 {
+                HStack(spacing: 8) {
+                    Image(systemName: delta > 0 ? "arrow.up.right.circle.fill" : "arrow.down.right.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(delta > 0 ? AdminSurface.emerald : AdminSurface.amber)
+
+                    Text(delta > 0
+                         ? String(format: Language.get("Lot_Stock_Increase_Preview", alter: "إضافة +%@ وحدة إلى المخزون (الرصيد المتاح سيصبح: %@)"), "\(delta)".normalizedEnglishDigits, "\(resultingAvailable)".normalizedEnglishDigits)
+                         : String(format: Language.get("Lot_Stock_Decrease_Preview", alter: "خصم %@ وحدة من المخزون (الرصيد المتاح سيصبح: %@)"), "\(-delta)".normalizedEnglishDigits, "\(resultingAvailable)".normalizedEnglishDigits))
+                        .font(AdminType.caption1Bold)
+                        .foregroundColor(delta > 0 ? AdminSurface.emerald : AdminSurface.amber)
+
+                    Spacer()
+                }
+                .padding(10)
+                .background((delta > 0 ? AdminSurface.emerald : AdminSurface.amber).opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+            } else {
+                HStack {
+                    Text(Language.get("No_Quantity_Change", alter: "الكمية مطابقة للرصيد المسجل حالياً (لا تغيير)"))
+                        .font(AdminType.caption)
+                        .foregroundColor(AdminSurface.secondaryText)
+                    Spacer()
+                }
+            }
+
+            if quantity < minAllowedQuantity {
+                HStack(spacing: 6) {
+                    Image(systemName: "xmark.octagon.fill")
+                        .foregroundColor(AdminSurface.crimson)
+                    Text(String(format: Language.get("Quantity_Below_Min_Error", alter: "الكمية لا يمكن أن تقل عن %@ وحدة."), "\(minAllowedQuantity)".normalizedEnglishDigits))
+                        .font(AdminType.caption)
+                        .foregroundColor(AdminSurface.crimson)
+                }
+            }
+        }
+        .padding(AdminSpacing.cardPadding)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+        .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline, lineWidth: 1))
+    }
+
+    private func quickStepChip(deltaValue: Int, title: String) -> some View {
+        let isEnabled = (quantity + deltaValue) >= minAllowedQuantity
+
+        return Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            quantity = max(minAllowedQuantity, quantity + deltaValue)
+            manualQuantityInput = "\(quantity)".normalizedEnglishDigits
+        } label: {
+            Text(title.normalizedEnglishDigits)
+                .font(Font.custom("Beiruti-Bold", size: 12))
+                .foregroundColor(isEnabled ? AdminSurface.primaryText : AdminSurface.secondaryText.opacity(0.4))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 8))
+        }
+        .disabled(!isEnabled)
+    }
+
+    private var expiryModificationCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label(Language.get("New_Expiry_Date", alter: "تاريخ الصلاحية الجديد"), systemImage: "calendar")
+                    .font(AdminType.subheadlineBold)
+                    .foregroundColor(AdminSurface.primaryText)
+                Spacer()
+
+                // Days Remaining Pill
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(fefoLevel.color)
+                        .frame(width: 6, height: 6)
+                    Text(daysUntilExpiry > 0 ? "\(daysUntilExpiry) يوم متبقي".normalizedEnglishDigits : "منتهي الصلاحية")
+                        .font(Font.custom("Beiruti-Bold", size: 11))
+                        .foregroundColor(fefoLevel.color)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(fefoLevel.color.opacity(0.12), in: Capsule())
+            }
+
+            // Expiry Date Selector Button
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    isCustomCalendarExpanded.toggle()
+                }
+            } label: {
+                HStack {
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.system(size: 15))
+                        .foregroundColor(AdminSurface.primary)
+
+                    Text(formattedExpiryDate.normalizedEnglishDigits)
+                        .font(Font.custom("Beiruti-Bold", size: 15))
+                        .foregroundColor(AdminSurface.primaryText)
+
+                    Spacer()
+
+                    Image(systemName: isCustomCalendarExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+                .padding(12)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12))
+            }
+
+            if isCustomCalendarExpanded {
+                DatePicker(
+                    "",
+                    selection: $expiryDate,
+                    in: minimumExpiryDate...,
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.graphical)
+                .accentColor(AdminSurface.primary)
+                .padding(8)
+                .background(AdminSurface.control.opacity(0.5), in: RoundedRectangle(cornerRadius: 14))
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(AdminSpacing.cardPadding)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+        .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline, lineWidth: 1))
+    }
+
+    private var notesSectionCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(Language.get("Update_Reason_Notes", alter: "سبب التعديل أو ملاحظات إضافية"), systemImage: "note.text")
+                .font(AdminType.subheadlineBold)
+                .foregroundColor(AdminSurface.primaryText)
+
+            TextField(Language.get("Lot_Notes_Placeholder", alter: "مثال: تصحيح خطأ إدخال الكمية أو تعديل تاريخ الصلاحية الفعلي"), text: $notes, axis: .vertical)
+                .lineLimit(2...4)
+                .font(AdminType.footnote)
+                .padding(12)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12))
+        }
+        .padding(AdminSpacing.cardPadding)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+        .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline, lineWidth: 1))
+    }
+
+    private func errorBanner(text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 14))
+                .foregroundColor(AdminSurface.crimson)
+            Text(text)
+                .font(AdminType.footnote)
+                .foregroundColor(AdminSurface.crimson)
+                .lineSpacing(2)
+            Spacer()
+        }
+        .padding(12)
+        .background(AdminSurface.crimson.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func submitUpdate() {
+        guard canSubmit else { return }
+
+        isSubmitting = true
+        errorMessage = nil
+
+        let updatedQty = quantity != lot.initialQuantity ? quantity : nil
+        let dateChanged: Bool
+        if let originalDate = lot.expiryDate {
+            dateChanged = Calendar.current.startOfDay(for: expiryDate) != Calendar.current.startOfDay(for: originalDate)
+        } else {
+            dateChanged = true
+        }
+        let updatedExp = dateChanged ? expiryDate : nil
+
+        Task {
+            do {
+                _ = try await PPInventoryLotService.shared.updateLot(
+                    branchId: branchId,
+                    productId: lot.productId,
+                    lotId: lot.lotId,
+                    newQuantity: updatedQty,
+                    newExpiryDate: updatedExp,
+                    notes: notes
+                )
+                await MainActor.run {
+                    isSubmitting = false
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    PPAlertHelper.showSuccess(
+                        in: nil,
+                        title: Language.get("Lot_Updated_Success", alter: "تم تحديث التشغيلة بنجاح"),
+                        subtitle: nil
+                    )
+                    onUpdated()
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    isSubmitting = false
+                    errorMessage = PPBranchInventoryErrorHelper.localizedMessage(for: error)
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                }
             }
         }
     }

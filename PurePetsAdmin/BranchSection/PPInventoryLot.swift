@@ -111,6 +111,26 @@ public struct PPInventoryLot: Identifiable, Hashable, Sendable {
         default: return .green
         }
     }
+
+    /// A lot is considered pristine/unused if no units have been sold or reserved,
+    /// available equals initial, and on-hand equals initial.
+    public var isPristineUnused: Bool {
+        return initialQuantity > 0 &&
+               availableQuantity == initialQuantity &&
+               reservedQuantity == 0 &&
+               onHandQuantity == initialQuantity
+    }
+
+    /// Consumed/sold units from this lot that cannot be undone.
+    public var consumedQuantity: Int {
+        return max(0, initialQuantity - availableQuantity - reservedQuantity)
+    }
+
+    /// The minimum allowed new quantity when editing this lot:
+    /// cannot be reduced below consumed + reserved units.
+    public var minAllowedQuantity: Int {
+        return max(0, initialQuantity - availableQuantity)
+    }
 }
 
 // MARK: - Inventory Lot Service
@@ -340,6 +360,133 @@ public final class PPInventoryLotService: ObservableObject {
             errorMessage = nil
 
             return newLot
+        } catch {
+            let msg = PPBranchInventoryErrorHelper.localizedMessage(for: error)
+            throw NSError(domain: "PPInventoryLotService", code: -1, userInfo: [NSLocalizedDescriptionKey: msg])
+        }
+    }
+
+    /// Deletes an untouched, unused lot and rolls back its stock.
+    public func deleteLot(
+        branchId: String,
+        productId: String,
+        lotId: String,
+        notes: String = ""
+    ) async throws {
+        pendingLoads += 1
+        isLoading = true
+        defer { pendingLoads -= 1; isLoading = pendingLoads > 0 }
+
+        let payload: [String: Any] = [
+            "lotId": lotId,
+            "notes": notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        ]
+
+        do {
+            let result = try await functions.httpsCallable("deleteInventoryLot").call(["payload": payload])
+            guard let dict = result.data as? [String: Any],
+                  (dict["ok"] as? Bool == true || (dict["ok"] as? NSNumber)?.boolValue == true) else {
+                throw NSError(
+                    domain: "PPInventoryLotService",
+                    code: -1,
+                    userInfo: [NSLocalizedDescriptionKey: Language.get("Inventory_Lot_Invalid_Response", alter: "استجابة غير صالحة من الخادم")]
+                )
+            }
+
+            let resolvedBranch = branchId.trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = "\(resolvedBranch)/\(productId)"
+            if var current = lotsByProduct[key] {
+                current.removeAll { $0.id == lotId || $0.lotId == lotId }
+                lotsByProduct[key] = current
+            }
+            errorMessage = nil
+        } catch {
+            let msg = PPBranchInventoryErrorHelper.localizedMessage(for: error)
+            throw NSError(domain: "PPInventoryLotService", code: -1, userInfo: [NSLocalizedDescriptionKey: msg])
+        }
+    }
+
+    /// Modifies an existing lot's quantity and/or expiry date.
+    public func updateLot(
+        branchId: String,
+        productId: String,
+        lotId: String,
+        newQuantity: Int? = nil,
+        newExpiryDate: Date? = nil,
+        notes: String = ""
+    ) async throws -> PPInventoryLot {
+        pendingLoads += 1
+        isLoading = true
+        defer { pendingLoads -= 1; isLoading = pendingLoads > 0 }
+
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        var payload: [String: Any] = [
+            "lotId": lotId,
+            "notes": notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        ]
+        if let newQuantity {
+            payload["newQuantity"] = newQuantity
+        }
+        if let newExpiryDate {
+            payload["newExpiryDate"] = isoFormatter.string(from: newExpiryDate)
+        }
+
+        do {
+            let result = try await functions.httpsCallable("updateInventoryLot").call(["payload": payload])
+            guard let dict = result.data as? [String: Any],
+                  (dict["ok"] as? Bool == true || (dict["ok"] as? NSNumber)?.boolValue == true),
+                  let lotData = dict["lot"] as? [String: Any],
+                  let returnedLotId = lotData["lotId"] as? String, !returnedLotId.isEmpty else {
+                throw NSError(
+                    domain: "PPInventoryLotService",
+                    code: -1,
+                    userInfo: [NSLocalizedDescriptionKey: Language.get("Inventory_Lot_Invalid_Response", alter: "استجابة غير صالحة من الخادم")]
+                )
+            }
+
+            let initialQty = (lotData["initialQuantity"] as? NSNumber)?.intValue ?? (lotData["initialQuantity"] as? Int) ?? 0
+            let availableQty = (lotData["availableQuantity"] as? NSNumber)?.intValue ?? (lotData["availableQuantity"] as? Int) ?? 0
+            let reservedQty = (lotData["reservedQuantity"] as? NSNumber)?.intValue ?? (lotData["reservedQuantity"] as? Int) ?? 0
+            let onHandQty = (lotData["onHandQuantity"] as? NSNumber)?.intValue ?? (lotData["onHandQuantity"] as? Int)
+
+            var parsedExpDate: Date? = newExpiryDate
+            if let expStr = lotData["expiryDate"] as? String {
+                parsedExpDate = isoFormatter.date(from: expStr) ?? ISO8601DateFormatter().date(from: expStr) ?? newExpiryDate
+            }
+
+            let updatedLot = PPInventoryLot(
+                id: returnedLotId,
+                lotId: returnedLotId,
+                lotNumber: (lotData["lotNumber"] as? String) ?? "",
+                productId: productId,
+                productName: (lotData["productName"] as? String) ?? "",
+                branchId: (lotData["branchId"] as? String) ?? branchId,
+                initialQuantity: initialQty,
+                availableQuantity: availableQty,
+                reservedQuantity: reservedQty,
+                onHandQuantity: onHandQty,
+                costPrice: (lotData["costPrice"] as? NSNumber)?.doubleValue,
+                validFrom: nil,
+                expiryDate: parsedExpDate,
+                status: (lotData["status"] as? String) ?? "active",
+                supplier: (lotData["supplier"] as? String) ?? "",
+                notes: (lotData["notes"] as? String) ?? notes
+            )
+
+            let resolvedBranch = branchId.trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = "\(resolvedBranch)/\(productId)"
+            var current = lotsByProduct[key] ?? []
+            if let idx = current.firstIndex(where: { $0.id == returnedLotId || $0.lotId == returnedLotId }) {
+                current[idx] = updatedLot
+            } else {
+                current.insert(updatedLot, at: 0)
+            }
+            lotsByProduct[key] = current
+            errorMessage = nil
+
+            return updatedLot
         } catch {
             let msg = PPBranchInventoryErrorHelper.localizedMessage(for: error)
             throw NSError(domain: "PPInventoryLotService", code: -1, userInfo: [NSLocalizedDescriptionKey: msg])

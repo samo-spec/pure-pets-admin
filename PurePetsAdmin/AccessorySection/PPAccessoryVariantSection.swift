@@ -1675,8 +1675,10 @@ struct PPAccessoryVariantSection: View {
                                 model: model,
                                 onOpenVariantProduct: onOpenVariantProduct
                             )
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .disabled(model.isEditingLocked)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
                         VStack(alignment: .leading, spacing: 12) {
                             modePicker(for: draft)
@@ -1718,6 +1720,7 @@ struct PPAccessoryVariantSection: View {
                     .padding(.bottom, 24)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .confirmationDialog(
             Language.get("Variant_RevertToNormal_Action", alter: "إلغاء المتغيرات والتحويل لمنتج عادي"),

@@ -59,6 +59,16 @@ typedef void (^PPAlertSimpleActionBlock)(void);
                 cancelBlock:(void(^ _Nullable)(void))cancelBlock
     NS_SWIFT_NAME(showConfirmation(in:title:subtitle:confirmButton:cancelButton:icon:confirmBlock:cancelBlock:));
 
++ (void)showDestructiveConfirmationIn:(UIViewController * _Nullable)vc
+                                title:(NSString *)title
+                             subtitle:(NSString *)subtitle
+                        confirmButton:(NSString *)confirmTitle
+                         cancelButton:(NSString *)cancelTitle
+                                 icon:(UIImage * _Nullable)icon
+                         confirmBlock:(AlertCompletionBlock _Nullable)confirmBlock
+                          cancelBlock:(void(^ _Nullable)(void))cancelBlock
+    NS_SWIFT_NAME(showDestructiveConfirmation(in:title:subtitle:confirmButton:cancelButton:icon:confirmBlock:cancelBlock:));
+
 + (void)showThreeActionConfirmationIn:(UIViewController * _Nullable)vc
                                 title:(NSString *)title
                              subtitle:(NSString * _Nullable)subtitle

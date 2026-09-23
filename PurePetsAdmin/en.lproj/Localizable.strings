@@ -10174,3 +10174,25 @@
 "Variant_RevertToNormal_Confirm_Desc" = "Are you sure you want to dissolve this variant family? This product will be retained as a standalone single product, and sibling variants will be deleted.";
 "Variant_RevertToNormal_Success" = "Product successfully converted to a standard single item and variants removed.";
 "Variant_Error_CannotRevertNoRetained" = "Unable to identify the primary product to retain.";
+
+/* Inventory Lot Management & Editing */
+"Edit_Lot" = "Edit Lot";
+"Delete_Lot" = "Delete Lot";
+"Delete_Lot_Title" = "Delete Lot";
+"Delete_Lot_Confirmation" = "Are you sure you want to delete lot '%@'?\nIts entire stock (%@ units) will be removed from branch inventory and catalog.";
+"Edit_Lot_Title" = "Edit Lot Details";
+"Edit_Lot_And_Expiry" = "Edit Quantity & Expiry";
+"Lot_In_Use" = "In Use";
+"Lot_Already_Used_Error" = "Part of this lot has already been consumed. It cannot be deleted, but you can adjust its quantity.";
+"Lot_Deleted_Success" = "Lot Deleted Successfully";
+"Lot_Deleted_Subtitle" = "%@ units deducted from branch inventory and catalog.";
+"Min_Allowed_Lot_Quantity" = "Minimum quantity: %@ units";
+"Lot_Consumed_Warning" = "%@ units already consumed or reserved. Total quantity cannot be reduced below %@ units.";
+"Save_Changes" = "Save Changes";
+"New_Expiry_Date" = "New Expiry Date";
+"Loading_Scanning_Lots" = "Scanning item lots and expiry matrix...";
+"Loading_Calculating_FEFO" = "Calculating smart FEFO dispatch priorities...";
+"Loading_Syncing_Inventory" = "Synchronizing catalog stock & branch inventory...";
+"Reverting_Branch_Catalog_Stock" = "Restoring units balance to branch & catalog...";
+"New_Lot_Quantity" = "New Lot Quantity";
+"Cannot_Delete_Lot" = "Cannot Delete Lot";

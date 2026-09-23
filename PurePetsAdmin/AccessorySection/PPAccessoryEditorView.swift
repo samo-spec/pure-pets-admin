@@ -5795,6 +5795,7 @@ struct PPAccessoryEditorScreen: View {
                                     governanceStageCanvas
                                 }
                             }
+                            .frame(maxWidth: .infinity)
                             .padding(.horizontal, AdminSpacing.screenMargin)
                             .padding(.top, 6)
                             .padding(.bottom, 130)
@@ -6406,6 +6407,7 @@ struct PPAccessoryEditorScreen: View {
             // Taxonomy & Classification
             taxonomyClassificationDeck
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var mediaAssetVaultDeck: some View {

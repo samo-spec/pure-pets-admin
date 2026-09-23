@@ -980,6 +980,41 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
     [alert showInViewController:vc];
 }
 
++ (void)showDestructiveConfirmationIn:(UIViewController *)vc
+                                title:(NSString *)title
+                             subtitle:(NSString *)subtitle
+                        confirmButton:(NSString *)confirmTitle
+                         cancelButton:(NSString *)cancelTitle
+                                 icon:(UIImage * _Nullable)icon
+                         confirmBlock:(AlertCompletionBlock _Nullable)confirmBlock
+                          cancelBlock:(void(^ _Nullable)(void))cancelBlock {
+    NSMutableArray<PPAlertActionItem *> *actions = [NSMutableArray array];
+    NSString *safeCancelTitle = cancelTitle.length ? cancelTitle : (Language.get(@"Cancel", alter:@"إلغاء") ?: @"إلغاء");
+    NSString *safeConfirmTitle = confirmTitle.length ? confirmTitle : (Language.get(@"Delete", alter:@"حذف") ?: @"حذف");
+
+    [actions addObject:[PPAlertActionItem itemWithTitle:safeCancelTitle
+                                                  style:PPAlertActionStyleCancel
+                                             completion:nil
+                                       simpleCompletion:cancelBlock]];
+    [actions addObject:[PPAlertActionItem itemWithTitle:safeConfirmTitle
+                                                  style:PPAlertActionStyleDestructive
+                                             completion:confirmBlock
+                                       simpleCompletion:nil]];
+
+    UIImage *alertIcon = icon ?: [UIImage systemImageNamed:@"trash.fill"];
+    PPAlert *alert = [[PPAlert alloc] initWithType:PPAlertTypeError
+                                             title:title
+                                          subtitle:subtitle
+                                              icon:alertIcon
+                                           actions:actions
+                                       placeholder:nil
+                                       initialText:nil
+                                       secureEntry:NO
+                                      keyboardType:UIKeyboardTypeDefault
+                      shouldDismissOnBackgroundTap:YES];
+    [alert showInViewController:vc];
+}
+
 + (void)showConfirmationIn:(UIViewController *)vc
                      title:(NSString *)title
                   subtitle:(NSString *)subtitle

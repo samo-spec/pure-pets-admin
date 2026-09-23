@@ -69,6 +69,7 @@ struct PPAccessoryVariantMatrixView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .sheet(item: $activeSheet) { item in
             Group {
                 switch item {
@@ -197,11 +198,15 @@ struct PPAccessoryVariantMatrixView: View {
                     Text(Language.get("Variant_Matrix_Title", alter: "مصفوفة المتغيرات"))
                         .font(AdminType.headlineBold)
                         .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
 
                     Text(Language.get("Variant_Matrix_Subtitle", alter: "إدارة أسعار ورموز وحالات التوليفات الناتجة عن الخيارات."))
                         .font(AdminType.caption2)
                         .foregroundStyle(AdminCommandInk.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                .layoutPriority(0)
 
                 Spacer(minLength: 8)
 
@@ -215,6 +220,7 @@ struct PPAccessoryVariantMatrixView: View {
                                 .font(.system(size: 13, weight: .bold))
                             Text(Language.get("Variant_Bulk_Pricing_Action", alter: "تسعير جماعي"))
                                 .font(AdminType.caption1Bold)
+                                .lineLimit(1)
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 7)
@@ -223,6 +229,8 @@ struct PPAccessoryVariantMatrixView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(AdminSurface.primary)
+                    .layoutPriority(1)
+                    .fixedSize(horizontal: true, vertical: false)
                     .accessibilityLabel(Language.get("Variant_Bulk_Pricing_Action", alter: "تسعير جماعي لكافة المتغيرات"))
                 }
             }
@@ -239,59 +247,65 @@ struct PPAccessoryVariantMatrixView: View {
         let configuredCount = allCombinations.filter(\.isCreated).count
         let isFullyConfigured = totalCount > 0 && configuredCount == totalCount
 
-        return HStack(spacing: 8) {
-            // Combinations Count Pill
-            HStack(spacing: 5) {
-                Circle()
-                    .fill(isFullyConfigured ? AdminSurface.emerald : AdminSurface.amber)
-                    .frame(width: 7, height: 7)
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                // Combinations Count Pill
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(isFullyConfigured ? AdminSurface.emerald : AdminSurface.amber)
+                        .frame(width: 7, height: 7)
 
-                Text(String(
-                    format: Language.get("Variant_Matrix_Combinations_Count", alter: "%@ / %@ مهيأة"),
-                    NSNumber(value: configuredCount),
-                    NSNumber(value: totalCount)
-                ))
-                .font(AdminType.caption2Bold)
-                .foregroundStyle(AdminSurface.primaryText)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(AdminSurface.surface, in: Capsule())
-            .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
-
-            // Total Available Stock Pill
-            HStack(spacing: 5) {
-                Circle()
-                    .fill(draft.totalAvailableQuantity > 0 ? AdminSurface.emerald : AdminSurface.crimson)
-                    .frame(width: 7, height: 7)
-
-                Text(String(
-                    format: Language.get("Inventory_Family_TotalAvailable", alter: "%@ متوفر"),
-                    NSNumber(value: draft.totalAvailableQuantity)
-                ))
-                .font(AdminType.caption2Bold)
-                .foregroundStyle(draft.totalAvailableQuantity > 0 ? AdminSurface.emerald : AdminSurface.crimson)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(AdminSurface.surface, in: Capsule())
-            .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
-
-            // Price Range Pill
-            if let summary = familyPriceSummary(draft) {
-                HStack(spacing: 4) {
-                    Image(systemName: "tag.fill")
-                        .font(.system(size: 8))
-                        .foregroundStyle(AdminSurface.amber)
-                    Text(summary)
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(AdminSurface.primaryText)
+                    Text(String(
+                        format: Language.get("Variant_Matrix_Combinations_Count", alter: "%@ / %@ مهيأة"),
+                        NSNumber(value: configuredCount),
+                        NSNumber(value: totalCount)
+                    ))
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
                 .background(AdminSurface.surface, in: Capsule())
                 .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+
+                // Total Available Stock Pill
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(draft.totalAvailableQuantity > 0 ? AdminSurface.emerald : AdminSurface.crimson)
+                        .frame(width: 7, height: 7)
+
+                    Text(String(
+                        format: Language.get("Inventory_Family_TotalAvailable", alter: "%@ متوفر"),
+                        NSNumber(value: draft.totalAvailableQuantity)
+                    ))
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(draft.totalAvailableQuantity > 0 ? AdminSurface.emerald : AdminSurface.crimson)
+                    .lineLimit(1)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(AdminSurface.surface, in: Capsule())
+                .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+
+                // Price Range Pill
+                if let summary = familyPriceSummary(draft) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "tag.fill")
+                            .font(.system(size: 8))
+                            .foregroundStyle(AdminSurface.amber)
+                        Text(summary)
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(AdminSurface.surface, in: Capsule())
+                    .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+                }
             }
+            .padding(.vertical, 1)
         }
     }
 
@@ -319,6 +333,7 @@ struct PPAccessoryVariantMatrixView: View {
                 matrixGroupCard(group: group, isSingleGroup: groups.count == 1)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func matrixGroupCard(group: PPAccessoryMatrixGroup, isSingleGroup: Bool) -> some View {
@@ -345,6 +360,7 @@ struct PPAccessoryVariantMatrixView: View {
                 .padding(14)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -396,6 +412,8 @@ struct PPAccessoryVariantMatrixView: View {
                 Text(group.localizedTitle)
                     .font(AdminType.calloutBold)
                     .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
 
                 HStack(spacing: 6) {
                     Text(String(
@@ -405,6 +423,7 @@ struct PPAccessoryVariantMatrixView: View {
                     ))
                     .font(AdminType.caption2)
                     .foregroundStyle(AdminCommandInk.secondary)
+                    .lineLimit(1)
 
                     Text("•")
                         .font(AdminType.caption2)
@@ -416,8 +435,10 @@ struct PPAccessoryVariantMatrixView: View {
                     ))
                     .font(AdminType.caption2Bold)
                     .foregroundStyle(group.totalStock > 0 ? AdminSurface.emerald : AdminSurface.crimson)
+                    .lineLimit(1)
                 }
             }
+            .layoutPriority(0)
 
             Spacer(minLength: 8)
 
@@ -434,6 +455,8 @@ struct PPAccessoryVariantMatrixView: View {
                         .background(AdminSurface.control, in: Circle())
                 }
                 .buttonStyle(.plain)
+                .layoutPriority(1)
+                .fixedSize(horizontal: true, vertical: false)
                 .accessibilityLabel(String(
                     format: Language.get("Variant_Group_BulkPrice_A11y", alter: "تسعير متغيرات %@"),
                     group.localizedTitle
@@ -459,6 +482,8 @@ struct PPAccessoryVariantMatrixView: View {
                     .background(AdminSurface.control, in: Circle())
             }
             .buttonStyle(.plain)
+            .layoutPriority(1)
+            .fixedSize(horizontal: true, vertical: false)
             .accessibilityLabel(isCollapsed
                 ? Language.get("Expand", alter: "توسيع")
                 : Language.get("Collapse", alter: "طي")
@@ -484,6 +509,8 @@ struct PPAccessoryVariantMatrixView: View {
                         .font(AdminType.calloutBold)
                         .foregroundStyle(AdminSurface.primaryText)
                         .lineLimit(1)
+                        .truncationMode(.tail)
+                        .minimumScaleFactor(0.85)
 
                     if combination.isDefault {
                         HStack(spacing: 3) {
@@ -496,8 +523,10 @@ struct PPAccessoryVariantMatrixView: View {
                         .padding(.vertical, 2)
                         .background(Color.yellow.opacity(0.18), in: Capsule())
                         .foregroundStyle(Color.orange)
+                        .fixedSize(horizontal: true, vertical: false)
                     }
                 }
+                .layoutPriority(0)
 
                 Spacer(minLength: 8)
 
@@ -514,24 +543,28 @@ struct PPAccessoryVariantMatrixView: View {
 
                         statusBadge(for: combination)
                     }
+                    .layoutPriority(1)
+                    .fixedSize(horizontal: true, vertical: false)
                 } else {
                     statusBadge(for: combination)
+                        .layoutPriority(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
             }
 
             // Identifiers & Actions Row
             if let variant = combination.existingVariant {
-                ViewThatFits(in: .horizontal) {
+                if horizontalSizeClass == .regular {
                     HStack(alignment: .center, spacing: 8) {
                         matrixIdentifiersStrip(variant: variant)
                         Spacer(minLength: 6)
                         matrixActionsToolbar(combination: combination, variant: variant)
                     }
-
+                } else {
                     VStack(alignment: .leading, spacing: 8) {
                         matrixIdentifiersStrip(variant: variant)
-                        HStack {
-                            Spacer()
+                        HStack(alignment: .center, spacing: 6) {
+                            Spacer(minLength: 0)
                             matrixActionsToolbar(combination: combination, variant: variant)
                         }
                     }
@@ -542,6 +575,8 @@ struct PPAccessoryVariantMatrixView: View {
                         .font(AdminType.caption2)
                         .foregroundStyle(AdminCommandInk.tertiary)
                         .lineLimit(1)
+                        .truncationMode(.tail)
+                        .layoutPriority(0)
 
                     Spacer(minLength: 8)
 
@@ -555,6 +590,7 @@ struct PPAccessoryVariantMatrixView: View {
                                     .font(.system(size: 12, weight: .bold))
                                 Text(Language.get("Variant_Create_Combination", alter: "إنشاء"))
                                     .font(AdminType.caption1Bold)
+                                    .lineLimit(1)
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
@@ -562,6 +598,8 @@ struct PPAccessoryVariantMatrixView: View {
                             .foregroundStyle(Color.white)
                         }
                         .buttonStyle(.plain)
+                        .layoutPriority(1)
+                        .fixedSize(horizontal: true, vertical: false)
                         .accessibilityLabel(String(
                             format: Language.get("Variant_Create_Combination_A11y", alter: "إنشاء متغير جديد للتوليفة %@"),
                             combination.localizedTitle
@@ -571,6 +609,7 @@ struct PPAccessoryVariantMatrixView: View {
             }
         }
         .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(combination.isCreated ? AdminSurface.control.opacity(0.6) : AdminSurface.control.opacity(0.25))
@@ -586,75 +625,77 @@ struct PPAccessoryVariantMatrixView: View {
 
     @ViewBuilder
     private func matrixIdentifiersStrip(variant: PPAccessoryVariant) -> some View {
-        HStack(spacing: 6) {
-            if !variant.sku.isEmpty {
-                Button {
-                    copyToClipboard(variant.sku, hint: Language.get("SKU_Copied", alter: "تم نسخ SKU"))
-                } label: {
-                    HStack(spacing: 4) {
-                        Text("SKU")
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
-                            .foregroundStyle(AdminCommandInk.tertiary)
-                        Text(variant.sku)
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .lineLimit(1)
-                        Image(systemName: "doc.on.doc")
-                            .font(.system(size: 8))
-                            .foregroundStyle(AdminCommandInk.tertiary)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                if !variant.sku.isEmpty {
+                    Button {
+                        copyToClipboard(variant.sku, hint: Language.get("SKU_Copied", alter: "تم نسخ SKU"))
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text("SKU")
+                                .font(.system(size: 9, weight: .bold, design: .rounded))
+                                .foregroundStyle(AdminCommandInk.tertiary)
+                            Text(variant.sku)
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 8))
+                                .foregroundStyle(AdminCommandInk.tertiary)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4.5)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .strokeBorder(AdminSurface.hairline, lineWidth: 0.6)
+                        )
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4.5)
-                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .strokeBorder(AdminSurface.hairline, lineWidth: 0.6)
-                    )
+                    .buttonStyle(.plain)
+                    .lineLimit(1)
+                    .environment(\.layoutDirection, .leftToRight)
                 }
-                .buttonStyle(.plain)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-                .environment(\.layoutDirection, .leftToRight)
-            }
 
-            if !variant.barcode.isEmpty {
-                Button {
-                    copyToClipboard(variant.barcode, hint: Language.get("Barcode_Copied", alter: "تم نسخ الباركود"))
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "barcode")
-                            .font(.system(size: 10))
-                            .foregroundStyle(AdminCommandInk.tertiary)
-                        Text(variant.barcode)
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .lineLimit(1)
-                        Image(systemName: "doc.on.doc")
-                            .font(.system(size: 8))
-                            .foregroundStyle(AdminCommandInk.tertiary)
+                if !variant.barcode.isEmpty {
+                    Button {
+                        copyToClipboard(variant.barcode, hint: Language.get("Barcode_Copied", alter: "تم نسخ الباركود"))
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "barcode")
+                                .font(.system(size: 10))
+                            Text(variant.barcode)
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 8))
+                                .foregroundStyle(AdminCommandInk.tertiary)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4.5)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .strokeBorder(AdminSurface.hairline, lineWidth: 0.6)
+                        )
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4.5)
-                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .strokeBorder(AdminSurface.hairline, lineWidth: 0.6)
-                    )
+                    .buttonStyle(.plain)
+                    .lineLimit(1)
+                    .environment(\.layoutDirection, .leftToRight)
                 }
-                .buttonStyle(.plain)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-                .environment(\.layoutDirection, .leftToRight)
-            }
 
-            if variant.sku.isEmpty && variant.barcode.isEmpty {
-                Text(Language.get("Variant_No_Identifiers", alter: "بدون باركود أو SKU"))
-                    .font(AdminType.caption2)
-                    .foregroundStyle(AdminSurface.amber)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3.5)
-                    .background(AdminSurface.amber.opacity(0.12), in: Capsule())
+                if variant.sku.isEmpty && variant.barcode.isEmpty {
+                    Text(Language.get("Variant_No_Identifiers", alter: "بدون باركود أو SKU"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.amber)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3.5)
+                        .background(AdminSurface.amber.opacity(0.12), in: Capsule())
+                }
             }
+            .padding(.vertical, 1)
         }
     }
 
@@ -755,6 +796,7 @@ struct PPAccessoryVariantMatrixView: View {
                 .accessibilityLabel(Language.get("Variant_Delete_From_Family", alter: "حذف المتغير من المجموعة"))
             }
         }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     @ViewBuilder
@@ -767,6 +809,7 @@ struct PPAccessoryVariantMatrixView: View {
             ))
             .font(AdminType.caption2Bold)
             .foregroundStyle(AdminSurface.emerald)
+            .lineLimit(1)
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
             .background(AdminSurface.emerald.opacity(0.12), in: Capsule())
@@ -775,6 +818,7 @@ struct PPAccessoryVariantMatrixView: View {
             Text(Language.get("Variant_Stock_OutOfStock", alter: "نفد من المخزون"))
                 .font(AdminType.caption2Bold)
                 .foregroundStyle(AdminSurface.crimson)
+                .lineLimit(1)
                 .padding(.horizontal, 7)
                 .padding(.vertical, 2)
                 .background(AdminSurface.crimson.opacity(0.12), in: Capsule())
@@ -783,6 +827,7 @@ struct PPAccessoryVariantMatrixView: View {
             Text(Language.get("Variant_Status_Inactive", alter: "معطل"))
                 .font(AdminType.caption2Bold)
                 .foregroundStyle(AdminCommandInk.tertiary)
+                .lineLimit(1)
                 .padding(.horizontal, 7)
                 .padding(.vertical, 2)
                 .background(AdminSurface.control, in: Capsule())
@@ -791,6 +836,7 @@ struct PPAccessoryVariantMatrixView: View {
             Text(Language.get("Variant_Status_Unconfigured", alter: "غير مهيأ"))
                 .font(AdminType.caption2Bold)
                 .foregroundStyle(AdminSurface.amber)
+                .lineLimit(1)
                 .padding(.horizontal, 7)
                 .padding(.vertical, 2)
                 .background(AdminSurface.amber.opacity(0.12), in: Capsule())
