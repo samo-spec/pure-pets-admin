@@ -4544,6 +4544,7 @@
 "LivePet_Error_Unauthenticated" = "Employee session expired or authentication could not be verified. Reopen the app and log in again.";
 "LivePet_Error_NotAuthenticated" = "You must log in with an authorized employee account to perform this action.";
 "LivePet_Error_RequestFailed_Format" = "The operation could not be completed safely. Refresh and try again. Reference: %@";
+"LivePet_Error_DeleteBlockedByStock" = "Archive or reconcile active, reserved, or quarantined stock before deleting the catalog item.";
 "LivePet_Operations_Title" = "Live Animal Operations";
 "LivePet_Operations_Hint" = "Every change is server-authorized and recorded in stock movement and audit history.";
 "LivePet_Legacy_Mode_Title" = "Tracking mode required";
@@ -10169,3 +10170,7 @@
 "Variant_Delete_Confirm_Message" = "Are you sure you want to remove this variant from this product family? The product itself will not be deleted, but it will be unlinked from the group.";
 "Variant_Delete_Confirmed" = "Variant removed from group successfully.";
 "Variant_Error_CannotDeleteOnlyVariant" = "Cannot delete the only variant in a product.";
+"Variant_RevertToNormal_Action" = "Cancel Variants & Revert to Single Product";
+"Variant_RevertToNormal_Confirm_Desc" = "Are you sure you want to dissolve this variant family? This product will be retained as a standalone single product, and sibling variants will be deleted.";
+"Variant_RevertToNormal_Success" = "Product successfully converted to a standard single item and variants removed.";
+"Variant_Error_CannotRevertNoRetained" = "Unable to identify the primary product to retain.";

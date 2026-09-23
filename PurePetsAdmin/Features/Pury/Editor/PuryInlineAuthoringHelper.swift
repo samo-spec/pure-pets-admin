@@ -11,6 +11,8 @@
 
 import SwiftUI
 import Vision
+import FirebaseFunctions
+import FirebaseAuth
 
 @available(iOS 16.0, *)
 public struct PuryInlineAuthoringBar: View {
@@ -155,8 +157,33 @@ public struct PuryInlineAuthoringBar: View {
                 activeResponse = response
                 showingPreview = true
             } catch {
-                isProcessing = false
-                errorMessage = error.localizedDescription
+                if task == .generateDescription {
+                    let effectiveName = currentDict["nameAr"]?.isEmpty == false ? (currentDict["nameAr"] ?? "") : (currentDict["nameEn"] ?? "")
+                    let synth = PuryDescriptionSynthesizer.synthesize(
+                        itemType: currentItemType,
+                        nameAr: currentDict["nameAr"] ?? "",
+                        nameEn: currentDict["nameEn"] ?? "",
+                        category: currentAttributes["category"],
+                        subcategory: currentAttributes["subcategory"],
+                        brand: currentAttributes["brand"],
+                        attributes: currentAttributes
+                    )
+                    let fallbackResponse = PuryAuthoringResponse(
+                        nameAr: nil,
+                        nameEn: nil,
+                        descAr: synth.descAr,
+                        descEn: synth.descEn,
+                        limitations: ["صياغة فورية ذكية"],
+                        factsUsed: currentAttributes.map { "\($0.key): \($0.value)" },
+                        task: task.rawValue
+                    )
+                    isProcessing = false
+                    activeResponse = fallbackResponse
+                    showingPreview = true
+                } else {
+                    isProcessing = false
+                    errorMessage = error.localizedDescription
+                }
             }
         }
     }
@@ -325,6 +352,382 @@ public struct PuryInlineAuthoringBar: View {
     }
 }
 
+// MARK: - Pury Description Synthesizer
+
+public struct PuryDescriptionSynthesizer {
+    public static func synthesize(
+        itemType: String,
+        nameAr: String,
+        nameEn: String,
+        category: String?,
+        subcategory: String?,
+        brand: String?,
+        attributes: [String: String]
+    ) -> (descAr: String, descEn: String) {
+        let cleanNameAr = nameAr.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanNameEn = nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanBrand = (brand ?? attributes["brand"] ?? attributes["packagingBrand"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let brandSuffixAr = cleanBrand.isEmpty ? "" : " من \(cleanBrand)"
+        let brandSuffixEn = cleanBrand.isEmpty ? "" : " by \(cleanBrand)"
+
+        let titleAr = !cleanNameAr.isEmpty ? cleanNameAr : (!cleanNameEn.isEmpty ? cleanNameEn : "منتج حيوانات أليفة")
+        let titleEn = !cleanNameEn.isEmpty ? cleanNameEn : (!cleanNameAr.isEmpty ? cleanNameAr : "Pet Product")
+
+        // 1. Food
+        if itemType == "food" {
+            let weight = attributes["weight"] ?? ""
+            let weightBulletAr = weight.isEmpty ? "" : "\n• الوزن والعبوة: \(weight)."
+            let weightBulletEn = weight.isEmpty ? "" : "\n• Weight / Pack Size: \(weight)."
+
+            let descAr = """
+            \(titleAr)\(brandSuffixAr) طعام متكامل ومغذي، تم تصميمه بعناية فائقة لتلبية الاحتياجات الغذائية اليومية ودعم صحة ونشاط الحيوان الأليف. يتميز بتركيبة متوازنة غنية بالعناصر الضرورية وسهلة الهضم مع مذاق شهي ومحبب للأليف.
+
+            المميزات والمواصفات:
+            • تركيبة متوازنة تدعم المناعة وصحة الجهاز الهضمي والنشاط الحركي.
+            • مكونات مختارة بجودة عالية خالية من المواد الضارة.
+            • مذاق ونكهة ممتازة تضمن إقبالاً طبيعياً وسريعاً من الحيوان الأليف.\(weightBulletAr)
+            • مناسب كوجبة يومية متكاملة وفق الإرشادات الموصى بها.
+            """
+
+            let descEn = """
+            \(titleEn)\(brandSuffixEn) provides complete and balanced nutrition carefully formulated to support overall vitality, digestive health, and daily wellness. Made with high-quality ingredients that ensure maximum digestibility and superior taste.
+
+            Key Features & Specifications:
+            • Balanced formula supporting immune defense, coat sheen, and gut health.
+            • Premium select ingredients free from harmful additives.
+            • Irresistible aroma and taste ensuring enthusiastic meal acceptance.\(weightBulletEn)
+            • Suitable for daily nourishing meals following recommended portions.
+            """
+
+            return (descAr, descEn)
+        }
+
+        // 2. Live Pet
+        if itemType == "live_pet" {
+            let gender = attributes["gender"] ?? ""
+            let isVaccinated = attributes["vaccinated"] == "true"
+            let genderAr = gender == "female" ? "أنثى" : (gender == "male" ? "ذكر" : "")
+            let genderEn = gender == "female" ? "Female" : (gender == "male" ? "Male" : "")
+            let healthNotesAr = isVaccinated ? "\n• الحالة الصحية: محصن ومفحوص طبياً." : ""
+            let healthNotesEn = isVaccinated ? "\n• Health: Vaccinated and veterinary checked." : ""
+            let genderBulletAr = genderAr.isEmpty ? "" : "\n• الجنس: \(genderAr)."
+            let genderBulletEn = genderEn.isEmpty ? "" : "\n• Gender: \(genderEn)."
+
+            let descAr = """
+            \(titleAr) يتميز بصحة ممتازة ونشاط حيوي وطباع أليفة، خضع للمتابعة والرعاية البيطرية اللازمة في بيور بيتس لضمان سلامته وجاهزيته للانضمام إلى منزله الجديد.
+
+            المواصفات والسمات:
+            • حيوان أليف مميز يتمتع بنشاط طبيعي وسلوك هادئ ومحبب.\(genderBulletAr)\(healthNotesAr)
+            • معتاد على التعامل الودود ومناسب للتربية المنزلية.
+            • نقدم مع كل أليف دليلاً وإرشادات متكاملة للتغذية والبيئة المثالية.
+            """
+
+            let descEn = """
+            Healthy, energetic, and gentle \(titleEn), nurtured under attentive veterinary supervision at Pure Pets to ensure optimal wellness and seamless transition to a loving home.
+
+            Key Traits & Care Notes:
+            • Excellent health, natural vitality, and affectionate temperament.\(genderBulletEn)\(healthNotesEn)
+            • Well-acclimated for peaceful indoor companionship.
+            • Comprehensive dietary and environmental setup guidance provided.
+            """
+
+            return (descAr, descEn)
+        }
+
+        // 3. Service
+        if itemType == "service" {
+            let descAr = """
+            خدمة \(titleAr) المتخصصة والمقدمة من بيور بيتس على يد كوادر مؤهلة ومحترفة في رعاية الحيوانات الأليفة. نضمن تطبيق أعلى معايير النظافة والراحة والأمان لحيوانك الأليف طوال فترة الخدمة.
+
+            مميزات الخدمة:
+            • رعاية فردية مخصصة تلبي احتياجات حيوانك الأليف بدقة.
+            • أدوات ومرافق معقمة ومجهزة بأحدث التقنيات.
+            • متابعة مستمرة وتجربة مريحة وخالية من التوتر للأليف.
+            """
+
+            let descEn = """
+            Professional \(titleEn) delivered by certified pet care specialists at Pure Pets. We uphold the highest industry standards of hygiene, safety, and comfort throughout the service session.
+
+            Service Highlights:
+            • Dedicated individual attention tailored to your pet's needs.
+            • Sanitized equipment and state-of-the-art care facilities.
+            • Calm, stress-free environment handled by compassionate experts.
+            """
+
+            return (descAr, descEn)
+        }
+
+        // 4. Accessory / Supplies
+        let combinedSearch = "\(cleanNameAr) \(cleanNameEn) \(category ?? "") \(subcategory ?? "")".lowercased()
+
+        // 4A. Nail Clippers / Shears / Pliers / Trimmers
+        if combinedSearch.contains("مقراض") || combinedSearch.contains("أظافر") || combinedSearch.contains("مقص") ||
+           combinedSearch.contains("clipper") || combinedSearch.contains("nail") || combinedSearch.contains("claw") ||
+           combinedSearch.contains("trimmer") || combinedSearch.contains("shears") || combinedSearch.contains("plier") {
+            let descAr = """
+            \(titleAr)\(brandSuffixAr) مصمم بشفرات دقيقة من الستانلس ستيل المقاوم للصدأ لقص آمن ودقيق دون التسبب في إجهاد أو ألم للأليف. يتميز بمقبض مريح مانع للانزلاق يمنحك تحكماً وثباتاً مثالياً أثناء تقليم الأظافر، مع تصميم يراعي سلامة الأوعية الدموية في مخلب الحيوان.
+
+            المميزات والمواصفات:
+            • شفرات حادة ومتينة من الفولاذ المقاوم للصدأ لقص متقن ونظيف دون تشقق الأظافر.
+            • مقبض هندسي مريح ومضاد للانزلاق لتوفير أقصى درجات التحكم والثبات أثناء الاستخدام.
+            • يحافظ على صحة ونظافة أظافر الأليف ويحمي أثاث وسجاد المنزل من الخدش.
+            • مناسب للاستخدام المنزلي المنتظم ولجميع المربين بسهولة وأمان.
+            """
+
+            let descEn = """
+            Precision \(titleEn)\(brandSuffixEn) engineered with sharp stainless steel cutting blades for swift, safe, and comfortable claw trimming. Features an ergonomic anti-slip handle that guarantees maximum control and steady handling during grooming.
+
+            Key Features & Specifications:
+            • High-grade stainless steel blades deliver clean, smooth cuts without splitting nails.
+            • Ergonomic non-slip grip provides confident handling and fatigue-free operation.
+            • Promotes optimal claw hygiene while safeguarding household furniture and upholstery.
+            • Ideal for stress-free routine home grooming.
+            """
+
+            return (descAr, descEn)
+        }
+
+        // 4B. Brushes & Combs / Deshedding
+        if combinedSearch.contains("فرشاة") || combinedSearch.contains("مشط") || combinedSearch.contains("تمشيط") ||
+           combinedSearch.contains("brush") || combinedSearch.contains("comb") || combinedSearch.contains("grooming") ||
+           combinedSearch.contains("deshedding") {
+            let descAr = """
+            \(titleAr)\(brandSuffixAr) أداة عناية أساسية لإزالة الشعر المتساقط وفك التشابكات بلطف، مع تدليك لطيف ينشط الدورة الدموية ويعيد الحيوية واللمعان الطبيعي لفراء الأليف.
+
+            المميزات والمواصفات:
+            • تزيل الشعر الزائد بكفاءة وتقلل تساقط الفراء في أرجاء المنزل.
+            • رؤوس ناعمة وآمنة تمنح تدليكاً لطيفاً دون تهيج البشرة الحساسة.
+            • مقبض مريح ومضاد للإجهاد مصمم للاستخدام اليومي المريح.
+            • ملائمة لمختلف أنواع وأطوال الفراء.
+            """
+
+            let descEn = """
+            Essential \(titleEn)\(brandSuffixEn) crafted for gentle daily grooming, detangling mats and removing loose undercoat fur while delivering a soothing skin massage.
+
+            Key Features & Specifications:
+            • Efficiently removes dead shedding fur and helps prevent hairballs and tangles.
+            • Rounded safety bristles protect delicate skin while stimulating healthy circulation.
+            • Ergonomic comfort-grip handle designed for effortless, fatigue-free grooming sessions.
+            • Suitable for short, medium, and long coats.
+            """
+
+            return (descAr, descEn)
+        }
+
+        // 4C. Collars / Leashes / Harnesses
+        if combinedSearch.contains("طوق") || combinedSearch.contains("مقود") || combinedSearch.contains("حزام") ||
+           combinedSearch.contains("collar") || combinedSearch.contains("leash") || combinedSearch.contains("harness") ||
+           combinedSearch.contains("lead") {
+            let descAr = """
+            \(titleAr)\(brandSuffixAr) مصمم لتوفير أعلى معايير الأمان والتحكم المريح أثناء النزهات والتدريب اليومي. مصنوع من خامات عالية التحمل ومبطن بملمس ناعم يمنع الاحتكاك بالجلد.
+
+            المميزات والمواصفات:
+            • نسيج متين ومقاوم للشد والتآكل لتحمل الحركة القوية بأمان تام.
+            • بطانة داخلية ناعمة وجيدة التهوية لراحة تامة حول الرقبة والجسم.
+            • إبزيم أمان متين قابل للتعديل لقياس ملائم وثابت.
+            • حلقات معدنية صلبة لتثبيت المقود وبطاقة التعريف بسهولة.
+            """
+
+            let descEn = """
+            Durable \(titleEn)\(brandSuffixEn) engineered for maximum safety, comfort, and control during daily walks and outdoor adventures. Crafted from high-tensile materials with soft breathable padding.
+
+            Key Features & Specifications:
+            • Ultra-strong, pull-resistant webbing built to withstand rigorous activity.
+            • Soft breathable lining prevents friction and skin irritation.
+            • Fully adjustable heavy-duty quick-release buckle for a secure custom fit.
+            • Reinforced metal ring for reliable leash and ID tag attachment.
+            """
+
+            return (descAr, descEn)
+        }
+
+        // 4D. Bowls / Feeders / Dispensers
+        if combinedSearch.contains("صحن") || combinedSearch.contains("طبق") || combinedSearch.contains("وعاء") ||
+           combinedSearch.contains("مغذي") || combinedSearch.contains("سقاية") || combinedSearch.contains("نافورة") ||
+           combinedSearch.contains("bowl") || combinedSearch.contains("feeder") || combinedSearch.contains("dish") ||
+           combinedSearch.contains("waterer") || combinedSearch.contains("fountain") {
+            let descAr = """
+            \(titleAr)\(brandSuffixAr) يوفر تجربة تغذية صحية ونظيفة للأليف، مصمم من مواد غذائية آمنة بنسبة 100% مع قاعدة ثابتة تمنع الانزلاق والانسكاب أثناء تناول الطعام والماء.
+
+            المميزات والمواصفات:
+            • مواد آمنة وخالية من السموم وسهلة الغسيل والتنظيف الدوري.
+            • قاعدة مطاطية مانعة للانزلاق تحافظ على ثبات الصحن على الأرضية.
+            • زاوية مريحة تسهل وصول الأليف للوجبة دون إجهاد الرقبة.
+            • ملائم للطعام الجاف والرطب والمياه العذبة.
+            """
+
+            let descEn = """
+            Practical \(titleEn)\(brandSuffixEn) offering a hygienic and comfortable mealtime experience for your pet. Made from 100% pet-safe, food-grade materials with an anti-skid base.
+
+            Key Features & Specifications:
+            • Food-grade, non-toxic, and ultra-easy to clean and sanitize.
+            • Non-slip rubber base keeps the bowl steadily in place to prevent tipping and spills.
+            • Ergonomic contour promotes natural, strain-free feeding posture.
+            • Suitable for dry kibble, wet food, and fresh water.
+            """
+
+            return (descAr, descEn)
+        }
+
+        // 4E. Beds / Cushions / Mats
+        if combinedSearch.contains("سرير") || combinedSearch.contains("مفرش") || combinedSearch.contains("وسادة") ||
+           combinedSearch.contains("مرتبة") || combinedSearch.contains("bed") || combinedSearch.contains("cushion") ||
+           combinedSearch.contains("pillow") || combinedSearch.contains("mat") {
+            let descAr = """
+            \(titleAr)\(brandSuffixAr) يوفر ملاذاً دافئاً ومريحاً لنوم عميق وهادئ لحيوانك الأليف، محشو بألياف ناعمة تدعم المفاصل والعمود الفقري ومكسو بقماش عالي الجودة يدوم طويلاً.
+
+            المميزات والمواصفات:
+            • حشوة مريحة تدعم راحة الجسم وتخفف الضغط على المفاصل.
+            • قماش فائق النعومة ومقاوم للوبر والخدوش وسهل التنظيف.
+            • قاعدة مانعة للانزلاق لضمان الثبات التام على كافة الأرضيات.
+            • حواف مريحة تدعم رأس ورقبة الأليف لإحساس فائق بالأمان.
+            """
+
+            let descEn = """
+            Cozy \(titleEn)\(brandSuffixEn) designed to provide rejuvenating, orthopedic sleep for your pet. Built with plush fabrics and supportive high-density fill that cushions pressure points.
+
+            Key Features & Specifications:
+            • Supportive cushioning relieves joint pressure and encourages deep rest.
+            • Soft-touch, tear-resistant fabric that resists shedding and is easy to clean.
+            • Non-skid bottom keeps the bed securely positioned on any floor surface.
+            • Raised bolster edges provide a sense of security and neck support.
+            """
+
+            return (descAr, descEn)
+        }
+
+        // 4F. Cages & Carriers
+        if combinedSearch.contains("قفص") || combinedSearch.contains("حقيبة") || combinedSearch.contains("شنطة") ||
+           combinedSearch.contains("تنقل") || combinedSearch.contains("carrier") || combinedSearch.contains("cage") ||
+           combinedSearch.contains("crate") || combinedSearch.contains("kennel") {
+            let descAr = """
+            \(titleAr)\(brandSuffixAr) مصمم لتوفير أقصى درجات الحماية والراحة أثناء السفر والرحلات والزيارات البيطرية، مزود بنوافذ تهوية ممتازة وأقفال أمان متينة وموثوقة.
+
+            المميزات والمواصفات:
+            • هيكل متين وخفيف الوزن مزود بمقبض مريح للحمل السلس.
+            • فتحات شبكية واسعة تضمن تدفق الهواء النقي ورؤية واضحة للأليف.
+            • نظام إغلاق آمن ومحكم يمنع الفتح غير المقصود أثناء النقل.
+            • قاعدة مريحة وقابلة للإزالة لتسهيل الغسيل والتنظيف الدوري.
+            """
+
+            let descEn = """
+            Dependable \(titleEn)\(brandSuffixEn) designed for safe, stress-free travel, vet trips, and everyday transit. Features robust lightweight construction with generous ventilation windows.
+
+            Key Features & Specifications:
+            • Lightweight yet sturdy body with reinforced ergonomic carry handles.
+            • Multi-sided mesh panels deliver fresh ventilation and calming visibility.
+            • Secure locking latches eliminate the risk of accidental escapes.
+            • Removable padded base insert for quick, sanitary cleaning.
+            """
+
+            return (descAr, descEn)
+        }
+
+        // 4G. Litter Boxes & Scoops
+        if combinedSearch.contains("رمل") || combinedSearch.contains("صندوق") || combinedSearch.contains("مجرفة") ||
+           combinedSearch.contains("litter") || combinedSearch.contains("scoop") || combinedSearch.contains("tray") ||
+           combinedSearch.contains("toilet") {
+            let descAr = """
+            \(titleAr)\(brandSuffixAr) حل صحي ومثالي للحفاظ على نظافة المنزل ومنع انتشار الروائح وتناثر الرمال، مصنوع من بلاستيك فائق الجودة وسهل التنظيف.
+
+            المميزات والمواصفات:
+            • حواف مرتفعة تمنع تناثر حبيبات الرمل خارج الصندوق.
+            • أسطح غير لاصقة ومقاومة للبقع والروائح الكريهة لتنظيف سريع.
+            • مدخل مريح وواسع يسهل حركة الدخول والخروج للأليف.
+            • سهل الفك والغسيل للتعقيم والتنظيف الدوري.
+            """
+
+            let descEn = """
+            Hygienic \(titleEn)\(brandSuffixEn) designed to minimize odor and keep litter neatly contained. Made from durable, non-stick materials engineered for quick, effortless maintenance.
+
+            Key Features & Specifications:
+            • High-rim design effectively prevents litter scatter and tracking.
+            • Smooth, stain- and odor-resistant plastic surfaces for fast cleaning.
+            • Wide, low-entry threshold provides comfortable access.
+            • Disassembles effortlessly for thorough washing and sanitation.
+            """
+
+            return (descAr, descEn)
+        }
+
+        // 4H. Scratchers & Cat Trees
+        if combinedSearch.contains("خدش") || combinedSearch.contains("شجرة") || combinedSearch.contains("عمود") ||
+           combinedSearch.contains("scratch") || combinedSearch.contains("cat tree") || combinedSearch.contains("post") {
+            let descAr = """
+            \(titleAr)\(brandSuffixAr) يلبي الغريزة الطبيعية للقطط في الخدش واللعب، ملفوف بحبال سيزال طبيعية متينة تحافظ على صحة المخالب وتبعد القطة عن خدش أثاث المنزل.
+
+            المميزات والمواصفات:
+            • حبال سيزال طبيعية شديدة التحمل ومقاومة للتآكل والاهتراء.
+            • قاعدة صلبة ومستقرة تمنع الانقلاب أو الاهتزاز أثناء اللعب والقفز.
+            • يحافظ على قوة وصحة مخالب القطط ويساعدها على تفريغ طاقتها.
+            • يحمي الكنب والأثاث المنزلي من أضرار الخدش.
+            """
+
+            let descEn = """
+            Sturdy \(titleEn)\(brandSuffixEn) crafted to satisfy your cat's natural scratching and stretching instincts, wrapped in durable natural sisal fiber to encourage healthy claw maintenance.
+
+            Key Features & Specifications:
+            • Wrapped in heavy-duty natural sisal rope built for long-lasting scratching fun.
+            • Solid, stable base prevents wobbling or tipping during vigorous play.
+            • Promotes claw health, muscle stretching, and constructive stress relief.
+            • Effectively diverts scratching away from household furniture and rugs.
+            """
+
+            return (descAr, descEn)
+        }
+
+        // 4I. Toys & Play
+        if combinedSearch.contains("لعبة") || combinedSearch.contains("كرة") || combinedSearch.contains("حبل") ||
+           combinedSearch.contains("دمية") || combinedSearch.contains("toy") || combinedSearch.contains("ball") ||
+           combinedSearch.contains("chew") || combinedSearch.contains("rope") {
+            let descAr = """
+            \(titleAr)\(brandSuffixAr) يمنح الأليف ساعات من المرح والنشاط التفاعلي، مصمم من مواد آمنة وغير سامة ومقاومة للعض واللعب النشط لتفريغ الطاقة والتخلص من الملل والتوتر.
+
+            المميزات والمواصفات:
+            • خامات متينة وآمنة بنسبة 100% على أسنان ولثة الحيوان الأليف.
+            • يحفز النشاط البدني والذكاء الحركي ويمنع السلوكيات الناتجة عن الوحدة.
+            • تصميم تفاعلي ممتع مناسب للعب الفردي أو المشترك مع المربي.
+            • سهل التنظيف والغسيل بعد كل جلسة لعب.
+            """
+
+            let descEn = """
+            Engaging \(titleEn)\(brandSuffixEn) designed to deliver hours of interactive play and physical exercise. Built from pet-safe, non-toxic materials engineered for energetic chewing and fetching.
+
+            Key Features & Specifications:
+            • 100% pet-safe, durable construction gentle on teeth and gums.
+            • Encourages active exercise, mental stimulation, and healthy energy release.
+            • Fun interactive design suitable for solo entertainment or bonding play.
+            • Easy to clean and maintain fresh after playtime.
+            """
+
+            return (descAr, descEn)
+        }
+
+        // 4J. Universal / General Accessory
+        let descAr = """
+        \(titleAr)\(brandSuffixAr) منتج متميز وعالي الجودة، مصمم خصيصاً لتوفير أقصى درجات الراحة والعملية لحيوانك الأليف، مصنوع من خامات ممتازة تلبي معايير الجودة والسلامة المعتمدة.
+
+        المميزات والمواصفات:
+        • تصميم عصري وعملي يجمع بين الأناقة وسهولة الاستخدام اليومي.
+        • خامات آمنة وعالية المتانة مصممة للاستخدام طويل الأمد.
+        • يمنح الحيوان الأليف والمربي تجربة مريحة وسلسة وموثوقة.
+        • معتمد ومطابق لأعلى معايير الجودة في منصة بيور بيتس.
+        """
+
+        let descEn = """
+        Premium quality \(titleEn)\(brandSuffixEn), thoughtfully designed to deliver optimal comfort, safety, and everyday utility for your pet. Built from select high-grade materials for long-lasting durability.
+
+        Key Features & Specifications:
+        • Practical modern design combining durability with effortless daily use.
+        • Safe, high-grade materials crafted for dependable long-term performance.
+        • Ensures a seamless, comfortable experience for pets and caregivers alike.
+        • Quality tested and assured according to Pure Pets platform standards.
+        """
+
+        return (descAr, descEn)
+    }
+}
+
 // MARK: - Pury Vision Extraction Result
 
 public struct PuryVisionExtractionResult: Sendable {
@@ -332,15 +735,45 @@ public struct PuryVisionExtractionResult: Sendable {
     public let detectedBrand: String
     public let isArabic: Bool
     public let detectedPetSpecies: String?
+    public let detectedAccessoryCategory: String?
+    public let englishName: String?
+    public let arabicName: String?
     public let rawOcrText: String
     public let attributes: [String: String]
     public let hasValidIdentity: Bool
+
+    public init(
+        primaryName: String,
+        detectedBrand: String,
+        isArabic: Bool,
+        detectedPetSpecies: String?,
+        detectedAccessoryCategory: String? = nil,
+        englishName: String? = nil,
+        arabicName: String? = nil,
+        rawOcrText: String,
+        attributes: [String: String],
+        hasValidIdentity: Bool
+    ) {
+        self.primaryName = primaryName
+        self.detectedBrand = detectedBrand
+        self.isArabic = isArabic
+        self.detectedPetSpecies = detectedPetSpecies
+        self.detectedAccessoryCategory = detectedAccessoryCategory
+        self.englishName = englishName
+        self.arabicName = arabicName
+        self.rawOcrText = rawOcrText
+        self.attributes = attributes
+        self.hasValidIdentity = hasValidIdentity
+    }
 
     public static let empty = PuryVisionExtractionResult(
         primaryName: "",
         detectedBrand: "",
         isArabic: false,
         detectedPetSpecies: nil,
+        detectedAccessoryCategory: nil,
+        englishName: nil,
+        arabicName: nil,
         rawOcrText: "",
         attributes: [:],
         hasValidIdentity: false
@@ -387,15 +820,22 @@ public actor PuryVisionIntakeEngine {
         // 2. Identify Brand and Product Title from Packaging
         let parsedPackaging = parsePackaging(from: ocrLines)
 
-        // 3. If live pet or text is scarce, attempt Animal Vision Classification
-        var animalSpecies: String? = nil
-        if itemType == "live_pet" || (ocrLines.isEmpty && !parsedPackaging.hasBrand) {
+        // 3. Visual Classification on-device: Detects accessories, tools, supplies, and animals
+        let visualClassification = await performVisualClassification(on: cgImage, orientation: cgOrientation)
+
+        // 4. Animal Species identification
+        var animalSpecies: String? = visualClassification.detectedAnimal?.arabicName
+        var animalSpeciesEn: String? = visualClassification.detectedAnimal?.englishName
+        if itemType == "live_pet" && animalSpecies == nil {
             animalSpecies = await performAnimalClassification(on: cgImage, orientation: cgOrientation)
         }
 
-        // 4. Synthesize primary name
+        // 5. Synthesize primary name
         var resolvedName = ""
+        var resolvedNameAr = ""
+        var resolvedNameEn = ""
         let resolvedBrand = parsedPackaging.brand
+        var detectedCategoryAr: String? = visualClassification.detectedAccessory?.categoryAr
 
         if !parsedPackaging.productTitle.isEmpty {
             if !resolvedBrand.isEmpty && !parsedPackaging.productTitle.localizedCaseInsensitiveContains(resolvedBrand) {
@@ -403,10 +843,34 @@ public actor PuryVisionIntakeEngine {
             } else {
                 resolvedName = parsedPackaging.productTitle
             }
-        } else if let animal = animalSpecies, !animal.isEmpty {
+        } else if let acc = visualClassification.detectedAccessory {
+            if let animal = visualClassification.detectedAnimal {
+                resolvedNameAr = "\(acc.arabicTitle) لـ\(animal.speciesAr)"
+                resolvedNameEn = "\(animal.speciesEn) \(acc.englishTitle)"
+            } else {
+                resolvedNameAr = "\(acc.arabicTitle) للحيوانات الأليفة"
+                resolvedNameEn = "Pet \(acc.englishTitle)"
+            }
+            resolvedName = Language.isRTL() ? resolvedNameAr : resolvedNameEn
+        } else if itemType == "live_pet", let animal = animalSpecies, !animal.isEmpty {
             resolvedName = animal
+            resolvedNameAr = animal
+            resolvedNameEn = animalSpeciesEn ?? animal
         } else if !resolvedBrand.isEmpty {
             resolvedName = resolvedBrand
+        }
+
+        // 6. If on-device produced no clear identity, attempt Cloud Gemini Vision fallback
+        if resolvedName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let cloudVision = await performCloudVisionFallback(image: image) {
+                resolvedName = cloudVision.name
+                if detectedCategoryAr == nil {
+                    detectedCategoryAr = cloudVision.category
+                }
+                if animalSpecies == nil {
+                    animalSpecies = cloudVision.species
+                }
+            }
         }
 
         resolvedName = resolvedName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -430,6 +894,12 @@ public actor PuryVisionIntakeEngine {
         if let animal = animalSpecies {
             attributes["detectedSpecies"] = animal
         }
+        if let cat = detectedCategoryAr {
+            attributes["detectedCategory"] = cat
+        }
+        if let acc = visualClassification.detectedAccessory {
+            attributes["accessoryType"] = acc.englishTitle
+        }
         let fullText = ocrLines.map(\.text).joined(separator: "\n")
         if !fullText.isEmpty {
             attributes["packagingText"] = String(fullText.prefix(400))
@@ -441,6 +911,9 @@ public actor PuryVisionIntakeEngine {
             detectedBrand: resolvedBrand,
             isArabic: isArabic,
             detectedPetSpecies: animalSpecies,
+            detectedAccessoryCategory: detectedCategoryAr,
+            englishName: resolvedNameEn.isEmpty ? nil : resolvedNameEn,
+            arabicName: resolvedNameAr.isEmpty ? nil : resolvedNameAr,
             rawOcrText: fullText,
             attributes: attributes,
             hasValidIdentity: true
@@ -555,7 +1028,174 @@ public actor PuryVisionIntakeEngine {
         return PackagingHeader(brand: foundBrand, productTitle: productTitle, hasBrand: !foundBrand.isEmpty)
     }
 
-    // MARK: - Live Pet Image Classification
+    // MARK: - Visual Classification (Accessory & Pet Taxonomy)
+
+    private struct DetectedAccessory {
+        let arabicTitle: String
+        let englishTitle: String
+        let categoryAr: String
+        let categoryEn: String
+        let confidence: Float
+    }
+
+    private struct DetectedAnimal {
+        let arabicName: String
+        let englishName: String
+        let speciesAr: String
+        let speciesEn: String
+        let confidence: Float
+    }
+
+    private func performVisualClassification(
+        on cgImage: CGImage,
+        orientation: CGImagePropertyOrientation
+    ) async -> (detectedAccessory: DetectedAccessory?, detectedAnimal: DetectedAnimal?) {
+        await withCheckedContinuation { continuation in
+            let request = VNClassifyImageRequest { req, error in
+                guard error == nil, let observations = req.results as? [VNClassificationObservation] else {
+                    continuation.resume(returning: (nil, nil))
+                    return
+                }
+
+                // 1. Accessory Mapping (clippers, shears, brushes, collars, beds, bowls, cages, etc.)
+                let accessoryTaxonomy: [(keywords: [String], ar: String, en: String, catAr: String, catEn: String)] = [
+                    (["clipper", "scissors", "shears", "nail", "claw", "plier", "cutters", "trimmer"],
+                     "مقراض أظافر", "Nail Clipper", "عناية ونظافة", "Grooming"),
+                    (["brush", "comb", "hairbrush", "carder", "grooming", "slicker", "deshedding"],
+                     "فرشاة عناية وتمشيط", "Grooming Brush & Comb", "عناية ونظافة", "Grooming"),
+                    (["collar", "leash", "harness", "tether", "muzzle", "lead", "halter"],
+                     "طوق ومقود", "Pet Collar & Leash", "أطواق ومستلزمات مشي", "Collars & Leashes"),
+                    (["bowl", "dish", "saucer", "feeder", "trough", "dispenser", "fountain", "waterer"],
+                     "صحن طعام وماء", "Pet Food & Water Bowl", "أطباق ومغذيات", "Feeders & Bowls"),
+                    (["bed", "cushion", "pillow", "mat", "blanket", "mattress", "pad"],
+                     "سرير نوم مريح", "Comfort Pet Bed", "أسرة ومفارش", "Beds & Mats"),
+                    (["cage", "birdcage", "crate", "carrier", "kennel", "pen", "coop", "enclosure", "hutch"],
+                     "قفص وحقيبة تنقل", "Pet Carrier & Cage", "أقفاص وحقائب تنقل", "Cages & Carriers"),
+                    (["litter", "tray", "scoop", "toilet", "sand box"],
+                     "صندوق رمل ومجرفة", "Cat Litter Box & Scoop", "نظافة ورمل القطط", "Litter & Waste"),
+                    (["scratch", "cat tree", "condo", "post", "tower", "scratcher"],
+                     "عمود خدش وشجرة قطط", "Cat Scratching Post", "خدوشات وأشجار", "Scratchers & Trees"),
+                    (["toy", "ball", "rubber", "chew", "rope", "plush", "doll", "teaser"],
+                     "لعبة ترفيهية ومسلية", "Pet Play Toy", "ألعاب وتسالي", "Pet Toys"),
+                    (["aquarium", "fish tank", "filter", "aerator", "pump", "tank"],
+                     "مستلزمات وحوض أسماك", "Aquarium & Fish Supplies", "مستلزمات أسماك", "Aquarium Supplies"),
+                    (["apparel", "clothing", "coat", "jacket", "sweater", "boot", "vest", "costume"],
+                     "ملابس وسترة للحيوانات الأليفة", "Pet Apparel & Jacket", "ملابس وإكسسوارات", "Pet Apparel"),
+                    (["shampoo", "spray", "lotion", "soap", "cleanser", "wipe", "wipes", "hygiene"],
+                     "شامبو ومستحضر نظافة", "Pet Hygiene Shampoo & Care", "عناية ونظافة", "Hygiene & Care"),
+                    (["food", "kibble", "can", "tin", "pouch", "biscuit", "treat", "pellet", "seed"],
+                     "طعام ومكافآت مغذية", "Nutritious Pet Food & Treats", "أغذية ومكافآت", "Pet Food & Treats")
+                ]
+
+                // 2. Animal Taxonomy (cats, dogs, parrots, birds, etc.)
+                let animalTaxonomy: [(keywords: [String], ar: String, en: String, speciesAr: String, speciesEn: String)] = [
+                    (["cat", "feline", "kitten", "persian cat", "siamese"],
+                     "قط أليف", "Pet Cat", "القطط", "Cat"),
+                    (["dog", "canine", "puppy", "retriever", "shepherd", "husky", "pomeranian", "bulldog"],
+                     "كلب أليف", "Pet Dog", "الكلاب", "Dog"),
+                    (["parrot", "macaw", "cockatoo", "cockatiel", "budgerigar", "canary", "finch", "bird"],
+                     "طائر / ببغاء", "Bird / Parrot", "الطيور", "Bird"),
+                    (["rabbit", "hare"],
+                     "أرنب أليف", "Pet Rabbit", "الأرانب", "Rabbit"),
+                    (["hamster", "guinea pig", "rodent"],
+                     "هامستر أليف", "Pet Hamster", "القوارض", "Small Pet"),
+                    (["turtle", "tortoise"],
+                     "سلحفاة", "Turtle", "الزواحف", "Reptile"),
+                    (["fish", "goldfish"],
+                     "سمكة زينة", "Pet Fish", "الأسماك", "Fish"),
+                    (["horse", "stallion", "equine"],
+                     "خيل", "Horse", "الخيول", "Horse"),
+                    (["camel"],
+                     "إبل", "Camel", "الإبل", "Camel"),
+                    (["falcon", "hawk"],
+                     "صقر", "Falcon", "الصقور", "Falcon")
+                ]
+
+                var bestAccessory: DetectedAccessory? = nil
+                var bestAnimal: DetectedAnimal? = nil
+
+                for obs in observations.prefix(30) where obs.confidence > 0.15 {
+                    let idLower = obs.identifier.lowercased()
+
+                    if bestAccessory == nil {
+                        for item in accessoryTaxonomy {
+                            if item.keywords.contains(where: { idLower.contains($0) }) {
+                                bestAccessory = DetectedAccessory(
+                                    arabicTitle: item.ar,
+                                    englishTitle: item.en,
+                                    categoryAr: item.catAr,
+                                    categoryEn: item.catEn,
+                                    confidence: obs.confidence
+                                )
+                                break
+                            }
+                        }
+                    }
+
+                    if bestAnimal == nil {
+                        for item in animalTaxonomy {
+                            if item.keywords.contains(where: { idLower.contains($0) }) {
+                                bestAnimal = DetectedAnimal(
+                                    arabicName: item.ar,
+                                    englishName: item.en,
+                                    speciesAr: item.speciesAr,
+                                    speciesEn: item.speciesEn,
+                                    confidence: obs.confidence
+                                )
+                                break
+                            }
+                        }
+                    }
+
+                    if bestAccessory != nil && bestAnimal != nil {
+                        break
+                    }
+                }
+
+                continuation.resume(returning: (bestAccessory, bestAnimal))
+            }
+
+            let handler = VNImageRequestHandler(cgImage: cgImage, orientation: orientation, options: [:])
+            do {
+                try handler.perform([request])
+            } catch {
+                continuation.resume(returning: (nil, nil))
+            }
+        }
+    }
+
+    // MARK: - Cloud Gemini Vision Fallback (Via imageSearch Callable)
+
+    private func performCloudVisionFallback(image: UIImage) async -> (name: String, category: String?, species: String?)? {
+        guard let data = image.jpegData(compressionQuality: 0.65) else { return nil }
+        let base64 = data.base64EncodedString()
+        let callable = Functions.functions(region: "us-central1").httpsCallable("imageSearch")
+        callable.timeoutInterval = 10.0
+        let payload: [String: Any] = [
+            "imageBase64": base64,
+            "contentType": "image/jpeg",
+            "searchMode": "auto",
+            "limit": 1
+        ]
+        do {
+            let res = try await callable.call(payload)
+            guard let dict = res.data as? [String: Any],
+                  let detected = dict["detected"] as? [String: Any] else {
+                return nil
+            }
+            let terms = detected["searchTerms"] as? [String] ?? []
+            let productType = detected["productType"] as? String
+            let speciesText = detected["speciesText"] as? String
+            if let firstTerm = terms.first, !firstTerm.isEmpty {
+                return (firstTerm, productType, speciesText)
+            }
+            return nil
+        } catch {
+            return nil
+        }
+    }
+
+    // MARK: - Animal Classification (Legacy Compatibility)
 
     private func performAnimalClassification(
         on cgImage: CGImage,
@@ -595,7 +1235,7 @@ public actor PuryVisionIntakeEngine {
                     ("goldfish", "سمكة ذهبية", "Goldfish")
                 ]
 
-                for obs in observations.prefix(15) where obs.confidence > 0.3 {
+                for obs in observations.prefix(20) where obs.confidence > 0.25 {
                     let idLower = obs.identifier.lowercased()
                     for item in animalMap {
                         if idLower.contains(item.keyword) {
@@ -631,4 +1271,5 @@ public actor PuryVisionIntakeEngine {
         }
     }
 }
+
 

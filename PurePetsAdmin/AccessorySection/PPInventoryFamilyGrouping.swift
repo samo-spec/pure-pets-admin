@@ -211,13 +211,30 @@ struct PPInventoryFamilyRow: View {
             swatchSummary
         }
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.white)
+            PPFamilyCardShape(
+                topLeading: 18,
+                bottomLeading: isExpanded ? 0 : 18,
+                bottomTrailing: 18,
+                topTrailing: 18
+            )
+            .fill(Color.white)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(
+            PPFamilyCardShape(
+                topLeading: 18,
+                bottomLeading: isExpanded ? 0 : 18,
+                bottomTrailing: 18,
+                topTrailing: 18
+            )
+        )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(AdminSurface.borderSubtle.opacity(0.65), lineWidth: 0.75)
+            PPFamilyCardShape(
+                topLeading: 18,
+                bottomLeading: isExpanded ? 0 : 18,
+                bottomTrailing: 18,
+                topTrailing: 18
+            )
+            .strokeBorder(AdminSurface.borderSubtle.opacity(0.65), lineWidth: 0.75)
         )
         .shadow(color: .black.opacity(0.03), radius: 8, x: 0, y: 3)
         .overlay(alignment: .leading) {
@@ -539,5 +556,139 @@ struct PPInventoryFamilyRow: View {
             )
         }
         return text
+    }
+}
+
+// MARK: - Family Grouping Shapes & Geometry
+
+/// An UnevenRoundedRectangle that correctly mirrors leading and trailing radii
+/// for RTL layouts (e.g. Arabic), where leading is on the right.
+func PPFamilyCardShape(
+    topLeading: CGFloat,
+    bottomLeading: CGFloat,
+    bottomTrailing: CGFloat,
+    topTrailing: CGFloat,
+    isRTL: Bool = Language.isRTL(),
+    style: RoundedCornerStyle = .continuous
+) -> UnevenRoundedRectangle {
+    UnevenRoundedRectangle(
+        cornerRadii: RectangleCornerRadii(
+            topLeading: isRTL ? topTrailing : topLeading,
+            bottomLeading: isRTL ? bottomTrailing : bottomLeading,
+            bottomTrailing: isRTL ? bottomLeading : bottomTrailing,
+            topTrailing: isRTL ? topLeading : topTrailing
+        ),
+        style: style
+    )
+}
+
+/// Continuous accent spine tracing the leading perimeter of an expanded product family.
+/// Wraps around the top-leading corner of the parent card, runs straight down the leading
+/// edge bridging parent and child, and wraps around the bottom-leading corner of the child inspector.
+struct FamilyExpandedAccentSpineShape: Shape {
+    var topArmLength: CGFloat = 85
+    var bottomArmLength: CGFloat = 85
+    var topRadius: CGFloat = 18
+    var bottomRadius: CGFloat = 16
+    var lineWidth: CGFloat = 3.5
+    var isRTL: Bool = Language.isRTL()
+
+    init(
+        topArmLength: CGFloat = 85,
+        bottomArmLength: CGFloat = 85,
+        topRadius: CGFloat = 18,
+        bottomRadius: CGFloat = 16,
+        lineWidth: CGFloat = 3.5,
+        layoutDirection: LayoutDirection? = nil
+    ) {
+        self.topArmLength = topArmLength
+        self.bottomArmLength = bottomArmLength
+        self.topRadius = topRadius
+        self.bottomRadius = bottomRadius
+        self.lineWidth = lineWidth
+        if let layoutDirection {
+            self.isRTL = layoutDirection == .rightToLeft
+        } else {
+            self.isRTL = Language.isRTL()
+        }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let halfLine = lineWidth / 2.0
+
+        if isRTL {
+            let rightX = rect.maxX - halfLine
+            let topY = rect.minY + halfLine
+            let bottomY = rect.maxY - halfLine
+
+            let safeTopRadius = max(0, min(topRadius - halfLine, (rect.height / 2) - halfLine))
+            let safeBottomRadius = max(0, min(bottomRadius - halfLine, (rect.height / 2) - halfLine))
+
+            let topStartX = max(rect.minX + halfLine, rightX - topArmLength)
+            let bottomEndX = max(rect.minX + halfLine, rightX - bottomArmLength)
+
+            // Start at top arm (left of top-right corner)
+            path.move(to: CGPoint(x: topStartX, y: topY))
+            // Horizontal segment to the top arc start
+            path.addLine(to: CGPoint(x: rightX - safeTopRadius, y: topY))
+            // Arc around top-leading (top-right) corner
+            path.addArc(
+                center: CGPoint(x: rightX - safeTopRadius, y: topY + safeTopRadius),
+                radius: safeTopRadius,
+                startAngle: .degrees(-90),
+                endAngle: .degrees(0),
+                clockwise: false
+            )
+            // Vertical spine down the leading edge bridging parent and child
+            path.addLine(to: CGPoint(x: rightX, y: bottomY - safeBottomRadius))
+            // Arc around bottom-leading (bottom-right) corner
+            path.addArc(
+                center: CGPoint(x: rightX - safeBottomRadius, y: bottomY - safeBottomRadius),
+                radius: safeBottomRadius,
+                startAngle: .degrees(0),
+                endAngle: .degrees(90),
+                clockwise: false
+            )
+            // Horizontal segment along bottom of child card
+            path.addLine(to: CGPoint(x: bottomEndX, y: bottomY))
+        } else {
+            let leftX = rect.minX + halfLine
+            let topY = rect.minY + halfLine
+            let bottomY = rect.maxY - halfLine
+
+            let safeTopRadius = max(0, min(topRadius - halfLine, (rect.height / 2) - halfLine))
+            let safeBottomRadius = max(0, min(bottomRadius - halfLine, (rect.height / 2) - halfLine))
+
+            let topStartX = min(rect.maxX - halfLine, leftX + topArmLength)
+            let bottomEndX = min(rect.maxX - halfLine, leftX + bottomArmLength)
+
+            // Start at top arm
+            path.move(to: CGPoint(x: topStartX, y: topY))
+            // Horizontal segment to top arc start
+            path.addLine(to: CGPoint(x: leftX + safeTopRadius, y: topY))
+            // Arc around top-leading (top-left) corner
+            path.addArc(
+                center: CGPoint(x: leftX + safeTopRadius, y: topY + safeTopRadius),
+                radius: safeTopRadius,
+                startAngle: .degrees(-90),
+                endAngle: .degrees(180),
+                clockwise: true
+            )
+            // Vertical spine down leading edge
+            path.addLine(to: CGPoint(x: leftX, y: bottomY - safeBottomRadius))
+            // Arc around bottom-leading (bottom-left) corner
+            path.addArc(
+                center: CGPoint(x: leftX + safeBottomRadius, y: bottomY - safeBottomRadius),
+                radius: safeBottomRadius,
+                startAngle: .degrees(180),
+                endAngle: .degrees(90),
+                clockwise: true
+            )
+            // Horizontal segment along bottom of child card
+            path.addLine(to: CGPoint(x: bottomEndX, y: bottomY))
+        }
+
+        return path
     }
 }

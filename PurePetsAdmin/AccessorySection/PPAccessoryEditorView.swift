@@ -2527,14 +2527,17 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
         let itemTypeString = isLivePet ? "live_pet" : (isFood ? "food" : "accessory")
 
-        // STEP 1: Scan image & extract packaging text / animal species
+        // STEP 1: Scan image & extract packaging text / animal species / accessory
         puryVisionStep = .scanning(message: Language.isRTL() ? "بيوري يحلل الصورة ويتعرف على تفاصيل المنتج..." : "Pury is analyzing image & identifying product...")
         puryActiveFocusTarget = .media
-        puryVisionStatusMessage = Language.isRTL() ? "بيوري يقرأ العبوة..." : "Pury reading packaging..."
+        puryVisionStatusMessage = Language.isRTL() ? "بيوري يقرأ الصورة والمنتج..." : "Pury reading image & product..."
 
         let result = await PuryVisionIntakeEngine.shared.extract(from: image, itemType: itemTypeString)
 
-        guard result.hasValidIdentity else {
+        let hasExistingName = !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                              !nameEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        guard result.hasValidIdentity || hasExistingName else {
             puryVisionStep = .failed(message: Language.isRTL() ? "لم يتم العثور على اسم منتج واضح في الصورة" : "No clear product name detected in image")
             puryActiveFocusTarget = nil
             puryVisionStatusMessage = Language.isRTL() ? "تعذر تحديد الاسم" : "Could not identify"
@@ -2544,59 +2547,102 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             return
         }
 
+        var authoringAttrs = self.authoringAttributes
+        for (k, v) in result.attributes {
+            authoringAttrs[k] = v
+        }
+
         if !result.detectedBrand.isEmpty && brand.isEmpty {
             brand = result.detectedBrand
         }
 
         // STEP 2: Intelligent Focus on Name Field & Translation
         let detected = result.primaryName
-        puryVisionStep = .settingName(name: detected, isTranslating: true)
-        puryActiveFocusTarget = .name
-        puryVisionStatusMessage = Language.isRTL() ? "بيوري يسجل اسم المنتج ويترجمه..." : "Pury is setting & translating name..."
+        if !detected.isEmpty && name.isEmpty && nameEn.isEmpty {
+            puryVisionStep = .settingName(name: detected, isTranslating: true)
+            puryActiveFocusTarget = .name
+            puryVisionStatusMessage = Language.isRTL() ? "بيوري يسجل اسم المنتج ويترجمه..." : "Pury is setting & translating name..."
 
-        if result.isArabic {
-            name = detected
-        } else {
-            nameEn = detected
-        }
-
-        var authoringAttrs = self.authoringAttributes
-        for (k, v) in result.attributes {
-            authoringAttrs[k] = v
-        }
-
-        do {
-            let translationResponse = try await PuryAdminService.shared.requestAuthoring(
-                task: .improveName,
-                itemType: itemTypeString,
-                sourceLanguage: result.isArabic ? "ar" : "en",
-                targetLanguage: result.isArabic ? "en" : "ar",
-                currentText: ["nameAr": name, "nameEn": nameEn],
-                attributes: authoringAttrs
-            )
-
-            if let ar = translationResponse.nameAr, !ar.isEmpty {
-                name = ar
+            if result.isArabic {
+                name = detected
+            } else {
+                nameEn = detected
             }
-            if let en = translationResponse.nameEn, !en.isEmpty {
-                nameEn = en
+
+            do {
+                let translationResponse = try await PuryAdminService.shared.requestAuthoring(
+                    task: .improveName,
+                    itemType: itemTypeString,
+                    sourceLanguage: result.isArabic ? "ar" : "en",
+                    targetLanguage: result.isArabic ? "en" : "ar",
+                    currentText: ["nameAr": name, "nameEn": nameEn],
+                    attributes: authoringAttrs
+                )
+
+                if let ar = translationResponse.nameAr, !ar.isEmpty {
+                    name = ar
+                }
+                if let en = translationResponse.nameEn, !en.isEmpty {
+                    nameEn = en
+                }
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            } catch {
+                if name.isEmpty && !nameEn.isEmpty {
+                    name = nameEn
+                } else if nameEn.isEmpty && !name.isEmpty {
+                    nameEn = name
+                }
             }
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-        } catch {
-            if name.isEmpty && !nameEn.isEmpty {
-                name = nameEn
-            } else if nameEn.isEmpty && !name.isEmpty {
+            try? await Task.sleep(nanoseconds: 800_000_000)
+        } else if !name.isEmpty && nameEn.isEmpty {
+            puryVisionStep = .settingName(name: name, isTranslating: true)
+            puryActiveFocusTarget = .name
+            puryVisionStatusMessage = Language.isRTL() ? "بيوري يترجم اسم المنتج..." : "Pury is translating name..."
+            do {
+                let translationResponse = try await PuryAdminService.shared.requestAuthoring(
+                    task: .translate,
+                    itemType: itemTypeString,
+                    sourceLanguage: "ar",
+                    targetLanguage: "en",
+                    currentText: ["nameAr": name, "nameEn": ""],
+                    attributes: authoringAttrs
+                )
+                if let en = translationResponse.nameEn, !en.isEmpty {
+                    nameEn = en
+                }
+            } catch {
                 nameEn = name
             }
+            try? await Task.sleep(nanoseconds: 600_000_000)
+        } else if name.isEmpty && !nameEn.isEmpty {
+            puryVisionStep = .settingName(name: nameEn, isTranslating: true)
+            puryActiveFocusTarget = .name
+            puryVisionStatusMessage = Language.isRTL() ? "بيوري يترجم اسم المنتج..." : "Pury is translating name..."
+            do {
+                let translationResponse = try await PuryAdminService.shared.requestAuthoring(
+                    task: .translate,
+                    itemType: itemTypeString,
+                    sourceLanguage: "en",
+                    targetLanguage: "ar",
+                    currentText: ["nameAr": "", "nameEn": nameEn],
+                    attributes: authoringAttrs
+                )
+                if let ar = translationResponse.nameAr, !ar.isEmpty {
+                    name = ar
+                }
+            } catch {
+                name = nameEn
+            }
+            try? await Task.sleep(nanoseconds: 600_000_000)
         }
 
-        // Brief pause so user visibly sees the name field filled and translated
-        try? await Task.sleep(nanoseconds: 800_000_000)
-
-        // STEP 3: Intelligent Focus on Description Field & Tailored Writing
+        // STEP 3: Intelligent Focus on Description Field & Tailored Writing (NEVER FAILS)
         puryVisionStep = .settingDescription(message: Language.isRTL() ? "بيوري يصيغ وصفاً مخصصاً للمنتج..." : "Pury is crafting tailored description...")
         puryActiveFocusTarget = .description
         puryVisionStatusMessage = Language.isRTL() ? "بيوري يصيغ الوصف..." : "Pury is writing description..."
+
+        var synthesizedDescAr = ""
+        var synthesizedDescEn = ""
 
         do {
             var descAttrs = authoringAttrs
@@ -2619,15 +2665,45 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             )
 
             if let dAr = descResponse.descAr, !dAr.isEmpty {
-                desc = dAr
+                synthesizedDescAr = dAr
             }
             if let dEn = descResponse.descEn, !dEn.isEmpty {
-                descEn = dEn
+                synthesizedDescEn = dEn
             }
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch {
-            // Fallback gracefully if description network call fails
+            // Network fallback
         }
+
+        // GUARANTEE: Description typing NEVER fails if there is image and name!
+        if synthesizedDescAr.isEmpty || synthesizedDescEn.isEmpty {
+            let localFallback = PuryDescriptionSynthesizer.synthesize(
+                itemType: itemTypeString,
+                nameAr: name,
+                nameEn: nameEn,
+                category: selectedCategoryDisplayTitle,
+                subcategory: selectedSubCategoryDisplayTitle,
+                brand: brand.isEmpty ? result.detectedBrand : brand,
+                attributes: authoringAttrs
+            )
+            if synthesizedDescAr.isEmpty {
+                synthesizedDescAr = localFallback.descAr
+            }
+            if synthesizedDescEn.isEmpty {
+                synthesizedDescEn = localFallback.descEn
+            }
+        }
+
+        if !synthesizedDescAr.isEmpty {
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                desc = synthesizedDescAr
+            }
+        }
+        if !synthesizedDescEn.isEmpty {
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
+                descEn = synthesizedDescEn
+            }
+        }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
 
         // STEP 4: Success Completion
         puryVisionStep = .success(message: Language.isRTL() ? "اكتمل التعرف والصياغة بنجاح مع بيوري ✓" : "Identified & authored with Pury ✓")
@@ -6159,6 +6235,13 @@ struct PPAccessoryEditorScreen: View {
                                 }
                             }
                         }
+                    },
+                    onDidRevertToNormal: {
+                        viewModel.editingAccessory?.productFamilyId = nil
+                        viewModel.editingAccessory?.isVariant = false
+                        viewModel.editingAccessory?.isDefaultVariant = false
+                        viewModel.editingAccessory?.variantSortOrder = 0
+                        viewModel.refreshAuthoritativeRevisionIfNeeded()
                     }
                 )
                     .task(id: viewModel.editingAccessory?.accessoryID) {
@@ -17976,6 +18059,13 @@ private struct PPAccessoryFoodIntakeJourney: View {
                                     }
                                 }
                             }
+                        },
+                        onDidRevertToNormal: {
+                            viewModel.editingAccessory?.productFamilyId = nil
+                            viewModel.editingAccessory?.isVariant = false
+                            viewModel.editingAccessory?.isDefaultVariant = false
+                            viewModel.editingAccessory?.variantSortOrder = 0
+                            viewModel.refreshAuthoritativeRevisionIfNeeded()
                         }
                     )
                         .task(id: viewModel.editingAccessory?.accessoryID) {

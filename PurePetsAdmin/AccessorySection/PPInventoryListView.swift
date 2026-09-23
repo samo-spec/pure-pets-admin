@@ -531,6 +531,8 @@ enum PPLivePetInventoryService {
             return Language.get("LivePet_Error_ReservationExpired", alter: "انتهت صلاحية الحجز. حرره ثم أنشئ حجزاً جديداً.")
         }
         switch domainCode {
+        case "INVENTORY_DELETE_BLOCKED_BY_STOCK":
+            return Language.get("LivePet_Error_DeleteBlockedByStock", alter: "يجب أرشفة أو تسوية الحيوانات الحية النشطة أو المحجوزة قبل حذف الصنف.")
         case "POS_INVENTORY_UNIT_UNAVAILABLE":
             return Language.get("LivePet_Error_UnitUnavailable", alter: "لم يعد هذا الحيوان متاحاً. حدّث السجل قبل المتابعة.")
         case "POS_INVENTORY_UNIT_BRANCH_MISMATCH", "INVENTORY_UNIT_BRANCH_MISMATCH":
@@ -2158,7 +2160,6 @@ final class PPInventoryListViewModel: ObservableObject {
                     action: "delete",
                     productID: docID,
                     commandID: PPLivePetInventoryService.commandID("delete"),
-                    expectedRevision: item.revision > 0 ? item.revision : nil,
                     payload: ["reason": "admin_ios_soft_delete"]
                 )
 
@@ -2208,9 +2209,15 @@ final class PPInventoryListViewModel: ObservableObject {
                 )
             } catch {
                 PPHUD.dismiss()
+                let message: String
+                if let serviceError = error as? PPAccessoryVariantServiceError {
+                    message = serviceError.errorDescription ?? error.localizedDescription
+                } else {
+                    message = error.localizedDescription
+                }
                 PPHUD.showError(
                     Language.get("Error", alter: "خطأ"),
-                    subtitle: error.localizedDescription
+                    subtitle: message
                 )
             }
         }
@@ -2570,7 +2577,9 @@ struct PPInventoryListView: View {
                 },
                 onDelete: {
                     itemForActionMenu = nil
-                    confirmDelete(item: item)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        confirmDelete(item: item)
+                    }
                 },
                 onOpenPOS: {
                     itemForActionMenu = nil
@@ -2594,6 +2603,12 @@ struct PPInventoryListView: View {
                 },
                 onToggleAppMarket: {
                     viewModel.toggleAppMarketVisibility(for: item)
+                },
+                onRevertToNormal: {
+                    itemForActionMenu = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        confirmRevertVariantFamilyToNormal(item: item)
+                    }
                 }
             )
             .presentationDetents([.fraction(0.72), .large])
@@ -2671,6 +2686,29 @@ struct PPInventoryListView: View {
             confirmBlock: { _, didConfirm in
                 guard didConfirm else { return }
                 viewModel.deleteAccessory(item)
+            },
+            cancelBlock: nil
+        )
+    }
+
+    private func confirmRevertVariantFamilyToNormal(item: PetAccessory) {
+        guard canManageStock else {
+            PPHUD.showError(
+                Language.get("Error", alter: "خطأ"),
+                subtitle: Language.get("NoPermissionToManage", alter: "ليس لديك صلاحية تعديل بيانات المخزون")
+            )
+            return
+        }
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("Variant_RevertToNormal_Action", alter: "إلغاء المتغيرات والتحويل لمنتج عادي"),
+            subtitle: Language.get("Variant_RevertToNormal_Confirm_Desc", alter: "هل أنت متأكد من رغبتك في إلغاء مجموعة المتغيرات؟ سيتم الاحتفاظ بهذا المنتج كصنف عادي مستقل وحذف باقي المتغيرات التابعة له."),
+            confirmButton: Language.get("Confirm", alter: "تأكيد التحويل"),
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "arrow.triangle.2.circlepath.circle.fill"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                viewModel.revertVariantFamilyToNormal(item: item)
             },
             cancelBlock: nil
         )
@@ -3482,15 +3520,21 @@ struct PPInventoryListView: View {
                                 )
                         }
                     }
-                    .overlay(alignment: .leading) {
+                    .overlay {
                         if isExpanded {
-                            Capsule(style: .continuous)
-                                .fill(AdminSurface.primary.opacity(0.95))
-                                .frame(width: 3.5)
-                                .padding(.top, 14)
-                                .padding(.bottom, 12)
-                                .accessibilityHidden(true)
-                                .transition(.opacity)
+                            FamilyExpandedAccentSpineShape(
+                                topArmLength: 85,
+                                bottomArmLength: 85,
+                                topRadius: 18,
+                                bottomRadius: 16,
+                                lineWidth: 3.5
+                            )
+                            .stroke(
+                                AdminSurface.primary.opacity(0.95),
+                                style: StrokeStyle(lineWidth: 3.5, lineCap: .round, lineJoin: .round)
+                            )
+                            .accessibilityHidden(true)
+                            .transition(.opacity)
                         }
                     }
                     // The whole group animates as one unit on disclosure, so the
@@ -4297,12 +4341,30 @@ private struct PPInventoryVariantChildInspector: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white)
+            PPFamilyCardShape(
+                topLeading: 0,
+                bottomLeading: 16,
+                bottomTrailing: 16,
+                topTrailing: 16
+            )
+            .fill(Color.white)
+        )
+        .clipShape(
+            PPFamilyCardShape(
+                topLeading: 0,
+                bottomLeading: 16,
+                bottomTrailing: 16,
+                topTrailing: 16
+            )
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(AdminSurface.borderSubtle.opacity(0.65), lineWidth: 0.75)
+            PPFamilyCardShape(
+                topLeading: 0,
+                bottomLeading: 16,
+                bottomTrailing: 16,
+                topTrailing: 16
+            )
+            .strokeBorder(AdminSurface.borderSubtle.opacity(0.65), lineWidth: 0.75)
         }
         .overlay(alignment: .leading) {
             if showsAccentLine {

@@ -98,7 +98,8 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
     /// already bound, rather than minting a new one and risking a second effect.
     private var pendingCommandId: String?
     @Published private var pendingSaveDraft: PPAccessoryVariantFamily?
-    var isEditingLocked: Bool { isSaving || isCreatingVariant || pendingSaveDraft != nil }
+    @Published private(set) var isDissolving = false
+    var isEditingLocked: Bool { isSaving || isCreatingVariant || isDissolving || pendingSaveDraft != nil }
     /// Add Color uses two independent idempotent commands: catalog create first,
     /// then family attach. Retain both across retries so an ambiguous response
     /// can never duplicate a product or family effect.
@@ -502,6 +503,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         draft.optionDefinitions = updated
         draft.autoBindMissingOptionSelections()
         self.draft = draft
+        failure = nil
         revalidate()
     }
 
@@ -1106,9 +1108,13 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
 
     func discardChanges() {
         guard !isEditingLocked else { return }
-        guard let baseline else { return }
-        draft = baseline.copyForEditing()
-        draft?.autoBindMissingOptionSelections()
+        if let baseline {
+            draft = baseline.copyForEditing()
+            draft?.autoBindMissingOptionSelections()
+        } else if let root = rootAccessory {
+            let single = PPAccessoryVariantFamily.legacySingleVariant(from: root)
+            apply(loaded: single)
+        }
         validationMessages = []
         failure = nil
     }
@@ -1183,6 +1189,72 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
             }
         } else if let root = rootAccessory {
             await load(for: root)
+        }
+    }
+
+    // MARK: - Revert to normal single product
+
+    /// Dissolves the variant family and restores the product to a regular standalone item.
+    /// If saved on server, calls the audited dissolveFamily Cloud Function.
+    /// If unsaved local draft, resets to legacySingleVariant cleanly.
+    @discardableResult
+    func revertToNormalProduct() async -> Bool {
+        guard canManageVariants, !isEditingLocked else { return false }
+
+        let familyId = (baseline?.familyId ?? draft?.familyId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !familyId.isEmpty {
+            let retainedId = (rootAccessory?.accessoryID ?? (!selectedProductId.isEmpty ? selectedProductId : draft?.variants.first?.productId ?? "")).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !retainedId.isEmpty else {
+                failure = PPAccessoryVariantFailureState(
+                    message: Language.get("Variant_Error_CannotRevertNoRetained", alter: "تعذر تحديد المنتج الأساسي للاحتفاظ به."),
+                    recovery: .correctInput
+                )
+                return false
+            }
+
+            isDissolving = true
+            failure = nil
+            confirmation = nil
+            defer { isDissolving = false }
+
+            do {
+                try await PPAccessoryVariantService.shared.dissolveFamily(
+                    familyId: familyId,
+                    retainedProductId: retainedId,
+                    deleteOtherVariants: true
+                )
+
+                rootAccessory?.productFamilyId = nil
+                rootAccessory?.isVariant = false
+                rootAccessory?.isDefaultVariant = false
+                rootAccessory?.variantSortOrder = 0
+
+                if let root = rootAccessory {
+                    let standalone = PPAccessoryVariantFamily.legacySingleVariant(from: root)
+                    apply(loaded: standalone)
+                } else {
+                    baseline = nil
+                    draft = nil
+                }
+
+                validationMessages = []
+                confirmation = Language.get("Variant_RevertToNormal_Success", alter: "تم تحويل المنتج إلى صنف عادي وإلغاء المتغيرات بنجاح.")
+                return true
+            } catch {
+                failure = PPAccessoryVariantFailureState(error: error)
+                return false
+            }
+        } else {
+            if let root = rootAccessory {
+                let standalone = PPAccessoryVariantFamily.legacySingleVariant(from: root)
+                apply(loaded: standalone)
+            } else {
+                discardChanges()
+            }
+            validationMessages = []
+            failure = nil
+            confirmation = Language.get("Variant_RevertToNormal_Success", alter: "تم تحويل المنتج إلى صنف عادي وإلغاء المتغيرات بنجاح.")
+            return true
         }
     }
 }
@@ -1523,6 +1595,7 @@ struct PPAccessoryVariantSection: View {
     /// Invoked when the operator asks to open a colour's own product record,
     /// where SKU, barcode, price, stock and images are edited.
     var onOpenVariantProduct: ((String) -> Void)?
+    var onDidRevertToNormal: (() -> Void)? = nil
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -1570,6 +1643,7 @@ struct PPAccessoryVariantSection: View {
     @State private var copiedHexBanner: String? = nil
     @State private var isPresentingCustomOptionSheet = false
     @State private var isPresentingOptionPalette = false
+    @State private var isPresentingRevertConfirmation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -1634,8 +1708,31 @@ struct PPAccessoryVariantSection: View {
             if model.isDirty {
                 saveDock
             }
+            if !model.isLegacyUngrouped && model.canManageVariants {
+                revertToNormalButton
+            }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .confirmationDialog(
+            Language.get("Variant_RevertToNormal_Action", alter: "إلغاء المتغيرات والتحويل لمنتج عادي"),
+            isPresented: $isPresentingRevertConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button(Language.get("Variant_RevertToNormal_Action", alter: "إلغاء المتغيرات والتحويل لمنتج عادي"), role: .destructive) {
+                Task {
+                    let success = await model.revertToNormalProduct()
+                    if success {
+                        onDidRevertToNormal?()
+                    }
+                }
+            }
+            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+        } message: {
+            Text(Language.get(
+                "Variant_RevertToNormal_Confirm_Desc",
+                alter: "هل أنت متأكد من رغبتك في إلغاء مجموعة المتغيرات؟ سيتم الاحتفاظ بهذا المنتج كصنف عادي مستقل وحذف باقي المتغيرات التابعة له."
+            ))
+        }
         .sheet(isPresented: $isPresentingMediaPicker) {
             let target = mediaTargetProductId ?? ""
             let remaining = max(
@@ -1820,7 +1917,38 @@ struct PPAccessoryVariantSection: View {
             Spacer(minLength: 8)
 
             if model.canManageVariants {
-                contextualActionButton(for: draft)
+                HStack(spacing: 8) {
+                    contextualActionButton(for: draft)
+
+                    Menu {
+                        Button(role: .destructive) {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            isPresentingRevertConfirmation = true
+                        } label: {
+                            Label(
+                                Language.get("Variant_RevertToNormal_Action", alter: "إلغاء المتغيرات والتحويل لمنتج عادي"),
+                                systemImage: "arrow.triangle.2.circlepath.circle"
+                            )
+                        }
+
+                        Button {
+                            Task { await model.reloadFromServer() }
+                        } label: {
+                            Label(
+                                Language.get("Variant_Recovery_Reload", alter: "إعادة التحميل من الخادم"),
+                                systemImage: "arrow.clockwise"
+                            )
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle.fill")
+                            .font(.system(size: 22))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .frame(width: 32, height: 32)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Language.get("Options_Menu", alter: "خيارات إضافية"))
+                }
             }
         }
     }
@@ -3389,6 +3517,16 @@ struct PPAccessoryVariantSection: View {
                     .font(AdminType.caption)
                     .foregroundStyle(AdminSurface.primaryText)
                     .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 4)
+                Button {
+                    model.failure = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(AdminSurface.secondaryText.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
             }
 
             if let actionTitle = failure.actionTitle {
@@ -3495,6 +3633,47 @@ struct PPAccessoryVariantSection: View {
                 .strokeBorder(AdminSurface.primary.opacity(0.35), lineWidth: 1.5)
         )
         .shadow(color: Color.black.opacity(0.08), radius: 10, y: 4)
+    }
+
+    // MARK: - Revert to Normal Product Button
+
+    @ViewBuilder
+    private var revertToNormalButton: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            isPresentingRevertConfirmation = true
+        } label: {
+            Group {
+                if model.isDissolving {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text(Language.get("Saving", alter: "جارٍ التنفيذ..."))
+                    }
+                } else {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                        Text(Language.get("Variant_RevertToNormal_Action", alter: "إلغاء المتغيرات والتحويل لمنتج عادي"))
+                    }
+                }
+            }
+            .font(AdminType.calloutBold)
+            .foregroundColor(Color(uiColor: .ppWarning))
+            .frame(maxWidth: .infinity)
+            .frame(height: 42)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color(uiColor: .ppWarning).opacity(0.08))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppWarning).opacity(0.25), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(model.isEditingLocked)
+        .padding(.top, 4)
     }
 }
 

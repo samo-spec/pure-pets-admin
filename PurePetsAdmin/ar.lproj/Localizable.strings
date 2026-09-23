@@ -4605,6 +4605,7 @@
 "LivePet_Error_Unauthenticated" = "انتهت صلاحية جلسة الموظف أو تعذر التحقق من المصادقة. أعد فتح التطبيق وسجّل الدخول مجدداً.";
 "LivePet_Error_NotAuthenticated" = "يجب تسجيل الدخول بحساب موظف معتمد لإجراء هذه العملية.";
 "LivePet_Error_RequestFailed_Format" = "تعذر إكمال العملية بأمان. حدّث البيانات وحاول مرة أخرى. المرجع: %@";
+"LivePet_Error_DeleteBlockedByStock" = "يجب أرشفة أو تسوية الحيوانات الحية النشطة أو المحجوزة أو الخاضعة للحجر قبل حذف الصنف.";
 "LivePet_Operations_Title" = "عمليات دورة حياة الحيوان";
 "LivePet_Operations_Hint" = "كل تغيير يُعتمد من الخادم ويُسجل في حركة المخزون وسجل التدقيق.";
 "LivePet_Legacy_Mode_Title" = "يلزم اعتماد نمط التتبع";
@@ -10237,3 +10238,7 @@
 "Variant_Delete_Confirm_Message" = "هل أنت متأكد من إزالة هذا المتغير من مجموعة المنتج؟ لن يتم حذف المنتج نفسه من النظام بل سيفك ارتباطه بالمجموعة.";
 "Variant_Delete_Confirmed" = "تم حذف المتغير من المجموعة بنجاح.";
 "Variant_Error_CannotDeleteOnlyVariant" = "لا يمكن حذف المتغير الوحيد في المنتج.";
+"Variant_RevertToNormal_Action" = "إلغاء المتغيرات والتحويل لمنتج عادي";
+"Variant_RevertToNormal_Confirm_Desc" = "هل أنت متأكد من رغبتك في إلغاء مجموعة المتغيرات؟ سيتم الاحتفاظ بهذا المنتج كصنف عادي مستقل وحذف باقي المتغيرات التابعة له.";
+"Variant_RevertToNormal_Success" = "تم تحويل المنتج إلى صنف عادي وإلغاء المتغيرات بنجاح.";
+"Variant_Error_CannotRevertNoRetained" = "تعذر تحديد المنتج الأساسي للاحتفاظ به.";
