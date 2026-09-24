@@ -10196,3 +10196,8 @@
 "Reverting_Branch_Catalog_Stock" = "Restoring units balance to branch & catalog...";
 "New_Lot_Quantity" = "New Lot Quantity";
 "Cannot_Delete_Lot" = "Cannot Delete Lot";
+
+/* Expanded inventory family */
+"Inventory_Family_SelectedOption" = "Selected option";
+"Inventory_Family_DefaultOption" = "Default option";
+"Inventory_Family_InactiveOption" = "Option inactive";

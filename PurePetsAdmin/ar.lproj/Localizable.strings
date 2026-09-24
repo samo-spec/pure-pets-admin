@@ -10264,3 +10264,8 @@
 "Reverting_Branch_Catalog_Stock" = "استرجاع رصيد الوحدات إلى الفرع والكتالوج...";
 "New_Lot_Quantity" = "كمية التشغيلة الجديدة";
 "Cannot_Delete_Lot" = "لا يمكن حذف التشغيلة";
+
+/* Expanded inventory family */
+"Inventory_Family_SelectedOption" = "الخيار المحدد";
+"Inventory_Family_DefaultOption" = "الخيار الافتراضي";
+"Inventory_Family_InactiveOption" = "الخيار غير نشط";

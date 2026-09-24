@@ -989,8 +989,8 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
                          confirmBlock:(AlertCompletionBlock _Nullable)confirmBlock
                           cancelBlock:(void(^ _Nullable)(void))cancelBlock {
     NSMutableArray<PPAlertActionItem *> *actions = [NSMutableArray array];
-    NSString *safeCancelTitle = cancelTitle.length ? cancelTitle : (Language.get(@"Cancel", alter:@"إلغاء") ?: @"إلغاء");
-    NSString *safeConfirmTitle = confirmTitle.length ? confirmTitle : (Language.get(@"Delete", alter:@"حذف") ?: @"حذف");
+    NSString *safeCancelTitle = cancelTitle.length ? cancelTitle : ([Language get:@"Cancel" alter:@"إلغاء"] ?: @"إلغاء");
+    NSString *safeConfirmTitle = confirmTitle.length ? confirmTitle : ([Language get:@"Delete" alter:@"حذف"] ?: @"حذف");
 
     [actions addObject:[PPAlertActionItem itemWithTitle:safeCancelTitle
                                                   style:PPAlertActionStyleCancel

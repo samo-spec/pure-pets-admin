@@ -92,6 +92,22 @@ public final class PPAdminStickerStore: NSObject, ObservableObject, @unchecked S
         refreshStickers(force: false)
     }
 
+    public func resolveURL(for storagePath: String, completion: @escaping (URL?) -> Void) {
+        let trimmed = storagePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            completion(nil)
+            return
+        }
+        if let existing = stickers.first(where: { $0.storagePath == trimmed }),
+           let url = URL(string: existing.downloadURLString) {
+            completion(url)
+            return
+        }
+        Storage.storage().reference(withPath: trimmed).downloadURL { (url: URL?, _: Error?) in
+            completion(url)
+        }
+    }
+
     public func refreshStickers(force: Bool = false) {
         if isRefreshing { return }
         if hasLoadedRemoteManifest, !force, !stickers.isEmpty {

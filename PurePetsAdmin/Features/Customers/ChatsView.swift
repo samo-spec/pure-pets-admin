@@ -25,6 +25,7 @@ import UIKit
 import FirebaseAuth
 import FirebaseFirestore
 import FirebaseFunctions
+import FirebaseStorage
 
 // MARK: - Backend Contract Constants
 
@@ -1637,8 +1638,8 @@ final class AdminSupportThreadViewModel: ObservableObject {
             let fURL = supportTrimmed(data["fileURL"])
             let isSticker = (rawType == 10) || (kind == "sticker") || (!path.isEmpty && (path.hasPrefix("stickers/") || path.hasPrefix("sticker/")))
             if isSticker && fURL.isEmpty && !path.isEmpty {
-                Storage.storage().reference(withPath: path).downloadURL { [weak self] url, error in
-                    guard let self, let url, error == nil else { return }
+                PPAdminStickerStore.shared.resolveURL(for: path) { [weak self] (url: URL?) in
+                    guard let self, let url else { return }
                     Task { @MainActor in
                         if let index = self.messages.firstIndex(where: { $0.id == doc.documentID }) {
                             var mutableData = data

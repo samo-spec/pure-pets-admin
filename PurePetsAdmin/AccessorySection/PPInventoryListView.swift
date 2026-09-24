@@ -3455,7 +3455,7 @@ struct PPInventoryListView: View {
                         return AdminSurface.primary
                     }()
 
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 0) {
                         PPInventoryFamilyRow(
                             members: members,
                             isExpanded: Binding(
@@ -3509,38 +3509,40 @@ struct PPInventoryListView: View {
                         // Changing the rail selection swaps this child in place rather
                         // than stacking full duplicate product cards down the list.
                         if isExpanded {
+                            Rectangle()
+                                .fill(AdminSurface.hairline)
+                                .frame(height: AdminStroke.hairline)
+                                .padding(.horizontal, AdminSpacing.base)
+                                .accessibilityHidden(true)
+
                             inventoryVariantInspector(for: selectedMember, showsAccentLine: false)
-                                .id(selectedMember.accessoryID)
-                                .transition(
-                                    reduceMotion
-                                        ? .opacity
-                                        : .asymmetric(
-                                            insertion: .move(edge: .top).combined(with: .opacity),
-                                            removal: .opacity
-                                        )
-                                )
-                                // Swapping colour inside an already-open family is a
-                                // smaller event than opening one, so it stays a quick
-                                // crossfade rather than re-running the disclosure spring.
-                                .animation(
-                                    AdminAnimation.motion(AdminAnimation.fast, reduceMotion: reduceMotion),
-                                    value: selectedMember.accessoryID
-                                )
+                                // Retain the live control tree while changing member.
+                                // An outgoing inspector must never remain tappable
+                                // during an identity transition with old closures.
+                                .transition(.opacity)
+                        }
+                    }
+                    .padding(.leading, isExpanded ? AdminSpacing.md : 0)
+                    .background {
+                        if isExpanded {
+                            RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous)
+                                .fill(AdminSurface.surface)
+                                .shadow(color: .black.opacity(0.04), radius: 12, y: 4)
                         }
                     }
                     .overlay {
                         if isExpanded {
-                            FamilyExpandedAccentSpineView(
-                                color: selectedAccentColor,
-                                topArmLength: 20,
-                                bottomArmLength: 18,
-                                topRadius: 18,
-                                bottomRadius: 16,
-                                lineWidth: 1.5,
-                                onRightSide: true
-                            )
-                            .accessibilityHidden(true)
-                            .transition(.opacity)
+                            RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous)
+                                .strokeBorder(AdminSurface.borderSubtle, lineWidth: AdminStroke.thin)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .overlay(alignment: .leading) {
+                        if isExpanded {
+                            FamilyExpandedAccentSpineView(color: selectedAccentColor)
+                                .padding(.leading, AdminSpacing.xs)
+                                .padding(.vertical, AdminSpacing.lg)
+                                .transition(.opacity)
                         }
                     }
                     .animation(
@@ -4240,14 +4242,48 @@ private struct PPInventoryVariantChildInspector: View {
     let onAdjustQuantity: (Int) -> Void
     let onMore: () -> Void
 
+    private struct QuantityEditContext {
+        let productID: String
+        let branchID: String
+        let quantity: Int
+        let revision: Int
+        let specimen: PPTactileSpecimenInfo
+    }
+
+    @State private var quantityEditContext: QuantityEditContext?
+    @State private var showQuantityPad = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var colour: PPAccessoryVariantColor? {
         item.variantColorDictionary.flatMap { PPAccessoryVariantColor(dictionary: $0) }
     }
 
-    private var accent: Color {
-        colour.map { Color(uiColor: $0.uiColor) } ?? AdminSurface.primary
+    private var editTreatment: (fill: Color, ink: Color, border: Color) {
+        let standard = (AdminSurface.primary.opacity(0.09), AdminSurface.primary, Color.clear)
+        guard item.pos_hasRealColor, let colour,
+              PPAccessoryVariantColor.isValidHex(colour.hex) else { return standard }
+
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        guard colour.uiColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha),
+              alpha >= 0.95 else { return standard }
+
+        // Compare black/white text against the actual opaque sRGB variant fill.
+        // Semantic label colors would invert independently in dark appearance.
+        func linear(_ channel: CGFloat) -> Double {
+            let value = Double(channel)
+            return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+        }
+        let luminance = 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+        let blackContrast = (luminance + 0.05) / 0.05
+        let whiteContrast = 1.05 / (luminance + 0.05)
+        return (
+            Color(uiColor: colour.uiColor),
+            blackContrast >= whiteContrast ? Color.black : Color.white,
+            AdminSurface.primaryText.opacity(0.24)
+        )
     }
 
     private var variantTitle: String {
@@ -4282,6 +4318,7 @@ private struct PPInventoryVariantChildInspector: View {
     }
 
     private var statusColor: Color {
+        if isInactive { return AdminCommandInk.secondary }
         guard stockState == .ready, let quantity else { return AdminCommandInk.secondary }
         if quantity <= 0 { return AdminSurface.crimson }
         if quantity <= 3 { return AdminSurface.amber }
@@ -4290,6 +4327,8 @@ private struct PPInventoryVariantChildInspector: View {
 
     private var statusTitle: String {
         if let caption = stockState.caption { return caption }
+        if item.isArchived { return Language.get("Variant_State_Archived", alter: "مؤرشف") }
+        if isInactive { return Language.get("Inventory_Family_InactiveOption", alter: "الخيار غير نشط") }
         guard let quantity else { return Language.get("InventoryCell_Available", alter: "المتاح") }
         if quantity <= 0 { return Language.get("OutOfStock", alter: "نفذ من المخزون") }
         if quantity <= 3 { return Language.get("InventoryCell_Low", alter: "رصيد منخفض") }
@@ -4299,6 +4338,7 @@ private struct PPInventoryVariantChildInspector: View {
     private var statusSymbol: String {
         switch stockState {
         case .ready:
+            if isInactive { return item.isArchived ? "archivebox" : "pause.circle" }
             guard let quantity else { return "clock" }
             return quantity <= 0 ? "minus.circle.fill" : (quantity <= 3 ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
         case .pending: return "clock.badge.checkmark"
@@ -4317,271 +4357,384 @@ private struct PPInventoryVariantChildInspector: View {
             ))
         }
         if item.isDefaultVariant {
-            parts.append(Language.get("Variant_State_Default", alter: "اللون الافتراضي"))
+            parts.append(Language.get("Inventory_Family_DefaultOption", alter: "الخيار الافتراضي"))
         }
         return parts.joined(separator: ", ")
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: AdminSpacing.base) {
             Button(action: onOpen) {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .center, spacing: 12) {
-                        variantIdentity
-                        Spacer(minLength: 12)
-                        commercialStatus
+                HStack(alignment: .top, spacing: AdminSpacing.md) {
+                    variantMark
+
+                    VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                        Text(Language.get("Inventory_Family_SelectedOption", alter: "الخيار المحدد"))
+                            .font(AdminType.caption)
+                            .foregroundStyle(AdminCommandInk.secondary)
+
+                        Text(variantTitle)
+                            .font(AdminType.title3Bold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if item.isDefaultVariant {
+                            Label(Language.get("Inventory_Family_DefaultOption", alter: "الخيار الافتراضي"),
+                                  systemImage: "star.fill")
+                                .font(AdminType.caption)
+                                .foregroundStyle(AdminCommandInk.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
-                    VStack(alignment: .leading, spacing: 10) {
-                        variantIdentity
-                        commercialStatus
-                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Image(systemName: "chevron.forward")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(AdminCommandInk.tertiary)
+                        .frame(width: 20, height: AdminTouchTarget.minimum)
+                        .accessibilityHidden(true)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum, alignment: .leading)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(CatalogPressStyle())
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilitySummary)
             .accessibilityHint(Language.get("InventoryCell_OpenHint", alter: "يفتح تفاصيل الصنف وإجراءاته"))
+            .accessibilityIdentifier("inventory.family.selected.open")
 
-            Divider()
-                .background(AdminSurface.hairline.opacity(0.55))
+            identifiers
 
-            actionDock
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: AdminSpacing.base) {
+                    priceMetric
+                    quantityMetric
+                }
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: AdminSpacing.lg) {
+                        priceMetric.fixedSize(horizontal: true, vertical: false)
+                        Spacer(minLength: 0)
+                        quantityMetric.fixedSize(horizontal: true, vertical: false)
+                    }
+                    VStack(alignment: .leading, spacing: AdminSpacing.base) {
+                        priceMetric
+                        quantityMetric
+                    }
+                }
+            }
+
+            if stockState != .ready || (quantity ?? 0) <= 3 || isInactive {
+                statusNotice
+            }
+
+            secondaryActions
         }
+        .multilineTextAlignment(.leading)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white)
-        )
-        .clipShape(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(AdminSurface.borderSubtle.opacity(0.65), lineWidth: 0.75)
-        }
-        .overlay(alignment: Language.isRTL() ? .leading : .trailing) {
+        .padding(AdminSpacing.base)
+        .overlay(alignment: .leading) {
             if showsAccentLine {
-                Capsule(style: .continuous)
-                    .fill(AdminSurface.primary.opacity(0.95))
-                    .frame(width: 1.5)
-                    .padding(.vertical, 12)
+                FamilyExpandedAccentSpineView(color: AdminSurface.primary)
+                    .padding(.vertical, AdminSpacing.base)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("inventory.family.selected")
+        .tactileQuantityPad(
+            isPresented: $showQuantityPad,
+            title: Language.get("EditQuantity", alter: "تعديل الكمية"),
+            currentQuantity: quantityEditContext?.quantity ?? 0,
+            referenceQuantity: quantityEditContext?.quantity,
+            specimen: quantityEditContext?.specimen,
+            onCommit: commitQuantity
+        )
+        .onChange(of: item.accessoryID) { _ in
+            showQuantityPad = false
+            quantityEditContext = nil
+        }
+    }
+
+    private var variantMark: some View {
+        ZStack {
+            Circle().fill(AdminSurface.control)
+            if item.pos_hasRealColor, let colour {
+                Circle()
+                    .fill(Color(uiColor: colour.uiColor))
+                    .overlay {
+                        Circle().strokeBorder(AdminSurface.primaryText.opacity(0.24), lineWidth: 1)
+                    }
+                    .padding(7)
+            } else {
+                Image(systemName: item.pos_variantDimension.sfSymbolName)
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(AdminSurface.primary)
+            }
+        }
+        .frame(width: AdminTouchTarget.comfortable, height: AdminTouchTarget.comfortable)
+        .accessibilityHidden(true)
+    }
+
+    private var identifiers: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+            if let sku = item.sku?.trimmingCharacters(in: .whitespacesAndNewlines), !sku.isEmpty {
+                identifierRow(Language.get("CatalogIntake_ReviewSKU", alter: "رمز الصنف"), value: sku)
+            }
+            if let barcode = item.barcode?.trimmingCharacters(in: .whitespacesAndNewlines), !barcode.isEmpty {
+                identifierRow(Language.get("CatalogIntake_ReviewBarcode", alter: "الباركود"), value: barcode)
+            }
+            if !branchName.isEmpty {
+                Label(branchName, systemImage: "building.2")
+                    .font(AdminType.caption)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func identifierRow(_ label: String, value: String) -> some View {
+        // The label follows the app's reading direction. Only the code is LTR;
+        // putting that override on the entire row would reverse Arabic alignment.
+        VStack(alignment: .leading, spacing: AdminSpacing.xxs) {
+            if dynamicTypeSize.isAccessibilitySize {
+                Text(label).font(AdminType.caption)
+                identifierValue(value)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.sm) {
+                    Text(label).font(AdminType.caption)
+                    identifierValue(value)
+                }
+            }
+        }
+        .foregroundStyle(AdminCommandInk.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue(value)
+    }
+
+    private func identifierValue(_ value: String) -> some View {
+        Text(verbatim: value)
+            .font(AdminType.caption.monospaced())
+            .fixedSize(horizontal: false, vertical: true)
+            .environment(\.layoutDirection, .leftToRight)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var priceMetric: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+            Text(Language.get("SellingPriceTitle", alter: "سعر البيع"))
+                .font(AdminType.caption)
+                .foregroundStyle(AdminCommandInk.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if sellingPrice != nil {
+                Text(formattedPrice.normalizedEnglishDigits)
+                    .font(Font.custom("Beiruti-Bold", size: 28, relativeTo: .title2))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .environment(\.layoutDirection, .leftToRight)
+                    .frame(minHeight: AdminTouchTarget.minimum, alignment: .leading)
+            } else {
+                Text(formattedPrice)
+                    .font(AdminType.callout)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(minHeight: AdminTouchTarget.minimum, alignment: .leading)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var quantityMetric: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+            Text(Language.get("InventoryCell_Available", alter: "المتاح"))
+                .font(AdminType.caption)
+                .foregroundStyle(AdminCommandInk.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: AdminSpacing.xs) {
+                    decreaseQuantity
+                    quantityValue.fixedSize(horizontal: true, vertical: false)
+                    increaseQuantity
+                }
+                VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                    quantityValue
+                    HStack(spacing: AdminSpacing.sm) {
+                        decreaseQuantity
+                        increaseQuantity
+                    }
+                }
+            }
+        }
+    }
+
+    private var quantityValue: some View {
+        Button(action: presentQuantityPad) {
+            // A missing/loading branch projection is not a confirmed zero.
+            Text(stockState == .ready ? (quantity?.englishDigits ?? "—") : "—")
+                .font(Font.custom("Beiruti-Bold", size: 28, relativeTo: .title2))
+                .monospacedDigit()
+                .foregroundStyle(stockState == .ready ? AdminSurface.primaryText : AdminCommandInk.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minWidth: AdminTouchTarget.minimum, minHeight: AdminTouchTarget.minimum)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(CatalogPressStyle())
+        .disabled(!canAdjust)
+        .accessibilityLabel(Language.get("EditQuantity", alter: "تعديل الكمية"))
+        .accessibilityValue(stockState == .ready ? (quantity?.englishDigits ?? statusTitle) : statusTitle)
+        .accessibilityHint(Language.get("InventoryCell_QuantityHint", alter: "يفتح لوحة إدخال الكمية"))
+        .accessibilityIdentifier("inventory.family.selected.quantity")
+    }
+
+    private func presentQuantityPad() {
+        guard canAdjust, let quantity else { return }
+        let projection = PPBranchInventoryService.shared
+        guard projection.isServerConfirmed,
+              let branchID = projection.currentBranchId,
+              !branchID.isEmpty, branchID != "main_store",
+              BranchContextStore.shared.activeBranch?.branchID == branchID,
+              let record = projection.inventory(for: item.accessoryID),
+              record.availableQuantity == quantity else {
+            reportQuantityChange()
+            return
+        }
+        quantityEditContext = QuantityEditContext(
+            productID: item.accessoryID,
+            branchID: branchID,
+            quantity: quantity,
+            revision: record.projectionRevision,
+            specimen: PPTactileSpecimenInfo(
+                title: variantTitle,
+                imageURL: PetAccessory.firstImageURL(for: item),
+                sku: item.sku,
+                barcode: item.barcode
+            )
+        )
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        showQuantityPad = true
+    }
+
+    private func commitQuantity(_ newQuantity: Int) {
+        let projection = PPBranchInventoryService.shared
+        guard canAdjust, newQuantity >= 0,
+              let context = quantityEditContext,
+              context.productID == item.accessoryID,
+              projection.isServerConfirmed,
+              BranchContextStore.shared.activeBranch?.branchID == context.branchID,
+              projection.currentBranchId == context.branchID,
+              let record = projection.inventory(for: context.productID),
+              record.projectionRevision == context.revision,
+              record.availableQuantity == context.quantity else {
+            reportQuantityChange()
+            return
+        }
+        // Consume the captured edit before invoking the existing audited flow.
+        // An absolute input is never silently rebased onto a newer balance.
+        quantityEditContext = nil
+        let delta = newQuantity - context.quantity
+        if delta != 0 { onAdjustQuantity(delta) }
+    }
+
+    private func reportQuantityChange() {
+        PPHUD.showError(
+            Language.get("InventoryCell_QuantityChanged", alter: "تغير رصيد الصنف"),
+            subtitle: Language.get("InventoryCell_QuantityChangedDetail", alter: "راجع الرصيد الحالي ثم أعد التعديل.")
+        )
+    }
+
+    private var decreaseQuantity: some View {
+        quantityButton(
+            systemImage: "minus",
+            label: Language.get("InventoryCell_Decrease", alter: "تقليل الكمية بمقدار واحد"),
+            enabled: canAdjust && (quantity ?? 0) > 0,
+            delta: -1
+        )
+    }
+
+    private var increaseQuantity: some View {
+        quantityButton(
+            systemImage: "plus",
+            label: Language.get("InventoryCell_Increase", alter: "زيادة الكمية بمقدار واحد"),
+            enabled: canAdjust,
+            delta: 1
+        )
+    }
+
+    private var statusNotice: some View {
+        HStack(alignment: .top, spacing: AdminSpacing.sm) {
+            if stockState.isBusy {
+                ProgressView().tint(statusColor)
+            } else {
+                Image(systemName: statusSymbol)
+                    .font(.system(size: 14, weight: .semibold))
                     .accessibilityHidden(true)
             }
+            Text(statusTitle)
+                .font(AdminType.footnote)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .shadow(color: Color.black.opacity(0.035), radius: 8, x: 0, y: 3)
-    }
-
-    private var variantIdentity: some View {
-        HStack(spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(accent.opacity(0.10))
-                    .frame(width: 46, height: 46)
-
-                if item.pos_hasRealColor, let colour = colour {
-                    Circle()
-                        .fill(Color(uiColor: colour.uiColor))
-                        .frame(width: 28, height: 28)
-                        .overlay {
-                            Circle()
-                                .strokeBorder(
-                                    colour.requiresContrastBorder
-                                        ? AdminSurface.primaryText.opacity(0.28)
-                                        : Color.white.opacity(0.24),
-                                    lineWidth: 1
-                                )
-                        }
-                } else if !item.pos_variantShortBadge.isEmpty {
-                    Text(item.pos_variantShortBadge)
-                        .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
-                        .foregroundColor(AdminSurface.primary)
-                } else {
-                    Image(systemName: item.pos_variantDimension.sfSymbolName)
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(AdminSurface.primary)
-                }
-            }
-            .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(variantTitle)
-                        .font(AdminType.calloutBold)
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-
-                    if item.isDefaultVariant {
-                        Image(systemName: "star.fill")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(accent)
-                            .accessibilityLabel(Language.get("Variant_State_Default", alter: "اللون الافتراضي"))
-                    }
-                }
-
-                HStack(spacing: 6) {
-                    if let sku = item.sku?.trimmingCharacters(in: .whitespacesAndNewlines), !sku.isEmpty {
-                        HStack(spacing: 2) {
-                            Text("SKU:")
-                                .font(Font.custom("Beiruti-Bold", size: 9, relativeTo: .caption2))
-                            Text(verbatim: sku)
-                                .font(AdminType.caption2.monospaced())
-                        }
-                        .foregroundStyle(AdminCommandInk.tertiary)
-                        .lineLimit(1)
-                        .environment(\.layoutDirection, .leftToRight)
-                    }
-                    if let barcode = item.barcode?.trimmingCharacters(in: .whitespacesAndNewlines), !barcode.isEmpty {
-                        HStack(spacing: 2) {
-                            Image(systemName: "barcode")
-                                .font(.system(size: 8))
-                            Text(verbatim: barcode)
-                                .font(AdminType.caption2.monospaced())
-                        }
-                        .foregroundStyle(AdminCommandInk.tertiary)
-                        .lineLimit(1)
-                        .environment(\.layoutDirection, .leftToRight)
-                    }
-                    if !branchName.isEmpty {
-                        if !(item.sku?.isEmpty == false) && !(item.barcode?.isEmpty == false) {
-                            Image(systemName: "building.2")
-                                .font(.system(size: 9, weight: .semibold))
-                                .foregroundStyle(AdminCommandInk.tertiary)
-                        }
-                        Text(branchName)
-                            .font(AdminType.caption2)
-                            .foregroundStyle(AdminCommandInk.secondary)
-                            .lineLimit(1)
-                    }
-                }
-            }
-        }
-    }
-
-    private var commercialStatus: some View {
-        VStack(alignment: .trailing, spacing: 4) {
-            Text(formattedPrice.normalizedEnglishDigits)
-                .font(AdminType.headline)
-                .foregroundStyle(sellingPrice == nil ? AdminCommandInk.tertiary : AdminSurface.primaryText)
-                .environment(\.layoutDirection, .leftToRight)
-
-            HStack(spacing: 5) {
-                Image(systemName: statusSymbol)
-                    .font(.system(size: 11, weight: .semibold))
-                if stockState == .ready, let quantity {
-                    Text(verbatim: quantity.englishDigits)
-                        .font(AdminType.caption2Bold)
-                    Text(statusTitle)
-                        .font(AdminType.caption2)
-                } else {
-                    Text(statusTitle)
-                        .font(AdminType.caption2)
-                        .lineLimit(2)
-                }
-            }
-            .foregroundStyle(statusColor)
-        }
-        .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil, alignment: .trailing)
-    }
-
-    private var actionDock: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
-                quantityControl
-                Spacer(minLength: 8)
-                secondaryActions
-            }
-            VStack(alignment: .leading, spacing: 8) {
-                quantityControl
-                secondaryActions
-            }
-        }
-    }
-
-    private var quantityControl: some View {
-        HStack(spacing: 0) {
-            compactActionButton(
-                systemImage: "minus",
-                accessibilityLabel: Language.get("InventoryCell_Decrease", alter: "تقليل الكمية بمقدار واحد"),
-                enabled: canAdjust && (quantity ?? 0) > 0
-            ) {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                onAdjustQuantity(-1)
-            }
-
-            Text(quantity.map { $0.englishDigits } ?? "—")
-                .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .callout))
-                .foregroundStyle(AdminSurface.primaryText)
-                .frame(minWidth: 36, minHeight: 36)
-
-            compactActionButton(
-                systemImage: "plus",
-                accessibilityLabel: Language.get("InventoryCell_Increase", alter: "زيادة الكمية بمقدار واحد"),
-                enabled: canAdjust
-            ) {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                onAdjustQuantity(1)
-            }
-        }
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
-        }
+        .foregroundStyle(statusColor)
+        .padding(AdminSpacing.md)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium))
+        .accessibilityElement(children: .combine)
     }
 
     private var secondaryActions: some View {
-        HStack(spacing: 6) {
+        let treatment = editTreatment
+        return HStack(spacing: AdminSpacing.sm) {
             Button(action: onEdit) {
-                HStack(spacing: 4) {
-                    Image(systemName: "pencil")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text(Language.get("Edit", alter: "تعديل"))
-                        .font(AdminType.caption2Bold)
-                }
-                .frame(minHeight: 36)
-                .padding(.horizontal, 10)
-                .background(AdminSurface.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                Label(Language.get("Edit", alter: "تعديل"), systemImage: "pencil")
+                    .font(AdminType.footnoteBold)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum)
+                    .padding(.horizontal, AdminSpacing.md)
+                    .background(treatment.fill,
+                                in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                            .strokeBorder(treatment.border, lineWidth: AdminStroke.thin)
+                    }
+                    .contentShape(RoundedRectangle(cornerRadius: AdminRadius.medium))
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(AdminSurface.primary)
+            .buttonStyle(CatalogPressStyle())
+            .foregroundStyle(treatment.ink)
             .disabled(!canManageStock)
             .opacity(canManageStock ? 1 : 0.45)
-            .accessibilityLabel(Language.get("Edit", alter: "تعديل"))
 
             Button(action: onMore) {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(AdminSurface.primaryText)
-                    .frame(width: 36, height: 36)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
-                    }
+                    .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                    .background(AdminSurface.control,
+                                in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                    .contentShape(RoundedRectangle(cornerRadius: AdminRadius.medium))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(CatalogPressStyle())
             .accessibilityLabel(Language.get("MoreActions", alter: "إجراءات إضافية"))
         }
     }
 
-    private func compactActionButton(
-        systemImage: String,
-        accessibilityLabel: String,
-        enabled: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
+    private func quantityButton(systemImage: String, label: String, enabled: Bool, delta: Int) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            onAdjustQuantity(delta)
+        } label: {
             Image(systemName: systemImage)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(enabled ? AdminSurface.primaryText : AdminCommandInk.tertiary)
-                .frame(width: 36, height: 36)
-                .contentShape(Rectangle())
+                .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                .background(AdminSurface.control,
+                            in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: AdminRadius.medium))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(CatalogPressStyle())
         .disabled(!enabled)
-        .accessibilityLabel(accessibilityLabel)
+        .accessibilityLabel(label)
     }
 }
 
