@@ -820,7 +820,7 @@ private struct iPhonePetsHotelStayDeck: View {
                 Text(Language.get("Hotel_Ledger_Total", alter: "إجمالي الحساب:"))
                     .font(PPBrandFont.medium(size: 12))
                     .foregroundStyle(AdminSurface.secondaryText)
-                Text(String(format: "%.0f %@", Double(activeStay.grandTotalMinor) / 100.0, Language.get("Currency_QAR", alter: "ر.ق")))
+                Text(String(format: "%.2f %@", Double(activeStay.grandTotalMinor) / 100.0, Language.get("Currency_QAR", alter: "ر.ق")))
                     .font(PPBrandFont.bold(size: 17))
                     .foregroundStyle(AdminSurface.primaryText)
             }
@@ -831,7 +831,7 @@ private struct iPhonePetsHotelStayDeck: View {
                 Text(Language.get("Hotel_Ledger_Balance", alter: "المتبقي للدفع:"))
                     .font(PPBrandFont.medium(size: 12))
                     .foregroundStyle(AdminSurface.secondaryText)
-                Text(String(format: "%.0f %@", Double(activeStay.outstandingMinor) / 100.0, Language.get("Currency_QAR", alter: "ر.ق")))
+                Text(String(format: "%.2f %@", Double(activeStay.outstandingMinor) / 100.0, Language.get("Currency_QAR", alter: "ر.ق")))
                     .font(PPBrandFont.bold(size: 17))
                     .foregroundStyle(activeStay.outstandingMinor > 0 ? Color.orange : Color(red: 0.16, green: 0.72, blue: 0.44))
             }
@@ -1698,7 +1698,7 @@ private struct iPadPetsHotelStayCockpit: View {
                     Text(Language.get("Hotel_Ledger_Total", alter: "إجمالي الحساب:"))
                         .font(PPBrandFont.medium(size: 12))
                         .foregroundStyle(AdminSurface.secondaryText)
-                    Text(String(format: "%.0f %@", Double(activeStay.grandTotalMinor) / 100.0, Language.get("Currency_QAR", alter: "ر.ق")))
+                    Text(String(format: "%.2f %@", Double(activeStay.grandTotalMinor) / 100.0, Language.get("Currency_QAR", alter: "ر.ق")))
                         .font(PPBrandFont.bold(size: 18))
                         .foregroundStyle(AdminSurface.primaryText)
                 }
@@ -1709,7 +1709,7 @@ private struct iPadPetsHotelStayCockpit: View {
                     Text(Language.get("Hotel_Ledger_Balance", alter: "المتبقي:"))
                         .font(PPBrandFont.medium(size: 12))
                         .foregroundStyle(AdminSurface.secondaryText)
-                    Text(String(format: "%.0f %@", Double(activeStay.outstandingMinor) / 100.0, Language.get("Currency_QAR", alter: "ر.ق")))
+                    Text(String(format: "%.2f %@", Double(activeStay.outstandingMinor) / 100.0, Language.get("Currency_QAR", alter: "ر.ق")))
                         .font(PPBrandFont.bold(size: 18))
                         .foregroundStyle(activeStay.outstandingMinor > 0 ? Color.orange : Color(red: 0.16, green: 0.72, blue: 0.44))
                 }
@@ -2297,7 +2297,7 @@ public enum PetsHotelWhatsAppDispatcher {
             }
 
             if canViewBilling && stay.outstandingMinor > 0 {
-                let bal = String(format: "%.0f %@", Double(stay.outstandingMinor) / 100.0, Language.get("Currency_QAR", alter: "ر.ق"))
+                let bal = String(format: "%.2f %@", Double(stay.outstandingMinor) / 100.0, Language.get("Currency_QAR", alter: "ر.ق"))
                 lines.append("• الحساب المالي: المتبقي للدفع \(bal)")
             }
 
@@ -2332,7 +2332,7 @@ public enum PetsHotelWhatsAppDispatcher {
             }
 
             if canViewBilling && stay.outstandingMinor > 0 {
-                let bal = String(format: "%.0f %@", Double(stay.outstandingMinor) / 100.0, Language.get("Currency_QAR", alter: "QAR"))
+                let bal = String(format: "%.2f %@", Double(stay.outstandingMinor) / 100.0, Language.get("Currency_QAR", alter: "QAR"))
                 lines.append("• Ledger: Outstanding balance \(bal)")
             }
 

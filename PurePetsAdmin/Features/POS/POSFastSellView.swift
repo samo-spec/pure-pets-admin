@@ -4973,7 +4973,7 @@ private struct POSCustomCashSheet: View {
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 let current = parsedAmount > 0 ? parsedAmount : cartTotal
                                 let newAmount = current + Double(increment)
-                                inputText = String(format: "%.0f", newAmount)
+                                inputText = String(format: "%.2f", newAmount)
                             } label: {
                                 Text("+\(increment)")
                                     .font(AdminType.captionBold)
@@ -5077,7 +5077,7 @@ private struct POSCustomCashSheet: View {
             .onAppear {
                 if let initial = initialAmount, initial > 0 {
                     if initial.truncatingRemainder(dividingBy: 1) == 0 {
-                        inputText = String(format: "%.0f", initial)
+                        inputText = String(format: "%.2f", initial)
                     } else {
                         inputText = String(format: "%.2f", initial)
                     }

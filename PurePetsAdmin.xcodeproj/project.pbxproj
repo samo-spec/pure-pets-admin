@@ -14,6 +14,7 @@
 		2260E2338E45DC3B89B24190 /* QBVideoIndicatorView.m in Sources */ = {isa = PBXBuildFile; fileRef = 294016D134F03A5C420FA7F3 /* QBVideoIndicatorView.m */; };
 		25C7C405B2192F6EC79745BC /* QB.m in Sources */ = {isa = PBXBuildFile; fileRef = 07DD358CFAD6FBBAB5CD3504 /* QB.m */; };
 		26DE193023634832BEEC233D /* Features/Customers/ChatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7168B6DC3440CDAB7B2355 /* Features/Customers/ChatsView.swift */; };
+		F2DE10012FA1000100F2DE01 /* Features/Customers/PPAdminStickerKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2DE10022FA1000100F2DE02 /* Features/Customers/PPAdminStickerKit.swift */; };
 		37053D1B0B8C47789DD2F6E3 /* Features/Operations/HomeControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 906191B1195A44C48F903980 /* Features/Operations/HomeControlView.swift */; };
 		3BD8F1CA9FFD4985928844B0 /* Features/More/NotificationComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA5C4EF51A2F4831BE0C1FA2 /* Features/More/NotificationComposerView.swift */; };
 		425C070B41FB46F2A28B098B /* PPPaymentManagementService.m in Sources */ = {isa = PBXBuildFile; fileRef = AFB8946774C24C23A585F8C5 /* PPPaymentManagementService.m */; };
@@ -465,6 +466,7 @@
 		98D40889C7DB786D327F9792 /* QBAssetCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBAssetCell.h; sourceTree = "<group>"; };
 		9A60804E52A24E6D85A922EC /* App/AdminSpacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/AdminSpacing.swift; sourceTree = "<group>"; };
 		9C7168B6DC3440CDAB7B2355 /* Features/Customers/ChatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Customers/ChatsView.swift; sourceTree = "<group>"; };
+		F2DE10022FA1000100F2DE02 /* Features/Customers/PPAdminStickerKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Customers/PPAdminStickerKit.swift; sourceTree = "<group>"; };
 		9E7F8CC8A13C484C95016649 /* Features/More/NotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/More/NotificationSettingsView.swift; sourceTree = "<group>"; };
 		A1E5604CF63D542D8056E8CC /* QBSlomoIconView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBSlomoIconView.h; sourceTree = "<group>"; };
 		A3305C321078444DA3DF3D16 /* Features/Inventory/InventoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Inventory/InventoryView.swift; sourceTree = "<group>"; };
@@ -1408,6 +1410,7 @@
 				F23DDE882F8BEC360020D4FB /* Features/Inventory/CycleCountStudioView.swift */,
 				D509F65530B14AD38C2F4FB7 /* Features/Customers/UsersListView.swift */,
 				9C7168B6DC3440CDAB7B2355 /* Features/Customers/ChatsView.swift */,
+				F2DE10022FA1000100F2DE02 /* Features/Customers/PPAdminStickerKit.swift */,
 				ECD890CCB8754E2E867F436C /* Features/Customers/StaffManagementView.swift */,
 				F2C71B982F97412900716298 /* Features/Customers/AdminRoleRankSecurityLevelsView.swift */,
 				81B25BD5B8054D79BD8672B6 /* Features/Providers/AdminProviderAccountingView.swift */,
@@ -2686,6 +2689,7 @@
 				643F43D0DC3447FB834531FE /* Features/Inventory/InventoryView.swift in Sources */,
 				856578A2515F4223930349C4 /* Features/Customers/UsersListView.swift in Sources */,
 				26DE193023634832BEEC233D /* Features/Customers/ChatsView.swift in Sources */,
+				F2DE10012FA1000100F2DE01 /* Features/Customers/PPAdminStickerKit.swift in Sources */,
 				A4D471C014B545A09EB54909 /* Features/Customers/StaffManagementView.swift in Sources */,
 				F2C71B992F97412900716299 /* Features/Customers/AdminRoleRankSecurityLevelsView.swift in Sources */,
 				69B3BA40175D4AC2B16048A4 /* Features/Providers/AdminProviderAccountingView.swift in Sources */,

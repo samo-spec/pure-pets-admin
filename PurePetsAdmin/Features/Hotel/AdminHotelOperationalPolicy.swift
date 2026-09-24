@@ -486,9 +486,9 @@ public enum AdminHotelRepricePolicy {
     public static func formattedDelta(rateDeltaMinor: Int, currency: String = "QAR") -> String {
         let major = Double(abs(rateDeltaMinor)) / 100.0
         if rateDeltaMinor > 0 {
-            return String(format: "+%.0f %@", major, currency)
+            return String(format: "+%.2f %@", major, currency)
         } else if rateDeltaMinor < 0 {
-            return String(format: "-%.0f %@", major, currency)
+            return String(format: "-%.2f %@", major, currency)
         } else {
             return String(format: "0 %@", currency)
         }

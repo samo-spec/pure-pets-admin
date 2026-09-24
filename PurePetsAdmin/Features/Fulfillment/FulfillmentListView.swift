@@ -1012,7 +1012,7 @@ struct AdminFulfillmentListView: View {
             CockpitMetricCard(
                 title: Language.get("Fulfillment_Gross_Settled", alter: "مكتملة ومسوّاة"),
                 value: "\(m.completedCount)",
-                badge: String(format: "%.0f %@", m.totalGrossValue, Language.get("Currency_QAR", alter: "ر.ق")),
+                badge: String(format: "%.2f %@", m.totalGrossValue, Language.get("Currency_QAR", alter: "ر.ق")),
                 symbol: "checkmark.seal.fill",
                 accentColor: FulfillmentTokens.emerald,
                 isSelected: viewModel.selectedStage == .completed

@@ -32,9 +32,15 @@ final class PaymentSettingsViewModel: ObservableObject {
 
     private(set) var originalSettings: PPPaymentAdminSettings?
 
+    private var parsedDeliveryFee: Double {
+        let normalized = deliveryFeeString.normalizedEnglishDigits(allowsDecimal: true)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return Double(normalized) ?? deliveryFee
+    }
+
     var hasChanges: Bool {
         guard let original = originalSettings else { return false }
-        let currentFee = Double(deliveryFeeString) ?? deliveryFee
+        let currentFee = parsedDeliveryFee
         let feeChanged = abs(currentFee - original.deliveryFee) > 0.001
         let codChanged = cashOnDeliveryEnabled != original.cashOnDeliveryEnabled
         let onlineChanged = onlinePaymentEnabled != original.onlinePaymentEnabled
@@ -44,7 +50,7 @@ final class PaymentSettingsViewModel: ObservableObject {
     var pendingChangesCount: Int {
         guard let original = originalSettings else { return 0 }
         var count = 0
-        let currentFee = Double(deliveryFeeString) ?? deliveryFee
+        let currentFee = parsedDeliveryFee
         if abs(currentFee - original.deliveryFee) > 0.001 { count += 1 }
         if cashOnDeliveryEnabled != original.cashOnDeliveryEnabled { count += 1 }
         if onlinePaymentEnabled != original.onlinePaymentEnabled { count += 1 }
@@ -52,7 +58,7 @@ final class PaymentSettingsViewModel: ObservableObject {
     }
 
     var isFreeDelivery: Bool {
-        let fee = Double(deliveryFeeString) ?? deliveryFee
+        let fee = parsedDeliveryFee
         return fee < 0.001
     }
 
@@ -65,7 +71,7 @@ final class PaymentSettingsViewModel: ObservableObject {
     }
 
     var isValid: Bool {
-        let fee = Double(deliveryFeeString) ?? deliveryFee
+        let fee = parsedDeliveryFee
         return fee >= 0.0 && (cashOnDeliveryEnabled || onlinePaymentEnabled)
     }
 
@@ -135,7 +141,7 @@ final class PaymentSettingsViewModel: ObservableObject {
         feedback.prepare()
         feedback.impactOccurred()
 
-        let current = Double(deliveryFeeString) ?? deliveryFee
+        let current = parsedDeliveryFee
         let updated = max(0.0, current + step)
         withAnimation(AdminAnimation.standard) {
             deliveryFee = updated
@@ -208,7 +214,7 @@ final class PaymentSettingsViewModel: ObservableObject {
 
     func save() {
         guard let original = originalSettings else { return }
-        let parsedFee = Double(deliveryFeeString) ?? deliveryFee
+        let parsedFee = parsedDeliveryFee
         guard parsedFee >= 0.0 else {
             errorMessage = Language.get("PaymentMgmt_Settings_Error_InvalidDeliveryFee", alter: "أدخل رسوم توصيل صحيحة أكبر من أو تساوي 0.")
             return

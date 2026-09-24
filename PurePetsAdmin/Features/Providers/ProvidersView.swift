@@ -1799,7 +1799,7 @@ public struct AdminProviderApplicationDetailView: View {
                             .padding(.vertical, 4)
                             .background(ProviderTheme.approved.opacity(0.12), in: Capsule(style: .continuous))
                     } else if price > 0 {
-                        Text("\(String(format: "%.0f", price)) \(currency)")
+                        Text("\(String(format: "%.2f", price)) \(currency)")
                             .font(AdminType.captionBold)
                             .foregroundStyle(AdminSurface.primary)
                             .padding(.horizontal, 8)

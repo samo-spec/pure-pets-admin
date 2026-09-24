@@ -1285,6 +1285,8 @@ public struct InventoryLotsSheet: View {
                     )
                 }
             }
+        }
+    }
 }
 
 // MARK: - Category-Defining FEFO Telemetry Loading Hub View

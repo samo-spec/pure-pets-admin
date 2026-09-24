@@ -465,7 +465,7 @@ struct PPVetsListView: View {
 
                         // Cost
                         if vet.vetCost > 0 {
-                            Text("\(Int(vet.vetCost)) \(Language.get("QAR", alter: nil))")
+                            Text(String(format: "%.2f %@", vet.vetCost, Language.get("QAR", alter: nil)))
                                 .font(AdminType.footnoteBold)
                                 .foregroundColor(AdminSurface.primaryText)
                         }

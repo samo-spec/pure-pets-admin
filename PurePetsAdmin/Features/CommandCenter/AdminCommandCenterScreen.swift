@@ -4051,7 +4051,7 @@ private final class CommandPOSQuickExpensePresenter: ObservableObject {
         let current = parsedAmount ?? 0.0
         let newTotal = current + delta
         if newTotal == floor(newTotal) {
-            amountText = String(format: "%.0f", newTotal)
+            amountText = String(format: "%.2f", newTotal)
         } else {
             amountText = String(format: "%.2f", newTotal)
         }

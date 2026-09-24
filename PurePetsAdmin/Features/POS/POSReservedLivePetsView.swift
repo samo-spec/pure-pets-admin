@@ -479,7 +479,7 @@ struct POSReservedLivePetsView: View {
             )
             telemetryPill(
                 icon: "banknote.fill",
-                value: String(format: "%.0f", vm.totalHeldValue),
+                value: String(format: "%.2f", vm.totalHeldValue),
                 label: "ر.ق",
                 accent: AdminSurface.primary,
                 glow: false
@@ -1098,7 +1098,7 @@ private struct POSReservedPetCard: View {
                 .foregroundColor(AdminSurface.secondaryText)
 
             HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(String(format: "%.0f", item.sellingPrice))
+                Text(String(format: "%.2f", item.sellingPrice))
                     .font(Font.custom("Beiruti-Bold", size: 22, relativeTo: .title2))
                     .foregroundColor(AdminSurface.primary)
                     .monospacedDigit()
@@ -1514,7 +1514,7 @@ struct POSReservedPetDossierSheet: View {
 
                     // Price lock badge
                     HStack(spacing: 3) {
-                        Text(String(format: "%.0f", item.sellingPrice))
+                        Text(String(format: "%.2f", item.sellingPrice))
                             .font(Font.custom("Beiruti-Bold", size: 14))
                         Text(item.currency.isEmpty ? "ر.ق" : item.currency)
                             .font(Font.custom("Beiruti-Bold", size: 10))
@@ -1584,7 +1584,7 @@ struct POSReservedPetDossierSheet: View {
                     Text(Language.get("POS_Dossier_CompleteCheckout", alter: "إتمام البيع في الكاشير"))
                         .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
                     Spacer()
-                    Text(String(format: "%.0f %@", item.sellingPrice, item.currency.isEmpty ? "ر.ق" : item.currency))
+                    Text(String(format: "%.2f %@", item.sellingPrice, item.currency.isEmpty ? "ر.ق" : item.currency))
                         .font(Font.custom("Beiruti-Bold", size: 14))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 2.5)
@@ -2369,7 +2369,7 @@ struct POSReleaseReservationSheet: View {
 
                         // Locked Price Pill
                         HStack(spacing: 3) {
-                            Text(String(format: "%.0f", item.sellingPrice))
+                            Text(String(format: "%.2f", item.sellingPrice))
                                 .font(Font.custom("Beiruti-Bold", size: 17, relativeTo: .callout))
                             Text(item.currency.isEmpty ? "ر.ق" : item.currency)
                                 .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption2))

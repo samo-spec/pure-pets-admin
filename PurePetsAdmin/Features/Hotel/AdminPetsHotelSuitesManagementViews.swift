@@ -2511,7 +2511,7 @@ public struct AdminPetsHotelAccommodationTypeEditorSheet: View {
             }()
             selectedMainKindIds = Set(t.allowedMainKindIds.isEmpty ? defaultKindIds : t.allowedMainKindIds)
             defaultCapacity = max(1, t.defaultCapacity)
-            nightlyRateMajor = "\(t.nightlyRateMinor / 100)"
+            nightlyRateMajor = String(format: "%.2f", Double(t.nightlyRateMinor) / 100.0)
             allowSharedOccupancy = t.allowSharedOccupancy
             active = t.active
             descriptionText = t.description ?? ""
@@ -2535,8 +2535,10 @@ public struct AdminPetsHotelAccommodationTypeEditorSheet: View {
         let cleanCode = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         let cleanNameAr = nameAr.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanNameEn = nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
-        let rateDouble = Double(nightlyRateMajor.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0.0
-        let rateMinor = Int(rateDouble * 100)
+        let normalizedRate = nightlyRateMajor.normalizedEnglishDigits(allowsDecimal: true)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let rateDouble = Double(normalizedRate) ?? 0.0
+        let rateMinor = Int((rateDouble * 100.0).rounded())
 
         guard !cleanCode.isEmpty else {
             validationError = Language.get("Hotel_Err_TypeCodeRequired", alter: "يرجى إدخال كود الفئة.")
@@ -2919,13 +2921,13 @@ private struct AdminHotelAccommodationTypePadView: View {
                 let rate = Double(nightlyRateMajor.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0.0
                 telemetryRow(
                     label: Language.get("Hotel_Suites_NightlyRateQAR", alter: "معدل الليلة:"),
-                    value: String(format: "%.0f %@", rate, Language.get("Currency_QAR", alter: "ر.ق")),
+                    value: String(format: "%.2f %@", rate, Language.get("Currency_QAR", alter: "ر.ق")),
                     color: AdminSurface.primaryText
                 )
 
                 telemetryRow(
                     label: Language.get("Hotel_Suites_PricePerNightFormula", alter: "تقدير ٣ ليالٍ:"),
-                    value: String(format: "%.0f %@", rate * 3, Language.get("Currency_QAR", alter: "ر.ق")),
+                    value: String(format: "%.2f %@", rate * 3, Language.get("Currency_QAR", alter: "ر.ق")),
                     color: Color(uiColor: .ppSuccess)
                 )
 
@@ -3667,7 +3669,7 @@ private struct AdminHotelPricingEngineCard: View {
                     // Numeric Input Field
                     HStack(spacing: 4) {
                         TextField("150", text: $nightlyRateMajor)
-                            .keyboardType(.numberPad)
+                            .keyboardType(.decimalPad)
                             .font(PPBeirutiFont.bold(26, relativeTo: .title))
                             .foregroundStyle(AdminSurface.primaryText)
                             .multilineTextAlignment(.center)
@@ -3767,7 +3769,7 @@ private struct AdminHotelPricingEngineCard: View {
                             .font(PPBeirutiFont.bold(11, relativeTo: .caption2))
                             .foregroundStyle(wing.tint)
 
-                        Text(String(format: Language.get("Hotel_Suites_EstimateNotice", alter: "إقامة ليلتين: %@ • إقامة ٥ ليالٍ: %@"), String(format: "%.0f %@", currentRate * 2, Language.get("Currency_QAR", alter: "ر.ق")), String(format: "%.0f %@", currentRate * 5, Language.get("Currency_QAR", alter: "ر.ق"))))
+                        Text(String(format: Language.get("Hotel_Suites_EstimateNotice", alter: "إقامة ليلتين: %@ • إقامة ٥ ليالٍ: %@"), String(format: "%.2f %@", currentRate * 2, Language.get("Currency_QAR", alter: "ر.ق")), String(format: "%.2f %@", currentRate * 5, Language.get("Currency_QAR", alter: "ر.ق"))))
                             .font(PPBeirutiFont.medium(11, relativeTo: .caption2))
                             .foregroundStyle(AdminSurface.secondaryText)
                     }
@@ -3785,7 +3787,7 @@ private struct AdminHotelPricingEngineCard: View {
     private func adjustRate(delta: Double) {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         let updated = max(0, currentRate + delta)
-        nightlyRateMajor = String(format: "%.0f", updated)
+        nightlyRateMajor = String(format: "%.2f", updated)
     }
 }
 

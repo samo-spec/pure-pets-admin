@@ -1236,7 +1236,7 @@ struct PPAccessoryBulkPricingSheet: View {
             VStack(alignment: .leading, spacing: 3) {
                 // Previous price
                 HStack(spacing: 4) {
-                    Text(currentPrice > 0 ? String(format: "%.0f %@", currentPrice, qar) : Language.get("Price_Unset", alter: "غير محدد"))
+                    Text(currentPrice > 0 ? String(format: "%.2f %@", currentPrice, qar) : Language.get("Price_Unset", alter: "غير محدد"))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(AdminSurface.secondaryText)
                         .strikethrough(retailPrice > 0 && currentPrice > 0)
@@ -1246,7 +1246,7 @@ struct PPAccessoryBulkPricingSheet: View {
                             .font(.system(size: 9, weight: .bold))
                             .foregroundStyle(AdminSurface.primary)
 
-                        Text(String(format: "%.0f %@", retailPrice, qar))
+                        Text(String(format: "%.2f %@", retailPrice, qar))
                             .font(.system(size: 12, weight: .bold, design: .rounded))
                             .foregroundStyle(AdminSurface.primary)
                     }
@@ -1256,7 +1256,7 @@ struct PPAccessoryBulkPricingSheet: View {
                 if retailPrice > 0 && currentPrice > 0 {
                     let delta = retailPrice - currentPrice
                     if abs(delta) > 0.01 {
-                        Text(String(format: "%@%.0f %@", delta > 0 ? "+" : "", delta, qar))
+                        Text(String(format: "%@%.2f %@", delta > 0 ? "+" : "", delta, qar))
                             .font(.system(size: 9, weight: .bold, design: .rounded))
                             .foregroundStyle(delta >= 0 ? AdminSurface.emerald : AdminSurface.amber)
                     }
@@ -1343,7 +1343,7 @@ struct PPAccessoryBulkPricingSheet: View {
                         Button {
                             applyPriceStep(step)
                         } label: {
-                            Text(String(format: "%@%.0f", step > 0 ? "+" : "", step))
+                            Text(String(format: "%@%.2f", step > 0 ? "+" : "", step))
                                 .font(.system(size: 12, weight: .bold, design: .rounded))
                                 .foregroundStyle(AdminSurface.primaryText)
                                 .frame(maxWidth: .infinity)
@@ -1585,7 +1585,7 @@ struct PPAccessoryBulkPricingSheet: View {
                             .foregroundStyle(AdminSurface.secondaryText)
 
                         let totalValuation = retailPrice * Double(totalStockImpacted)
-                        Text(String(format: "%.0f %@", totalValuation, Language.get("QAR", alter: "ر.ق")))
+                        Text(String(format: "%.2f %@", totalValuation, Language.get("QAR", alter: "ر.ق")))
                             .font(AdminType.calloutBold)
                             .foregroundStyle(AdminSurface.primary)
                     }

@@ -435,7 +435,7 @@ public struct AdminHotelAccommodationType: Identifiable, Hashable {
 
     public var formattedRate: String {
         let major = Double(nightlyRateMinor) / 100.0
-        return String(format: "%.0f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
+        return String(format: "%.2f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
     }
 
     public static func fromDictionary(_ dict: [String: Any], id: String) -> AdminHotelAccommodationType {
@@ -686,7 +686,7 @@ public struct AdminHotelAccommodation: Identifiable, Hashable {
             return Language.get("Hotel_RateUnavailable", alter: "السعر غير متاح")
         }
         let major = Double(nightlyRateMinor) / 100.0
-        return String(format: "%.0f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
+        return String(format: "%.2f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
     }
 }
 
@@ -830,13 +830,13 @@ public struct AdminHotelReservation: Identifiable, Hashable {
             return Language.get("Hotel_BillingRestricted", alter: "الحساب غير متاح")
         }
         let major = Double(totalAmountMinor) / 100.0
-        return String(format: "%.0f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
+        return String(format: "%.2f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
     }
 
     public var formattedNightlyRate: String? {
         guard let nightlyRateMinor, nightlyRateMinor > 0 else { return nil }
         let major = Double(nightlyRateMinor) / 100.0
-        return String(format: "%.0f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
+        return String(format: "%.2f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
     }
 
     public var balanceDueMinor: Int? {
@@ -848,19 +848,19 @@ public struct AdminHotelReservation: Identifiable, Hashable {
     public var formattedDeposit: String? {
         guard let depositMinor, depositMinor > 0 else { return nil }
         let major = Double(depositMinor) / 100.0
-        return String(format: "%.0f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
+        return String(format: "%.2f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
     }
 
     public var formattedPaidAmount: String? {
         guard let paidAmountMinor, paidAmountMinor > 0 else { return nil }
         let major = Double(paidAmountMinor) / 100.0
-        return String(format: "%.0f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
+        return String(format: "%.2f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
     }
 
     public var formattedBalanceDue: String? {
         guard let balanceDueMinor else { return nil }
         let major = Double(balanceDueMinor) / 100.0
-        return String(format: "%.0f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
+        return String(format: "%.2f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
     }
 
     public static func fromDictionary(_ dict: [String: Any], id: String) -> AdminHotelReservation {

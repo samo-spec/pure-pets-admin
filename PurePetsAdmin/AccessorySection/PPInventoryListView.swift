@@ -3445,6 +3445,15 @@ struct PPInventoryListView: View {
                         $0.accessoryID == selectedFamilyProductIds[familyId]
                     }) ?? defaultMember
                     let isExpanded = expandedFamilyIds.contains(familyId)
+                    let selectedAccentColor: Color = {
+                        if selectedMember.pos_hasRealColor, let colour = selectedMember.pos_variantColor {
+                            if colour.requiresContrastBorder {
+                                return AdminSurface.primaryText.opacity(0.85)
+                            }
+                            return Color(uiColor: colour.uiColor)
+                        }
+                        return AdminSurface.primary
+                    }()
 
                     VStack(alignment: .leading, spacing: 8) {
                         PPInventoryFamilyRow(
@@ -3521,7 +3530,8 @@ struct PPInventoryListView: View {
                     }
                     .overlay {
                         if isExpanded {
-                            FamilyExpandedAccentSpineShape(
+                            FamilyExpandedAccentSpineView(
+                                color: selectedAccentColor,
                                 topArmLength: 20,
                                 bottomArmLength: 18,
                                 topRadius: 18,
@@ -3529,14 +3539,14 @@ struct PPInventoryListView: View {
                                 lineWidth: 1.5,
                                 onRightSide: true
                             )
-                            .stroke(
-                                AdminSurface.primary.opacity(0.95),
-                                style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round)
-                            )
                             .accessibilityHidden(true)
                             .transition(.opacity)
                         }
                     }
+                    .animation(
+                        AdminAnimation.motion(AdminAnimation.fast, reduceMotion: reduceMotion),
+                        value: selectedAccentColor
+                    )
                     // The whole group animates as one unit on disclosure, so the
                     // rows below it move with the child rather than jumping after it.
                     .animation(
@@ -4385,7 +4395,7 @@ private struct PPInventoryVariantChildInspector: View {
                         }
                 } else if !item.pos_variantShortBadge.isEmpty {
                     Text(item.pos_variantShortBadge)
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
                         .foregroundColor(AdminSurface.primary)
                 } else {
                     Image(systemName: item.pos_variantDimension.sfSymbolName)
@@ -4414,7 +4424,7 @@ private struct PPInventoryVariantChildInspector: View {
                     if let sku = item.sku?.trimmingCharacters(in: .whitespacesAndNewlines), !sku.isEmpty {
                         HStack(spacing: 2) {
                             Text("SKU:")
-                                .font(.system(size: 8, weight: .bold, design: .rounded))
+                                .font(Font.custom("Beiruti-Bold", size: 9, relativeTo: .caption2))
                             Text(verbatim: sku)
                                 .font(AdminType.caption2.monospaced())
                         }
@@ -4501,7 +4511,7 @@ private struct PPInventoryVariantChildInspector: View {
             }
 
             Text(quantity.map { $0.englishDigits } ?? "—")
-                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .callout))
                 .foregroundStyle(AdminSurface.primaryText)
                 .frame(minWidth: 36, minHeight: 36)
 

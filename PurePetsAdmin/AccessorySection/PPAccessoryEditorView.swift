@@ -1579,7 +1579,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     var defaultRetailGroupSummary: String {
         if let g = quantityGroups.first(where: { $0.defaultForRetail && $0.retailEnabled }) ?? quantityGroups.first(where: { $0.retailEnabled }) {
-            return "\(g.localizedName) · \(String(format: "%.0f", g.retailPrice)) \(Language.get("QAR", alter: "ر.ق"))"
+            return "\(g.localizedName) · \(String(format: "%.2f", g.retailPrice)) \(Language.get("QAR", alter: "ر.ق"))"
         }
         return "\(basePrice) \(Language.get("QAR", alter: "ر.ق"))"
     }
@@ -1588,7 +1588,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         guard wholesaleEnabled else { return nil }
         if let g = quantityGroups.first(where: { $0.defaultForWholesale && $0.wholesaleEnabled }) ?? quantityGroups.first(where: { $0.wholesaleEnabled }) {
             let countStr = g.unitsPerGroup > 1 ? " ×\(g.unitsPerGroup)" : ""
-            return "\(g.localizedName)\(countStr) · \(String(format: "%.0f", g.wholesalePrice)) \(Language.get("QAR", alter: "ر.ق"))"
+            return "\(g.localizedName)\(countStr) · \(String(format: "%.2f", g.wholesalePrice)) \(Language.get("QAR", alter: "ر.ق"))"
         }
         return nil
     }
@@ -2490,7 +2490,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     private func formattedCurrency(_ value: Double) -> String {
         let currencySymbol = Language.get("QAR", alter: "ر.ق")
         if value == floor(value) {
-            return String(format: "%.0f %@", value, currencySymbol).normalizedEnglishDigits
+            return String(format: "%.2f %@", value, currencySymbol).normalizedEnglishDigits
         }
         return String(format: "%.2f %@", value, currencySymbol).normalizedEnglishDigits
     }
@@ -6224,7 +6224,7 @@ struct PPAccessoryEditorScreen: View {
                         .monospacedDigit()
 
                     if viewModel.calculatedFinalPrice < viewModel.basePrice && viewModel.basePrice > 0 {
-                        Text(verbatim: String(format: "%.0f %@", viewModel.basePrice, Language.get("QAR", alter: "ر.ق")).normalizedEnglishDigits)
+                        Text(verbatim: String(format: "%.2f %@", viewModel.basePrice, Language.get("QAR", alter: "ر.ق")).normalizedEnglishDigits)
                             .strikethrough(true, color: Color.gray)
                             .font(AdminType.caption2)
                             .foregroundColor(AdminCommandInk.tertiary)
@@ -7290,7 +7290,7 @@ struct PPAccessoryEditorScreen: View {
             }
             Spacer()
             if viewModel.calculatedFinalPrice < viewModel.basePrice && viewModel.basePrice > 0 {
-                Text(verbatim: String(format: Language.get("DiscountSavings", alter: "خصم %.0f ر.ق"), viewModel.basePrice - viewModel.calculatedFinalPrice).normalizedEnglishDigits)
+                Text(verbatim: String(format: Language.get("DiscountSavings", alter: "خصم %.2f ر.ق"), viewModel.basePrice - viewModel.calculatedFinalPrice).normalizedEnglishDigits)
                     .font(AdminType.captionBold)
                     .foregroundStyle(Color(uiColor: .ppSuccess))
                     .padding(.horizontal, 10)
@@ -7480,12 +7480,12 @@ struct PPAccessoryEditorScreen: View {
 
                 VStack(alignment: .trailing, spacing: 2) {
                     if group.retailEnabled {
-                        Text(verbatim: String(format: "%.0f %@", group.retailPrice, Language.get("QAR", alter: "ر.ق")).normalizedEnglishDigits)
+                        Text(verbatim: String(format: "%.2f %@", group.retailPrice, Language.get("QAR", alter: "ر.ق")).normalizedEnglishDigits)
                             .font(AdminType.calloutBold)
                             .foregroundStyle(AdminSurface.primaryText)
                     }
                     if group.wholesaleEnabled {
-                        Text(verbatim: String(format: Language.get("Wholesale_Price_Format", alter: "جملة: %.0f ر.ق"), group.wholesalePrice).normalizedEnglishDigits)
+                        Text(verbatim: String(format: Language.get("Wholesale_Price_Format", alter: "جملة: %.2f ر.ق"), group.wholesalePrice).normalizedEnglishDigits)
                             .font(AdminType.caption2Bold)
                             .foregroundStyle(Color(uiColor: .systemTeal))
                     }
@@ -7520,7 +7520,7 @@ struct PPAccessoryEditorScreen: View {
                     Text(verbatim: String(format: "%.1f%%", margin).normalizedEnglishDigits)
                         .font(PPBrandFont.bold(size: 20))
                         .foregroundStyle(Color(uiColor: .ppSuccess))
-                    Text(verbatim: String(format: "+%.0f %@", profit, Language.get("QAR", alter: "ر.ق")).normalizedEnglishDigits)
+                    Text(verbatim: String(format: "+%.2f %@", profit, Language.get("QAR", alter: "ر.ق")).normalizedEnglishDigits)
                         .font(AdminType.calloutBold)
                         .foregroundStyle(AdminSurface.primaryText)
                 }
@@ -13345,12 +13345,12 @@ private struct PPLivePetIntakeJourney: View {
 
                 VStack(alignment: .trailing, spacing: 2) {
                     if group.retailEnabled {
-                        Text(verbatim: String(format: "%.0f %@", group.retailPrice, tr("QAR", "ر.ق")).normalizedEnglishDigits)
+                        Text(verbatim: String(format: "%.2f %@", group.retailPrice, tr("QAR", "ر.ق")).normalizedEnglishDigits)
                             .font(AdminType.calloutBold)
                             .foregroundStyle(AdminSurface.primaryText)
                     }
                     if group.wholesaleEnabled {
-                        Text(verbatim: String(format: tr("Wholesale_Price_Format", "جملة: %.0f ر.ق"), group.wholesalePrice).normalizedEnglishDigits)
+                        Text(verbatim: String(format: tr("Wholesale_Price_Format", "جملة: %.2f ر.ق"), group.wholesalePrice).normalizedEnglishDigits)
                             .font(AdminType.caption2Bold)
                             .foregroundStyle(Color(uiColor: .systemTeal))
                     }
@@ -19028,12 +19028,12 @@ private struct PPAccessoryFoodIntakeJourney: View {
 
                 VStack(alignment: .trailing, spacing: 2) {
                     if group.retailEnabled {
-                        Text(verbatim: String(format: "%.0f %@", group.retailPrice, tr("QAR", "ر.ق")).normalizedEnglishDigits)
+                        Text(verbatim: String(format: "%.2f %@", group.retailPrice, tr("QAR", "ر.ق")).normalizedEnglishDigits)
                             .font(AdminType.calloutBold)
                             .foregroundStyle(AdminSurface.primaryText)
                     }
                     if group.wholesaleEnabled {
-                        Text(verbatim: String(format: tr("Wholesale_Price_Format", "جملة: %.0f ر.ق"), group.wholesalePrice).normalizedEnglishDigits)
+                        Text(verbatim: String(format: tr("Wholesale_Price_Format", "جملة: %.2f ر.ق"), group.wholesalePrice).normalizedEnglishDigits)
                             .font(AdminType.caption2Bold)
                             .foregroundStyle(Color(uiColor: .systemTeal))
                     }

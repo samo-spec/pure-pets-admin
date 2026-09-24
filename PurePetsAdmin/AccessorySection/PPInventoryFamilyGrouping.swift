@@ -382,7 +382,7 @@ struct PPInventoryFamilyRow: View {
                                 selectedProductId = member.accessoryID
                                 isExpanded = true
                             } else {
-                                withAnimation(.easeOut(duration: 0.18)) {
+                                withAnimation(AdminAnimation.motion(AdminAnimation.fast, reduceMotion: reduceMotion)) {
                                     selectedProductId = member.accessoryID
                                     isExpanded = true
                                 }
@@ -414,7 +414,7 @@ struct PPInventoryFamilyRow: View {
                                     .frame(width: 18.5, height: 18.5)
                                 } else if !shortBadge.isEmpty {
                                     Text(shortBadge)
-                                        .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                                        .font(Font.custom("Beiruti-Bold", size: 10, relativeTo: .caption2))
                                         .foregroundStyle(isSelected ? AdminSurface.primary : AdminCommandInk.secondary)
                                         .padding(.horizontal, 4.5)
                                         .padding(.vertical, 2)
@@ -431,12 +431,12 @@ struct PPInventoryFamilyRow: View {
                                 }
 
                                 Text(member.pos_variantDisplayName)
-                                    .font(.system(size: 12.5, weight: isSelected ? .bold : .medium, design: .rounded))
+                                    .font(Font.custom(isSelected ? "Beiruti-Bold" : "Beiruti-Medium", size: 13, relativeTo: .caption))
                                     .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminCommandInk.secondary)
                                     .lineLimit(1)
 
                                 Text(verbatim: "\(quantity.englishDigits)")
-                                    .font(.system(size: 12.5, weight: .bold, design: .rounded))
+                                    .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
                                     .foregroundStyle(
                                         member.isArchived
                                             ? AdminCommandInk.tertiary
@@ -449,10 +449,10 @@ struct PPInventoryFamilyRow: View {
 
                                 if let price = retailPrice(member) {
                                     Text(verbatim: "·")
-                                        .font(.system(size: 10, weight: .semibold))
+                                        .font(Font.custom("Beiruti-Medium", size: 11, relativeTo: .caption2))
                                         .foregroundStyle(AdminCommandInk.tertiary)
                                     Text(PetAccessory.formatCurrency(NSNumber(value: price)).normalizedEnglishDigits)
-                                        .font(.system(size: 12.5, weight: .bold, design: .rounded))
+                                        .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
                                         .foregroundStyle(AdminSurface.primaryText)
                                         .lineLimit(1)
                                         .environment(\.layoutDirection, .leftToRight)
@@ -478,6 +478,10 @@ struct PPInventoryFamilyRow: View {
                         }
                         .buttonStyle(.plain)
                         .contentShape(RoundedRectangle(cornerRadius: 9.5, style: .continuous))
+                        .animation(
+                            AdminAnimation.motion(AdminAnimation.fast, reduceMotion: reduceMotion),
+                            value: isSelected
+                        )
                         .opacity(member.isArchived ? 0.55 : 1)
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel(colourAccessibilityLabel(
@@ -672,5 +676,172 @@ struct FamilyExpandedAccentSpineShape: Shape {
         }
 
         return path
+    }
+}
+
+/// An accent spine view with smoothly faded ends for the expanded family card hierarchy.
+/// The top and bottom tips fade to 0 opacity, while the vertical body stays at full accent vibrancy.
+struct FamilyExpandedAccentSpineView: View {
+    var color: Color
+    var topArmLength: CGFloat = 20
+    var bottomArmLength: CGFloat = 18
+    var topRadius: CGFloat = 18
+    var bottomRadius: CGFloat = 16
+    var lineWidth: CGFloat = 1.5
+    var onRightSide: Bool = true
+
+    var body: some View {
+        GeometryReader { proxy in
+            let rect = CGRect(origin: .zero, size: proxy.size)
+            let halfLine = lineWidth / 2.0
+            let width = max(1, rect.width)
+            let height = max(1, rect.height)
+
+            if onRightSide {
+                let rightX = rect.maxX - halfLine
+                let topY = rect.minY + halfLine
+                let bottomY = rect.maxY - halfLine
+
+                let safeTopRadius = max(0, min(topRadius - halfLine, (rect.height / 2) - halfLine))
+                let safeBottomRadius = max(0, min(bottomRadius - halfLine, (rect.height / 2) - halfLine))
+
+                let topStartX = max(rect.minX + halfLine, rightX - topArmLength)
+                let bottomEndX = max(rect.minX + halfLine, rightX - bottomArmLength)
+
+                let topStart = CGPoint(x: topStartX, y: topY)
+                let topArcCenter = CGPoint(x: rightX - safeTopRadius, y: topY + safeTopRadius)
+                let topArcEnd = CGPoint(x: rightX, y: topY + safeTopRadius)
+
+                let bottomArcStart = CGPoint(x: rightX, y: bottomY - safeBottomRadius)
+                let bottomArcCenter = CGPoint(x: rightX - safeBottomRadius, y: bottomY - safeBottomRadius)
+                let bottomEnd = CGPoint(x: bottomEndX, y: bottomY)
+
+                ZStack {
+                    // Top hook with fade from start tip (0) to arc end (0.95)
+                    Path { path in
+                        path.move(to: topStart)
+                        path.addLine(to: CGPoint(x: rightX - safeTopRadius, y: topY))
+                        path.addArc(
+                            center: topArcCenter,
+                            radius: safeTopRadius,
+                            startAngle: .degrees(-90),
+                            endAngle: .degrees(0),
+                            clockwise: false
+                        )
+                    }
+                    .stroke(
+                        LinearGradient(
+                            colors: [color.opacity(0), color.opacity(0.95)],
+                            startPoint: UnitPoint(x: topStart.x / width, y: topStart.y / height),
+                            endPoint: UnitPoint(x: topArcEnd.x / width, y: topArcEnd.y / height)
+                        ),
+                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round)
+                    )
+
+                    // Vertical spine down edge with full vibrancy
+                    Path { path in
+                        path.move(to: topArcEnd)
+                        path.addLine(to: bottomArcStart)
+                    }
+                    .stroke(
+                        color.opacity(0.95),
+                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round)
+                    )
+
+                    // Bottom hook with fade from arc start (0.95) to end tip (0)
+                    Path { path in
+                        path.move(to: bottomArcStart)
+                        path.addArc(
+                            center: bottomArcCenter,
+                            radius: safeBottomRadius,
+                            startAngle: .degrees(0),
+                            endAngle: .degrees(90),
+                            clockwise: false
+                        )
+                        path.addLine(to: bottomEnd)
+                    }
+                    .stroke(
+                        LinearGradient(
+                            colors: [color.opacity(0.95), color.opacity(0)],
+                            startPoint: UnitPoint(x: bottomArcStart.x / width, y: bottomArcStart.y / height),
+                            endPoint: UnitPoint(x: bottomEnd.x / width, y: bottomEnd.y / height)
+                        ),
+                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round)
+                    )
+                }
+            } else {
+                let leftX = rect.minX + halfLine
+                let topY = rect.minY + halfLine
+                let bottomY = rect.maxY - halfLine
+
+                let safeTopRadius = max(0, min(topRadius - halfLine, (rect.height / 2) - halfLine))
+                let safeBottomRadius = max(0, min(bottomRadius - halfLine, (rect.height / 2) - halfLine))
+
+                let topStartX = min(rect.maxX - halfLine, leftX + topArmLength)
+                let bottomEndX = min(rect.maxX - halfLine, leftX + bottomArmLength)
+
+                let topStart = CGPoint(x: topStartX, y: topY)
+                let topArcCenter = CGPoint(x: leftX + safeTopRadius, y: topY + safeTopRadius)
+                let topArcEnd = CGPoint(x: leftX, y: topY + safeTopRadius)
+
+                let bottomArcStart = CGPoint(x: leftX, y: bottomY - safeBottomRadius)
+                let bottomArcCenter = CGPoint(x: leftX + safeBottomRadius, y: bottomY - safeBottomRadius)
+                let bottomEnd = CGPoint(x: bottomEndX, y: bottomY)
+
+                ZStack {
+                    // Top hook with fade from start tip (0) to arc end (0.95)
+                    Path { path in
+                        path.move(to: topStart)
+                        path.addLine(to: CGPoint(x: leftX + safeTopRadius, y: topY))
+                        path.addArc(
+                            center: topArcCenter,
+                            radius: safeTopRadius,
+                            startAngle: .degrees(-90),
+                            endAngle: .degrees(180),
+                            clockwise: true
+                        )
+                    }
+                    .stroke(
+                        LinearGradient(
+                            colors: [color.opacity(0), color.opacity(0.95)],
+                            startPoint: UnitPoint(x: topStart.x / width, y: topStart.y / height),
+                            endPoint: UnitPoint(x: topArcEnd.x / width, y: topArcEnd.y / height)
+                        ),
+                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round)
+                    )
+
+                    // Vertical spine down edge with full vibrancy
+                    Path { path in
+                        path.move(to: topArcEnd)
+                        path.addLine(to: bottomArcStart)
+                    }
+                    .stroke(
+                        color.opacity(0.95),
+                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round)
+                    )
+
+                    // Bottom hook with fade from arc start (0.95) to end tip (0)
+                    Path { path in
+                        path.move(to: bottomArcStart)
+                        path.addArc(
+                            center: bottomArcCenter,
+                            radius: safeBottomRadius,
+                            startAngle: .degrees(180),
+                            endAngle: .degrees(90),
+                            clockwise: true
+                        )
+                        path.addLine(to: bottomEnd)
+                    }
+                    .stroke(
+                        LinearGradient(
+                            colors: [color.opacity(0.95), color.opacity(0)],
+                            startPoint: UnitPoint(x: bottomArcStart.x / width, y: bottomArcStart.y / height),
+                            endPoint: UnitPoint(x: bottomEnd.x / width, y: bottomEnd.y / height)
+                        ),
+                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round)
+                    )
+                }
+            }
+        }
     }
 }

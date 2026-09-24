@@ -1598,7 +1598,7 @@ public struct AdminPetsHotelReservationDetailSheet: View {
                             .font(HotelBeiruti.medium(13))
                             .foregroundStyle(AdminSurface.secondaryText)
                         Spacer()
-                        Text("\(deposit / 100) \(Language.get("Currency_QAR", alter: "ر.ق"))")
+                        Text(String(format: "%.2f %@", Double(deposit) / 100.0, Language.get("Currency_QAR", alter: "ر.ق")))
                             .font(HotelBeiruti.bold(14))
                             .foregroundStyle(Color(red: 0.16, green: 0.72, blue: 0.44))
                     }
@@ -1613,7 +1613,7 @@ public struct AdminPetsHotelReservationDetailSheet: View {
                             .font(HotelBeiruti.bold(14))
                             .foregroundStyle(Color(red: 0.90, green: 0.25, blue: 0.25))
                         Spacer()
-                        Text("\(balance / 100) \(Language.get("Currency_QAR", alter: "ر.ق"))")
+                        Text(String(format: "%.2f %@", Double(balance) / 100.0, Language.get("Currency_QAR", alter: "ر.ق")))
                             .font(HotelBeiruti.bold(18))
                             .foregroundStyle(Color(red: 0.90, green: 0.25, blue: 0.25))
                     }
@@ -2220,7 +2220,7 @@ public struct AdminPetsHotelCreateReservationSheet: View {
     }
 
     private var depositPaidValue: Double {
-        Double(depositPaidQAR.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0.0
+        Double(depositPaidQAR.normalizedEnglishDigits(allowsDecimal: true)) ?? 0.0
     }
 
     private var balanceDueAtCheckout: Double {
@@ -2372,7 +2372,7 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                     Image(systemName: "banknote.fill")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(Color(uiColor: .systemGreen))
-                    Text(String(format: "%.0f %@", calculatedEstimatedTotal, Language.get("Currency_QAR", alter: "ر.ق")))
+                    Text(String(format: "%.2f %@", calculatedEstimatedTotal, Language.get("Currency_QAR", alter: "ر.ق")))
                         .font(Font.custom("Beiruti-Bold", size: 13))
                         .foregroundStyle(AdminSurface.primaryText)
                 }
@@ -2459,12 +2459,12 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                     Text("•")
                         .font(Font.custom("Beiruti-Regular", size: 12))
                         .foregroundStyle(AdminSurface.secondaryText)
-                    Text(String(format: "%.0f %@", nightlyRateMajor, Language.get("Hotel_Suite_PerNight", alter: "ر.ق / ليلة")))
+                    Text(String(format: "%.2f %@", nightlyRateMajor, Language.get("Hotel_Suite_PerNight", alter: "ر.ق / ليلة")))
                         .font(Font.custom("Beiruti-Medium", size: 11))
                         .foregroundStyle(AdminSurface.secondaryText)
                 }
 
-                Text(String(format: "%.0f %@", calculatedEstimatedTotal, Language.get("Currency_QAR", alter: "ر.ق")))
+                Text(String(format: "%.2f %@", calculatedEstimatedTotal, Language.get("Currency_QAR", alter: "ر.ق")))
                     .font(Font.custom("Beiruti-Bold", size: 19))
                     .foregroundStyle(AdminSurface.primaryText)
             }
@@ -3579,7 +3579,7 @@ public struct AdminPetsHotelCreateReservationSheet: View {
 
                 Spacer()
 
-                Text(String(format: "%.0f %@", calculatedEstimatedTotal, Language.get("Currency_QAR", alter: "ر.ق")))
+                Text(String(format: "%.2f %@", calculatedEstimatedTotal, Language.get("Currency_QAR", alter: "ر.ق")))
                     .font(Font.custom("Beiruti-Bold", size: 16))
                     .foregroundStyle(AdminSurface.primaryText)
             }
@@ -3602,7 +3602,7 @@ public struct AdminPetsHotelCreateReservationSheet: View {
 
                 HStack(spacing: 4) {
                     TextField("0", text: $depositPaidQAR)
-                        .keyboardType(.numberPad)
+                        .keyboardType(.decimalPad)
                         .font(Font.custom("Beiruti-Bold", size: 15))
                         .multilineTextAlignment(.leading)
                         .frame(width: 70)
@@ -3626,7 +3626,7 @@ public struct AdminPetsHotelCreateReservationSheet: View {
 
                 Spacer()
 
-                Text(String(format: "%.0f %@", balanceDueAtCheckout, Language.get("Currency_QAR", alter: "ر.ق")))
+                Text(String(format: "%.2f %@", balanceDueAtCheckout, Language.get("Currency_QAR", alter: "ر.ق")))
                     .font(Font.custom("Beiruti-Bold", size: 16))
                     .foregroundStyle(balanceDueAtCheckout > 0 ? Color(red: 0.88, green: 0.38, blue: 0.20) : Color(uiColor: .systemGreen))
             }
@@ -3664,7 +3664,7 @@ public struct AdminPetsHotelCreateReservationSheet: View {
     private func applyDepositPreset(_ preset: DepositPreset) {
         depositPreset = preset
         let calculated = calculatedEstimatedTotal * preset.percentage
-        depositPaidQAR = String(format: "%.0f", calculated)
+        depositPaidQAR = String(format: "%.2f", calculated)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
@@ -3937,11 +3937,11 @@ public struct AdminPetsHotelCreateReservationSheet: View {
             // Financial Breakdown Ledger
             VStack(spacing: 8) {
                 HStack {
-                    Text("\(numberOfNights) \(Language.get("Hotel_NightsPluralUnit", alter: "ليالٍ")) × \(String(format: "%.0f", nightlyRateMajor)) \(Language.get("Currency_QAR", alter: "ر.ق"))")
+                    Text("\(numberOfNights) \(Language.get("Hotel_NightsPluralUnit", alter: "ليالٍ")) × \(String(format: "%.2f", nightlyRateMajor)) \(Language.get("Currency_QAR", alter: "ر.ق"))")
                         .font(Font.custom("Beiruti-Medium", size: 12))
                         .foregroundStyle(AdminSurface.secondaryText)
                     Spacer()
-                    Text(String(format: "%.0f %@", calculatedEstimatedTotal, Language.get("Currency_QAR", alter: "ر.ق")))
+                    Text(String(format: "%.2f %@", calculatedEstimatedTotal, Language.get("Currency_QAR", alter: "ر.ق")))
                         .font(Font.custom("Beiruti-Bold", size: 13))
                         .foregroundStyle(AdminSurface.primaryText)
                 }
@@ -3952,7 +3952,7 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                             .font(Font.custom("Beiruti-Medium", size: 12))
                             .foregroundStyle(Color(uiColor: .systemGreen))
                         Spacer()
-                        Text(String(format: "-%.0f %@", depositPaidValue, Language.get("Currency_QAR", alter: "ر.ق")))
+                        Text(String(format: "-%.2f %@", depositPaidValue, Language.get("Currency_QAR", alter: "ر.ق")))
                             .font(Font.custom("Beiruti-Bold", size: 13))
                             .foregroundStyle(Color(uiColor: .systemGreen))
                     }
@@ -3963,7 +3963,7 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                         .font(Font.custom("Beiruti-Bold", size: 13))
                         .foregroundStyle(AdminSurface.primaryText)
                     Spacer()
-                    Text(String(format: "%.0f %@", balanceDueAtCheckout, Language.get("Currency_QAR", alter: "ر.ق")))
+                    Text(String(format: "%.2f %@", balanceDueAtCheckout, Language.get("Currency_QAR", alter: "ر.ق")))
                         .font(Font.custom("Beiruti-Bold", size: 17))
                         .foregroundStyle(AdminSurface.primary)
                 }
@@ -5588,7 +5588,7 @@ public struct AdminPetsHotelExtendStayDialog: View {
 
     private func formatQAR(_ minor: Int) -> String {
         let major = Double(minor) / 100.0
-        return String(format: "%.0f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
+        return String(format: "%.2f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
     }
 
     private func formattedDateOnly(_ date: Date) -> String {
@@ -6099,7 +6099,7 @@ public struct AdminPetsHotelEditReservationDialog: View {
     }
 
     private var depositPaidValue: Double {
-        Double(depositPaidQAR.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0.0
+        Double(depositPaidQAR.normalizedEnglishDigits(allowsDecimal: true)) ?? 0.0
     }
 
     private var balanceDueAtCheckout: Double {
@@ -6177,7 +6177,7 @@ public struct AdminPetsHotelEditReservationDialog: View {
         _departureDate = State(initialValue: reservation.checkOutDate)
 
         let initialDepositQAR = Double(reservation.depositMinor ?? 0) / 100.0
-        _depositPaidQAR = State(initialValue: String(format: "%.0f", initialDepositQAR))
+        _depositPaidQAR = State(initialValue: String(format: "%.2f", initialDepositQAR))
 
         _emergencyName = State(initialValue: reservation.emergencyContactName ?? "")
         _emergencyPhone = State(initialValue: reservation.emergencyContactPhone ?? "")
@@ -6890,7 +6890,7 @@ public struct AdminPetsHotelEditReservationDialog: View {
 
                 Spacer()
 
-                Text(String(format: "%.0f %@", calculatedEstimatedTotal, Language.get("Currency_QAR", alter: "ر.ق")))
+                Text(String(format: "%.2f %@", calculatedEstimatedTotal, Language.get("Currency_QAR", alter: "ر.ق")))
                     .font(HotelBeiruti.bold(16))
                     .foregroundStyle(AdminSurface.primaryText)
             }
@@ -6913,7 +6913,7 @@ public struct AdminPetsHotelEditReservationDialog: View {
 
                 HStack(spacing: 4) {
                     TextField("0", text: $depositPaidQAR)
-                        .keyboardType(.numberPad)
+                        .keyboardType(.decimalPad)
                         .font(HotelBeiruti.bold(15))
                         .multilineTextAlignment(.leading)
                         .frame(width: 70)
@@ -6937,7 +6937,7 @@ public struct AdminPetsHotelEditReservationDialog: View {
 
                 Spacer()
 
-                Text(String(format: "%.0f %@", balanceDueAtCheckout, Language.get("Currency_QAR", alter: "ر.ق")))
+                Text(String(format: "%.2f %@", balanceDueAtCheckout, Language.get("Currency_QAR", alter: "ر.ق")))
                     .font(HotelBeiruti.bold(16))
                     .foregroundStyle(balanceDueAtCheckout > 0 ? Color(red: 0.88, green: 0.38, blue: 0.20) : Color(uiColor: .systemGreen))
             }
@@ -6972,7 +6972,7 @@ public struct AdminPetsHotelEditReservationDialog: View {
     private func applyDepositPreset(_ preset: DepositPreset) {
         depositPreset = preset
         let calculated = calculatedEstimatedTotal * preset.percentage
-        depositPaidQAR = String(format: "%.0f", calculated)
+        depositPaidQAR = String(format: "%.2f", calculated)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 

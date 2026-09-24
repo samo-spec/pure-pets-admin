@@ -374,9 +374,21 @@ struct SupportMessage: Identifiable, Equatable, Sendable {
     let text: String
     let isOfficial: Bool
     let date: Date?
+    let isSticker: Bool
+    let fileURL: String?
+    let stickerStoragePath: String?
 
     init(data: [String: Any], documentID: String) {
         id = documentID
+        let rawType = (data["type"] as? NSNumber)?.intValue ?? 0
+        let kind = supportTrimmed(data["kind"]).lowercased()
+        let path = supportTrimmed(data["stickerStoragePath"])
+        let fURL = supportTrimmed(data["fileURL"])
+
+        let stickerDetected = (rawType == 10) || (kind == "sticker") || (!path.isEmpty && (path.hasPrefix("stickers/") || path.hasPrefix("sticker/")))
+        isSticker = stickerDetected
+        fileURL = fURL.isEmpty ? nil : fURL
+        stickerStoragePath = path.isEmpty ? nil : path
         text = SupportMessage.displayText(data: data)
         isOfficial = SupportThread.isOfficialSender(data: data)
         date = supportDate(data["timestamp"]) ?? supportDate(data["createdAt"])
@@ -387,17 +399,27 @@ struct SupportMessage: Identifiable, Equatable, Sendable {
     /// `PPChatsMessageDisplayText` — text wins regardless of type; otherwise the
     /// integer `type` selects a localized placeholder.
     static func displayText(data: [String: Any]) -> String {
+        let rawType = (data["type"] as? NSNumber)?.intValue ?? 0
+        let kind = supportTrimmed(data["kind"]).lowercased()
+        let path = supportTrimmed(data["stickerStoragePath"])
+        if rawType == 10 || kind == "sticker" || (!path.isEmpty && (path.hasPrefix("stickers/") || path.hasPrefix("sticker/"))) {
+            let primary = supportTrimmed(data["text"])
+            if !primary.isEmpty && primary != "🐾" { return primary }
+            return supportText("SupportChats_MessageSticker", "ملصق")
+        }
+
         let primary = supportTrimmed(data["text"])
         if !primary.isEmpty { return primary }
         let secondary = supportTrimmed(data["message"])
         if !secondary.isEmpty { return secondary }
 
-        switch (data["type"] as? NSNumber)?.intValue ?? 0 {
+        switch rawType {
         case 1: return supportText("SupportChats_MessageImage", "رسالة صورة")
         case 2: return supportText("SupportChats_MessageAudio", "رسالة صوتية")
         case 3: return supportText("SupportChats_MessageVideo", "رسالة فيديو")
         case 4: return supportText("SupportChats_MessageFile", "رسالة ملف")
         case 5: return supportText("SupportChats_MessageSystem", "رسالة نظام")
+        case 10: return supportText("SupportChats_MessageSticker", "ملصق")
         default: return supportText("SupportChats_MessageFallback", "لا توجد رسائل بعد.")
         }
     }
@@ -1065,6 +1087,15 @@ final class AdminSupportThreadViewModel: ObservableObject {
             && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    var canSendSticker: Bool {
+        canManage
+            && allowsReply
+            && !isSending
+            && !isUpdatingStatus
+            && !threadID.isEmpty
+            && !currentUID.isEmpty
+    }
+
     /// Legacy placeholder precedence, preserved in order.
     var composerPlaceholder: String {
         if !canManage { return supportText("SupportChats_ManageDenied", "الرد يتطلب صلاحية support.manage.") }
@@ -1081,6 +1112,7 @@ final class AdminSupportThreadViewModel: ObservableObject {
         listenMessages()
         markRead()
         enrichCustomerProfile()
+        PPAdminStickerStore.shared.warmStickerCache()
         resolveInitialChatContext()
     }
 
@@ -1142,7 +1174,8 @@ final class AdminSupportThreadViewModel: ObservableObject {
             .addSnapshotListener { [weak self] snapshot, error in
                 let failed = error != nil
                 // Server returns newest-first; display oldest→newest.
-                let parsed: [SupportMessage] = (snapshot?.documents ?? [])
+                let rawDocs = snapshot?.documents ?? []
+                let parsed: [SupportMessage] = rawDocs
                     .reversed()
                     .map { SupportMessage(data: $0.data(), documentID: $0.documentID) }
                 Task { @MainActor in
@@ -1156,6 +1189,7 @@ final class AdminSupportThreadViewModel: ObservableObject {
                     self.hasMessagesError = false
                     self.messages = parsed
                     self.markRead()
+                    self.resolveMissingStickerURLs(docs: rawDocs)
                 }
             }
     }
@@ -1588,6 +1622,70 @@ final class AdminSupportThreadViewModel: ObservableObject {
                 }
                 self.pendingMessageID = ""
                 self.pendingMessageText = ""
+                self.status = SupportStatus(raw: response.supportStatus ?? "active")
+                if let version = response.lifecycleVersion { self.lifecycleVersion = version }
+            }
+        }
+    }
+
+    private func resolveMissingStickerURLs(docs: [QueryDocumentSnapshot]) {
+        for doc in docs {
+            let data = doc.data()
+            let rawType = (data["type"] as? NSNumber)?.intValue ?? 0
+            let kind = supportTrimmed(data["kind"]).lowercased()
+            let path = supportTrimmed(data["stickerStoragePath"])
+            let fURL = supportTrimmed(data["fileURL"])
+            let isSticker = (rawType == 10) || (kind == "sticker") || (!path.isEmpty && (path.hasPrefix("stickers/") || path.hasPrefix("sticker/")))
+            if isSticker && fURL.isEmpty && !path.isEmpty {
+                Storage.storage().reference(withPath: path).downloadURL { [weak self] url, error in
+                    guard let self, let url, error == nil else { return }
+                    Task { @MainActor in
+                        if let index = self.messages.firstIndex(where: { $0.id == doc.documentID }) {
+                            var mutableData = data
+                            mutableData["fileURL"] = url.absoluteString
+                            self.messages[index] = SupportMessage(data: mutableData, documentID: doc.documentID)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func sendSticker(_ sticker: PPChatSticker) {
+        guard canManage, allowsReply, !isSending, !isUpdatingStatus,
+              !threadID.isEmpty, !currentUID.isEmpty else { return }
+
+        let downloadURL = sticker.downloadURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        let storagePath = sticker.storagePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !downloadURL.isEmpty, !storagePath.isEmpty else { return }
+
+        let stickerMessageID = UUID().uuidString
+        let stickerText = sticker.displayName.isEmpty ? "🐾" : sticker.displayName
+
+        isSending = true
+
+        SupportCommand.invoke(payload: [
+            "action": "send_staff_reply",
+            "threadId": threadID,
+            "messageId": stickerMessageID,
+            "expectedVersion": lifecycleVersion,
+            "sourceApp": SupportContract.sourceApp,
+            "sourcePlatform": SupportContract.sourcePlatform,
+            "message": [
+                "text": stickerText,
+                "type": 10,
+                "kind": "sticker",
+                "fileURL": downloadURL,
+                "stickerStoragePath": storagePath
+            ]
+        ]) { [weak self] result in
+            Task { @MainActor in
+                guard let self else { return }
+                self.isSending = false
+                guard let response = result else {
+                    self.alertMessage = supportText("SupportChats_StickerError", "تعذر إرسال الملصق.")
+                    return
+                }
                 self.status = SupportStatus(raw: response.supportStatus ?? "active")
                 if let version = response.lifecycleVersion { self.lifecycleVersion = version }
             }
@@ -2705,6 +2803,7 @@ struct SupportThreadView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var viewModel: AdminSupportThreadViewModel
     @FocusState private var composerFocused: Bool
+    @State private var isShowingStickerPicker = false
 
     init(thread: SupportThread, currentUID: String, canManage: Bool) {
         _viewModel = StateObject(wrappedValue: AdminSupportThreadViewModel(
@@ -2744,6 +2843,11 @@ struct SupportThreadView: View {
         .sheet(isPresented: $viewModel.isShowingContextDetail) {
             if let context = viewModel.chatContext {
                 SupportContextDetailSheet(context: context, viewModel: viewModel)
+            }
+        }
+        .sheet(isPresented: $isShowingStickerPicker) {
+            PPAdminStickerPickerSheet { sticker in
+                viewModel.sendSticker(sticker)
             }
         }
         .onAppear { viewModel.start() }
@@ -2844,6 +2948,21 @@ struct SupportThreadView: View {
     private var composer: some View {
         VStack(spacing: AdminSpacing.xs) {
             HStack(spacing: AdminSpacing.sm) {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    isShowingStickerPicker = true
+                } label: {
+                    Image(systemName: "face.smiling")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(viewModel.canSendSticker ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.6))
+                        .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                        .background(AdminSurface.control, in: Circle())
+                        .overlay(Circle().stroke(AdminSurface.hairline))
+                }
+                .disabled(!viewModel.canSendSticker)
+                .opacity(viewModel.canSendSticker ? 1 : 0.42)
+                .accessibilityLabel(supportText("SupportChats_Stickers", "ملصقات"))
+
                 TextField(
                     viewModel.composerPlaceholder,
                     text: $viewModel.draft
@@ -2898,45 +3017,106 @@ private struct SupportMessageBubble: View {
         HStack {
             if message.isOfficial { Spacer(minLength: 40) }
 
-            VStack(alignment: message.isOfficial ? .trailing : .leading, spacing: 3) {
-                Text(message.text)
-                    .font(AdminType.callout)
-                    .foregroundColor(AdminSurface.primaryText)
-                    .multilineTextAlignment(message.isOfficial ? .trailing : .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                HStack(spacing: 4) {
-                    Text(message.isOfficial
-                         ? supportText("SupportChats_MessageOfficial", "دعم بيور بتس الرسمي")
-                         : supportText("SupportChats_MessageCustomer", "العميل"))
-                        .font(AdminType.caption2Bold)
-                        .foregroundColor(AdminSurface.secondaryText.opacity(0.9))
-                    if !message.relativeDate.isEmpty {
-                        Text("·")
-                            .font(AdminType.caption2)
-                            .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
-                        Text(message.relativeDate)
-                            .font(AdminType.caption2)
-                            .foregroundColor(AdminSurface.secondaryText.opacity(0.9))
-                    }
-                }
+            if message.isSticker {
+                stickerBubble
+            } else {
+                textBubble
             }
-            .padding(.horizontal, AdminSpacing.md)
-            .padding(.vertical, AdminSpacing.sm)
-            .background(
-                message.isOfficial
-                    ? AdminSurface.primary.opacity(0.14)
-                    : AdminSurface.surface,
-                in: RoundedRectangle(cornerRadius: AdminRadius.large)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AdminRadius.large)
-                    .stroke(message.isOfficial ? AdminSurface.primary.opacity(0.22) : AdminSurface.hairline)
-            )
 
             if !message.isOfficial { Spacer(minLength: 40) }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(message.isOfficial ? supportText("SupportChats_MessageOfficial", "دعم بيور بتس الرسمي") : supportText("SupportChats_MessageCustomer", "العميل")). \(message.text). \(message.relativeDate)")
+        .accessibilityLabel("\(message.isOfficial ? supportText("SupportChats_MessageOfficial", "دعم بيور بتس الرسمي") : supportText("SupportChats_MessageCustomer", "العميل")). \(message.isSticker ? supportText("SupportChats_MessageSticker", "ملصق") : message.text). \(message.relativeDate)")
+    }
+
+    private var textBubble: some View {
+        VStack(alignment: message.isOfficial ? .trailing : .leading, spacing: 3) {
+            Text(message.text)
+                .font(AdminType.callout)
+                .foregroundColor(AdminSurface.primaryText)
+                .multilineTextAlignment(message.isOfficial ? .trailing : .leading)
+                .fixedSize(horizontal: false, vertical: true)
+
+            metadataRow
+        }
+        .padding(.horizontal, AdminSpacing.md)
+        .padding(.vertical, AdminSpacing.sm)
+        .background(
+            message.isOfficial
+                ? AdminSurface.primary.opacity(0.14)
+                : AdminSurface.surface,
+            in: RoundedRectangle(cornerRadius: AdminRadius.large)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.large)
+                .stroke(message.isOfficial ? AdminSurface.primary.opacity(0.22) : AdminSurface.hairline)
+        )
+    }
+
+    private var stickerBubble: some View {
+        VStack(alignment: message.isOfficial ? .trailing : .leading, spacing: 4) {
+            Group {
+                if let urlString = message.fileURL, let url = URL(string: urlString) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 136, height: 136)
+                                .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: 3)
+                        case .failure:
+                            VStack(spacing: 4) {
+                                Image(systemName: "photo")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                Text(message.text.isEmpty ? "🐾" : message.text)
+                                    .font(AdminType.caption2)
+                                    .foregroundColor(AdminSurface.secondaryText)
+                            }
+                            .frame(width: 136, height: 136)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.large))
+                        case .empty:
+                            ProgressView()
+                                .tint(AdminSurface.primary)
+                                .frame(width: 136, height: 136)
+                        @unknown default:
+                            EmptyView()
+                        }
+                    }
+                } else {
+                    VStack(spacing: 4) {
+                        ProgressView()
+                            .tint(AdminSurface.primary)
+                        Text(message.text.isEmpty ? "🐾" : message.text)
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                    .frame(width: 136, height: 136)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.large))
+                }
+            }
+
+            metadataRow
+                .padding(.horizontal, 4)
+        }
+    }
+
+    private var metadataRow: some View {
+        HStack(spacing: 4) {
+            Text(message.isOfficial
+                 ? supportText("SupportChats_MessageOfficial", "دعم بيور بتس الرسمي")
+                 : supportText("SupportChats_MessageCustomer", "العميل"))
+                .font(AdminType.caption2Bold)
+                .foregroundColor(AdminSurface.secondaryText.opacity(0.9))
+            if !message.relativeDate.isEmpty {
+                Text("·")
+                    .font(AdminType.caption2)
+                    .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
+                Text(message.relativeDate)
+                    .font(AdminType.caption2)
+                    .foregroundColor(AdminSurface.secondaryText.opacity(0.9))
+            }
+        }
     }
 }

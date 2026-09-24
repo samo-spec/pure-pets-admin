@@ -513,7 +513,7 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
     private var displayedPriceText: String {
         if let bal = reservation.balanceDueMinor, (reservation.depositMinor ?? 0) > 0, bal < (reservation.totalAmountMinor ?? 0) {
             let major = Double(bal) / 100.0
-            return String(format: "%.0f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
+            return String(format: "%.2f %@", major, Language.get("Currency_QAR", alter: "ر.ق"))
         }
         if let total = reservation.totalAmountMinor, total > 0 {
             return reservation.formattedTotal
@@ -526,7 +526,7 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
 
         if let rateMinor, rateMinor > 0 {
             let total = Double(rateMinor * max(1, reservation.numberOfNights)) / 100.0
-            return String(format: "%.0f %@", total, Language.get("Currency_QAR", alter: "ر.ق"))
+            return String(format: "%.2f %@", total, Language.get("Currency_QAR", alter: "ر.ق"))
         }
         return reservation.formattedTotal
     }
@@ -544,7 +544,7 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
 
         if let rateMinor, rateMinor > 0 {
             let perNight = Double(rateMinor) / 100.0
-            let rateStr = String(format: "%.0f %@", perNight, Language.get("Currency_QAR", alter: "ر.ق"))
+            let rateStr = String(format: "%.2f %@", perNight, Language.get("Currency_QAR", alter: "ر.ق"))
             let perNightLabel = Language.get("Hotel_PerNight", alter: "/ ليلة")
             return "\(nightsFormat) • \(rateStr) \(perNightLabel)"
         }
@@ -1489,7 +1489,7 @@ private struct AdminPetsHotelCheckIn_iPad: View {
                 Spacer()
                 if let bal = reservation.balanceDueMinor, (reservation.depositMinor ?? 0) > 0, bal > 0 {
                     VStack(alignment: .trailing, spacing: 2) {
-                        let formattedBal = String(format: "%.0f", Double(bal) / 100.0)
+                        let formattedBal = String(format: "%.2f", Double(bal) / 100.0)
                         let currency = Language.get("Currency_QAR", alter: "ر.ق")
                         Text("\(formattedBal) \(currency)")
                             .font(Font.custom("Beiruti-Bold", size: 18))
@@ -1539,7 +1539,7 @@ private struct AdminPetsHotelCheckIn_iPad: View {
 
         if let rateMinor, rateMinor > 0 {
             let total = Double(rateMinor * max(1, reservation.numberOfNights)) / 100.0
-            return String(format: "%.0f %@", total, Language.get("Currency_QAR", alter: "ر.ق"))
+            return String(format: "%.2f %@", total, Language.get("Currency_QAR", alter: "ر.ق"))
         }
         return reservation.formattedTotal
     }
@@ -1557,7 +1557,7 @@ private struct AdminPetsHotelCheckIn_iPad: View {
 
         if let rateMinor, rateMinor > 0 {
             let perNight = Double(rateMinor) / 100.0
-            let rateStr = String(format: "%.0f %@", perNight, Language.get("Currency_QAR", alter: "ر.ق"))
+            let rateStr = String(format: "%.2f %@", perNight, Language.get("Currency_QAR", alter: "ر.ق"))
             let perNightLabel = Language.get("Hotel_PerNight", alter: "/ ليلة")
             return "\(rateStr) \(perNightLabel) • \(nightsFormat)"
         }
@@ -1991,7 +1991,7 @@ private struct AdminHotelRoomTile: View {
     private var displayRateText: String {
         if let rate = effectiveRateMinor ?? room.nightlyRateMinor, rate > 0 {
             let qar = Double(rate) / 100.0
-            return String(format: "%.0f %@", qar, Language.get("Currency_QAR", alter: "ر.ق"))
+            return String(format: "%.2f %@", qar, Language.get("Currency_QAR", alter: "ر.ق"))
         }
         return room.formattedRate
     }
@@ -3291,7 +3291,7 @@ private struct AdminPetsHotelOutstandingCard: View {
                     Text(Language.get("Hotel_Ledger_Balance", alter: "المتبقي للدفع:"))
                         .font(PPBrandFont.medium(size: 12))
                         .foregroundStyle(AdminSurface.secondaryText)
-                    Text(String(format: "%.0f %@", Double(stay.outstandingMinor) / 100.0, Language.get("Currency_QAR", alter: "ر.ق")))
+                    Text(String(format: "%.2f %@", Double(stay.outstandingMinor) / 100.0, Language.get("Currency_QAR", alter: "ر.ق")))
                         .font(PPBrandFont.bold(size: 22))
                         .foregroundStyle(AdminSurface.amber)
                 }
@@ -3957,7 +3957,7 @@ public struct AdminHotelQuickSettlementSheet: View {
             // Navigation Bar
             AdminSovereignNavigationBar(
                 title: Language.get("Hotel_Settlement_Title", alter: "تسجيل تسوية رصيد الإقامة"),
-                subtitle: "\(stay.petName) • \(String(format: "%.0f %@", Double(stay.outstandingMinor) / 100.0, Language.get("Currency_QAR", alter: "ر.ق")))",
+                subtitle: "\(stay.petName) • \(String(format: "%.2f %@", Double(stay.outstandingMinor) / 100.0, Language.get("Currency_QAR", alter: "ر.ق")))",
                 statusDotColor: Color.orange,
                 isModal: true,
                 onBack: { dismiss() }
@@ -3971,7 +3971,7 @@ public struct AdminHotelQuickSettlementSheet: View {
                             .font(Font.custom("Beiruti-Medium", size: 14))
                             .foregroundStyle(AdminSurface.secondaryText)
 
-                        Text(String(format: "%.0f %@", Double(stay.outstandingMinor) / 100.0, Language.get("Currency_QAR", alter: "ر.ق")))
+                        Text(String(format: "%.2f %@", Double(stay.outstandingMinor) / 100.0, Language.get("Currency_QAR", alter: "ر.ق")))
                             .font(Font.custom("Beiruti-Bold", size: 32))
                             .foregroundStyle(Color.orange)
 

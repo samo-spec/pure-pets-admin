@@ -1322,7 +1322,7 @@ private struct AdminContentDossierCard: View {
                     Spacer()
 
                     if let price = item.price, price > 0 {
-                        Text(String(format: "%.0f %@", price, Language.get("SAR", alter: "ر.س")))
+                        Text(String(format: "%.2f %@", price, Language.get("SAR", alter: "ر.س")))
                             .font(AdminType.subheadlineBold)
                             .foregroundStyle(Color(uiColor: .ppPrimary))
                             .padding(.horizontal, 8)
@@ -1879,7 +1879,7 @@ private struct AdminModerationDossierSheet: View {
                             .foregroundStyle(AdminSurface.primaryText)
 
                         if let price = item.price, price > 0 {
-                            Text(String(format: "%.0f %@", price, Language.get("SAR", alter: "ر.س")))
+                            Text(String(format: "%.2f %@", price, Language.get("SAR", alter: "ر.س")))
                                 .font(AdminType.title3)
                                 .foregroundStyle(Color(uiColor: .ppPrimary))
                         }
