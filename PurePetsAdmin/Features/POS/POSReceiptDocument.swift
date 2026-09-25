@@ -24,9 +24,17 @@ struct POSCompletedReceipt: Identifiable, Sendable {
         let unitSubSubKinds: [String]
         let unitSubSubKindItems: [String]
         let refundedQuantity: Int
+        let variantOptionName: String?
 
         var isRefunded: Bool { refundedQuantity > 0 }
         var isFullyRefunded: Bool { refundedQuantity >= quantity }
+
+        var variantOptionFormatted: String? {
+            guard let option = variantOptionName?.trimmingCharacters(in: .whitespacesAndNewlines), !option.isEmpty else {
+                return nil
+            }
+            return POSReceiptFormat.smartVariantOptionDisplay(option)
+        }
 
         var subSubKindFormatted: String {
             var parts: [String] = []
@@ -89,6 +97,9 @@ struct POSCompletedReceipt: Identifiable, Sendable {
         lines = receipt.items.enumerated().map { index, item in
             let quantity = max(item.quantity, 1)
             let derivedTotal = item.price * Double(quantity)
+            let variantOption = (item.variantOptionName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+                ? item.variantOptionName
+                : nil
             return Line(
                 id: item.itemID.isEmpty ? "line-\(index)" : "\(item.itemID)-\(index)",
                 name: item.name.isEmpty
@@ -102,7 +113,8 @@ struct POSCompletedReceipt: Identifiable, Sendable {
                 subSubKindItem: item.subSubKindItemName,
                 unitSubSubKinds: item.unitSubSubKinds,
                 unitSubSubKindItems: item.unitSubSubKindItems,
-                refundedQuantity: max(0, item.refundedQuantity)
+                refundedQuantity: max(0, item.refundedQuantity),
+                variantOptionName: variantOption
             )
         }
         subtotal = receipt.subtotal > 0 ? receipt.subtotal : receipt.total + receipt.discount
@@ -146,7 +158,10 @@ struct POSCompletedReceipt: Identifiable, Sendable {
         self.transactionID = transactionID
         createdAt = Date()
         lines = cartItems.enumerated().map { index, item in
-            Line(
+            let smartDesc = item.accessory.pos_smartVariantDescription?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let variantName = item.accessory.pos_variantDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let effective = (smartDesc?.isEmpty == false) ? smartDesc! : variantName
+            return Line(
                 id: "\(item.accessory.accessoryID)-\(index)",
                 name: item.accessory.name,
                 quantity: item.quantity,
@@ -157,7 +172,8 @@ struct POSCompletedReceipt: Identifiable, Sendable {
                 subSubKindItem: item.unitSubSubKindItems.first,
                 unitSubSubKinds: item.unitSubSubKinds,
                 unitSubSubKindItems: item.unitSubSubKindItems,
-                refundedQuantity: 0
+                refundedQuantity: 0,
+                variantOptionName: effective.isEmpty ? nil : effective
             )
         }
         self.subtotal = subtotal > 0 ? subtotal : total + discount
@@ -479,6 +495,13 @@ struct POSCompletedReceiptSheet: View {
                             .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .callout))
                             .foregroundColor(AdminSurface.primaryText)
                             .fixedSize(horizontal: false, vertical: true)
+
+                        if let variant = line.variantOptionFormatted {
+                            Text(variant)
+                                .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption2))
+                                .foregroundColor(AdminSurface.primary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
 
                         let subSubDesc = line.subSubKindFormatted
                         if !subSubDesc.isEmpty {
@@ -976,6 +999,87 @@ enum POSReceiptFormat {
         }
         return "PP-POS-\(clean)"
     }
+
+    /// Intelligently formats variant strings (e.g. "أزرق", "M", "2 كجم", "اللون: أزرق • المقاس: M")
+    /// into professional, crystal-clear labeled attributes for receipt and dossier presentation.
+    nonisolated static func smartVariantOptionDisplay(_ raw: String?) -> String? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return nil
+        }
+
+        // If it already contains a colon (e.g. "اللون: ..." or "Color: ..."), it is already smart-formatted.
+        if raw.contains(":") {
+            return raw
+        }
+
+        let isAr = Language.isRTL()
+
+        // If it contains composite delimiters (" • " or " / " or ", "), process each component
+        let delimiters = [" • ", " / ", ", "]
+        for delim in delimiters {
+            if raw.contains(delim) {
+                let parts = raw.components(separatedBy: delim)
+                let resolved = parts.compactMap { part -> String? in
+                    let trimmed = part.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else { return nil }
+                    return smartVariantOptionDisplay(trimmed)
+                }
+                if !resolved.isEmpty {
+                    return resolved.joined(separator: " • ")
+                }
+            }
+        }
+
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowered = trimmed.lowercased()
+        let upper = trimmed.uppercased()
+
+        // 1. Size detection
+        let sizeCodes = ["XXS", "XS", "S", "M", "L", "XL", "2XL", "XXL", "3XL", "XXXL", "4XL", "XXXXL", "FREE", "FREE SIZE"]
+        if sizeCodes.contains(upper) || lowered == "صغير جدا" || lowered == "صغير جداً" || lowered == "صغير" || lowered == "وسط" || lowered == "متوسط" || lowered == "كبير" || lowered == "كبير جدا" || lowered == "كبير جداً" {
+            let sizePrefix = isAr ? "المقاس" : "Size"
+            let formattedVal = PetAccessory.formatStandardSize(trimmed)
+            return "\(sizePrefix): \(formattedVal.isEmpty ? trimmed : formattedVal)"
+        }
+
+        // 2. Weight detection (e.g. "2 كجم", "500g", "1.5 kg", "2.5kg", "250 جم")
+        let weightPattern = #"^([0-9]+(\.[0-9]+)?)\s*(كجم|كغ|جم|غ|kg|g|gm|gram|grams|kgm)?$"#
+        if lowered.range(of: weightPattern, options: .regularExpression) != nil {
+            let weightPrefix = isAr ? "الوزن" : "Weight"
+            return "\(weightPrefix): \(trimmed)"
+        }
+
+        // 3. Known color names
+        let arabicColors: [String: String] = [
+            "أزرق": "أزرق", "ازرق": "أزرق", "أحمر": "أحمر", "احمر": "أحمر",
+            "أخضر": "أخضر", "اخضر": "أخضر", "أصفر": "أصفر", "اصفر": "أصفر",
+            "أسود": "أسود", "اسود": "أسود", "أبيض": "أبيض", "ابيض": "أبيض",
+            "وردي": "وردي", "زهري": "وردي", "بنفسجي": "بنفسجي", "برتقالي": "برتقالي",
+            "بني": "بني", "رمادي": "رمادي", "كحلي": "كحلي", "بيج": "بيج",
+            "ذهبي": "ذهبي", "فضي": "فضي", "سماوي": "سماوي", "عنابي": "عنابي"
+        ]
+        let englishColors: [String: String] = [
+            "blue": "Blue", "red": "Red", "green": "Green", "yellow": "Yellow",
+            "black": "Black", "white": "White", "pink": "Pink", "purple": "Purple",
+            "orange": "Orange", "brown": "Brown", "gray": "Gray", "grey": "Grey",
+            "navy": "Navy", "beige": "Beige", "gold": "Gold", "silver": "Silver",
+            "cyan": "Cyan", "maroon": "Maroon", "teal": "Teal"
+        ]
+
+        if let arColor = arabicColors[lowered] {
+            let colorPrefix = isAr ? "اللون" : "Color"
+            let dispColor = isAr ? arColor : (englishColors[lowered] ?? arColor)
+            return "\(colorPrefix): \(dispColor)"
+        }
+        if let enColor = englishColors[lowered] {
+            let colorPrefix = isAr ? "اللون" : "Color"
+            return "\(colorPrefix): \(enColor)"
+        }
+
+        // 4. Default prefix with localized Option
+        let optionPrefix = isAr ? "الخيار" : "Option"
+        return "\(optionPrefix): \(trimmed)"
+    }
 }
 
 extension PPPOSReceipt {
@@ -1008,6 +1112,7 @@ enum POSReceiptPDFExporter {
         let totalTitleFont = UIFont(name: "Beiruti-Bold", size: 16) ?? UIFont.boldSystemFont(ofSize: 16)
         let totalAmountFont = UIFont(name: "Beiruti-Bold", size: 20) ?? UIFont.boldSystemFont(ofSize: 20)
         let footerFont = UIFont(name: "Beiruti-Medium", size: 11) ?? UIFont.systemFont(ofSize: 11, weight: .medium)
+        let boldMicroFont = UIFont(name: "Beiruti-Bold", size: 9.5) ?? UIFont.boldSystemFont(ofSize: 9.5)
         let microFont = UIFont(name: "Beiruti-Regular", size: 8.5) ?? UIFont.systemFont(ofSize: 8.5)
 
         // Colors
@@ -1059,6 +1164,9 @@ enum POSReceiptPDFExporter {
         // Items
         for line in receipt.lines {
             var itemTextHeight: CGFloat = 22.0
+            if line.variantOptionFormatted != nil {
+                itemTextHeight += 14.0
+            }
             if !line.subSubKindFormatted.isEmpty {
                 itemTextHeight += 14.0
             }
@@ -1311,6 +1419,17 @@ enum POSReceiptPDFExporter {
                     priceStr.draw(in: CGRect(x: w - m - priceWidth, y: currentY, width: priceWidth, height: 16.0), withAttributes: priceAttr)
                 }
                 currentY += 16.0
+
+                if let variant = line.variantOptionFormatted {
+                    let variantAttr: [NSAttributedString.Key: Any] = [
+                        .font: boldMicroFont,
+                        .foregroundColor: primaryColor,
+                        .paragraphStyle: leadingStyle
+                    ]
+                    let variantX = rtl ? (m + priceWidth + 4.0) : (m + qtyWidth + 4.0)
+                    variant.draw(in: CGRect(x: variantX, y: currentY, width: nameWidth, height: 13.0), withAttributes: variantAttr)
+                    currentY += 14.0
+                }
 
                 let subSubDesc = line.subSubKindFormatted
                 if !subSubDesc.isEmpty {

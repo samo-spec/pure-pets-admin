@@ -27,6 +27,14 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) NSInteger unitGroupPriceMinor;
 @property (nonatomic, assign) NSInteger refundedQuantity;
 @property (nonatomic, copy) NSArray<NSString *> *refundedUnitIds;
+@property (nonatomic, copy, nullable) NSString *variantOptionName;
+@property (nonatomic, copy, nullable) NSArray<NSDictionary *> *selectedOptionsSnapshot;
+@property (nonatomic, copy, nullable) NSString *variantColorName;
+@property (nonatomic, copy, nullable) NSString *variantColorNameEn;
+@property (nonatomic, copy, nullable) NSString *variantAxis;
+@property (nonatomic, assign) BOOL isVariant;
+@property (nonatomic, copy, nullable) NSString *size;
+@property (nonatomic, copy, nullable) NSString *weightText;
 - (instancetype)initWithDictionary:(NSDictionary *)dict;
 @end
 

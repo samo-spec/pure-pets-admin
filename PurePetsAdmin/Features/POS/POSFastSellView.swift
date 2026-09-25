@@ -2234,6 +2234,36 @@ final class POSFastSellViewModel: ObservableObject {
                 "assertedGroupPriceMinor": item.unitGroupPriceMinor > 0 ? item.unitGroupPriceMinor : POSMoney.minorUnits(item.unitPriceDisplay),
                 "lineTotalMinor": POSMoney.minorUnits(item.lineTotal)
             ]
+            let smartDesc = item.accessory.pos_smartVariantDescription?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let variantName = item.accessory.pos_variantDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let effectiveVariant = (smartDesc?.isEmpty == false) ? smartDesc! : variantName
+            if !effectiveVariant.isEmpty {
+                payload["variantOptionName"] = effectiveVariant
+                payload["variantDisplayName"] = effectiveVariant
+            }
+            if let size = item.accessory.size?.trimmingCharacters(in: .whitespacesAndNewlines), !size.isEmpty {
+                payload["size"] = size
+            }
+            if let weight = item.accessory.weightText?.trimmingCharacters(in: .whitespacesAndNewlines), !weight.isEmpty {
+                payload["weightText"] = weight
+            }
+            if let snapshot = item.accessory.selectedOptionsSnapshot, !snapshot.isEmpty {
+                payload["selectedOptionsSnapshot"] = snapshot
+            }
+            if let colorDict = item.accessory.variantColorDictionary {
+                if let nameAr = colorDict["nameAr"] as? String, !nameAr.isEmpty {
+                    payload["variantColorName"] = nameAr
+                }
+                if let nameEn = colorDict["nameEn"] as? String, !nameEn.isEmpty {
+                    payload["variantColorNameEn"] = nameEn
+                }
+            }
+            if let axis = item.accessory.variantAxis, !axis.isEmpty {
+                payload["variantAxis"] = axis
+            }
+            if item.accessory.isVariant || item.accessory.belongsToVariantFamily || item.accessory.pos_hasRealColor || (smartDesc?.isEmpty == false) {
+                payload["isVariant"] = true
+            }
             if let lotId = item.lotId {
                 payload["lotId"] = lotId
             }

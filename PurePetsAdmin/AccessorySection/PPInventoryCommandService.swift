@@ -154,6 +154,8 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
             "discountAmount": accessory.discountAmount ?? 0,
             "petMainCategoryID": accessory.petMainCategoryID,
             "petSubCategoryID": accessory.petSubCategoryID,
+            "isAllCategories": accessory.isAllCategories,
+            "isAllSubCategories": accessory.isAllSubCategories,
             "condition": accessory.condition.rawValue,
             "imageURLsArray": accessory.imageURLsArray,
             "isNew": accessory.isNew,
@@ -161,6 +163,19 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
             "showInAppMarket": accessory.showInAppMarket,
             "active": accessory.active
         ]
+        if let mainIDs = accessory.petMainCategoryIDs as? [NSNumber], !mainIDs.isEmpty {
+            payload["petMainCategoryIDs"] = mainIDs.map { $0.intValue }
+        } else if accessory.petMainCategoryID > 0 {
+            payload["petMainCategoryIDs"] = [accessory.petMainCategoryID]
+        }
+        if let subIDs = accessory.petSubCategoryIDs as? [NSNumber], !subIDs.isEmpty {
+            payload["petSubCategoryIDs"] = subIDs.map { $0.intValue }
+        } else if accessory.petSubCategoryID > 0 {
+            payload["petSubCategoryIDs"] = [accessory.petSubCategoryID]
+        }
+        if let catID = accessory.accessoryCategoryID, !catID.isEmpty {
+            payload["AccessoryCategoryID"] = catID
+        }
         // A variant member's public visibility is family-owned and governed
         // exclusively by upsertProductVariantFamily. Sending showInAppMarket on
         // catalog update is rejected by the backend to prevent competing writers.

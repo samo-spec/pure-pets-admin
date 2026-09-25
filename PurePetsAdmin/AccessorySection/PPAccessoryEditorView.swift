@@ -547,9 +547,11 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 selectedMainKind = match
             }
             if oldValue != selectedMainKinds {
-                selectedSubKinds = []
-                selectedSubKind = nil
-                isAllSubCategoriesSelected = false
+                if !isPopulatingInitialValues && !isApplyingCategoryHydration {
+                    selectedSubKinds = []
+                    selectedSubKind = nil
+                    isAllSubCategoriesSelected = false
+                }
                 fetchFreshSubKindsForSelectedCategories()
                 if let firstID = selectedMainKinds.first {
                     refreshAccessoryCategories(forMainKindID: firstID)
@@ -1344,6 +1346,22 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             hasUnsavedChanges = wasDirty
         }
 
+        if wasTrackingChanges {
+            // Already initialized; do not overwrite active category selections.
+            // Only re-resolve model instances against fresh available taxonomy.
+            if isAllCategoriesSelected {
+                self.selectedMainKind = nil
+            } else if let firstID = self.selectedMainKinds.first {
+                self.selectedMainKind = availableMainKinds.first(where: { $0.id == firstID })
+            }
+            if isAllSubCategoriesSelected {
+                self.selectedSubKind = nil
+            } else if let firstSubID = self.selectedSubKinds.first {
+                self.selectedSubKind = availableSubKinds.first(where: { $0.id == firstSubID })
+            }
+            return
+        }
+
         guard let acc = editingAccessory else { return }
         if acc.isAllCategories {
             self.isAllCategoriesSelected = true
@@ -1356,11 +1374,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 self.selectedMainKind = availableMainKinds.first(where: { $0.id == firstID })
             }
         } else if acc.petMainCategoryID > 0 {
-            if let matchedMain = availableMainKinds.first(where: { $0.id == acc.petMainCategoryID }) {
-                self.selectedMainKind = matchedMain
-                self.selectedMainKinds = [acc.petMainCategoryID]
-                self.isAllCategoriesSelected = false
-            }
+            self.selectedMainKinds = [acc.petMainCategoryID]
+            self.isAllCategoriesSelected = false
+            self.selectedMainKind = availableMainKinds.first(where: { $0.id == acc.petMainCategoryID })
         }
 
         if acc.isAllSubCategories {
@@ -1410,10 +1426,10 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     var isIndividualLivePet: Bool { isLivePet && liveInventoryMode == .individual }
     var isAwaitingCatalogSync: Bool { pendingCatalogSyncProductID != nil }
     private var preventsExplicitDismissal: Bool {
-        isSubmitting || hasPendingLivePetRecovery || hasPendingStandardSave || hasCompletedSave
+        isSubmitting || hasCompletedSave
     }
     var blocksDismissal: Bool {
-        preventsExplicitDismissal || !pickedImageUploadIDs.isEmpty || !pendingUnsavedUploads.isEmpty
+        preventsExplicitDismissal || hasPendingLivePetRecovery || hasPendingStandardSave || !pickedImageUploadIDs.isEmpty || !pendingUnsavedUploads.isEmpty
     }
     var canManageStock: Bool {
         guard let staff = PPStaffAuth.shared().cachedCurrentStaff else { return false }
@@ -3273,7 +3289,12 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         // A lost response can follow a committed create. Retry the exact retained
         // command before accepting edits or generating another product identity.
         if hasPendingStandardSave {
-            guard let retained = pendingSavedAccessoryDraft, pendingStandardRequest != nil else { return }
+            guard let retained = pendingSavedAccessoryDraft, pendingStandardRequest != nil else {
+                clearStandardInventoryRecovery()
+                pendingSavedAccessoryDraft = nil
+                saveAccessory()
+                return
+            }
             isSubmitting = true
             errorMessage = nil
             finalizeAccessorySave(accessory: retained, oldImageURLs: pendingStandardOldImageURLs)
@@ -4023,6 +4044,12 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         standardSaveMayHaveCommitted = false
     }
 
+    func discardPendingStandardSave() {
+        clearStandardInventoryRecovery()
+        pendingSavedAccessoryDraft = nil
+        errorMessage = nil
+    }
+
     private func commitSavedAccessory(_ saved: PetAccessory) {
         guard let original = editingAccessory else { return }
         original.accessoryID = saved.accessoryID
@@ -4391,7 +4418,8 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 
     func discardChangesAndDismiss() {
-        guard !preventsExplicitDismissal else { return }
+        guard !isSubmitting, !hasCompletedSave else { return }
+        clearStandardInventoryRecovery()
         cleanupPendingPickedUploads()
         clearLivePetRecovery()
         onDismiss()
@@ -17709,7 +17737,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 y: showStepsAppSwitcher ? 14 : 0
             )
             .animation(.spring(response: 0.38, dampingFraction: 0.82), value: showStepsAppSwitcher)
-            .allowsHitTesting(!showStepsAppSwitcher && !viewModel.isSubmitting && !viewModel.hasCompletedSave && !viewModel.hasPendingStandardSave)
+            .allowsHitTesting(!showStepsAppSwitcher && !viewModel.isSubmitting && !viewModel.hasCompletedSave)
             .disabled(viewModel.hasCompletedSave)
             .accessibilityHidden(viewModel.isSubmitting || showStepsAppSwitcher)
 
@@ -17926,7 +17954,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
     private var catalogHeader: some View {
         HStack(spacing: AdminSpacing.md) {
             Button {
-                if viewModel.hasUnsavedChanges {
+                if viewModel.hasUnsavedChanges || viewModel.hasPendingStandardSave {
                     showCatalogDiscardAlert()
                 } else {
                     viewModel.discardChangesAndDismiss()
@@ -17944,7 +17972,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
             }
             .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
             .accessibilityLabel(tr("Back", "رجوع"))
-            .accessibilityHint(viewModel.hasUnsavedChanges
+            .accessibilityHint((viewModel.hasUnsavedChanges || viewModel.hasPendingStandardSave)
                 ? tr("CatalogIntake_BackUnsavedHint", "يعرض تأكيداً قبل تجاهل التعديلات")
                 : tr("CatalogIntake_BackHint", "يعود إلى قائمة الكتالوج"))
 
@@ -18115,6 +18143,8 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     .strokeBorder(Color(red: 16/255, green: 185/255, blue: 129/255).opacity(0.35), lineWidth: 1)
             )
             .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        } else if viewModel.hasPendingStandardSave {
+            catalogPendingSaveBanner
         } else if let error = viewModel.errorMessage, !error.isEmpty {
             catalogBanner(
                 message: error,
@@ -18137,6 +18167,53 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 dismiss: nil
             )
         }
+    }
+
+    private var catalogPendingSaveBanner: some View {
+        HStack(alignment: .top, spacing: AdminSpacing.sm) {
+            Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(Color(uiColor: .ppWarning))
+                .frame(width: 24, height: 24)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(tr("Inventory_PendingSaveNotice_Title", "توجد عملية حفظ معلّقة"))
+                    .font(AdminType.footnoteBold)
+                    .foregroundStyle(AdminSurface.primaryText)
+
+                let detail: String = {
+                    if let err = viewModel.errorMessage, !err.isEmpty {
+                        return err
+                    }
+                    return tr("Inventory_PendingSaveNotice_Body", "يمكنك استعادة نفس العملية بالضغط على الزر بالأسفل، أو إلغاء المعلق للبدء من جديد.")
+                }()
+                Text(detail)
+                    .font(AdminType.caption)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button(role: .destructive) {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    viewModel.discardPendingStandardSave()
+                }
+            } label: {
+                Text(tr("Inventory_DiscardPendingSave", "إلغاء المعلق"))
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(Color(uiColor: .ppError))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color(uiColor: .ppError).opacity(0.12), in: Capsule())
+            }
+        }
+        .padding(AdminSpacing.md)
+        .background(Color(uiColor: .ppWarning).opacity(0.10), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppWarning).opacity(0.25), lineWidth: 1)
+        )
     }
 
     private func catalogBanner(

@@ -389,8 +389,8 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
                 showInAppMarket: firstVariant.showInAppMarket,
                 revision: firstVariant.revision,
                 media: firstVariant.media,
-                selectedOptions: [option.id: defaultValId],
-                combinationKey: "\(option.id)=\(defaultValId)"
+                selectedOptions: defaultValId.isEmpty ? [:] : [option.id: defaultValId],
+                combinationKey: defaultValId.isEmpty ? "" : "\(option.id)=\(defaultValId)"
             )
             draft.variants = [updatedVariant]
         }
@@ -480,6 +480,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         guard draft.optionDefinitions.count < PPAccessoryVariantContract.maxOptionsPerFamily else { return }
         guard !draft.optionDefinitions.contains(where: { $0.id == option.id || $0.key == option.key }) else { return }
         draft.schemaVersion = PPAccessoryVariantContract.variantSchemaVersionGeneric
+        draft.isLegacySingleVariant = false
         var updated = draft.optionDefinitions
         var newOption = option
         newOption.sortOrder = updated.count
@@ -1645,6 +1646,7 @@ struct PPAccessoryVariantSection: View {
     @State private var mediaTargetProductId: String?
     @State private var activeStudioMode: VariantStudioMode? = nil
     @State private var copiedHexBanner: String? = nil
+    @State private var customOptionInitialCategory: String = "size"
     @State private var isPresentingCustomOptionSheet = false
     @State private var isPresentingOptionPalette = false
     @State private var isPresentingRevertConfirmation = false
@@ -1818,8 +1820,12 @@ struct PPAccessoryVariantSection: View {
             }
         }
         .sheet(isPresented: $isPresentingCustomOptionSheet) {
-            PPAccessoryCustomOptionSheet { newOption in
-                model.addOption(newOption)
+            PPAccessoryCustomOptionSheet(initialCategoryId: customOptionInitialCategory) { newOption in
+                if model.isLegacyUngrouped {
+                    model.convertWithPresetOption(newOption)
+                } else {
+                    model.addOption(newOption)
+                }
                 isPresentingCustomOptionSheet = false
             }
         }
@@ -1833,6 +1839,14 @@ struct PPAccessoryVariantSection: View {
                     },
                     onSelectCustom: {
                         isPresentingOptionPalette = false
+                        customOptionInitialCategory = "custom"
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            isPresentingCustomOptionSheet = true
+                        }
+                    },
+                    onSelectCategory: { categoryId in
+                        isPresentingOptionPalette = false
+                        customOptionInitialCategory = categoryId
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                             isPresentingCustomOptionSheet = true
                         }
@@ -2223,7 +2237,8 @@ struct PPAccessoryVariantSection: View {
                         // 1. Size Button
                         Button {
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            model.convertWithPresetOption(.presetSize(values: PPAccessoryOptionDefinition.standardSizes))
+                            customOptionInitialCategory = "size"
+                            isPresentingCustomOptionSheet = true
                         } label: {
                             HStack(spacing: 8) {
                                 Image(systemName: "ruler.fill")
@@ -2243,7 +2258,8 @@ struct PPAccessoryVariantSection: View {
                         // 2. Weight Button
                         Button {
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            model.convertWithPresetOption(.presetWeight(values: PPAccessoryOptionDefinition.standardWeights))
+                            customOptionInitialCategory = "weight"
+                            isPresentingCustomOptionSheet = true
                         } label: {
                             HStack(spacing: 8) {
                                 Image(systemName: "scalemass.fill")
@@ -2284,6 +2300,7 @@ struct PPAccessoryVariantSection: View {
                         // 4. Custom Option Button
                         Button {
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            customOptionInitialCategory = "custom"
                             isPresentingCustomOptionSheet = true
                         } label: {
                             HStack(spacing: 8) {

@@ -1889,6 +1889,18 @@ private struct DossierItemRow: View {
                         .foregroundColor(AdminSurface.primaryText)
                         .fixedSize(horizontal: false, vertical: true)
 
+                    if let variant = item.variantOptionName?.trimmingCharacters(in: .whitespacesAndNewlines), !variant.isEmpty {
+                        let smart = POSReceiptFormat.smartVariantOptionDisplay(variant) ?? variant
+                        HStack(spacing: 4) {
+                            Text(smart)
+                                .font(DossierFont.bold(11, relativeTo: .caption2))
+                                .foregroundColor(AdminSurface.primary)
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    }
+
                     HStack(spacing: 6) {
                         Text(verbatim: "\(item.quantity.englishDigits) × \(item.price.englishDigits(decimals: 2)) \(Language.get("QAR", alter: "ر.ق"))")
                             .font(DossierFont.medium(12, relativeTo: .caption))
@@ -3483,6 +3495,16 @@ struct POSRefundStudioSheet: View {
                                         .font(AdminType.body)
                                         .foregroundColor(AdminSurface.primaryText)
 
+                                    if let variant = item.variantOptionName?.trimmingCharacters(in: .whitespacesAndNewlines), !variant.isEmpty {
+                                        let smart = POSReceiptFormat.smartVariantOptionDisplay(variant) ?? variant
+                                        Text(smart)
+                                            .font(AdminType.caption2Bold)
+                                            .foregroundColor(AdminSurface.primary)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 1)
+                                            .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                                    }
+
                                     if isLivePet {
                                         Text(Language.get("LivePet_TrackedBadge", alter: "حيوان محجل"))
                                             .font(AdminType.caption2Bold)
@@ -4266,6 +4288,14 @@ struct POSCancelConfirmationSheet: View {
                                 .font(AdminType.bodyBold)
                                 .foregroundColor(AdminSurface.primaryText)
                                 .lineLimit(1)
+
+                            if let variant = item.variantOptionName?.trimmingCharacters(in: .whitespacesAndNewlines), !variant.isEmpty {
+                                let smart = POSReceiptFormat.smartVariantOptionDisplay(variant) ?? variant
+                                Text(smart)
+                                    .font(AdminType.caption2Bold)
+                                    .foregroundColor(AdminSurface.primary)
+                                    .lineLimit(1)
+                            }
 
                             HStack(spacing: 6) {
                                 if let tag = item.unitRingTags.first, !tag.isEmpty {

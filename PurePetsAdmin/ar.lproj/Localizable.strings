@@ -4503,6 +4503,7 @@
 "POS_Receipt_Status" = "الحالة";
 "POS_Receipt_Completed" = "مكتملة";
 "POS_Receipt_Items" = "العناصر";
+"POS_Receipt_Option" = "الخيار";
 "POS_Receipt_Rings" = "الحلقة / الوسم";
 "POS_Receipt_Subtotal" = "المجموع الفرعي";
 "POS_Receipt_Discount" = "الخصم";

@@ -4442,6 +4442,7 @@
 "POS_Receipt_Status" = "Status";
 "POS_Receipt_Completed" = "Completed";
 "POS_Receipt_Items" = "Items";
+"POS_Receipt_Option" = "Option";
 "POS_Receipt_Rings" = "Ring / tag";
 "POS_Receipt_Subtotal" = "Subtotal";
 "POS_Receipt_Discount" = "Discount";

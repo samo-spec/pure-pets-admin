@@ -366,9 +366,13 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     dict[@"petSubCategoryID"] = @(self.petSubCategoryID);
     if (self.petMainCategoryIDs.count > 0) {
         dict[@"petMainCategoryIDs"] = self.petMainCategoryIDs;
+    } else if (self.petMainCategoryID > 0) {
+        dict[@"petMainCategoryIDs"] = @[@(self.petMainCategoryID)];
     }
     if (self.petSubCategoryIDs.count > 0) {
         dict[@"petSubCategoryIDs"] = self.petSubCategoryIDs;
+    } else if (self.petSubCategoryID > 0) {
+        dict[@"petSubCategoryIDs"] = @[@(self.petSubCategoryID)];
     }
     dict[@"isAllCategories"] = @(self.isAllCategories);
     dict[@"isAllSubCategories"] = @(self.isAllSubCategories);
@@ -793,6 +797,17 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         _petSubCategoryIDs = PPAccessoryIntegerArray(dict[@"petSubCategoryIDs"]);
         _isAllCategories = PPAccessoryBool(dict[@"isAllCategories"]);
         _isAllSubCategories = PPAccessoryBool(dict[@"isAllSubCategories"]);
+
+        if (_petMainCategoryIDs.count == 0 && _petMainCategoryID > 0) {
+            _petMainCategoryIDs = @[@(_petMainCategoryID)];
+        } else if (_petMainCategoryID <= 0 && _petMainCategoryIDs.count > 0) {
+            _petMainCategoryID = [_petMainCategoryIDs.firstObject integerValue];
+        }
+        if (_petSubCategoryIDs.count == 0 && _petSubCategoryID > 0) {
+            _petSubCategoryIDs = @[@(_petSubCategoryID)];
+        } else if (_petSubCategoryID <= 0 && _petSubCategoryIDs.count > 0) {
+            _petSubCategoryID = [_petSubCategoryIDs.firstObject integerValue];
+        }
         _AccessoryCategoryID = PPAccessoryStringValueForKeys(dict, (@[@"AccessoryCategoryID", @"accessoryCategoryID", @"accessoryCategory", @"AccessoryCategory"]));
         _relatedAccessories = PPAccessoryStringArray(dict[@"relatedAccessories"]);
         _cityID = PPAccessoryInteger(dict[@"cityID"]);

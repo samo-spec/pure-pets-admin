@@ -2226,23 +2226,6 @@ struct PPAccessoryCreateCombinationSheet: View {
                 }
 
                 Spacer()
-
-                // Generate PP Barcode Action
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    barcodeText = "PP\(Int(Date().timeIntervalSince1970))"
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 11, weight: .bold))
-                        Text(Language.get("CatalogIntake_GeneratePPBarcode", alter: "توليد باركود PP"))
-                            .font(AdminType.captionRegular)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(AdminSurface.primary.opacity(0.12), in: Capsule())
-                    .foregroundStyle(AdminSurface.primary)
-                }
             }
 
             // SKU Input Row
@@ -2294,12 +2277,25 @@ struct PPAccessoryCreateCombinationSheet: View {
                         .font(.system(size: 14))
                         .foregroundStyle(AdminSurface.secondaryText)
 
-                    TextField(Language.get("Barcode_Placeholder", alter: "الباركود الدولي"), text: $barcodeText)
+                    TextField(Language.get("CatalogIntake_BarcodePlaceholder", alter: "امسح أو اكتب الباركود"), text: $barcodeText)
                         .font(.system(size: 14, weight: .medium, design: .monospaced))
+                        .englishAlphanumericInput(text: $barcodeText)
                         .foregroundStyle(AdminSurface.primaryText)
                         .multilineTextAlignment(.leading)
 
                     if !barcodeText.isEmpty {
+                        Button {
+                            barcodeText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 14))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                                .frame(width: 28, height: 36)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Language.get("Clear", alter: "مسح"))
+
                         Button {
                             UIPasteboard.general.string = barcodeText
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -2311,10 +2307,37 @@ struct PPAccessoryCreateCombinationSheet: View {
                             Image(systemName: showBarcodeCopiedToast ? "checkmark.circle.fill" : "doc.on.doc")
                                 .font(.system(size: 14))
                                 .foregroundStyle(showBarcodeCopiedToast ? AdminSurface.emerald : AdminSurface.secondaryText)
+                                .frame(width: 28, height: 36)
+                                .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Language.get("Copy", alter: "نسخ"))
+                    }
+
+                    Button {
+                        generatePPBarcode()
+                    } label: {
+                        HStack(spacing: 2) {
+                            Text("PP")
+                                .font(.system(size: 11, weight: .black, design: .rounded))
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                        .foregroundColor(AdminSurface.primary)
+                        .frame(height: 36)
+                        .padding(.horizontal, 7)
+                        .background(AdminSurface.primarySoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Language.get("CatalogIntake_GeneratePPBarcode", alter: "توليد باركود PP"))
+
+                    AdminBarcodeScanButton { scanned in
+                        barcodeText = scanned
                     }
                 }
-                .padding(12)
+                .padding(.leading, 12)
+                .padding(.trailing, 6)
+                .frame(minHeight: 48)
                 .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
             }
@@ -2511,8 +2534,15 @@ struct PPAccessoryCreateCombinationSheet: View {
         }
 
         if barcodeText.isEmpty {
-            barcodeText = "PP\(Int(Date().timeIntervalSince1970))"
+            generatePPBarcode()
         }
+    }
+
+    private func generatePPBarcode() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        let timestamp = Int(Date().timeIntervalSince1970) % 1_000_000_000
+        let randomDigit = Int.random(in: 0...9)
+        barcodeText = String(format: "PP%09d%d", timestamp, randomDigit)
     }
 
     private func iconForOptionValue(_ value: PPAccessoryOptionValue) -> String {

@@ -70,6 +70,86 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         _unitGroupPriceMinor = [PPSafeNumber(dict[@"unitGroupPriceMinor"]) integerValue] ?: (NSInteger)round(_price * 100.0);
         _refundedQuantity = [PPSafeNumber(dict[@"refundedQuantity"]) integerValue];
         _refundedUnitIds = PPPOSStringArray(dict[@"refundedUnitIds"]);
+
+        _size = PPSafeString(dict[@"size"]);
+        _weightText = PPSafeString(dict[@"weightText"] ?: dict[@"weight"]);
+        _variantOptionName = PPSafeString(dict[@"variantOptionName"] ?: dict[@"variantDisplayName"] ?: dict[@"variantName"] ?: dict[@"variantOption"]);
+        _selectedOptionsSnapshot = [dict[@"selectedOptionsSnapshot"] isKindOfClass:NSArray.class] ? dict[@"selectedOptionsSnapshot"] : nil;
+        _variantColorName = PPSafeString(dict[@"variantColorName"]);
+        _variantColorNameEn = PPSafeString(dict[@"variantColorNameEn"]);
+        _variantAxis = PPSafeString(dict[@"variantAxis"]);
+        _isVariant = [dict[@"isVariant"] boolValue] || dict[@"productFamilyId"] != nil || _variantOptionName.length > 0 || _selectedOptionsSnapshot.count > 0 || _variantColorName.length > 0 || _size.length > 0 || _weightText.length > 0;
+
+        BOOL isRTL = [Language isRTL];
+        if (_variantOptionName.length == 0 && _selectedOptionsSnapshot.count > 0) {
+            NSMutableArray<NSString *> *labels = [NSMutableArray array];
+            for (id opt in _selectedOptionsSnapshot) {
+                if (![opt isKindOfClass:NSDictionary.class]) continue;
+                NSDictionary *optionDict = (NSDictionary *)opt;
+
+                NSString *optKey = PPSafeString(optionDict[@"optionKey"]).lowercaseString;
+                NSString *optLabel = @"";
+                id optNameObj = optionDict[@"optionName"];
+                if ([optNameObj isKindOfClass:NSDictionary.class]) {
+                    NSString *langKey = isRTL ? @"ar" : @"en";
+                    optLabel = PPSafeString(optNameObj[langKey] ?: optNameObj[@"ar"] ?: optNameObj[@"en"]);
+                } else if ([optNameObj isKindOfClass:NSString.class]) {
+                    optLabel = PPSafeString(optNameObj);
+                }
+
+                if (optLabel.length == 0) {
+                    if ([optKey containsString:@"color"] || [optKey containsString:@"colour"] || [optKey containsString:@"لون"]) {
+                        optLabel = isRTL ? @"اللون" : @"Color";
+                    } else if ([optKey containsString:@"size"] || [optKey containsString:@"مقاس"] || [optKey containsString:@"حجم"]) {
+                        optLabel = isRTL ? @"المقاس" : @"Size";
+                    } else if ([optKey containsString:@"weight"] || [optKey containsString:@"وزن"]) {
+                        optLabel = isRTL ? @"الوزن" : @"Weight";
+                    }
+                }
+
+                id valNameObj = optionDict[@"valueName"];
+                NSString *valStr = @"";
+                if ([valNameObj isKindOfClass:NSDictionary.class]) {
+                    NSString *key = isRTL ? @"ar" : @"en";
+                    valStr = PPSafeString(valNameObj[key] ?: valNameObj[@"ar"] ?: valNameObj[@"en"]);
+                } else if ([valNameObj isKindOfClass:NSString.class]) {
+                    valStr = PPSafeString(valNameObj);
+                }
+                if (valStr.length == 0) {
+                    valStr = PPSafeString(optionDict[@"valueId"]);
+                }
+                if (valStr.length > 0) {
+                    if (optLabel.length > 0) {
+                        [labels addObject:[NSString stringWithFormat:@"%@: %@", optLabel, valStr]];
+                    } else {
+                        [labels addObject:valStr];
+                    }
+                }
+            }
+            if (labels.count > 0) {
+                _variantOptionName = [labels componentsJoinedByString:@" • "];
+            }
+        }
+
+        if (_variantOptionName.length == 0) {
+            NSMutableArray<NSString *> *parts = [NSMutableArray array];
+            NSString *colorStr = isRTL ? (_variantColorName.length > 0 ? _variantColorName : _variantColorNameEn) : (_variantColorNameEn.length > 0 ? _variantColorNameEn : _variantColorName);
+            if (colorStr.length > 0 && ![colorStr.lowercaseString isEqualToString:@"standard"] && ![colorStr.lowercaseString isEqualToString:@"default"]) {
+                NSString *colorPrefix = isRTL ? @"اللون" : @"Color";
+                [parts addObject:[NSString stringWithFormat:@"%@: %@", colorPrefix, colorStr]];
+            }
+            if (_size.length > 0) {
+                NSString *sizePrefix = isRTL ? @"المقاس" : @"Size";
+                [parts addObject:[NSString stringWithFormat:@"%@: %@", sizePrefix, _size]];
+            }
+            if (_weightText.length > 0) {
+                NSString *weightPrefix = isRTL ? @"الوزن" : @"Weight";
+                [parts addObject:[NSString stringWithFormat:@"%@: %@", weightPrefix, _weightText]];
+            }
+            if (parts.count > 0) {
+                _variantOptionName = [parts componentsJoinedByString:@" • "];
+            }
+        }
     }
     return self;
 }
@@ -823,6 +903,16 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         if (item[@"lineTotalMinor"]) mapped[@"lineTotalMinor"] = item[@"lineTotalMinor"];
         if (item[@"lotId"]) mapped[@"lotId"] = item[@"lotId"];
         if (item[@"lotNumber"]) mapped[@"lotNumber"] = item[@"lotNumber"];
+        if (item[@"variantOptionName"]) mapped[@"variantOptionName"] = item[@"variantOptionName"];
+        if (item[@"variantDisplayName"]) mapped[@"variantDisplayName"] = item[@"variantDisplayName"];
+        if (item[@"selectedOptionsSnapshot"]) mapped[@"selectedOptionsSnapshot"] = item[@"selectedOptionsSnapshot"];
+        if (item[@"variantColorName"]) mapped[@"variantColorName"] = item[@"variantColorName"];
+        if (item[@"variantColorNameEn"]) mapped[@"variantColorNameEn"] = item[@"variantColorNameEn"];
+        if (item[@"variantAxis"]) mapped[@"variantAxis"] = item[@"variantAxis"];
+        if (item[@"size"]) mapped[@"size"] = item[@"size"];
+        if (item[@"weightText"]) mapped[@"weightText"] = item[@"weightText"];
+        if (item[@"isVariant"]) mapped[@"isVariant"] = item[@"isVariant"];
+        if (item[@"name"]) mapped[@"name"] = item[@"name"];
 
         if ([inventoryMode isEqualToString:PPPOSIndividualInventoryMode]) {
             mapped[@"inventoryMode"] = PPPOSIndividualInventoryMode;

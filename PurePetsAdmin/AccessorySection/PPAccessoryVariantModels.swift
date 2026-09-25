@@ -2428,6 +2428,190 @@ public extension PetAccessory {
         return ""
     }
 
+    /// Formatted, localized smart variant description (e.g. "اللون: أزرق • المقاس: M" or "Color: Blue • Size: M").
+    /// Explicitly prefixes dimension names (Color / Size / Weight / etc.) so receipts, invoices, and POS line items
+    /// are unmistakable and crystal clear for customers and staff alike.
+    var pos_smartVariantDescription: String? {
+        let isAr = Language.isRTL()
+        var parts: [String] = []
+
+        // 1. From selectedOptionsSnapshot (structured modern options)
+        if let snapshot = selectedOptionsSnapshot, !snapshot.isEmpty {
+            for option in snapshot {
+                let optKey = (option["optionKey"] as? String)?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+                // Resolve option label
+                var optLabel = ""
+                if let nameDict = option["optionName"] as? [String: Any] {
+                    let langKey = isAr ? "ar" : "en"
+                    optLabel = (nameDict[langKey] as? String) ?? (nameDict["ar"] as? String) ?? (nameDict["en"] as? String) ?? ""
+                } else if let nameStr = option["optionName"] as? String, !nameStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    optLabel = nameStr.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+
+                if optLabel.isEmpty {
+                    switch optKey {
+                    case "color", "colors", "colour", "اللون":
+                        optLabel = isAr ? "اللون" : "Color"
+                    case "size", "sizes", "المقاس", "الحجم":
+                        optLabel = isAr ? "المقاس" : "Size"
+                    case "weight", "weights", "الوزن":
+                        optLabel = isAr ? "الوزن" : "Weight"
+                    case "flavor", "flavors", "flavour", "flavours", "النكهة", "الطعم":
+                        optLabel = isAr ? "النكهة" : "Flavor"
+                    case "material", "materials", "المادة", "الخامة":
+                        optLabel = isAr ? "المادة" : "Material"
+                    case "volume", "capacity", "السعة":
+                        optLabel = isAr ? "السعة" : "Volume"
+                    default:
+                        if !optKey.isEmpty {
+                            optLabel = optKey.capitalized
+                        }
+                    }
+                }
+
+                // Resolve value label
+                var valLabel = ""
+                if let nameDict = option["valueName"] as? [String: Any] {
+                    let langKey = isAr ? "ar" : "en"
+                    valLabel = (nameDict[langKey] as? String) ?? (nameDict["ar"] as? String) ?? (nameDict["en"] as? String) ?? ""
+                } else if let nameStr = option["valueName"] as? String, !nameStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    valLabel = nameStr.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                if valLabel.isEmpty {
+                    valLabel = (option["valueId"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                }
+
+                if optKey.contains("size") || optLabel.contains("المقاس") || optLabel.lowercased().contains("size") {
+                    valLabel = PetAccessory.formatStandardSize(valLabel)
+                }
+
+                if !valLabel.isEmpty {
+                    if !optLabel.isEmpty {
+                        parts.append("\(optLabel): \(valLabel)")
+                    } else {
+                        parts.append(valLabel)
+                    }
+                }
+            }
+            if !parts.isEmpty {
+                return parts.joined(separator: " • ")
+            }
+        }
+
+        // 2. Direct Color
+        if pos_hasRealColor {
+            let colName = pos_variantColorName
+            if !colName.isEmpty {
+                let colorPrefix = isAr ? "اللون" : "Color"
+                parts.append("\(colorPrefix): \(colName)")
+            }
+        }
+
+        // 3. Direct Size
+        if let s = size?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+            let sizePrefix = isAr ? "المقاس" : "Size"
+            parts.append("\(sizePrefix): \(PetAccessory.formatStandardSize(s))")
+        }
+
+        // 4. Direct Weight
+        if let w = weightText?.trimmingCharacters(in: .whitespacesAndNewlines), !w.isEmpty {
+            let weightPrefix = isAr ? "الوزن" : "Weight"
+            parts.append("\(weightPrefix): \(w)")
+        } else if let numWeight = weight, numWeight.doubleValue > 0 {
+            let weightPrefix = isAr ? "الوزن" : "Weight"
+            let unit = weightUnit?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                ? weightUnit!
+                : (isAr ? "كجم" : "kg")
+            parts.append("\(weightPrefix): \(numWeight) \(unit)")
+        }
+
+        if !parts.isEmpty {
+            return parts.joined(separator: " • ")
+        }
+
+        // 5. From selectedOptions dictionary
+        if let options = selectedOptions, !options.isEmpty {
+            for (k, v) in options {
+                let strVal = "\(v)".trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !strVal.isEmpty else { continue }
+                let lk = k.lowercased()
+                let prefix: String
+                let formattedVal: String
+                if lk.contains("color") || lk.contains("لون") {
+                    prefix = isAr ? "اللون" : "Color"
+                    formattedVal = strVal
+                } else if lk.contains("size") || lk.contains("مقاس") || lk.contains("حجم") {
+                    prefix = isAr ? "المقاس" : "Size"
+                    formattedVal = PetAccessory.formatStandardSize(strVal)
+                } else if lk.contains("weight") || lk.contains("وزن") {
+                    prefix = isAr ? "الوزن" : "Weight"
+                    formattedVal = strVal
+                } else {
+                    prefix = k
+                    formattedVal = strVal
+                }
+                parts.append("\(prefix): \(formattedVal)")
+            }
+            if !parts.isEmpty {
+                return parts.joined(separator: " • ")
+            }
+        }
+
+        // 6. From variantCombinationKey (e.g. "color=blue|size=m")
+        if let combo = variantCombinationKey, !combo.isEmpty {
+            for part in combo.components(separatedBy: "|") {
+                let kv = part.components(separatedBy: "=")
+                if kv.count == 2 {
+                    let k = kv[0].lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+                    let v = kv[1].trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !v.isEmpty else { continue }
+                    let prefix: String
+                    let formattedVal: String
+                    if k.contains("color") {
+                        prefix = isAr ? "اللون" : "Color"
+                        formattedVal = v
+                    } else if k.contains("size") {
+                        prefix = isAr ? "المقاس" : "Size"
+                        formattedVal = PetAccessory.formatStandardSize(v)
+                    } else if k.contains("weight") {
+                        prefix = isAr ? "الوزن" : "Weight"
+                        formattedVal = v
+                    } else {
+                        prefix = kv[0]
+                        formattedVal = v
+                    }
+                    parts.append("\(prefix): \(formattedVal)")
+                }
+            }
+            if !parts.isEmpty {
+                return parts.joined(separator: " • ")
+            }
+        }
+
+        // 7. If isVariant or belongsToVariantFamily, fallback to pos_variantDisplayName if meaningful
+        if isVariant || belongsToVariantFamily {
+            let candidate = pos_variantDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !candidate.isEmpty && candidate != sku && candidate != accessoryID && candidate != name {
+                if candidate.contains(":") {
+                    return candidate
+                }
+                let axis = variantAxis?.lowercased() ?? ""
+                if axis.contains("color") {
+                    return "\(isAr ? "اللون" : "Color"): \(candidate)"
+                } else if axis.contains("size") {
+                    return "\(isAr ? "المقاس" : "Size"): \(PetAccessory.formatStandardSize(candidate))"
+                } else if axis.contains("weight") {
+                    return "\(isAr ? "الوزن" : "Weight"): \(candidate)"
+                } else {
+                    return "\(isAr ? "الخيار" : "Option"): \(candidate)"
+                }
+            }
+        }
+
+        return nil
+    }
+
     /// Primary human-readable variant value for this product (e.g. "XS • صغير جداً", "أسود", "1 كجم").
     var pos_variantDisplayName: String {
         let isAr = Language.isRTL()

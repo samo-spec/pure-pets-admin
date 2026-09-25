@@ -384,4 +384,66 @@
     XCTAssertEqualObjects(sales.role, PPStaffRoleSales);
 }
 
+- (void)testPOSCartItemParsesDirectVariantOptionName {
+    NSDictionary *itemDict = @{
+        @"itemID": @"acc_123",
+        @"name": @"طوق قطط",
+        @"price": @45.0,
+        @"quantity": @1,
+        @"variantOptionName": @"صغير (S)"
+    };
+    PPPOSCartItem *item = [[PPPOSCartItem alloc] initWithDictionary:itemDict];
+    XCTAssertEqualObjects(item.variantOptionName, @"صغير (S)");
+    XCTAssertTrue(item.isVariant);
+}
+
+- (void)testPOSCartItemSynthesizesVariantOptionFromSnapshot {
+    NSDictionary *itemDict = @{
+        @"itemID": @"acc_456",
+        @"name": @"قفص طيور",
+        @"price": @120.0,
+        @"quantity": @1,
+        @"selectedOptionsSnapshot": @[
+            @{
+                @"optionName": @{@"ar": @"الحجم", @"en": @"Size"},
+                @"valueName": @{@"ar": @"كبير (L)", @"en": @"Large (L)"}
+            }
+        ]
+    };
+    PPPOSCartItem *item = [[PPPOSCartItem alloc] initWithDictionary:itemDict];
+    XCTAssertNotNil(item.variantOptionName);
+    XCTAssertTrue([item.variantOptionName containsString:@"كبير"] || [item.variantOptionName containsString:@"Large"]);
+    XCTAssertTrue(item.isVariant);
+}
+
+- (void)testPOSCartItemSynthesizesVariantOptionFromColorName {
+    NSDictionary *itemDict = @{
+        @"itemID": @"acc_789",
+        @"name": @"صحن طعام",
+        @"price": @25.0,
+        @"quantity": @2,
+        @"variantColorName": @"أزرق سماوي"
+    };
+    PPPOSCartItem *item = [[PPPOSCartItem alloc] initWithDictionary:itemDict];
+    XCTAssertTrue([item.variantOptionName containsString:@"أزرق سماوي"]);
+    XCTAssertTrue(item.isVariant);
+}
+
+- (void)testPOSCartItemParsesSizeAndWeight {
+    NSDictionary *itemDict = @{
+        @"itemID": @"acc_999",
+        @"name": @"طعام جاف",
+        @"price": @85.0,
+        @"quantity": @1,
+        @"size": @"M",
+        @"weightText": @"2 كجم"
+    };
+    PPPOSCartItem *item = [[PPPOSCartItem alloc] initWithDictionary:itemDict];
+    XCTAssertEqualObjects(item.size, @"M");
+    XCTAssertEqualObjects(item.weightText, @"2 كجم");
+    XCTAssertTrue(item.isVariant);
+    XCTAssertTrue([item.variantOptionName containsString:@"M"]);
+    XCTAssertTrue([item.variantOptionName containsString:@"2 كجم"]);
+}
+
 @end

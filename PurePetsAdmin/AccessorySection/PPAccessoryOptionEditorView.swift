@@ -14,7 +14,7 @@ import UIKit
 
 enum PPAccessoryOptionSheetItem: Identifiable {
     case optionPalette
-    case addCustomOption
+    case addCustomOption(categoryId: String = "size")
     case addCustomValue(option: PPAccessoryOptionDefinition)
     case colorLibrary(optionId: String)
     case editOption(optionId: String)
@@ -23,8 +23,8 @@ enum PPAccessoryOptionSheetItem: Identifiable {
         switch self {
         case .optionPalette:
             return "optionPalette"
-        case .addCustomOption:
-            return "addCustomOption"
+        case .addCustomOption(let categoryId):
+            return "addCustomOption-\(categoryId)"
         case .addCustomValue(let option):
             return "addCustomValue-\(option.id)"
         case .colorLibrary(let optionId):
@@ -77,13 +77,19 @@ struct PPAccessoryOptionEditorView: View {
                         onSelectCustom: {
                             activeSheet = nil
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                                activeSheet = .addCustomOption
+                                activeSheet = .addCustomOption(categoryId: "custom")
+                            }
+                        },
+                        onSelectCategory: { categoryId in
+                            activeSheet = nil
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                activeSheet = .addCustomOption(categoryId: categoryId)
                             }
                         }
                     )
                 }
-            case .addCustomOption:
-                PPAccessoryCustomOptionSheet { newOption in
+            case .addCustomOption(let categoryId):
+                PPAccessoryCustomOptionSheet(initialCategoryId: categoryId) { newOption in
                     model.addOption(newOption)
                     activeSheet = nil
                 }
@@ -286,7 +292,7 @@ struct PPAccessoryOptionEditorView: View {
         Divider()
 
         Button {
-            activeSheet = .addCustomOption
+            activeSheet = .addCustomOption(categoryId: "custom")
         } label: {
             Label(
                 Language.get("Options_Preset_Custom", alter: "خيار مخصص..."),
@@ -919,6 +925,7 @@ struct PPOptionPresetActionSheet: View {
     let draft: PPAccessoryVariantFamily
     let onSelectPreset: (PPAccessoryOptionDefinition) -> Void
     let onSelectCustom: () -> Void
+    var onSelectCategory: ((String) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
 
@@ -1149,8 +1156,12 @@ struct PPOptionPresetActionSheet: View {
         return Button {
             guard !disabled else { return }
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            onSelectPreset(preset.createDefinition())
             dismiss()
+            if let onSelectCategory {
+                onSelectCategory(preset.id)
+            } else {
+                onSelectPreset(preset.createDefinition())
+            }
         } label: {
             HStack(spacing: 10) {
                 // Preset Jewel Icon
@@ -1366,6 +1377,7 @@ fileprivate struct PPOptionChipsFlow: Layout {
 // MARK: - Category-Defining Option Creation Studio
 
 struct PPAccessoryCustomOptionSheet: View {
+    let initialCategoryId: String
     let onAdd: (PPAccessoryOptionDefinition) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -1391,7 +1403,7 @@ struct PPAccessoryCustomOptionSheet: View {
         let unit: String?
     }
 
-    private let categories: [PresetCategory] = [
+    static let categoriesList: [PresetCategory] = [
         PresetCategory(
             id: "size",
             icon: "ruler.fill",
@@ -1420,6 +1432,7 @@ struct PPAccessoryCustomOptionSheet: View {
                 PPOptionSeed(id: "2kg", canonicalValue: "2kg", nameAr: "٢ كجم", nameEn: "2kg", hex: nil, unit: "kg"),
                 PPOptionSeed(id: "5kg", canonicalValue: "5kg", nameAr: "٥ كجم", nameEn: "5kg", hex: nil, unit: "kg"),
                 PPOptionSeed(id: "10kg", canonicalValue: "10kg", nameAr: "١٠ كجم", nameEn: "10kg", hex: nil, unit: "kg"),
+                PPOptionSeed(id: "15kg", canonicalValue: "15kg", nameAr: "١٥ كجم", nameEn: "15kg", hex: nil, unit: "kg"),
             ]
         ),
         PresetCategory(
@@ -1503,15 +1516,36 @@ struct PPAccessoryCustomOptionSheet: View {
         )
     ]
 
+    var categories: [PresetCategory] { Self.categoriesList }
+
     // MARK: - Component State
-    @State private var selectedCategoryId: String = "size"
-    @State private var nameAr: String = "المقاس"
-    @State private var nameEn: String = "Size"
-    @State private var key: String = "size"
-    @State private var autoDeriveKey: Bool = true
+    @State private var selectedCategoryId: String
+    @State private var nameAr: String
+    @State private var nameEn: String
+    @State private var key: String
+    @State private var autoDeriveKey: Bool
     @State private var selectedSeeds: [PPOptionSeed] = []
     @State private var customValueInput: String = ""
     @State private var translationPulse: Bool = false
+
+    init(initialCategoryId: String = "size", onAdd: @escaping (PPAccessoryOptionDefinition) -> Void) {
+        self.initialCategoryId = initialCategoryId
+        self.onAdd = onAdd
+        let initialCat = Self.categoriesList.first(where: { $0.id == initialCategoryId }) ?? Self.categoriesList.first!
+        _selectedCategoryId = State(initialValue: initialCat.id)
+        if initialCat.id != "custom" {
+            _nameAr = State(initialValue: initialCat.nameAr)
+            _nameEn = State(initialValue: initialCat.nameEn)
+            _key = State(initialValue: initialCat.id)
+            _autoDeriveKey = State(initialValue: false)
+        } else {
+            _nameAr = State(initialValue: "")
+            _nameEn = State(initialValue: "")
+            _key = State(initialValue: "")
+            _autoDeriveKey = State(initialValue: true)
+        }
+        _selectedSeeds = State(initialValue: [])
+    }
 
     var isValid: Bool {
         let ar = nameAr.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2248,8 +2282,9 @@ struct PPAccessoryCustomOptionSheet: View {
                 )
             }
             .onAppear {
-                if let firstCat = categories.first {
-                    selectCategory(firstCat)
+                let targetCat = categories.first(where: { $0.id == initialCategoryId }) ?? categories.first
+                if let targetCat {
+                    selectCategory(targetCat)
                 }
             }
         }
@@ -2266,7 +2301,7 @@ struct PPAccessoryCustomOptionSheet: View {
                 nameEn = cat.nameEn
                 key = cat.id
                 autoDeriveKey = false
-                selectedSeeds = cat.curatedSeeds
+                selectedSeeds = []
             } else {
                 nameAr = ""
                 nameEn = ""
