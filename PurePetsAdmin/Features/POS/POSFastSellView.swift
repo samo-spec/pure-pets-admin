@@ -470,6 +470,36 @@ struct POSQuantityGroupInfo: Equatable, Identifiable {
     let wholesalePriceMinor: Int?
     let sortOrder: Int
 
+    init(
+        id: String,
+        nameAr: String,
+        nameEn: String,
+        unitsPerGroup: Int,
+        barcode: String = "",
+        active: Bool = true,
+        retailEnabled: Bool = false,
+        wholesaleEnabled: Bool = false,
+        defaultForRetail: Bool = false,
+        defaultForWholesale: Bool = false,
+        retailPriceMinor: Int? = nil,
+        wholesalePriceMinor: Int? = nil,
+        sortOrder: Int = 0
+    ) {
+        self.id = id
+        self.nameAr = nameAr
+        self.nameEn = nameEn
+        self.unitsPerGroup = unitsPerGroup
+        self.barcode = barcode
+        self.active = active
+        self.retailEnabled = retailEnabled
+        self.wholesaleEnabled = wholesaleEnabled
+        self.defaultForRetail = defaultForRetail
+        self.defaultForWholesale = defaultForWholesale
+        self.retailPriceMinor = retailPriceMinor
+        self.wholesalePriceMinor = wholesalePriceMinor
+        self.sortOrder = sortOrder
+    }
+
     var retailPrice: Double {
         if let minor = retailPriceMinor, minor > 0 {
             return Double(minor) / 100.0
@@ -643,6 +673,7 @@ extension PetAccessory {
             nameAr: "حبة",
             nameEn: "Single",
             unitsPerGroup: 1,
+            barcode: barcode ?? "",
             active: true,
             retailEnabled: true,
             wholesaleEnabled: false,
@@ -697,6 +728,10 @@ struct POSCartItem: Identifiable, Equatable {
 
     var baseUnitQuantity: Int {
         quantity * max(1, unitsPerGroup)
+    }
+
+    var totalQuantity: Int {
+        baseUnitQuantity
     }
 
     /// Populated only for individually tracked live pets.
@@ -1660,9 +1695,13 @@ final class POSFastSellViewModel: ObservableObject {
     /// thing that matched": with per-colour barcodes, silently picking one of
     /// several candidates would sell and deduct the wrong colour.
     enum POSScanResolution: Equatable {
-        case resolved(PetAccessory, selectedGroup: POSQuantityGroupInfo? = nil)
+        case resolved(PetAccessory, POSQuantityGroupInfo?)
         case ambiguous([PetAccessory])
         case notFound
+
+        static func resolved(_ product: PetAccessory, selectedGroup: POSQuantityGroupInfo? = nil) -> POSScanResolution {
+            .resolved(product, selectedGroup)
+        }
     }
 
     /// Resolves a scanned code to exactly one sellable product.
@@ -1805,15 +1844,22 @@ final class POSFastSellViewModel: ObservableObject {
             .reduce(0) { $0 + $1.quantity }
     }
 
-    func cartIndex(for accessoryID: String) -> Int? {
-        cartItems.firstIndex { $0.accessory.accessoryID == accessoryID }
+    func cartIndex(for accessoryID: String, quantityGroupID: String? = nil) -> Int? {
+        if let gID = quantityGroupID {
+            return cartItems.firstIndex { $0.accessory.accessoryID == accessoryID && $0.quantityGroupID == gID }
+        }
+        return cartItems.firstIndex { $0.accessory.accessoryID == accessoryID }
     }
 
     /// Quantity-tracked add. Individually tracked live pets never reach here —
     /// the view routes them to the exact-animal picker instead.
     /// - Returns: `true` when the cart actually changed.
     @discardableResult
-    func addToCart(_ accessory: PetAccessory) -> Bool {
+    func addToCart(
+        _ accessory: PetAccessory,
+        group: POSQuantityGroupInfo? = nil,
+        quantity: Int = 1
+    ) -> Bool {
         guard accessory.pos_isSellable else {
             POSLogger.warn("cart.add_rejected", category: "cart", message: "Cannot add '\(accessory.name)': not sellable in active branch", metadata: [
                 "productId": accessory.accessoryID,
@@ -1826,50 +1872,50 @@ final class POSFastSellViewModel: ObservableObject {
             return false
         }
         let branchStock = accessory.pos_branchStock()
-        let unitPrice = salesChannel == .wholesale ? accessory.pos_wholesalePrice() : accessory.pos_canonicalUnitPrice
-        let unitPriceMinor = POSMoney.minorUnits(unitPrice)
 
-        if let idx = cartIndex(for: accessory.accessoryID) {
-            let nextUnits = (cartItems[idx].quantity + 1) * max(1, cartItems[idx].unitsPerGroup)
-            guard nextUnits <= branchStock else {
-                POSLogger.warn("cart.add_stock_capped", category: "cart", message: "Cannot add more '\(accessory.name)': branch stock limit (\(branchStock)) reached", metadata: [
-                    "productId": accessory.accessoryID,
-                    "quantity": cartItems[idx].quantity,
-                    "stock": branchStock
-                ])
+        let activeGroup: POSQuantityGroupInfo
+        if let explicitGroup = group {
+            activeGroup = explicitGroup
+        } else if salesChannel == .wholesale {
+            guard let wGroup = accessory.pos_defaultWholesaleGroup() else {
+                submitError = String(format: Language.get("POS_Wholesale_Not_Supported_For_Product", alter: "هذا الصنف (%@) لا يدعم البيع بالجملة."), accessory.name)
                 return false
             }
-            cartItems[idx].quantity += 1
+            activeGroup = wGroup
+        } else {
+            activeGroup = accessory.pos_defaultRetailGroup()
+        }
+
+        let unitsPerGroup = max(1, activeGroup.unitsPerGroup)
+        let requestedBaseUnits = quantity * unitsPerGroup
+        let existingBaseUnits = cartItems
+            .filter { $0.accessory.accessoryID == accessory.accessoryID }
+            .reduce(into: 0) { $0 += $1.totalQuantity }
+
+        guard existingBaseUnits + requestedBaseUnits <= branchStock else {
+            let message = String(format: Language.get("POS_Stock_Capped_Format", alter: "المخزون المتاح في الفرع لا يكفي (%d قطعة)."), branchStock)
+            submitError = message
+            POSLogger.warn("cart.add_stock_capped", category: "cart", message: "Cannot add '\(accessory.name)': branch stock limit (\(branchStock)) reached", metadata: [
+                "productId": accessory.accessoryID,
+                "stock": branchStock,
+                "requested": requestedBaseUnits,
+                "alreadyInCart": existingBaseUnits
+            ])
+            return false
+        }
+
+        if let idx = cartIndex(for: accessory.accessoryID, quantityGroupID: activeGroup.id) {
+            cartItems[idx].quantity += quantity
             let updated = cartItems.remove(at: idx)
             cartItems.append(updated)
-            POSLogger.info("cart.quantity_incremented", category: "cart", message: "Incremented '\(accessory.name)' to \(updated.quantity) (Subtotal: \(cartSubtotal) QAR)", metadata: [
+            POSLogger.info("cart.quantity_incremented", category: "cart", message: "Incremented '\(accessory.name)' (\(activeGroup.localizedName)) to \(updated.quantity) (Subtotal: \(cartSubtotal) QAR)", metadata: [
                 "productId": accessory.accessoryID,
                 "quantity": updated.quantity,
+                "quantityGroupId": activeGroup.id,
                 "cartTotal": cartTotal
             ])
         } else {
-            let activeGroup: POSQuantityGroupInfo
-            if salesChannel == .wholesale {
-                guard let wGroup = accessory.pos_defaultWholesaleGroup() else {
-                    submitError = String(format: Language.get("POS_Wholesale_Not_Supported_For_Product", alter: "هذا الصنف (%@) لا يدعم البيع بالجملة."), accessory.name)
-                    return false
-                }
-                activeGroup = wGroup
-            } else {
-                activeGroup = accessory.pos_defaultRetailGroup()
-            }
-
-            let unitsPerGroup = max(1, activeGroup.unitsPerGroup)
-            guard branchStock >= unitsPerGroup else {
-                POSLogger.warn("cart.add_stock_capped", category: "cart", message: "Cannot add '\(accessory.name)': branch stock limit (\(branchStock)) reached", metadata: [
-                    "productId": accessory.accessoryID,
-                    "stock": branchStock,
-                    "unitsPerGroup": unitsPerGroup
-                ])
-                return false
-            }
-
-            var item = POSCartItem(accessory: PetAccessory.deepCopy(from: accessory), quantity: 1)
+            var item = POSCartItem(accessory: PetAccessory.deepCopy(from: accessory), quantity: quantity)
             item.salesChannel = salesChannel.rawValue
             item.quantityGroupID = activeGroup.id
             item.quantityGroupNameAr = activeGroup.nameAr
@@ -1889,13 +1935,61 @@ final class POSFastSellViewModel: ObservableObject {
             item.unitGroupPrice = resolvedPrice
             item.unitGroupPriceMinor = resolvedPriceMinor
             cartItems.append(item)
-            POSLogger.info("cart.item_added", category: "cart", message: "Added '\(accessory.name)' to cart (Price: \(resolvedPrice) QAR, Subtotal: \(cartSubtotal) QAR)", metadata: [
+            POSLogger.info("cart.item_added", category: "cart", message: "Added '\(accessory.name)' (\(activeGroup.localizedName)) x\(quantity) to cart (Price: \(resolvedPrice) QAR, Subtotal: \(cartSubtotal) QAR)", metadata: [
                 "productId": accessory.accessoryID,
                 "name": accessory.name,
                 "unitPrice": resolvedPrice,
                 "quantityGroupId": activeGroup.id,
                 "cartTotal": cartTotal
             ])
+        }
+        invalidateSubmissionCommand()
+        return true
+    }
+
+    @discardableResult
+    func updateCartItemUnit(
+        cartItemID: UUID,
+        newGroup: POSQuantityGroupInfo,
+        newQuantity: Int
+    ) -> Bool {
+        guard let idx = cartItems.firstIndex(where: { $0.id == cartItemID }) else { return false }
+        let accessory = cartItems[idx].accessory
+        let branchStock = accessory.pos_branchStock()
+        let unitsPerGroup = max(1, newGroup.unitsPerGroup)
+        let requestedBaseUnits = newQuantity * unitsPerGroup
+        let otherBaseUnits = cartItems
+            .filter { $0.accessory.accessoryID == accessory.accessoryID && $0.id != cartItemID }
+            .reduce(into: 0) { $0 += $1.totalQuantity }
+
+        guard otherBaseUnits + requestedBaseUnits <= branchStock else {
+            let message = String(format: Language.get("POS_Stock_Capped_Format", alter: "المخزون المتاح في الفرع لا يكفي (%d قطعة)."), branchStock)
+            submitError = message
+            return false
+        }
+
+        if let existingIdx = cartItems.firstIndex(where: { $0.accessory.accessoryID == accessory.accessoryID && $0.quantityGroupID == newGroup.id && $0.id != cartItemID }) {
+            cartItems[existingIdx].quantity += newQuantity
+            cartItems.remove(at: idx)
+        } else {
+            cartItems[idx].quantityGroupID = newGroup.id
+            cartItems[idx].quantityGroupNameAr = newGroup.nameAr
+            cartItems[idx].quantityGroupNameEn = newGroup.nameEn
+            cartItems[idx].unitsPerGroup = unitsPerGroup
+            cartItems[idx].quantity = newQuantity
+
+            let resolvedPrice: Double
+            let resolvedPriceMinor: Int
+            if salesChannel == .wholesale {
+                resolvedPrice = newGroup.wholesalePrice
+                resolvedPriceMinor = newGroup.wholesalePriceMinor ?? POSMoney.minorUnits(newGroup.wholesalePrice)
+            } else {
+                resolvedPrice = newGroup.retailPrice > 0 ? newGroup.retailPrice : accessory.pos_canonicalUnitPrice
+                resolvedPriceMinor = newGroup.retailPriceMinor ?? POSMoney.minorUnits(resolvedPrice)
+            }
+
+            cartItems[idx].unitGroupPrice = resolvedPrice
+            cartItems[idx].unitGroupPriceMinor = resolvedPriceMinor
         }
         invalidateSubmissionCommand()
         return true
@@ -2005,7 +2099,10 @@ final class POSFastSellViewModel: ObservableObject {
         guard !cartItems[idx].isIndividuallyTracked else { return }
         let branchStock = cartItems[idx].accessory.pos_branchStock()
         let unitsPerGroup = max(1, cartItems[idx].unitsPerGroup)
-        let nextUnits = (cartItems[idx].quantity + 1) * unitsPerGroup
+        let otherBaseUnits = cartItems
+            .filter { $0.accessory.accessoryID == cartItems[idx].accessory.accessoryID && $0.id != cartItems[idx].id }
+            .reduce(into: 0) { $0 += $1.totalQuantity }
+        let nextUnits = (cartItems[idx].quantity + 1) * unitsPerGroup + otherBaseUnits
         guard nextUnits <= branchStock else { return }
         cartItems[idx].quantity += 1
         POSLogger.info("cart.quantity_increased", category: "cart", message: "Increased '\(item.accessory.name)' quantity to \(cartItems[idx].quantity)", metadata: [
@@ -2066,7 +2163,11 @@ final class POSFastSellViewModel: ObservableObject {
         }
         let branchStock = cartItems[idx].accessory.pos_branchStock()
         let unitsPerGroup = max(1, cartItems[idx].unitsPerGroup)
-        let maxGroups = branchStock / unitsPerGroup
+        let otherBaseUnits = cartItems
+            .filter { $0.accessory.accessoryID == cartItems[idx].accessory.accessoryID && $0.id != cartItems[idx].id }
+            .reduce(into: 0) { $0 += $1.totalQuantity }
+        let availableBaseUnits = max(0, branchStock - otherBaseUnits)
+        let maxGroups = availableBaseUnits / unitsPerGroup
         if maxGroups <= 0 {
             removeFromCart(item)
             return
@@ -2317,6 +2418,7 @@ final class POSFastSellViewModel: ObservableObject {
                 "assertedGroupPriceMinor": item.unitGroupPriceMinor > 0 ? item.unitGroupPriceMinor : POSMoney.minorUnits(item.unitPriceDisplay),
                 "lineTotalMinor": POSMoney.minorUnits(item.lineTotal)
             ]
+            let smartDesc = item.accessory.pos_smartVariantDescription?.trimmingCharacters(in: .whitespacesAndNewlines)
             let isLive = item.accessory.isLivePet || item.isIndividuallyTracked || !item.unitRingTags.isEmpty
             if isLive {
                 let liveLabel = Language.get("LiveAnimal", alter: "حيوان حي")
@@ -2325,7 +2427,6 @@ final class POSFastSellViewModel: ObservableObject {
                 payload["variantOptionName"] = liveLabel
                 payload["variantDisplayName"] = liveLabel
             } else {
-                let smartDesc = item.accessory.pos_smartVariantDescription?.trimmingCharacters(in: .whitespacesAndNewlines)
                 let variantName = item.accessory.pos_variantDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
                 let rawVariant = (smartDesc?.isEmpty == false) ? smartDesc! : variantName
                 if !rawVariant.isEmpty && !rawVariant.lowercased().contains("catalog_") && rawVariant != item.accessory.accessoryID && rawVariant != item.accessory.sku {
@@ -2735,6 +2836,7 @@ struct AdminPOSFastSellView: View {
     @StateObject private var viewModel = POSFastSellViewModel()
     @StateObject private var unitPicker = POSUnitPickerState()
     @StateObject private var variantPicker = POSVariantPickerState()
+    @StateObject private var sellUnitPicker = POSSellUnitPickerState()
     @ObservedObject private var branchStore = BranchContextStore.shared
     @State private var isBranchPickerVisible = false
     @State private var showsReservedLivePets = false
@@ -2810,6 +2912,9 @@ struct AdminPOSFastSellView: View {
                 },
                 onTapQuantity: { item in
                     handleQuantityTap(for: item)
+                },
+                onOpenSellUnitPicker: { item in
+                    openSellUnitPicker(for: item.accessory, cartItem: item)
                 }
             )
 
@@ -2956,6 +3061,12 @@ struct AdminPOSFastSellView: View {
         )) {
             variantPickerSheet
         }
+        .sheet(isPresented: Binding(
+            get: { sellUnitPicker.isPresented },
+            set: { if !$0 { sellUnitPicker.close() } }
+        )) {
+            sellUnitPickerSheet
+        }
         .sheet(item: Binding(
             get: { viewModel.completedReceipt },
             set: { if $0 == nil { viewModel.acknowledgeCompletedReceipt() } }
@@ -3044,7 +3155,7 @@ struct AdminPOSFastSellView: View {
                     // pick from the filtered grid when the code is genuinely
                     // ambiguous or unknown.
                     switch viewModel.resolveScannedCode(normalized) {
-                    case .resolved(let product):
+                    case .resolved(let product, let matchedGroup):
                         scanAmbiguousMatches = []
                         UIAccessibility.post(
                             notification: .announcement,
@@ -3053,7 +3164,7 @@ struct AdminPOSFastSellView: View {
                                 product.name
                             )
                         )
-                        commitScannedSelection(product)
+                        commitScannedSelection(product, matchedGroup: matchedGroup)
                     case .ambiguous(let matches):
                         // Never auto-pick. Two products sharing a code is a data
                         // problem the operator has to settle, and guessing would
@@ -3798,6 +3909,13 @@ struct AdminPOSFastSellView: View {
             return
         }
 
+        // Multi-unit sell check: If the item has more than 1 sell unit for the current channel,
+        // present the unit selection sheet so the operator chooses which unit to sell.
+        if accessory.pos_hasMultipleSellUnits(for: viewModel.salesChannel) {
+            openSellUnitPicker(for: accessory)
+            return
+        }
+
         let added = viewModel.addToCart(accessory)
         guard added else {
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
@@ -3813,12 +3931,22 @@ struct AdminPOSFastSellView: View {
     /// live pet is never added by quantity, it has to resolve to an exact animal.
     /// Both scan outcomes route through here so the guard cannot be bypassed by
     /// the scanner the way it was when each path called `addToCart` directly.
-    private func commitScannedSelection(_ accessory: PetAccessory) {
+    private func commitScannedSelection(_ accessory: PetAccessory, matchedGroup: POSQuantityGroupInfo? = nil) {
         if accessory.pos_isIndividuallyTrackedLivePet {
             openUnitPicker(for: accessory)
             return
         }
-        _ = viewModel.addToCart(accessory)
+        if let g = matchedGroup {
+            let added = viewModel.addToCart(accessory, group: g, quantity: 1)
+            if added { pulseCart() }
+            return
+        }
+        if accessory.pos_hasMultipleSellUnits(for: viewModel.salesChannel) {
+            openSellUnitPicker(for: accessory)
+            return
+        }
+        let added = viewModel.addToCart(accessory)
+        if added { pulseCart() }
     }
 
     private func openUnitPicker(for accessory: PetAccessory) {
@@ -3826,6 +3954,15 @@ struct AdminPOSFastSellView: View {
             .map { viewModel.cartItems[$0].unitIDs } ?? []
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         unitPicker.open(product: accessory, preselected: preselected)
+    }
+
+    private func openSellUnitPicker(for accessory: PetAccessory, cartItem: POSCartItem? = nil) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        sellUnitPicker.open(
+            product: accessory,
+            cartItem: cartItem,
+            channel: viewModel.salesChannel
+        )
     }
 
     private func confirmUnitSelection() {
@@ -3853,6 +3990,8 @@ struct AdminPOSFastSellView: View {
     private func handleQuantityTap(for item: POSCartItem) {
         if item.isIndividuallyTracked {
             openUnitPicker(for: item.accessory)
+        } else if item.accessory.pos_hasMultipleSellUnits(for: viewModel.salesChannel) {
+            openSellUnitPicker(for: item.accessory, cartItem: item)
         } else {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             quantityEditingItem = item
@@ -3963,6 +4102,7 @@ private struct POSApexFlightDeck: View {
     let onOpenDiscount: () -> Void
     let onClearCart: () -> Void
     var onTapQuantity: ((POSCartItem) -> Void)? = nil
+    var onOpenSellUnitPicker: ((POSCartItem) -> Void)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var tenderedAmount: Double? = nil
@@ -4250,7 +4390,8 @@ private struct POSApexFlightDeck: View {
                 },
                 onTapQuantity: { item in
                     onTapQuantity?(item)
-                }
+                },
+                onOpenSellUnitPicker: onOpenSellUnitPicker
             )
             .padding(.bottom, 6)
         }
@@ -5364,8 +5505,27 @@ private struct POSCustomCashSheet: View {
             variantPicker: variantPicker,
             viewModel: viewModel,
             currency: { formatCurrency($0) },
+            onSelectSellUnit: { accessory in
+                variantPicker.close()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    openSellUnitPicker(for: accessory)
+                }
+            },
             onClose: {
                 variantPicker.close()
+            }
+        )
+    }
+
+    // MARK: - POS Sell Unit Picker Sheet
+
+    private var sellUnitPickerSheet: some View {
+        POSSellUnitPickerSheet(
+            state: sellUnitPicker,
+            viewModel: viewModel,
+            currency: { formatCurrency($0) },
+            onClose: {
+                sellUnitPicker.close()
             }
         )
     }
@@ -5387,12 +5547,483 @@ private struct POSCustomCashSheet: View {
     }
 }
 
+// MARK: - POS Sell Unit Picker Sheet Component
+
+private struct POSSellUnitPickerSheet: View {
+    @ObservedObject var state: POSSellUnitPickerState
+    @ObservedObject var viewModel: POSFastSellViewModel
+    let currency: (Double) -> String
+    let onClose: () -> Void
+
+    private var product: PetAccessory? { state.product }
+    private var channel: POSSalesChannel { viewModel.salesChannel }
+
+    private var eligibleGroups: [POSQuantityGroupInfo] {
+        guard let product = product else { return [] }
+        return product.pos_eligibleQuantityGroups(for: channel)
+    }
+
+    private var activeGroup: POSQuantityGroupInfo? {
+        state.selectedGroup ?? eligibleGroups.first
+    }
+
+    private var branchStock: Int {
+        guard let product = product else { return 0 }
+        return product.pos_branchStock()
+    }
+
+    private var otherCartLinesBaseUnits: Int {
+        guard let product = product else { return 0 }
+        return viewModel.cartItems
+            .filter { $0.accessory.accessoryID == product.accessoryID && $0.id != state.cartItemID }
+            .reduce(into: 0) { $0 += $1.baseUnitQuantity }
+    }
+
+    private var remainingBaseUnits: Int {
+        max(0, branchStock - otherCartLinesBaseUnits)
+    }
+
+    private var maxSelectableQuantity: Int {
+        guard let group = activeGroup else { return 0 }
+        let perGroup = max(1, group.unitsPerGroup)
+        return remainingBaseUnits / perGroup
+    }
+
+    private var currentGroupUnitPrice: Double {
+        guard let group = activeGroup else { return 0.0 }
+        if channel == .wholesale {
+            return group.wholesalePrice > 0 ? group.wholesalePrice : (product?.pos_wholesalePrice() ?? 0.0)
+        }
+        return group.retailPrice > 0 ? group.retailPrice : (product?.pos_canonicalUnitPrice ?? 0.0)
+    }
+
+    private var subtotal: Double {
+        currentGroupUnitPrice * Double(state.quantity)
+    }
+
+    private var isStockSufficient: Bool {
+        guard let group = activeGroup else { return false }
+        let requested = state.quantity * max(1, group.unitsPerGroup)
+        return requested <= remainingBaseUnits && state.quantity > 0 && maxSelectableQuantity > 0
+    }
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                // Header Banner
+                if let product = product {
+                    HStack(spacing: 12) {
+                        POSCatalogThumbnail(accessory: product)
+                            .frame(width: 52, height: 52)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(AdminSurface.hairline, lineWidth: 1)
+                            )
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(product.name)
+                                .font(AdminType.headlineBold)
+                                .foregroundColor(AdminSurface.primaryText)
+                                .lineLimit(2)
+
+                            HStack(spacing: 8) {
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(remainingBaseUnits > 0 ? Color(red: 0.1, green: 0.72, blue: 0.45) : Color.red)
+                                        .frame(width: 6, height: 6)
+                                    Text(String(format: Language.get("POS_Unit_AvailableStock_Format", alter: "المخزون المتاح: %d قطعة"), remainingBaseUnits))
+                                        .font(AdminType.captionBold)
+                                        .foregroundColor(remainingBaseUnits > 0 ? AdminSurface.secondaryText : Color.red)
+                                }
+
+                                if let color = product.pos_variantColor {
+                                    HStack(spacing: 3) {
+                                        Circle()
+                                            .fill(Color(uiColor: color.uiColor))
+                                            .frame(width: 8, height: 8)
+                                        Text(color.localizedName)
+                                            .font(AdminType.caption2Bold)
+                                    }
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(AdminSurface.fieldBackground, in: Capsule())
+                                    .foregroundColor(AdminSurface.primaryText)
+                                }
+                            }
+                        }
+
+                        Spacer()
+                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.vertical, 10)
+                    .background(AdminSurface.surface)
+
+                    Divider().background(AdminSurface.hairline)
+                }
+
+                // Scrollable Content
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        // Section Subtitle
+                        Text(Language.get("POS_SelectSellUnit_Subtitle", alter: "اختر وحدة البيع المطلوبة لهذا الصنف"))
+                            .font(AdminType.captionBold)
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .padding(.top, 4)
+
+                        // Units List
+                        VStack(spacing: 10) {
+                            ForEach(eligibleGroups) { group in
+                                let isSelected = (activeGroup?.id == group.id)
+                                let groupStock = remainingBaseUnits / max(1, group.unitsPerGroup)
+                                let groupPrice = (channel == .wholesale)
+                                    ? (group.wholesalePrice > 0 ? group.wholesalePrice : (product?.pos_wholesalePrice() ?? 0.0))
+                                    : (group.retailPrice > 0 ? group.retailPrice : (product?.pos_canonicalUnitPrice ?? 0.0))
+
+                                Button {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    state.selectedGroup = group
+                                    let maxForThis = remainingBaseUnits / max(1, group.unitsPerGroup)
+                                    if state.quantity > maxForThis && maxForThis > 0 {
+                                        state.quantity = maxForThis
+                                    }
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        // Unit Icon Squircle
+                                        ZStack {
+                                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                                .fill(isSelected ? AdminSurface.primary.opacity(0.12) : AdminSurface.fieldBackground)
+                                                .frame(width: 40, height: 40)
+
+                                            Image(systemName: group.unitsPerGroup > 1 ? "shippingbox.fill" : "circle.grid.2x1.fill")
+                                                .font(.system(size: 16, weight: .semibold))
+                                                .foregroundColor(isSelected ? AdminSurface.primary : AdminSurface.secondaryText)
+                                        }
+
+                                        // Names & Packaging Description
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            HStack(spacing: 6) {
+                                                Text(group.localizedName)
+                                                    .font(AdminType.headlineBold)
+                                                    .foregroundColor(AdminSurface.primaryText)
+
+                                                if group.unitsPerGroup > 1 {
+                                                    Text(String(format: Language.get("POS_Unit_Pieces_Format", alter: "%d قطعة"), group.unitsPerGroup))
+                                                        .font(Font.custom("Beiruti-Bold", size: 11))
+                                                        .padding(.horizontal, 6)
+                                                        .padding(.vertical, 1.5)
+                                                        .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                                                        .foregroundColor(AdminSurface.primary)
+                                                } else {
+                                                    Text(Language.get("POS_Unit_SinglePiece", alter: "قطعة واحدة"))
+                                                        .font(Font.custom("Beiruti-Bold", size: 11))
+                                                        .padding(.horizontal, 6)
+                                                        .padding(.vertical, 1.5)
+                                                        .background(AdminSurface.fieldBackground, in: Capsule())
+                                                        .foregroundColor(AdminSurface.secondaryText)
+                                                }
+
+                                                if (channel == .retail && group.defaultForRetail) {
+                                                    Text(Language.get("POS_Unit_DefaultForRetail", alter: "افتراضي"))
+                                                        .font(Font.custom("Beiruti-Bold", size: 10))
+                                                        .padding(.horizontal, 5)
+                                                        .padding(.vertical, 1)
+                                                        .background(Color.blue.opacity(0.12), in: Capsule())
+                                                        .foregroundColor(Color.blue)
+                                                } else if (channel == .wholesale && group.defaultForWholesale) {
+                                                    Text(Language.get("POS_Unit_DefaultForWholesale", alter: "افتراضي للجملة"))
+                                                        .font(Font.custom("Beiruti-Bold", size: 10))
+                                                        .padding(.horizontal, 5)
+                                                        .padding(.vertical, 1)
+                                                        .background(Color.teal.opacity(0.12), in: Capsule())
+                                                        .foregroundColor(Color.teal)
+                                                }
+                                            }
+
+                                            HStack(spacing: 6) {
+                                                if groupStock > 0 {
+                                                    Text(String(format: Language.get("POS_Unit_AvailablePackages_Format", alter: "%d متاح"), groupStock))
+                                                        .font(AdminType.caption)
+                                                        .foregroundColor(Color(red: 0.1, green: 0.72, blue: 0.45))
+                                                } else {
+                                                    Text(Language.get("POS_UnitOutOfStock", alter: "نفد من المخزون"))
+                                                        .font(AdminType.captionBold)
+                                                        .foregroundColor(.red)
+                                                }
+
+                                                if !group.barcode.isEmpty {
+                                                    Text("• " + group.barcode)
+                                                        .font(.system(size: 10, design: .monospaced))
+                                                        .foregroundColor(AdminSurface.secondaryText)
+                                                }
+                                            }
+                                        }
+
+                                        Spacer()
+
+                                        // Price & Selection Indicator
+                                        VStack(alignment: .trailing, spacing: 2) {
+                                            Text(currency(groupPrice))
+                                                .font(AdminType.calloutBold)
+                                                .foregroundColor(AdminSurface.primaryText)
+
+                                            if group.unitsPerGroup > 1 {
+                                                Text(String(format: Language.get("POS_Unit_PricePerPiece_Format", alter: "(%.2f ر.ق / قطعة)"), groupPrice / Double(group.unitsPerGroup)))
+                                                    .font(Font.custom("Beiruti-Regular", size: 11))
+                                                    .foregroundColor(AdminSurface.secondaryText)
+                                            }
+                                        }
+
+                                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                            .font(.system(size: 20, weight: .bold))
+                                            .foregroundColor(isSelected ? AdminSurface.primary : AdminSurface.hairline)
+                                    }
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 12)
+                                    .background(isSelected ? AdminSurface.primary.opacity(0.06) : AdminSurface.surface)
+                                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                            .stroke(isSelected ? AdminSurface.primary : AdminSurface.hairline, lineWidth: isSelected ? 2 : 1)
+                                    )
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                        }
+
+                        // Quantity Card
+                        if let group = activeGroup {
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(Language.get("Quantity", alter: "الكمية"))
+                                            .font(AdminType.subheadlineBold)
+                                            .foregroundColor(AdminSurface.primaryText)
+
+                                        if group.unitsPerGroup > 1 {
+                                            Text(String(format: Language.get("POS_SelectedUnitsCount_Format", alter: "%d وحدة = %d قطعة"), state.quantity, state.quantity * group.unitsPerGroup))
+                                                .font(AdminType.caption2Bold)
+                                                .foregroundColor(AdminSurface.primary)
+                                        }
+                                    }
+
+                                    Spacer()
+
+                                    // Stepper
+                                    HStack(spacing: 8) {
+                                        Button {
+                                            if state.quantity > 1 {
+                                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                                state.quantity -= 1
+                                            }
+                                        } label: {
+                                            Image(systemName: "minus")
+                                                .font(.system(size: 13, weight: .bold))
+                                                .foregroundColor(state.quantity > 1 ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.4))
+                                                .frame(width: 34, height: 34)
+                                                .background(AdminSurface.fieldBackground, in: Circle())
+                                        }
+                                        .disabled(state.quantity <= 1)
+
+                                        Text("\(state.quantity)")
+                                            .font(AdminType.headlineBold)
+                                            .foregroundColor(AdminSurface.primaryText)
+                                            .monospacedDigit()
+                                            .frame(minWidth: 36, alignment: .center)
+
+                                        Button {
+                                            if state.quantity < maxSelectableQuantity {
+                                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                                state.quantity += 1
+                                            } else {
+                                                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                                            }
+                                        } label: {
+                                            Image(systemName: "plus")
+                                                .font(.system(size: 13, weight: .bold))
+                                                .foregroundColor(state.quantity < maxSelectableQuantity ? .white : .white.opacity(0.5))
+                                                .frame(width: 34, height: 34)
+                                                .background(state.quantity < maxSelectableQuantity ? AdminSurface.primary : AdminSurface.control, in: Circle())
+                                        }
+                                        .disabled(state.quantity >= maxSelectableQuantity)
+                                    }
+                                    .padding(4)
+                                    .background(AdminSurface.fieldBackground.opacity(0.5), in: Capsule())
+                                }
+
+                                // Quick presets
+                                HStack(spacing: 8) {
+                                    presetButton(title: "+1", delta: 1)
+                                    presetButton(title: "+2", delta: 2)
+                                    presetButton(title: "+5", delta: 5)
+                                    if maxSelectableQuantity > 0 {
+                                        Button {
+                                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                            state.quantity = maxSelectableQuantity
+                                        } label: {
+                                            Text(String(format: Language.get("Max_Stock_Format", alter: "كامل المخزون (%d)"), maxSelectableQuantity))
+                                                .font(AdminType.caption2Bold)
+                                                .foregroundColor(AdminSurface.primary)
+                                                .padding(.horizontal, 10)
+                                                .padding(.vertical, 6)
+                                                .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+                                        }
+                                    }
+                                }
+
+                                if !isStockSufficient {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "exclamationmark.triangle.fill")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.red)
+                                        Text(String(format: Language.get("POS_InsufficientBranchStockForUnit", alter: "المخزون المتاح في الفرع لا يكفي (%d قطعة)."), remainingBaseUnits))
+                                            .font(AdminType.captionBold)
+                                            .foregroundColor(.red)
+                                    }
+                                }
+
+                                if let err = state.errorMessage {
+                                    Text(err)
+                                        .font(AdminType.captionBold)
+                                        .foregroundColor(.red)
+                                }
+                            }
+                            .padding(14)
+                            .background(AdminSurface.surface)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(AdminSurface.hairline, lineWidth: 1)
+                            )
+                        }
+                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.vertical, 12)
+                }
+
+                // Bottom Action Bar
+                VStack(spacing: 10) {
+                    Divider().background(AdminSurface.hairline)
+
+                    HStack {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(Language.get("Subtotal", alter: "المجموع الفرعي"))
+                                .font(AdminType.caption)
+                                .foregroundColor(AdminSurface.secondaryText)
+                            Text(currency(subtotal))
+                                .font(AdminType.title3Bold)
+                                .foregroundColor(AdminSurface.primaryText)
+                                .monospacedDigit()
+                        }
+
+                        Spacer()
+
+                        Button {
+                            confirmSelection()
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: state.isEditingCartItem ? "arrow.triangle.2.circlepath" : "cart.badge.plus")
+                                    .font(.system(size: 15, weight: .bold))
+
+                                Text(state.isEditingCartItem
+                                    ? String(format: Language.get("POS_UpdateCart_WithUnit_Format", alter: "تحديث السلة • %@"), currency(subtotal))
+                                    : String(format: Language.get("POS_AddToCart_WithUnit_Format", alter: "إضافة إلى السلة • %@"), currency(subtotal)))
+                                    .font(AdminType.headlineBold)
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 14)
+                            .background(isStockSufficient ? AdminSurface.primary : AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .disabled(!isStockSufficient)
+                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.bottom, 10)
+                }
+                .background(AdminSurface.surface)
+            }
+            .background(AdminSurface.background)
+            .navigationTitle(Language.get("POS_SelectSellUnit_Title", alter: "وحدات ومجموعات البيع"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        onClose()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+
+    private func presetButton(title: String, delta: Int) -> some View {
+        Button {
+            let next = state.quantity + delta
+            if next <= maxSelectableQuantity {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                state.quantity = next
+            } else if maxSelectableQuantity > 0 {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                state.quantity = maxSelectableQuantity
+            }
+        } label: {
+            Text(title)
+                .font(AdminType.caption2Bold)
+                .foregroundColor(AdminSurface.primaryText)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(AdminSurface.fieldBackground, in: Capsule())
+        }
+    }
+
+    private func confirmSelection() {
+        guard let product = product, let group = activeGroup else { return }
+        let qty = state.quantity
+        let perGroup = max(1, group.unitsPerGroup)
+        let requested = qty * perGroup
+
+        guard requested <= remainingBaseUnits else {
+            state.errorMessage = String(
+                format: Language.get("POS_InsufficientBranchStockForUnit", alter: "المخزون المتاح في الفرع لا يكفي (%d قطعة)."),
+                remainingBaseUnits
+            )
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            return
+        }
+
+        if let cartID = state.cartItemID {
+            let updated = viewModel.updateCartItemUnit(cartItemID: cartID, newGroup: group, newQuantity: qty)
+            if updated {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                state.close()
+            } else {
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            }
+        } else {
+            let added = viewModel.addToCart(product, group: group, quantity: qty)
+            if added {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                state.close()
+            } else {
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            }
+        }
+    }
+}
+
 // MARK: - POS Color Variant Picker Sheet Component
 
 private struct POSVariantPickerSheet: View {
     @ObservedObject var variantPicker: POSVariantPickerState
     @ObservedObject var viewModel: POSFastSellViewModel
     let currency: (Double) -> String
+    let onSelectSellUnit: (PetAccessory) -> Void
     let onClose: () -> Void
 
     var body: some View {
@@ -5451,11 +6082,15 @@ private struct POSVariantPickerSheet: View {
                                 salesChannel: viewModel.salesChannel,
                                 currency: currency,
                                 onIncrement: {
-                                    let added = viewModel.addToCart(member)
-                                    if added {
-                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    if member.pos_hasMultipleSellUnits(for: viewModel.salesChannel) {
+                                        onSelectSellUnit(member)
                                     } else {
-                                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                                        let added = viewModel.addToCart(member)
+                                        if added {
+                                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                        } else {
+                                            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                                        }
                                     }
                                 },
                                 onDecrement: {
@@ -6249,6 +6884,7 @@ private struct ApexAnimalSpecimenCard: View {
     let onToggle: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+    private var crimsonAccent: Color { Color(red: 0.98, green: 0.28, blue: 0.45) }
 
     private var resolvedImageURL: URL? {
         let direct = unit.imageURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -6727,6 +7363,18 @@ private struct POSCatalogTile: View {
                                         .padding(.vertical, 2)
                                         .background(Color.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
                                         .padding(4)
+                                } else if accessory.pos_hasMultipleSellUnits(for: salesChannel) {
+                                    HStack(spacing: 2.5) {
+                                        Image(systemName: "square.2.layers.3d.top.filled")
+                                            .font(.system(size: 8, weight: .bold))
+                                        Text(Language.get("POS_MultipleUnits_Badge", alter: "وحدات"))
+                                            .font(Font.custom("Beiruti-Bold", size: 10))
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2)
+                                    .background(AdminSurface.primary.opacity(0.85), in: Capsule())
+                                    .padding(4)
                                 }
                                 Spacer()
                             }
@@ -7024,6 +7672,7 @@ private struct POSCartCardRow: View {
     let onDecrease: () -> Void
     let onRemove: () -> Void
     let onOpenUnitPicker: (() -> Void)?
+    var onOpenSellUnitPicker: (() -> Void)? = nil
     var onTapQuantity: (() -> Void)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
@@ -7106,13 +7755,27 @@ private struct POSCartCardRow: View {
 
                     HStack(spacing: 5) {
                         if !item.isIndividuallyTracked {
-                            if item.unitsPerGroup > 1 {
-                                Text("\(item.localizedGroupName) (\(item.unitsPerGroup))")
-                                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                            let hasMultipleUnits = item.accessory.pos_hasMultipleSellUnits(for: POSSalesChannel(rawValue: item.salesChannel) ?? .retail)
+                            if item.unitsPerGroup > 1 || hasMultipleUnits {
+                                Button {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    onOpenSellUnitPicker?()
+                                } label: {
+                                    HStack(spacing: 3) {
+                                        Text("\(item.localizedGroupName) (\(item.unitsPerGroup))")
+                                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                                        if hasMultipleUnits {
+                                            Image(systemName: "chevron.down")
+                                                .font(.system(size: 7, weight: .bold))
+                                        }
+                                    }
                                     .padding(.horizontal, 5)
                                     .padding(.vertical, 1.5)
                                     .background(AdminSurface.primary.opacity(0.12), in: Capsule(style: .continuous))
                                     .foregroundColor(AdminSurface.primary)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .disabled(!hasMultipleUnits || onOpenSellUnitPicker == nil)
                             }
 
                             if let lotNum = item.lotNumber, !lotNum.isEmpty {
@@ -7419,6 +8082,7 @@ private struct POSStackedCartDeck: View {
     let onOpenUnitPicker: (PetAccessory) -> Void
     let onBringToFront: (POSCartItem) -> Void
     var onTapQuantity: ((POSCartItem) -> Void)? = nil
+    var onOpenSellUnitPicker: ((POSCartItem) -> Void)? = nil
 
     @State private var isExpanded: Bool = false
     @State private var dragOffset: CGFloat = 0
@@ -7532,6 +8196,7 @@ private struct POSStackedCartDeck: View {
                         onDecrease: { onDecrease(frontItem) },
                         onRemove: { onRemove(frontItem) },
                         onOpenUnitPicker: { onOpenUnitPicker(frontItem.accessory) },
+                        onOpenSellUnitPicker: { onOpenSellUnitPicker?(frontItem) },
                         onTapQuantity: { onTapQuantity?(frontItem) }
                     )
                     .offset(y: max(0, dragOffset * 0.15))
@@ -7626,6 +8291,7 @@ private struct POSStackedCartDeck: View {
                                 }
                             },
                             onOpenUnitPicker: { onOpenUnitPicker(item.accessory) },
+                            onOpenSellUnitPicker: { onOpenSellUnitPicker?(item) },
                             onTapQuantity: { onTapQuantity?(item) }
                         )
                         .transition(.asymmetric(

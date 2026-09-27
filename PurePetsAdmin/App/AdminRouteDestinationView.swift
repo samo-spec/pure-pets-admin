@@ -100,6 +100,10 @@ struct AdminRouteDestinationView: View {
             PPInventoryListView(kind: .typeLivePets, session: session, onDismiss: {
                 router.presentedRoute = nil
             })
+        case .wantedPets:
+            WantedPetsHomeView(onDismiss: {
+                router.presentedRoute = nil
+            })
         case .providerApplications:
             AdminProvidersView(initialTab: .applications) {
                 router.presentedRoute = nil

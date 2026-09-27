@@ -3097,6 +3097,10 @@ void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
                                           titleKey:@"Manage Live Pets"
                                        subtitleKey:@"ManageLivePetsSubtitle"
                                           iconName:@"square.grid.2x2"]];
+        [stockItems addObject:[self pp_itemWithTag:@"wantedPets"
+                                          titleKey:@"WantedPets_Title"
+                                       subtitleKey:@"WantedPets_Subtitle"
+                                          iconName:@"list.clipboard"]];
     }
     if (stockItems.count > 0) {
         [sections addObject:[self pp_sectionWithTitleKey:@"StockSection"
@@ -3516,6 +3520,9 @@ void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
     }
     if ([tag isEqualToString:@"livePets"]) {
         return [PPInventoryListHostingController makeForLivePets];
+    }
+    if ([tag isEqualToString:@"wantedPets"]) {
+        return [WantedPetsHostingController new];
     }
     if ([tag isEqualToString:@"services"]) {
         return [AdminServicesHostingController new];

@@ -64,6 +64,7 @@
     if ([identifier isEqualToString:@"accessories"]) return [PPInventoryListHostingController makeForAccessories];
     if ([identifier isEqualToString:@"food"]) return [PPInventoryListHostingController makeForFood];
     if ([identifier isEqualToString:@"livePets"]) return [PPInventoryListHostingController makeForLivePets];
+    if ([identifier isEqualToString:@"wantedPets"]) return [WantedPetsHostingController new];
     if ([identifier isEqualToString:@"branches"]) return [AdminBranchesHostingController new];
     if ([identifier isEqualToString:@"agents"]) return [PPAgentsViewController new];
     if ([identifier isEqualToString:@"accounting"]) return [AdminAccountingHostingController new];

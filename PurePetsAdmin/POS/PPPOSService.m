@@ -958,6 +958,7 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         @"source": @"admin_ios",
         @"salesChannel": effectiveSalesChannel,
     } mutableCopy];
+    
     if (effectiveBranchID.length > 0) {
         // `processTransaction` has always accepted `branchID` as the
         // operational branch alias. Use it for completed sales so older
@@ -985,10 +986,6 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
     // reservation field when creating a sale; completed sales (`status === "completed"`)
     // reject if reservation fields are present. Walk-in directory contacts are linked
     // via `customerPhoneLookup`. We include `posCustomerId` in diagnostic telemetry.
-    if (posCustomerID.length > 0) {
-        startMeta[@"posCustomerId"] = posCustomerID;
-    }
-
     NSMutableDictionary *startMeta = [NSMutableDictionary dictionary];
     startMeta[@"commandId"] = commandID ?: @"none";
     startMeta[@"branchId"] = effectiveBranchID ?: @"none";
@@ -1002,6 +999,7 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
     startMeta[@"totalUnitsTracked"] = @(totalUnitsTracked);
     if (activeSessionId.length > 0) startMeta[@"sessionId"] = activeSessionId;
     if (customerPhone.length > 0) startMeta[@"customerPhone"] = customerPhone;
+    if (posCustomerID.length > 0) startMeta[@"posCustomerId"] = posCustomerID;
 
     [[PPPOSLogger sharedLogger] infoWithCategory:@"checkout"
                                            event:@"order.submit.start"

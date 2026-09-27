@@ -2051,11 +2051,19 @@ public struct PPLivePetBasicDataEditorView: View {
             onSaved?(confirmed)
             isSaving = false
 
+            let waitingCount = WantedPetsService.shared.waitingCountFor(
+                mainKindId: Int(confirmed.petMainCategoryID),
+                subkindId: Int(confirmed.petSubCategoryID) > 0 ? Int(confirmed.petSubCategoryID) : nil
+            )
+            let successSubtitle = waitingCount > 0
+                ? String(format: Language.get("WantedPets_PostSave_WaitingAlert", alter: "تم الحفظ. يوجد %d عميل مسجلين في قائمة الانتظار لهذا الحيوان!"), waitingCount)
+                : Language.get("LivePetBasicDataSavedSubtitle", alter: "تم تحديث البيانات الأساسية وتأكيد النسخة المعتمدة بنجاح")
+
             // Success Alert via PPAlertHelper
             PPAlertHelper.showSuccess(
                 in: nil,
                 title: Language.get("SavedSuccessfully", alter: "تم الحفظ بنجاح"),
-                subtitle: Language.get("LivePetBasicDataSavedSubtitle", alter: "تم تحديث البيانات الأساسية وتأكيد النسخة المعتمدة بنجاح")
+                subtitle: successSubtitle
             )
 
             dismiss()

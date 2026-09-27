@@ -1108,9 +1108,10 @@ private struct AdminWorkDeckView: View {
     private var canAccessories: Bool { AdminRoute.accessories.isAuthorized(for: session) }
     private var canFood: Bool { AdminRoute.food.isAuthorized(for: session) }
     private var canLivePets: Bool { AdminRoute.livePets.isAuthorized(for: session) }
+    private var canWantedPets: Bool { AdminRoute.wantedPets.isAuthorized(for: session) }
 
     private var hasAnyAuthorizedRoute: Bool {
-        canPOS || canPOSHistory || canFulfillment || canPayments || canPaymentSettings || canAccessories || canFood || canLivePets
+        canPOS || canPOSHistory || canFulfillment || canPayments || canPaymentSettings || canAccessories || canFood || canLivePets || canWantedPets
     }
 
     var body: some View {
@@ -1165,7 +1166,7 @@ private struct AdminWorkDeckView: View {
             }
 
             // 6. Tri-Vault Inventory Horizon
-            if canAccessories || canFood || canLivePets {
+            if canAccessories || canFood || canLivePets || canWantedPets {
                 triVaultInventorySection
             }
         }
@@ -1211,7 +1212,7 @@ private struct AdminWorkDeckView: View {
             }
 
             // 3. Tri-Vault Inventory Command Bay (Full width, 3 generous columns, ZERO truncation)
-            if canAccessories || canFood || canLivePets {
+            if canAccessories || canFood || canLivePets || canWantedPets {
                 iPadInventoryVaultBay
             }
         }
@@ -1623,6 +1624,16 @@ private struct AdminWorkDeckView: View {
                         icon: "pawprint.fill",
                         tintColor: Color(uiColor: .ppPrimary),
                         route: .livePets
+                    )
+                }
+
+                if canWantedPets {
+                    inventoryVaultRow(
+                        title: Language.get("WantedPets_Title", alter: "قائمة الطلبات"),
+                        subtitle: Language.get("WantedPets_Subtitle", alter: "طلبات العملاء للحيوانات المرتقبة"),
+                        icon: "list.clipboard",
+                        tintColor: Color(uiColor: .systemPurple),
+                        route: .wantedPets
                     )
                 }
             }
@@ -2349,6 +2360,17 @@ private struct AdminWorkDeckView: View {
                         icon: "pawprint.fill",
                         tint: Color(uiColor: .ppPrimary),
                         route: .livePets
+                    )
+                }
+
+                if canWantedPets {
+                    iPadVaultColumnCard(
+                        title: Language.get("WantedPets_Title", alter: "قائمة الطلبات"),
+                        subtitle: Language.get("WantedPets_Subtitle", alter: "طلبات العملاء للحيوانات المرتقبة والتواصل الفوري عند التوفر"),
+                        badge: Language.get("WantedPets_Badge", alter: "طلبات"),
+                        icon: "list.clipboard",
+                        tint: Color(uiColor: .systemPurple),
+                        route: .wantedPets
                     )
                 }
             }

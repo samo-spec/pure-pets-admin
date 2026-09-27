@@ -109,6 +109,13 @@
 		A7E000112FA9000100A7E011 /* Features/LivePetReturns/Views/ReturnConfirmationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7E001112FA9000100A7E011 /* Features/LivePetReturns/Views/ReturnConfirmationView.swift */; };
 		A7E000122FA9000100A7E012 /* Features/LivePetReturns/Views/ReturnCaseDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7E001122FA9000100A7E012 /* Features/LivePetReturns/Views/ReturnCaseDetailView.swift */; };
 		A7E000132FA9000100A7E013 /* Features/LivePetReturns/Views/LivePetReturnCoordinatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7E001132FA9000100A7E013 /* Features/LivePetReturns/Views/LivePetReturnCoordinatorView.swift */; };
+		WP0000012FA9000100WP0001 /* Features/WantedPets/Domain/CustomerWantedPet.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP0001012FA9000100WP0001 /* Features/WantedPets/Domain/CustomerWantedPet.swift */; };
+		WP0000022FA9000100WP0002 /* Features/WantedPets/Services/WantedPetsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP0001022FA9000100WP0002 /* Features/WantedPets/Services/WantedPetsService.swift */; };
+		WP0000032FA9000100WP0003 /* Features/WantedPets/Views/WantedPetsHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP0001032FA9000100WP0003 /* Features/WantedPets/Views/WantedPetsHomeView.swift */; };
+		WP0000042FA9000100WP0004 /* Features/WantedPets/Views/AddWantedPetSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP0001042FA9000100WP0004 /* Features/WantedPets/Views/AddWantedPetSheet.swift */; };
+		WP0000052FA9000100WP0005 /* Features/WantedPets/Views/WantedPetDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP0001052FA9000100WP0005 /* Features/WantedPets/Views/WantedPetDetailView.swift */; };
+		WP0000062FA9000100WP0006 /* Features/WantedPets/Views/WaitingCustomersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP0001062FA9000100WP0006 /* Features/WantedPets/Views/WaitingCustomersView.swift */; };
+		WP0000072FA9000100WP0007 /* Features/WantedPets/Views/WantedPetsHostingControllers.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP0001072FA9000100WP0007 /* Features/WantedPets/Views/WantedPetsHostingControllers.swift */; };
 		A830585B91194AA4883BA1E2 /* Features/More/SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E052D77C53614E45BF9E1687 /* Features/More/SettingsView.swift */; };
 		A881825FE21741FE9DD2949A /* App/AdminRouteDestinationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DA39278C2834B63BDD94871 /* App/AdminRouteDestinationView.swift */; };
 		A9F100B12F70000100C0DE01 /* PPPaymentBasicsSettingsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = A9F100A22F70000100C0DE01 /* PPPaymentBasicsSettingsViewController.m */; };
@@ -535,6 +542,13 @@
 		A7E001112FA9000100A7E011 /* Features/LivePetReturns/Views/ReturnConfirmationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LivePetReturns/Views/ReturnConfirmationView.swift; sourceTree = "<group>"; };
 		A7E001122FA9000100A7E012 /* Features/LivePetReturns/Views/ReturnCaseDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LivePetReturns/Views/ReturnCaseDetailView.swift; sourceTree = "<group>"; };
 		A7E001132FA9000100A7E013 /* Features/LivePetReturns/Views/LivePetReturnCoordinatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LivePetReturns/Views/LivePetReturnCoordinatorView.swift; sourceTree = "<group>"; };
+		WP0001012FA9000100WP0001 /* Features/WantedPets/Domain/CustomerWantedPet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/WantedPets/Domain/CustomerWantedPet.swift; sourceTree = "<group>"; };
+		WP0001022FA9000100WP0002 /* Features/WantedPets/Services/WantedPetsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/WantedPets/Services/WantedPetsService.swift; sourceTree = "<group>"; };
+		WP0001032FA9000100WP0003 /* Features/WantedPets/Views/WantedPetsHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/WantedPets/Views/WantedPetsHomeView.swift; sourceTree = "<group>"; };
+		WP0001042FA9000100WP0004 /* Features/WantedPets/Views/AddWantedPetSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/WantedPets/Views/AddWantedPetSheet.swift; sourceTree = "<group>"; };
+		WP0001052FA9000100WP0005 /* Features/WantedPets/Views/WantedPetDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/WantedPets/Views/WantedPetDetailView.swift; sourceTree = "<group>"; };
+		WP0001062FA9000100WP0006 /* Features/WantedPets/Views/WaitingCustomersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/WantedPets/Views/WaitingCustomersView.swift; sourceTree = "<group>"; };
+		WP0001072FA9000100WP0007 /* Features/WantedPets/Views/WantedPetsHostingControllers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/WantedPets/Views/WantedPetsHostingControllers.swift; sourceTree = "<group>"; };
 		"A9EE603D-8855-4272-8D1C-47C018450706" /* PPAgentsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPAgentsViewController.h; sourceTree = "<group>"; };
 		A9F100A12F70000100C0DE01 /* PPPaymentBasicsSettingsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPaymentBasicsSettingsViewController.h; sourceTree = "<group>"; };
 		A9F100A22F70000100C0DE01 /* PPPaymentBasicsSettingsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPaymentBasicsSettingsViewController.m; sourceTree = "<group>"; };
@@ -1501,6 +1515,13 @@
 				A7E001112FA9000100A7E011 /* Features/LivePetReturns/Views/ReturnConfirmationView.swift */,
 				A7E001122FA9000100A7E012 /* Features/LivePetReturns/Views/ReturnCaseDetailView.swift */,
 				A7E001132FA9000100A7E013 /* Features/LivePetReturns/Views/LivePetReturnCoordinatorView.swift */,
+				WP0001012FA9000100WP0001 /* Features/WantedPets/Domain/CustomerWantedPet.swift */,
+				WP0001022FA9000100WP0002 /* Features/WantedPets/Services/WantedPetsService.swift */,
+				WP0001032FA9000100WP0003 /* Features/WantedPets/Views/WantedPetsHomeView.swift */,
+				WP0001042FA9000100WP0004 /* Features/WantedPets/Views/AddWantedPetSheet.swift */,
+				WP0001052FA9000100WP0005 /* Features/WantedPets/Views/WantedPetDetailView.swift */,
+				WP0001062FA9000100WP0006 /* Features/WantedPets/Views/WaitingCustomersView.swift */,
+				WP0001072FA9000100WP0007 /* Features/WantedPets/Views/WantedPetsHostingControllers.swift */,
 			);
 			path = PurePetsAdmin;
 			sourceTree = "<group>";
@@ -2733,6 +2754,13 @@
 				A7E000112FA9000100A7E011 /* Features/LivePetReturns/Views/ReturnConfirmationView.swift in Sources */,
 				A7E000122FA9000100A7E012 /* Features/LivePetReturns/Views/ReturnCaseDetailView.swift in Sources */,
 				A7E000132FA9000100A7E013 /* Features/LivePetReturns/Views/LivePetReturnCoordinatorView.swift in Sources */,
+				WP0000012FA9000100WP0001 /* Features/WantedPets/Domain/CustomerWantedPet.swift in Sources */,
+				WP0000022FA9000100WP0002 /* Features/WantedPets/Services/WantedPetsService.swift in Sources */,
+				WP0000032FA9000100WP0003 /* Features/WantedPets/Views/WantedPetsHomeView.swift in Sources */,
+				WP0000042FA9000100WP0004 /* Features/WantedPets/Views/AddWantedPetSheet.swift in Sources */,
+				WP0000052FA9000100WP0005 /* Features/WantedPets/Views/WantedPetDetailView.swift in Sources */,
+				WP0000062FA9000100WP0006 /* Features/WantedPets/Views/WaitingCustomersView.swift in Sources */,
+				WP0000072FA9000100WP0007 /* Features/WantedPets/Views/WantedPetsHostingControllers.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

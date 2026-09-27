@@ -5044,6 +5044,24 @@ private struct FlagshipInventoryCard: View {
             if let weight = item.weightText?.trimmingCharacters(in: .whitespacesAndNewlines), !weight.isEmpty {
                 Label(weight, systemImage: "scalemass")
             }
+            if item.isLivePet {
+                let waitingCount = WantedPetsService.shared.waitingCountFor(
+                    mainKindId: Int(item.petMainCategoryID),
+                    subkindId: Int(item.petSubCategoryID) > 0 ? Int(item.petSubCategoryID) : nil
+                )
+                if waitingCount > 0 {
+                    HStack(spacing: 3) {
+                        Image(systemName: "person.2.fill")
+                            .font(.system(size: 9, weight: .bold))
+                        Text(String(format: Language.get("WantedPets_Waiting_Badge", alter: "%d ينتظرون"), waitingCount))
+                            .font(AdminType.captionBold)
+                    }
+                    .foregroundStyle(Color(uiColor: .systemOrange))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color(uiColor: .systemOrange).opacity(0.12), in: Capsule())
+                }
+            }
         }
         .font(AdminType.caption)
         .foregroundStyle(AdminSurface.secondaryText)
@@ -6450,6 +6468,7 @@ public struct PPInventoryItemDetailView: View {
     @State private var activeCommandUnit: PPLivePetInventoryUnit? = nil
     @State private var activeReturnCaseRoute: PPLivePetReturnCaseRoute? = nil
     @State private var showHistoryUnits: Bool = false
+    @State private var showWaitingCustomersSheet: Bool = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.colorScheme) private var colorScheme
@@ -6731,6 +6750,15 @@ public struct PPInventoryItemDetailView: View {
         }
         .sheet(isPresented: $isLightboxPresented) {
             specimenLightboxView
+        }
+        .sheet(isPresented: $showWaitingCustomersSheet) {
+            NavigationStack {
+                WaitingCustomersView(
+                    petTitle: item.name ?? "",
+                    mainKindId: Int(item.petMainCategoryID),
+                    subkindId: Int(item.petSubCategoryID) > 0 ? Int(item.petSubCategoryID) : nil
+                )
+            }
         }
         .sheet(isPresented: $showTransferSheet) {
             PPStockTransferSheet(
@@ -8100,6 +8128,10 @@ public struct PPInventoryItemDetailView: View {
             if liveModel.canViewReservations && !liveModel.reservations.isEmpty {
                 activeReservationsLedger
             }
+
+            if item.isLivePet {
+                waitingCustomersCardSection
+            }
         }
         .padding(16)
         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -8107,6 +8139,58 @@ public struct PPInventoryItemDetailView: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
         )
+    }
+
+    private var waitingCustomersCardSection: some View {
+        let waitingCount = WantedPetsService.shared.waitingCountFor(
+            mainKindId: Int(item.petMainCategoryID),
+            subkindId: Int(item.petSubCategoryID) > 0 ? Int(item.petSubCategoryID) : nil
+        )
+        return Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            showWaitingCustomersSheet = true
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Color(uiColor: .systemOrange).opacity(0.12))
+                    Image(systemName: "person.2.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Color(uiColor: .systemOrange))
+                }
+                .frame(width: 40, height: 40)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(Language.get("WantedPets_Card_Title", alter: "العملاء المنتظرون لهذا الحيوان"))
+                            .font(Font.custom("Beiruti-Bold", size: 15))
+                            .foregroundStyle(AdminSurface.primaryText)
+
+                        if waitingCount > 0 {
+                            Text(String(format: Language.get("WantedPets_Waiting_Badge", alter: "%d ينتظرون"), waitingCount))
+                                .font(Font.custom("Beiruti-Bold", size: 12))
+                                .foregroundStyle(Color(uiColor: .systemOrange))
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2)
+                                .background(Color(uiColor: .systemOrange).opacity(0.12), in: Capsule())
+                        }
+                    }
+
+                    Text(String(format: Language.get("WantedPets_Card_Subtitle", alter: "%d عميل مسجل في قائمة الطلبات بانتظار هذا الحيوان"), waitingCount))
+                        .font(Font.custom("Beiruti-Regular", size: 12))
+                        .foregroundStyle(AdminCommandInk.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.forward")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+            .padding(12)
+            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private var livePetCommandHeader: some View {
@@ -15351,6 +15435,18 @@ private struct PPLivePetOperationSheet: View {
 
             if ok {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
+                if case .intake = context, model.item.isLivePet {
+                    let mainKind = Int(model.item.petMainCategoryID)
+                    let subKind = Int(model.item.petSubCategoryID) > 0 ? Int(model.item.petSubCategoryID) : nil
+                    let waitingCount = WantedPetsService.shared.waitingCountFor(mainKindId: mainKind, subkindId: subKind)
+                    if waitingCount > 0 {
+                        await PPAlertHelper.showInfo(
+                            in: nil,
+                            title: Language.get("LivePet_Intake_WaitingMatch_Title", alter: "يوجد عملاء بانتظار هذا الحيوان"),
+                            subtitle: String(format: Language.get("LivePet_Intake_WaitingMatch_Subtitle", alter: "تمت إضافة المخزون. يوجد %d عميل في قائمة الانتظار يبحثون عن هذا الحيوان."), waitingCount)
+                        )
+                    }
+                }
                 dismiss()
             }
         }
