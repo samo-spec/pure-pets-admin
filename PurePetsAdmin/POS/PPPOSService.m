@@ -79,6 +79,12 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         _variantColorNameEn = PPSafeString(dict[@"variantColorNameEn"]);
         _variantAxis = PPSafeString(dict[@"variantAxis"]);
         _isVariant = [dict[@"isVariant"] boolValue] || dict[@"productFamilyId"] != nil || _variantOptionName.length > 0 || _selectedOptionsSnapshot.count > 0 || _variantColorName.length > 0 || _size.length > 0 || _weightText.length > 0;
+        _isLivePet = [dict[@"isLivePet"] boolValue] ||
+                     [PPSafeString(dict[@"itemType"]).lowercaseString isEqualToString:@"live_pet"] ||
+                     [PPSafeString(dict[@"itemType"]).lowercaseString isEqualToString:@"livepet"] ||
+                     [_inventoryMode.uppercaseString isEqualToString:@"INDIVIDUAL_TRACKED"] ||
+                     _unitIDs.count > 0 ||
+                     _unitRingTags.count > 0;
 
         BOOL isRTL = [Language isRTL];
         if (_variantOptionName.length == 0 && _selectedOptionsSnapshot.count > 0) {
@@ -169,6 +175,8 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         _subSubKindItemID = PPSafeNumber(dict[@"subSubKindItemID"] ?: dict[@"subSubKindItemId"]);
         _subSubKindItemNameAr = PPSafeString(dict[@"subSubKindItemNameAr"] ?: dict[@"subSubKindItemName"]);
         _subSubKindItemNameEn = PPSafeString(dict[@"subSubKindItemNameEn"]);
+        _imageURL = PPSafeString(dict[@"imageURL"] ?: dict[@"mediaURL"] ?: [dict[@"mediaURLs"] firstObject]);
+        _mediaURLs = PPPOSStringArray(dict[@"mediaURLs"]);
     }
     return self;
 }
@@ -973,7 +981,13 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
     if (customerPhone.length > 0) {
         salePayload[@"customerPhone"] = customerPhone;
     }
-    (void)posCustomerID;
+    // `processTransaction` in transactions.js treats `payload.posCustomerId` as a customer
+    // reservation field when creating a sale; completed sales (`status === "completed"`)
+    // reject if reservation fields are present. Walk-in directory contacts are linked
+    // via `customerPhoneLookup`. We include `posCustomerId` in diagnostic telemetry.
+    if (posCustomerID.length > 0) {
+        startMeta[@"posCustomerId"] = posCustomerID;
+    }
 
     NSMutableDictionary *startMeta = [NSMutableDictionary dictionary];
     startMeta[@"commandId"] = commandID ?: @"none";

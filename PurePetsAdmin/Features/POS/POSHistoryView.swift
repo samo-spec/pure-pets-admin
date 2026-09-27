@@ -1889,16 +1889,29 @@ private struct DossierItemRow: View {
                         .foregroundColor(AdminSurface.primaryText)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    if let variant = item.variantOptionName?.trimmingCharacters(in: .whitespacesAndNewlines), !variant.isEmpty {
-                        let smart = POSReceiptFormat.smartVariantOptionDisplay(variant) ?? variant
+                    let isLive = item.isLivePet || (item.inventoryMode?.uppercased() == "INDIVIDUAL_TRACKED") || !item.unitRingTags.isEmpty || !item.unitIDs.isEmpty
+                    if isLive {
                         HStack(spacing: 4) {
-                            Text(smart)
+                            Image(systemName: "pawprint.fill")
+                                .font(.system(size: 8, weight: .bold))
+                            Text(Language.get("LiveAnimal", alter: "حيوان حي"))
                                 .font(DossierFont.bold(11, relativeTo: .caption2))
                                 .foregroundColor(AdminSurface.primary)
                         }
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    } else if let variant = item.variantOptionName?.trimmingCharacters(in: .whitespacesAndNewlines), !variant.isEmpty, !variant.lowercased().contains("catalog_"), !variant.lowercased().hasPrefix("catalog") {
+                        if let smart = POSReceiptFormat.smartVariantOptionDisplay(variant) {
+                            HStack(spacing: 4) {
+                                Text(smart)
+                                    .font(DossierFont.bold(11, relativeTo: .caption2))
+                                    .foregroundColor(AdminSurface.primary)
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                        }
                     }
 
                     HStack(spacing: 6) {
@@ -3495,14 +3508,15 @@ struct POSRefundStudioSheet: View {
                                         .font(AdminType.body)
                                         .foregroundColor(AdminSurface.primaryText)
 
-                                    if let variant = item.variantOptionName?.trimmingCharacters(in: .whitespacesAndNewlines), !variant.isEmpty {
-                                        let smart = POSReceiptFormat.smartVariantOptionDisplay(variant) ?? variant
-                                        Text(smart)
-                                            .font(AdminType.caption2Bold)
-                                            .foregroundColor(AdminSurface.primary)
-                                            .padding(.horizontal, 6)
-                                            .padding(.vertical, 1)
-                                            .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                                    if !isLivePet, let variant = item.variantOptionName?.trimmingCharacters(in: .whitespacesAndNewlines), !variant.isEmpty, !variant.lowercased().contains("catalog_"), !variant.lowercased().hasPrefix("catalog") {
+                                        if let smart = POSReceiptFormat.smartVariantOptionDisplay(variant) {
+                                            Text(smart)
+                                                .font(AdminType.caption2Bold)
+                                                .foregroundColor(AdminSurface.primary)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 1)
+                                                .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                                        }
                                     }
 
                                     if isLivePet {
@@ -3690,27 +3704,41 @@ struct POSRefundStudioSheet: View {
     }
 
     private var calculatedRefundAmount: Double {
+        var refundSubtotal: Double = 0
         if isFullRefund {
-            var sum: Double = 0
             for item in receipt.items {
                 let isLivePet = (item.inventoryMode?.uppercased() == "INDIVIDUAL_TRACKED") || !item.unitIDs.isEmpty
                 if !isLivePet {
                     let available = max(0, item.quantity - item.refundedQuantity)
-                    sum += Double(available) * item.price
+                    refundSubtotal = POSMoney.round(refundSubtotal + POSMoney.round(Double(available) * item.price))
                 }
             }
-            return min(sum, max(0.0, receipt.total - receipt.refundedAmount))
         } else {
-            var sum: Double = 0
             for item in receipt.items {
                 let isLivePet = (item.inventoryMode?.uppercased() == "INDIVIDUAL_TRACKED") || !item.unitIDs.isEmpty
                 if !isLivePet {
                     let qty = itemQuantities[item.itemID] ?? 0
-                    sum += Double(qty) * item.price
+                    refundSubtotal = POSMoney.round(refundSubtotal + POSMoney.round(Double(qty) * item.price))
                 }
             }
-            return min(sum, max(0.0, receipt.total - receipt.refundedAmount))
         }
+        guard refundSubtotal > 0 else { return 0 }
+
+        // Align with transactions.js (lines 3066-3070):
+        // canonicalReturnAmount = roundMoney(Math.max(0, refundSubtotal - proportionalDiscount))
+        let originalSubtotal = receipt.subtotal > 0
+            ? receipt.subtotal
+            : receipt.items.reduce(0.0) { $0 + POSMoney.round(Double($1.quantity) * $1.price) }
+        let discount = POSMoney.round(max(0.0, receipt.discount))
+        let proportionalDiscount: Double
+        if originalSubtotal > 0 && discount > 0 {
+            proportionalDiscount = POSMoney.round((refundSubtotal / originalSubtotal) * discount)
+        } else {
+            proportionalDiscount = 0
+        }
+        let canonicalReturnAmount = POSMoney.round(max(0.0, refundSubtotal - proportionalDiscount))
+        let maxRefundable = max(0.0, receipt.total - receipt.refundedAmount)
+        return min(canonicalReturnAmount, maxRefundable)
     }
 
     private var canSubmit: Bool {
@@ -3736,7 +3764,8 @@ struct POSRefundStudioSheet: View {
                 mapped.append([
                     "productId": item.itemID,
                     "quantity": qty,
-                    "refundAmount": Double(qty) * item.price,
+                    "assertedUnitPrice": item.price,
+                    "refundAmount": POSMoney.round(Double(qty) * item.price),
                     "condition": cond,
                     "disposition": disp,
                     "reasonCode": reasonCode,
@@ -4289,12 +4318,25 @@ struct POSCancelConfirmationSheet: View {
                                 .foregroundColor(AdminSurface.primaryText)
                                 .lineLimit(1)
 
-                            if let variant = item.variantOptionName?.trimmingCharacters(in: .whitespacesAndNewlines), !variant.isEmpty {
-                                let smart = POSReceiptFormat.smartVariantOptionDisplay(variant) ?? variant
-                                Text(smart)
-                                    .font(AdminType.caption2Bold)
-                                    .foregroundColor(AdminSurface.primary)
-                                    .lineLimit(1)
+                            let isLive = item.isLivePet || (item.inventoryMode?.uppercased() == "INDIVIDUAL_TRACKED") || !item.unitRingTags.isEmpty || !item.unitIDs.isEmpty
+                            if isLive {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "pawprint.fill")
+                                        .font(.system(size: 8, weight: .bold))
+                                    Text(Language.get("LiveAnimal", alter: "حيوان حي"))
+                                        .font(AdminType.caption2Bold)
+                                        .foregroundColor(AdminSurface.primary)
+                                }
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                            } else if let variant = item.variantOptionName?.trimmingCharacters(in: .whitespacesAndNewlines), !variant.isEmpty, !variant.lowercased().contains("catalog_"), !variant.lowercased().hasPrefix("catalog") {
+                                if let smart = POSReceiptFormat.smartVariantOptionDisplay(variant) {
+                                    Text(smart)
+                                        .font(AdminType.caption2Bold)
+                                        .foregroundColor(AdminSurface.primary)
+                                        .lineLimit(1)
+                                }
                             }
 
                             HStack(spacing: 6) {

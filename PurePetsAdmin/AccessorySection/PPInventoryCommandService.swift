@@ -261,7 +261,9 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
         if !productId.isEmpty {
             requestData["productId"] = productId
         }
-        let authoritativeExpectedRevision = expectedRevision ?? (isUpdate && accessory.revision > 0 ? accessory.revision : nil)
+        // Infra treats a missing/zero legacy revision as one. Still send that
+        // baseline so a concurrent update cannot turn this into an unchecked save.
+        let authoritativeExpectedRevision = expectedRevision ?? (isUpdate ? max(1, accessory.revision) : nil)
         if let rev = authoritativeExpectedRevision {
             requestData["expectedRevision"] = rev
         }
@@ -271,14 +273,6 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
 
     public func executeProductSave(
         request: [String: Any],
-        completion: @escaping @Sendable (PPInventoryCommandResult?, Error?) -> Void
-    ) {
-        executeProductSave(request: request, retryOnStaleRevision: true, completion: completion)
-    }
-
-    @nonobjc public func executeProductSave(
-        request: [String: Any],
-        retryOnStaleRevision: Bool,
         completion: @escaping @Sendable (PPInventoryCommandResult?, Error?) -> Void
     ) {
         guard let commandId = request["commandId"] as? String, !commandId.isEmpty,
@@ -301,15 +295,9 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
                     completion(nil, rejection)
                     return
                 }
-                // If this is a stale revision conflict, retry once with the current authoritative revision
-                if retryOnStaleRevision, let stale = PPInventoryCommandService.staleRevision(from: error) {
-                    var retriedRequest = boxed.data
-                    retriedRequest["expectedRevision"] = stale.current
-                    let freshCommandId = self.generateCommandId(action: action, targetId: productId.isEmpty ? "new" : productId)
-                    retriedRequest["commandId"] = freshCommandId
-                    self.executeProductSave(request: retriedRequest, retryOnStaleRevision: false, completion: completion)
-                    return
-                }
+                // A conflict requires reloading and reviewing the current product.
+                // Rebasing this old payload (or replacing its durable command ID)
+                // would overwrite the concurrent editor's accepted changes.
                 completion(nil, error)
                 return
             }

@@ -57,6 +57,14 @@ static NSError *PPProviderLedgerAccessError(void) {
         _reviewedBy = [PPSafeString(safe[@"reviewedBy"]) copy];
         _reviewNotes = [PPSafeString(safe[@"reviewNotes"]) copy];
         _rejectionReason = [PPSafeString(safe[@"rejectionReason"]) copy];
+        _rejectionCode = [PPSafeString(safe[@"rejectionCode"]) copy];
+        _reviewFindings = [PPSafeArray(safe[@"reviewFindings"]) copy];
+        _activationChecklist = [PPSafeDict(safe[@"activationChecklist"]) copy];
+        _resubmissionCount = PPSafeIntegerUniversal(safe[@"resubmissionCount"]);
+        _version = PPSafeIntegerUniversal(safe[@"version"]);
+        if (_version < 1) _version = 1;
+        _tags = [PPSafeArray(safe[@"tags"]) copy];
+        _documents = [PPSafeDict(safe[@"documents"]) copy];
     }
     return self;
 }
@@ -146,6 +154,33 @@ static NSError *PPProviderLedgerAccessError(void) {
     }];
 }
 
+- (id<FIRListenerRegistration>)listenApplicationsWithUpdate:(void(^)(NSArray<PPProviderApplication *> *, NSError *))updateBlock {
+    FIRFirestore *db = [FIRFirestore firestore];
+    FIRQuery *query = [[db collectionWithPath:@"providerApplications"] queryWhereField:@"providerType" in:@[
+        @"delivery_company",
+        @"service",
+        @"marketplace",
+        @"pharmacy",
+        @"vet"
+    ]];
+    return [query addSnapshotListener:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
+        if (error) {
+            if (updateBlock) updateBlock(@[], error);
+            return;
+        }
+        NSMutableArray *apps = [NSMutableArray array];
+        for (FIRDocumentSnapshot *doc in snapshot.documents) {
+            [apps addObject:[[PPProviderApplication alloc] initWithDictionary:doc.data documentID:doc.documentID]];
+        }
+        [apps sortUsingComparator:^NSComparisonResult(PPProviderApplication *left, PPProviderApplication *right) {
+            NSDate *leftDate = left.submittedAt ?: left.createdAt ?: left.updatedAt ?: NSDate.distantPast;
+            NSDate *rightDate = right.submittedAt ?: right.createdAt ?: right.updatedAt ?: NSDate.distantPast;
+            return [rightDate compare:leftDate];
+        }];
+        if (updateBlock) updateBlock(apps.copy, nil);
+    }];
+}
+
 - (void)fetchPlansWithCompletion:(void(^)(NSArray<PPProviderPlan *> *, NSError *))completion {
     FIRFirestore *db = [FIRFirestore firestore];
     [[db collectionWithPath:@"providerPlans"] getDocumentsWithCompletion:^(FIRQuerySnapshot *snapshot, NSError *error) {
@@ -192,13 +227,57 @@ static NSError *PPProviderLedgerAccessError(void) {
                     status:(NSString *)status
                      notes:(nullable NSString *)notes
                 completion:(void(^)(NSDictionary *, NSError *))completion {
+    [self reviewApplication:appID status:status notes:notes rejectionCode:nil reviewFindings:nil completion:completion];
+}
+
+- (void)reviewApplication:(NSString *)appID
+                    status:(NSString *)status
+                     notes:(nullable NSString *)notes
+             rejectionCode:(nullable NSString *)rejectionCode
+            reviewFindings:(nullable NSArray<NSDictionary *> *)reviewFindings
+                completion:(void(^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
+    [self reviewApplication:appID status:status notes:notes rejectionCode:rejectionCode reviewFindings:reviewFindings expectedVersion:nil completion:completion];
+}
+
+- (void)reviewApplication:(NSString *)appID
+                    status:(NSString *)status
+                     notes:(nullable NSString *)notes
+             rejectionCode:(nullable NSString *)rejectionCode
+            reviewFindings:(nullable NSArray<NSDictionary *> *)reviewFindings
+           expectedVersion:(nullable NSNumber *)expectedVersion
+                completion:(void(^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
+    [self reviewApplication:appID status:status notes:notes rejectionCode:rejectionCode reviewFindings:reviewFindings expectedVersion:expectedVersion idempotencyKey:nil completion:completion];
+}
+
+- (void)reviewApplication:(NSString *)appID
+                    status:(NSString *)status
+                     notes:(nullable NSString *)notes
+             rejectionCode:(nullable NSString *)rejectionCode
+            reviewFindings:(nullable NSArray<NSDictionary *> *)reviewFindings
+           expectedVersion:(nullable NSNumber *)expectedVersion
+            idempotencyKey:(nullable NSString *)idempotencyKey
+                completion:(void(^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
     FIRFunctions *functions = [FIRFunctions functions];
     FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"reviewProviderApplication"];
-    [callable callWithObject:@{
-        @"applicationId": appID,
-        @"decision": status,
+    NSMutableDictionary *payload = [@{
+        @"applicationId": appID ?: @"",
+        @"decision": status ?: @"",
         @"reviewNotes": notes ?: @""
-    } completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+    } mutableCopy];
+    if (rejectionCode.length > 0) {
+        payload[@"rejectionCode"] = rejectionCode;
+        payload[@"rejectionReason"] = notes ?: @"";
+    }
+    if (reviewFindings.count > 0) {
+        payload[@"reviewFindings"] = reviewFindings;
+    }
+    if (expectedVersion) {
+        payload[@"expectedVersion"] = expectedVersion;
+    }
+    NSString *effectiveKey = idempotencyKey ?: [NSString stringWithFormat:@"rev_%@_%@_%@", appID ?: @"app", status ?: @"stat", [[NSUUID UUID] UUIDString].lowercaseString];
+    payload[@"idempotencyKey"] = effectiveKey;
+
+    [callable callWithObject:payload.copy completion:^(FIRHTTPSCallableResult *result, NSError *error) {
         if (completion) completion(PPSafeDict(result.data), error);
     }];
 }
@@ -255,6 +334,638 @@ static NSError *PPProviderLedgerAccessError(void) {
             return [(right.createdAt ?: NSDate.distantPast) compare:(left.createdAt ?: NSDate.distantPast)];
         }];
         if (completion) completion(records.copy, PPSafeArray(data[@"totals"]), nil);
+    }];
+}
+
+- (void)batchAssignReviewer:(NSArray<NSString *> *)applicationIDs
+                 reviewerUid:(NSString *)reviewerUid
+                  completion:(void(^)(NSInteger updatedCount, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"batchAssignProviderReviewer"];
+    [callable callWithObject:@{
+        @"applicationIds": applicationIDs ?: @[],
+        @"reviewerUid": reviewerUid ?: @""
+    } completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (error) {
+            if (completion) completion(0, error);
+            return;
+        }
+        NSDictionary *data = PPSafeDict(result.data);
+        NSInteger count = PPSafeIntegerUniversal(data[@"updatedCount"]);
+        if (completion) completion(count, nil);
+    }];
+}
+
+- (void)batchAddTag:(NSArray<NSString *> *)applicationIDs
+                 tag:(NSString *)tag
+          completion:(void(^)(NSInteger updatedCount, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"batchTagProviderApplications"];
+    [callable callWithObject:@{
+        @"applicationIds": applicationIDs ?: @[],
+        @"tag": tag ?: @""
+    } completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (error) {
+            if (completion) completion(0, error);
+            return;
+        }
+        NSDictionary *data = PPSafeDict(result.data);
+        NSInteger count = PPSafeIntegerUniversal(data[@"updatedCount"]);
+        if (completion) completion(count, nil);
+    }];
+}
+
+- (void)reviewApplicationDocument:(NSString *)applicationID
+                     documentType:(NSString *)documentType
+                         decision:(NSString *)decision
+                          finding:(nullable NSString *)finding
+                       expiryDate:(nullable NSString *)expiryDate
+                       completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"reviewApplicationDocument"];
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[@"applicationId"] = applicationID ?: @"";
+    payload[@"documentType"] = documentType ?: @"";
+    payload[@"decision"] = decision ?: @"";
+    if (finding.length > 0) {
+        payload[@"finding"] = finding;
+    }
+    if (expiryDate.length > 0) {
+        payload[@"expiryDate"] = expiryDate;
+    }
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        NSDictionary *data = PPSafeDict(result.data);
+        if (completion) completion(data, nil);
+    }];
+}
+
+- (void)fetchPartnerSyncSnapshot:(NSString *)partnerId
+                   clientVersion:(nullable NSNumber *)clientVersion
+                      completion:(void(^)(BOOL inSync, BOOL catchUpRequired, NSDictionary * _Nullable snapshot, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"fetchPartnerSyncSnapshot"];
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[@"partnerId"] = partnerId ?: @"";
+    if (clientVersion) {
+        payload[@"clientVersion"] = clientVersion;
+    }
+
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (error) {
+            if (completion) completion(NO, NO, nil, error);
+            return;
+        }
+        NSDictionary *data = PPSafeDict(result.data);
+        BOOL inSync = [data[@"inSync"] boolValue];
+        BOOL catchUp = [data[@"catchUpRequired"] boolValue];
+        if (completion) completion(inSync, catchUp, data, nil);
+    }];
+}
+
+- (void)reconcilePartnerReadModels:(NSString *)partnerId
+                        completion:(void(^)(BOOL reconciled, NSDictionary * _Nullable result, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"syncPartnerReadModels"];
+    NSDictionary *payload = @{
+        @"partnerId": partnerId ?: @"",
+        @"force": @YES,
+    };
+
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (error) {
+            if (completion) completion(NO, nil, error);
+            return;
+        }
+        NSDictionary *data = PPSafeDict(result.data);
+        BOOL reconciled = [data[@"reconciled"] boolValue];
+        if (completion) completion(reconciled, data, nil);
+    }];
+}
+
+- (void)restrictPartnerAccount:(NSString *)partnerId
+                         scope:(NSString *)scope
+                   scopeTarget:(nullable NSString *)scopeTarget
+                    reasonCode:(NSString *)reasonCode
+                internalReason:(nullable NSString *)internalReason
+           partnerFacingReason:(nullable NSString *)partnerFacingReason
+         partnerFacingReasonAr:(nullable NSString *)partnerFacingReasonAr
+                requiredAction:(nullable NSString *)requiredAction
+              requiredActionAr:(nullable NSString *)requiredActionAr
+               expectedVersion:(nullable NSNumber *)expectedVersion
+                idempotencyKey:(nullable NSString *)idempotencyKey
+                    completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"restrictPartnerAccount"];
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[@"partnerId"] = partnerId ?: @"";
+    payload[@"scope"] = scope ?: @"full_account";
+    if (scopeTarget.length > 0) payload[@"scopeTarget"] = scopeTarget;
+    payload[@"reasonCode"] = reasonCode.length > 0 ? reasonCode : @"TEMPORARY_RESTRICTION";
+    if (internalReason.length > 0) payload[@"internalReason"] = internalReason;
+    if (partnerFacingReason.length > 0) payload[@"partnerFacingReason"] = partnerFacingReason;
+    if (partnerFacingReasonAr.length > 0) payload[@"partnerFacingReason_ar"] = partnerFacingReasonAr;
+    if (requiredAction.length > 0) payload[@"requiredAction"] = requiredAction;
+    if (requiredActionAr.length > 0) payload[@"requiredAction_ar"] = requiredActionAr;
+    if (expectedVersion) payload[@"expectedVersion"] = expectedVersion;
+    if (idempotencyKey.length > 0) payload[@"idempotencyKey"] = idempotencyKey;
+
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        NSDictionary *data = PPSafeDict(result.data);
+        if (completion) completion(data, nil);
+    }];
+}
+
+- (void)suspendPartnerAccount:(NSString *)partnerId
+                        scope:(NSString *)scope
+                  scopeTarget:(nullable NSString *)scopeTarget
+                   reasonCode:(NSString *)reasonCode
+               internalReason:(nullable NSString *)internalReason
+          partnerFacingReason:(nullable NSString *)partnerFacingReason
+        partnerFacingReasonAr:(nullable NSString *)partnerFacingReasonAr
+               requiredAction:(nullable NSString *)requiredAction
+             requiredActionAr:(nullable NSString *)requiredActionAr
+              expectedVersion:(nullable NSNumber *)expectedVersion
+               idempotencyKey:(nullable NSString *)idempotencyKey
+                   completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"suspendPartnerAccount"];
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[@"partnerId"] = partnerId ?: @"";
+    payload[@"scope"] = scope ?: @"full_account";
+    if (scopeTarget.length > 0) payload[@"scopeTarget"] = scopeTarget;
+    payload[@"reasonCode"] = reasonCode.length > 0 ? reasonCode : @"SUSPENSION_ENFORCED";
+    if (internalReason.length > 0) payload[@"internalReason"] = internalReason;
+    if (partnerFacingReason.length > 0) payload[@"partnerFacingReason"] = partnerFacingReason;
+    if (partnerFacingReasonAr.length > 0) payload[@"partnerFacingReason_ar"] = partnerFacingReasonAr;
+    if (requiredAction.length > 0) payload[@"requiredAction"] = requiredAction;
+    if (requiredActionAr.length > 0) payload[@"requiredAction_ar"] = requiredActionAr;
+    if (expectedVersion) payload[@"expectedVersion"] = expectedVersion;
+    if (idempotencyKey.length > 0) payload[@"idempotencyKey"] = idempotencyKey;
+
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        NSDictionary *data = PPSafeDict(result.data);
+        if (completion) completion(data, nil);
+    }];
+}
+
+- (void)liftPartnerRestriction:(NSString *)partnerId
+                 restrictionId:(NSString *)restrictionId
+                    liftReason:(NSString *)liftReason
+                  liftReasonAr:(nullable NSString *)liftReasonAr
+               expectedVersion:(nullable NSNumber *)expectedVersion
+                idempotencyKey:(nullable NSString *)idempotencyKey
+                    completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"liftPartnerAccountRestriction"];
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[@"partnerId"] = partnerId ?: @"";
+    payload[@"restrictionId"] = restrictionId ?: @"";
+    payload[@"liftReason"] = liftReason ?: @"";
+    if (liftReasonAr.length > 0) payload[@"liftReason_ar"] = liftReasonAr;
+    if (expectedVersion) payload[@"expectedVersion"] = expectedVersion;
+    if (idempotencyKey.length > 0) payload[@"idempotencyKey"] = idempotencyKey;
+
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        NSDictionary *data = PPSafeDict(result.data);
+        if (completion) completion(data, nil);
+    }];
+}
+
+- (void)fetchPartnerRestrictions:(NSString *)partnerId
+                      completion:(void(^)(NSDictionary * _Nullable summary, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"getPartnerRestrictionsSummary"];
+    NSDictionary *payload = @{
+        @"partnerId": partnerId ?: @"",
+    };
+
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        NSDictionary *data = PPSafeDict(result.data);
+        NSDictionary *summary = [data[@"summary"] isKindOfClass:NSDictionary.class] ? data[@"summary"] : data;
+        if (completion) completion(summary, nil);
+    }];
+}
+
+- (void)reviewPartnerReactivation:(NSString *)partnerId
+                        requestId:(NSString *)requestId
+                         decision:(NSString *)decision
+                       conditions:(nullable NSArray<NSString *> *)conditions
+                  rejectionReason:(nullable NSString *)rejectionReason
+                rejectionReasonAr:(nullable NSString *)rejectionReasonAr
+                       adminNotes:(nullable NSString *)adminNotes
+                  expectedVersion:(nullable NSNumber *)expectedVersion
+                   idempotencyKey:(nullable NSString *)idempotencyKey
+                       completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"reviewPartnerReactivationRequest"];
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[@"partnerId"] = partnerId ?: @"";
+    payload[@"requestId"] = requestId ?: @"";
+    payload[@"decision"] = decision ?: @"";
+    if (conditions) payload[@"conditions"] = conditions;
+    if (rejectionReason.length > 0) payload[@"rejectionReason"] = rejectionReason;
+    if (rejectionReasonAr.length > 0) payload[@"rejectionReason_ar"] = rejectionReasonAr;
+    if (adminNotes.length > 0) payload[@"adminNotes"] = adminNotes;
+    if (expectedVersion) payload[@"expectedVersion"] = expectedVersion;
+    if (idempotencyKey.length > 0) payload[@"idempotencyKey"] = idempotencyKey;
+
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        NSDictionary *data = PPSafeDict(result.data);
+        if (completion) completion(data, nil);
+    }];
+}
+
+- (void)reinstatePartner:(NSString *)partnerId
+                  reason:(NSString *)reason
+                reasonAr:(nullable NSString *)reasonAr
+              conditions:(nullable NSArray<NSString *> *)conditions
+         expectedVersion:(nullable NSNumber *)expectedVersion
+          idempotencyKey:(nullable NSString *)idempotencyKey
+              completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"reinstatePartnerAccount"];
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[@"partnerId"] = partnerId ?: @"";
+    payload[@"reinstateReason"] = reason ?: @"";
+    if (reasonAr.length > 0) payload[@"reinstateReason_ar"] = reasonAr;
+    if (conditions) payload[@"conditions"] = conditions;
+    if (expectedVersion) payload[@"expectedVersion"] = expectedVersion;
+    if (idempotencyKey.length > 0) payload[@"idempotencyKey"] = idempotencyKey;
+
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        NSDictionary *data = PPSafeDict(result.data);
+        if (completion) completion(data, nil);
+    }];
+}
+
+- (void)fetchPartnerReactivationDossier:(NSString *)partnerId
+                             completion:(void(^)(NSDictionary * _Nullable dossier, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"getPartnerReactivationDossierData"];
+    NSDictionary *payload = @{
+        @"partnerId": partnerId ?: @"",
+    };
+
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        NSDictionary *data = PPSafeDict(result.data);
+        NSDictionary *dossier = [data[@"dossier"] isKindOfClass:NSDictionary.class] ? data[@"dossier"] : data;
+        if (completion) completion(dossier, nil);
+    }];
+}
+
+- (void)initiatePartnerOffboarding:(NSString *)partnerId
+                   offboardingType:(NSString *)offboardingType
+                        reasonCode:(NSString *)reasonCode
+                            reason:(NSString *)reason
+                          reasonAr:(nullable NSString *)reasonAr
+                   expectedVersion:(nullable NSNumber *)expectedVersion
+                    idempotencyKey:(nullable NSString *)idempotencyKey
+                        completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"initiatePartnerOffboardingWorkflow"];
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[@"partnerId"] = partnerId ?: @"";
+    payload[@"offboardingType"] = offboardingType ?: @"involuntary";
+    payload[@"reasonCode"] = reasonCode ?: @"other";
+    payload[@"reason"] = reason ?: @"";
+    if (reasonAr.length > 0) payload[@"reason_ar"] = reasonAr;
+    if (expectedVersion) payload[@"expectedVersion"] = expectedVersion;
+    if (idempotencyKey.length > 0) payload[@"idempotencyKey"] = idempotencyKey;
+
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        NSDictionary *data = PPSafeDict(result.data);
+        if (completion) completion(data, nil);
+    }];
+}
+
+- (void)resolvePartnerOffboardingOperations:(NSString *)partnerId
+                       remainingOrdersCount:(nullable NSNumber *)remainingOrdersCount
+                                      notes:(nullable NSString *)notes
+                            expectedVersion:(nullable NSNumber *)expectedVersion
+                                 completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"resolvePartnerOffboardingOperations"];
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[@"partnerId"] = partnerId ?: @"";
+    if (remainingOrdersCount) payload[@"remainingOrdersCount"] = remainingOrdersCount;
+    if (notes.length > 0) payload[@"notes"] = notes;
+    if (expectedVersion) payload[@"expectedVersion"] = expectedVersion;
+
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        NSDictionary *data = PPSafeDict(result.data);
+        if (completion) completion(data, nil);
+    }];
+}
+
+- (void)settlePartnerOffboarding:(NSString *)partnerId
+             settlementReference:(nullable NSString *)settlementReference
+                           notes:(nullable NSString *)notes
+                 expectedVersion:(nullable NSNumber *)expectedVersion
+                      completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"settlePartnerOffboarding"];
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[@"partnerId"] = partnerId ?: @"";
+    if (settlementReference.length > 0) payload[@"settlementReference"] = settlementReference;
+    if (notes.length > 0) payload[@"notes"] = notes;
+    if (expectedVersion) payload[@"expectedVersion"] = expectedVersion;
+
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        NSDictionary *data = PPSafeDict(result.data);
+        if (completion) completion(data, nil);
+    }];
+}
+
+- (void)finalizePartnerOffboarding:(NSString *)partnerId
+                     forceOverride:(BOOL)forceOverride
+                    overrideReason:(nullable NSString *)overrideReason
+                   expectedVersion:(nullable NSNumber *)expectedVersion
+                        completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"finalizePartnerOffboardingWorkflow"];
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[@"partnerId"] = partnerId ?: @"";
+    payload[@"forceOverride"] = @(forceOverride);
+    if (overrideReason.length > 0) payload[@"overrideReason"] = overrideReason;
+    if (expectedVersion) payload[@"expectedVersion"] = expectedVersion;
+
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        NSDictionary *data = PPSafeDict(result.data);
+        if (completion) completion(data, nil);
+    }];
+}
+
+- (void)fetchPartnerOffboardingDossier:(NSString *)partnerId
+                            completion:(void(^)(NSDictionary * _Nullable dossier, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"getPartnerOffboardingDossierData"];
+    NSDictionary *payload = @{
+        @"partnerId": partnerId ?: @"",
+    };
+
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        NSDictionary *data = PPSafeDict(result.data);
+        NSDictionary *dossier = [data[@"dossier"] isKindOfClass:NSDictionary.class] ? data[@"dossier"] : data;
+        if (completion) completion(dossier, nil);
+    }];
+}
+
+- (void)fetchPartnerAuditTrail:(NSString *)partnerId
+                         limit:(nullable NSNumber *)limit
+                filterCategory:(nullable NSString *)filterCategory
+                    completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"getPartnerAuditTrail"];
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[@"partnerId"] = partnerId ?: @"";
+    if (limit) payload[@"limit"] = limit;
+    if (filterCategory && filterCategory.length > 0) payload[@"filterCategory"] = filterCategory;
+
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        NSDictionary *data = PPSafeDict(result.data);
+        if (completion) completion(data, nil);
+    }];
+}
+
+- (void)verifyPartnerAuditProvenance:(NSString *)partnerId
+            includeComplianceDossier:(BOOL)includeComplianceDossier
+                          completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"verifyPartnerAuditProvenance"];
+    NSDictionary *payload = @{
+        @"partnerId": partnerId ?: @"",
+        @"includeComplianceDossier": @(includeComplianceDossier),
+    };
+
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        NSDictionary *data = PPSafeDict(result.data);
+        if (completion) completion(data, nil);
+    }];
+}
+
+- (void)redactPartnerPersonalData:(NSString *)partnerId
+                      legalReason:(nullable NSString *)legalReason
+                        requestId:(nullable NSString *)requestId
+                  expectedVersion:(nullable NSNumber *)expectedVersion
+                       completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"redactPartnerPersonalData"];
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[@"partnerId"] = partnerId ?: @"";
+    if (legalReason && legalReason.length > 0) payload[@"legalReason"] = legalReason;
+    if (requestId && requestId.length > 0) payload[@"requestId"] = requestId;
+    if (expectedVersion) payload[@"expectedVersion"] = expectedVersion;
+
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        NSDictionary *data = PPSafeDict(result.data);
+        if (completion) completion(data, nil);
+    }];
+}
+
+- (void)exportPartnerPrivacyData:(NSString *)partnerId
+                      completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"exportPartnerPrivacyData"];
+    NSDictionary *payload = @{
+        @"partnerId": partnerId ?: @"",
+    };
+
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        NSDictionary *data = PPSafeDict(result.data);
+        if (completion) completion(data, nil);
+    }];
+}
+
+- (void)fetchPartnerCockpitSummary:(NSString *)partnerId
+                        clientEtag:(nullable NSString *)clientEtag
+                      forceRefresh:(BOOL)forceRefresh
+                        completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion {
+    if (partnerId.length == 0) {
+        if (completion) {
+            completion(nil, [NSError errorWithDomain:@"PPProviderService" code:400 userInfo:@{NSLocalizedDescriptionKey: @"partnerId is required"}]);
+        }
+        return;
+    }
+
+    NSMutableDictionary *payload = [NSMutableDictionary dictionaryWithObject:partnerId forKey:@"partnerId"];
+    if (clientEtag.length > 0) {
+        payload[@"clientEtag"] = clientEtag;
+    }
+    if (forceRefresh) {
+        payload[@"forceRefresh"] = @YES;
+    }
+
+    FIRHTTPSCallable *callable = [[FIRFunctions functions] HTTPSCallableWithName:@"getPartnerCockpitSummary"];
+    callable.timeoutInterval = 20.0;
+
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (error) {
+                if (completion) completion(nil, error);
+                return;
+            }
+            NSDictionary *data = [result.data isKindOfClass:[NSDictionary class]] ? (NSDictionary *)result.data : @{};
+            if (completion) completion(data, nil);
+        });
+    }];
+}
+
+- (void)fetchPartnerObservabilityDashboardWithCompletion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"getPartnerObservabilityDashboard"];
+    callable.timeoutInterval = 30.0;
+
+    [callable callWithObject:@{} completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (error) {
+                if (completion) completion(nil, error);
+                return;
+            }
+            NSDictionary *data = [result.data isKindOfClass:[NSDictionary class]] ? (NSDictionary *)result.data : @{};
+            if (completion) completion(data, nil);
+        });
+    }];
+}
+
+- (void)reconstructPartnerState:(NSString *)partnerId
+                           mode:(NSString *)mode
+                  upToTimestamp:(nullable NSString *)upToTimestamp
+                   repairReason:(nullable NSString *)repairReason
+                     completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion {
+    if (partnerId.length == 0) {
+        if (completion) {
+            completion(nil, [NSError errorWithDomain:@"PPProviderService" code:400 userInfo:@{NSLocalizedDescriptionKey: @"partnerId is required"}]);
+        }
+        return;
+    }
+
+    NSMutableDictionary *payload = [NSMutableDictionary dictionaryWithObject:partnerId forKey:@"partnerId"];
+    payload[@"mode"] = mode.length > 0 ? mode : @"DRY_RUN";
+    if (upToTimestamp.length > 0) payload[@"upToTimestamp"] = upToTimestamp;
+    if (repairReason.length > 0) payload[@"repairReason"] = repairReason;
+
+    FIRHTTPSCallable *callable = [[FIRFunctions functions] HTTPSCallableWithName:@"reconstructPartnerState"];
+    callable.timeoutInterval = 60.0;
+
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (error) {
+                if (completion) completion(nil, error);
+                return;
+            }
+            NSDictionary *data = [result.data isKindOfClass:[NSDictionary class]] ? (NSDictionary *)result.data : @{};
+            if (completion) completion(data, nil);
+        });
+    }];
+}
+
+- (void)fetchPartnerDisasterRecoveryDashboardWithCompletion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion {
+    FIRFunctions *functions = [FIRFunctions functions];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"getPartnerDisasterRecoveryDashboard"];
+    callable.timeoutInterval = 30.0;
+
+    [callable callWithObject:@{} completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (error) {
+                if (completion) completion(nil, error);
+                return;
+            }
+            NSDictionary *data = [result.data isKindOfClass:[NSDictionary class]] ? (NSDictionary *)result.data : @{};
+            if (completion) completion(data, nil);
+        });
+    }];
+}
+
+- (void)createPartnerCheckpointSnapshot:(NSString *)partnerId
+                             completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion {
+    if (partnerId.length == 0) {
+        if (completion) {
+            completion(nil, [NSError errorWithDomain:@"PPProviderService" code:400 userInfo:@{NSLocalizedDescriptionKey: @"partnerId is required"}]);
+        }
+        return;
+    }
+
+    NSDictionary *payload = @{ @"partnerId": partnerId };
+    FIRHTTPSCallable *callable = [[FIRFunctions functions] HTTPSCallableWithName:@"createPartnerCheckpointSnapshot"];
+    callable.timeoutInterval = 30.0;
+
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (error) {
+                if (completion) completion(nil, error);
+                return;
+            }
+            NSDictionary *data = [result.data isKindOfClass:[NSDictionary class]] ? (NSDictionary *)result.data : @{};
+            if (completion) completion(data, nil);
+        });
     }];
 }
 

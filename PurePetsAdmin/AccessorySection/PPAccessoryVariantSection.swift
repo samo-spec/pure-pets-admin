@@ -982,6 +982,20 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
             product.quantity = max(0, quantity)
             product.noStock = (quantity <= 0)
 
+            // Keep catalog and media in strict sync before the save command
+            if let retainedURLs {
+                retainedImageURLs[productId] = retainedURLs
+                product.imageURLsArray = retainedURLs
+            } else if let currentRetained = retainedImageURLs[productId] {
+                product.imageURLsArray = currentRetained
+            }
+            if !newImages.isEmpty {
+                addImages(newImages, forProductId: productId)
+            }
+            if productId == rootAccessory?.accessoryID {
+                rootAccessory?.imageURLsArray = product.imageURLsArray
+            }
+
             let retailMinor = Int((retailPrice * 100.0).rounded())
             let wholesaleMinor = wholesalePrice.map { Int(($0 * 100.0).rounded()) }
             var singleGroup: [String: Any] = [
@@ -1028,12 +1042,6 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
             }
 
             // 3. Update media if requested
-            if let retainedURLs {
-                retainedImageURLs[productId] = retainedURLs
-            }
-            if !newImages.isEmpty {
-                addImages(newImages, forProductId: productId)
-            }
             if hasMediaChanges(forProductId: productId) {
                 await saveMedia(forProductId: productId, expectedRevision: saveResult.revision)
                 guard failure == nil else { return false }
@@ -1048,6 +1056,9 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
                 throw PPAccessoryVariantServiceError.invalidResponse
             }
             pendingDraft.variants[index] = pendingDraft.variants[index].refreshingCatalog(from: confirmedProduct)
+            if productId == rootAccessory?.accessoryID {
+                rootAccessory?.imageURLsArray = confirmedProduct.imageURLsArray
+            }
             self.draft = pendingDraft
 
             // 4. Save family to sync color and variant ordering/attributes
@@ -1644,6 +1655,7 @@ struct PPAccessoryVariantSection: View {
     @State private var editingProductId: String?
     @State private var isPresentingMediaPicker = false
     @State private var mediaTargetProductId: String?
+    @State private var previewMedia: PPLivePetPreviewMedia?
     @State private var activeStudioMode: VariantStudioMode? = nil
     @State private var copiedHexBanner: String? = nil
     @State private var customOptionInitialCategory: String = "size"
@@ -1758,6 +1770,9 @@ struct PPAccessoryVariantSection: View {
                 isPresentingMediaPicker = false
             }
         }
+        .fullScreenCover(item: $previewMedia) { media in
+            PPLivePetMediaPreview(media: media)
+        }
         .sheet(item: $activeStudioMode) { mode in
             PPAccessoryVariantStudioSheet(
                 mode: mode,
@@ -1768,6 +1783,12 @@ struct PPAccessoryVariantSection: View {
                         return (model.stagedImages[v.productId] ?? []).map(\.image)
                     }
                     return []
+                }(),
+                existingRetainedURLs: {
+                    if case .edit(let v) = mode {
+                        return model.images(forProductId: v.productId)
+                    }
+                    return nil
                 }(),
                 existingVariants: model.draft?.variants ?? [],
                 onCreate: { color, options, sku, barcode, retail, wholesale, quantity, images in
@@ -3105,7 +3126,8 @@ struct PPAccessoryVariantSection: View {
                     if model.canManageVariants && model.canAddImage(forProductId: variant.productId) {
                         Button {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            activeStudioMode = .edit(variant)
+                            mediaTargetProductId = variant.productId
+                            isPresentingMediaPicker = true
                         } label: {
                             VStack(spacing: 5) {
                                 ZStack {
@@ -3175,28 +3197,29 @@ struct PPAccessoryVariantSection: View {
 
     private func uploadedThumbnail(url: String, index: Int, variant: PPAccessoryVariant) -> some View {
         ZStack(alignment: .topTrailing) {
-            AsyncImage(url: URL(string: url)) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().aspectRatio(contentMode: .fill)
-                case .failure:
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                if let parsed = URL(string: url) {
+                    previewMedia = PPLivePetPreviewMedia(source: .remote(parsed))
+                }
+            } label: {
+                AdminRemoteImage(url: URL(string: url), contentMode: .fill) {
                     ZStack {
-                        Color.gray.opacity(0.1)
-                        Image(systemName: "photo").foregroundStyle(AdminCommandInk.tertiary)
-                    }
-                default:
-                    ZStack {
-                        Color.gray.opacity(0.1)
-                        ProgressView()
+                        Color.gray.opacity(0.12)
+                        Image(systemName: "photo")
+                            .font(.system(size: 20))
+                            .foregroundStyle(AdminCommandInk.tertiary)
                     }
                 }
+                .frame(width: 78, height: 78)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(index == 0 ? AdminSurface.amber : AdminSurface.hairline, lineWidth: index == 0 ? 2 : 1)
+                )
             }
-            .frame(width: 78, height: 78)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(AdminSurface.hairline, lineWidth: 1)
-            )
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(format: Language.get("Variant_Media_Preview_Format", alter: "معاينة الصورة رقم %ld"), index + 1))
 
             if model.canManageVariants {
                 Button {
@@ -3251,15 +3274,22 @@ struct PPAccessoryVariantSection: View {
         variant: PPAccessoryVariant
     ) -> some View {
         ZStack(alignment: .topTrailing) {
-            Image(uiImage: item.image)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: 78, height: 78)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(AdminSurface.amber, lineWidth: 1.5)
-                )
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                previewMedia = PPLivePetPreviewMedia(source: .local(item.image))
+            } label: {
+                Image(uiImage: item.image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 78, height: 78)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(AdminSurface.amber, lineWidth: 1.5)
+                    )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Language.get("Variant_Media_Staged_Preview", alter: "معاينة الصورة المحددة"))
 
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -3758,6 +3788,7 @@ struct PPAccessoryVariantStudioSheet: View {
     @State private var quantity: Int
     @State private var stagedImages: [UIImage] = []
     @State private var retainedRemoteURLs: [String] = []
+    @State private var previewMedia: PPLivePetPreviewMedia?
 
     @State private var isChoosingColorFullStudio = false
     @State private var isPresentingImagePicker = false
@@ -3772,6 +3803,7 @@ struct PPAccessoryVariantStudioSheet: View {
         usedColorIdentifiers: Set<String>,
         isSubmitting: Bool,
         existingStagedImages: [UIImage] = [],
+        existingRetainedURLs: [String]? = nil,
         existingVariants: [PPAccessoryVariant] = [],
         onCreate: @escaping (PPAccessoryVariantColor, [String: String], String, String, Double, Double?, Int, [UIImage]) async -> Bool,
         onUpdate: @escaping (String, PPAccessoryVariantColor, [String: String], String, String, Double, Double?, Int, [UIImage], [String]?) async -> Bool,
@@ -3822,7 +3854,8 @@ struct PPAccessoryVariantStudioSheet: View {
             _wholesalePriceText = State(initialValue: wholesaleVal > 0 ? String(format: "%.2f", wholesaleVal).replacingOccurrences(of: ".00", with: "") : "")
             _quantity = State(initialValue: max(0, variant.quantity))
             _stagedImages = State(initialValue: existingStagedImages)
-            _retainedRemoteURLs = State(initialValue: variant.media.map(\.remoteURL).filter { !$0.isEmpty })
+            let urls = existingRetainedURLs ?? variant.media.map(\.remoteURL).filter { !$0.isEmpty }
+            _retainedRemoteURLs = State(initialValue: urls)
             initialOptions = variant.selectedOptions
             for def in optionDefinitions where !def.isColorOption && !def.values.isEmpty {
                 let current = initialOptions[def.id] ?? initialOptions[def.key]
@@ -4001,6 +4034,9 @@ struct PPAccessoryVariantStudioSheet: View {
                 }
                 isPresentingImagePicker = false
             }
+        }
+        .fullScreenCover(item: $previewMedia) { media in
+            PPLivePetMediaPreview(media: media)
         }
     }
 
@@ -4376,16 +4412,17 @@ struct PPAccessoryVariantStudioSheet: View {
                     ForEach(Array(retainedRemoteURLs.enumerated()), id: \.element) { index, url in
                         ZStack(alignment: .topTrailing) {
                             Button {
-                                promoteRemoteImageToPrimary(at: index)
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                if let parsed = URL(string: url) {
+                                    previewMedia = PPLivePetPreviewMedia(source: .remote(parsed))
+                                }
                             } label: {
-                                AsyncImage(url: URL(string: url)) { phase in
-                                    switch phase {
-                                    case .success(let img):
-                                        img.resizable().aspectRatio(contentMode: .fill)
-                                    case .failure:
-                                        Color.gray.opacity(0.15)
-                                    default:
-                                        ProgressView().controlSize(.small)
+                                AdminRemoteImage(url: URL(string: url), contentMode: .fill) {
+                                    ZStack {
+                                        Color.gray.opacity(0.12)
+                                        Image(systemName: "photo")
+                                            .font(.system(size: 20))
+                                            .foregroundStyle(AdminCommandInk.tertiary)
                                     }
                                 }
                                 .frame(width: 82, height: 82)
@@ -4396,6 +4433,7 @@ struct PPAccessoryVariantStudioSheet: View {
                                 )
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel(String(format: Language.get("Variant_Media_Preview_Format", alter: "معاينة الصورة رقم %ld"), index + 1))
 
                             // Delete button
                             Button {
@@ -4411,8 +4449,9 @@ struct PPAccessoryVariantStudioSheet: View {
                             }
                             .buttonStyle(.plain)
                             .padding(4)
+                            .accessibilityLabel(Language.get("Variant_Media_Remove", alter: "إزالة الصورة"))
 
-                            // Primary Cover Badge
+                            // Primary Cover Badge or Make Primary Button
                             if index == 0 {
                                 HStack(spacing: 3) {
                                     Image(systemName: "star.fill")
@@ -4426,6 +4465,20 @@ struct PPAccessoryVariantStudioSheet: View {
                                 .background(Color.black.opacity(0.70), in: Capsule())
                                 .padding(4)
                                 .frame(width: 82, height: 82, alignment: .bottomLeading)
+                            } else {
+                                Button {
+                                    promoteRemoteImageToPrimary(at: index)
+                                } label: {
+                                    Image(systemName: "star")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .padding(5)
+                                        .background(Color.black.opacity(0.60), in: Circle())
+                                }
+                                .buttonStyle(.plain)
+                                .padding(4)
+                                .frame(width: 82, height: 82, alignment: .bottomLeading)
+                                .accessibilityLabel(Language.get("Variant_Media_MakePrimary", alter: "تعيين كصورة رئيسية"))
                             }
                         }
                     }
@@ -4435,7 +4488,8 @@ struct PPAccessoryVariantStudioSheet: View {
                         let isTotalPrimary = retainedRemoteURLs.isEmpty && index == 0
                         ZStack(alignment: .topTrailing) {
                             Button {
-                                promoteStagedImageToPrimary(at: index)
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                previewMedia = PPLivePetPreviewMedia(source: .local(img))
                             } label: {
                                 Image(uiImage: img)
                                     .resizable()
@@ -4448,6 +4502,7 @@ struct PPAccessoryVariantStudioSheet: View {
                                     )
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel(Language.get("Variant_Media_Staged_Preview", alter: "معاينة الصورة المحددة"))
 
                             // Delete button
                             Button {
@@ -4463,8 +4518,9 @@ struct PPAccessoryVariantStudioSheet: View {
                             }
                             .buttonStyle(.plain)
                             .padding(4)
+                            .accessibilityLabel(Language.get("Variant_Media_Remove", alter: "إزالة الصورة"))
 
-                            // Primary badge or New badge
+                            // Primary badge or Make Primary Button
                             if isTotalPrimary {
                                 HStack(spacing: 3) {
                                     Image(systemName: "star.fill")
@@ -4479,14 +4535,19 @@ struct PPAccessoryVariantStudioSheet: View {
                                 .padding(4)
                                 .frame(width: 82, height: 82, alignment: .bottomLeading)
                             } else {
-                                Text(Language.get("New", alter: "جديدة"))
-                                    .font(AdminType.caption2Bold)
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 2)
-                                    .background(AdminSurface.primary, in: Capsule())
-                                    .padding(4)
-                                    .frame(width: 82, height: 82, alignment: .bottomLeading)
+                                Button {
+                                    promoteStagedImageToPrimary(at: index)
+                                } label: {
+                                    Image(systemName: "star")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .padding(5)
+                                        .background(Color.black.opacity(0.60), in: Circle())
+                                }
+                                .buttonStyle(.plain)
+                                .padding(4)
+                                .frame(width: 82, height: 82, alignment: .bottomLeading)
+                                .accessibilityLabel(Language.get("Variant_Media_MakePrimary", alter: "تعيين كصورة رئيسية"))
                             }
                         }
                     }

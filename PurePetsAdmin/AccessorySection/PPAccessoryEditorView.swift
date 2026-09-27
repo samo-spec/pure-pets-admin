@@ -17,6 +17,36 @@ import FirebaseFirestore
 import FirebaseStorage
 import FirebaseFunctions
 
+// MARK: - Editable Catalog Decimals
+
+/// Keep the stored decimal intact when reopening a draft. Presentation formats
+/// such as %g round to six significant digits; fixed currency formats would also
+/// silently round legacy values before validation can report them.
+enum PPInventoryDecimalText {
+    static func editable(_ value: NSNumber) -> String {
+        NSDecimalNumber(decimal: value.decimalValue).stringValue
+    }
+
+    static func minorUnits(_ raw: String, maximum: Decimal = 999_999_999.99) -> Int? {
+        let digits = String(raw.map { character in
+            character.wholeNumberValue.flatMap { (0...9).contains($0) ? Character(String($0)) : nil } ?? character
+        })
+        let clean = digits.replacingOccurrences(of: ",", with: ".")
+            .replacingOccurrences(of: "٫", with: ".")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard clean.range(of: #"^(?:[0-9]+(?:\.[0-9]{0,2})?|\.[0-9]{1,2})$"#, options: .regularExpression) != nil,
+              let value = Decimal(string: clean, locale: Locale(identifier: "en_US_POSIX")),
+              value >= 0, value <= maximum else { return nil }
+        return NSDecimalNumber(decimal: value * 100).intValue
+    }
+
+    static func discountedMinor(price: Int, percent: Int, amount: Int) -> Int? {
+        guard (0...99_999_999_999).contains(price), (0...10_000).contains(percent),
+              (0...99_999_999_999).contains(amount) else { return nil }
+        return max(0, (price * (10_000 - percent) + 5_000) / 10_000 - amount)
+    }
+}
+
 // MARK: - Sendable Conformance
 
 extension MainKindsModel: @unchecked Sendable {
@@ -358,11 +388,11 @@ struct PPQuantityGroupDraft: Identifiable, Equatable, Sendable {
     var wholesalePrice: Double {
         Double(wholesalePriceText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
     }
-    var retailPriceMinor: Int {
-        Int((retailPrice * 100).rounded())
+    var retailPriceMinor: Int? {
+        retailEnabled ? PPInventoryDecimalText.minorUnits(retailPriceText) : nil
     }
     var wholesalePriceMinor: Int? {
-        wholesaleEnabled ? Int((wholesalePrice * 100).rounded()) : nil
+        wholesaleEnabled ? PPInventoryDecimalText.minorUnits(wholesalePriceText) : nil
     }
 
     var localizedName: String {
@@ -646,6 +676,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     @Published var showQuantityGroupInspector: Bool = false
     @Published var selectedQuantityGroupForEditing: PPQuantityGroupDraft? = nil
     @Published var isLoadingCommerce: Bool = false
+    @Published private(set) var commerceLoadError: String?
     
     // Inventory, SKU & Stock
     @Published var sku: String = "" { didSet { updateUnsavedChanges() } }
@@ -772,6 +803,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     private var pendingCatalogSyncSuccessMessage: String? = nil
     private var livePetRecovery: PPLivePetMutationRecovery? = nil
     private var pendingSavedAccessoryDraft: PetAccessory? = nil
+    private let catalogEditRevision: Int?
 
     // MARK: - Initializer
 
@@ -782,6 +814,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         onDismiss: @escaping () -> Void
     ) {
         self.editingAccessory = accessory
+        self.catalogEditRevision = accessory.map { max(1, $0.revision) }
         self.showTypeRow = showTypeRow
         self.onDismiss = onDismiss
         
@@ -836,27 +869,27 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         
         let price = acc.price
         if price.doubleValue > 0 {
-            priceText = String(format: "%g", price.doubleValue)
+            priceText = PPInventoryDecimalText.editable(price)
         }
         if let cost = acc.costPrice, cost.doubleValue > 0 {
-            costPriceText = String(format: "%g", cost.doubleValue)
+            costPriceText = PPInventoryDecimalText.editable(cost)
         }
         if let discPercent = acc.discountPercent, discPercent.doubleValue > 0 {
-            discountPercentText = String(format: "%g", discPercent.doubleValue)
+            discountPercentText = PPInventoryDecimalText.editable(discPercent)
         }
         if let discAmount = acc.discountAmount, discAmount.doubleValue > 0 {
-            discountAmountText = String(format: "%g", discAmount.doubleValue)
+            discountAmountText = PPInventoryDecimalText.editable(discAmount)
         }
         if let wp = acc.wholesalePrice, wp.doubleValue > 0 {
             wholesaleEnabled = true
-            wholesalePriceText = String(format: "%g", wp.doubleValue)
+            wholesalePriceText = PPInventoryDecimalText.editable(wp)
         }
         
         quantity = max(0, acc.quantity)
         if acc.isLivePet {
             liveInventoryMode = PPLivePetInventoryMode(rawValue: acc.inventoryMode ?? "") ?? .quantity
             if liveInventoryMode == .individual, let standardPrice = acc.standardSellingPrice, standardPrice.doubleValue > 0 {
-                priceText = String(format: "%g", standardPrice.doubleValue)
+                priceText = PPInventoryDecimalText.editable(standardPrice)
                 hasManuallyEditedStandardPrice = true
             }
         }
@@ -1556,10 +1589,10 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             if g.unitsPerGroup < 1 {
                 return (false, Language.get("Validation_Group_Units_Positive", alter: "يجب أن تكون كمية المجموعة عدداً صحيحاً أكبر من صفر."))
             }
-            if g.retailEnabled && (g.retailPrice <= 0 || !g.retailPrice.isFinite) {
+            if g.retailEnabled && (g.retailPriceMinor ?? 0) <= 0 {
                 return (false, String(format: Language.get("Validation_Group_Retail_Price_Required", alter: "يرجى تحديد سعر تجزئة صالح للوحدة: %@"), g.localizedName))
             }
-            if g.wholesaleEnabled && (g.wholesalePrice <= 0 || !g.wholesalePrice.isFinite) {
+            if g.wholesaleEnabled && (g.wholesalePriceMinor ?? 0) <= 0 {
                 return (false, String(format: Language.get("Validation_Group_Wholesale_Price_Required", alter: "يرجى تحديد سعر جملة صالح للوحدة: %@"), g.localizedName))
             }
             if g.defaultForRetail && !g.retailEnabled {
@@ -1610,6 +1643,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 
     func loadCommerceIfAvailable() {
+        guard !isLoadingCommerce else { return }
         guard let acc = editingAccessory, !acc.accessoryID.isEmpty, !isIndividualLivePet else {
             ensureDefaultSingleGroup()
             return
@@ -1617,18 +1651,43 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         let accID = acc.accessoryID
         if let wp = acc.wholesalePrice, wp.doubleValue > 0 {
             wholesaleEnabled = true
-            wholesalePriceText = String(format: "%g", wp.doubleValue)
+            wholesalePriceText = PPInventoryDecimalText.editable(wp)
         }
         isLoadingCommerce = true
+        commerceLoadError = nil
         Functions.functions().httpsCallable("getProductCommerce").call(["productId": accID]) { [weak self] result, error in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.isLoadingCommerce = false
-                guard let data = result?.data as? [String: Any],
-                      let commerce = data["productCommerce"] as? [String: Any] else {
-                    self.ensureDefaultSingleGroup()
+                if let error = error {
+                    let message = Language.get("Inventory_CommerceLoadFailed", alter: "تعذر تحميل وحدات البيع. أعد المحاولة قبل الحفظ.") + " " + error.localizedDescription
+                    self.commerceLoadError = message
+                    self.errorMessage = message
                     return
                 }
+                guard let data = result?.data as? [String: Any],
+                      let commerce = data["productCommerce"] as? [String: Any],
+                      let base = commerce["baseUnit"] as? [String: Any],
+                      let baseID = base["id"] as? String, !baseID.isEmpty,
+                      let rawGroups = commerce["quantityGroups"] as? [[String: Any]], !rawGroups.isEmpty,
+                      rawGroups.allSatisfy({ group in
+                          guard let id = group["id"] as? String, !id.isEmpty,
+                                let units = group["unitsPerGroup"] as? Int, units > 0,
+                                let retail = group["retailEnabled"] as? Bool,
+                                let wholesale = group["wholesaleEnabled"] as? Bool else { return false }
+                          let retailMinor = group["retailPriceMinor"] as? Int
+                          let wholesaleMinor = group["wholesalePriceMinor"] as? Int
+                          return (!retail || (retailMinor != nil && (0...99_999_999_999).contains(retailMinor!))) &&
+                            (!wholesale || (wholesaleMinor != nil && (0...99_999_999_999).contains(wholesaleMinor!)))
+                      }),
+                      Set(rawGroups.compactMap { $0["id"] as? String }).count == rawGroups.count else {
+                    let message = Language.get("Inventory_CommerceLoadFailed", alter: "تعذر تحميل وحدات البيع. أعد المحاولة قبل الحفظ.")
+                    self.commerceLoadError = message
+                    self.errorMessage = message
+                    return
+                }
+                self.commerceLoadError = nil
+                self.errorMessage = nil
 
                 if let rev = commerce["pricingRevision"] as? Int {
                     self.pricingRevision = rev
@@ -1728,7 +1787,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
         // 1. Immediately hydrate if PetAccessory model already has costPrice > 0
         if let cost = acc.costPrice, cost.doubleValue > 0, isCostFieldStillUnset {
-            costPriceText = String(format: "%g", cost.doubleValue)
+            costPriceText = PPInventoryDecimalText.editable(cost)
         }
 
         // 2. Fetch authoritative cost summary via Cloud Function.
@@ -1762,7 +1821,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 }()
                 if let cost = resolvedCost {
                     if self.isCostFieldStillUnset {
-                        self.costPriceText = String(format: "%g", cost)
+                        self.costPriceText = PPInventoryDecimalText.editable(NSNumber(value: cost))
                     }
                     // The draft is refreshed even when the operator has already
                     // typed a cost: `saveAccessory` re-reads `costPriceText`, so
@@ -1903,17 +1962,25 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     /// Single place hydration writes cost, so the field and the draft never diverge.
     private func applyResolvedCost(_ cost: Double) {
-        costPriceText = String(format: "%g", cost)
+        costPriceText = PPInventoryDecimalText.editable(NSNumber(value: cost))
         editingAccessory?.costPrice = NSNumber(value: cost)
     }
 
     func refreshAuthoritativeRevisionIfNeeded() {
         guard let acc = editingAccessory, !acc.accessoryID.isEmpty else { return }
-        Firestore.firestore().collection("petAccessories").document(acc.accessoryID).getDocument { [weak self] snapshot, _ in
+        Firestore.firestore().collection("petAccessories").document(acc.accessoryID).getDocument(source: .server) { [weak self] snapshot, _ in
             guard let self = self, let snapshot = snapshot, snapshot.exists, let data = snapshot.data() else { return }
             let rev = (data["revision"] as? NSNumber)?.intValue ?? (data["revision"] as? Int) ?? 0
             if rev > 0 {
                 DispatchQueue.main.async {
+                    if !self.isLivePet {
+                        // The revision belongs to the values loaded into this form.
+                        // A revision-only refresh cannot safely rebase those values.
+                        if rev != self.catalogEditRevision, !self.hasPendingStandardSave {
+                            self.errorMessage = Language.get("Inventory_CatalogChangedReopen", alter: "تغير الصنف أثناء التحرير. أغلق المحرر وأعد فتح الصنف لمراجعة أحدث البيانات قبل الحفظ.")
+                        }
+                        return
+                    }
                     self.editingAccessory?.revision = rev
                     if let draft = self.pendingSavedAccessoryDraft, draft.accessoryID == acc.accessoryID {
                         draft.revision = rev
@@ -1938,8 +2005,8 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 "sortOrder": g.sortOrder,
                 "retailEnabled": g.retailEnabled,
                 "wholesaleEnabled": g.wholesaleEnabled,
-                "retailPriceMinor": g.retailPriceMinor,
-                "wholesalePriceMinor": g.wholesaleEnabled ? (g.wholesalePriceMinor as Any) : NSNull(),
+                "retailPriceMinor": g.retailPriceMinor.map { $0 as Any } ?? NSNull(),
+                "wholesalePriceMinor": g.wholesalePriceMinor.map { $0 as Any } ?? NSNull(),
                 "defaultForRetail": g.defaultForRetail,
                 "defaultForWholesale": g.defaultForWholesale,
                 "active": g.active
@@ -2396,6 +2463,13 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     var calculatedFinalPrice: Double {
         guard basePrice > 0 else { return 0.0 }
+        if !isLivePet,
+           let price = PPInventoryDecimalText.minorUnits(priceText),
+           let percent = PPInventoryDecimalText.minorUnits(discountPercentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "0" : discountPercentText, maximum: 100),
+           let amount = PPInventoryDecimalText.minorUnits(discountAmountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "0" : discountAmountText),
+           let final = PPInventoryDecimalText.discountedMinor(price: price, percent: percent, amount: amount) {
+            return Double(final) / 100
+        }
         var finalVal = basePrice
         if discountPercent > 0 {
             finalVal = basePrice - (basePrice * (discountPercent / 100.0))
@@ -2847,6 +2921,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 
     func removeExistingImage(at index: Int) {
+        guard !isSubmitting, !hasPendingStandardSave else { return }
         guard index >= 0 && index < existingImageURLs.count else { return }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         let removedURL = existingImageURLs[index]
@@ -2865,6 +2940,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 
     func removePickedImage(at index: Int) {
+        guard !isSubmitting, !hasPendingStandardSave else { return }
         guard index >= 0 && index < pickedImages.count else { return }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         if index < pickedImageUploadIDs.count {
@@ -3108,6 +3184,12 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     // MARK: - Validation
 
     func validate() -> (isValid: Bool, message: String?) {
+        if !isLivePet && editingAccessory != nil {
+            if isLoadingCommerce {
+                return (false, Language.get("Inventory_CommerceLoading", alter: "جارٍ تحميل وحدات البيع. انتظر قبل الحفظ."))
+            }
+            if let commerceLoadError = commerceLoadError { return (false, commerceLoadError) }
+        }
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedNameEn = nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedName.isEmpty || basePrice <= 0 {
@@ -3130,6 +3212,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             }
         }
         if !isLivePet {
+            if (PPInventoryDecimalText.minorUnits(priceText) ?? 0) <= 0 {
+                return (false, Language.get("CatalogIntake_ValidationPrice", alter: "أدخل سعراً صالحاً لا يتجاوز 999999999.99 وبحد أقصى منزلتين عشريتين."))
+            }
             if hasNoCategorySelected {
                 return (false, Language.get("Please select pet species.", alter: "يرجى اختيار النوع والفئة الرئيسية للحيوان."))
             }
@@ -3285,14 +3370,19 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     func saveAccessory() {
         guard !isSubmitting, !hasCompletedSave else { return }
+        if !isLivePet && !hasPendingStandardSave && commerceLoadError != nil {
+            loadCommerceIfAvailable()
+            return
+        }
 
         // A lost response can follow a committed create. Retry the exact retained
         // command before accepting edits or generating another product identity.
         if hasPendingStandardSave {
             guard let retained = pendingSavedAccessoryDraft, pendingStandardRequest != nil else {
-                clearStandardInventoryRecovery()
-                pendingSavedAccessoryDraft = nil
-                saveAccessory()
+                errorMessage = Language.get(
+                    "Inventory_SaveRecoveryUnavailable",
+                    alter: "تعذر استعادة الحفظ المعلّق. تم الاحتفاظ بسجله. تواصل مع الدعم قبل بدء عملية حفظ أخرى."
+                )
                 return
             }
             isSubmitting = true
@@ -3779,8 +3869,8 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 "sortOrder": g.sortOrder,
                 "retailEnabled": g.retailEnabled,
                 "wholesaleEnabled": g.wholesaleEnabled,
-                "retailPriceMinor": g.retailPriceMinor,
-                "wholesalePriceMinor": g.wholesaleEnabled ? (g.wholesalePriceMinor as Any) : NSNull(),
+                "retailPriceMinor": g.retailPriceMinor.map { $0 as Any } ?? NSNull(),
+                "wholesalePriceMinor": g.wholesalePriceMinor.map { $0 as Any } ?? NSNull(),
                 "defaultForRetail": g.defaultForRetail,
                 "defaultForWholesale": g.defaultForWholesale,
                 "active": g.active
@@ -3841,7 +3931,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         do {
             request = try pendingStandardRequest ?? PPInventoryCommandService.shared.prepareProductSave(
                 accessory: accessory, branchId: resolvedBranchId, commerce: commercePayload,
-                expectedRevision: accessory.revision > 0 ? accessory.revision : nil, commandId: commandID
+                expectedRevision: catalogEditRevision, commandId: commandID
             )
             let recovery = PPStandardInventoryRecovery(
                 requestData: try JSONSerialization.data(withJSONObject: request, options: [.sortedKeys]),
@@ -3872,13 +3962,11 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                         FunctionsErrorCode.notFound.rawValue
                     ].contains(nsError.code)
 
-                    if let stale = PPInventoryCommandService.staleRevision(from: err) {
-                        accessory.revision = stale.current
-                        self.editingAccessory?.revision = stale.current
+                    if PPInventoryCommandService.staleRevision(from: err) != nil {
                         self.clearStandardInventoryRecovery()
                         self.errorMessage = Language.get(
-                            "Inventory_RevisionUpdatedRetry",
-                            alter: "تم تحديث رقم النسخة إلى الأحدث تلقائياً. اضغط حفظ التغييرات لإتمام العملية."
+                            "Inventory_CatalogChangedReopen",
+                            alter: "تغير الصنف أثناء التحرير. أغلق المحرر وأعد فتح الصنف لمراجعة أحدث البيانات قبل الحفظ."
                         )
                         UINotificationFeedbackGenerator().notificationOccurred(.warning)
                         return
@@ -4045,6 +4133,13 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 
     func discardPendingStandardSave() {
+        guard !isSubmitting, !hasPendingStandardSave else {
+            errorMessage = Language.get(
+                "Inventory_SaveRecoveryRequired",
+                alter: "قد تكون عملية الحفظ اكتملت بالفعل. استعد الحفظ المعلّق لتأكيد النتيجة قبل تجاهل التعديلات."
+            )
+            return
+        }
         clearStandardInventoryRecovery()
         pendingSavedAccessoryDraft = nil
         errorMessage = nil
@@ -4419,6 +4514,13 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     func discardChangesAndDismiss() {
         guard !isSubmitting, !hasCompletedSave else { return }
+        guard !hasPendingStandardSave else {
+            errorMessage = Language.get(
+                "Inventory_SaveRecoveryRequired",
+                alter: "قد تكون عملية الحفظ اكتملت بالفعل. استعد الحفظ المعلّق لتأكيد النتيجة قبل تجاهل التعديلات."
+            )
+            return
+        }
         clearStandardInventoryRecovery()
         cleanupPendingPickedUploads()
         clearLivePetRecovery()
@@ -5970,6 +6072,10 @@ struct PPAccessoryEditorScreen: View {
     }
 
     private func showDiscardAlert() {
+        guard !viewModel.hasPendingStandardSave else {
+            viewModel.discardChangesAndDismiss()
+            return
+        }
         PPAlertHelper.showConfirmation(
             in: nil,
             title: Language.get("Discard_Changes_Title", alter: "تنبيه"),
@@ -6426,6 +6532,14 @@ struct PPAccessoryEditorScreen: View {
                     .task(id: viewModel.editingAccessory?.accessoryID) {
                         guard let accessory = viewModel.editingAccessory else { return }
                         await variantSectionModel.load(for: accessory)
+                    }
+                    .onChange(of: variantSectionModel.retainedImageURLs) { newURLsMap in
+                        guard let accessoryId = viewModel.editingAccessory?.accessoryID,
+                              let updatedURLs = newURLsMap[accessoryId] else { return }
+                        if viewModel.existingImageURLs != updatedURLs {
+                            viewModel.existingImageURLs = updatedURLs
+                            viewModel.editingAccessory?.imageURLsArray = updatedURLs
+                        }
                     }
             }
 
@@ -8020,14 +8134,14 @@ struct PPQuantityGroupInspectorSheet: View {
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
             return
         }
-        if group.retailEnabled && group.retailPrice <= 0 {
+        if group.retailEnabled && (group.retailPriceMinor ?? 0) <= 0 {
             withAnimation(.spring(response: 0.35)) {
                 localErrorMessage = Language.get("Validation_Retail_Price_Required", alter: "يرجى تحديد سعر بيع التجزئة بدقة.")
             }
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
             return
         }
-        if group.wholesaleEnabled && group.wholesalePrice <= 0 {
+        if group.wholesaleEnabled && (group.wholesalePriceMinor ?? 0) <= 0 {
             withAnimation(.spring(response: 0.35)) {
                 localErrorMessage = Language.get("Validation_Wholesale_Price_Required", alter: "يرجى تحديد سعر بيع الجملة بدقة.")
             }
@@ -17689,6 +17803,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                                 .accessibilitySortPriority(3)
                             catalogFeedback
                             catalogStageScene
+                                .disabled(viewModel.hasPendingStandardSave || viewModel.isLoadingCommerce)
                                 .id(viewModel.activeStage)
                                 .transition(
                                     accessibilityReduceMotion
@@ -18186,7 +18301,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     if let err = viewModel.errorMessage, !err.isEmpty {
                         return err
                     }
-                    return tr("Inventory_PendingSaveNotice_Body", "يمكنك استعادة نفس العملية بالضغط على الزر بالأسفل، أو إلغاء المعلق للبدء من جديد.")
+                    return tr("Inventory_SaveRecoveryRequired", "قد تكون عملية الحفظ اكتملت بالفعل. استعد الحفظ المعلّق لتأكيد النتيجة قبل تجاهل التعديلات.")
                 }()
                 Text(detail)
                     .font(AdminType.caption)
@@ -18195,18 +18310,18 @@ private struct PPAccessoryFoodIntakeJourney: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Button(role: .destructive) {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    viewModel.discardPendingStandardSave()
-                }
+            Button {
+                viewModel.saveAccessory()
             } label: {
-                Text(tr("Inventory_DiscardPendingSave", "إلغاء المعلق"))
+                Text(tr("Inventory_ResumePendingSave", "استعادة الحفظ المعلّق"))
                     .font(AdminType.caption2Bold)
-                    .foregroundStyle(Color(uiColor: .ppError))
+                    .foregroundStyle(AdminSurface.primary)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(Color(uiColor: .ppError).opacity(0.12), in: Capsule())
+                    .frame(minHeight: AdminTouchTarget.comfortable)
+                    .background(AdminSurface.primary.opacity(0.12), in: Capsule())
             }
+            .disabled(viewModel.isSubmitting)
         }
         .padding(AdminSpacing.md)
         .background(Color(uiColor: .ppWarning).opacity(0.10), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
@@ -18303,6 +18418,14 @@ private struct PPAccessoryFoodIntakeJourney: View {
                         .task(id: viewModel.editingAccessory?.accessoryID) {
                             guard let accessory = viewModel.editingAccessory else { return }
                             await variantSectionModel.load(for: accessory)
+                        }
+                        .onChange(of: variantSectionModel.retainedImageURLs) { newURLsMap in
+                            guard let accessoryId = viewModel.editingAccessory?.accessoryID,
+                                  let updatedURLs = newURLsMap[accessoryId] else { return }
+                            if viewModel.existingImageURLs != updatedURLs {
+                                viewModel.existingImageURLs = updatedURLs
+                                viewModel.editingAccessory?.imageURLsArray = updatedURLs
+                            }
                         }
                 }
 
@@ -20182,6 +20305,10 @@ private struct PPAccessoryFoodIntakeJourney: View {
     }
 
     private func showCatalogDiscardAlert() {
+        guard !viewModel.hasPendingStandardSave else {
+            viewModel.discardChangesAndDismiss()
+            return
+        }
         PPAlertHelper.showConfirmation(
             in: nil,
             title: tr("Discard_Changes_Title", "تنبيه"),

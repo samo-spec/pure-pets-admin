@@ -35,6 +35,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) BOOL isVariant;
 @property (nonatomic, copy, nullable) NSString *size;
 @property (nonatomic, copy, nullable) NSString *weightText;
+@property (nonatomic, assign) BOOL isLivePet;
 - (instancetype)initWithDictionary:(NSDictionary *)dict;
 @end
 
@@ -49,6 +50,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, nullable) NSNumber *subSubKindItemID;
 @property (nonatomic, copy, nullable) NSString *subSubKindItemNameAr;
 @property (nonatomic, copy, nullable) NSString *subSubKindItemNameEn;
+@property (nonatomic, copy, nullable) NSString *imageURL;
+@property (nonatomic, copy) NSArray<NSString *> *mediaURLs;
 - (instancetype)initWithDictionary:(NSDictionary *)dict;
 @end
 

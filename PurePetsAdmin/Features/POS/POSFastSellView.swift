@@ -460,6 +460,7 @@ struct POSQuantityGroupInfo: Equatable, Identifiable {
     let nameAr: String
     let nameEn: String
     let unitsPerGroup: Int
+    let barcode: String
     let active: Bool
     let retailEnabled: Bool
     let wholesaleEnabled: Bool
@@ -542,6 +543,7 @@ extension PetAccessory {
                 let nameAr = POSGroupFieldParser.string(dict["nameAr"] ?? dict["name_ar"] ?? dict["name"])
                 let nameEn = POSGroupFieldParser.string(dict["nameEn"] ?? dict["name_en"] ?? id)
                 let units = max(1, POSGroupFieldParser.int(dict["unitsPerGroup"]) ?? 1)
+                let barcode = POSGroupFieldParser.string(dict["barcode"])
                 let active = POSGroupFieldParser.bool(dict["active"], defaultVal: true)
                 let retailEnabled = POSGroupFieldParser.bool(dict["retailEnabled"], defaultVal: false)
                 let wholesaleEnabled = POSGroupFieldParser.bool(dict["wholesaleEnabled"], defaultVal: false)
@@ -549,13 +551,13 @@ extension PetAccessory {
                 let defaultForWholesale = POSGroupFieldParser.bool(dict["defaultForWholesale"], defaultVal: false)
                 let sortOrder = POSGroupFieldParser.int(dict["sortOrder"]) ?? idx
 
-                var rMinor = POSGroupFieldParser.int(dict["retailPriceMinor"])
-                if rMinor == nil, let rMajor = POSGroupFieldParser.double(dict["retailPrice"]) {
+                var rMinor = POSGroupFieldParser.int(dict["retailPriceMinor"] ?? dict["retail_price_minor"] ?? dict["priceMinor"])
+                if rMinor == nil, let rMajor = POSGroupFieldParser.double(dict["retailPrice"] ?? dict["retail_price"] ?? dict["price"]) {
                     rMinor = Int(round(rMajor * 100.0))
                 }
 
-                var wMinor = POSGroupFieldParser.int(dict["wholesalePriceMinor"])
-                if wMinor == nil, let wMajor = POSGroupFieldParser.double(dict["wholesalePrice"]) {
+                var wMinor = POSGroupFieldParser.int(dict["wholesalePriceMinor"] ?? dict["wholesale_price_minor"])
+                if wMinor == nil, let wMajor = POSGroupFieldParser.double(dict["wholesalePrice"] ?? dict["wholesale_price"]) {
                     wMinor = Int(round(wMajor * 100.0))
                 }
 
@@ -564,6 +566,7 @@ extension PetAccessory {
                     nameAr: nameAr.isEmpty ? (nameEn.isEmpty ? id : nameEn) : nameAr,
                     nameEn: nameEn.isEmpty ? (nameAr.isEmpty ? id : nameAr) : nameEn,
                     unitsPerGroup: units,
+                    barcode: barcode,
                     active: active,
                     retailEnabled: retailEnabled,
                     wholesaleEnabled: wholesaleEnabled,
@@ -595,6 +598,7 @@ extension PetAccessory {
                 nameAr: "حبة",
                 nameEn: "Single",
                 unitsPerGroup: 1,
+                barcode: barcode ?? "",
                 active: true,
                 retailEnabled: true,
                 wholesaleEnabled: hasWholesale,
@@ -605,6 +609,21 @@ extension PetAccessory {
                 sortOrder: 0
             )
         ]
+    }
+
+    func pos_eligibleQuantityGroups(for channel: POSSalesChannel) -> [POSQuantityGroupInfo] {
+        let all = pos_allQuantityGroups().filter { $0.active }
+        switch channel {
+        case .retail:
+            return all.filter { $0.retailEnabled }
+        case .wholesale:
+            return all.filter { $0.wholesaleEnabled }
+        }
+    }
+
+    func pos_hasMultipleSellUnits(for channel: POSSalesChannel) -> Bool {
+        guard !isLivePet else { return false }
+        return pos_eligibleQuantityGroups(for: channel).count > 1
     }
 
     func pos_defaultWholesaleGroup() -> POSQuantityGroupInfo? {
@@ -839,6 +858,8 @@ struct POSAnimalUnit: Identifiable, Hashable, Sendable {
     let sellingPrice: Double
     let currentBranchId: String
     var fallbackBranchId: String = ""
+    var imageURL: String = ""
+    var mediaURLs: [String] = []
     var subSubKindID: Int = 0
     var subSubKindNameAr: String = ""
     var subSubKindNameEn: String = ""
@@ -1118,6 +1139,8 @@ final class POSUnitPickerState: ObservableObject {
                     sellingPrice: unit.sellingPrice,
                     currentBranchId: unit.currentBranchId ?? "",
                     fallbackBranchId: fallbackBranch,
+                    imageURL: unit.imageURL ?? "",
+                    mediaURLs: unit.mediaURLs ?? [],
                     subSubKindID: unit.subSubKindID?.intValue ?? 0,
                     subSubKindNameAr: unit.subSubKindNameAr ?? "",
                     subSubKindNameEn: unit.subSubKindNameEn ?? "",
@@ -1205,6 +1228,52 @@ final class POSVariantPickerState: ObservableObject {
         familyId = nil
         members = []
         primaryAccessory = nil
+    }
+}
+
+// MARK: - POS Sell Unit Picker State
+
+@MainActor
+final class POSSellUnitPickerState: ObservableObject {
+    @Published var isPresented: Bool = false
+    @Published var product: PetAccessory? = nil
+    @Published var selectedGroup: POSQuantityGroupInfo? = nil
+    @Published var quantity: Int = 1
+    @Published var cartItemID: UUID? = nil
+    @Published var errorMessage: String? = nil
+
+    var isEditingCartItem: Bool { cartItemID != nil }
+
+    func open(
+        product: PetAccessory,
+        selectedGroupID: String? = nil,
+        cartItem: POSCartItem? = nil,
+        channel: POSSalesChannel
+    ) {
+        self.product = product
+        self.cartItemID = cartItem?.id
+        self.errorMessage = nil
+        let eligible = product.pos_eligibleQuantityGroups(for: channel)
+        if let targetID = selectedGroupID ?? cartItem?.quantityGroupID,
+           let matched = eligible.first(where: { $0.id == targetID }) {
+            self.selectedGroup = matched
+        } else {
+            let defGroup = (channel == .wholesale)
+                ? product.pos_defaultWholesaleGroup()
+                : product.pos_defaultRetailGroup()
+            self.selectedGroup = defGroup ?? eligible.first
+        }
+        self.quantity = max(1, cartItem?.quantity ?? 1)
+        self.isPresented = true
+    }
+
+    func close() {
+        isPresented = false
+        product = nil
+        selectedGroup = nil
+        quantity = 1
+        cartItemID = nil
+        errorMessage = nil
     }
 }
 
@@ -1590,8 +1659,8 @@ final class POSFastSellViewModel: ObservableObject {
     /// Explicitly three-valued. A scan must never be answered by "the first
     /// thing that matched": with per-colour barcodes, silently picking one of
     /// several candidates would sell and deduct the wrong colour.
-    enum POSScanResolution {
-        case resolved(PetAccessory)
+    enum POSScanResolution: Equatable {
+        case resolved(PetAccessory, selectedGroup: POSQuantityGroupInfo? = nil)
         case ambiguous([PetAccessory])
         case notFound
     }
@@ -1613,20 +1682,30 @@ final class POSFastSellViewModel: ObservableObject {
 
         let sellable = allAccessories.filter { $0.pos_isSellable }
 
-        // Barcode is the scanner's native identifier, so it wins outright: a SKU
+        // 1. Group-specific barcode match: If an item has multiple sell units and
+        // the scan matched a specific unit's barcode (e.g. carton barcode),
+        // resolve directly with that unit pre-selected!
+        for acc in sellable {
+            let groups = acc.pos_allQuantityGroups()
+            if let matchedGroup = groups.first(where: { !$0.barcode.isEmpty && $0.barcode.lowercased() == needle }) {
+                return .resolved(acc, selectedGroup: matchedGroup)
+            }
+        }
+
+        // 2. Barcode is the scanner's native identifier, so it wins outright: a SKU
         // that happens to equal another product's barcode must not compete.
         let barcodeMatches = sellable.filter { ($0.barcode ?? "").lowercased() == needle }
-        if barcodeMatches.count == 1 { return .resolved(barcodeMatches[0]) }
+        if barcodeMatches.count == 1 { return .resolved(barcodeMatches[0], selectedGroup: nil) }
         if barcodeMatches.count > 1 { return .ambiguous(barcodeMatches) }
 
         let skuMatches = sellable.filter { ($0.sku ?? "").lowercased() == needle }
-        if skuMatches.count == 1 { return .resolved(skuMatches[0]) }
+        if skuMatches.count == 1 { return .resolved(skuMatches[0], selectedGroup: nil) }
         if skuMatches.count > 1 { return .ambiguous(skuMatches) }
 
         // Last resort: the document id, which the previous substring search also
         // accepted. Exact only.
         let idMatches = sellable.filter { $0.accessoryID.lowercased() == needle }
-        if idMatches.count == 1 { return .resolved(idMatches[0]) }
+        if idMatches.count == 1 { return .resolved(idMatches[0], selectedGroup: nil) }
         if idMatches.count > 1 { return .ambiguous(idMatches) }
 
         return .notFound
@@ -1988,7 +2067,11 @@ final class POSFastSellViewModel: ObservableObject {
         let branchStock = cartItems[idx].accessory.pos_branchStock()
         let unitsPerGroup = max(1, cartItems[idx].unitsPerGroup)
         let maxGroups = branchStock / unitsPerGroup
-        let targetQuantity = min(newQuantity, max(1, maxGroups))
+        if maxGroups <= 0 {
+            removeFromCart(item)
+            return
+        }
+        let targetQuantity = min(newQuantity, maxGroups)
         cartItems[idx].quantity = targetQuantity
         POSLogger.info("cart.quantity_updated", category: "cart", message: "Updated '\(item.accessory.name)' quantity to \(targetQuantity)", metadata: [
             "productId": item.accessory.accessoryID,
@@ -2234,12 +2317,21 @@ final class POSFastSellViewModel: ObservableObject {
                 "assertedGroupPriceMinor": item.unitGroupPriceMinor > 0 ? item.unitGroupPriceMinor : POSMoney.minorUnits(item.unitPriceDisplay),
                 "lineTotalMinor": POSMoney.minorUnits(item.lineTotal)
             ]
-            let smartDesc = item.accessory.pos_smartVariantDescription?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let variantName = item.accessory.pos_variantDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
-            let effectiveVariant = (smartDesc?.isEmpty == false) ? smartDesc! : variantName
-            if !effectiveVariant.isEmpty {
-                payload["variantOptionName"] = effectiveVariant
-                payload["variantDisplayName"] = effectiveVariant
+            let isLive = item.accessory.isLivePet || item.isIndividuallyTracked || !item.unitRingTags.isEmpty
+            if isLive {
+                let liveLabel = Language.get("LiveAnimal", alter: "حيوان حي")
+                payload["isLivePet"] = true
+                payload["itemType"] = "live_pet"
+                payload["variantOptionName"] = liveLabel
+                payload["variantDisplayName"] = liveLabel
+            } else {
+                let smartDesc = item.accessory.pos_smartVariantDescription?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let variantName = item.accessory.pos_variantDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+                let rawVariant = (smartDesc?.isEmpty == false) ? smartDesc! : variantName
+                if !rawVariant.isEmpty && !rawVariant.lowercased().contains("catalog_") && rawVariant != item.accessory.accessoryID && rawVariant != item.accessory.sku {
+                    payload["variantOptionName"] = rawVariant
+                    payload["variantDisplayName"] = rawVariant
+                }
             }
             if let size = item.accessory.size?.trimmingCharacters(in: .whitespacesAndNewlines), !size.isEmpty {
                 payload["size"] = size
@@ -2833,6 +2925,14 @@ struct AdminPOSFastSellView: View {
                 allAccessories: viewModel.allAccessories,
                 onCompleteSale: { card in
                     showsReservedLivePets = false
+                    if viewModel.selectedCustomer == nil && (!card.customerName.isEmpty || !card.customerPhone.isEmpty) {
+                        viewModel.selectedCustomer = POSCustomerRecord(
+                            id: card.customerPhone.isEmpty ? card.customerName : card.customerPhone,
+                            source: card.customerSource.isEmpty ? "directory" : card.customerSource,
+                            name: card.customerName,
+                            phone: card.customerPhone
+                        )
+                    }
                     if let acc = viewModel.allAccessories.first(where: { $0.accessoryID == card.productID }) {
                         viewModel.addReservedUnitToCart(
                             accessory: acc,
@@ -5735,10 +5835,24 @@ private struct POSApexAnimalRegistrySheet: View {
 
     // MARK: - Specimen Hero Capsule & Fast Filter
 
+    private var heroImageURL: URL? {
+        guard let product = unitPicker.product else { return nil }
+        if let url = PetAccessory.firstImageURL(for: product) {
+            return url
+        }
+        for candidate in product.pos_safeImageURLs {
+            let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty, let url = URL(string: trimmed) {
+                return url
+            }
+        }
+        return nil
+    }
+
     private var specimenHeroCapsule: some View {
         VStack(spacing: 10) {
             HStack(alignment: .center, spacing: 14) {
-                // Glowing Category Glyphic Avatar
+                // Glowing Category Glyphic Avatar or Live Pet Photo
                 ZStack {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .fill(
@@ -5749,16 +5863,31 @@ private struct POSApexAnimalRegistrySheet: View {
                             )
                         )
                         .frame(width: 48, height: 48)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .strokeBorder(rosePrimary.opacity(0.40), lineWidth: 1.0)
-                        )
 
-                    Image(systemName: "pawprint.fill")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(rosePrimary)
-                        .shadow(color: rosePrimary.opacity(0.5), radius: 6, x: 0, y: 2)
+                    if let heroImageURL {
+                        AdminRemoteImage(
+                            url: heroImageURL,
+                            contentMode: .fill,
+                            targetSize: CGSize(width: 96, height: 96)
+                        ) {
+                            Image(systemName: "pawprint.fill")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundColor(rosePrimary)
+                                .shadow(color: rosePrimary.opacity(0.5), radius: 6, x: 0, y: 2)
+                        }
+                        .frame(width: 48, height: 48)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    } else {
+                        Image(systemName: "pawprint.fill")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(rosePrimary)
+                            .shadow(color: rosePrimary.opacity(0.5), radius: 6, x: 0, y: 2)
+                    }
                 }
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(rosePrimary.opacity(0.40), lineWidth: 1.0)
+                )
 
                 // Specimen Title & Telemetry Chips
                 VStack(alignment: .leading, spacing: 4) {
@@ -5872,6 +6001,7 @@ private struct POSApexAnimalRegistrySheet: View {
                     ApexAnimalSpecimenCard(
                         unit: unit,
                         isSelected: unitPicker.selectedUnitIDs.contains(unit.unitID),
+                        productImageURL: heroImageURL,
                         currency: currency,
                         rosePrimary: rosePrimary,
                         emeraldReady: emeraldReady,
@@ -6112,12 +6242,27 @@ private struct POSApexAnimalRegistrySheet: View {
 private struct ApexAnimalSpecimenCard: View {
     let unit: POSAnimalUnit
     let isSelected: Bool
+    var productImageURL: URL? = nil
     let currency: (Double) -> String
     let rosePrimary: Color
     let emeraldReady: Color
     let onToggle: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+
+    private var resolvedImageURL: URL? {
+        let direct = unit.imageURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !direct.isEmpty, let url = URL(string: direct) {
+            return url
+        }
+        for candidate in unit.mediaURLs {
+            let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty, let url = URL(string: trimmed) {
+                return url
+            }
+        }
+        return productImageURL
+    }
 
     private var formattedShortID: String {
         if unit.unitID.count > 8 {
@@ -6159,7 +6304,47 @@ private struct ApexAnimalSpecimenCard: View {
                 }
                 .animation(.spring(response: 0.22, dampingFraction: 0.75), value: isSelected)
 
-                // 2. Specimen Holographic Tag & Serial Matrix
+                // 2. Live Pet Photo Thumbnail
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [rosePrimary.opacity(0.12), crimsonAccent.opacity(0.05)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 44, height: 44)
+
+                    if let imageURL = resolvedImageURL {
+                        AdminRemoteImage(
+                            url: imageURL,
+                            contentMode: .fill,
+                            targetSize: CGSize(width: 88, height: 88)
+                        ) {
+                            Image(systemName: "pawprint.fill")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(rosePrimary.opacity(0.8))
+                        }
+                        .frame(width: 44, height: 44)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    } else {
+                        Image(systemName: "pawprint.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(rosePrimary.opacity(0.8))
+                    }
+                }
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(
+                            isSelected
+                                ? rosePrimary.opacity(0.55)
+                                : Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.6 : 0.3),
+                            lineWidth: isSelected ? 1.0 : 0.5
+                        )
+                )
+
+                // 3. Specimen Holographic Tag & Serial Matrix
                 VStack(alignment: .leading, spacing: 4) {
                     // Titanium Ring Tag Badge
                     HStack(spacing: 6) {
@@ -6677,7 +6862,7 @@ private struct CartItemRow: View {
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1.5)
                             .background(AdminSurface.fieldBackground, in: Capsule())
-                        } else if item.accessory.belongsToVariantFamily || item.accessory.isVariant {
+                        } else if (item.accessory.belongsToVariantFamily || item.accessory.isVariant) && !item.accessory.isLivePet && !item.isIndividuallyTracked {
                             HStack(spacing: 3) {
                                 if !item.accessory.pos_variantShortBadge.isEmpty {
                                     Text(item.accessory.pos_variantShortBadge)
@@ -6885,7 +7070,7 @@ private struct POSCartCardRow: View {
                             .padding(.vertical, 1)
                             .background(AdminSurface.fieldBackground, in: Capsule(style: .continuous))
                             .foregroundColor(AdminSurface.primaryText)
-                        } else if item.accessory.belongsToVariantFamily || item.accessory.isVariant {
+                        } else if (item.accessory.belongsToVariantFamily || item.accessory.isVariant) && !item.accessory.isLivePet && !item.isIndividuallyTracked {
                             HStack(spacing: 3) {
                                 if !item.accessory.pos_variantShortBadge.isEmpty {
                                     Text(item.accessory.pos_variantShortBadge)
@@ -9151,7 +9336,7 @@ struct POSPriceReconciliationSheet: View {
                             .foregroundColor(AdminSurface.secondaryText)
                             .accessibilityElement(children: .ignore)
                             .accessibilityLabel(colour.accessibilityName)
-                        } else if accessory.belongsToVariantFamily || accessory.isVariant {
+                        } else if (accessory.belongsToVariantFamily || accessory.isVariant) && !accessory.isLivePet {
                             HStack(spacing: 4) {
                                 if !accessory.pos_variantShortBadge.isEmpty {
                                     Text(accessory.pos_variantShortBadge)

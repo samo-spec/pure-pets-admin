@@ -4835,6 +4835,7 @@
 "POS_Retry" = "Try Again";
 "POS_Refresh" = "Refresh";
 "POS_LiveAnimalFallback" = "Live Pet";
+"LiveAnimal" = "Live Pet";
 "POS_Customer_SelectOrAdd" = "Select or add a customer to the cart";
 "POS_Customer_SelectHint" = "Opens the customer directory to attach a customer to this cart";
 "POS_Customer_BoundLabel" = "Cart customer";
@@ -5477,7 +5478,7 @@
 "CatalogIntake_ValidationName" = "Enter the item name first.";
 "CatalogIntake_ValidationCategory" = "Select the item's main category.";
 "CatalogIntake_ValidationWeight" = "Enter a valid weight or volume with no more than three decimal places.";
-"CatalogIntake_ValidationPrice" = "Enter a valid base price greater than zero.";
+"CatalogIntake_ValidationPrice" = "Enter a price greater than zero, up to 999999999.99, with at most two decimal places.";
 "CatalogIntake_ValidationDiscountPercent" = "Enter a discount from 0 to 100 with no more than two decimal places.";
 "CatalogIntake_ValidationDiscountAmount" = "Enter a valid fixed discount with no more than two decimal places.";
 "CatalogIntake_ValidationStore" = "Select the item's owning branch.";
@@ -10202,3 +10203,185 @@
 "Inventory_Family_SelectedOption" = "Selected option";
 "Inventory_Family_DefaultOption" = "Default option";
 "Inventory_Family_InactiveOption" = "Option inactive";
+
+/* Partner Lifecycle & Admin Review Workspace */
+"Providers_ChangesRequested" = "Changes Requested";
+"Providers_Resubmitted" = "Resubmitted";
+"Providers_ChangesRequested_Option" = "Request Changes & Documents";
+"Providers_ChangesRequested_Desc" = "Return application to provider with feedback and missing items.";
+"Providers_ChangesReasonRequired" = "Please enter feedback and required changes for the applicant.";
+"Providers_SelectToInspect" = "Select an Application";
+"Providers_SelectToInspect_Sub" = "Choose a partner application from the queue to inspect business dossier, audit documents, and issue decisions.";
+"Providers_InspectFirstPending" = "Inspect First Pending Application";
+"Providers_NextMove_ChangesRequested" = "Changes and documents requested from provider. Awaiting revision submission.";
+"Providers_NextMove_Resubmitted" = "Provider resubmitted after addressing feedback. Review revisions to take decision.";
+
+/* Phase 6 Smart Filters & Batch Operations */
+"Providers_Filter_AllTypes" = "All Types";
+"Providers_Filter_Store" = "Stores & Mart";
+"Providers_Filter_Clinic" = "Clinics & Vet";
+"Providers_Filter_Delivery" = "Delivery Fleet";
+"Providers_Filter_Service" = "Pet Services";
+"Providers_Risk_All" = "All Profiles";
+"Providers_Risk_High" = "High Risk / Attention";
+"Providers_Risk_ExpiringDocs" = "Expiring Docs";
+"Providers_Risk_Unassigned" = "Unassigned";
+"Providers_Batch_Mode" = "Select Multiple";
+"Providers_Batch_Done" = "Done";
+"Providers_Batch_SelectedCount" = "%d Selected";
+"Providers_Batch_AssignReviewer" = "Assign Reviewer";
+"Providers_Batch_AddTag" = "Add Tag";
+"Providers_Batch_SelectAll" = "Select All";
+"Providers_Batch_Clear" = "Clear";
+"Providers_Batch_Success" = "Batch operation successfully applied to %d applications.";
+"Providers_Batch_EnterReviewerUid" = "Enter reviewer UID or email:";
+"Providers_Batch_EnterTag" = "Enter tag name (e.g., urgent, priority):";
+"Variant_Media_Preview_Format" = "Preview photo %ld";
+"Variant_Media_Staged_Preview" = "Preview selected photo";
+
+/* Partner Profile Domains Phase 12 */
+"Providers_Domain_Public" = "Public Storefront";
+"Providers_Domain_Operational" = "Operations & Capabilities";
+"Providers_Domain_Legal" = "Legal & Statutory";
+"Providers_Domain_Financial" = "Financial & Payouts";
+"Providers_Domain_MaskedIban" = "Protected Settlement IBAN";
+"Providers_Domain_CommissionRate" = "Platform Commission Rate";
+"Providers_Domain_Commission_AdminOnly" = "Commission rate is platform-controlled";
+
+/* Partner Real-time Synchronization Phase 13 */
+"Providers_Sync_ReconcileProjections" = "Reconcile Read Projections";
+"Providers_Sync_ReconcileSuccess" = "Projections synchronized and aligned with canonical state.";
+"Providers_Sync_InSync" = "In Sync with Pro App";
+"Providers_Sync_DriftDetected" = "Version drift detected. Reconciling read projections…";
+
+/* Partner Command Idempotency Phase 15 */
+"PartnerIdempotency_InProgress" = "This operation is currently in progress. Please wait a moment.";
+"PartnerIdempotency_PayloadMismatch" = "This operation key has already been used with different parameters.";
+"PartnerIdempotency_AlreadyCompleted" = "This operation has already been completed.";
+
+/* Partner Granular Restriction & Scoped Suspension Phase 16 */
+"Providers_Action_Restrict" = "Restrict Account";
+"Providers_Action_Suspend" = "Suspend Account";
+"Providers_Action_LiftRestriction" = "Lift Restriction";
+"Providers_Scope_FullAccount" = "Full Account";
+"Providers_Scope_SellingOnly" = "Selling & Catalog Only";
+"Providers_Scope_NewOrdersOnly" = "New Orders Only";
+"Providers_Scope_PayoutsOnly" = "Payouts Only";
+"Providers_Scope_SpecificBranch" = "Specific Branch";
+"Providers_Scope_SpecificModule" = "Specific Module";
+"Providers_Restriction_Success" = "Partner restriction applied successfully.";
+"Providers_Suspension_Success" = "Partner suspension applied successfully.";
+"Providers_LiftRestriction_Success" = "Restriction lifted and partner operational state updated.";
+
+/* Partner Reactivation Workflow & Evidence Review Phase 17 */
+"Providers_Reactivation_Title" = "Reactivation Dossier";
+"Providers_Reactivation_ReviewRequest" = "Review Reactivation";
+"Providers_Reactivation_Approve" = "Approve & Reinstate";
+"Providers_Reactivation_Reject" = "Reject Request";
+"Providers_Reactivation_DirectReinstate" = "Administrative Reinstatement";
+"Providers_Reactivation_Conditions" = "Reactivation Conditions (Optional)";
+"Providers_Reactivation_ConditionsPlaceholder" = "e.g. 30-day compliance monitoring";
+"Providers_Reactivation_RejectionReasonPrompt" = "Enter detailed reason for rejection:";
+"Providers_Reactivation_ApprovedSuccess" = "Partner account reactivated and operational state restored.";
+"Providers_Reactivation_RejectedSuccess" = "Reactivation request rejected with feedback provided to partner.";
+"Providers_Reactivation_ReinstatedSuccess" = "Partner account administratively reinstated.";
+
+/* Partner Offboarding, Retention & Safe Archival Phase 18 */
+"Providers_Offboarding_Title" = "Partner Offboarding & Archival";
+"Providers_Offboarding_Initiate" = "Initiate Offboarding";
+"Providers_Offboarding_Voluntary" = "Voluntary (Partner Requested)";
+"Providers_Offboarding_Involuntary" = "Involuntary (Administrative Decision)";
+"Providers_Offboarding_ResolveOps" = "Resolve Open Operations";
+"Providers_Offboarding_Settle" = "Complete Financial Settlement";
+"Providers_Offboarding_Finalize" = "Finalize & Archive Partner";
+"Providers_Offboarding_ForceOverride" = "Force Finalize with Open Orders";
+"Providers_Offboarding_OverrideReason" = "Administrative Override Justification";
+"Providers_Offboarding_ArchivedBadge" = "Archived & Offboarded";
+"Providers_Offboarding_Success" = "Partner offboarding step completed successfully.";
+"Providers_Offboarding_FinalizedSuccess" = "Partner successfully offboarded and archived. Credentials revoked.";
+
+/* Partner Event-Driven Notifications Phase 19 */
+"Providers_Notification_Alert_Title" = "Partner Lifecycle Alert";
+"Providers_Notification_ReviewApplication_CTA" = "Review Application";
+"Providers_Notification_ReviewReactivation_CTA" = "Review Reactivation";
+
+/* Partner Immutable Audit Trail & Provenance Ledger Phase 20 */
+"Providers_Audit_Title" = "Partner Compliance Audit Trail";
+"Providers_Audit_VerifyProvenance" = "Verify Cryptographic Provenance";
+"Providers_Audit_ExportDossier" = "Export Regulatory Dossier";
+"Providers_Audit_Status_Verified" = "Chain Integrity Verified";
+"Providers_Audit_Status_Compromised" = "Provenance Compromised / Data Altered";
+"Providers_Audit_TotalEvents" = "Total Audited Events: %ld";
+"Providers_Audit_ExportSuccess" = "Compliance dossier compiled and sealed successfully.";
+
+/* Partner Data Protection, GDPR / Privacy & PII Masking Phase 21 */
+"Providers_Privacy_Title" = "Partner Privacy & Data Protection";
+"Providers_Privacy_RedactButton" = "Execute PII Redaction";
+"Providers_Privacy_RedactConfirm" = "Execute non-destructive personal data redaction for this partner? Historical financial and audit ledgers will be preserved.";
+"Providers_Privacy_ExportButton" = "Export Portable Privacy Dossier";
+"Providers_Privacy_RedactSuccess" = "Partner personal data redacted and certificate generated.";
+"Providers_Privacy_ExportSuccess" = "Portable privacy dossier exported successfully.";
+
+/* Partner High-Performance Caching & Invalidation Phase 22 */
+"Providers_Cache_Title" = "Partner Read Cache & CDN";
+"Providers_Cache_Status_Warm" = "L1 In-Memory Cache: Warm";
+"Providers_Cache_PurgeButton" = "Purge Partner Cache";
+"Providers_Cache_PurgeConfirm" = "Are you sure you want to purge all cached read models and CDN tags for this partner? Next read will re-fetch from primary Firestore database.";
+"Providers_Cache_PurgeSuccess" = "Partner cache tags purged and generation incremented successfully.";
+"Providers_Cache_ETagLabel" = "Active ETag: %@";
+"Providers_Cache_GenerationLabel" = "Cache Generation: %ld";
+
+/* Partner Observability, OpenTelemetry Tracing & Telemetry Phase 23 */
+"Providers_Observability_Title" = "Partner Lifecycle Observability";
+"Providers_Observability_HealthScore" = "System Health Score: %ld/100";
+"Providers_Observability_SLACompliance" = "SLA Compliance: %.1f%%";
+"Providers_Observability_AvgLatency" = "Avg Operation Latency: %.1f ms";
+"Providers_Observability_ActiveSLABreaches" = "Active SLA Breaches: %ld";
+"Providers_Observability_RefreshDashboard" = "Refresh Telemetry";
+"Providers_Observability_StatusHealthy" = "Healthy";
+"Providers_Observability_StatusDegraded" = "Degraded";
+"Providers_Observability_StatusCritical" = "Critical";
+
+/* Partner Disaster Recovery & State Reconstruction Phase 24 */
+"Providers_DR_Title" = "Disaster Recovery & State Reconstruction";
+"Providers_DR_Reconstruct_DryRun" = "Simulate State Reconstruction";
+"Providers_DR_Reconstruct_Repair" = "Execute Transactional Repair";
+"Providers_DR_CreateCheckpoint" = "Create State Checkpoint";
+"Providers_DR_Status_InSync" = "State In Sync with Provenance";
+"Providers_DR_Status_DriftDetected" = "State Drift Detected";
+"Providers_DR_Status_Critical" = "Critical State Desynchronization";
+"Providers_DR_FleetHealthScore" = "Fleet HA Readiness: %ld/100";
+"Providers_DR_ReplayTotalEvents" = "Replayed %ld Audit Events";
+"Providers_DR_CheckpointCreated" = "State snapshot checkpoint signed and sealed successfully.";
+"Providers_DR_RepairSuccess" = "Partner state atomically repaired to version %ld with zero data loss.";
+
+
+
+
+"Inventory_CatalogChangedReopen" = "This item changed while you were editing. Close the editor and reopen the item to review the latest data before saving.";
+
+"Inventory_CommerceLoadFailed" = "Could not load selling units. Tap Save to retry loading before saving.";
+
+"Inventory_CommerceLoading" = "Loading selling units. Wait before saving.";
+
+/* Retain unconfirmed inventory saves and their media. */
+"Inventory_SaveRecoveryRequired" = "This save may already be complete. Resume the pending save to confirm its result before discarding changes.";
+"Inventory_SaveRecoveryUnavailable" = "The pending save could not be recovered. Its record has been preserved. Contact support before starting another save.";
+"Inventory_PendingSaveNotice_Title" = "Save awaiting confirmation";
+
+/* POS Multi-Unit Selling */
+"POS_SelectSellUnit_Title" = "Selling Units & Bundles";
+"POS_SelectSellUnit_Subtitle" = "Choose the selling unit for this item";
+"POS_MultipleUnits_Badge" = "Multi-unit";
+"POS_Unit_Pieces_Format" = "%d pieces";
+"POS_Unit_SinglePiece" = "1 piece";
+"POS_Unit_AvailablePackages_Format" = "%d available";
+"POS_Unit_AvailableStock_Format" = "Available stock: %d pieces";
+"POS_Unit_PricePerPiece_Format" = "(%.2f QAR / piece)";
+"POS_Unit_DefaultForRetail" = "Default Retail";
+"POS_Unit_DefaultForWholesale" = "Default Wholesale";
+"POS_AddToCart_WithUnit_Format" = "Add to Cart • %@";
+"POS_UpdateCart_WithUnit_Format" = "Update Cart • %@";
+"POS_SelectedUnitsCount_Format" = "%d units = %d pieces";
+"POS_UnitOutOfStock" = "Out of stock";
+"POS_InsufficientBranchStockForUnit" = "Insufficient branch stock (%d pieces).";

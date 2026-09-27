@@ -24,13 +24,21 @@ struct POSCompletedReceipt: Identifiable, Sendable {
         let unitSubSubKinds: [String]
         let unitSubSubKindItems: [String]
         let refundedQuantity: Int
+        let isLivePet: Bool
         let variantOptionName: String?
 
         var isRefunded: Bool { refundedQuantity > 0 }
         var isFullyRefunded: Bool { refundedQuantity >= quantity }
 
         var variantOptionFormatted: String? {
+            if isLivePet {
+                return Language.get("LiveAnimal", alter: "حيوان حي")
+            }
             guard let option = variantOptionName?.trimmingCharacters(in: .whitespacesAndNewlines), !option.isEmpty else {
+                return nil
+            }
+            let lowered = option.lowercased()
+            if lowered.contains("catalog_") || lowered.hasPrefix("catalog") {
                 return nil
             }
             return POSReceiptFormat.smartVariantOptionDisplay(option)
@@ -97,9 +105,16 @@ struct POSCompletedReceipt: Identifiable, Sendable {
         lines = receipt.items.enumerated().map { index, item in
             let quantity = max(item.quantity, 1)
             let derivedTotal = item.price * Double(quantity)
-            let variantOption = (item.variantOptionName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
-                ? item.variantOptionName
-                : nil
+            let isLive = item.isLivePet || (item.inventoryMode?.uppercased() == "INDIVIDUAL_TRACKED") || !item.unitRingTags.isEmpty || !item.unitIDs.isEmpty
+            let rawVariant = item.variantOptionName?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let variantOption: String?
+            if isLive {
+                variantOption = Language.get("LiveAnimal", alter: "حيوان حي")
+            } else if let raw = rawVariant, !raw.isEmpty, !raw.lowercased().contains("catalog_"), !raw.lowercased().hasPrefix("catalog") {
+                variantOption = raw
+            } else {
+                variantOption = nil
+            }
             return Line(
                 id: item.itemID.isEmpty ? "line-\(index)" : "\(item.itemID)-\(index)",
                 name: item.name.isEmpty
@@ -114,6 +129,7 @@ struct POSCompletedReceipt: Identifiable, Sendable {
                 unitSubSubKinds: item.unitSubSubKinds,
                 unitSubSubKindItems: item.unitSubSubKindItems,
                 refundedQuantity: max(0, item.refundedQuantity),
+                isLivePet: isLive,
                 variantOptionName: variantOption
             )
         }
@@ -158,9 +174,18 @@ struct POSCompletedReceipt: Identifiable, Sendable {
         self.transactionID = transactionID
         createdAt = Date()
         lines = cartItems.enumerated().map { index, item in
+            let isLive = item.accessory.isLivePet || item.isIndividuallyTracked || !item.unitRingTags.isEmpty
             let smartDesc = item.accessory.pos_smartVariantDescription?.trimmingCharacters(in: .whitespacesAndNewlines)
             let variantName = item.accessory.pos_variantDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
-            let effective = (smartDesc?.isEmpty == false) ? smartDesc! : variantName
+            let rawVariant = (smartDesc?.isEmpty == false) ? smartDesc! : variantName
+            let effective: String?
+            if isLive {
+                effective = Language.get("LiveAnimal", alter: "حيوان حي")
+            } else if rawVariant.lowercased().contains("catalog_") || rawVariant.lowercased().hasPrefix("catalog") || rawVariant == item.accessory.accessoryID || rawVariant == item.accessory.sku {
+                effective = nil
+            } else {
+                effective = rawVariant.isEmpty ? nil : rawVariant
+            }
             return Line(
                 id: "\(item.accessory.accessoryID)-\(index)",
                 name: item.accessory.name,
@@ -173,7 +198,8 @@ struct POSCompletedReceipt: Identifiable, Sendable {
                 unitSubSubKinds: item.unitSubSubKinds,
                 unitSubSubKindItems: item.unitSubSubKindItems,
                 refundedQuantity: 0,
-                variantOptionName: effective.isEmpty ? nil : effective
+                isLivePet: isLive,
+                variantOptionName: effective
             )
         }
         self.subtotal = subtotal > 0 ? subtotal : total + discount
@@ -497,10 +523,23 @@ struct POSCompletedReceiptSheet: View {
                             .fixedSize(horizontal: false, vertical: true)
 
                         if let variant = line.variantOptionFormatted {
-                            Text(variant)
-                                .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption2))
+                            if line.isLivePet {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "pawprint.fill")
+                                        .font(.system(size: 8, weight: .bold))
+                                    Text(variant)
+                                        .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
+                                }
                                 .foregroundColor(AdminSurface.primary)
-                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1.5)
+                                .background(AdminSurface.primary.opacity(0.08), in: Capsule())
+                            } else {
+                                Text(variant)
+                                    .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption2))
+                                    .foregroundColor(AdminSurface.primary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
 
                         let subSubDesc = line.subSubKindFormatted
@@ -1033,6 +1072,11 @@ enum POSReceiptFormat {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         let lowered = trimmed.lowercased()
         let upper = trimmed.uppercased()
+
+        // Suppress internal catalog identifiers and hashes
+        if lowered.contains("catalog_") || lowered.hasPrefix("catalog") {
+            return nil
+        }
 
         // 1. Size detection
         let sizeCodes = ["XXS", "XS", "S", "M", "L", "XL", "2XL", "XXL", "3XL", "XXXL", "4XL", "XXXXL", "FREE", "FREE SIZE"]

@@ -28,6 +28,8 @@ private enum ProviderTheme {
     static let pending = Color(red: 0.96, green: 0.62, blue: 0.14) // Amber
     static let approved = Color(red: 0.08, green: 0.74, blue: 0.48) // Emerald
     static let rejected = Color(red: 0.94, green: 0.28, blue: 0.34) // Crimson
+    static let changesRequested = Color(red: 0.95, green: 0.45, blue: 0.15) // Warning Tangerine
+    static let resubmitted = Color(red: 0.35, green: 0.45, blue: 0.95) // Royal Indigo
     static let brand = AdminSurface.primary
     
     static func tone(for status: String) -> (color: Color, text: String, symbol: String) {
@@ -37,8 +39,12 @@ private enum ProviderTheme {
         case "rejected":
             return (rejected, Language.get("Providers_Rejected", alter: "مرفوض"), "xmark.octagon.fill")
         case "under_review":
-            return (pending, Language.get("Providers_UnderReview", alter: "قيد المراجعة"), "hourglass.circle.fill")
-        default: // pending
+            return (Color.indigo, Language.get("Providers_UnderReview", alter: "قيد المراجعة"), "hourglass.circle.fill")
+        case "changes_requested":
+            return (changesRequested, Language.get("Providers_ChangesRequested", alter: "تعديلات مطلوبة"), "exclamationmark.bubble.fill")
+        case "resubmitted":
+            return (resubmitted, Language.get("Providers_Resubmitted", alter: "معاد تقديمه"), "arrow.counterclockwise.circle.fill")
+        default: // pending / submitted
             return (pending, Language.get("Providers_Pending", alter: "بانتظار القرار"), "clock.arrow.circlepath")
         }
     }
@@ -221,7 +227,7 @@ public struct AdminProvidersView: View {
 
             // Center: Integrated Workspace Tabs inside Header Bar
             HStack(spacing: 4) {
-                ForEach(ProviderTab.allCases, id: \.self) { tab in
+                ForEach(Array(ProviderTab.allCases.enumerated()), id: \.element) { index, tab in
                     let isSelected = selectedTab == tab
                     Button {
                         UISelectionFeedbackGenerator().selectionChanged()
@@ -244,6 +250,7 @@ public struct AdminProvidersView: View {
                         )
                     }
                     .buttonStyle(ProviderPressStyle())
+                    .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
                 }
             }
             .padding(4)
@@ -283,6 +290,7 @@ public struct AdminProvidersView: View {
                     }
                 }
                 .buttonStyle(ProviderPressStyle())
+                .keyboardShortcut("r", modifiers: .command)
             }
         }
         .padding(.horizontal, AdminSpacing.screenMargin)
@@ -397,18 +405,23 @@ final class ProviderApplicationsViewModel: ObservableObject {
     @Published var error: Error?
     @Published var selectedDetailApp: PPProviderApplication?
     @Published var reviewTargetApp: PPProviderApplication?
+    private var listenerRegistration: AnyObject? = nil
     
     enum AppFilter: String, CaseIterable {
         case all = "all"
         case pending = "pending"
+        case changesRequested = "changes_requested"
+        case resubmitted = "resubmitted"
         case approved = "approved"
         case rejected = "rejected"
         
         var localizedTitle: String {
             switch self {
             case .all: return Language.get("All", alter: "الكل")
-            case .pending: return Language.get("Providers_Pending", alter: "معلق")
-            case .approved: return Language.get("Providers_Approved", alter: "مقبول")
+            case .pending: return Language.get("Providers_Pending", alter: "قيد المراجعة")
+            case .changesRequested: return Language.get("Providers_ChangesRequested", alter: "تعديلات مطلوبة")
+            case .resubmitted: return Language.get("Providers_Resubmitted", alter: "معاد تقديمه")
+            case .approved: return Language.get("Providers_Approved", alter: "مقبول ومفعّل")
             case .rejected: return Language.get("Providers_Rejected", alter: "مرفوض")
             }
         }
@@ -417,11 +430,75 @@ final class ProviderApplicationsViewModel: ObservableObject {
             switch self {
             case .all: return "square.grid.2x2.fill"
             case .pending: return "clock.fill"
+            case .changesRequested: return "exclamationmark.bubble.fill"
+            case .resubmitted: return "arrow.counterclockwise.circle.fill"
             case .approved: return "checkmark.seal.fill"
             case .rejected: return "xmark.octagon.fill"
             }
         }
     }
+    
+    enum ProviderTypeFilter: String, CaseIterable {
+        case all = "all"
+        case store = "store"
+        case clinic = "clinic"
+        case delivery = "delivery"
+        case service = "service"
+        
+        var localizedTitle: String {
+            switch self {
+            case .all: return Language.get("Providers_Filter_AllTypes", alter: "كافة الأنشطة")
+            case .store: return Language.get("Providers_Filter_Store", alter: "متاجر ومستلزمات")
+            case .clinic: return Language.get("Providers_Filter_Clinic", alter: "عيادات وبيطرة")
+            case .delivery: return Language.get("Providers_Filter_Delivery", alter: "شركات التوصيل")
+            case .service: return Language.get("Providers_Filter_Service", alter: "خدمات ورعاية")
+            }
+        }
+        
+        var icon: String {
+            switch self {
+            case .all: return "square.grid.2x2"
+            case .store: return "cart.fill"
+            case .clinic: return "cross.case.fill"
+            case .delivery: return "shippingbox.fill"
+            case .service: return "pawprint.fill"
+            }
+        }
+    }
+    
+    enum RiskProfileFilter: String, CaseIterable {
+        case all = "all"
+        case highRisk = "high_risk"
+        case expiringDocs = "expiring_docs"
+        case unassigned = "unassigned"
+        
+        var localizedTitle: String {
+            switch self {
+            case .all: return Language.get("Providers_Risk_All", alter: "كافة الملفات")
+            case .highRisk: return Language.get("Providers_Risk_High", alter: "ملفات حرجة / متكررة")
+            case .expiringDocs: return Language.get("Providers_Risk_ExpiringDocs", alter: "مستندات قاربت الانتهاء")
+            case .unassigned: return Language.get("Providers_Risk_Unassigned", alter: "بانتظار مراجع")
+            }
+        }
+        
+        var icon: String {
+            switch self {
+            case .all: return "shield"
+            case .highRisk: return "exclamationmark.triangle.fill"
+            case .expiringDocs: return "calendar.badge.exclamationmark"
+            case .unassigned: return "person.badge.shield.checkmark.fill"
+            }
+        }
+    }
+    
+    @Published var selectedTypeFilter: ProviderTypeFilter = .all
+    @Published var selectedRiskFilter: RiskProfileFilter = .all
+    
+    // Batch Mode State
+    @Published var isBatchMode: Bool = false
+    @Published var selectedBatchIds: Set<String> = []
+    @Published var isExecutingBatch: Bool = false
+    @Published var batchSuccessMessage: String?
     
     // MARK: - Robust Merchant Display Name Resolver (Never Blank)
     static func resolveDisplayName(for application: PPProviderApplication) -> String {
@@ -469,20 +546,107 @@ final class ProviderApplicationsViewModel: ObservableObject {
                 || userId.localizedCaseInsensitiveContains(q)
         }
         
+        var result = searched
+        
+        // 1. Status Filter
         switch selectedFilter {
         case .all:
-            return searched
+            break
         case .pending:
-            return searched.filter { $0.status.lowercased() == "pending" || $0.status.lowercased() == "under_review" || $0.status.isEmpty }
+            result = result.filter {
+                let s = $0.status.lowercased()
+                return s == "pending" || s == "under_review" || s == "submitted" || s.isEmpty
+            }
+        case .changesRequested:
+            result = result.filter { $0.status.lowercased() == "changes_requested" }
+        case .resubmitted:
+            result = result.filter { $0.status.lowercased() == "resubmitted" }
         case .approved:
-            return searched.filter { $0.status.lowercased() == "approved" }
+            result = result.filter { $0.status.lowercased() == "approved" }
         case .rejected:
-            return searched.filter { $0.status.lowercased() == "rejected" }
+            result = result.filter { $0.status.lowercased() == "rejected" }
         }
+        
+        // 2. Provider Type Filter
+        switch selectedTypeFilter {
+        case .all:
+            break
+        case .store:
+            result = result.filter {
+                let t = $0.providerType.lowercased()
+                return t == "store" || t == "marketplace" || t == "products" || t == "accessories"
+            }
+        case .clinic:
+            result = result.filter {
+                let t = $0.providerType.lowercased()
+                return t == "clinic" || t == "vet"
+            }
+        case .delivery:
+            result = result.filter {
+                let t = $0.providerType.lowercased()
+                return t == "delivery" || t == "delivery_company"
+            }
+        case .service:
+            result = result.filter {
+                let t = $0.providerType.lowercased()
+                return t == "service" || t == "boarding" || t == "hotel"
+            }
+        }
+        
+        // 3. Risk / Attention Filter
+        switch selectedRiskFilter {
+        case .all:
+            break
+        case .highRisk:
+            result = result.filter { app in
+                if app.resubmissionCount >= 2 { return true }
+                let cr = (app.form["commercialRegistrationNumber"] as? String) ?? (app.form["crNumber"] as? String) ?? ""
+                if cr.isEmpty && (app.providerType == "store" || app.providerType == "marketplace" || app.providerType == "vet") {
+                    return true
+                }
+                return false
+            }
+        case .expiringDocs:
+            result = result.filter { app in
+                let now = Date().timeIntervalSince1970
+                let docs = app.documents
+                for (_, value) in docs {
+                    if let docDict = value as? [String: Any], let exp = docDict["expiresAt"] {
+                        var expTime: TimeInterval = 0
+                        if let s = exp as? String, let d = ISO8601DateFormatter().date(from: s) {
+                            expTime = d.timeIntervalSince1970
+                        } else if let n = exp as? Double {
+                            expTime = n
+                        }
+                        if expTime > 0 && expTime - now < 30 * 86400 {
+                            return true
+                        }
+                    }
+                }
+                return false
+            }
+        case .unassigned:
+            result = result.filter {
+                $0.reviewedBy.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+        }
+        
+        return result
     }
     
     var pendingCount: Int {
-        applications.filter { $0.status.lowercased() == "pending" || $0.status.lowercased() == "under_review" || $0.status.isEmpty }.count
+        applications.filter {
+            let s = $0.status.lowercased()
+            return s == "pending" || s == "under_review" || s == "submitted" || s.isEmpty
+        }.count
+    }
+    
+    var changesRequestedCount: Int {
+        applications.filter { $0.status.lowercased() == "changes_requested" }.count
+    }
+    
+    var resubmittedCount: Int {
+        applications.filter { $0.status.lowercased() == "resubmitted" }.count
     }
     
     var approvedCount: Int {
@@ -491,6 +655,37 @@ final class ProviderApplicationsViewModel: ObservableObject {
     
     var rejectedCount: Int {
         applications.filter { $0.status.lowercased() == "rejected" }.count
+    }
+    
+    func startListening() {
+        guard listenerRegistration == nil else { return }
+        if applications.isEmpty {
+            isLoading = true
+        }
+        listenerRegistration = PPProviderService.shared().listenApplications { [weak self] apps, error in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isLoading = false
+                self.isRefreshing = false
+                if let error = error {
+                    self.error = error
+                } else {
+                    self.applications = apps ?? []
+                    // Keep inspector detail fresh with live updates
+                    if let current = self.selectedDetailApp,
+                       let updated = self.applications.first(where: { $0.id == current.id }) {
+                        self.selectedDetailApp = updated
+                    }
+                }
+            }
+        }
+    }
+    
+    func stopListening() {
+        if let reg = listenerRegistration as? NSObject, reg.responds(to: Selector(("remove"))) {
+            reg.perform(Selector(("remove")))
+        }
+        listenerRegistration = nil
     }
     
     func fetch() {
@@ -509,13 +704,35 @@ final class ProviderApplicationsViewModel: ObservableObject {
                     self.error = error
                 } else {
                     self.applications = apps ?? []
+                    if let current = self.selectedDetailApp,
+                       let updated = self.applications.first(where: { $0.id == current.id }) {
+                        self.selectedDetailApp = updated
+                    }
                 }
             }
         }
     }
     
-    func submitReview(appID: String, decision: String, notes: String, completion: @escaping @Sendable (Bool) -> Void) {
-        PPProviderService.shared().reviewApplication(appID, status: decision, notes: notes) { [weak self] result, error in
+    func submitReview(
+        appID: String,
+        decision: String,
+        notes: String,
+        rejectionCode: String? = nil,
+        reviewFindings: [[String: Any]]? = nil,
+        expectedVersion: NSNumber? = nil,
+        idempotencyKey: String? = nil,
+        completion: @escaping @Sendable (Bool) -> Void
+    ) {
+        let key = idempotencyKey ?? "rev_\(appID)_\(decision)_\(UUID().uuidString.lowercased())"
+        PPProviderService.shared().reviewApplication(
+            appID,
+            status: decision,
+            notes: notes,
+            rejectionCode: rejectionCode,
+            reviewFindings: reviewFindings,
+            expectedVersion: expectedVersion,
+            idempotencyKey: key
+        ) { [weak self] result, error in
             DispatchQueue.main.async {
                 guard let self else { return }
                 if let error = error {
@@ -523,6 +740,76 @@ final class ProviderApplicationsViewModel: ObservableObject {
                     completion(false)
                 } else {
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    self.fetch()
+                    completion(true)
+                }
+            }
+        }
+    }
+    
+    func toggleBatchMode() {
+        isBatchMode.toggle()
+        if !isBatchMode {
+            selectedBatchIds.removeAll()
+        }
+    }
+    
+    func toggleSelect(appId: String) {
+        if selectedBatchIds.contains(appId) {
+            selectedBatchIds.remove(appId)
+        } else {
+            selectedBatchIds.insert(appId)
+        }
+    }
+    
+    func selectAllFiltered() {
+        let ids = filteredApps.map { $0.applicationID }
+        selectedBatchIds.formUnion(ids)
+    }
+    
+    func clearSelection() {
+        selectedBatchIds.removeAll()
+    }
+    
+    func executeBatchAssignReviewer(reviewerUid: String, completion: @escaping @Sendable (Bool) -> Void) {
+        let ids = Array(selectedBatchIds)
+        guard !ids.isEmpty else { return }
+        isExecutingBatch = true
+        PPProviderService.shared().batchAssignReviewer(ids, reviewerUid: reviewerUid) { [weak self] count, error in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isExecutingBatch = false
+                if let error = error {
+                    self.error = error
+                    completion(false)
+                } else {
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    self.batchSuccessMessage = String(format: Language.get("Providers_Batch_Success", alter: "تم تنفيذ العملية المجمعة على %d طلبات بنجاح."), count)
+                    self.clearSelection()
+                    self.isBatchMode = false
+                    self.fetch()
+                    completion(true)
+                }
+            }
+        }
+    }
+    
+    func executeBatchAddTag(tag: String, completion: @escaping @Sendable (Bool) -> Void) {
+        let ids = Array(selectedBatchIds)
+        guard !ids.isEmpty else { return }
+        isExecutingBatch = true
+        PPProviderService.shared().batchAddTag(ids, tag: tag) { [weak self] count, error in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isExecutingBatch = false
+                if let error = error {
+                    self.error = error
+                    completion(false)
+                } else {
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    self.batchSuccessMessage = String(format: Language.get("Providers_Batch_Success", alter: "تم تنفيذ العملية المجمعة على %d طلبات بنجاح."), count)
+                    self.clearSelection()
+                    self.isBatchMode = false
                     self.fetch()
                     completion(true)
                 }
@@ -537,6 +824,10 @@ struct AdminProviderApplicationsView: View {
     @ObservedObject var viewModel: ProviderApplicationsViewModel
     var isRegular: Bool = false
     @State private var spinAngle: Double = 0
+    @State private var showAssignReviewerAlert = false
+    @State private var reviewerUidInput = ""
+    @State private var showAddTagAlert = false
+    @State private var tagInput = ""
     
     init(viewModel: ProviderApplicationsViewModel? = nil, isRegular: Bool = false) {
         if let vm = viewModel {
@@ -551,59 +842,158 @@ struct AdminProviderApplicationsView: View {
         ZStack {
             AdminSurface.background.ignoresSafeArea()
             
-            ScrollView {
-                LazyVStack(spacing: 16) {
-                    apexHealthHero
-                    searchAndFilterDeck
-                    applicationsListSection
+            if isRegular {
+                // MARK: - iPad Aerospace Split Review Workspace
+                HStack(alignment: .top, spacing: 0) {
+                    // Left Wing: Master Applications Queue (410pt)
+                    VStack(spacing: 0) {
+                        ScrollView {
+                            LazyVStack(spacing: 14) {
+                                apexHealthHero
+                                searchAndFilterDeck
+                                masterQueueListSection
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
+                            .padding(.bottom, 48)
+                        }
+                    }
+                    .frame(width: 410)
+                    .background(AdminSurface.background)
+                    .overlay(
+                        Rectangle()
+                            .fill(Color(uiColor: .ppSurfaceBorder).opacity(0.65))
+                            .frame(width: 1),
+                        alignment: Language.isRTL() ? .leading : .trailing
+                    )
+
+                    // Right Wing: Live Application Dossier Inspector
+                    Group {
+                        if let selectedApp = viewModel.selectedDetailApp {
+                            AdminProviderApplicationDetailView(
+                                application: selectedApp,
+                                viewModel: viewModel,
+                                isPushMode: false,
+                                onBack: {
+                                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                                        viewModel.selectedDetailApp = nil
+                                    }
+                                }
+                            )
+                            .id(selectedApp.id)
+                            .transition(.opacity.combined(with: .move(edge: Language.isRTL() ? .leading : .trailing)))
+                        } else {
+                            emptyInspectorPlaceholder
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(AdminSurface.background)
                 }
-                .padding(.horizontal, AdminSpacing.screenMargin)
-                .padding(.top, 8)
-                .padding(.bottom, 48)
-            }
-            .refreshable {
-                await withCheckedContinuation { continuation in
-                    viewModel.fetch()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                        continuation.resume()
+            } else {
+                // MARK: - iPhone High-Velocity Single-Column Stack
+                ScrollView {
+                    LazyVStack(spacing: 16) {
+                        apexHealthHero
+                        searchAndFilterDeck
+                        applicationsListSection
+                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.top, 8)
+                    .padding(.bottom, 48)
+                }
+                .refreshable {
+                    await withCheckedContinuation { continuation in
+                        viewModel.fetch()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                            continuation.resume()
+                        }
                     }
                 }
+            }
+            
+            // Batch Mode Floating Action Bar
+            if viewModel.isBatchMode {
+                VStack {
+                    Spacer()
+                    batchFloatingActionBar
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(10)
             }
         }
         .background(
-            NavigationLink(
-                destination: Group {
-                    if let app = viewModel.selectedDetailApp {
-                        AdminProviderApplicationDetailView(
-                            application: app,
-                            viewModel: viewModel,
-                            isPushMode: true,
-                            onBack: {
-                                viewModel.selectedDetailApp = nil
+            Group {
+                if !isRegular {
+                    NavigationLink(
+                        destination: Group {
+                            if let app = viewModel.selectedDetailApp {
+                                AdminProviderApplicationDetailView(
+                                    application: app,
+                                    viewModel: viewModel,
+                                    isPushMode: true,
+                                    onBack: {
+                                        viewModel.selectedDetailApp = nil
+                                    }
+                                )
+                                .navigationBarHidden(true)
+                            } else {
+                                EmptyView()
                             }
+                        },
+                        isActive: Binding(
+                            get: { !isRegular && viewModel.selectedDetailApp != nil },
+                            set: { if !$0 && !isRegular { viewModel.selectedDetailApp = nil } }
                         )
-                        .navigationBarHidden(true)
-                    } else {
+                    ) {
                         EmptyView()
                     }
-                },
-                isActive: Binding(
-                    get: { viewModel.selectedDetailApp != nil },
-                    set: { if !$0 { viewModel.selectedDetailApp = nil } }
-                )
-            ) {
-                EmptyView()
+                    .hidden()
+                    .accessibilityHidden(true)
+                }
             }
-            .hidden()
-            .accessibilityHidden(true)
         )
         .sheet(item: $viewModel.reviewTargetApp) { app in
             ProviderReviewDecisionSheet(application: app, viewModel: viewModel)
         }
-        .onAppear {
-            if viewModel.applications.isEmpty {
-                viewModel.fetch()
+        .alert(Language.get("Providers_Batch_AssignReviewer", alter: "تعيين مراجع"), isPresented: $showAssignReviewerAlert) {
+            TextField(Language.get("Providers_Batch_EnterReviewerUid", alter: "معرّف المراجع"), text: $reviewerUidInput)
+            Button(Language.get("Confirm", alter: "تأكيد")) {
+                let uid = reviewerUidInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !uid.isEmpty {
+                    viewModel.executeBatchAssignReviewer(reviewerUid: uid) { _ in }
+                    reviewerUidInput = ""
+                }
             }
+            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {
+                reviewerUidInput = ""
+            }
+        }
+        .alert(Language.get("Providers_Batch_AddTag", alter: "إضافة وسم"), isPresented: $showAddTagAlert) {
+            TextField(Language.get("Providers_Batch_EnterTag", alter: "الوسم (مثال: عاجل)"), text: $tagInput)
+            Button(Language.get("Confirm", alter: "تأكيد")) {
+                let tag = tagInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !tag.isEmpty {
+                    viewModel.executeBatchAddTag(tag: tag) { _ in }
+                    tagInput = ""
+                }
+            }
+            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {
+                tagInput = ""
+            }
+        }
+        .onAppear {
+            viewModel.startListening()
+            if isRegular && viewModel.selectedDetailApp == nil {
+                if let firstPending = viewModel.filteredApps.first(where: {
+                    let s = $0.status.lowercased()
+                    return s == "pending" || s == "under_review" || s == "changes_requested" || s == "resubmitted"
+                }) ?? viewModel.filteredApps.first {
+                    viewModel.selectedDetailApp = firstPending
+                }
+            }
+        }
+        .onDisappear {
+            viewModel.stopListening()
         }
     }
     
@@ -789,99 +1179,312 @@ struct AdminProviderApplicationsView: View {
     
     private var searchAndFilterDeck: some View {
         VStack(spacing: 10) {
-            // Liquid Search Field
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(AdminCommandInk.secondary)
-                
-                TextField(
-                    Language.get("Providers_Search_Placeholder", alter: "ابحث بالاسم، المتجر، الجوال، المدينة، أو المعرّف..."),
-                    text: $viewModel.searchText
-                )
-                .font(AdminType.callout)
-                .foregroundStyle(AdminSurface.primaryText)
-                
-                if !viewModel.searchText.isEmpty {
-                    Button {
-                        viewModel.searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(AdminCommandInk.tertiary)
-                    }
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(AdminSurface.surface)
-                    .shadow(color: Color.black.opacity(0.02), radius: 6, x: 0, y: 2)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
-            )
-            
-            // Filter Pills
-            HStack(spacing: 6) {
-                ForEach(ProviderApplicationsViewModel.AppFilter.allCases, id: \.self) { filter in
-                    let isSelected = viewModel.selectedFilter == filter
-                    let count: Int = {
-                        switch filter {
-                        case .all: return viewModel.applications.count
-                        case .pending: return viewModel.pendingCount
-                        case .approved: return viewModel.approvedCount
-                        case .rejected: return viewModel.rejectedCount
-                        }
-                    }()
+            // Liquid Search Field + Batch Select Toggle
+            HStack(spacing: 8) {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(AdminCommandInk.secondary)
                     
-                    Button {
-                        UISelectionFeedbackGenerator().selectionChanged()
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                            viewModel.selectedFilter = filter
+                    TextField(
+                        Language.get("Providers_Search_Placeholder", alter: "ابحث بالاسم، المتجر، الجوال، المدينة، أو المعرّف..."),
+                        text: $viewModel.searchText
+                    )
+                    .font(AdminType.callout)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    
+                    if !viewModel.searchText.isEmpty {
+                        Button {
+                            viewModel.searchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundStyle(AdminCommandInk.tertiary)
                         }
-                    } label: {
-                        HStack(spacing: 5) {
-                            Text(filter.localizedTitle)
-                                .font(isSelected ? AdminType.captionBold : AdminType.caption1)
-                            
-                            Text("\(count)")
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(
-                                    isSelected
-                                        ? Color.white.opacity(0.25)
-                                        : AdminSurface.primary.opacity(0.12),
-                                    in: Capsule(style: .continuous)
-                                )
-                        }
-                        .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(
-                            isSelected
-                                ? AnyView(Capsule(style: .continuous).fill(AdminSurface.primary))
-                                : AnyView(Capsule(style: .continuous).fill(AdminSurface.control))
-                        )
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .strokeBorder(
-                                    isSelected ? Color.clear : Color(uiColor: .ppSurfaceBorder).opacity(0.5),
-                                    lineWidth: 0.75
-                                )
-                        )
                     }
-                    .buttonStyle(ProviderPressStyle())
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(AdminSurface.surface)
+                        .shadow(color: Color.black.opacity(0.02), radius: 6, x: 0, y: 2)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
+                )
+                
+                // Batch Mode Toggle Button
+                Button {
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                        viewModel.toggleBatchMode()
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: viewModel.isBatchMode ? "checkmark.circle.fill" : "checklist")
+                            .font(.system(size: 13, weight: .bold))
+                        Text(viewModel.isBatchMode ? Language.get("Providers_Batch_Done", alter: "إلغاء التحديد") : Language.get("Providers_Batch_Mode", alter: "تحديد"))
+                            .font(AdminType.caption2Bold)
+                    }
+                    .foregroundStyle(viewModel.isBatchMode ? Color.white : AdminSurface.primary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 11)
+                    .background(
+                        viewModel.isBatchMode ? AdminSurface.primary : AdminSurface.primary.opacity(0.10),
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
+                }
+                .buttonStyle(ProviderPressStyle())
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            
+            // Primary Status Filter Pills (Horizontal Scroll)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(ProviderApplicationsViewModel.AppFilter.allCases, id: \.self) { filter in
+                        let isSelected = viewModel.selectedFilter == filter
+                        let count: Int = {
+                            switch filter {
+                            case .all: return viewModel.applications.count
+                            case .pending: return viewModel.pendingCount
+                            case .changesRequested: return viewModel.changesRequestedCount
+                            case .resubmitted: return viewModel.resubmittedCount
+                            case .approved: return viewModel.approvedCount
+                            case .rejected: return viewModel.rejectedCount
+                            }
+                        }()
+                        
+                        Button {
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                                viewModel.selectedFilter = filter
+                            }
+                        } label: {
+                            HStack(spacing: 5) {
+                                Text(filter.localizedTitle)
+                                    .font(isSelected ? AdminType.captionBold : AdminType.caption1)
+                                
+                                Text("\(count)")
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(
+                                        isSelected
+                                            ? Color.white.opacity(0.25)
+                                            : AdminSurface.primary.opacity(0.12),
+                                        in: Capsule(style: .continuous)
+                                    )
+                            }
+                            .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                isSelected
+                                    ? AnyView(Capsule(style: .continuous).fill(AdminSurface.primary))
+                                    : AnyView(Capsule(style: .continuous).fill(AdminSurface.control))
+                            )
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .strokeBorder(
+                                        isSelected ? Color.clear : Color(uiColor: .ppSurfaceBorder).opacity(0.5),
+                                        lineWidth: 0.75
+                                    )
+                            )
+                        }
+                        .buttonStyle(ProviderPressStyle())
+                    }
+                }
+                .padding(.horizontal, 1)
+            }
+            
+            // Secondary Smart Filter Row: Provider Types & Risk Profiles
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    // Type Pills
+                    ForEach(ProviderApplicationsViewModel.ProviderTypeFilter.allCases, id: \.self) { typeFilter in
+                        let isSelected = viewModel.selectedTypeFilter == typeFilter
+                        Button {
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                                viewModel.selectedTypeFilter = typeFilter
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: typeFilter.icon)
+                                    .font(.system(size: 10, weight: isSelected ? .bold : .medium))
+                                Text(typeFilter.localizedTitle)
+                                    .font(isSelected ? AdminType.caption2Bold : AdminType.caption2)
+                            }
+                            .foregroundStyle(isSelected ? Color.white : AdminSurface.primaryText)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                isSelected ? AdminSurface.primary : AdminSurface.surface,
+                                in: Capsule(style: .continuous)
+                            )
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .strokeBorder(isSelected ? Color.clear : Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.5)
+                            )
+                        }
+                        .buttonStyle(ProviderPressStyle())
+                    }
+
+                    // Divider
+                    Rectangle()
+                        .fill(Color(uiColor: .ppSurfaceBorder).opacity(0.6))
+                        .frame(width: 1, height: 16)
+                        .padding(.horizontal, 2)
+
+                    // Risk Profile Pills
+                    ForEach(ProviderApplicationsViewModel.RiskProfileFilter.allCases, id: \.self) { riskFilter in
+                        let isSelected = viewModel.selectedRiskFilter == riskFilter
+                        Button {
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                                viewModel.selectedRiskFilter = riskFilter
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: riskFilter.icon)
+                                    .font(.system(size: 10, weight: isSelected ? .bold : .medium))
+                                Text(riskFilter.localizedTitle)
+                                    .font(isSelected ? AdminType.caption2Bold : AdminType.caption2)
+                            }
+                            .foregroundStyle(isSelected ? Color.white : AdminSurface.primaryText)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                isSelected ? (riskFilter == .highRisk ? Color(uiColor: .ppError) : AdminSurface.primary) : AdminSurface.surface,
+                                in: Capsule(style: .continuous)
+                            )
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .strokeBorder(isSelected ? Color.clear : Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.5)
+                            )
+                        }
+                        .buttonStyle(ProviderPressStyle())
+                    }
+                }
+                .padding(.horizontal, 1)
+            }
         }
     }
     
-    // MARK: - Applications List Section (iPad 2-Column Bento vs iPhone Stack)
+    // MARK: - Master Queue List Section (Dedicated iPad Master Pane)
+    
+    @ViewBuilder
+    private var masterQueueListSection: some View {
+        if viewModel.isLoading {
+            VStack(spacing: 16) {
+                ProgressView()
+                    .scaleEffect(1.2)
+                    .tint(AdminSurface.primary)
+                Text(Language.get("Loading", alter: "جاري جلب طلبات المزودين..."))
+                    .font(AdminType.caption1)
+                    .foregroundStyle(AdminCommandInk.secondary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 220)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        } else if viewModel.filteredApps.isEmpty {
+            VStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(AdminSurface.primary.opacity(0.10))
+                        .frame(width: 52, height: 52)
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+                Text(Language.get("Empty", alter: "لا توجد طلبات مطابقة"))
+                    .font(AdminType.headline)
+                    .foregroundStyle(AdminSurface.primaryText)
+            }
+            .frame(maxWidth: .infinity, minHeight: 180)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        } else {
+            LazyVStack(spacing: 10) {
+                ForEach(viewModel.filteredApps, id: \.applicationID) { app in
+                    PPProviderApplicationCard(
+                        application: app,
+                        isRegular: true,
+                        isSelected: viewModel.selectedDetailApp?.id == app.id,
+                        isBatchMode: viewModel.isBatchMode,
+                        isBatchSelected: viewModel.selectedBatchIds.contains(app.applicationID),
+                        onToggleBatchSelect: {
+                            viewModel.toggleSelect(appId: app.applicationID)
+                        }
+                    ) {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                            viewModel.selectedDetailApp = app
+                        }
+                    } onReviewAction: {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        viewModel.reviewTargetApp = app
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Empty Inspector Placeholder (iPad Right Pane)
+
+    private var emptyInspectorPlaceholder: some View {
+        VStack(spacing: 18) {
+            ZStack {
+                Circle()
+                    .fill(AdminSurface.primary.opacity(0.08))
+                    .frame(width: 80, height: 80)
+                Image(systemName: "doc.text.magnifyingglass")
+                    .font(.system(size: 34, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primary)
+            }
+            
+            VStack(spacing: 6) {
+                Text(Language.get("Providers_SelectToInspect", alter: "اختر طلباً من قائمة الانتظار"))
+                    .font(PPBrandFont.bold(size: 20, relativeTo: .title3))
+                    .foregroundStyle(AdminSurface.primaryText)
+                
+                Text(Language.get("Providers_SelectToInspect_Sub", alter: "حدد أحد طلبات المزودين لمعاينة الملف التجاري، فحص التراخيص والمستندات، وإصدار القرارات."))
+                    .font(AdminType.caption1)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 380)
+            }
+            
+            if let firstPending = viewModel.filteredApps.first(where: {
+                let s = $0.status.lowercased()
+                return s == "pending" || s == "under_review" || s == "changes_requested" || s == "resubmitted"
+            }) ?? viewModel.filteredApps.first {
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                        viewModel.selectedDetailApp = firstPending
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "hand.tap.fill")
+                            .font(.system(size: 13, weight: .bold))
+                        Text(Language.get("Providers_InspectFirstPending", alter: "معاينة أول طلب معلق"))
+                            .font(AdminType.captionBold)
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .background(AdminSurface.primary, in: Capsule(style: .continuous))
+                }
+                .buttonStyle(ProviderPressStyle())
+                .padding(.top, 4)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(32)
+        .background(AdminSurface.background)
+    }
+
+    // MARK: - Applications List Section (iPhone Stack)
     
     @ViewBuilder
     private var applicationsListSection: some View {
@@ -935,37 +1538,111 @@ struct AdminProviderApplicationsView: View {
             .frame(maxWidth: .infinity, minHeight: 220)
             .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         } else {
-            if isRegular {
-                // iPad 2-Column Responsive Bento Grid
-                let columns = [
-                    GridItem(.flexible(), spacing: 14),
-                    GridItem(.flexible(), spacing: 14)
-                ]
-                LazyVGrid(columns: columns, spacing: 14) {
-                    ForEach(viewModel.filteredApps, id: \.applicationID) { app in
-                        PPProviderApplicationCard(application: app, isRegular: true) {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            viewModel.selectedDetailApp = app
-                        } onReviewAction: {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            viewModel.reviewTargetApp = app
+            LazyVStack(spacing: 12) {
+                ForEach(viewModel.filteredApps, id: \.applicationID) { app in
+                    PPProviderApplicationCard(
+                        application: app,
+                        isRegular: false,
+                        isSelected: false,
+                        isBatchMode: viewModel.isBatchMode,
+                        isBatchSelected: viewModel.selectedBatchIds.contains(app.applicationID),
+                        onToggleBatchSelect: {
+                            viewModel.toggleSelect(appId: app.applicationID)
                         }
-                    }
-                }
-            } else {
-                // iPhone High-Velocity Stack
-                LazyVStack(spacing: 12) {
-                    ForEach(viewModel.filteredApps, id: \.applicationID) { app in
-                        PPProviderApplicationCard(application: app, isRegular: false) {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            viewModel.selectedDetailApp = app
-                        } onReviewAction: {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            viewModel.reviewTargetApp = app
-                        }
+                    ) {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        viewModel.selectedDetailApp = app
+                    } onReviewAction: {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        viewModel.reviewTargetApp = app
                     }
                 }
             }
+        }
+    }
+    
+    // MARK: - Batch Floating Action Bar
+    private var batchFloatingActionBar: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                // Count badge
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(AdminSurface.primary)
+                        .frame(width: 8, height: 8)
+                    Text(String(format: Language.get("Providers_Batch_SelectedCount", alter: "تم تحديد %d طلبات"), viewModel.selectedBatchIds.count))
+                        .font(AdminType.captionBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(AdminSurface.control, in: Capsule())
+                
+                Spacer()
+                
+                // Select All / Clear Button
+                Button {
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    if viewModel.selectedBatchIds.count == viewModel.filteredApps.count {
+                        viewModel.clearSelection()
+                    } else {
+                        viewModel.selectAllFiltered()
+                    }
+                } label: {
+                    Text(viewModel.selectedBatchIds.count == viewModel.filteredApps.count ? Language.get("Providers_Batch_Clear", alter: "مسح التحديد") : Language.get("Providers_Batch_SelectAll", alter: "تحديد الكل"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(AdminSurface.primary)
+                }
+                
+                // Batch Assign Reviewer Button
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    showAssignReviewerAlert = true
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "person.badge.plus")
+                            .font(.system(size: 11, weight: .bold))
+                        Text(Language.get("Providers_Batch_AssignReviewer", alter: "تعيين مراجع"))
+                            .font(AdminType.captionBold)
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(viewModel.selectedBatchIds.isEmpty ? Color.gray : AdminSurface.primary, in: Capsule())
+                }
+                .disabled(viewModel.selectedBatchIds.isEmpty || viewModel.isExecutingBatch)
+                
+                // Batch Add Tag Button
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    showAddTagAlert = true
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "tag.fill")
+                            .font(.system(size: 11, weight: .bold))
+                        Text(Language.get("Providers_Batch_AddTag", alter: "إضافة وسم"))
+                            .font(AdminType.captionBold)
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(viewModel.selectedBatchIds.isEmpty ? Color.gray : ProviderTheme.approved, in: Capsule())
+                }
+                .disabled(viewModel.selectedBatchIds.isEmpty || viewModel.isExecutingBatch)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(AdminSurface.surface)
+                    .shadow(color: Color.black.opacity(0.12), radius: 16, x: 0, y: 6)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(AdminSurface.primary.opacity(0.3), lineWidth: 1)
+            )
+            .padding(.horizontal, isRegular ? 24 : 16)
+            .padding(.bottom, 16)
         }
     }
 }
@@ -975,6 +1652,10 @@ struct AdminProviderApplicationsView: View {
 private struct PPProviderApplicationCard: View {
     let application: PPProviderApplication
     var isRegular: Bool = false
+    var isSelected: Bool = false
+    var isBatchMode: Bool = false
+    var isBatchSelected: Bool = false
+    var onToggleBatchSelect: (() -> Void)? = nil
     let onTap: () -> Void
     let onReviewAction: () -> Void
     
@@ -985,10 +1666,38 @@ private struct PPProviderApplicationCard: View {
         let dateText = resolvedDateText
         let isPending = application.status.lowercased() == "pending" || application.status.lowercased() == "under_review" || application.status.isEmpty
         
-        Button(action: onTap) {
+        Button(action: {
+            if isBatchMode {
+                onToggleBatchSelect?()
+            } else {
+                onTap()
+            }
+        }) {
             VStack(alignment: .leading, spacing: 12) {
-                // Top Header Row: Emblem + Name + Type + Status Pill
+                // Top Header Row: (Batch Checkbox) + Emblem + Name + Type + Status Pill
                 HStack(alignment: .center, spacing: 12) {
+                    if isBatchMode {
+                        Button {
+                            onToggleBatchSelect?()
+                        } label: {
+                            ZStack {
+                                Circle()
+                                    .strokeBorder(isBatchSelected ? AdminSurface.primary : Color(uiColor: .ppSurfaceBorder), lineWidth: 1.5)
+                                    .frame(width: 22, height: 22)
+                                if isBatchSelected {
+                                    Circle()
+                                        .fill(AdminSurface.primary)
+                                        .frame(width: 22, height: 22)
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundStyle(.white)
+                                }
+                            }
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                    
                     ZStack {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .fill(statusTone.color.opacity(0.12))
@@ -1037,6 +1746,45 @@ private struct PPProviderApplicationCard: View {
                     .padding(.horizontal, 9)
                     .padding(.vertical, 4)
                     .background(statusTone.color.opacity(0.12), in: Capsule(style: .continuous))
+                }
+                
+                // Telemetry Badges (Tags, Reviewer, High Resubmissions)
+                if !application.tags.isEmpty || !application.reviewedBy.isEmpty || application.resubmissionCount > 1 {
+                    HStack(spacing: 5) {
+                        if application.resubmissionCount > 1 {
+                            HStack(spacing: 3) {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text("\(application.resubmissionCount)x")
+                                    .font(AdminType.caption2Bold)
+                            }
+                            .foregroundStyle(Color(uiColor: .ppWarning))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color(uiColor: .ppWarning).opacity(0.12), in: Capsule())
+                        }
+                        if !application.reviewedBy.isEmpty {
+                            HStack(spacing: 3) {
+                                Image(systemName: "person.badge.shield.checkmark.fill")
+                                    .font(.system(size: 9))
+                                Text(application.reviewedBy)
+                                    .font(AdminType.caption2)
+                                    .lineLimit(1)
+                            }
+                            .foregroundStyle(AdminSurface.primary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(AdminSurface.primary.opacity(0.08), in: Capsule())
+                        }
+                        ForEach(application.tags.prefix(2), id: \.self) { tag in
+                            Text("#\(tag)")
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(AdminCommandInk.secondary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(AdminSurface.control, in: Capsule())
+                        }
+                    }
                 }
                 
                 Divider()
@@ -1103,12 +1851,12 @@ private struct PPProviderApplicationCard: View {
             .padding(14)
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(AdminSurface.surface)
-                    .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 2)
+                    .fill(isSelected ? AdminSurface.primary.opacity(0.08) : AdminSurface.surface)
+                    .shadow(color: isSelected ? AdminSurface.primary.opacity(0.12) : Color.black.opacity(0.03), radius: isSelected ? 8 : 6, x: 0, y: 2)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.55), lineWidth: 0.75)
+                    .strokeBorder(isSelected ? AdminSurface.primary : Color(uiColor: .ppSurfaceBorder).opacity(0.55), lineWidth: isSelected ? 1.75 : 0.75)
             )
         }
         .buttonStyle(ProviderPressStyle())
@@ -1144,6 +1892,22 @@ private struct PPProviderApplicationCard: View {
     }
 }
 
+// MARK: - Document Inspection Model
+
+public struct PPDocumentInspectionItem: Identifiable, Sendable {
+    public var id: String { type }
+    public let type: String
+    public let localizedTitle: String
+    public let fileUrl: String
+    public let fileName: String
+    public var status: String
+    public var reviewFinding: String?
+    public var verifiedByUid: String?
+    public var verifiedAt: String?
+    public var expiryDate: String?
+    public var checksum: String?
+}
+
 // MARK: - Reimagined Provider Application Detail / Dossier View (Zero Gap & Full iPad Support)
 
 public struct AdminProviderApplicationDetailView: View {
@@ -1155,6 +1919,7 @@ public struct AdminProviderApplicationDetailView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showingReviewSheet = false
     @State private var copiedField: String? = nil
+    @State private var selectedInspectionDoc: PPDocumentInspectionItem? = nil
     
     init(
         application: PPProviderApplication,
@@ -1208,6 +1973,9 @@ public struct AdminProviderApplicationDetailView: View {
         .sheet(isPresented: $showingReviewSheet) {
             ProviderReviewDecisionSheet(application: application, viewModel: viewModel)
         }
+        .sheet(item: $selectedInspectionDoc) { docItem in
+            PPDocumentInspectionSheet(application: application, documentItem: docItem, viewModel: viewModel)
+        }
         .navigationBarHidden(true)
         .navigationBarBackButtonHidden(true)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
@@ -1218,12 +1986,30 @@ public struct AdminProviderApplicationDetailView: View {
     private var dossierHeaderNav: some View {
         let statusTone = ProviderTheme.tone(for: application.status)
         return HStack(spacing: 12) {
-            AdminSquircleBackButton {
-                if let onBack = onBack {
-                    onBack()
-                } else {
-                    dismiss()
+            if isPushMode {
+                AdminSquircleBackButton {
+                    if let onBack = onBack {
+                        onBack()
+                    } else {
+                        dismiss()
+                    }
                 }
+            } else {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onBack?()
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(AdminSurface.control)
+                            .frame(width: 32, height: 32)
+                        Image(systemName: "xmark")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(AdminCommandInk.secondary)
+                    }
+                }
+                .buttonStyle(ProviderPressStyle())
+                .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
             }
             
             VStack(alignment: .leading, spacing: 2) {
@@ -1274,6 +2060,7 @@ public struct AdminProviderApplicationDetailView: View {
             identifiersMatrix
             applicantAndBusinessSection
             commercialSection
+            documentsInspectionSection
             planSection
             reviewHistorySection
         }
@@ -1292,10 +2079,11 @@ public struct AdminProviderApplicationDetailView: View {
             }
             .frame(width: 410)
 
-            // Trailing Wing (Flexible): Identifiers, Commercial Credentials, Plans & Contact Details
+            // Trailing Wing (Flexible): Identifiers, Commercial Credentials, Documents, Plans & Contact Details
             VStack(spacing: 16) {
                 identifiersMatrix
                 commercialSection
+                documentsInspectionSection
                 planSection
                 applicantAndBusinessSection
             }
@@ -1752,6 +2540,291 @@ public struct AdminProviderApplicationDetailView: View {
         }
     }
     
+    // MARK: - Documents Inspection & Verification Section
+    
+    private var documentsInspectionSection: some View {
+        let items = documentItems
+        return VStack(alignment: .leading, spacing: 10) {
+            SectionHeader(
+                title: Language.get("Providers_Documents_Title", alter: "فحص وتوثيق المستندات الرسمية"),
+                detail: Language.get("Providers_Documents_Detail", alter: "معاينة التراخيص والسجلات، التحقق المشفر، وإصدار قرارات الفحص.")
+            )
+            
+            if items.isEmpty {
+                HStack(spacing: 12) {
+                    Image(systemName: "doc.text.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(AdminCommandInk.tertiary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("Providers_NoDocs_Title", alter: "لا توجد مستندات مرفقة"))
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                        Text(Language.get("Providers_NoDocs_Detail", alter: "لم يقم المزود برفع مستندات رسمية أو لم يتم تسجيلها بعد."))
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(16)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.55), lineWidth: 0.75)
+                )
+            } else {
+                VStack(spacing: 12) {
+                    ForEach(items) { doc in
+                        documentRowCard(for: doc)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func documentRowCard(for doc: PPDocumentInspectionItem) -> some View {
+        let statusTone = documentStatusTone(for: doc.status)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(statusTone.color.opacity(0.12))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: statusTone.icon)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(statusTone.color)
+                }
+                
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(doc.localizedTitle)
+                        .font(AdminType.headline)
+                        .foregroundStyle(AdminSurface.primaryText)
+                    
+                    Text(doc.fileName)
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .lineLimit(1)
+                }
+                
+                Spacer()
+                
+                // Status Chip
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(statusTone.color)
+                        .frame(width: 6, height: 6)
+                    Text(statusTone.text)
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(statusTone.color)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(statusTone.color.opacity(0.12), in: Capsule())
+            }
+            
+            // Verification Stamp Banner if Verified
+            if doc.status.lowercased() == "verified", let checksum = doc.checksum, !checksum.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.shield.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(ProviderTheme.approved)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("Providers_Doc_StampLabel", alter: "بصمة التحقق المشفرة (SHA-256):"))
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(AdminCommandInk.secondary)
+                        Text(String(checksum.prefix(16)) + "..." + String(checksum.suffix(8)))
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundStyle(AdminSurface.primaryText)
+                    }
+                    Spacer()
+                    if let expiry = doc.expiryDate, !expiry.isEmpty {
+                        Text(Language.get("Expires", alter: "ينتهي: ") + String(expiry.prefix(10)))
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                    }
+                }
+                .padding(8)
+                .background(ProviderTheme.approved.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            
+            // Finding Banner if Changes Required or Rejected
+            if let finding = doc.reviewFinding, !finding.isEmpty {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: doc.status.lowercased() == "rejected" ? "xmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(statusTone.color)
+                        .padding(.top, 1)
+                    Text(finding)
+                        .font(AdminType.caption1)
+                        .foregroundStyle(statusTone.color)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(statusTone.color.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            
+            // Action button to inspect
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                selectedInspectionDoc = doc
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "eye.fill")
+                        .font(.system(size: 12, weight: .bold))
+                    Text(Language.get("Providers_Doc_InspectCTA", alter: "معاينة وتدقيق المستند"))
+                        .font(AdminType.captionBold)
+                    Spacer()
+                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 11, weight: .bold))
+                }
+                .foregroundStyle(AdminSurface.primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .buttonStyle(ProviderPressStyle())
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(AdminSurface.surface)
+                .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 2)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.55), lineWidth: 0.75)
+        )
+    }
+    
+    private func documentStatusTone(for status: String) -> (color: Color, text: String, icon: String) {
+        switch status.lowercased() {
+        case "verified":
+            return (ProviderTheme.approved, Language.get("Doc_Status_Verified", alter: "موثّق ومعتمد"), "checkmark.shield.fill")
+        case "changes_required":
+            return (ProviderTheme.changesRequested, Language.get("Doc_Status_ChangesRequired", alter: "مطلوب تعديل"), "exclamationmark.triangle.fill")
+        case "rejected":
+            return (ProviderTheme.rejected, Language.get("Doc_Status_Rejected", alter: "مرفوض"), "xmark.seal.fill")
+        case "under_review":
+            return (Color.indigo, Language.get("Doc_Status_UnderReview", alter: "قيد الفحص"), "hourglass.circle.fill")
+        case "uploaded":
+            return (ProviderTheme.pending, Language.get("Doc_Status_Uploaded", alter: "مرفوع جديد"), "arrow.up.doc.fill")
+        default:
+            return (AdminCommandInk.secondary, Language.get("Doc_Status_Missing", alter: "غير مرفق"), "doc.questionmark.fill")
+        }
+    }
+    
+    private var documentItems: [PPDocumentInspectionItem] {
+        var items: [PPDocumentInspectionItem] = []
+        let rawDocs = application.documents
+        let form = application.form
+        
+        // 1. Commercial Registration
+        let crDict = rawDocs["commercial_registration"] as? [String: Any]
+        let crUrl = (crDict?["fileUrl"] as? String) ?? (form["commercialRegistrationDocumentURL"] as? String) ?? (form["commercialRegDocument"] as? String) ?? ""
+        if !crUrl.isEmpty || crDict != nil {
+            items.append(makeDocItem(
+                type: "commercial_registration",
+                title: Language.get("Doc_CR", alter: "السجل التجاري"),
+                dict: crDict,
+                fallbackUrl: crUrl,
+                fallbackName: "commercial_registration.pdf"
+            ))
+        }
+        
+        // 2. License / Trade License / Pharmacy License
+        let licKey = application.providerType.lowercased() == "pharmacy" ? "pharmacy_license" : "license"
+        let licDict = (rawDocs[licKey] as? [String: Any]) ?? (rawDocs["license"] as? [String: Any]) ?? (rawDocs["trade_license"] as? [String: Any])
+        let licUrl = (licDict?["fileUrl"] as? String) ?? (form["licenseDocumentURL"] as? String) ?? (form["licenseDocument"] as? String) ?? ""
+        if !licUrl.isEmpty || licDict != nil {
+            let licTitle = application.providerType.lowercased() == "pharmacy"
+                ? Language.get("Doc_PharmacyLicense", alter: "رخصة المنشأة الصيدلانية")
+                : Language.get("Doc_License", alter: "رخصة المزاولة التجارية")
+            items.append(makeDocItem(
+                type: licKey,
+                title: licTitle,
+                dict: licDict,
+                fallbackUrl: licUrl,
+                fallbackName: "\(licKey).pdf"
+            ))
+        }
+        
+        // 3. Other explicit keys in rawDocs
+        for (rawKey, val) in rawDocs {
+            guard let key = rawKey as? String,
+                  !["commercial_registration", "license", "trade_license", "pharmacy_license"].contains(key) else { continue }
+            if let dict = val as? [String: Any] {
+                let title = localizedDocTitle(for: key)
+                let url = (dict["fileUrl"] as? String) ?? ""
+                let name = (dict["fileName"] as? String) ?? "\(key).pdf"
+                items.append(makeDocItem(type: key, title: title, dict: dict, fallbackUrl: url, fallbackName: name))
+            }
+        }
+        
+        // 4. Any documentRefs in form not covered
+        if let refs = form["documentRefs"] as? [String] {
+            for (idx, ref) in refs.enumerated() where !ref.isEmpty && !items.contains(where: { $0.fileUrl == ref }) {
+                items.append(PPDocumentInspectionItem(
+                    type: "document_\(idx + 1)",
+                    localizedTitle: "\(Language.get("Doc_Attachment", alter: "مرفق ترخيص إضافي")) #\(idx + 1)",
+                    fileUrl: ref,
+                    fileName: "attachment_\(idx + 1).pdf",
+                    status: "uploaded",
+                    reviewFinding: nil,
+                    verifiedByUid: nil,
+                    verifiedAt: nil,
+                    expiryDate: nil,
+                    checksum: nil
+                ))
+            }
+        }
+        
+        return items
+    }
+    
+    private func makeDocItem(type: String, title: String, dict: [String: Any]?, fallbackUrl: String, fallbackName: String) -> PPDocumentInspectionItem {
+        let status = (dict?["status"] as? String) ?? (!fallbackUrl.isEmpty ? "uploaded" : "missing")
+        let url = (dict?["fileUrl"] as? String) ?? fallbackUrl
+        let name = (dict?["fileName"] as? String) ?? fallbackName
+        let finding = dict?["reviewFinding"] as? String
+        let reviewedBy = dict?["reviewedByUid"] as? String
+        let reviewedAt = dict?["reviewedAt"] as? String
+        let expiry = dict?["expiryDate"] as? String
+        let stamp = dict?["verificationStamp"] as? [String: Any]
+        let checksum = stamp?["checksum"] as? String
+        
+        return PPDocumentInspectionItem(
+            type: type,
+            localizedTitle: title,
+            fileUrl: url,
+            fileName: name,
+            status: status,
+            reviewFinding: finding,
+            verifiedByUid: reviewedBy,
+            verifiedAt: reviewedAt,
+            expiryDate: expiry,
+            checksum: checksum
+        )
+    }
+    
+    private func localizedDocTitle(for type: String) -> String {
+        switch type.lowercased() {
+        case "commercial_registration":
+            return Language.get("Doc_CR", alter: "السجل التجاري")
+        case "license", "trade_license":
+            return Language.get("Doc_License", alter: "رخصة المزاولة التجارية")
+        case "pharmacy_license":
+            return Language.get("Doc_PharmacyLicense", alter: "رخصة المنشأة الصيدلانية")
+        case "veterinary_health_clearance":
+            return Language.get("Doc_VetClearance", alter: "شهادة المنشأة البيطرية")
+        case "transport_license":
+            return Language.get("Doc_TransportLicense", alter: "ترخيص النقل والتوصيل")
+        case "tax_certificate":
+            return Language.get("Doc_TaxCert", alter: "البطاقة الضريبية")
+        default:
+            return Language.get("Doc_Attachment", alter: "مستند رسمي") + " (\(type))"
+        }
+    }
+    
     // MARK: - Plan & Commercial Terms
     
     private var planSection: some View {
@@ -1932,7 +3005,7 @@ public struct AdminProviderApplicationDetailView: View {
     
     private var isPending: Bool {
         let s = application.status.lowercased()
-        return s == "pending" || s == "under_review" || s.isEmpty
+        return s == "pending" || s == "under_review" || s == "submitted" || s == "changes_requested" || s == "resubmitted" || s.isEmpty
     }
     
     private var resolvedName: String {
@@ -1943,6 +3016,9 @@ public struct AdminProviderApplicationDetailView: View {
         switch application.status.lowercased() {
         case "approved": return "checkmark.circle.fill"
         case "rejected": return "exclamationmark.octagon.fill"
+        case "changes_requested": return "exclamationmark.bubble.fill"
+        case "resubmitted": return "arrow.counterclockwise.circle.fill"
+        case "under_review": return "hourglass.circle.fill"
         default: return "clock.arrow.circlepath"
         }
     }
@@ -1953,6 +3029,10 @@ public struct AdminProviderApplicationDetailView: View {
             return Language.get("Providers_NextMove_Approved", alter: "تمت الموافقة وتفعيل حساب المزود بنجاح. لا يلزم أي إجراء مراجعة آخر.")
         case "rejected":
             return Language.get("Providers_NextMove_Rejected", alter: "تم رفض الطلب لعدم استيفاء الشروط المطلوبة. يمكن للمزود تقديم طلب جديد.")
+        case "changes_requested":
+            return Language.get("Providers_NextMove_ChangesRequested", alter: "تم إرسال طلب تعديلات ومستندات للمزود. بانتظار قيام المزود بتحديث بياناته وإعادة التقديم.")
+        case "resubmitted":
+            return Language.get("Providers_NextMove_Resubmitted", alter: "قام المزود بإعادة تقديم الطلب بعد معالجة الملاحظات. يرجى مراجعة التحديثات وإصدار القرار.")
         case "under_review":
             return Language.get("Providers_NextMove_UnderReview", alter: "الطلب قيد التدقيق الإداري. قم بفحص التراخيص والاتصال بالمتقدم لإصدار القرار.")
         default:
@@ -1969,6 +3049,182 @@ public struct AdminProviderApplicationDetailView: View {
     }
 }
 
+// MARK: - Structured Findings & Rejection Taxonomy Models
+
+private struct QuickFindingTemplate: Identifiable {
+    let id: String
+    let targetType: String
+    let targetKey: String
+    let titleAr: String
+    let titleEn: String
+    let descriptionAr: String
+    let descriptionEn: String
+    let remedyAr: String
+    let remedyEn: String
+    
+    var localizedTitle: String {
+        Language.isRTL() ? titleAr : titleEn
+    }
+    
+    var localizedDescription: String {
+        Language.isRTL() ? descriptionAr : descriptionEn
+    }
+    
+    var localizedRemedy: String {
+        Language.isRTL() ? remedyAr : remedyEn
+    }
+}
+
+private struct RejectionTaxonomyItem: Identifiable {
+    let code: String
+    let titleAr: String
+    let titleEn: String
+    let descriptionAr: String
+    let descriptionEn: String
+    
+    var id: String { code }
+    
+    var localizedTitle: String {
+        Language.isRTL() ? titleAr : titleEn
+    }
+    
+    var localizedDescription: String {
+        Language.isRTL() ? descriptionAr : descriptionEn
+    }
+}
+
+private let standardFindingTemplates: [QuickFindingTemplate] = [
+    QuickFindingTemplate(
+        id: "CLARITY_BLURRY_SCAN",
+        targetType: "document",
+        targetKey: "commercial_registration",
+        titleAr: "المستند غير واضح أو مطموس",
+        titleEn: "Document scan is blurry",
+        descriptionAr: "المستند المرفوع غير واضح أو تظهر فيه أختام غير مقروءة تعذر التحقق منها رسميًا.",
+        descriptionEn: "The uploaded document is blurry, cut off, or contains unreadable official stamps.",
+        remedyAr: "يرجى إعادة رفع نسخة ممسوحة ضوئيًا واضحة لكامل الصفحة والأختام.",
+        remedyEn: "Please upload a high-resolution scan showing full page and stamps clearly."
+    ),
+    QuickFindingTemplate(
+        id: "EXPIRY_EXPIRED_DOCUMENT",
+        targetType: "document",
+        targetKey: "license",
+        titleAr: "انتهاء صلاحية الرخصة أو السجل",
+        titleEn: "Document or license has expired",
+        descriptionAr: "تاريخ صلاحية المستند المرفوع منتهي ولا يمكن اعتماده لتفعيل المنشأة.",
+        descriptionEn: "The validity date of the submitted document has passed and cannot be approved.",
+        remedyAr: "يرجى تجديد الرخصة ورفع وثيقة التجديد سارية المفعول.",
+        remedyEn: "Please renew the license with competent authority and upload the valid document."
+    ),
+    QuickFindingTemplate(
+        id: "MISMATCH_NAME_OR_CR",
+        targetType: "document",
+        targetKey: "commercial_registration",
+        titleAr: "عدم تطابق الاسم التجاري أو رقم السجل",
+        titleEn: "Trade name or CR number mismatch",
+        descriptionAr: "الاسم أو رقم السجل التجاري المدخل في بيانات الطلب لا يتطابق تمامًا مع الوثيقة الرسمية المرفقة.",
+        descriptionEn: "The business trade name or CR number does not match the official document.",
+        remedyAr: "يرجى تصحيح الاسم التجاري ورقم السجل ليتطابق مع السجل التجاري الرسمي.",
+        remedyEn: "Please correct trade name and CR number to match your official registration."
+    ),
+    QuickFindingTemplate(
+        id: "REGULATORY_MISSING_VET_CLEARANCE",
+        targetType: "document",
+        targetKey: "veterinary_health_clearance",
+        titleAr: "شهادة المنشأة البيطرية غير مرفقة",
+        titleEn: "Veterinary clearance missing",
+        descriptionAr: "تتطلب خدمات الرعاية والعيادات البيطرية إرفاق ترخيص المنشأة البيطرية المعتمد من وزارة البلدية والبيئة.",
+        descriptionEn: "Veterinary care services require a certified facility clearance from the Ministry.",
+        remedyAr: "يرجى إرفاق ترخيص المنشأة البيطرية ساري المفعول لإتمام اعتماد القدرة البيطرية.",
+        remedyEn: "Please upload your valid veterinary facility license to enable vet capabilities."
+    ),
+    QuickFindingTemplate(
+        id: "REGULATORY_MISSING_PHARMACY_LICENSE",
+        targetType: "document",
+        targetKey: "pharmacy_license",
+        titleAr: "ترخيص الصيدلية البيطرية مطلوب",
+        titleEn: "Veterinary pharmacy license required",
+        descriptionAr: "بيع وصرف الأدوية البيطرية يستلزم ترخيص صيدلية بيطرية معتمد من وزارة الصحة العامة.",
+        descriptionEn: "Dispensing veterinary medicines requires a certified pharmacy license from MoPH.",
+        remedyAr: "يرجى إرفاق رخصة الصيدلية البيطرية الصادرة من الجهة المختصة.",
+        remedyEn: "Please attach the official veterinary pharmacy license issued by health authority."
+    ),
+    QuickFindingTemplate(
+        id: "FINANCIAL_INVALID_IBAN",
+        targetType: "field",
+        targetKey: "bankIban",
+        titleAr: "الحساب البنكي (IBAN) غير مطابق",
+        titleEn: "Bank IBAN does not match",
+        descriptionAr: "يجب أن يكون الحساب البنكي المخصص للتسويات باسم المنشأة أو المالك المسجل في السجل التجاري.",
+        descriptionEn: "Bank account for settlements must be under company or registered owner's name.",
+        remedyAr: "يرجى تحديث الآيبان البنكي أو إرفاق شهادة الحساب البنكي الرسمية.",
+        remedyEn: "Please update the IBAN or provide an official bank certificate."
+    ),
+    QuickFindingTemplate(
+        id: "IDENTITY_SIGNATORY_AUTHORITY",
+        targetType: "document",
+        targetKey: "establishment_card",
+        titleAr: "بطاقة قيد المنشأة مطلوبة",
+        titleEn: "Establishment card required",
+        descriptionAr: "يرجى تقديم بطاقة قيد المنشأة للتأكد من صلاحية المفوض بالتوقيع والتعاقد.",
+        descriptionEn: "Please provide establishment card to verify authorized signatory authority.",
+        remedyAr: "يرجى رفع صورة من بطاقة قيد المنشأة سارية المفعول.",
+        remedyEn: "Please upload a clear copy of valid establishment card."
+    ),
+]
+
+private let standardRejectionTaxonomy: [RejectionTaxonomyItem] = [
+    RejectionTaxonomyItem(
+        code: "REGULATORY_NON_COMPLIANCE",
+        titleAr: "مخالفة للاشتراطات التنظيمية",
+        titleEn: "Regulatory non-compliance",
+        descriptionAr: "الطلب أو النشاط المقدم لا يستوفي الشروط القانونية المنظمة لوزارة التجارة أو وزارة الصحة.",
+        descriptionEn: "The application or activity does not meet statutory regulations of the relevant ministries."
+    ),
+    RejectionTaxonomyItem(
+        code: "DOCUMENT_FRAUD_OR_ALTERATION",
+        titleAr: "اشتباه في صحة المستندات",
+        titleEn: "Document authenticity concern",
+        descriptionAr: "تعذر التحقق من مصداقية الوثائق المرفقة أو ثبوت تعديل وتلاعب رقمي في الأختام.",
+        descriptionEn: "Document authenticity could not be verified or digital tampering was detected."
+    ),
+    RejectionTaxonomyItem(
+        code: "INELIGIBLE_BUSINESS_ACTIVITY",
+        titleAr: "نشاط تجاري غير مؤهل",
+        titleEn: "Ineligible business activity",
+        descriptionAr: "طبيعة السلع أو الخدمات الممارسة خارج نطاق وأهلية منظومة بيور بيتس.",
+        descriptionEn: "The business operations fall outside the eligibility scope of PurePets."
+    ),
+    RejectionTaxonomyItem(
+        code: "PROHIBITED_GOODS_OR_SERVICES",
+        titleAr: "سلع أو خدمات غير مصرح بها",
+        titleEn: "Prohibited goods or services",
+        descriptionAr: "يتضمن المتجر بيع حيوانات برية محظورة أو أدوية مقيدة دون ترخيص صيدلي معتمد.",
+        descriptionEn: "Offering prohibited wildlife or restricted pharmaceuticals without proper licensing."
+    ),
+    RejectionTaxonomyItem(
+        code: "IDENTITY_MISMATCH",
+        titleAr: "عدم تطابق الهوية أو الملكية",
+        titleEn: "Identity mismatch",
+        descriptionAr: "بيانات مقدم الطلب لا تتوافق مع هوية المالك أو المفوض بالتوقيع في السجل الرسمي.",
+        descriptionEn: "Applicant details do not match the registered owner or authorized signatory."
+    ),
+    RejectionTaxonomyItem(
+        code: "POLICY_VIOLATION",
+        titleAr: "مخالفة سياسات وقواعد المنصة",
+        titleEn: "Platform policy violation",
+        descriptionAr: "الطلب يخالف شروط الاستخدام أو سياسات النزاهة وحماية المستهلك المعتمدة.",
+        descriptionEn: "The application violates PurePets terms of service or consumer protection standards."
+    ),
+    RejectionTaxonomyItem(
+        code: "OTHER",
+        titleAr: "أسباب أخرى",
+        titleEn: "Other reasons",
+        descriptionAr: "عدم استيفاء المعايير الفنية أو التشغيلية المطلوبة لاعتماد الشراكة.",
+        descriptionEn: "Does not meet operational or technical standards required for partnership."
+    ),
+]
+
 // MARK: - Provider Review Decision Modal Sheet
 
 private struct ProviderReviewDecisionSheet: View {
@@ -1978,6 +3234,9 @@ private struct ProviderReviewDecisionSheet: View {
     
     @State private var selectedDecision: String = "approved"
     @State private var notesText: String = ""
+    @State private var selectedRejectionCode: String = "REGULATORY_NON_COMPLIANCE"
+    @State private var selectedTemplateIds: Set<String> = []
+    @State private var structuredFindings: [[String: Any]] = []
     @State private var isSubmitting = false
     @State private var alertMessage: String? = nil
     
@@ -2020,12 +3279,99 @@ private struct ProviderReviewDecisionSheet: View {
                             )
                             
                             decisionOptionTile(
+                                id: "changes_requested",
+                                title: Language.get("Providers_ChangesRequested_Option", alter: "طلب تعديلات ومستندات"),
+                                subtitle: Language.get("Providers_ChangesRequested_Desc", alter: "إرجاع الطلب للمزود مع تسجيل الملاحظات والنواقص المطلوبة."),
+                                color: ProviderTheme.changesRequested,
+                                icon: "exclamationmark.bubble.fill"
+                            )
+                            
+                            decisionOptionTile(
                                 id: "rejected",
                                 title: Language.get("Providers_Reject_Option", alter: "رفض الطلب"),
                                 subtitle: Language.get("Providers_Reject_Desc", alter: "رفض الانضمام مع إرسال سبب الرفض إلى المتقدم."),
                                 color: ProviderTheme.rejected,
                                 icon: "xmark.octagon.fill"
                             )
+                        }
+                        
+                        // Contextual Templates / Taxonomy Bar
+                        if selectedDecision == "changes_requested" {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "sparkles")
+                                        .font(.system(size: 13, weight: .bold))
+                                        .foregroundStyle(ProviderTheme.changesRequested)
+                                    Text(Language.get("Providers_QuickFindings_Title", alter: "نماذج وملاحظات سريعة جاهزة للتعديل:"))
+                                        .font(AdminType.caption2Bold)
+                                        .foregroundStyle(AdminSurface.primaryText)
+                                }
+                                
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 8) {
+                                        ForEach(standardFindingTemplates) { template in
+                                            let isSelected = selectedTemplateIds.contains(template.id)
+                                            Button {
+                                                applyFindingTemplate(template)
+                                            } label: {
+                                                HStack(spacing: 4) {
+                                                    Image(systemName: isSelected ? "checkmark.circle.fill" : "plus.circle")
+                                                        .font(.system(size: 11, weight: .bold))
+                                                    Text(template.localizedTitle)
+                                                        .font(AdminType.caption2Bold)
+                                                }
+                                                .foregroundStyle(isSelected ? .white : ProviderTheme.changesRequested)
+                                                .padding(.horizontal, 10)
+                                                .padding(.vertical, 6)
+                                                .background(
+                                                    isSelected ? ProviderTheme.changesRequested : ProviderTheme.changesRequested.opacity(0.12),
+                                                    in: Capsule()
+                                                )
+                                            }
+                                            .buttonStyle(ProviderPressStyle())
+                                        }
+                                    }
+                                }
+                            }
+                        } else if selectedDecision == "rejected" {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "shield.slash.fill")
+                                        .font(.system(size: 13, weight: .bold))
+                                        .foregroundStyle(ProviderTheme.rejected)
+                                    Text(Language.get("Providers_RejectionTaxonomy_Title", alter: "التصنيف الرسمي لسبب الرفض:"))
+                                        .font(AdminType.caption2Bold)
+                                        .foregroundStyle(AdminSurface.primaryText)
+                                }
+                                
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 8) {
+                                        ForEach(standardRejectionTaxonomy) { item in
+                                            let isSelected = selectedRejectionCode == item.code
+                                            Button {
+                                                applyRejectionTaxonomy(item)
+                                            } label: {
+                                                HStack(spacing: 4) {
+                                                    if isSelected {
+                                                        Image(systemName: "checkmark")
+                                                            .font(.system(size: 10, weight: .bold))
+                                                    }
+                                                    Text(item.localizedTitle)
+                                                        .font(AdminType.caption2Bold)
+                                                }
+                                                .foregroundStyle(isSelected ? .white : ProviderTheme.rejected)
+                                                .padding(.horizontal, 10)
+                                                .padding(.vertical, 6)
+                                                .background(
+                                                    isSelected ? ProviderTheme.rejected : ProviderTheme.rejected.opacity(0.12),
+                                                    in: Capsule()
+                                                )
+                                            }
+                                            .buttonStyle(ProviderPressStyle())
+                                        }
+                                    }
+                                }
+                            }
                         }
                         
                         // Notes Field
@@ -2042,6 +3388,7 @@ private struct ProviderReviewDecisionSheet: View {
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                                         .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
+                                // Submit Button
                                 )
                         }
                         
@@ -2143,27 +3490,620 @@ private struct ProviderReviewDecisionSheet: View {
         switch selectedDecision {
         case "approved": return ProviderTheme.approved
         case "rejected": return ProviderTheme.rejected
+        case "changes_requested": return ProviderTheme.changesRequested
         default: return ProviderTheme.pending
         }
     }
     
+    private func applyFindingTemplate(_ template: QuickFindingTemplate) {
+        UISelectionFeedbackGenerator().selectionChanged()
+        if selectedTemplateIds.contains(template.id) {
+            selectedTemplateIds.remove(template.id)
+            structuredFindings.removeAll { ($0["id"] as? String) == template.id }
+            notesText = structuredFindings.compactMap { $0["description"] as? String }.joined(separator: "\n\n")
+        } else {
+            selectedTemplateIds.insert(template.id)
+            let findingDict: [String: Any] = [
+                "id": template.id,
+                "targetType": template.targetType,
+                "targetKey": template.targetKey,
+                "severity": "blocking",
+                "title": template.localizedTitle,
+                "description": template.localizedDescription,
+                "suggestedRemedy": template.localizedRemedy,
+                "resolved": false,
+                "createdAt": ISO8601DateFormatter().string(from: Date())
+            ]
+            structuredFindings.append(findingDict)
+            let bullet = "\(template.localizedTitle):\n- \(template.localizedDescription)\n- \(template.localizedRemedy)"
+            if notesText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                notesText = bullet
+            } else {
+                notesText += "\n\n\(bullet)"
+            }
+        }
+    }
+    
+    private func applyRejectionTaxonomy(_ item: RejectionTaxonomyItem) {
+        UISelectionFeedbackGenerator().selectionChanged()
+        selectedRejectionCode = item.code
+        let textToSet = "\(item.localizedTitle): \(item.localizedDescription)"
+        if notesText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || standardRejectionTaxonomy.contains(where: { notesText.contains($0.localizedTitle) }) {
+            notesText = textToSet
+        }
+    }
+    
     private func submitDecision() {
-        if selectedDecision == "rejected" && notesText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        let trimmed = notesText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if selectedDecision == "rejected" && trimmed.isEmpty {
             alertMessage = Language.get("Providers_RejectReasonRequired", alter: "يرجى كتابة سبب الرفض لتوضيحه لمقدم الطلب.")
+            return
+        }
+        if selectedDecision == "changes_requested" && trimmed.isEmpty {
+            alertMessage = Language.get("Providers_ChangesReasonRequired", alter: "يرجى كتابة الملاحظات والتعديلات المطلوبة لمقدم الطلب.")
             return
         }
         
         isSubmitting = true
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         
+        let currentVersion = NSNumber(value: application.version > 0 ? application.version : 1)
         viewModel.submitReview(
             appID: application.applicationID,
             decision: selectedDecision,
-            notes: notesText.trimmingCharacters(in: .whitespacesAndNewlines)
+            notes: trimmed,
+            rejectionCode: selectedDecision == "rejected" ? selectedRejectionCode : nil,
+            reviewFindings: selectedDecision == "changes_requested" && !structuredFindings.isEmpty ? structuredFindings : nil,
+            expectedVersion: currentVersion
         ) { success in
             Task { @MainActor in
                 isSubmitting = false
                 if success {
+                    dismiss()
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Document Inspection & Verification Sheet
+
+private struct PPDocumentInspectionSheet: View {
+    let application: PPProviderApplication
+    let documentItem: PPDocumentInspectionItem
+    @ObservedObject var viewModel: ProviderApplicationsViewModel
+    @Environment(\.dismiss) private var dismiss
+    
+    @State private var currentZoom: CGFloat = 1.0
+    @State private var rotationAngle: Double = 0.0
+    @State private var activeDecisionMode: DecisionMode? = nil
+    @State private var findingText: String = ""
+    @State private var expiryDate: Date = Calendar.current.date(byAdding: .year, value: 1, to: Date()) ?? Date()
+    @State private var isSubmitting = false
+    @State private var errorMessage: String? = nil
+    
+    private enum DecisionMode {
+        case verify
+        case requestChanges
+        case reject
+    }
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                AdminSurface.background.ignoresSafeArea()
+                
+                VStack(spacing: 0) {
+                    // Document Toolbar: Zoom, Rotate, External View
+                    inspectionToolbar
+                    
+                    // Main Document Canvas
+                    ScrollView([.horizontal, .vertical]) {
+                        documentVisualCanvas
+                    }
+                    
+                    // Status / Stamp Callout if verified, changes_required, or rejected
+                    documentMetadataCallout
+                    
+                    // Inline Decision Dock
+                    decisionActionDock
+                }
+            }
+            .navigationTitle(documentItem.localizedTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(Language.get("Close", alter: "إغلاق")) {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if !documentItem.fileUrl.isEmpty, let url = URL(string: documentItem.fileUrl) {
+                        Link(destination: url) {
+                            Image(systemName: "arrow.up.right.square")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(AdminSurface.primary)
+                        }
+                    }
+                }
+            }
+        }
+        .navigationViewStyle(.stack)
+        .alert(isPresented: Binding(get: { errorMessage != nil }, set: { _ in errorMessage = nil })) {
+            Alert(
+                title: Text(Language.get("Notice", alter: "تنبيه")),
+                message: Text(errorMessage ?? ""),
+                dismissButton: .default(Text(Language.get("OK", alter: "حسنًا")))
+            )
+        }
+    }
+    
+    private var inspectionToolbar: some View {
+        HStack(spacing: 12) {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                withAnimation(.spring(response: 0.3)) {
+                    rotationAngle += 90
+                    if rotationAngle >= 360 { rotationAngle = 0 }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "rotate.right.fill")
+                        .font(.system(size: 12, weight: .bold))
+                    Text(Language.get("Rotate", alter: "تدوير"))
+                        .font(AdminType.caption2Bold)
+                }
+                .foregroundStyle(AdminSurface.primary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+            }
+            .buttonStyle(ProviderPressStyle())
+            
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                withAnimation(.spring(response: 0.3)) {
+                    currentZoom = (currentZoom == 1.0) ? 2.0 : 1.0
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: currentZoom > 1.0 ? "minus.magnifyingglass" : "plus.magnifyingglass")
+                        .font(.system(size: 12, weight: .bold))
+                    Text(currentZoom > 1.0 ? Language.get("ResetZoom", alter: "إعادة الضبط") : Language.get("Zoom", alter: "تكبير"))
+                        .font(AdminType.caption2Bold)
+                }
+                .foregroundStyle(AdminSurface.primary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+            }
+            .buttonStyle(ProviderPressStyle())
+            
+            Spacer()
+            
+            Text(documentItem.fileName)
+                .font(AdminType.caption2)
+                .foregroundStyle(AdminCommandInk.secondary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(AdminSurface.surface)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
+    }
+    
+    private var documentVisualCanvas: some View {
+        ZStack {
+            if documentItem.fileUrl.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "doc.questionmark.fill")
+                        .font(.system(size: 48))
+                        .foregroundStyle(AdminCommandInk.tertiary)
+                    Text(Language.get("Providers_Doc_NoUrl", alter: "رابط المستند غير متوفر في السجل"))
+                        .font(AdminType.callout)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 320)
+            } else if isImageURL(documentItem.fileUrl) {
+                AsyncImage(url: URL(string: documentItem.fileUrl)) { phase in
+                    switch phase {
+                    case .empty:
+                        ProgressView()
+                            .tint(AdminSurface.primary)
+                            .frame(maxWidth: .infinity, minHeight: 320)
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFit()
+                            .scaleEffect(currentZoom)
+                            .rotationEffect(.degrees(rotationAngle))
+                            .gesture(
+                                MagnificationGesture()
+                                    .onChanged { val in currentZoom = max(0.8, min(val, 4.0)) }
+                            )
+                            .padding(16)
+                    case .failure:
+                        documentFallbackPreview
+                    @unknown default:
+                        EmptyView()
+                    }
+                }
+            } else {
+                documentFallbackPreview
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 360)
+        .background(AdminSurface.background)
+    }
+    
+    private var documentFallbackPreview: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(AdminSurface.surface)
+                    .frame(width: 140, height: 180)
+                    .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 3)
+                VStack(spacing: 8) {
+                    Image(systemName: "doc.richtext.fill")
+                        .font(.system(size: 44))
+                        .foregroundStyle(AdminSurface.primary)
+                    Text("PDF / DOC")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+            }
+            .scaleEffect(currentZoom)
+            .rotationEffect(.degrees(rotationAngle))
+            
+            if let url = URL(string: documentItem.fileUrl) {
+                Link(destination: url) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.up.right.square.fill")
+                            .font(.system(size: 13, weight: .bold))
+                        Text(Language.get("Providers_Doc_OpenExternal", alter: "فتح الوثيقة في المستعرض الكامل"))
+                            .font(AdminType.captionBold)
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(AdminSurface.primary, in: Capsule())
+                }
+            }
+        }
+        .padding(32)
+    }
+    
+    @ViewBuilder
+    private var documentMetadataCallout: some View {
+        if documentItem.status.lowercased() == "verified" {
+            HStack(spacing: 10) {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(ProviderTheme.approved)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("Providers_Doc_VerifiedBanner", alter: "مستند موثق ومعتمد رسميًا"))
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(ProviderTheme.approved)
+                    if let stamp = documentItem.checksum, !stamp.isEmpty {
+                        Text("SHA-256: \(stamp)")
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundStyle(AdminCommandInk.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer()
+            }
+            .padding(12)
+            .background(ProviderTheme.approved.opacity(0.10))
+        } else if documentItem.status.lowercased() == "changes_required" {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(ProviderTheme.changesRequested)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("Providers_Doc_ChangesBanner", alter: "مطلوب إجراء تعديل من المزود"))
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(ProviderTheme.changesRequested)
+                    if let f = documentItem.reviewFinding, !f.isEmpty {
+                        Text(f)
+                            .font(AdminType.caption1)
+                            .foregroundStyle(AdminSurface.primaryText)
+                    }
+                }
+                Spacer()
+            }
+            .padding(12)
+            .background(ProviderTheme.changesRequested.opacity(0.10))
+        } else if documentItem.status.lowercased() == "rejected" {
+            HStack(spacing: 10) {
+                Image(systemName: "xmark.octagon.fill")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(ProviderTheme.rejected)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("Providers_Doc_RejectedBanner", alter: "تم رفض هذا المستند رسميًا"))
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(ProviderTheme.rejected)
+                    if let f = documentItem.reviewFinding, !f.isEmpty {
+                        Text(f)
+                            .font(AdminType.caption1)
+                            .foregroundStyle(AdminSurface.primaryText)
+                    }
+                }
+                Spacer()
+            }
+            .padding(12)
+            .background(ProviderTheme.rejected.opacity(0.10))
+        }
+    }
+    
+    private var decisionActionDock: some View {
+        VStack(spacing: 12) {
+            Divider()
+            
+            if let mode = activeDecisionMode {
+                // Interactive Form according to mode
+                VStack(alignment: .leading, spacing: 10) {
+                    switch mode {
+                    case .verify:
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(Language.get("Providers_Doc_ExpiryTitle", alter: "تاريخ انتهاء صلاحية الترخيص (اختياري)"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(AdminSurface.primaryText)
+                            DatePicker(
+                                "",
+                                selection: $expiryDate,
+                                in: Date()...,
+                                displayedComponents: .date
+                            )
+                            .datePickerStyle(.compact)
+                            .labelsHidden()
+                        }
+                    case .requestChanges:
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(Language.get("Providers_Doc_FindingRequired", alter: "سبب طلب التعديل (مطلوب):"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(AdminSurface.primaryText)
+                            
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 6) {
+                                    ForEach(quickDocFindingChips, id: \.self) { chip in
+                                        Button {
+                                            UISelectionFeedbackGenerator().selectionChanged()
+                                            findingText = chip
+                                        } label: {
+                                            Text(chip)
+                                                .font(AdminType.caption2)
+                                                .foregroundStyle(findingText == chip ? .white : ProviderTheme.changesRequested)
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 4)
+                                                .background(
+                                                    findingText == chip ? ProviderTheme.changesRequested : ProviderTheme.changesRequested.opacity(0.12),
+                                                    in: Capsule()
+                                                )
+                                        }
+                                        .buttonStyle(ProviderPressStyle())
+                                    }
+                                }
+                            }
+                            
+                            TextField(
+                                Language.get("Providers_Doc_FindingPlaceholder", alter: "مثال: الصورة غير واضحة أو الختم منتهي..."),
+                                text: $findingText
+                            )
+                            .textFieldStyle(.roundedBorder)
+                        }
+                    case .reject:
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(Language.get("Providers_Doc_RejectionRequired", alter: "سبب رفض المستند (مطلوب):"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(AdminSurface.primaryText)
+                            
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 6) {
+                                    ForEach(quickDocRejectionChips, id: \.self) { chip in
+                                        Button {
+                                            UISelectionFeedbackGenerator().selectionChanged()
+                                            findingText = chip
+                                        } label: {
+                                            Text(chip)
+                                                .font(AdminType.caption2)
+                                                .foregroundStyle(findingText == chip ? .white : ProviderTheme.rejected)
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 4)
+                                                .background(
+                                                    findingText == chip ? ProviderTheme.rejected : ProviderTheme.rejected.opacity(0.12),
+                                                    in: Capsule()
+                                                )
+                                        }
+                                        .buttonStyle(ProviderPressStyle())
+                                    }
+                                }
+                            }
+                            
+                            TextField(
+                                Language.get("Providers_Doc_RejectionPlaceholder", alter: "مثال: المستند مزور أو لا يطابق السجلات الرسمية..."),
+                                text: $findingText
+                            )
+                            .textFieldStyle(.roundedBorder)
+                        }
+                    }
+                    
+                    HStack(spacing: 10) {
+                        Button {
+                            withAnimation { activeDecisionMode = nil }
+                        } label: {
+                            Text(Language.get("Cancel", alter: "إلغاء"))
+                                .font(AdminType.captionBold)
+                                .foregroundStyle(AdminCommandInk.secondary)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(AdminSurface.control, in: Capsule())
+                        }
+                        
+                        Spacer()
+                        
+                        Button {
+                            submitDecision(for: mode)
+                        } label: {
+                            HStack(spacing: 6) {
+                                if isSubmitting {
+                                    ProgressView()
+                                        .tint(.white)
+                                } else {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 13, weight: .bold))
+                                    Text(Language.get("Confirm", alter: "تأكيد وتنفيذ القرار"))
+                                        .font(AdminType.captionBold)
+                                }
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(decisionColor(for: mode), in: Capsule())
+                        }
+                        .disabled(isSubmitting)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+            } else {
+                // 3 Action Buttons
+                HStack(spacing: 10) {
+                    // Verify
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        withAnimation { activeDecisionMode = .verify }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "checkmark.shield.fill")
+                                .font(.system(size: 12, weight: .bold))
+                            Text(Language.get("Verify", alter: "اعتماد وتوثيق"))
+                                .font(AdminType.captionBold)
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(ProviderTheme.approved, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(ProviderPressStyle())
+                    
+                    // Request Changes
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        withAnimation { activeDecisionMode = .requestChanges }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "exclamationmark.bubble.fill")
+                                .font(.system(size: 12, weight: .bold))
+                            Text(Language.get("RequestChanges", alter: "طلب تعديل"))
+                                .font(AdminType.captionBold)
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(ProviderTheme.changesRequested, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(ProviderPressStyle())
+                    
+                    // Reject
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        withAnimation { activeDecisionMode = .reject }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "xmark.octagon.fill")
+                                .font(.system(size: 12, weight: .bold))
+                            Text(Language.get("Reject", alter: "رفض"))
+                                .font(AdminType.captionBold)
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(ProviderTheme.rejected, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(ProviderPressStyle())
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+            }
+        }
+        .background(AdminSurface.surface)
+    }
+    
+    private func decisionColor(for mode: DecisionMode) -> Color {
+        switch mode {
+        case .verify: return ProviderTheme.approved
+        case .requestChanges: return ProviderTheme.changesRequested
+        case .reject: return ProviderTheme.rejected
+        }
+    }
+    
+    private func isImageURL(_ urlString: String) -> Bool {
+        let lower = urlString.lowercased()
+        return lower.contains(".png") || lower.contains(".jpg") || lower.contains(".jpeg") || lower.contains(".webp")
+    }
+    
+    private var quickDocFindingChips: [String] {
+        [
+            Language.get("Providers_DocChip_Blurry", alter: "الصورة غير واضحة أو مطموسة الأختام"),
+            Language.get("Providers_DocChip_Expired", alter: "صلاحية الترخيص منتهية ويلزم تجديدها"),
+            Language.get("Providers_DocChip_Mismatch", alter: "الاسم أو رقم السجل لا يطابق بيانات النموذج"),
+            Language.get("Providers_DocChip_Incomplete", alter: "الملف ناقص صفحات أو توقيعات رسمية")
+        ]
+    }
+    
+    private var quickDocRejectionChips: [String] {
+        [
+            Language.get("Providers_DocRejectChip_Tampered", alter: "اشتباه في صحة أو تزوير المستند والأختام"),
+            Language.get("Providers_DocRejectChip_Ineligible", alter: "ترخيص غير صالح أو غير معتمد لنشاط المنصة"),
+            Language.get("Providers_DocRejectChip_IdentityMismatch", alter: "عدم تطابق هوية المالك أو المفوض بالتوقيع"),
+            Language.get("Providers_DocRejectChip_InvalidAuthority", alter: "جهة إصدار الترخيص غير معترف بها رسميًا")
+        ]
+    }
+    
+    private func submitDecision(for mode: DecisionMode) {
+        let decision: String
+        var finding: String? = nil
+        var expiryISO: String? = nil
+        
+        switch mode {
+        case .verify:
+            decision = "verified"
+            let formatter = ISO8601DateFormatter()
+            expiryISO = formatter.string(from: expiryDate)
+        case .requestChanges:
+            decision = "changes_required"
+            let cleanFinding = findingText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if cleanFinding.isEmpty {
+                errorMessage = Language.get("Providers_Doc_FindingError", alter: "يجب كتابة سبب أو ملاحظة طلب التعديل للمزود.")
+                return
+            }
+            finding = cleanFinding
+        case .reject:
+            decision = "rejected"
+            let cleanFinding = findingText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if cleanFinding.isEmpty {
+                errorMessage = Language.get("Providers_Doc_RejectError", alter: "يجب كتابة سبب رفض المستند للمزود.")
+                return
+            }
+            finding = cleanFinding
+        }
+        
+        isSubmitting = true
+        let appId = application.applicationID.isEmpty ? application.userId : application.applicationID
+        PPProviderService.shared().reviewApplicationDocument(
+            appId,
+            documentType: documentItem.type,
+            decision: decision,
+            finding: finding,
+            expiryDate: expiryISO
+        ) { result, error in
+            DispatchQueue.main.async {
+                isSubmitting = false
+                if let error = error {
+                    errorMessage = error.localizedDescription
+                } else {
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    viewModel.fetch()
                     dismiss()
                 }
             }

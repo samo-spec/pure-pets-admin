@@ -4894,6 +4894,7 @@
 "POS_Retry" = "إعادة المحاولة";
 "POS_Refresh" = "تحديث";
 "POS_LiveAnimalFallback" = "حيوان حي";
+"LiveAnimal" = "حيوان حي";
 "POS_Customer_SelectOrAdd" = "تحديد أو إضافة عميل للسلة";
 "POS_Customer_SelectHint" = "يفتح دليل العملاء لإرفاق عميل بهذه السلة";
 "POS_Customer_BoundLabel" = "عميل السلة";
@@ -5552,7 +5553,7 @@
 "CatalogIntake_ValidationName" = "أدخل اسم الصنف أولاً.";
 "CatalogIntake_ValidationCategory" = "اختر الفئة الرئيسية للصنف.";
 "CatalogIntake_ValidationWeight" = "أدخل وزناً أو حجماً صالحاً وبحد أقصى ثلاث منازل عشرية.";
-"CatalogIntake_ValidationPrice" = "أدخل سعراً أساسياً صحيحاً أكبر من صفر.";
+"CatalogIntake_ValidationPrice" = "أدخل سعراً أكبر من صفر ولا يتجاوز 999999999.99 وبحد أقصى منزلتين عشريتين.";
 "CatalogIntake_ValidationDiscountPercent" = "أدخل نسبة خصم بين 0 و100 وبحد أقصى منزلتين عشريتين.";
 "CatalogIntake_ValidationDiscountAmount" = "أدخل مبلغ خصم صالحاً وبحد أقصى منزلتين عشريتين.";
 "CatalogIntake_ValidationStore" = "اختر الفرع المالك للصنف.";
@@ -10270,3 +10271,185 @@
 "Inventory_Family_SelectedOption" = "الخيار المحدد";
 "Inventory_Family_DefaultOption" = "الخيار الافتراضي";
 "Inventory_Family_InactiveOption" = "الخيار غير نشط";
+
+/* Partner Lifecycle & Admin Review Workspace */
+"Providers_ChangesRequested" = "تعديلات مطلوبة";
+"Providers_Resubmitted" = "معاد تقديمه";
+"Providers_ChangesRequested_Option" = "طلب تعديلات ومستندات";
+"Providers_ChangesRequested_Desc" = "إرجاع الطلب للمزود مع تسجيل الملاحظات والنواقص المطلوبة.";
+"Providers_ChangesReasonRequired" = "يرجى كتابة الملاحظات والتعديلات المطلوبة لمقدم الطلب.";
+"Providers_SelectToInspect" = "اختر طلباً من قائمة الانتظار";
+"Providers_SelectToInspect_Sub" = "حدد أحد طلبات المزودين لمعاينة الملف التجاري، فحص التراخيص والمستندات، وإصدار القرارات.";
+"Providers_InspectFirstPending" = "معاينة أول طلب معلق";
+"Providers_NextMove_ChangesRequested" = "تم إرسال طلب تعديلات ومستندات للمزود. بانتظار قيام المزود بتحديث بياناته وإعادة التقديم.";
+"Providers_NextMove_Resubmitted" = "قام المزود بإعادة تقديم الطلب بعد معالجة الملاحظات. يرجى مراجعة التحديثات وإصدار القرار.";
+
+/* Phase 6 Smart Filters & Batch Operations */
+"Providers_Filter_AllTypes" = "كافة الأنشطة";
+"Providers_Filter_Store" = "متاجر ومستلزمات";
+"Providers_Filter_Clinic" = "عيادات وبيطرة";
+"Providers_Filter_Delivery" = "شركات التوصيل";
+"Providers_Filter_Service" = "خدمات ورعاية";
+"Providers_Risk_All" = "كافة الملفات";
+"Providers_Risk_High" = "ملفات حرجة / متكررة";
+"Providers_Risk_ExpiringDocs" = "مستندات قاربت الانتهاء";
+"Providers_Risk_Unassigned" = "بانتظار مراجع";
+"Providers_Batch_Mode" = "تحديد متعدد";
+"Providers_Batch_Done" = "إلغاء التحديد";
+"Providers_Batch_SelectedCount" = "تم تحديد %d طلبات";
+"Providers_Batch_AssignReviewer" = "تعيين مراجع";
+"Providers_Batch_AddTag" = "إضافة وسم";
+"Providers_Batch_SelectAll" = "تحديد الكل";
+"Providers_Batch_Clear" = "مسح التحديد";
+"Providers_Batch_Success" = "تم تنفيذ العملية المجمعة على %d طلبات بنجاح.";
+"Providers_Batch_EnterReviewerUid" = "أدخل معرّف المراجع أو البريد:";
+"Providers_Batch_EnterTag" = "أدخل اسم الوسم (مثال: عاجل، تدقيق_مالي):";
+"Variant_Media_Preview_Format" = "معاينة الصورة رقم %ld";
+"Variant_Media_Staged_Preview" = "معاينة الصورة المحددة";
+
+/* Partner Profile Domains Phase 12 */
+"Providers_Domain_Public" = "الملف التعريفي العام";
+"Providers_Domain_Operational" = "العمليات والقدرات";
+"Providers_Domain_Legal" = "البيانات القانونية والتراخيص";
+"Providers_Domain_Financial" = "البيانات المالية والتسويات";
+"Providers_Domain_MaskedIban" = "آيبان التسوية المحمي";
+"Providers_Domain_CommissionRate" = "نسبة عمولة المنصة";
+"Providers_Domain_Commission_AdminOnly" = "تخضع نسبة العمولة لإدارة المنصة حصراً";
+
+/* Partner Real-time Synchronization Phase 13 */
+"Providers_Sync_ReconcileProjections" = "مزامنة وإصلاح قنوات العرض";
+"Providers_Sync_ReconcileSuccess" = "تمت مزامنة قنوات العرض ومطابقتها مع السجل المعتمد بنجاح.";
+"Providers_Sync_InSync" = "متزامن مع تطبيق الشركاء Pro";
+"Providers_Sync_DriftDetected" = "تم رصد اختلاف في النسخ. جارٍ تصحيح قنوات العرض…";
+
+/* Partner Command Idempotency Phase 15 */
+"PartnerIdempotency_InProgress" = "هذه العملية قيد المعالجة حالياً. يرجى الانتظار لحظات.";
+"PartnerIdempotency_PayloadMismatch" = "تم استخدام مفتاح هذه العملية مسبقاً بمعلمات مختلفة.";
+"PartnerIdempotency_AlreadyCompleted" = "تم تنفيذ هذه العملية مسبقاً بنجاح.";
+
+/* Partner Granular Restriction & Scoped Suspension Phase 16 */
+"Providers_Action_Restrict" = "تقييد الحساب";
+"Providers_Action_Suspend" = "تعليق الحساب";
+"Providers_Action_LiftRestriction" = "رفع القيد";
+"Providers_Scope_FullAccount" = "كامل الحساب";
+"Providers_Scope_SellingOnly" = "البيع والكتالوج فقط";
+"Providers_Scope_NewOrdersOnly" = "الطلبات الجديدة فقط";
+"Providers_Scope_PayoutsOnly" = "المستحقات والتسويات فقط";
+"Providers_Scope_SpecificBranch" = "فرع محدد";
+"Providers_Scope_SpecificModule" = "قسم محدد";
+"Providers_Restriction_Success" = "تم تطبيق التقييد على الشريك بنجاح.";
+"Providers_Suspension_Success" = "تم تعليق حساب الشريك بنجاح.";
+"Providers_LiftRestriction_Success" = "تم رفع القيد وتحديث الحالة التشغيلية للشريك بنجاح.";
+
+/* Partner Reactivation Workflow & Evidence Review Phase 17 */
+"Providers_Reactivation_Title" = "ملف إعادة التنشيط";
+"Providers_Reactivation_ReviewRequest" = "مراجعة طلب التنشيط";
+"Providers_Reactivation_Approve" = "الموافقة وإعادة التنشيط";
+"Providers_Reactivation_Reject" = "رفض طلب التنشيط";
+"Providers_Reactivation_DirectReinstate" = "إعادة تنشيط إدارية مباشرة";
+"Providers_Reactivation_Conditions" = "شروط إعادة التنشيط (اختياري)";
+"Providers_Reactivation_ConditionsPlaceholder" = "مثال: مراقبة امتثال لمدة ٣٠ يوماً";
+"Providers_Reactivation_RejectionReasonPrompt" = "أدخل سبب رفض طلب إعادة التنشيط بالتفصيل:";
+"Providers_Reactivation_ApprovedSuccess" = "تمت الموافقة واستعادة الحالة التشغيلية للشريك بنجاح.";
+"Providers_Reactivation_RejectedSuccess" = "تم رفض الطلب وتزويد الشريك بالملاحظات التصحيحية.";
+"Providers_Reactivation_ReinstatedSuccess" = "تمت إعادة تنشيط حساب الشريك إدارياً بنجاح.";
+
+/* Partner Offboarding, Retention & Safe Archival Phase 18 */
+"Providers_Offboarding_Title" = "إنهاء الشراكة والأرشفة الآمنة";
+"Providers_Offboarding_Initiate" = "بدء إجراءات إنهاء الشراكة";
+"Providers_Offboarding_Voluntary" = "طوعي (بطلب من الشريك)";
+"Providers_Offboarding_Involuntary" = "إداري (قرار من المنصة)";
+"Providers_Offboarding_ResolveOps" = "تسوية العمليات التشغيلية المعلقة";
+"Providers_Offboarding_Settle" = "إتمام التسوية المالية النهائية";
+"Providers_Offboarding_Finalize" = "إتمام الأرشفة وإنهاء الحساب";
+"Providers_Offboarding_ForceOverride" = "تجاوز إداري بوجود طلبات مفتوحة";
+"Providers_Offboarding_OverrideReason" = "سبب ومبرر التجاوز الإداري";
+"Providers_Offboarding_ArchivedBadge" = "مؤرشف / منتهية شراكته";
+"Providers_Offboarding_Success" = "تم تنفيذ خطوة إنهاء الشراكة بنجاح.";
+"Providers_Offboarding_FinalizedSuccess" = "تم إنهاء شراكة الحساب وأرشفته بنجاح وإلغاء صلاحيات الوصول.";
+
+/* Partner Event-Driven Notifications Phase 19 */
+"Providers_Notification_Alert_Title" = "تنبيه دورة حياة الشريك";
+"Providers_Notification_ReviewApplication_CTA" = "مراجعة الطلب";
+"Providers_Notification_ReviewReactivation_CTA" = "مراجعة إعادة التنشيط";
+
+/* Partner Immutable Audit Trail & Provenance Ledger Phase 20 */
+"Providers_Audit_Title" = "سجل التدقيق الرقابي للشريك";
+"Providers_Audit_VerifyProvenance" = "التحقق من الموثوقية التشفيرية";
+"Providers_Audit_ExportDossier" = "تصدير الملف التنظيمي المعتمد";
+"Providers_Audit_Status_Verified" = "السلسلة التشفيرية سليمة ومطابقة";
+"Providers_Audit_Status_Compromised" = "تنبيه: تم اكتشاف تعديل أو خلل في السلسلة التشفيرية";
+"Providers_Audit_TotalEvents" = "إجمالي الوقائع المدققة: %ld";
+"Providers_Audit_ExportSuccess" = "تم إعداد وختم الملف التدقيقي التنظيمي بنجاح.";
+
+/* Partner Data Protection, GDPR / Privacy & PII Masking Phase 21 */
+"Providers_Privacy_Title" = "حماية وخصوصية بيانات الشريك";
+"Providers_Privacy_RedactButton" = "تنفيذ محو وحجب البيانات الشخصية";
+"Providers_Privacy_RedactConfirm" = "هل تؤكد تنفيذ المحو الآمن للبيانات الشخصية لهذا الشريك؟ سيتم الاحتفاظ بالسجلات المالية والتدقيقية المشفرة نظامياً.";
+"Providers_Privacy_ExportButton" = "تصدير الملف التنظيمي للخصوصية";
+"Providers_Privacy_RedactSuccess" = "تم محو البيانات الشخصية للشريك وإصدار شهادة الحجب بنجاح.";
+"Providers_Privacy_ExportSuccess" = "تم تصدير ملف الخصوصية التنظيمي بنجاح.";
+
+/* Partner High-Performance Caching & Invalidation Phase 22 */
+"Providers_Cache_Title" = "الذاكرة المؤقتة وشبكة التوصيل السريع للشريك";
+"Providers_Cache_Status_Warm" = "الذاكرة السريعة L1: نشطة ومحدثة";
+"Providers_Cache_PurgeButton" = "تفريغ الذاكرة المؤقتة للشريك";
+"Providers_Cache_PurgeConfirm" = "هل أنت متأكد من تفريغ كافة البيانات المؤقتة ووسوم التوصيل لهذا الشريك؟ سيتم جلب البيانات مباشرة من قاعدة البيانات الرئيسية في الطلب القادم.";
+"Providers_Cache_PurgeSuccess" = "تم تفريغ وسوم الذاكرة المؤقتة للشريك وتحديث جيل الذاكرة بنجاح.";
+"Providers_Cache_ETagLabel" = "وسم التحقق النشط (ETag): %@";
+"Providers_Cache_GenerationLabel" = "جيل الذاكرة المؤقتة: %ld";
+
+/* Partner Observability, OpenTelemetry Tracing & Telemetry Phase 23 */
+"Providers_Observability_Title" = "مؤشرات أداء وجاهزية دورة حياة الشركاء";
+"Providers_Observability_HealthScore" = "مؤشر صحة النظام: %ld/100";
+"Providers_Observability_SLACompliance" = "نسبة الامتثال لاتفاقية الخدمة: %.1f٪";
+"Providers_Observability_AvgLatency" = "متوسط زمن الاستجابة: %.1f م.ث";
+"Providers_Observability_ActiveSLABreaches" = "تجاوزات اتفاقية الخدمة النشطة: %ld";
+"Providers_Observability_RefreshDashboard" = "تحديث المؤشرات اللحظية";
+"Providers_Observability_StatusHealthy" = "مستقر ومثالي";
+"Providers_Observability_StatusDegraded" = "انخفاض طفيف في الكفاءة";
+"Providers_Observability_StatusCritical" = "حرج يتطلب التدخل";
+
+/* Partner Disaster Recovery & State Reconstruction Phase 24 */
+"Providers_DR_Title" = "التعافي من الكوارث وإعادة بناء الحالة";
+"Providers_DR_Reconstruct_DryRun" = "محاكاة إعادة بناء الحالة";
+"Providers_DR_Reconstruct_Repair" = "تنفيذ الإصلاح التوافقي الموثوق";
+"Providers_DR_CreateCheckpoint" = "إنشاء نقطة تفتيش حالة موقعة";
+"Providers_DR_Status_InSync" = "الحالة متطابقة تماماً مع سجل التدقيق";
+"Providers_DR_Status_DriftDetected" = "تم اكتشاف انحراف في حالة الشريك";
+"Providers_DR_Status_Critical" = "انفصال حرج في تزامن البيانات";
+"Providers_DR_FleetHealthScore" = "جاهزية التوافر العالي للأسطول: %ld/100";
+"Providers_DR_ReplayTotalEvents" = "تمت إعادة تشغيل %ld حدث تدقيقي";
+"Providers_DR_CheckpointCreated" = "تم توقيع وتثبيت لقطة نقطة التفتيش بنجاح.";
+"Providers_DR_RepairSuccess" = "تم إصلاح حالة الشريك توافقياً للإصدار %ld بدون أي فقدان للبيانات.";
+
+
+
+
+"Inventory_CatalogChangedReopen" = "تغير الصنف أثناء التحرير. أغلق المحرر وأعد فتح الصنف لمراجعة أحدث البيانات قبل الحفظ.";
+
+"Inventory_CommerceLoadFailed" = "تعذر تحميل وحدات البيع. اضغط حفظ لإعادة التحميل قبل الحفظ.";
+
+"Inventory_CommerceLoading" = "جارٍ تحميل وحدات البيع. انتظر قبل الحفظ.";
+
+/* Retain unconfirmed inventory saves and their media. */
+"Inventory_SaveRecoveryRequired" = "قد تكون عملية الحفظ اكتملت بالفعل. استعد الحفظ المعلّق لتأكيد النتيجة قبل تجاهل التعديلات.";
+"Inventory_SaveRecoveryUnavailable" = "تعذر استعادة الحفظ المعلّق. تم الاحتفاظ بسجله. تواصل مع الدعم قبل بدء عملية حفظ أخرى.";
+"Inventory_PendingSaveNotice_Title" = "حفظ بانتظار التأكيد";
+
+/* POS Multi-Unit Selling */
+"POS_SelectSellUnit_Title" = "وحدات ومجموعات البيع";
+"POS_SelectSellUnit_Subtitle" = "اختر وحدة البيع المطلوبة لهذا الصنف";
+"POS_MultipleUnits_Badge" = "وحدات متعددة";
+"POS_Unit_Pieces_Format" = "%d قطعة";
+"POS_Unit_SinglePiece" = "قطعة واحدة";
+"POS_Unit_AvailablePackages_Format" = "%d متاح";
+"POS_Unit_AvailableStock_Format" = "المخزون المتاح: %d قطعة";
+"POS_Unit_PricePerPiece_Format" = "(%.2f ر.ق / قطعة)";
+"POS_Unit_DefaultForRetail" = "افتراضي للتجزئة";
+"POS_Unit_DefaultForWholesale" = "افتراضي للجملة";
+"POS_AddToCart_WithUnit_Format" = "إضافة إلى السلة • %@";
+"POS_UpdateCart_WithUnit_Format" = "تحديث السلة • %@";
+"POS_SelectedUnitsCount_Format" = "%d وحدة = %d قطعة";
+"POS_UnitOutOfStock" = "غير متوفر بالمخزون";
+"POS_InsufficientBranchStockForUnit" = "المخزون المتاح في الفرع لا يكفي (%d قطعة).";

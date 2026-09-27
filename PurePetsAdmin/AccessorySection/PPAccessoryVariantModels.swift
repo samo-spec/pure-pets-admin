@@ -2590,9 +2590,9 @@ public extension PetAccessory {
         }
 
         // 7. If isVariant or belongsToVariantFamily, fallback to pos_variantDisplayName if meaningful
-        if isVariant || belongsToVariantFamily {
+        if (isVariant || belongsToVariantFamily) && !isLivePet {
             let candidate = pos_variantDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !candidate.isEmpty && candidate != sku && candidate != accessoryID && candidate != name {
+            if !candidate.isEmpty && candidate != sku && candidate != accessoryID && candidate != name && !candidate.lowercased().contains("catalog_") && !candidate.lowercased().hasPrefix("catalog") {
                 if candidate.contains(":") {
                     return candidate
                 }
