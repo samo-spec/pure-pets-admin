@@ -146,6 +146,17 @@ public struct WantedPetDetailView: View {
                 .presentationDetents([.fraction(0.38)])
                 .presentationDragIndicator(.visible)
         }
+        .confirmationDialog(
+            Language.get("WantedPet_WhatsApp_AutoMarkPrompt", alter: "هل تواصلت مع العميل؟"),
+            isPresented: $showAutoMarkContactedPrompt
+        ) {
+            Button(Language.get("WantedPet_WhatsApp_AutoMarkConfirm", alter: "نعم، تم التواصل")) {
+                transitionStatus(to: .contacted, channel: "whatsapp")
+            }
+            Button(Language.get("WantedPet_WhatsApp_AutoMarkSkip", alter: "الإبقاء على الحالة"), role: .cancel) {}
+        } message: {
+            Text(Language.get("WantedPet_WhatsApp_AutoMarkSub", alter: "حدّث الحالة فقط بعد التواصل الفعلي."))
+        }
     }
 
     // MARK: - 1. Top Command & Navigation Bar
@@ -1213,7 +1224,7 @@ public struct WantedPetDetailView: View {
             ProgressView()
                 .tint(AdminSurface.primary)
                 .scaleEffect(1.2)
-            Text(Language.get("Loading", alter: "جاري تحميل تفاصيل الطلب..."))
+            Text(Language.get("WantedPet_Detail_Loading", alter: "جارٍ تحميل تفاصيل الطلب..."))
                 .font(Font.custom("Beiruti-Regular", size: 14))
                 .foregroundStyle(AdminSurface.secondaryText)
             Spacer()
@@ -1274,10 +1285,12 @@ public struct WantedPetDetailView: View {
 
     private func scanStoreRadar(for pet: CustomerWantedPet) {
         guard pet.mainKindId > 0 else { return }
+        let targetKindId = pet.mainKindId
+        let fallbackTitle = pet.requestedPetTitle
         isScanningRadar = true
 
         Firestore.firestore().collection("petAccessories")
-            .whereField("petMainCategoryID", isEqualTo: pet.mainKindId)
+            .whereField("petMainCategoryID", isEqualTo: targetKindId)
             .limit(to: 12)
             .getDocuments { snapshot, _ in
                 DispatchQueue.main.async {
@@ -1297,7 +1310,7 @@ public struct WantedPetDetailView: View {
                         results.append(
                             StoreMatchingPet(
                                 id: doc.documentID,
-                                name: name.isEmpty ? pet.requestedPetTitle : name,
+                                name: name.isEmpty ? fallbackTitle : name,
                                 price: price,
                                 ringTag: ring,
                                 branchName: branch,
@@ -1311,22 +1324,27 @@ public struct WantedPetDetailView: View {
     }
 
     private func notifyCustomerWithMatch(pet: CustomerWantedPet, match: StoreMatchingPet) {
-        let digits = pet.normalizedPhoneNumber.isEmpty ? pet.phoneNumber.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression) : pet.normalizedPhoneNumber
-        let priceStr = match.price != nil ? String(format: " بسعر %.0f %@", match.price!, Language.isRTL() ? "ر.ق" : "QAR") : ""
+        let rawNumber = pet.normalizedPhoneNumber.isEmpty ? pet.phoneNumber : pet.normalizedPhoneNumber
+        let digits = rawNumber.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
         let template = String(
-            format: Language.get("WantedPets_WhatsApp_DefaultMessage", alter: "مرحباً %@، معك متجر بيور بيتس. بخصوص طلبك لـ (%@) توفر لدينا حالياً!"),
+            format: Language.get("WantedPets_WhatsApp_CheckIn_Template", alter: "مرحباً %@، نتواصل معك من بيور بيتس بخصوص طلبك لـ %@. هل لا يزال طلبك قائماً؟"),
             pet.customerName,
-            match.name + priceStr
+            match.name
         )
-        guard let encoded = template.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://wa.me/\(digits)?text=\(encoded)") else { return }
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "wa.me"
+        components.path = "/\(digits)"
+        components.queryItems = [URLQueryItem(name: "text", value: template)]
+        guard !digits.isEmpty, let url = components.url,
+              UIApplication.shared.canOpenURL(url) else { return }
 
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        if UIApplication.shared.canOpenURL(url) {
-            UIApplication.shared.open(url)
-            // Auto transition to contacted
-            if pet.status == .waiting {
-                transitionStatus(to: .contacted, channel: "whatsapp")
+        UIApplication.shared.open(url) { opened in
+            if opened && pet.status == .waiting {
+                DispatchQueue.main.async {
+                    self.showAutoMarkContactedPrompt = true
+                }
             }
         }
     }
@@ -1383,20 +1401,27 @@ public struct WantedPetDetailView: View {
     }
 
     private func openWhatsAppConversation(_ pet: CustomerWantedPet) {
-        let digits = pet.normalizedPhoneNumber.isEmpty ? pet.phoneNumber.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression) : pet.normalizedPhoneNumber
+        let rawNumber = pet.normalizedPhoneNumber.isEmpty ? pet.phoneNumber : pet.normalizedPhoneNumber
+        let digits = rawNumber.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
         let template = String(
-            format: Language.get("WantedPets_WhatsApp_DefaultMessage", alter: "مرحباً %@، معك متجر بيور بيتس. بخصوص طلبك لـ (%@) توفر لدينا حالياً!"),
+            format: Language.get("WantedPets_WhatsApp_CheckIn_Template", alter: "مرحباً %@، نتواصل معك من بيور بيتس بخصوص طلبك لـ %@. هل لا يزال طلبك قائماً؟"),
             pet.customerName,
             pet.requestedPetTitle
         )
-        guard let encoded = template.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://wa.me/\(digits)?text=\(encoded)") else { return }
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "wa.me"
+        components.path = "/\(digits)"
+        components.queryItems = [URLQueryItem(name: "text", value: template)]
+        guard !digits.isEmpty, let url = components.url,
+              UIApplication.shared.canOpenURL(url) else { return }
 
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        if UIApplication.shared.canOpenURL(url) {
-            UIApplication.shared.open(url)
-            if pet.status == .waiting {
-                transitionStatus(to: .contacted, channel: "whatsapp")
+        UIApplication.shared.open(url) { opened in
+            if opened && pet.status == .waiting {
+                DispatchQueue.main.async {
+                    self.showAutoMarkContactedPrompt = true
+                }
             }
         }
     }
@@ -1504,7 +1529,7 @@ public struct WantedPetDetailView: View {
 
 // MARK: - Store Matching Pet Model
 
-public struct StoreMatchingPet: Identifiable, Hashable {
+public struct StoreMatchingPet: Identifiable, Hashable, Sendable {
     public let id: String
     public let name: String
     public let price: Double?

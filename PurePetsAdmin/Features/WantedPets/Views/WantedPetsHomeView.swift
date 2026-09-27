@@ -542,22 +542,22 @@ public struct WantedPetsHomeView: View {
                     .frame(height: 1)
                     .accessibilityHidden(true)
 
-                let actionLayout = dynamicTypeSize.isAccessibilitySize
+                let contactLayout = dynamicTypeSize.isAccessibilitySize
                     ? AnyLayout(VStackLayout(alignment: .leading, spacing: AdminSpacing.sm))
                     : AnyLayout(HStackLayout(spacing: AdminSpacing.sm))
 
-                actionLayout {
+                contactLayout {
                     contactButton(Language.get("WantedPets_Quick_WhatsApp", alter: "واتساب"),
                                   icon: "message.fill") { openWhatsApp(for: item) }
                     contactButton(Language.get("WantedPets_Quick_Call", alter: "اتصال"),
                                   icon: "phone.fill") { callPhone(item.phoneNumber) }
-                    if item.status == .waiting {
-                        contactButton(Language.get("WantedPets_Mark_Contacted", alter: "تحديد كمتواصل معه"),
-                                      icon: "checkmark") {
-                            transition(item, to: .contacted)
-                        }
-                        .disabled(inFlightItemIDs.contains(item.id) || service.isMutating)
+                }
+                if item.status == .waiting {
+                    contactButton(Language.get("WantedPets_Mark_Contacted", alter: "تحديد كمتواصل معه"),
+                                  icon: "checkmark") {
+                        transition(item, to: .contacted)
                     }
+                    .disabled(inFlightItemIDs.contains(item.id) || service.isMutating)
                 }
             }
         }

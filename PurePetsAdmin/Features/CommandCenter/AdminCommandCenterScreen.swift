@@ -6326,8 +6326,8 @@ private struct CommandStockDeck: View {
     private func columnWidths(spacing: CGFloat) -> (livePets: CGFloat?, stacked: CGFloat?) {
         guard effectiveWidth > 0 else { return (nil, nil) }
         let availableWidth = max(0, effectiveWidth - spacing)
-        // Proportional split: decrease Live Pets width slightly (44%) and increase Accessories/Food width (56%)
-        let livePets = floor(availableWidth * 0.44)
+        // Proportional split: decrease features/Live Pets card width (36%) and increase the other side's two cards width (64%) to fill freed area
+        let livePets = floor(availableWidth * 0.36)
         let stacked = max(0, availableWidth - livePets)
         return (livePets, stacked)
     }

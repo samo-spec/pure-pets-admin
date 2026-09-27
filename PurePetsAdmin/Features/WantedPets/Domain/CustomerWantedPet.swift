@@ -12,7 +12,7 @@ import FirebaseFirestore
 
 // MARK: - Wanted Pet Status
 
-public enum WantedPetStatus: String, CaseIterable, Identifiable, Codable {
+public enum WantedPetStatus: String, CaseIterable, Identifiable, Codable, Sendable {
     case waiting = "waiting"
     case contacted = "contacted"
     case interested = "interested"
@@ -63,7 +63,7 @@ public enum WantedPetStatus: String, CaseIterable, Identifiable, Codable {
 
 // MARK: - Contact Source
 
-public enum WantedPetContactSource: String, CaseIterable, Identifiable, Codable {
+public enum WantedPetContactSource: String, CaseIterable, Identifiable, Codable, Sendable {
     case whatsapp = "whatsapp"
     case phone = "phone"
     case inStore = "inStore"
@@ -108,7 +108,7 @@ public enum WantedPetContactSource: String, CaseIterable, Identifiable, Codable 
 
 // MARK: - Sex Preference
 
-public enum WantedPetSexPreference: String, CaseIterable, Identifiable, Codable {
+public enum WantedPetSexPreference: String, CaseIterable, Identifiable, Codable, Sendable {
     case any = "any"
     case male = "male"
     case female = "female"
@@ -132,7 +132,7 @@ public enum WantedPetSexPreference: String, CaseIterable, Identifiable, Codable 
 
 // MARK: - Priority
 
-public enum WantedPetPriority: String, CaseIterable, Identifiable, Codable {
+public enum WantedPetPriority: String, CaseIterable, Identifiable, Codable, Sendable {
     case normal = "normal"
     case high = "high"
     case urgent = "urgent"
@@ -158,7 +158,7 @@ public enum WantedPetPriority: String, CaseIterable, Identifiable, Codable {
 
 // MARK: - Match Level
 
-public enum WantedPetMatchLevel: String, CaseIterable, Identifiable, Codable {
+public enum WantedPetMatchLevel: String, CaseIterable, Identifiable, Codable, Sendable {
     case exact = "exact"
     case compatible = "compatible"
     case broad = "broad"
@@ -200,7 +200,7 @@ public enum WantedPetMatchLevel: String, CaseIterable, Identifiable, Codable {
 
 // MARK: - CustomerWantedPet Model
 
-public struct CustomerWantedPet: Identifiable, Hashable {
+public struct CustomerWantedPet: Identifiable, Hashable, Sendable {
     public let id: String
     public var customerId: String?
     public var customerName: String

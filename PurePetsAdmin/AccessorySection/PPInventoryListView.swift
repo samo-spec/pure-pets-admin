@@ -4246,7 +4246,7 @@ private struct PPInventoryVariantChildInspector: View {
         let productID: String
         let branchID: String
         let quantity: Int
-        let revision: Int
+        let revision: Int?
         let specimen: PPTactileSpecimenInfo
     }
 
@@ -4595,17 +4595,30 @@ private struct PPInventoryVariantChildInspector: View {
         guard projection.isServerConfirmed,
               let branchID = projection.currentBranchId,
               !branchID.isEmpty, branchID != "main_store",
-              BranchContextStore.shared.activeBranch?.branchID == branchID,
-              let record = projection.inventory(for: item.accessoryID),
-              record.availableQuantity == quantity else {
+              BranchContextStore.shared.activeBranch?.branchID == branchID else {
             reportQuantityChange()
             return
+        }
+        let record = projection.inventory(for: item.accessoryID)
+        let revision: Int?
+        if let record {
+            guard record.availableQuantity == quantity else {
+                reportQuantityChange()
+                return
+            }
+            revision = record.projectionRevision
+        } else {
+            guard quantity == 0 else {
+                reportQuantityChange()
+                return
+            }
+            revision = nil
         }
         quantityEditContext = QuantityEditContext(
             productID: item.accessoryID,
             branchID: branchID,
             quantity: quantity,
-            revision: record.projectionRevision,
+            revision: revision,
             specimen: PPTactileSpecimenInfo(
                 title: variantTitle,
                 imageURL: PetAccessory.firstImageURL(for: item),
@@ -4624,12 +4637,22 @@ private struct PPInventoryVariantChildInspector: View {
               context.productID == item.accessoryID,
               projection.isServerConfirmed,
               BranchContextStore.shared.activeBranch?.branchID == context.branchID,
-              projection.currentBranchId == context.branchID,
-              let record = projection.inventory(for: context.productID),
-              record.projectionRevision == context.revision,
-              record.availableQuantity == context.quantity else {
+              projection.currentBranchId == context.branchID else {
             reportQuantityChange()
             return
+        }
+        let record = projection.inventory(for: context.productID)
+        if let record {
+            guard record.projectionRevision == context.revision,
+                  record.availableQuantity == context.quantity else {
+                reportQuantityChange()
+                return
+            }
+        } else {
+            guard context.revision == nil, context.quantity == 0 else {
+                reportQuantityChange()
+                return
+            }
         }
         // Consume the captured edit before invoking the existing audited flow.
         // An absolute input is never silently rebased onto a newer balance.
@@ -4883,14 +4906,30 @@ private struct FlagshipInventoryCard: View {
             guard canAdjust, projection.isServerConfirmed,
                   let branchAtPresentation,
                   BranchContextStore.shared.activeBranch?.branchID == branchAtPresentation,
-                  projection.currentBranchId == branchAtPresentation,
-                  currentRecord?.projectionRevision == revisionAtPresentation,
-                  currentRecord?.availableQuantity == quantityAtPresentation else {
+                  projection.currentBranchId == branchAtPresentation else {
                 PPHUD.showError(
                     Language.get("InventoryCell_QuantityChanged", alter: "تغير رصيد الصنف"),
                     subtitle: Language.get("InventoryCell_QuantityChangedDetail", alter: "راجع الرصيد الحالي ثم أعد التعديل.")
                 )
                 return
+            }
+            if let currentRecord {
+                guard currentRecord.projectionRevision == revisionAtPresentation,
+                      currentRecord.availableQuantity == quantityAtPresentation else {
+                    PPHUD.showError(
+                        Language.get("InventoryCell_QuantityChanged", alter: "تغير رصيد الصنف"),
+                        subtitle: Language.get("InventoryCell_QuantityChangedDetail", alter: "راجع الرصيد الحالي ثم أعد التعديل.")
+                    )
+                    return
+                }
+            } else {
+                guard revisionAtPresentation == nil, quantityAtPresentation == 0 else {
+                    PPHUD.showError(
+                        Language.get("InventoryCell_QuantityChanged", alter: "تغير رصيد الصنف"),
+                        subtitle: Language.get("InventoryCell_QuantityChangedDetail", alter: "راجع الرصيد الحالي ثم أعد التعديل.")
+                    )
+                    return
+                }
             }
             let delta = newQuantity - quantityAtPresentation
             if delta != 0 { onAdjustQuantity(delta) }
@@ -5436,11 +5475,17 @@ private struct FlagshipInventoryCard: View {
         let projection = PPBranchInventoryService.shared
         guard canAdjust, let quantity,
               let branchID = projection.currentBranchId,
-              let record = projection.inventory(for: item.accessoryID),
-              record.availableQuantity == quantity else { return }
+              !branchID.isEmpty, branchID != "main_store" else { return }
+        let record = projection.inventory(for: item.accessoryID)
+        if let record {
+            guard record.availableQuantity == quantity else { return }
+            revisionAtPresentation = record.projectionRevision
+        } else {
+            guard quantity == 0 else { return }
+            revisionAtPresentation = nil
+        }
         quantityAtPresentation = quantity
         branchAtPresentation = branchID
-        revisionAtPresentation = record.projectionRevision
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         showQuantityPad = true
     }

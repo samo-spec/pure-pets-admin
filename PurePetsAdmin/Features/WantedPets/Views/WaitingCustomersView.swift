@@ -101,7 +101,7 @@ public struct WaitingCustomersView: View {
             }
 
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(isSelectionMode ? Language.get("Done", alter: "تم") : Language.get("Select", alter: "تحديد")) {
+                Button(isSelectionMode ? Language.get("WantedPets_Selection_Done", alter: "تم") : Language.get("Select", alter: "تحديد")) {
                     withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) {
                         isSelectionMode.toggle()
                         if !isSelectionMode {
@@ -125,6 +125,8 @@ public struct WaitingCustomersView: View {
         )) {
             if let id = showDetailId {
                 WantedPetDetailView(wantedPetId: id)
+            } else {
+                EmptyView()
             }
         }
         .onAppear {
@@ -286,7 +288,7 @@ public struct WaitingCustomersView: View {
                         filter: .uncontacted
                     )
                     filterChip(
-                        title: Language.get("WantedPets_Filter_Interested", alter: "💜 مهتمون"),
+                        title: Language.get("WantedPets_Waiting_Filter_Interested", alter: "مهتمون"),
                         count: interestedCount,
                         filter: .interested
                     )
@@ -351,19 +353,7 @@ public struct WaitingCustomersView: View {
                 // Card Top Metadata: Queue Rank, Wait Duration, Match Badge
                 HStack(alignment: .center) {
                     // Queue Rank Tag (#1, #2...)
-                    HStack(spacing: 3) {
-                        Text("#\(queueIndex + 1)")
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                        Text(queueIndex == 0 ? Language.get("WantedPets_FirstInLine", alter: "الأقدم") : Language.get("WantedPets_InQueue_Short", alter: "بالدور"))
-                            .font(Font.custom("Beiruti-Bold", size: 10))
-                    }
-                    .foregroundStyle(queueIndex == 0 ? Color(uiColor: .systemAmber) : AdminSurface.secondaryText)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 2.5)
-                    .background(
-                        (queueIndex == 0 ? Color(uiColor: .systemAmber) : AdminSurface.secondaryText).opacity(0.12),
-                        in: Capsule()
-                    )
+                    queueRankBadge(index: queueIndex)
 
                     // Waiting Duration Badge
                     HStack(spacing: 3) {
@@ -575,6 +565,23 @@ public struct WaitingCustomersView: View {
                 showDetailId = item.id
             }
         }
+    }
+
+    private func queueRankBadge(index: Int) -> some View {
+        let isFirst = index == 0
+        let tagColor = isFirst ? Color(uiColor: .ppWarning) : AdminSurface.secondaryText
+        let tagTitle = isFirst ? Language.get("WantedPets_FirstInLine", alter: "الأقدم") : Language.get("WantedPets_InQueue_Short", alter: "بالدور")
+
+        return HStack(spacing: 3) {
+            Text("#\(index + 1)")
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+            Text(tagTitle)
+                .font(Font.custom("Beiruti-Bold", size: 10))
+        }
+        .foregroundStyle(tagColor)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 2.5)
+        .background(tagColor.opacity(0.12), in: Capsule())
     }
 
     // MARK: - Preferences & Desires Matrix
@@ -953,13 +960,19 @@ public struct WaitingCustomersView: View {
     }
 
     private func openWhatsApp(_ item: CustomerWantedPet) {
-        let digits = item.normalizedPhoneNumber.isEmpty ? item.phoneNumber.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression) : item.normalizedPhoneNumber
-        let template = String(format: Language.get("WantedPet_WhatsApp_Template", alter: "مرحباً %@، يسعدنا إخبارك بتوفر %@ في بيور بيتس. هل ما زلت مهتماً؟"), item.customerName, petTitle)
-        guard let encoded = template.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://wa.me/\(digits)?text=\(encoded)") else { return }
-        if UIApplication.shared.canOpenURL(url) {
-            UIApplication.shared.open(url)
-        }
+        let rawNumber = item.normalizedPhoneNumber.isEmpty ? item.phoneNumber : item.normalizedPhoneNumber
+        let digits = rawNumber.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
+        let template = String(format: Language.get("WantedPets_WhatsApp_CheckIn_Template",
+                                                   alter: "مرحباً %@، نتواصل معك من بيور بيتس بخصوص طلبك لـ %@. هل لا يزال طلبك قائماً؟"),
+                              item.customerName, petTitle)
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "wa.me"
+        components.path = "/\(digits)"
+        components.queryItems = [URLQueryItem(name: "text", value: template)]
+        guard !digits.isEmpty, let url = components.url,
+              UIApplication.shared.canOpenURL(url) else { return }
+        UIApplication.shared.open(url)
     }
 
     private func callPhone(_ phoneNumber: String) {
