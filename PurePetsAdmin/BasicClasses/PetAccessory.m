@@ -1202,10 +1202,18 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     if (accessory == nil) return nil;
     if (accessory.imageURLsArray.count > 0) {
         for (id candidate in accessory.imageURLsArray) {
-            if ([candidate isKindOfClass:NSString.class]) {
+            if ([candidate isKindOfClass:NSURL.class]) {
+                return (NSURL *)candidate;
+            } else if ([candidate isKindOfClass:NSString.class]) {
                 NSString *trimmed = [(NSString *)candidate stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
                 if (trimmed.length > 0) {
                     NSURL *url = [NSURL URLWithString:trimmed];
+                    if (url == nil) {
+                        NSString *encoded = [trimmed stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];
+                        if (encoded.length > 0) {
+                            url = [NSURL URLWithString:encoded];
+                        }
+                    }
                     if (url != nil) {
                         return url;
                     }

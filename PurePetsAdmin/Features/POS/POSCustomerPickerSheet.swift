@@ -77,6 +77,52 @@ struct POSCustomerRecord: Identifiable, Hashable, Sendable {
 
 // MARK: - Picker Mode
 
+enum POSCustomerPickerPurpose {
+    case posCart
+    case wantedPetRequest
+
+    var title: String {
+        switch self {
+        case .posCart: return Language.get("POS_Customer_Title", alter: "دليل وربط العملاء")
+        case .wantedPetRequest: return Language.get("WantedPets_Directory_Title", alter: "دليل العملاء")
+        }
+    }
+
+    func subtitle(canCreate: Bool) -> String {
+        switch self {
+        case .posCart:
+            return canCreate
+                ? Language.get("POS_Customer_Subtitle", alter: "اختر العميل المتاح أو أنشئ ملفاً جديداً فورياً للسلة.")
+                : Language.get("POS_Customer_Subtitle_ReadOnly", alter: "اختر عميلاً موجوداً لإرفاقه بهذه السلة.")
+        case .wantedPetRequest:
+            return canCreate
+                ? Language.get("WantedPets_Directory_Subtitle", alter: "اختر عميلاً أو أنشئ ملفاً جديداً لطلب الحيوان.")
+                : Language.get("WantedPets_Directory_Subtitle_ReadOnly", alter: "اختر عميلاً موجوداً لطلب الحيوان.")
+        }
+    }
+
+    var selectTitle: String {
+        switch self {
+        case .posCart: return Language.get("POS_Customer_SelectToCart", alter: "ربط العميل بهذه السلة")
+        case .wantedPetRequest: return Language.get("WantedPets_Directory_Select", alter: "استخدام هذا العميل")
+        }
+    }
+
+    var saveAndSelectTitle: String {
+        switch self {
+        case .posCart: return Language.get("POS_Customer_SaveAndLink", alter: "حفظ وربط العميل بالسلة")
+        case .wantedPetRequest: return Language.get("WantedPets_Directory_SaveAndSelect", alter: "حفظ واستخدام العميل")
+        }
+    }
+
+    var createTitle: String {
+        switch self {
+        case .posCart: return Language.get("POS_Customer_SubmitCTA", alter: "حفظ وتحديد العميل للسلة")
+        case .wantedPetRequest: return Language.get("WantedPets_Directory_SaveAndSelect", alter: "حفظ واستخدام العميل")
+        }
+    }
+}
+
 enum POSCustomerPickerTab: Int, CaseIterable, Identifiable {
     case search = 0
     case create = 1
@@ -582,11 +628,24 @@ final class POSCustomerPickerViewModel: ObservableObject {
 
 struct POSCustomerPickerSheet: View {
     let currentSelected: POSCustomerRecord?
-    var canCreateCustomer: Bool = true
+    let canCreateCustomer: Bool
+    let purpose: POSCustomerPickerPurpose
     let onSelect: (POSCustomerRecord) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = POSCustomerPickerViewModel()
+
+    init(
+        currentSelected: POSCustomerRecord?,
+        canCreateCustomer: Bool = true,
+        purpose: POSCustomerPickerPurpose = .posCart,
+        onSelect: @escaping (POSCustomerRecord) -> Void
+    ) {
+        self.currentSelected = currentSelected
+        self.canCreateCustomer = canCreateCustomer
+        self.purpose = purpose
+        self.onSelect = onSelect
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -600,6 +659,7 @@ struct POSCustomerPickerSheet: View {
                         viewModel: viewModel,
                         currentSelected: currentSelected,
                         canCreateCustomer: canCreateCustomer,
+                        purpose: purpose,
                         onSelect: onSelect,
                         dismiss: { dismiss() }
                     )
@@ -608,6 +668,7 @@ struct POSCustomerPickerSheet: View {
                         viewModel: viewModel,
                         currentSelected: currentSelected,
                         canCreateCustomer: canCreateCustomer,
+                        purpose: purpose,
                         onSelect: onSelect,
                         dismiss: { dismiss() }
                     )
@@ -626,6 +687,7 @@ private struct iPhoneCustomerSensoryDeck: View {
     @ObservedObject var viewModel: POSCustomerPickerViewModel
     let currentSelected: POSCustomerRecord?
     let canCreateCustomer: Bool
+    let purpose: POSCustomerPickerPurpose
     let onSelect: (POSCustomerRecord) -> Void
     let dismiss: () -> Void
 
@@ -639,10 +701,8 @@ private struct iPhoneCustomerSensoryDeck: View {
                 VStack(spacing: 0) {
                     // Header Bar
                     AdminSovereignNavigationBar(
-                        title: Language.get("POS_Customer_Title", alter: "دليل وربط العملاء"),
-                        subtitle: canCreateCustomer
-                            ? Language.get("POS_Customer_Subtitle", alter: "اختر العميل المتاح أو أنشئ ملفاً جديداً فورياً للسلة.")
-                            : Language.get("POS_Customer_Subtitle_ReadOnly", alter: "اختر عميلاً موجوداً لإرفاقه بهذه السلة."),
+                        title: purpose.title,
+                        subtitle: purpose.subtitle(canCreate: canCreateCustomer),
                         statusDotColor: Color(uiColor: .ppSuccess),
                         isModal: true,
                         onBack: {
@@ -686,6 +746,7 @@ private struct iPhoneCustomerSensoryDeck: View {
                 POSCustomerEditSheet(
                     viewModel: viewModel,
                     customer: customer,
+                    purpose: purpose,
                     onSelectAndDismiss: { updated in
                         onSelect(updated)
                         dismiss()
@@ -1026,21 +1087,23 @@ private struct iPhoneCustomerSensoryDeck: View {
             }
             .buttonStyle(PlainButtonStyle())
 
-            // Dedicated EDIT Button
-            Button {
-                viewModel.startEditing(customer: customer)
-            } label: {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(AdminSurface.primary.opacity(0.10))
-                        .frame(width: 38, height: 38)
-                    Image(systemName: "pencil")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(AdminSurface.primary)
+            if canCreateCustomer {
+                // Editing and creation share the server's pos.sell permission.
+                Button {
+                    viewModel.startEditing(customer: customer)
+                } label: {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(AdminSurface.primary.opacity(0.10))
+                            .frame(width: 38, height: 38)
+                        Image(systemName: "pencil")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(AdminSurface.primary)
+                    }
                 }
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel(Language.get("POS_Customer_EditButton", alter: "تعديل"))
             }
-            .buttonStyle(PlainButtonStyle())
-            .accessibilityLabel(Language.get("POS_Customer_EditButton", alter: "تعديل"))
 
             // Select Chevron Indicator
             Button {
@@ -1265,7 +1328,7 @@ private struct iPhoneCustomerSensoryDeck: View {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 16, weight: .bold))
                         }
-                        Text(Language.get("POS_Customer_SubmitCTA", alter: "حفظ وتحديد العميل للسلة"))
+                        Text(purpose.createTitle)
                             .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline))
                     }
                     .foregroundColor(.white)
@@ -1326,6 +1389,7 @@ private struct iPhoneCustomerSensoryDeck: View {
 private struct POSCustomerEditSheet: View {
     @ObservedObject var viewModel: POSCustomerPickerViewModel
     let customer: POSCustomerRecord
+    let purpose: POSCustomerPickerPurpose
     let onSelectAndDismiss: (POSCustomerRecord) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -1549,7 +1613,7 @@ private struct POSCustomerEditSheet: View {
                                     HStack(spacing: 6) {
                                         Image(systemName: "arrowshape.turn.up.backward.fill")
                                             .font(.system(size: 13))
-                                        Text(Language.get("POS_Customer_SaveAndLink", alter: "حفظ وربط العميل بالسلة"))
+                                        Text(purpose.saveAndSelectTitle)
                                             .font(Font.custom("Beiruti-Bold", size: 14.5, relativeTo: .callout))
                                     }
                                     .foregroundColor(AdminSurface.primary)
@@ -1578,6 +1642,7 @@ private struct iPadCustomerSpatialCockpit: View {
     @ObservedObject var viewModel: POSCustomerPickerViewModel
     let currentSelected: POSCustomerRecord?
     let canCreateCustomer: Bool
+    let purpose: POSCustomerPickerPurpose
     let onSelect: (POSCustomerRecord) -> Void
     let dismiss: () -> Void
 
@@ -1650,7 +1715,7 @@ private struct iPadCustomerSpatialCockpit: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 8) {
-                    Text(Language.get("POS_Customer_Title", alter: "دليل وربط العملاء"))
+                    Text(purpose.title)
                         .font(Font.custom("Beiruti-Bold", size: 19, relativeTo: .title3))
                         .foregroundColor(AdminSurface.primaryText)
 
@@ -1665,9 +1730,7 @@ private struct iPadCustomerSpatialCockpit: View {
                     .background(AdminSurface.control, in: Capsule())
                 }
 
-                Text(canCreateCustomer
-                     ? Language.get("POS_Customer_Subtitle", alter: "البحث السريع، ربط السلة وتحديث الملفات التشغيلية فورياً.")
-                     : Language.get("POS_Customer_Subtitle_ReadOnly", alter: "اختر عميلاً موجوداً لإرفاقه بهذه السلة."))
+                Text(purpose.subtitle(canCreate: canCreateCustomer))
                     .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .caption))
                     .foregroundColor(AdminSurface.secondaryText)
             }
@@ -1927,22 +1990,23 @@ private struct iPadCustomerSpatialCockpit: View {
             }
             .buttonStyle(PlainButtonStyle())
 
-            // Dedicated EDIT Button
-            Button {
-                viewModel.highlightedCustomer = customer
-                viewModel.startEditing(customer: customer)
-            } label: {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(AdminSurface.primary.opacity(0.10))
-                        .frame(width: 34, height: 34)
-                    Image(systemName: "pencil")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(AdminSurface.primary)
+            if canCreateCustomer {
+                Button {
+                    viewModel.highlightedCustomer = customer
+                    viewModel.startEditing(customer: customer)
+                } label: {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(AdminSurface.primary.opacity(0.10))
+                            .frame(width: 34, height: 34)
+                        Image(systemName: "pencil")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(AdminSurface.primary)
+                    }
                 }
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel(Language.get("POS_Customer_EditButton", alter: "تعديل"))
             }
-            .buttonStyle(PlainButtonStyle())
-            .accessibilityLabel(Language.get("POS_Customer_EditButton", alter: "تعديل"))
         }
         .padding(10)
         .background(isHighlighted ? AdminSurface.primary.opacity(0.08) : AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -2083,22 +2147,23 @@ private struct iPadCustomerSpatialCockpit: View {
 
                 // Dock Action Controls
                 HStack(spacing: 10) {
-                    // Edit Profile Trigger
-                    Button {
-                        viewModel.startEditing(customer: customer)
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "pencil")
-                                .font(.system(size: 13, weight: .semibold))
-                            Text(Language.get("POS_Customer_EditButton", alter: "تعديل الملف"))
-                                .font(Font.custom("Beiruti-Bold", size: 14.5, relativeTo: .callout))
+                    if canCreateCustomer {
+                        Button {
+                            viewModel.startEditing(customer: customer)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "pencil")
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text(Language.get("POS_Customer_EditButton", alter: "تعديل الملف"))
+                                    .font(Font.custom("Beiruti-Bold", size: 14.5, relativeTo: .callout))
+                            }
+                            .foregroundColor(AdminSurface.primary)
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: 46)
+                            .background(AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
-                        .foregroundColor(AdminSurface.primary)
-                        .padding(.horizontal, 14)
-                        .frame(minHeight: 46)
-                        .background(AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .buttonStyle(PlainButtonStyle())
                     }
-                    .buttonStyle(PlainButtonStyle())
 
                     // Primary Link To Cart Button
                     Button {
@@ -2110,7 +2175,7 @@ private struct iPadCustomerSpatialCockpit: View {
                         HStack(spacing: 8) {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 15, weight: .bold))
-                            Text(Language.get("POS_Customer_SelectToCart", alter: "ربط العميل بهذه السلة"))
+                            Text(purpose.selectTitle)
                                 .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
                         }
                         .foregroundColor(.white)
@@ -2139,7 +2204,9 @@ private struct iPadCustomerSpatialCockpit: View {
                     Text(Language.get("POS_Customer_CustomerDossier", alter: "بطاقة العميل"))
                         .font(Font.custom("Beiruti-Bold", size: 18, relativeTo: .headline))
                         .foregroundColor(AdminSurface.primaryText)
-                    Text(Language.get("POS_Customer_InspectorHint", alter: "اختر عميلاً من القائمة لمعاينة التفاصيل أو تعديل الملف."))
+                    Text(canCreateCustomer
+                         ? Language.get("POS_Customer_InspectorHint", alter: "اختر عميلاً من القائمة لمعاينة التفاصيل أو تعديل الملف.")
+                         : Language.get("POS_Customer_InspectorHint_ReadOnly", alter: "اختر عميلاً لمعاينة التفاصيل."))
                         .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .caption))
                         .foregroundColor(AdminSurface.secondaryText)
                         .multilineTextAlignment(.center)
@@ -2363,7 +2430,7 @@ private struct iPadCustomerSpatialCockpit: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "arrowshape.turn.up.backward.fill").font(.system(size: 11))
-                        Text(Language.get("POS_Customer_SaveAndLink", alter: "حفظ وربط"))
+                        Text(purpose.saveAndSelectTitle)
                             .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .callout))
                     }
                     .foregroundColor(AdminSurface.primary)
@@ -2568,7 +2635,7 @@ private struct iPadCustomerSpatialCockpit: View {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 15, weight: .bold))
                     }
-                    Text(Language.get("POS_Customer_SubmitCTA", alter: "حفظ وتحديد العميل للسلة"))
+                    Text(purpose.createTitle)
                         .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
                 }
                 .foregroundColor(.white)

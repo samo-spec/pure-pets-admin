@@ -869,17 +869,11 @@ public struct PPInventoryActionMenuSheet: View {
         return HStack(spacing: 12) {
             // Specimen Image Box
             ZStack {
-                if let imageURL {
-                    AsyncImage(url: imageURL) { phase in
-                        switch phase {
-                        case .success(let img):
-                            img.resizable()
-                                .scaledToFill()
-                        default:
-                            auraGlyphView(aura: aura)
-                        }
-                    }
-                } else {
+                AdminRemoteImage(
+                    url: imageURL,
+                    contentMode: .fill,
+                    targetSize: CGSize(width: compact ? 66 : 80, height: compact ? 66 : 80)
+                ) {
                     auraGlyphView(aura: aura)
                 }
             }

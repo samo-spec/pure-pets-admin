@@ -1739,23 +1739,15 @@ private struct SupportThreadTopBar: View {
                 HStack(spacing: 10) {
                     // Avatar with Presence Dot
                     ZStack(alignment: .bottomTrailing) {
-                        if !viewModel.customerAvatarUrl.isEmpty, let url = URL(string: viewModel.customerAvatarUrl) {
-                            AsyncImage(url: url) { phase in
-                                switch phase {
-                                case .success(let image):
-                                    image.resizable()
-                                        .scaledToFill()
-                                        .frame(width: 42, height: 42)
-                                        .clipShape(Circle())
-                                case .failure, .empty:
-                                    customerMonogram
-                                @unknown default:
-                                    customerMonogram
-                                }
-                            }
-                        } else {
+                        AdminRemoteImage(
+                            urlString: viewModel.customerAvatarUrl,
+                            contentMode: .fill,
+                            targetSize: CGSize(width: 42, height: 42)
+                        ) {
                             customerMonogram
                         }
+                        .frame(width: 42, height: 42)
+                        .clipShape(Circle())
 
                         // Active Presence Ring Dot
                         Circle()
@@ -2118,17 +2110,15 @@ private struct CustomerQuickDossierSheet: View {
                                 .frame(width: 76, height: 76)
                                 .shadow(color: Color(uiColor: .ppPrimary).opacity(0.3), radius: 12, x: 0, y: 6)
 
-                            if !viewModel.customerAvatarUrl.isEmpty, let url = URL(string: viewModel.customerAvatarUrl) {
-                                AsyncImage(url: url) { phase in
-                                    if let image = phase.image {
-                                        image.resizable().scaledToFill().frame(width: 76, height: 76).clipShape(Circle())
-                                    } else {
-                                        monogramLarge
-                                    }
-                                }
-                            } else {
+                            AdminRemoteImage(
+                                urlString: viewModel.customerAvatarUrl,
+                                contentMode: .fill,
+                                targetSize: CGSize(width: 76, height: 76)
+                            ) {
                                 monogramLarge
                             }
+                            .frame(width: 76, height: 76)
+                            .clipShape(Circle())
                         }
 
                         VStack(spacing: 4) {
@@ -2375,17 +2365,18 @@ private struct SupportContextDetailSheet: View {
                 // Icon / Avatar content
                 if context.category == .customerIntelligence,
                    let avatarUrl = viewModel?.customerAvatarUrl,
-                   !avatarUrl.isEmpty,
-                   let url = URL(string: avatarUrl) {
-                    AsyncImage(url: url) { phase in
-                        if let image = phase.image {
-                            image.resizable().scaledToFill().frame(width: 76, height: 76).clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                        } else {
-                            Image(systemName: context.category.iconName)
-                                .font(.system(size: 34, weight: .bold))
-                                .foregroundColor(context.category.accentColor)
-                        }
+                   !avatarUrl.isEmpty {
+                    AdminRemoteImage(
+                        urlString: avatarUrl,
+                        contentMode: .fill,
+                        targetSize: CGSize(width: 76, height: 76)
+                    ) {
+                        Image(systemName: context.category.iconName)
+                            .font(.system(size: 34, weight: .bold))
+                            .foregroundColor(context.category.accentColor)
                     }
+                    .frame(width: 76, height: 76)
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                 } else {
                     Image(systemName: context.category.iconName)
                         .font(.system(size: 34, weight: .bold))
@@ -3057,34 +3048,25 @@ private struct SupportMessageBubble: View {
     private var stickerBubble: some View {
         VStack(alignment: message.isOfficial ? .trailing : .leading, spacing: 4) {
             Group {
-                if let urlString = message.fileURL, let url = URL(string: urlString) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 136, height: 136)
-                                .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: 3)
-                        case .failure:
-                            VStack(spacing: 4) {
-                                Image(systemName: "photo")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(AdminSurface.secondaryText)
-                                Text(message.text.isEmpty ? "🐾" : message.text)
-                                    .font(AdminType.caption2)
-                                    .foregroundColor(AdminSurface.secondaryText)
-                            }
-                            .frame(width: 136, height: 136)
-                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.large))
-                        case .empty:
-                            ProgressView()
-                                .tint(AdminSurface.primary)
-                                .frame(width: 136, height: 136)
-                        @unknown default:
-                            EmptyView()
+                if let urlString = message.fileURL, !urlString.isEmpty {
+                    AdminRemoteImage(
+                        urlString: urlString,
+                        contentMode: .fit,
+                        targetSize: CGSize(width: 136, height: 136)
+                    ) {
+                        VStack(spacing: 4) {
+                            Image(systemName: "photo")
+                                .font(.system(size: 24))
+                                .foregroundColor(AdminSurface.secondaryText)
+                            Text(message.text.isEmpty ? "🐾" : message.text)
+                                .font(AdminType.caption2)
+                                .foregroundColor(AdminSurface.secondaryText)
                         }
+                        .frame(width: 136, height: 136)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.large))
                     }
+                    .frame(width: 136, height: 136)
+                    .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: 3)
                 } else {
                     VStack(spacing: 4) {
                         ProgressView()

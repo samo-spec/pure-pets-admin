@@ -122,6 +122,7 @@ final class AdminCommandCenterStore: ObservableObject {
     @Published var readiness: AdminCommandOrbitReadiness = .init(loadingAreas: [], failedAreas: [], updatedAt: nil)
     @Published var localeCode: String = Language.currentLanguageCode()
     @Published private(set) var canAccessHotel = false
+    @Published private(set) var canOpenWantedPets = false
     @Published private(set) var revision: Int = 0
 
     var onRoute: ((String) -> Void)?
@@ -196,6 +197,12 @@ final class AdminCommandCenterStore: ObservableObject {
         canAccessHotel = allowed
         revision += 1
     }
+
+    func applyWantedPetsAccess(_ allowed: Bool) {
+        guard canOpenWantedPets != allowed else { return }
+        canOpenWantedPets = allowed
+        revision += 1
+    }
 }
 
 // MARK: - Hosting Controller (Preserved Obj-C Bridge)
@@ -258,6 +265,21 @@ public final class AdminCommandOrbitHostingController: UIViewController {
         hostingController = host
     }
 
+    public override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        configureScrollViews(in: view)
+    }
+
+    private func configureScrollViews(in container: UIView) {
+        for subview in container.subviews {
+            if let scrollView = subview as? UIScrollView {
+                scrollView.delaysContentTouches = false
+                scrollView.canCancelContentTouches = true
+            }
+            configureScrollViews(in: subview)
+        }
+    }
+
     public func applyIdentityDisplayName(
         _ displayName: String?,
         avatarURL: String?,
@@ -295,6 +317,10 @@ public final class AdminCommandOrbitHostingController: UIViewController {
 
     public func applyHotelAccess(_ allowed: Bool) {
         store.applyHotelAccess(allowed)
+    }
+
+    public func applyWantedPetsAccess(_ allowed: Bool) {
+        store.applyWantedPetsAccess(allowed)
     }
 
 }
@@ -486,7 +512,7 @@ struct AdminCommandCenterScreenView: View {
     @State private var isShowingSourceIssueDetails = false
     @State private var isReplacingBranchData = false
     @State private var isShowingBranchSelection = false
-    @State private var sectionsAppeared = false
+    @State private var sectionsAppeared = true
 
     private var locale: Locale {
         Locale(identifier: store.localeCode == "ar" ? "ar_QA" : "en_QA")
@@ -519,7 +545,7 @@ struct AdminCommandCenterScreenView: View {
             let isRegular = geometry.size.width >= 760 && !dynamicTypeSize.isAccessibilitySize
             let ipadMaxWidth: CGFloat = 1160
             let heroInset = AdminCommandMetric.pageMargin
-            let contentAvailableWidth = max(min(geometry.size.width - 2 * heroInset, isRegular ? ipadMaxWidth : geometry.size.width - 2 * heroInset), 320)
+            let contentAvailableWidth = max(min(geometry.size.width - 2 * heroInset, isRegular ? min(ipadMaxWidth, geometry.size.width - 2 * heroInset) : geometry.size.width - 2 * heroInset), 320)
 
             // Large text and compact-height windows need the header to scroll
             // with the existing content, rather than consume its whole viewport.
@@ -527,22 +553,22 @@ struct AdminCommandCenterScreenView: View {
 
             VStack(spacing: 0) {
                 if !scrollsHeader {
-                    fixedNavBar(safeTop: safeTop, isRegular: isRegular)
+                    fixedNavBar(safeTop: safeTop, isRegular: isRegular, containerWidth: contentAvailableWidth)
                 }
 
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 0) {
                         if scrollsHeader {
-                            fixedNavBar(safeTop: safeTop, isRegular: isRegular)
+                            fixedNavBar(safeTop: safeTop, isRegular: isRegular, containerWidth: contentAvailableWidth)
                         }
 
-                        LazyVStack(alignment: .leading, spacing: AdminSectionSpacing.interSection(isRegular: isRegular)) {
+                        VStack(alignment: .leading, spacing: AdminSectionSpacing.interSection(isRegular: isRegular)) {
                             phaseContent(isRegular: isRegular, containerWidth: contentAvailableWidth)
                         }
                         .padding(.horizontal, AdminCommandMetric.pageMargin)
                         .padding(.top, AdminSectionSpacing.navBarToFirstSection(isRegular: isRegular))
                         .padding(.bottom, max(geometry.safeAreaInsets.bottom + 88, AdminCommandMetric.tabBarBottomInset))
-                        .frame(maxWidth: isRegular ? ipadMaxWidth : .infinity)
+                        .frame(maxWidth: isRegular ? min(ipadMaxWidth, geometry.size.width) : .infinity)
                         .frame(maxWidth: .infinity)
                     }
                 }
@@ -613,7 +639,7 @@ struct AdminCommandCenterScreenView: View {
         }
     }
 
-    private func fixedNavBar(safeTop: CGFloat, isRegular: Bool) -> some View {
+    private func fixedNavBar(safeTop: CGFloat, isRegular: Bool, containerWidth: CGFloat = 0) -> some View {
         let ipadMaxWidth: CGFloat = 1160
         return CommandCenterChrome(
             displayName: store.snapshot.displayName,
@@ -631,12 +657,13 @@ struct AdminCommandCenterScreenView: View {
             onLanguage: { store.onToggleLanguage?() },
             onLogout: { store.onRequestLogout?() },
             onSelectBranch: { isShowingBranchSelection = true },
-            isRegular: isRegular
+            isRegular: isRegular,
+            containerWidth: containerWidth
         )
         .padding(.horizontal, AdminCommandMetric.pageMargin)
         .padding(.top, safeTop)
         .padding(.bottom, 6)
-        .frame(maxWidth: isRegular ? ipadMaxWidth : .infinity)
+        .frame(maxWidth: isRegular ? min(ipadMaxWidth, containerWidth > 0 ? (containerWidth + 2 * AdminCommandMetric.pageMargin) : ipadMaxWidth) : .infinity)
         .frame(maxWidth: .infinity)
         .zIndex(100)
         .commandHeaderEntrance(isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
@@ -695,6 +722,7 @@ struct AdminCommandCenterScreenView: View {
             CommandPOSDeck(
                 isRegular: isRegular,
                 containerWidth: containerWidth,
+                canOpenWantedPets: store.canOpenWantedPets,
                 onRoute: { route($0) }
             )
             .commandSectionEntrance(index: 1, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
@@ -761,8 +789,8 @@ struct AdminCommandCenterScreenView: View {
             .transition(reduceMotion ? .identity : .opacity)
             .commandSectionEntrance(index: hasHotel ? 6 : 5, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
 
-            if isRegular {
-                // Deck 6 & 7: iPad Dual-Wing Base Deck (Priority Runway + Source Ledger)
+            if isRegular && containerWidth >= 950 {
+                // Deck 6 & 7: iPad Dual-Wing Base Deck (Priority Runway + Source Ledger) — Landscape ONLY
                 HStack(alignment: .top, spacing: 14) {
                     CommandPriorityRunway(
                         title: runwayTitle,
@@ -786,13 +814,13 @@ struct AdminCommandCenterScreenView: View {
                 }
                 .commandSectionEntrance(index: hasHotel ? 7 : 6, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
             } else {
-                // Deck 6 & 7: iPhone Priority Runway & Source Ledger
+                // Deck 6 & 7: Portrait iPad & iPhone - stacked vertically so each gets 100% width with zero overflow
                 CommandPriorityRunway(
                     title: runwayTitle,
                     detail: runwayDetail,
                     signals: store.snapshot.signals,
                     locale: locale,
-                    isRegular: false,
+                    isRegular: isRegular,
                     action: { route($0.id) }
                 )
                 .commandSectionEntrance(index: hasHotel ? 7 : 6, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
@@ -803,16 +831,13 @@ struct AdminCommandCenterScreenView: View {
                     loadingSources: localizedAreaNames(store.readiness.loadingAreas),
                     failedSources: localizedAreaNames(store.readiness.failedAreas),
                     updatedText: updatedText,
-                    isRegular: false
+                    isRegular: isRegular
                 )
                 .commandSectionEntrance(index: hasHotel ? 8 : 7, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
             }
         }
         .onAppear {
             triggerEntranceAnimation()
-        }
-        .onDisappear {
-            sectionsAppeared = false
         }
     }
 
@@ -1349,12 +1374,12 @@ private struct CommandCenterChrome: View {
     let onLogout: () -> Void
     let onSelectBranch: () -> Void
     var isRegular: Bool = false
+    var containerWidth: CGFloat = 0
 
     @ObservedObject private var branchContextStore = BranchContextStore.shared
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.layoutDirection) private var layoutDirection
-    @State private var isShowingMoreMenu: Bool = false
     @State private var pulseBeacon: Bool = false
     @ScaledMetric(relativeTo: .body) private var avatarSide: CGFloat = 36
 
@@ -1399,7 +1424,7 @@ private struct CommandCenterChrome: View {
         .background(
             CommandCenterCockpitBackground(readinessTone: readinessTone, cornerRadius: 22)
         )
-        .zIndex(isShowingMoreMenu ? 10 : 1)
+        .zIndex(1)
     }
 
     private var operatorIdentityPodiPhone: some View {
@@ -1640,21 +1665,25 @@ private struct CommandCenterChrome: View {
         }
     }
 
+    private var isLandscapeIPad: Bool {
+        containerWidth >= 950
+    }
+
     // MARK: - iPad Aerospace Command Bar
     private var ipadCommandBar: some View {
-        HStack(alignment: .center, spacing: 16) {
+        HStack(alignment: .center, spacing: isLandscapeIPad ? 16 : 10) {
             // Wing 1: Working Branch Control Station
             workingBranchIPadStation
 
-            Spacer(minLength: 12)
+            Spacer(minLength: isLandscapeIPad ? 12 : 6)
 
             // Wing 2: Real-Time Telemetry & Readiness Radar
             readinessControlIPad
 
-            Spacer(minLength: 12)
+            Spacer(minLength: isLandscapeIPad ? 12 : 6)
 
             // Wing 3: Utility Flight Tools + Operator Identity Capsule
-            HStack(spacing: 10) {
+            HStack(spacing: isLandscapeIPad ? 10 : 8) {
                 utilityActionsIPad
 
                 Rectangle()
@@ -1666,17 +1695,17 @@ private struct CommandCenterChrome: View {
                 moreActionsMenu(size: 36)
             }
         }
-        .padding(.horizontal, 18)
+        .padding(.horizontal, isLandscapeIPad ? 18 : 14)
         .padding(.vertical, 10)
         .background(
             CommandCenterCockpitBackground(readinessTone: readinessTone, cornerRadius: 24)
         )
-        .zIndex(isShowingMoreMenu ? 10 : 1)
+        .zIndex(1)
     }
 
     private var workingBranchIPadStation: some View {
         Button(action: triggerBranchSwitch) {
-            HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .center, spacing: isLandscapeIPad ? 12 : 8) {
                 // Branch Storefront Glyphed Squircle with gradient
                 ZStack {
                     LinearGradient(
@@ -1688,11 +1717,11 @@ private struct CommandCenterChrome: View {
                     )
 
                     Image(systemName: "storefront.fill")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: isLandscapeIPad ? 16 : 14, weight: .bold))
                         .foregroundStyle(canSwitchBranch ? Color.white : secondaryInk)
                 }
-                .frame(width: 42, height: 42)
-                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .frame(width: isLandscapeIPad ? 42 : 36, height: isLandscapeIPad ? 42 : 36)
+                .clipShape(RoundedRectangle(cornerRadius: isLandscapeIPad ? 13 : 10, style: .continuous))
                 .shadow(
                     color: canSwitchBranch ? Color(uiColor: .ppPrimary).opacity(0.24) : Color.clear,
                     radius: 6,
@@ -1700,31 +1729,36 @@ private struct CommandCenterChrome: View {
                 )
 
                 VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 5) {
-                        Text(Language.get("AdminCommandCenter_Header_WorkingBranch", alter: "فرع العمل والتشغيل"))
-                            .font(PPBrandFont.medium(size: 11.5, relativeTo: .caption2))
-                            .foregroundStyle(secondaryInk)
+                    if isLandscapeIPad {
+                        HStack(spacing: 5) {
+                            Text(Language.get("AdminCommandCenter_Header_WorkingBranch", alter: "فرع العمل والتشغيل"))
+                                .font(PPBrandFont.medium(size: 11.5, relativeTo: .caption2))
+                                .foregroundStyle(secondaryInk)
 
-                        Circle()
-                            .fill(Color(uiColor: .ppSuccess))
-                            .frame(width: 5.5, height: 5.5)
+                            Circle()
+                                .fill(Color(uiColor: .ppSuccess))
+                                .frame(width: 5.5, height: 5.5)
+                        }
                     }
 
                     Text(currentBranchDisplayName)
-                        .font(PPBrandFont.bold(size: 18, relativeTo: .title3))
+                        .font(PPBrandFont.bold(size: isLandscapeIPad ? 18 : 15, relativeTo: .title3))
                         .foregroundStyle(AdminSurface.primaryText)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
 
                 if canSwitchBranch {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 3) {
                         Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 9.5, weight: .bold))
-                        Text(Language.get("AdminCommandCenter_Header_Switch", alter: "تبديل"))
-                            .font(PPBrandFont.bold(size: 11.5, relativeTo: .caption))
+                            .font(.system(size: 8.5, weight: .bold))
+                        if isLandscapeIPad {
+                            Text(Language.get("AdminCommandCenter_Header_Switch", alter: "تبديل"))
+                                .font(PPBrandFont.bold(size: 11.5, relativeTo: .caption))
+                        }
                     }
                     .foregroundStyle(Color(uiColor: .ppPrimary))
-                    .padding(.horizontal, 9)
+                    .padding(.horizontal, isLandscapeIPad ? 9 : 6)
                     .padding(.vertical, 5)
                     .background(
                         Color(uiColor: .ppPrimary).opacity(0.10),
@@ -1825,7 +1859,7 @@ private struct CommandCenterChrome: View {
                     .environment(\.layoutDirection, .leftToRight)
             }
             .foregroundStyle(AdminSurface.primaryText)
-            .padding(.horizontal, 14)
+            .padding(.horizontal, isLandscapeIPad ? 14 : 10)
             .frame(height: 36)
             .background(
                 AdminSurface.control,
@@ -1873,25 +1907,29 @@ private struct CommandCenterChrome: View {
                         .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
                 )
 
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(resolvedDisplayName)
-                        .font(PPBrandFont.bold(size: 14, relativeTo: .footnote))
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(1)
-
-                    HStack(spacing: 4) {
-                        Text(roleName)
-                            .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
-                            .foregroundStyle(secondaryInk)
+                if isLandscapeIPad {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(resolvedDisplayName)
+                            .font(PPBrandFont.bold(size: 14, relativeTo: .footnote))
+                            .foregroundStyle(AdminSurface.primaryText)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.8)
 
-                        Text("•")
-                            .font(.system(size: 8))
-                            .foregroundStyle(secondaryInk.opacity(0.5))
+                        HStack(spacing: 4) {
+                            Text(roleName)
+                                .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
+                                .foregroundStyle(secondaryInk)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
 
-                        Text("ADMIN")
-                            .font(.system(size: 8.5, weight: .heavy, design: .rounded))
-                            .foregroundStyle(actionInk)
+                            Text("•")
+                                .font(.system(size: 8))
+                                .foregroundStyle(secondaryInk.opacity(0.5))
+
+                            Text("ADMIN")
+                                .font(.system(size: 8.5, weight: .heavy, design: .rounded))
+                                .foregroundStyle(actionInk)
+                        }
                     }
                 }
             }
@@ -1911,143 +1949,51 @@ private struct CommandCenterChrome: View {
     }
 
     private func moreActionsMenu(size: CGFloat) -> some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                isShowingMoreMenu.toggle()
+        Menu {
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onRefresh()
+            } label: {
+                Label(Language.get("AdminCommandCenter_Refresh", alter: nil), systemImage: "arrow.clockwise")
+            }
+
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onAccount()
+            } label: {
+                Label(Language.get("EditMyAccount_Title", alter: nil), systemImage: "person.crop.circle")
+            }
+
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onLanguage()
+            } label: {
+                Label(String(format: Language.get("AdminCommandCenter_Header_Language_Format", alter: nil), languageTitle), systemImage: "globe")
+            }
+
+            Button(role: .destructive) {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onLogout()
+            } label: {
+                Label(Language.get("Logout", alter: nil), systemImage: "rectangle.portrait.and.arrow.right")
             }
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(isShowingMoreMenu ? AdminSurface.primary : AdminSurface.primaryText)
+                .foregroundStyle(AdminSurface.primaryText)
                 .frame(width: size, height: size)
                 .background(
-                    isShowingMoreMenu ? AdminSurface.primary.opacity(0.12) : AdminSurface.control,
+                    AdminSurface.control,
                     in: RoundedRectangle(cornerRadius: 11, style: .continuous)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .strokeBorder(isShowingMoreMenu ? AdminSurface.primary.opacity(0.4) : AdminSurface.hairline, lineWidth: 0.75)
+                        .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
                 )
                 .contentShape(Rectangle())
         }
-        .buttonStyle(CommandHeaderPressStyle())
         .accessibilityLabel(Language.get("CommandCenter_Tab_More", alter: nil))
         .accessibilityIdentifier("admin.command.header.more")
-        .background {
-            if isShowingMoreMenu {
-                Color.black.opacity(0.001)
-                    .frame(width: 3000, height: 3000)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                            isShowingMoreMenu = false
-                        }
-                    }
-            }
-        }
-        .overlay(alignment: .topTrailing) {
-            if isShowingMoreMenu {
-                customMoreActionsMenuCard
-                    .offset(y: size + 8)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.88, anchor: .topTrailing).combined(with: .opacity),
-                        removal: .opacity.combined(with: .scale(scale: 0.92, anchor: .topTrailing))
-                    ))
-                    .zIndex(500)
-            }
-        }
-    }
-
-    private var customMoreActionsMenuCard: some View {
-        VStack(spacing: 0) {
-            menuRow(
-                title: Language.get("AdminCommandCenter_Refresh", alter: nil),
-                systemImage: "arrow.clockwise",
-                isDestructive: false
-            ) {
-                onRefresh()
-            }
-
-            menuDivider
-
-            menuRow(
-                title: Language.get("EditMyAccount_Title", alter: nil),
-                systemImage: "person.crop.circle",
-                isDestructive: false
-            ) {
-                onAccount()
-            }
-
-            menuDivider
-
-            menuRow(
-                title: String(format: Language.get("AdminCommandCenter_Header_Language_Format", alter: nil), languageTitle),
-                systemImage: "globe",
-                isDestructive: false
-            ) {
-                onLanguage()
-            }
-
-            menuDivider
-
-            menuRow(
-                title: Language.get("Logout", alter: nil),
-                systemImage: "rectangle.portrait.and.arrow.right",
-                isDestructive: true
-            ) {
-                onLogout()
-            }
-        }
-        .frame(width: 230)
-        .background(
-            AdminSurface.surface,
-            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
-        )
-        .shadow(color: Color.black.opacity(0.14), radius: 20, x: 0, y: 10)
-        .environment(\.layoutDirection, layoutDirection)
-    }
-
-    private var menuDivider: some View {
-        Rectangle()
-            .fill(AdminSurface.hairline)
-            .frame(height: 0.75)
-            .padding(.horizontal, 12)
-    }
-
-    private func menuRow(
-        title: String,
-        systemImage: String,
-        isDestructive: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                isShowingMoreMenu = false
-            }
-            action()
-        } label: {
-            HStack(spacing: 12) {
-                Text(title)
-                    .font(Font.custom("Beiruti-Bold", size: 15))
-                    .foregroundStyle(isDestructive ? Color(uiColor: .ppPressedAction) : AdminSurface.primaryText)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Image(systemName: systemImage)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(isDestructive ? Color(uiColor: .ppPressedAction) : AdminSurface.primary)
-            }
-            .padding(.horizontal, 16)
-            .frame(height: 48)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(CommandMenuRowPressStyle())
     }
 
     // MARK: - Existing Context and Identity Resolution
@@ -2115,10 +2061,12 @@ private struct CommandCardPressStyle: ButtonStyle {
     var cornerRadius: CGFloat = 18
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? scale : 1.0)
+        let animatesScale = UIDevice.current.userInterfaceIdiom != .pad
+        return configuration.label
+            .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .scaleEffect(configuration.isPressed && animatesScale ? scale : 1.0)
             .opacity(configuration.isPressed ? pressedOpacity : 1.0)
-            .animation(.spring(response: 0.24, dampingFraction: 0.78), value: configuration.isPressed)
+            .animation(animatesScale ? (configuration.isPressed ? .easeOut(duration: 0.08) : .spring(response: 0.28, dampingFraction: 0.72)) : nil, value: configuration.isPressed)
     }
 }
 
@@ -2131,14 +2079,6 @@ private struct CommandHeaderPressStyle: ButtonStyle {
             .transaction { transaction in
                 transaction.animation = nil
             }
-    }
-}
-
-private struct CommandMenuRowPressStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .background(configuration.isPressed ? AdminSurface.primarySoft.opacity(0.6) : Color.clear)
-            .opacity(configuration.isPressed ? 0.85 : 1.0)
     }
 }
 
@@ -3141,7 +3081,8 @@ private struct CommandPOSCardPressStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed ? scale : 1.0)
             .opacity(configuration.isPressed ? pressedOpacity : 1.0)
-            .animation(.spring(response: 0.24, dampingFraction: 0.78), value: configuration.isPressed)
+            .animation(configuration.isPressed ? .easeOut(duration: 0.08) : .spring(response: 0.28, dampingFraction: 0.72), value: configuration.isPressed)
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 
@@ -3172,9 +3113,155 @@ private struct CommandPOSShimmerMask: View {
     }
 }
 
+/// A quiet handoff from a sale that cannot happen today to the existing
+/// A quiet handoff from a sale that cannot happen today to the existing
+/// customer-request queue. Studio-crafted, compact (48pt), tactile and responsive.
+private struct CommandPOSWantedPetsEntry: View {
+    let onOpen: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.layoutDirection) private var layoutDirection
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private let cornerRadius: CGFloat = 13
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    }
+
+    var body: some View {
+        let title = Language.get("WantedPets_Title", alter: "قائمة الطلبات")
+        let detail = Language.get("WantedPets_Subtitle", alter: "طلبات العملاء للحيوانات المرتقبة والتواصل الفوري")
+
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            onOpen()
+        } label: {
+            HStack(alignment: .center, spacing: 10) {
+                // Bespoke Paw & Request Beacon Squircle
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.22 : 0.12),
+                                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.10 : 0.04)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(AdminSurface.primary.opacity(colorScheme == .dark ? 0.35 : 0.20), lineWidth: 0.75)
+                        )
+
+                    Image(systemName: "pawprint.fill")
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .foregroundStyle(AdminSurface.primary)
+
+                    // Subtle ambient beacon dot
+                    Circle()
+                        .fill(Color(red: 1.0, green: 0.72, blue: 0.18))
+                        .frame(width: 5, height: 5)
+                        .offset(x: 7.5, y: -7.5)
+                }
+                .frame(width: 32, height: 32)
+                .accessibilityHidden(true)
+
+                // Compact Title & Subtitle Hierarchy
+                VStack(alignment: .leading, spacing: 0.5) {
+                    HStack(spacing: 6) {
+                        Text(title)
+                            .font(Font.custom("Beiruti-Bold", size: 14))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .lineLimit(1)
+
+                        // Quiet context pill
+                        Text(Language.get("WantedPets_Badge", alter: "طلبات"))
+                            .font(Font.custom("Beiruti-Bold", size: 10))
+                            .foregroundStyle(AdminSurface.primary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1.5)
+                            .background(
+                                AdminSurface.primary.opacity(colorScheme == .dark ? 0.18 : 0.08),
+                                in: Capsule()
+                            )
+                    }
+
+                    Text(detail)
+                        .font(Font.custom("Beiruti-Regular", size: 11))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                // Circular Trailing Accessory
+                ZStack {
+                    Circle()
+                        .fill(AdminSurface.control)
+                        .frame(width: 24, height: 24)
+                        .overlay(
+                            Circle()
+                                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+                        )
+
+                    Image(systemName: layoutDirection == .rightToLeft ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+                .accessibilityHidden(true)
+            }
+            .allowsHitTesting(false)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity)
+            .frame(height: 48)
+            .background {
+                shape.fill(AdminSurface.surface)
+                shape.fill(
+                    LinearGradient(
+                        colors: [
+                            AdminSurface.primary.opacity(colorScheme == .dark ? 0.09 : 0.04),
+                            Color.clear
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+            }
+            .overlay(
+                shape.strokeBorder(
+                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.24 : 0.14),
+                    lineWidth: 0.75
+                )
+            )
+            .contentShape(shape)
+        }
+        .buttonStyle(CommandPOSWantedPetsPressStyle())
+        .hoverEffect(.highlight)
+        .accessibilityLabel(title)
+        .accessibilityValue(detail)
+        .accessibilityHint(Language.get("WantedPets_POS_Entry_Hint", alter: "يفتح قائمة طلبات العملاء للحيوانات"))
+        .accessibilityIdentifier("pos.wantedPets.entry")
+    }
+}
+
+private struct CommandPOSWantedPetsPressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        let animatesScale = !reduceMotion && UIDevice.current.userInterfaceIdiom != .pad
+        return configuration.label
+            .scaleEffect(configuration.isPressed && animatesScale ? 0.985 : 1)
+            .opacity(configuration.isPressed ? 0.86 : 1)
+            .animation(animatesScale ? .spring(response: 0.22, dampingFraction: 0.82) : nil, value: configuration.isPressed)
+            .contentShape(Rectangle())
+    }
+}
+
 private struct CommandPOSDeck: View {
     var isRegular: Bool = false
     var containerWidth: CGFloat = 0
+    let canOpenWantedPets: Bool
     let onRoute: (String) -> Void
 
     @ObservedObject private var branchStore = BranchContextStore.shared
@@ -3212,6 +3299,8 @@ private struct CommandPOSDeck: View {
                     arrowNudge: arrowNudge,
                     scannerSweep: scannerSweep,
                     reduceMotion: reduceMotion,
+                    containerWidth: containerWidth,
+                    canOpenWantedPets: canOpenWantedPets,
                     onRoute: onRoute
                 )
             } else {
@@ -3221,6 +3310,7 @@ private struct CommandPOSDeck: View {
                     arrowNudge: arrowNudge,
                     scannerSweep: scannerSweep,
                     reduceMotion: reduceMotion,
+                    canOpenWantedPets: canOpenWantedPets,
                     onRoute: onRoute
                 )
             }
@@ -3229,16 +3319,6 @@ private struct CommandPOSDeck: View {
         .onAppear {
             if let branchID = branchStore.activeBranch?.branchID {
                 telemetryStore.updateBranch(branchID: branchID)
-            }
-            guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
-                isRadarPulsing = true
-            }
-            withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
-                arrowNudge = 3.5
-            }
-            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
-                scannerSweep = 1.0
             }
         }
         .onReceive(branchStore.$activeBranch) { newBranch in
@@ -3291,6 +3371,7 @@ private struct CommandPOSiPhoneCockpit: View {
     let arrowNudge: CGFloat
     let scannerSweep: CGFloat
     let reduceMotion: Bool
+    let canOpenWantedPets: Bool
     let onRoute: (String) -> Void
 
     @State private var showsQuickExpenseSheet: Bool = false
@@ -3660,57 +3741,62 @@ private struct CommandPOSiPhoneCockpit: View {
         VStack(spacing: 9) {
             // Hero Express Sale Button
             Button(action: {
-                guard telemetryStore.canSell else {
+                guard telemetryStore.canSell || telemetryStore.canView || BranchContextStore.shared.currentStaff == nil else {
                     UINotificationFeedbackGenerator().notificationOccurred(.warning)
                     return
                 }
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 onRoute("pos")
             }) {
-                HStack(spacing: 9) {
+                HStack(spacing: 10) {
                     // Viewfinder icon with laser sweep animation
                     ZStack {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color.white.opacity(0.18))
-                            .frame(width: 32, height: 32)
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .fill(Color.white.opacity(0.20))
+                            .frame(width: 36, height: 36)
 
                         Image(systemName: "barcode.viewfinder")
-                            .font(.system(size: 16, weight: .bold))
+                            .font(.system(size: 17, weight: .bold))
                             .foregroundStyle(.white)
 
                         if !reduceMotion {
                             Rectangle()
-                                .fill(Color.white.opacity(0.85))
-                                .frame(width: 18, height: 1.5)
-                                .offset(y: (scannerSweep - 0.5) * 14)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .fill(Color.white.opacity(0.90))
+                                .frame(width: 20, height: 1.5)
+                                .offset(y: (scannerSweep - 0.5) * 16)
+                                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
                         }
                     }
 
                     VStack(alignment: .leading, spacing: 1) {
                         Text(telemetryStore.canSell ? Language.get("AdminPOS_StartFastCheckout", alter: "ابدأ عملية بيع سريعة") : Language.get("AdminPOS_ViewOnly_Notice", alter: "نقطة البيع (للمعاينة فقط)"))
-                            .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .callout))
+                            .font(Font.custom("Beiruti-Bold", size: 16.5, relativeTo: .callout))
                             .foregroundStyle(.white)
                             .lineLimit(1)
 
                         Text(Language.get("AdminPOS_TerminalSubtitle_Short", alter: "مسح فوري • إضافة للسلة • دفع مباشر"))
-                            .font(Font.custom("Beiruti-Regular", size: 10.5, relativeTo: .caption2))
-                            .foregroundStyle(Color.white.opacity(0.84))
+                            .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
+                            .foregroundStyle(Color.white.opacity(0.86))
                             .lineLimit(1)
                     }
 
                     Spacer()
 
-                    Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(.white)
-                        .offset(x: (Language.isRTL() ? -1 : 1) * arrowNudge)
+                    HStack(spacing: 4) {
+                        Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                            .offset(x: (Language.isRTL() ? -1 : 1) * arrowNudge)
+                    }
+                    .frame(width: 28, height: 28)
+                    .background(Color.white.opacity(0.18), in: Circle())
                 }
+                .allowsHitTesting(false)
                 .padding(.horizontal, 14)
                 .frame(maxWidth: .infinity)
-                .frame(height: 50)
+                .frame(height: 58)
                 .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: telemetryStore.canSell
@@ -3722,10 +3808,10 @@ private struct CommandPOSiPhoneCockpit: View {
                         )
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.26), lineWidth: 0.75)
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.28), lineWidth: 0.8)
                 )
-                .shadow(color: (telemetryStore.canSell ? emerald : Color.clear).opacity(colorScheme == .dark ? 0.35 : 0.20), radius: 6, y: 2.5)
+                .shadow(color: (telemetryStore.canSell ? emerald : Color.clear).opacity(colorScheme == .dark ? 0.38 : 0.24), radius: 8, y: 3)
             }
             .buttonStyle(CommandPOSCardPressStyle())
             .accessibilityLabel(Language.get("AdminPOS_StartFastCheckout", alter: "ابدأ عملية بيع سريعة"))
@@ -3758,6 +3844,7 @@ private struct CommandPOSiPhoneCockpit: View {
                                 .background(sapphire.opacity(colorScheme == .dark ? 0.20 : 0.08), in: Capsule())
                         }
                     }
+                    .allowsHitTesting(false)
                     .padding(.horizontal, 11)
                     .frame(maxWidth: .infinity)
                     .frame(height: 38)
@@ -3794,6 +3881,7 @@ private struct CommandPOSiPhoneCockpit: View {
                             .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(coral)
                     }
+                    .allowsHitTesting(false)
                     .padding(.horizontal, 11)
                     .frame(maxWidth: .infinity)
                     .frame(height: 38)
@@ -3808,6 +3896,12 @@ private struct CommandPOSiPhoneCockpit: View {
                 }
                 .buttonStyle(CommandPOSCardPressStyle())
                 .accessibilityLabel(Language.get("AdminPOS_ExpenseCard_Title", alter: "تسجيل مصروف"))
+            }
+
+            if canOpenWantedPets {
+                CommandPOSWantedPetsEntry {
+                    onRoute("wantedPets")
+                }
             }
         }
     }
@@ -4137,7 +4231,8 @@ private struct CommandQuickExpensePressStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed ? (reduceMotion ? 0.98 : 0.96) : 1.0)
             .opacity(configuration.isPressed ? 0.90 : 1.0)
-            .animation(reduceMotion ? nil : .spring(response: 0.20, dampingFraction: 0.72), value: configuration.isPressed)
+            .animation(configuration.isPressed ? (reduceMotion ? nil : .easeOut(duration: 0.08)) : (reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.72)), value: configuration.isPressed)
+            .contentShape(Rectangle())
     }
 }
 
@@ -5630,6 +5725,7 @@ private struct CommandPOSQuickExpenseConsoleiPad: View {
                 centerChamber
                 actionButton
             }
+            .allowsHitTesting(false)
             .padding(16)
             .background(
                 ZStack {
@@ -5674,47 +5770,94 @@ private struct CommandPOSiPadFlightDeck: View {
     let arrowNudge: CGFloat
     let scannerSweep: CGFloat
     let reduceMotion: Bool
+    var containerWidth: CGFloat = 0
+    let canOpenWantedPets: Bool
     let onRoute: (String) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var showsQuickExpenseSheet: Bool = false
 
+    private var isLandscapeIPad: Bool {
+        containerWidth >= 950
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            // Main Panoramic Countertop Horizon
-            HStack(alignment: .top, spacing: 16) {
-                // Wing A: Flagship Fast-Sell Terminal Console (~45% Horizon)
-                CommandPOSFastSellConsoleiPad(
-                    telemetryStore: telemetryStore,
-                    currentBranchName: currentBranchName,
-                    arrowNudge: arrowNudge,
-                    scannerSweep: scannerSweep,
-                    reduceMotion: reduceMotion,
-                    action: { onRoute("pos") },
-                    quickScanAction: { onRoute("pos") }
-                )
-                .frame(maxWidth: .infinity)
-
-                // Wing B: Dual Countertop Horizon — Sales Ledger (Card 1) + Add Expense (Card 2) (~55% Horizon)
-                HStack(alignment: .top, spacing: 12) {
-                    // Card 1: Real-time Sales Ledger & Shift Auditor Console
-                    CommandPOSHistoryConsoleiPad(
+            if isLandscapeIPad {
+                // Main Panoramic Countertop Horizon (Landscape: Side-by-Side Widescreen)
+                HStack(alignment: .top, spacing: 16) {
+                    // Wing A: Flagship Fast-Sell Terminal Console (~45% Horizon)
+                    CommandPOSFastSellConsoleiPad(
                         telemetryStore: telemetryStore,
+                        currentBranchName: currentBranchName,
                         arrowNudge: arrowNudge,
+                        scannerSweep: scannerSweep,
                         reduceMotion: reduceMotion,
-                        action: { onRoute("posHistory") }
+                        action: { onRoute("pos") },
+                        quickScanAction: { onRoute("pos") }
                     )
                     .frame(maxWidth: .infinity)
 
-                    // Card 2: Dedicated Add New Expense Console (Smaller width, matching height)
-                    CommandPOSQuickExpenseConsoleiPad(
-                        action: {
-                            showsQuickExpenseSheet = true
-                        }
-                    )
-                    .frame(width: 175)
+                    // Wing B: Dual Countertop Horizon — Sales Ledger (Card 1) + Add Expense (Card 2) (~55% Horizon)
+                    HStack(alignment: .top, spacing: 12) {
+                        // Card 1: Real-time Sales Ledger & Shift Auditor Console
+                        CommandPOSHistoryConsoleiPad(
+                            telemetryStore: telemetryStore,
+                            arrowNudge: arrowNudge,
+                            reduceMotion: reduceMotion,
+                            action: { onRoute("posHistory") }
+                        )
+                        .frame(maxWidth: .infinity)
+
+                        // Card 2: Dedicated Add New Expense Console (Smaller width, matching height)
+                        CommandPOSQuickExpenseConsoleiPad(
+                            action: {
+                                showsQuickExpenseSheet = true
+                            }
+                        )
+                        .frame(width: 175)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity)
+            } else {
+                // Portrait Countertop Horizon (Stacked Wings: Fast-Sell top full width, History + Expense below)
+                VStack(spacing: 14) {
+                    CommandPOSFastSellConsoleiPad(
+                        telemetryStore: telemetryStore,
+                        currentBranchName: currentBranchName,
+                        arrowNudge: arrowNudge,
+                        scannerSweep: scannerSweep,
+                        reduceMotion: reduceMotion,
+                        action: { onRoute("pos") },
+                        quickScanAction: { onRoute("pos") }
+                    )
+                    .frame(maxWidth: .infinity)
+
+                    HStack(alignment: .top, spacing: 12) {
+                        CommandPOSHistoryConsoleiPad(
+                            telemetryStore: telemetryStore,
+                            arrowNudge: arrowNudge,
+                            reduceMotion: reduceMotion,
+                            action: { onRoute("posHistory") }
+                        )
+                        .frame(maxWidth: .infinity)
+
+                        CommandPOSQuickExpenseConsoleiPad(
+                            action: {
+                                showsQuickExpenseSheet = true
+                            }
+                        )
+                        .frame(width: max(220, containerWidth > 0 ? (containerWidth * 0.34) : 220))
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+
+            if canOpenWantedPets {
+                CommandPOSWantedPetsEntry {
+                    onRoute("wantedPets")
+                }
+                .padding(.top, 14)
             }
 
             // Bottom Diagnostics Filament Strip
@@ -5757,47 +5900,62 @@ private struct CommandPOSFastSellConsoleiPad: View {
     @Environment(\.colorScheme) private var colorScheme
     private let accent = Color(red: 0.05, green: 0.72, blue: 0.51)
 
+    private var canOpenTerminal: Bool {
+        telemetryStore.canSell || telemetryStore.canView || BranchContextStore.shared.currentStaff == nil
+    }
+
+    private func handlePrimaryTap() {
+        guard canOpenTerminal else {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            return
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        action()
+    }
+
+    private func handleQuickScanTap() {
+        guard canOpenTerminal else {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            return
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        quickScanAction()
+    }
+
     var body: some View {
-        Button(action: {
-            guard telemetryStore.canSell else {
-                UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                return
-            }
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            action()
-        }) {
-            VStack(alignment: .leading, spacing: 14) {
-                // Top Telemetry Horizon
-                HStack(spacing: 6) {
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(telemetryStore.canSell ? accent : Color.orange)
-                            .frame(width: 6.5, height: 6.5)
-                        Text(telemetryStore.canSell ? Language.get("AdminPOS_ActiveTerminal_Badge", alter: "نظام نقطة البيع المباشر") : Language.get("AdminPOS_Status_AuditMode", alter: "وضع التدقيق والمشاهدة"))
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(telemetryStore.canSell ? accent : Color.orange)
-                    }
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .background((telemetryStore.canSell ? accent : Color.orange).opacity(colorScheme == .dark ? 0.20 : 0.08), in: Capsule())
-
-                    HStack(spacing: 3.5) {
-                        Image(systemName: "person.badge.shield.checkmark.fill")
-                            .font(.system(size: 8.5))
-                            .foregroundStyle(AdminCommandInk.secondary)
-                        Text(telemetryStore.activeStaffName)
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .lineLimit(1)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.04), in: Capsule())
-
-                    Spacer()
+        VStack(alignment: .leading, spacing: 14) {
+            // Top Telemetry Horizon
+            HStack(spacing: 6) {
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(telemetryStore.canSell ? accent : Color.orange)
+                        .frame(width: 6.5, height: 6.5)
+                    Text(telemetryStore.canSell ? Language.get("AdminPOS_ActiveTerminal_Badge", alter: "نظام نقطة البيع المباشر") : Language.get("AdminPOS_Status_AuditMode", alter: "وضع التدقيق والمشاهدة"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(telemetryStore.canSell ? accent : Color.orange)
                 }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background((telemetryStore.canSell ? accent : Color.orange).opacity(colorScheme == .dark ? 0.20 : 0.08), in: Capsule())
 
-                // Center Body: Optical Reticle + Details
+                HStack(spacing: 3.5) {
+                    Image(systemName: "person.badge.shield.checkmark.fill")
+                        .font(.system(size: 8.5))
+                        .foregroundStyle(AdminCommandInk.secondary)
+                    Text(telemetryStore.activeStaffName)
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.04), in: Capsule())
+
+                Spacer()
+            }
+
+            // Center Body: Optical Reticle + Details (Interactive Trigger to open session)
+            Button(action: handlePrimaryTap) {
                 HStack(alignment: .center, spacing: 14) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -5849,40 +6007,46 @@ private struct CommandPOSFastSellConsoleiPad: View {
                             .foregroundStyle(AdminCommandInk.secondary)
                             .lineLimit(2)
                     }
-                }
 
-                // Primary & Quick Action Launchers
-                HStack(spacing: 10) {
-                    // Primary Start Session Trigger with ⌘N Shortcut Badge
-                    HStack(spacing: 8) {
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(CommandPressStyle())
+
+            // Primary & Quick Action Launchers (Sibling Buttons, Clean Architecture)
+            HStack(spacing: 10) {
+                // Primary Start Session Trigger with ⌘N Shortcut Badge
+                Button(action: handlePrimaryTap) {
+                    HStack(spacing: 9) {
                         Image(systemName: "barcode.viewfinder")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 16, weight: .bold))
                             .foregroundStyle(.white)
 
                         Text(telemetryStore.canSell ? Language.get("AdminPOS_Launch_Session", alter: "بدء جلسة البيع الفوري السريع") : Language.get("AdminPOS_ViewOnly_Notice", alter: "نقطة البيع (للمعاينة فقط)"))
-                            .font(Font.custom("Beiruti-Bold", size: 14.5, relativeTo: .callout))
+                            .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .callout))
                             .foregroundStyle(.white)
 
                         Spacer()
 
                         // Keyboard Shortcut Pill
                         Text("⌘N")
-                            .font(.system(size: 9.5, weight: .bold, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.85))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color.white.opacity(0.18), in: RoundedRectangle(cornerRadius: 4))
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.88))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.white.opacity(0.20), in: RoundedRectangle(cornerRadius: 5))
 
                         Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(.white)
                             .offset(x: (Language.isRTL() ? -1 : 1) * arrowNudge)
                     }
                     .padding(.horizontal, 16)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 44)
+                    .frame(height: 52)
                     .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .fill(
                                 LinearGradient(
                                     colors: telemetryStore.canSell
@@ -5894,55 +6058,63 @@ private struct CommandPOSFastSellConsoleiPad: View {
                             )
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.75)
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.28), lineWidth: 0.8)
                     )
-                    .shadow(color: accent.opacity(colorScheme == .dark ? 0.40 : 0.22), radius: 6, y: 2.5)
-
-                    // Quick Scan Direct Action
-                    Button(action: {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        quickScanAction()
-                    }) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "camera.viewfinder")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(accent)
-
-                            Text("⌘B")
-                                .font(.system(size: 9.5, weight: .bold, design: .monospaced))
-                                .foregroundStyle(accent)
-                        }
-                        .padding(.horizontal, 12)
-                        .frame(height: 44)
-                        .background(accent.opacity(colorScheme == .dark ? 0.16 : 0.08))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(accent.opacity(colorScheme == .dark ? 0.32 : 0.18), lineWidth: 0.75)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    }
-                    .buttonStyle(CommandCardPressStyle(scale: 0.94, pressedOpacity: 0.88, cornerRadius: 12))
-                    .keyboardShortcut("b", modifiers: .command)
-                    .accessibilityLabel(Language.get("AdminPOS_QuickScan", alter: "مسح باركود مباشر"))
+                    .shadow(color: accent.opacity(colorScheme == .dark ? 0.40 : 0.22), radius: 7, y: 3)
+                    .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
+                .buttonStyle(CommandCardPressStyle(scale: 0.98, pressedOpacity: 0.92, cornerRadius: 14))
+                .keyboardShortcut("n", modifiers: .command)
+                .contentShape(Rectangle())
+
+                // Quick Scan Direct Action
+                Button(action: handleQuickScanTap) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "camera.viewfinder")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(accent)
+
+                        Text("⌘B")
+                            .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                            .foregroundStyle(accent)
+                    }
+                    .padding(.horizontal, 14)
+                    .frame(height: 52)
+                    .background(accent.opacity(colorScheme == .dark ? 0.16 : 0.08))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(accent.opacity(colorScheme == .dark ? 0.32 : 0.18), lineWidth: 0.75)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(CommandCardPressStyle(scale: 0.94, pressedOpacity: 0.88, cornerRadius: 14))
+                .keyboardShortcut("b", modifiers: .command)
+                .contentShape(Rectangle())
+                .accessibilityLabel(Language.get("AdminPOS_QuickScan", alter: "مسح باركود مباشر"))
             }
-            .padding(16)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(colorScheme == .dark ? Color(white: 0.14) : Color(white: 0.98))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(accent.opacity(colorScheme == .dark ? 0.32 : 0.16), lineWidth: 0.8)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .buttonStyle(CommandCardPressStyle(scale: 0.985, pressedOpacity: 0.95, cornerRadius: 18))
-        .keyboardShortcut("n", modifiers: .command)
-        .hoverEffect(.lift)
-        .accessibilityElement(children: .combine)
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(colorScheme == .dark ? Color(white: 0.14) : Color(white: 0.98))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(accent.opacity(colorScheme == .dark ? 0.32 : 0.16), lineWidth: 0.8)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .onTapGesture {
+            handlePrimaryTap()
+        }
         .accessibilityLabel(Language.get("AdminPOS_TerminalTitle_iPad", alter: "نقطة البيع السريعة الفورية"))
+        .accessibilityHint(Language.get(
+            telemetryStore.canSell ? "AdminPOS_Launch_Session" : "AdminPOS_ViewOnly_Notice",
+            alter: nil
+        ))
+        .accessibilityIdentifier("admin.command.pos.card")
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -6176,6 +6348,7 @@ private struct CommandPOSHistoryConsoleiPad: View {
 
                 actionButton
             }
+            .allowsHitTesting(false)
             .padding(16)
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -6323,11 +6496,15 @@ private struct CommandStockDeck: View {
         return 0
     }
 
+    private var isLandscapeIPad: Bool {
+        effectiveWidth >= 950
+    }
+
     private func columnWidths(spacing: CGFloat) -> (livePets: CGFloat?, stacked: CGFloat?) {
         guard effectiveWidth > 0 else { return (nil, nil) }
         let availableWidth = max(0, effectiveWidth - spacing)
-        // Proportional split: decrease features/Live Pets card width (36%) and increase the other side's two cards width (64%) to fill freed area
-        let livePets = floor(availableWidth * 0.36)
+        let livePetsRatio: CGFloat = isLandscapeIPad ? 0.35 : 0.38
+        let livePets = floor(availableWidth * livePetsRatio)
         let stacked = max(0, availableWidth - livePets)
         return (livePets, stacked)
     }
@@ -6377,12 +6554,6 @@ private struct CommandStockDeck: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .onAppear {
-            guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
-                arrowNudge = 3.0
-            }
-        }
         .onPreferenceChange(CommandStockStackedHeightKey.self) { newHeight in
             if newHeight > 0 && abs(stackedCardsHeight - newHeight) > 0.5 {
                 stackedCardsHeight = newHeight
@@ -6670,6 +6841,7 @@ private struct CommandStockVaultCardTallLivePets: View {
                 )
                 .frame(width: lottieSize, height: lottieSize)
                 .offset(y: -((lottieSize - baseLottieSize) / 2.0))
+                .allowsHitTesting(false)
             }
             .position(
                 x: availW / 2,
@@ -6722,6 +6894,7 @@ private struct CommandStockVaultCardTallLivePets: View {
                 Spacer(minLength: 6)
                 contentSection
             }
+            .allowsHitTesting(false)
             .padding(.horizontal, 12)
             .padding(.vertical, 11)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -6851,6 +7024,7 @@ private struct CommandStockVaultCardCompactiPhone: View {
                 topBar
                 titleAndSubtitle
             }
+            .allowsHitTesting(false)
             .padding(.horizontal, 12)
             .padding(.vertical, 11)
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -6961,6 +7135,7 @@ private struct CommandStockVaultCardiPhone: View {
                 Spacer(minLength: 4)
                 chevronPill
             }
+            .allowsHitTesting(false)
             .padding(.horizontal, 13)
             .padding(.vertical, 11)
             .background(
@@ -7152,6 +7327,7 @@ private struct CommandStockVaultCardiPad: View {
                 Spacer(minLength: 2)
                 actionPill
             }
+            .allowsHitTesting(false)
             .padding(13)
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: 154)
@@ -7191,10 +7367,12 @@ private struct CommandStockCardPressStyle: ButtonStyle {
     var pressedOpacity: CGFloat = 0.94
     var cornerRadius: CGFloat = 16
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? scale : 1.0)
+        let animatesScale = UIDevice.current.userInterfaceIdiom != .pad
+        return configuration.label
+            .scaleEffect(configuration.isPressed && animatesScale ? scale : 1.0)
             .opacity(configuration.isPressed ? pressedOpacity : 1.0)
-            .animation(.spring(response: 0.24, dampingFraction: 0.78), value: configuration.isPressed)
+            .animation(animatesScale ? (configuration.isPressed ? .easeOut(duration: 0.08) : .spring(response: 0.28, dampingFraction: 0.72)) : nil, value: configuration.isPressed)
+            .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 }
 
@@ -7410,16 +7588,40 @@ private struct CommandQuickActionsDeck: View {
         .frame(maxWidth: .infinity)
     }
 
-    // iPad Operations Line (All 4 actions in 1 line)
+    private var isLandscapeIPad: Bool {
+        containerWidth >= 950
+    }
+
+    // iPad Operations Line (Panoramic Horizon in Landscape, 2x2 Balanced Matrix in Portrait)
     private var ipadOperationsMatrixView: some View {
-        HStack(spacing: spacing) {
-            ForEach(allDeckItems) { item in
-                CommandQuickActionCard(item: item, isRegular: true) {
-                    onRoute(item.tag)
+        Group {
+            if isLandscapeIPad {
+                HStack(spacing: spacing) {
+                    ForEach(allDeckItems) { item in
+                        CommandQuickActionCard(item: item, isRegular: true) {
+                            onRoute(item.tag)
+                        }
+                    }
                 }
+                .frame(maxWidth: .infinity)
+            } else {
+                VStack(spacing: 10) {
+                    let pairs = stride(from: 0, to: allDeckItems.count, by: 2).map {
+                        Array(allDeckItems[$0 ..< min($0 + 2, allDeckItems.count)])
+                    }
+                    ForEach(pairs.indices, id: \.self) { pairIndex in
+                        HStack(spacing: 10) {
+                            ForEach(pairs[pairIndex]) { item in
+                                CommandQuickActionCard(item: item, isRegular: true) {
+                                    onRoute(item.tag)
+                                }
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity)
             }
         }
-        .frame(maxWidth: .infinity)
     }
 }
 
@@ -7438,13 +7640,17 @@ private struct CommandQuickActionCard: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             action()
         }) {
-            if isRegular {
-                regularContent
-            } else {
-                compactSingleLineContent
+            Group {
+                if isRegular {
+                    regularContent
+                } else {
+                    compactSingleLineContent
+                }
             }
+            .allowsHitTesting(false)
         }
         .buttonStyle(CommandQuickActionCardStyle())
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .onAppear {
             if item.badgeCount != nil || item.isLive {
                 withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
@@ -7683,10 +7889,15 @@ private struct CommandQuickActionCardStyle: ButtonStyle {
     var scale: CGFloat = 0.968
     var pressedOpacity: CGFloat = 0.92
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? scale : 1.0)
+        let animatesScale = UIDevice.current.userInterfaceIdiom != .pad
+        return configuration.label
+            .scaleEffect(configuration.isPressed && animatesScale ? scale : 1.0)
             .opacity(configuration.isPressed ? pressedOpacity : 1.0)
-            .animation(.spring(response: 0.24, dampingFraction: 0.78), value: configuration.isPressed)
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .animation(
+                animatesScale ? (configuration.isPressed ? .easeOut(duration: 0.08) : .spring(response: 0.28, dampingFraction: 0.72)) : nil,
+                value: configuration.isPressed
+            )
     }
 }
 
@@ -7859,6 +8070,7 @@ private struct CommandPriorityRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .allowsHitTesting(false)
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
         .background(
@@ -8590,12 +8802,6 @@ private struct AdminSectionHeader_iPad<Accessory: View>: View {
         .onHover { hovering in
             isHovered = hovering
         }
-        .onTapGesture {
-            if let onTapHeader = onTapHeader {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                onTapHeader()
-            }
-        }
         .onAppear {
             guard !reduceMotion else { return }
             withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
@@ -8663,10 +8869,15 @@ struct CommandPressStyle: ButtonStyle {
     var scale: CGFloat = 0.985
     var pressedOpacity: CGFloat = 0.92
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? scale : 1.0)
+        let animatesScale = UIDevice.current.userInterfaceIdiom != .pad
+        return configuration.label
+            .scaleEffect(configuration.isPressed && animatesScale ? scale : 1.0)
             .opacity(configuration.isPressed ? pressedOpacity : 1.0)
-            .animation(.spring(response: 0.24, dampingFraction: 0.78), value: configuration.isPressed)
+            .contentShape(Rectangle())
+            .animation(
+                animatesScale ? (configuration.isPressed ? .easeOut(duration: 0.08) : .spring(response: 0.28, dampingFraction: 0.72)) : nil,
+                value: configuration.isPressed
+            )
     }
 }
 
@@ -8860,6 +9071,7 @@ private struct CommandAccountingSovereignCard: View {
                 // Micro Financial Efficiency Progress Gauge
                 efficiencyGauge
             }
+            .allowsHitTesting(false)
             .padding(18)
             .background(cardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -9178,25 +9390,29 @@ private struct CommandHotelSovereignCard: View {
     @State private var isPulsing = false
 
     var body: some View {
-        Button(action: {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            onRoute()
-        }) {
+        if UIDevice.current.userInterfaceIdiom == .pad {
             VStack(alignment: .leading, spacing: 14) {
-                // 1. Header Flight Deck
-                headerDeck
-
-                // 2. Primary Hologram: Occupancy Radar & In-House Guests
-                occupancyHero
-
-                // 3. Operational Horizon Twin Pillars: Arrivals vs Departures
+                // The detail buttons are siblings of the full-card route, not
+                // nested inside it. A drag on either still belongs to ScrollView.
+                headerDeck.allowsHitTesting(false)
+                occupancyHero.allowsHitTesting(false)
                 operationalPillars
-
-                // 4. Multi-Wing Capacity Horizon Bar
-                wingHorizonBar
+                wingHorizonBar.allowsHitTesting(false)
             }
             .padding(18)
-            .background(cardBackground)
+            .background {
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onRoute()
+                } label: {
+                    cardBackground
+                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                }
+                .buttonStyle(CommandCardPressStyle(scale: 1, cornerRadius: 22))
+                .accessibilityLabel(accessibilityLabel)
+                .accessibilityHint(Language.isRTL() ? "اضغط لفتح عمليات فندق ورعاية الحيوانات" : "Tap to open pets hotel operations hub")
+            }
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay(cardBorder)
             .shadow(
@@ -9206,11 +9422,39 @@ private struct CommandHotelSovereignCard: View {
                 y: 5
             )
             .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .accessibilityElement(children: .contain)
+        } else {
+            VStack(alignment: .leading, spacing: 14) {
+                headerDeck.allowsHitTesting(false)
+                occupancyHero.allowsHitTesting(false)
+                operationalPillars
+                wingHorizonBar.allowsHitTesting(false)
+            }
+            .padding(18)
+            .background {
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onRoute()
+                } label: {
+                    cardBackground
+                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                }
+                .buttonStyle(CommandCardPressStyle(scale: 0.985, pressedOpacity: 0.95, cornerRadius: 22))
+                .accessibilityLabel(accessibilityLabel)
+                .accessibilityHint(Language.isRTL() ? "اضغط لفتح عمليات فندق ورعاية الحيوانات" : "Tap to open pets hotel operations hub")
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(cardBorder)
+            .shadow(
+                color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.06),
+                radius: 12,
+                x: 0,
+                y: 5
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .accessibilityElement(children: .contain)
         }
-        .buttonStyle(CommandCardPressStyle(scale: 0.985, pressedOpacity: 0.95, cornerRadius: 22))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint(Language.isRTL() ? "اضغط لفتح عمليات فندق ورعاية الحيوانات" : "Tap to open pets hotel operations hub")
     }
 
     // MARK: - Header Deck
@@ -9764,4 +10008,3 @@ private struct CommandHotelQuickActionCard: View {
             )
     }
 }
-

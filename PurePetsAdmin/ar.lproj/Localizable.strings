@@ -5838,6 +5838,7 @@
 "StaffRole_VIEWER" = "مشاهد";
 "StaffRole_SECURITY_ADMIN" = "مسؤول الأمان";
 "StaffRole_COMPLIANCE_AUDITOR" = "مدقق الامتثال";
+"StaffRole_CUSTOM" = "دور مخصص";
 
 /* Working Branch Scope & Permissions */
 "Staff_Branch_Scope_Title" = "نطاق العمل وفروع الصلاحيات";
@@ -10457,6 +10458,7 @@
 /* Wanted Pets (Customer Wanted List) */
 "WantedPets_Title" = "قائمة الطلبات";
 "WantedPets_Subtitle" = "طلبات العملاء للحيوانات المرتقبة والتواصل الفوري";
+"WantedPets_POS_Entry_Hint" = "يفتح قائمة طلبات العملاء للحيوانات.";
 "WantedPets_Badge" = "طلبات";
 "WantedPets_Add_Action" = "إضافة طلب جديد";
 "WantedPets_Added_Success" = "تم حفظ الطلب بنجاح";
@@ -10552,6 +10554,44 @@
 "WantedPets_QuickAdd_Title" = "تسجيل طلب حيوان";
 "WantedPets_QuickAdd_Subtitle" = "تسجيل سريع خلال ثوانٍ للتواصل مع العميل لاحقاً";
 "WantedPets_Customer_Section" = "بيانات العميل";
+"WantedPets_Capture_Title" = "نحفظ رغبة العميل حتى يجد رفيقه";
+"WantedPets_Capture_Subtitle" = "حدّد من نُبلغ، وما الحيوان الذي نبحث عنه.";
+"WantedPets_Directory_Action" = "اختيار عميل من الدليل";
+"WantedPets_Name_Placeholder" = "اسم العميل الكامل";
+"WantedPets_Color_Placeholder" = "أو اكتب لوناً محدداً";
+"WantedPets_Budget_Placeholder" = "أو اكتب ميزانية مخصصة";
+"WantedPets_Notes_Placeholder" = "أي تفاصيل أخرى تساعدنا في المطابقة";
+"WantedPets_Duplicate_Generic" = "يوجد طلب نشط سابق لهذا العميل لنفس الحيوان.";
+"WantedPets_Review_Existing" = "مراجعة الطلب الحالي";
+"WantedPets_Directory_Hint" = "ابحث عن عميل مسجّل أو أضف عميلاً جديداً";
+"WantedPets_Directory_A11y" = "يفتح دليل عملاء نقطة البيع";
+"WantedPets_Directory_Title" = "دليل العملاء";
+"WantedPets_Directory_Subtitle" = "اختر عميلاً أو أنشئ ملفاً جديداً لطلب الحيوان.";
+"WantedPets_Directory_Subtitle_ReadOnly" = "اختر عميلاً موجوداً لطلب الحيوان.";
+"WantedPets_Directory_Select" = "استخدام هذا العميل";
+"WantedPets_Directory_SaveAndSelect" = "حفظ واستخدام العميل";
+"POS_Customer_InspectorHint_ReadOnly" = "اختر عميلاً لمعاينة التفاصيل.";
+"WantedPets_Phone_Placeholder" = "+974 0000 0000";
+"WantedPets_Customer_Found" = "وجدنا العميل: %@";
+"WantedPets_Pet_Hint" = "اختر الفئة التي سنراقب توفرها للعميل.";
+"WantedPets_Loading_Categories" = "جاري تحميل فئات الحيوانات...";
+"WantedPets_No_Categories" = "لا توجد فئات متاحة حالياً.";
+"WantedPets_Categories_Error" = "تعذر تحميل فئات الحيوانات.";
+"WantedPets_Breeds_Error" = "تعذر تحميل السلالات.";
+"WantedPets_Expanded" = "مفتوح";
+"WantedPets_Collapsed" = "مغلق";
+"WantedPets_Currency_QAR" = "ر.ق";
+"WantedPets_Budget_UpTo" = "حتى %@ ر.ق";
+"WantedPets_Preferences_Hint" = "الجنس، اللون، الميزانية والملاحظات";
+"WantedPets_Notes_Added" = "ملاحظات مضافة";
+"WantedPets_No_Manage_Permission" = "يلزم إذن إدارة المخزون لحفظ الطلب";
+"WantedPets_Prompt_ValidPhone" = "أدخل رقم هاتف صحيحاً";
+"WantedPets_Prompt_ShortName" = "اختصر اسم العميل إلى 120 حرفاً";
+"WantedPets_Prompt_ValidBudget" = "أدخل ميزانية صحيحة";
+"WantedPets_Save_Failed" = "تعذر حفظ الطلب. حاول مرة أخرى.";
+"POS_Customer_AnyBranch" = "كافة الفروع";
+"POS_Customer_StatusActive" = "ملف في دليل العملاء";
+"ReservationBranch" = "فرع الحجوزات";
 "WantedPets_Customer_Phone" = "رقم الهاتف";
 "WantedPets_Customer_Name" = "اسم العميل";
 "WantedPets_Contact_Source" = "مصدر الطلب";
@@ -10690,3 +10730,11 @@
 "WantedPet_WhatsApp_AutoMarkSkip" = "إبقاء الحالة كما هي";
 "WantedPet_Dismiss_Action" = "رجوع";
 "WantedPet_Share_Summary" = "طلب عميل: %@ يبحث عن %@ (هاتف: %@)";
+"WantedPet_ExactMatchPill" = "تطابق تام";
+"WantedPet_BreedMatchPill" = "مطابق للنوع";
+"WantedPet_Fulfill_Short" = "إتمام بهذا الحيوان";
+"WantedPets_WhatsApp_Detail_Ring" = "رقم التعريف: #%@";
+"WantedPets_WhatsApp_Detail_Gender" = "الجنس: %@";
+"WantedPets_WhatsApp_Detail_Price" = "السعر: %.0f %@";
+"WantedPets_WhatsApp_Detail_Branch" = "الفرع: %@";
+"WantedPets_WhatsApp_MatchFound_Template" = "مرحباً %@، يسعدنا إبلاغك بتوفر حيوان مطابق لطلبك في بيور بيتس: %@%@. هل ترغب بحجزه لك؟";

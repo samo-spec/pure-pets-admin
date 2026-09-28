@@ -27,7 +27,7 @@ extern void PPAdminSetLoginInProgress(BOOL inProgress);
 static NSString * const kPPFIRAuthInternalErrorDomain = @"FIRAuthInternalErrorDomain";
 static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserInfoDeserializedResponseKey";
 
-@interface PPProLoginCoordinator () <ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding>
+@interface PPProLoginCoordinator () <ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding, FIRAuthUIDelegate>
 @property (nonatomic, weak) UIViewController *presentingViewController;
 @property (nonatomic, strong, nullable) id<FIRListenerRegistration> combinedReg;
 @property (nonatomic, copy, nullable) NSString *currentAppleNonce;
@@ -242,7 +242,7 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
     }
 
     [[FIRPhoneAuthProvider provider] verifyPhoneNumber:trimmedPhone
-                                            UIDelegate:nil
+                                            UIDelegate:self
                                             completion:^(NSString * _Nullable verificationID, NSError * _Nullable error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (!self.suppressesHUD) { [PPHUD dismiss]; }
@@ -787,6 +787,21 @@ allowRetryOnInternalError:(BOOL)allowRetryOnInternalError
           (long)underlying.code,
           deserialized ?: @{},
           error.userInfo ?: @{});
+}
+
+#pragma mark - FIRAuthUIDelegate
+
+- (void)presentViewController:(UIViewController *)viewControllerToPresent
+                     animated:(BOOL)flag
+                   completion:(void (^ _Nullable)(void))completion {
+    UIViewController *presenter = self.presentingViewController ?: [UIApplication sharedApplication].keyWindow.rootViewController;
+    [presenter presentViewController:viewControllerToPresent animated:flag completion:completion];
+}
+
+- (void)dismissViewControllerAnimated:(BOOL)flag
+                           completion:(void (^ _Nullable)(void))completion {
+    UIViewController *presenter = self.presentingViewController ?: [UIApplication sharedApplication].keyWindow.rootViewController;
+    [presenter dismissViewControllerAnimated:flag completion:completion];
 }
 
 @end

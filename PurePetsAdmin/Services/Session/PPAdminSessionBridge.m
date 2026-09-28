@@ -167,7 +167,7 @@ static void PPAdminLogPermissionsAndSession(PPAdminSessionSnapshot *snapshot, PP
         if (permission.length > 0) permissionMap[permission] = @YES;
     }
     effectiveUser.accountType = staffDoc.accountType;
-    effectiveUser.staffRole = staffDoc.role;
+    effectiveUser.staffRole = staffDoc.roleIdentifier.length > 0 ? staffDoc.roleIdentifier : staffDoc.role;
     effectiveUser.role = [PPStaffAuth legacyRoleFromStaffRole:staffDoc.role];
     effectiveUser.isSuperAdmin = [staffDoc.role isEqualToString:PPStaffRoleSuperAdmin];
     effectiveUser.isAdmin = staffDoc.isAdmin;

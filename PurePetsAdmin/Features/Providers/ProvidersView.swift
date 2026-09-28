@@ -3707,29 +3707,20 @@ private struct PPDocumentInspectionSheet: View {
                 }
                 .frame(maxWidth: .infinity, minHeight: 320)
             } else if isImageURL(documentItem.fileUrl) {
-                AsyncImage(url: URL(string: documentItem.fileUrl)) { phase in
-                    switch phase {
-                    case .empty:
-                        ProgressView()
-                            .tint(AdminSurface.primary)
-                            .frame(maxWidth: .infinity, minHeight: 320)
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFit()
-                            .scaleEffect(currentZoom)
-                            .rotationEffect(.degrees(rotationAngle))
-                            .gesture(
-                                MagnificationGesture()
-                                    .onChanged { val in currentZoom = max(0.8, min(val, 4.0)) }
-                            )
-                            .padding(16)
-                    case .failure:
-                        documentFallbackPreview
-                    @unknown default:
-                        EmptyView()
-                    }
+                AdminRemoteImage(
+                    urlString: documentItem.fileUrl,
+                    contentMode: .fit
+                ) {
+                    documentFallbackPreview
                 }
+                .scaleEffect(currentZoom)
+                .rotationEffect(.degrees(rotationAngle))
+                .gesture(
+                    MagnificationGesture()
+                        .onChanged { val in currentZoom = max(0.8, min(val, 4.0)) }
+                )
+                .padding(16)
+                .frame(maxWidth: .infinity, minHeight: 320)
             } else {
                 documentFallbackPreview
             }

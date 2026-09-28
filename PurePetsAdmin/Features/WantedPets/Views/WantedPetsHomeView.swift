@@ -18,6 +18,7 @@ public struct WantedPetsHomeView: View {
     @State private var selectedPetGroup: WantedPetCategoryGroup?
     @State private var selectedItemForDetail: CustomerWantedPet?
     @State private var inFlightItemIDs: Set<String> = []
+    @State private var copiedItemId: String? = nil
     @State private var actionFailure: String?
     @State private var actionFeedbackMessage: String?
     @State private var canManageRequests = false
@@ -130,22 +131,39 @@ public struct WantedPetsHomeView: View {
             .background(AdminSurface.background.ignoresSafeArea())
             .scrollDismissesKeyboard(.interactively)
             .refreshable { service.startLiveListener() }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if canManageRequests && !isSearchFocused {
-                    addRequestDock
-                }
-            }
             .navigationTitle(Language.get("WantedPets_Title", alter: "قائمة الطلبات"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(Language.get("WantedPets_Title", alter: "قائمة الطلبات"))
+                        .font(Font.custom("Beiruti-Bold", size: 18))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
                 ToolbarItem(placement: .navigationBarLeading) {
                     if let onDismiss {
-                        Button(action: onDismiss) {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            onDismiss()
+                        } label: {
                             Image(systemName: "chevron.backward")
                                 .font(.system(size: 17, weight: .semibold))
                                 .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
                         }
                         .accessibilityLabel(Language.get("Back", alter: "رجوع"))
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    if canManageRequests {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            showAddSheet = true
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 17, weight: .semibold))
+                                .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                        }
+                        .disabled(service.isMutating)
+                        .accessibilityLabel(Language.get("WantedPets_Add_Action", alter: "إضافة طلب جديد"))
                     }
                 }
             }
@@ -168,7 +186,7 @@ public struct WantedPetsHomeView: View {
             .overlay(alignment: .bottom) {
                 if let message = actionFeedbackMessage {
                     feedbackBanner(message)
-                        .padding(.bottom, canManageRequests ? 82 : 16)
+                        .padding(.bottom, 24)
                 }
             }
             .alert(Language.get("WantedPets_Action_Error_Title", alter: "تعذّر تنفيذ الإجراء"),
@@ -402,26 +420,42 @@ public struct WantedPetsHomeView: View {
             Text(service.selectedFilter == .byPet && service.searchQuery.isEmpty
                  ? Language.get("WantedPets_Group_Heading", alter: "الحيوانات المطلوبة")
                  : Language.get("WantedPets_Request_Heading", alter: "طلبات العملاء"))
-                .font(AdminType.title3)
+                .font(Font.custom("Beiruti-Bold", size: 18))
                 .foregroundStyle(AdminSurface.primaryText)
             Spacer()
             Text(String(service.selectedFilter == .byPet && service.searchQuery.isEmpty
                         ? service.categoryGroups.count : service.filteredItems.count))
-                .font(AdminType.footnoteBold)
+                .font(Font.custom("Beiruti-Bold", size: 14))
                 .monospacedDigit()
                 .foregroundStyle(AdminSurface.secondaryText)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(AdminSurface.cardElevated, in: Capsule())
         }
         .accessibilityAddTraits(.isHeader)
     }
 
     private func petGroupRow(_ group: WantedPetCategoryGroup) -> some View {
-        Button {
+        let accent = group.accentColor
+        let symbol = group.petSymbol
+
+        return Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             selectedPetGroup = group
         } label: {
             VStack(alignment: .leading, spacing: AdminSpacing.base) {
                 HStack(alignment: .top, spacing: AdminSpacing.md) {
                     VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                        // Category / Species Super-tag if subkind has a parent category
+                        if let sub = group.subkindName, !sub.isEmpty, !group.mainKindName.isEmpty, group.mainKindName != sub {
+                            HStack(spacing: 4) {
+                                Circle().fill(accent).frame(width: 5, height: 5)
+                                Text(group.mainKindName)
+                                    .font(Font.custom("Beiruti-Medium", size: 12))
+                                    .foregroundStyle(accent)
+                            }
+                        }
+
                         Text(group.displayName)
                             .font(Font.custom("Beiruti-Bold", size: 28, relativeTo: .title2))
                             .foregroundStyle(AdminSurface.primaryText)
@@ -429,19 +463,42 @@ public struct WantedPetsHomeView: View {
                             .multilineTextAlignment(.leading)
 
                         if let oldest = group.oldestWaitingDurationText {
-                            Text(String(format: Language.get("WantedPets_Oldest_Waiting", alter: "أقدم طلب منذ %@"), oldest))
-                                .font(AdminType.footnote)
-                                .foregroundStyle(AdminSurface.secondaryText)
-                                .fixedSize(horizontal: false, vertical: true)
+                            HStack(spacing: 4) {
+                                Image(systemName: "clock")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(AdminSurface.secondaryText)
+                                Text(String(format: Language.get("WantedPets_Oldest_Waiting", alter: "أقدم طلب منذ %@"), oldest))
+                                    .font(AdminType.footnote)
+                                    .foregroundStyle(AdminSurface.secondaryText)
+                            }
+                            .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                     Spacer(minLength: AdminSpacing.sm)
-                    Image(systemName: "pawprint.fill")
-                        .font(.system(size: 22, weight: .medium))
-                        .foregroundStyle(AdminSurface.primary)
-                        .frame(width: 48, height: 48)
-                        .background(AdminSurface.primarySoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .accessibilityHidden(true)
+
+                    // MainKind Species Squircle Icon
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        accent.opacity(0.18),
+                                        accent.opacity(0.07)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                        Image(systemName: symbol)
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundStyle(accent)
+                    }
+                    .frame(width: 48, height: 48)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(accent.opacity(0.25), lineWidth: 1)
+                    )
+                    .accessibilityHidden(true)
                 }
 
                 Rectangle()
@@ -453,20 +510,22 @@ public struct WantedPetsHomeView: View {
                     Text("\(group.waitingCount > 0 ? group.waitingCount : group.items.count)")
                         .font(AdminType.title2)
                         .monospacedDigit()
-                        .foregroundStyle(AdminSurface.primary)
+                        .foregroundStyle(accent)
                     Text(group.waitingCount > 0
                          ? Language.get("WantedPets_Summary_Waiting", alter: "ينتظرون")
                          : Language.get("WantedPets_Requests_Label", alter: "طلبات"))
                         .font(AdminType.footnote)
                         .foregroundStyle(AdminSurface.secondaryText)
                     Spacer(minLength: AdminSpacing.sm)
-                    Text(Language.get("WantedPets_Open_Group", alter: "عرض العملاء"))
-                        .font(AdminType.footnoteBold)
-                        .foregroundStyle(AdminSurface.primary)
-                    Image(systemName: "chevron.forward")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(AdminSurface.primary)
-                        .accessibilityHidden(true)
+
+                    HStack(spacing: 4) {
+                        Text(Language.get("WantedPets_Open_Group", alter: "عرض العملاء"))
+                            .font(AdminType.footnoteBold)
+                        Image(systemName: "chevron.forward")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundStyle(accent)
+                    .accessibilityHidden(true)
                 }
             }
             .padding(AdminSpacing.cardPadding)
@@ -474,7 +533,7 @@ public struct WantedPetsHomeView: View {
             .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                    .strokeBorder(AdminSurface.hairline, lineWidth: 1)
+                    .strokeBorder(accent.opacity(0.12), lineWidth: 1)
             }
             .contentShape(RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
         }
@@ -485,101 +544,363 @@ public struct WantedPetsHomeView: View {
     }
 
     private func customerRow(_ item: CustomerWantedPet) -> some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.md) {
+        let isCopied = copiedItemId == item.id
+        let isInFlight = inFlightItemIDs.contains(item.id)
+
+        return VStack(alignment: .leading, spacing: 0) {
+            // Main card body - tap to view complete customer dossier
             Button {
                 selectedItemForDetail = item
             } label: {
-                VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-                    HStack(alignment: .top, spacing: AdminSpacing.sm) {
-                        Text(item.customerName)
-                            .font(AdminType.title3)
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 4)
-                        Label(item.status.title, systemImage: item.status.iconName)
-                            .font(AdminType.caption1Bold)
-                            .foregroundStyle(item.status.tintColor)
-                            .lineLimit(2)
-                    }
-                    Text(item.requestedPetTitle)
-                        .font(AdminType.bodyBold)
-                        .foregroundStyle(AdminSurface.primary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(item.preferencesSummary)
-                        .font(AdminType.footnote)
-                        .foregroundStyle(AdminSurface.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                    let detailLayout = dynamicTypeSize.isAccessibilitySize
-                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: AdminSpacing.xs))
-                        : AnyLayout(HStackLayout(spacing: AdminSpacing.sm))
-
-                    detailLayout {
-                        Text(item.formattedPhoneDisplay)
-                            .font(.system(.footnote, design: .monospaced))
-                            .foregroundStyle(AdminSurface.secondaryText)
-                            .environment(\.layoutDirection, .leftToRight)
-                        if !dynamicTypeSize.isAccessibilitySize {
-                            Text("·")
-                                .foregroundStyle(AdminSurface.secondaryText)
+                VStack(alignment: .leading, spacing: 12) {
+                    // 1. Header: Monogram Avatar + Customer Identity & Phone + Status Badge Pill
+                    HStack(alignment: .center, spacing: 12) {
+                        // Monogram Avatar
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            item.status.tintColor.opacity(0.18),
+                                            item.status.tintColor.opacity(0.06)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                            Text(customerInitials(item.customerName))
+                                .font(Font.custom("Beiruti-Bold", size: 16))
+                                .foregroundStyle(item.status.tintColor)
                         }
-                        Text(item.waitingDurationText)
-                            .font(AdminType.footnote)
-                            .foregroundStyle(AdminSurface.secondaryText)
+                        .frame(width: 42, height: 42)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(item.status.tintColor.opacity(0.25), lineWidth: 1)
+                        )
+
+                        // Name & Phone with inline copy
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.customerName)
+                                .font(Font.custom("Beiruti-Bold", size: 18))
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .lineLimit(1)
+                                .multilineTextAlignment(.leading)
+
+                            HStack(spacing: 6) {
+                                Text(item.formattedPhoneDisplay)
+                                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                    .foregroundStyle(AdminSurface.secondaryText)
+                                    .environment(\.layoutDirection, .leftToRight)
+
+                                Button {
+                                    copyPhone(item.phoneNumber, itemId: item.id)
+                                } label: {
+                                    Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundStyle(isCopied ? Color(uiColor: .ppSuccess) : AdminSurface.secondaryText)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(Language.get("Copy", alter: "نسخ"))
+                            }
+                        }
+
+                        Spacer(minLength: 4)
+
+                        // Status Badge Pill
+                        HStack(spacing: 5) {
+                            Image(systemName: item.status.iconName)
+                                .font(.system(size: 10, weight: .semibold))
+                            Text(item.status.title)
+                                .font(Font.custom("Beiruti-Bold", size: 12))
+                        }
+                        .foregroundStyle(item.status.tintColor)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4.5)
+                        .background(item.status.tintColor.opacity(0.12), in: Capsule())
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(item.status.tintColor.opacity(0.24), lineWidth: 0.8)
+                        )
                     }
-                    Label(item.contactSource.title, systemImage: item.contactSource.iconName)
-                        .font(AdminType.footnote)
+
+                    // 2. Pet Title & Duration Strip
+                    HStack(alignment: .center, spacing: 6) {
+                        HStack(spacing: 5) {
+                            Image(systemName: item.kindPetSymbol)
+                                .font(.system(size: 11, weight: .bold))
+                            Text(item.requestedPetTitle)
+                                .font(Font.custom("Beiruti-Bold", size: 15))
+                        }
+                        .foregroundStyle(item.kindAccentColor)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3.5)
+                        .background(item.kindAccentColor.opacity(0.12), in: Capsule())
+                        .overlay(
+                            Capsule().strokeBorder(item.kindAccentColor.opacity(0.24), lineWidth: 0.8)
+                        )
+
+                        Spacer(minLength: 4)
+
+                        HStack(spacing: 4) {
+                            Image(systemName: "clock")
+                                .font(.system(size: 10, weight: .medium))
+                            Text(item.waitingDurationText)
+                                .font(Font.custom("Beiruti-Regular", size: 12))
+                        }
                         .foregroundStyle(AdminSurface.secondaryText)
+                    }
+
+                    // 3. Preferences & Metadata Chips
+                    customerPreferencesStrip(item)
                 }
+                .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityHint(Language.get("WantedPets_Open_Request", alter: "عرض تفاصيل الطلب"))
 
+            // 4. Integrated Tactical Action Dock
             if canManageRequests {
                 Rectangle()
-                    .fill(AdminSurface.hairline)
+                    .fill(AdminSurface.hairline.opacity(0.65))
                     .frame(height: 1)
                     .accessibilityHidden(true)
 
-                let contactLayout = dynamicTypeSize.isAccessibilitySize
-                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: AdminSpacing.sm))
-                    : AnyLayout(HStackLayout(spacing: AdminSpacing.sm))
+                VStack(spacing: 8) {
+                    // Direct Communication Row: WhatsApp & Call
+                    let contactLayout = dynamicTypeSize.isAccessibilitySize
+                        ? AnyLayout(VStackLayout(spacing: 8))
+                        : AnyLayout(HStackLayout(spacing: 8))
 
-                contactLayout {
-                    contactButton(Language.get("WantedPets_Quick_WhatsApp", alter: "واتساب"),
-                                  icon: "message.fill") { openWhatsApp(for: item) }
-                    contactButton(Language.get("WantedPets_Quick_Call", alter: "اتصال"),
-                                  icon: "phone.fill") { callPhone(item.phoneNumber) }
-                }
-                if item.status == .waiting {
-                    contactButton(Language.get("WantedPets_Mark_Contacted", alter: "تحديد كمتواصل معه"),
-                                  icon: "checkmark") {
-                        transition(item, to: .contacted)
+                    contactLayout {
+                        // WhatsApp Action Button (Apple-Emerald Gradient)
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            openWhatsApp(for: item)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "message.fill")
+                                    .font(.system(size: 13, weight: .bold))
+                                Text(Language.get("WantedPets_Quick_WhatsApp", alter: "واتساب"))
+                                    .font(Font.custom("Beiruti-Bold", size: 14))
+                            }
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                            .background(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.16, green: 0.78, blue: 0.40),
+                                        Color(red: 0.11, green: 0.69, blue: 0.34)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            )
+                            .shadow(color: Color(red: 0.13, green: 0.74, blue: 0.36).opacity(0.24), radius: 4, y: 2)
+                        }
+                        .buttonStyle(TactileActionButtonStyle())
+                        .accessibilityLabel(Language.get("WantedPets_Quick_WhatsApp", alter: "واتساب"))
+
+                        // Phone Call Button (Frosted iOS Blue)
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            callPhone(item.phoneNumber)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "phone.fill")
+                                    .font(.system(size: 13, weight: .bold))
+                                Text(Language.get("WantedPets_Quick_Call", alter: "اتصال"))
+                                    .font(Font.custom("Beiruti-Bold", size: 14))
+                            }
+                            .foregroundStyle(Color(uiColor: .systemBlue))
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                            .background(
+                                Color(uiColor: .systemBlue).opacity(0.10),
+                                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .systemBlue).opacity(0.22), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(TactileActionButtonStyle())
+                        .accessibilityLabel(Language.get("WantedPets_Quick_Call", alter: "اتصال"))
                     }
-                    .disabled(inFlightItemIDs.contains(item.id) || service.isMutating)
+
+                    // Smart Lifecycle Progression Action Button
+                    if item.status == .waiting {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            transition(item, to: .contacted)
+                        } label: {
+                            HStack(spacing: 6) {
+                                if isInFlight {
+                                    ProgressView()
+                                        .tint(Color(uiColor: .systemBlue))
+                                        .scaleEffect(0.85)
+                                } else {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 13, weight: .bold))
+                                }
+                                Text(Language.get("WantedPets_Mark_Contacted", alter: "تحديد كمتواصل معه"))
+                                    .font(Font.custom("Beiruti-Bold", size: 13))
+                            }
+                            .foregroundStyle(Color(uiColor: .systemBlue))
+                            .frame(maxWidth: .infinity, minHeight: 38)
+                            .background(
+                                Color(uiColor: .systemBlue).opacity(0.08),
+                                in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .systemBlue).opacity(0.22), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(TactileActionButtonStyle())
+                        .disabled(isInFlight || service.isMutating)
+                    } else if item.status == .contacted {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            transition(item, to: .interested)
+                        } label: {
+                            HStack(spacing: 6) {
+                                if isInFlight {
+                                    ProgressView()
+                                        .tint(Color(uiColor: .systemPurple))
+                                        .scaleEffect(0.85)
+                                } else {
+                                    Image(systemName: "star.fill")
+                                        .font(.system(size: 13, weight: .bold))
+                                }
+                                Text(Language.get("WantedPets_Mark_Interested", alter: "تحديد كمهتم بالحيوان"))
+                                    .font(Font.custom("Beiruti-Bold", size: 13))
+                            }
+                            .foregroundStyle(Color(uiColor: .systemPurple))
+                            .frame(maxWidth: .infinity, minHeight: 38)
+                            .background(
+                                Color(uiColor: .systemPurple).opacity(0.08),
+                                in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .systemPurple).opacity(0.22), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(TactileActionButtonStyle())
+                        .disabled(isInFlight || service.isMutating)
+                    } else if item.status == .interested {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            selectedItemForDetail = item
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 13, weight: .bold))
+                                Text(Language.get("WantedPets_Open_Request", alter: "عرض تفاصيل الطلب والمطابقة"))
+                                    .font(Font.custom("Beiruti-Bold", size: 13))
+                            }
+                            .foregroundStyle(AdminSurface.primary)
+                            .frame(maxWidth: .infinity, minHeight: 38)
+                            .background(
+                                AdminSurface.primarySoft,
+                                in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                    .strokeBorder(AdminSurface.primary.opacity(0.20), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(TactileActionButtonStyle())
+                    }
                 }
+                .padding(.horizontal, 14)
+                .padding(.top, 10)
+                .padding(.bottom, 12)
             }
         }
-        .padding(AdminSpacing.cardPadding)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                .strokeBorder(AdminSurface.hairline, lineWidth: 1)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(AdminSurface.hairline.opacity(0.85), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.035), radius: 8, x: 0, y: 3)
+    }
+
+    @ViewBuilder
+    private func customerPreferencesStrip(_ item: CustomerWantedPet) -> some View {
+        let hasSex = item.sexPreference != .any
+        let hasColor = !(item.colorPreference ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasBudget = (item.budgetMax ?? 0) > 0
+        let hasSource = item.contactSource != .other
+
+        if hasSex || hasColor || hasBudget || hasSource {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    if hasSex {
+                        chip(icon: "figure.stand", text: item.sexPreference.title)
+                    }
+                    if let color = item.colorPreference, !color.isEmpty {
+                        chip(icon: "paintpalette.fill", text: color)
+                    }
+                    if let budget = item.budgetMax, budget > 0 {
+                        chip(icon: "banknote.fill", text: String(format: "≤ %.0f", budget))
+                    }
+                    if hasSource {
+                        chip(icon: item.contactSource.iconName, text: item.contactSource.title)
+                    }
+                }
+            }
+        } else {
+            Text(item.preferencesSummary)
+                .font(Font.custom("Beiruti-Regular", size: 13))
+                .foregroundStyle(AdminSurface.secondaryText)
+                .lineLimit(1)
         }
     }
 
-    private func contactButton(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: icon)
-                .font(AdminType.footnoteBold)
-                .foregroundStyle(AdminSurface.primaryText)
-                .lineLimit(2)
-                .padding(.horizontal, AdminSpacing.md)
-                .frame(minHeight: AdminTouchTarget.minimum)
-                .background(AdminSurface.cardElevated, in: RoundedRectangle(cornerRadius: AdminRadius.small))
+    private func chip(icon: String, text: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .semibold))
+            Text(text)
+                .font(Font.custom("Beiruti-Medium", size: 11))
         }
-        .buttonStyle(.plain)
+        .foregroundStyle(AdminSurface.secondaryText)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3.5)
+        .background(AdminSurface.cardElevated, in: Capsule())
+        .overlay(Capsule().strokeBorder(AdminSurface.hairline.opacity(0.6), lineWidth: 0.6))
+    }
+
+    private func customerInitials(_ name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "؟" }
+        let components = trimmed.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        if components.count >= 2,
+           let firstChar = components[0].first,
+           let secondChar = components[1].first {
+            return "\(firstChar) \(secondChar)"
+        } else if let firstChar = trimmed.first {
+            return String(firstChar)
+        }
+        return "؟"
+    }
+
+    private func copyPhone(_ phoneNumber: String, itemId: String) {
+        UIPasteboard.general.string = phoneNumber
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.easeInOut(duration: 0.2)) {
+            copiedItemId = itemId
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            if copiedItemId == itemId {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    copiedItemId = nil
+                }
+            }
+        }
     }
 
     // MARK: - Loading, empty, and recovery
@@ -685,37 +1006,6 @@ public struct WantedPetsHomeView: View {
         .background(AdminSurface.amber.opacity(0.09), in: RoundedRectangle(cornerRadius: AdminRadius.medium))
     }
 
-    // MARK: - Create and contact actions
-
-    private var addRequestDock: some View {
-        Button {
-            guard canManageRequests else { return }
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            showAddSheet = true
-        } label: {
-            HStack(spacing: AdminSpacing.md) {
-                Image(systemName: "plus")
-                    .font(.system(size: 16, weight: .bold))
-                Text(Language.get("WantedPets_Add_Action", alter: "إضافة طلب جديد"))
-                    .font(AdminType.headlineBold)
-            }
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, minHeight: 54)
-            .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous))
-        }
-        .buttonStyle(WantedPetsPressStyle())
-        .disabled(service.isMutating)
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.top, AdminSpacing.md)
-        .padding(.bottom, AdminSpacing.sm)
-        .background {
-            AdminSurface.background
-                .ignoresSafeArea(edges: .bottom)
-                .overlay(alignment: .top) {
-                    AdminSurface.hairline.frame(height: 1)
-                }
-        }
-    }
 
     private func feedbackBanner(_ message: String) -> some View {
         Label(message, systemImage: "checkmark.circle.fill")
@@ -798,5 +1088,16 @@ private struct WantedPetsPressStyle: ButtonStyle {
             .opacity(configuration.isPressed ? 0.86 : 1)
             .animation(AdminAnimation.motion(.easeOut(duration: 0.14), reduceMotion: reduceMotion),
                        value: configuration.isPressed)
+    }
+}
+
+private struct TactileActionButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1.0)
+            .opacity(configuration.isPressed ? 0.88 : 1.0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: configuration.isPressed)
     }
 }

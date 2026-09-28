@@ -3715,27 +3715,21 @@ struct AdminPetImageUploaderSection: View {
 
             // Image Preview Card or Empty Upload Prompt
             if let image = pickedImage {
-                imagePreviewCard(image: Image(uiImage: image))
-            } else if !imageUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                      let url = URL(string: imageUrl.trimmingCharacters(in: .whitespacesAndNewlines)) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let loadedImage):
-                        imagePreviewCard(image: loadedImage)
-                    case .failure:
-                        uploadPlaceholder(hasError: true)
-                    case .empty:
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(AdminSurface.control)
-                                .frame(height: 180)
-                            ProgressView()
-                                .tint(AdminSurface.primary)
-                        }
-                    @unknown default:
+                imagePreviewCard(content:
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: isFitMode ? .fit : .fill)
+                )
+            } else if !imageUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                imagePreviewCard(content:
+                    AdminRemoteImage(
+                        urlString: imageUrl,
+                        contentMode: isFitMode ? .fit : .fill,
+                        targetSize: CGSize(width: 400, height: 180)
+                    ) {
                         uploadPlaceholder()
                     }
-                }
+                )
             } else {
                 uploadPlaceholder()
             }
@@ -3782,25 +3776,16 @@ struct AdminPetImageUploaderSection: View {
         }
     }
 
-    private func imagePreviewCard(image: Image) -> some View {
+    private func imagePreviewCard<Content: View>(content: Content) -> some View {
         ZStack(alignment: .topTrailing) {
             ZStack {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(AdminSurface.control)
 
-                if isFitMode {
-                    image
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: .infinity, maxHeight: 180)
-                        .padding(8)
-                } else {
-                    image
-                        .resizable()
-                        .scaledToFill()
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 180)
-                }
+                content
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 180)
+                    .padding(isFitMode ? 8 : 0)
             }
             .frame(maxWidth: .infinity)
             .frame(height: 180)

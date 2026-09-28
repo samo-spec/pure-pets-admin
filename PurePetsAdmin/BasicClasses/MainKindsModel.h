@@ -52,11 +52,11 @@ NS_ASSUME_NONNULL_BEGIN
 
 + (NSString *)kindNameForID:(NSInteger)kindID inArray:(NSArray<MainKindsModel *> *)kindsArray;
 + (NSString *)kindNameForID:(NSInteger)kindID ;
-+ (MainKindsModel *)mainKindClassForID:(NSInteger)kindID inArray:(NSArray<MainKindsModel *> *)kindsArray;
++ (nullable MainKindsModel *)mainKindClassForID:(NSInteger)kindID inArray:(NSArray<MainKindsModel *> *)kindsArray;
 - (void)addSubKind:(SubKindModel *)subKind;
 - (NSDictionary *)toFirestoreDictionary;  // Helper to convert model to Firestore data
 - (SubKindModel *)subKindForID:(NSInteger)subID;
-+ (MainKindsModel *)mainKindModelForID:(NSInteger)kindID;
++ (nullable MainKindsModel *)mainKindModelForID:(NSInteger)kindID;
 - (nullable PPAccessoryCategoryModel *)accessoryCategoryForID:(NSString *)categoryID;
 + (NSArray<PPAccessoryCategoryModel *> *)canonicalAccessoryCategoriesForMainKindID:(NSInteger)mainKindID;
 @property (nonatomic, assign) BOOL is_visible_in_user_app;

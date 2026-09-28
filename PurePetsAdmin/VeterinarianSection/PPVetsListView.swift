@@ -366,23 +366,6 @@ struct PPVetsListView: View {
         }
     }
 
-    @ViewBuilder
-    private func vetAsyncImageContent(for phase: AsyncImagePhase) -> some View {
-        switch phase {
-        case .success(let image):
-            image
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-        case .failure:
-            vetPlaceholderImage
-        case .empty:
-            ProgressView()
-                .tint(AdminSurface.primary)
-        @unknown default:
-            vetPlaceholderImage
-        }
-    }
-
     private var vetPlaceholderImage: some View {
         Image(systemName: "stethoscope.circle.fill")
             .foregroundColor(AdminSurface.primary)

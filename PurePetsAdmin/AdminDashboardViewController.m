@@ -1393,6 +1393,7 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
 @property (nonatomic, strong) NSMutableSet<NSString *> *animatedDashboardTags;
 // PP_ADMIN_COMMAND_SPINE_PROPERTIES_BEGIN
 @property (nonatomic, strong) AdminCommandOrbitHostingController *pp_commandOrbitController;
+@property (nonatomic, assign) BOOL pp_commandRoutePending;
 @property (nonatomic, strong, nullable) id<FIRListenerRegistration> pp_fulfillmentPriorityReg;
 @property (nonatomic, strong, nullable) id<FIRListenerRegistration> pp_inventoryPriorityReg;
 @property (nonatomic, copy) NSArray<PPFulfillmentRecord *> *pp_fulfillmentPriorityRecords;
@@ -1418,6 +1419,16 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
     self = [super initWithForm:[XLFormDescriptor formDescriptor] style:UITableViewStyleGrouped];
     if (self) {
         _animatedDashboardTags = [NSMutableSet set];
+        _pp_isCommandSpine = YES;
+    }
+    return self;
+}
+
+- (instancetype)initWithNibName:(NSString *)nibNameOrNil bundle:(NSBundle *)nibBundleOrNil {
+    self = [super initWithNibName:nibNameOrNil bundle:nibBundleOrNil];
+    if (self) {
+        _animatedDashboardTags = [NSMutableSet set];
+        _pp_isCommandSpine = YES;
     }
     return self;
 }
@@ -1426,6 +1437,8 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    self.pp_isCommandSpine = YES;
+    self.pp_commandSurfaceVisible = YES;
     self.edgesForExtendedLayout = UIRectEdgeAll;
     self.extendedLayoutIncludesOpaqueBars = YES;
 
@@ -1577,6 +1590,10 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
+    if (self.pp_commandOrbitController) {
+        self.pp_commandOrbitController.view.userInteractionEnabled = YES;
+        [self.view bringSubviewToFront:self.pp_commandOrbitController.view];
+    }
     if (self.pp_isCommandSpine) {
         return;
     }
@@ -1594,7 +1611,13 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
+    // The root is actionable again only after a pushed workflow has returned.
+    self.pp_commandRoutePending = NO;
     [self.dashboardBackdropView startMotionIfNeeded];
+    if (self.pp_commandOrbitController) {
+        self.pp_commandOrbitController.view.userInteractionEnabled = YES;
+        [self.view bringSubviewToFront:self.pp_commandOrbitController.view];
+    }
     if (self.pp_isCommandSpine) {
         return;
     }
@@ -1613,18 +1636,25 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
         self.tabBarController.tabBar.hidden = YES;
     }
     
-    [self updateHeaderWithUser:UsrMgr.currentUser];
-    
-    // Forcefully hide all legacy native header views that might be lingering
+    // Forcefully hide and disable all legacy native header views that might linger or steal touches
     self.tableView.hidden = YES;
+    self.tableView.userInteractionEnabled = NO;
     self.heroShadowView.hidden = YES;
+    self.heroShadowView.userInteractionEnabled = NO;
     self.headerRoot.hidden = YES;
+    self.headerRoot.userInteractionEnabled = NO;
+    self.dashboardLoadingView.hidden = YES;
+    self.dashboardLoadingView.userInteractionEnabled = NO;
+    self.dashboardBackdropView.userInteractionEnabled = NO;
     
     [self pp_rebuildDashboardFormPreservingOffset:YES];
     [self pp_installCommandOrbitIfNeeded];
+    if (self.pp_commandOrbitController) {
+        self.pp_commandOrbitController.view.userInteractionEnabled = YES;
+        [self.view bringSubviewToFront:self.pp_commandOrbitController.view];
+    }
     [self pp_refreshCommandOrbitSnapshot];
     [self pp_startCommandPriorityFeedsIfNeeded];
-    [self pp_prepareHeaderIntroIfNeeded];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
@@ -2473,6 +2503,7 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
 
 - (void)pp_installCommandOrbitIfNeeded {
     if (self.pp_commandOrbitController) {
+        self.pp_commandOrbitController.view.userInteractionEnabled = YES;
         [self.view bringSubviewToFront:self.pp_commandOrbitController.view];
         return;
     }
@@ -2523,12 +2554,19 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
     self.tableView.hidden = YES;
     self.tableView.userInteractionEnabled = NO;
     self.tableView.accessibilityElementsHidden = YES;
+    self.tableView.scrollsToTop = NO;
     self.heroShadowView.hidden = YES;
+    self.heroShadowView.userInteractionEnabled = NO;
+    self.headerRoot.hidden = YES;
+    self.headerRoot.userInteractionEnabled = NO;
     self.headerRoot.accessibilityElementsHidden = YES;
     // The command-spine surface is the only visible UI; never let the legacy
     // loading overlay cover the new command center.
     self.dashboardLoadingView.hidden = YES;
+    self.dashboardLoadingView.userInteractionEnabled = NO;
+    self.dashboardBackdropView.userInteractionEnabled = NO;
 
+    commandOrbitController.view.userInteractionEnabled = YES;
     [self.view bringSubviewToFront:commandOrbitController.view];
 }
 
@@ -2555,6 +2593,11 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
 
 - (BOOL)pp_commandAllowsTag:(NSString *)tag {
     return [self pp_commandItemForTag:tag] != nil;
+}
+
+- (BOOL)pp_commandCanOpenWantedPets {
+    return [self pp_commandAllowsTag:@"wantedPets"] &&
+        [self pp_canAccessAnyPermissions:@[kStaffPermStockView, kStaffPermStockManage]];
 }
 
 - (NSString *)pp_commandModuleTitleForTag:(NSString *)tag {
@@ -2784,6 +2827,7 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
                                                       signals:descriptors
                                                      animated:(self.view.window != nil && !UIAccessibilityIsReduceMotionEnabled())];
     [self.pp_commandOrbitController applyHotelAccess:[self pp_canAccessPermission:kStaffPermHotelView]];
+    [self.pp_commandOrbitController applyWantedPetsAccess:[self pp_commandCanOpenWantedPets]];
     [self pp_pushCommandReadiness];
 }
 
@@ -3477,19 +3521,85 @@ void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
     if (tag.length == 0) {
         return;
     }
+    BOOL isIPadCommandSpine = self.pp_isCommandSpine && UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad;
+    if (isIPadCommandSpine && self.pp_commandRoutePending) {
+        return;
+    }
+    if ([tag isEqualToString:@"wantedPets"] && ![self pp_commandCanOpenWantedPets]) {
+        return;
+    }
 
     [PPFunc pp_playTapEffect];
 
     if ([tag isEqualToString:@"editMyAccount"]) {
+        if (isIPadCommandSpine && UsrMgr.currentUser && self.navigationController) {
+            self.pp_commandRoutePending = YES;
+        }
         [self pp_openCurrentAccountEditor];
         return;
     }
 
     UIViewController *controller = [self pp_viewControllerForDashboardTag:tag];
     if (controller) {
+        if (isIPadCommandSpine) {
+            self.pp_commandRoutePending = YES;
+        }
         controller.extendedLayoutIncludesOpaqueBars = YES;
         controller.edgesForExtendedLayout = UIRectEdgeAll;
-        [self.navigationController pushViewController:controller animated:YES];
+        void (^showController)(void) = ^{
+            UINavigationController *nav = self.navigationController;
+            if (!nav && [self.parentViewController isKindOfClass:[UINavigationController class]]) {
+                nav = (UINavigationController *)self.parentViewController;
+            }
+            if (!nav && [self.tabBarController.selectedViewController isKindOfClass:[UINavigationController class]]) {
+                nav = (UINavigationController *)self.tabBarController.selectedViewController;
+            }
+            if (!nav && [self.tabBarController isKindOfClass:[UITabBarController class]] && [self.tabBarController.navigationController isKindOfClass:[UINavigationController class]]) {
+                nav = self.tabBarController.navigationController;
+            }
+            if (!nav) {
+                UIWindow *keyWindow = nil;
+                for (UIWindowScene *scene in [UIApplication sharedApplication].connectedScenes) {
+                    if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
+                        for (UIWindow *w in scene.windows) {
+                            if (w.isKeyWindow) { keyWindow = w; break; }
+                        }
+                    }
+                    if (keyWindow) break;
+                }
+                if (!keyWindow) {
+                    keyWindow = [UIApplication sharedApplication].windows.firstObject;
+                }
+                UIViewController *root = keyWindow.rootViewController;
+                if ([root isKindOfClass:[UINavigationController class]]) {
+                    nav = (UINavigationController *)root;
+                } else if ([root isKindOfClass:[UITabBarController class]]) {
+                    UIViewController *sel = ((UITabBarController *)root).selectedViewController;
+                    if ([sel isKindOfClass:[UINavigationController class]]) {
+                        nav = (UINavigationController *)sel;
+                    }
+                }
+            }
+            if (nav) {
+                if (isIPadCommandSpine && nav.topViewController != self) {
+                    return;
+                }
+                [nav pushViewController:controller animated:YES];
+            } else if (self.presentingViewController) {
+                [self presentViewController:controller animated:YES completion:nil];
+            } else {
+                UINavigationController *modalNav = [[UINavigationController alloc] initWithRootViewController:controller];
+                modalNav.modalPresentationStyle = UIModalPresentationFullScreen;
+                [self presentViewController:modalNav animated:YES completion:nil];
+            }
+        };
+        if (!isIPadCommandSpine) {
+            dispatch_async(dispatch_get_main_queue(), showController);
+        } else if ([NSThread isMainThread]) {
+            showController();
+        } else {
+            dispatch_async(dispatch_get_main_queue(), showController);
+        }
     }
 }
 

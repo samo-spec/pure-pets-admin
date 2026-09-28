@@ -9,11 +9,11 @@
 #import "SceneDelegate.h"
 #import <sys/utsname.h>
 #import "FirebaseInstallations/FIRInstallations.h"
+#import <GoogleSignIn/GoogleSignIn.h>
 @import Firebase;
 @import FirebaseAuth;
 @import FirebaseFunctions;
 @import FirebaseMessaging;
-@import FirebaseAuth;
  
 #import "PurePetsAdmin-Swift.h"
 // AppDelegate.m
@@ -319,6 +319,9 @@ extern BOOL PP_TouchDotsEnabled;
     NSLog(@"PPLAB NotificationsV2 admin APNS update | hasToken=%@",
           self.apnsTokenHexString.length > 0 ? @"yes" : @"no");
     
+    // Forward APNs token to Firebase Auth for silent phone authentication verification
+    [[FIRAuth auth] setAPNSToken:deviceToken type:FIRAuthAPNSTokenTypeUnknown];
+
     // Forward the token to Firebase Messaging
     [FIRMessaging messaging].APNSToken = deviceToken;
     [self pp_attemptAdminNotificationV2RegistrationForReason:@"apns_registration"];
@@ -327,6 +330,32 @@ extern BOOL PP_TouchDotsEnabled;
 // This method is called if APNs registration fails
 - (void)application:(UIApplication *)application didFailToRegisterForRemoteNotificationsWithError:(NSError *)error {
     NSLog(@"[FIRMessaging] Failed to register for remote notifications: %@", error);
+}
+
+#pragma mark - Remote Notifications Handling (Silent Auth Push)
+
+- (void)application:(UIApplication *)application
+didReceiveRemoteNotification:(NSDictionary *)userInfo
+fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
+    if ([[FIRAuth auth] canHandleNotification:userInfo]) {
+        completionHandler(UIBackgroundFetchResultNoData);
+        return;
+    }
+    completionHandler(UIBackgroundFetchResultNoData);
+}
+
+#pragma mark - URL Handling
+
+- (BOOL)application:(UIApplication *)app
+            openURL:(NSURL *)url
+            options:(NSDictionary<UIApplicationOpenURLOptionsKey,id> *)options {
+    if (!url) {
+        return NO;
+    }
+    if ([[FIRAuth auth] canHandleURL:url]) {
+        return YES;
+    }
+    return [GIDSignIn.sharedInstance handleURL:url];
 }
 
 #pragma mark - FIRMessagingDelegate Methods

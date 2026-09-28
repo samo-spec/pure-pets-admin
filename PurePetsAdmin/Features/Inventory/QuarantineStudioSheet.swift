@@ -1007,20 +1007,18 @@ private struct InspectionProductHeroCard: View {
                     .fill(AdminSurface.control)
                     .frame(width: isWidescreen ? 76 : 64, height: isWidescreen ? 76 : 64)
 
-                if let first = item.imageURLsArray.first, !first.isEmpty, let url = URL(string: first) {
-                    AsyncImage(url: url) { img in
-                        img.resizable().aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        Image(systemName: "cube.box.fill")
-                            .foregroundColor(AdminSurface.secondaryText)
-                    }
-                    .frame(width: isWidescreen ? 76 : 64, height: isWidescreen ? 76 : 64)
-                    .clipShape(RoundedRectangle(cornerRadius: AdminRadius.card))
-                } else {
+                let size: CGFloat = isWidescreen ? 76 : 64
+                AdminRemoteImage(
+                    urlString: item.imageURLsArray.first,
+                    contentMode: .fill,
+                    targetSize: CGSize(width: size, height: size)
+                ) {
                     Image(systemName: "cube.box.fill")
                         .font(.system(size: isWidescreen ? 30 : 24))
                         .foregroundColor(AdminSurface.secondaryText)
                 }
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: AdminRadius.card))
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -2519,15 +2517,12 @@ private struct LivePetSpecimenHeroCard: View {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .fill(AdminSurface.control)
 
-                    if let first = item.imageURLsArray.first, !first.isEmpty, let url = URL(string: first) {
-                        AsyncImage(url: url) { img in
-                            img.resizable().scaledToFill()
-                        } placeholder: {
-                            Image(systemName: "pawprint.fill")
-                                .font(.system(size: 24))
-                                .foregroundColor(Color(red: 147/255, green: 51/255, blue: 234/255).opacity(0.6))
-                        }
-                    } else {
+                    let size: CGFloat = isWidescreen ? 80 : 68
+                    AdminRemoteImage(
+                        urlString: item.imageURLsArray.first,
+                        contentMode: .fill,
+                        targetSize: CGSize(width: size, height: size)
+                    ) {
                         Image(systemName: "pawprint.fill")
                             .font(.system(size: 24))
                             .foregroundColor(Color(red: 147/255, green: 51/255, blue: 234/255).opacity(0.6))

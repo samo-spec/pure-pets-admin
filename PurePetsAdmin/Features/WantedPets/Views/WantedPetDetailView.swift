@@ -48,6 +48,11 @@ public struct WantedPetDetailView: View {
     @State private var actionNoticeMessage: String? = nil
     @State private var errorMessage: String? = nil
 
+    private var canManageRequests: Bool {
+        guard let staff = PPStaffAuth.shared().cachedCurrentStaff else { return false }
+        return staff.isActive() && staff.hasPermission("stock.manage")
+    }
+
     public init(wantedPetId: String, onDismiss: (() -> Void)? = nil) {
         self.wantedPetId = wantedPetId
         self.onDismiss = onDismiss
@@ -223,19 +228,21 @@ public struct WantedPetDetailView: View {
                         Label(Language.get("Copy", alter: "نسخ البيانات"), systemImage: "doc.on.doc")
                     }
 
-                    Divider()
+                    if canManageRequests {
+                        Divider()
 
-                    if pet.status.isActive {
-                        Button(role: .destructive) {
-                            showCloseSheet = true
-                        } label: {
-                            Label(Language.get("WantedPet_Action_ClosePrompt", alter: "إغلاق الطلب"), systemImage: "xmark.circle")
-                        }
-                    } else {
-                        Button {
-                            transitionStatus(to: .waiting)
-                        } label: {
-                            Label(Language.get("WantedPet_Action_ReopenPrompt", alter: "إعادة فتح الطلب"), systemImage: "arrow.counterclockwise")
+                        if pet.status.isActive {
+                            Button(role: .destructive) {
+                                showCloseSheet = true
+                            } label: {
+                                Label(Language.get("WantedPet_Action_ClosePrompt", alter: "إغلاق الطلب"), systemImage: "xmark.circle")
+                            }
+                        } else {
+                            Button {
+                                transitionStatus(to: .waiting)
+                            } label: {
+                                Label(Language.get("WantedPet_Action_ReopenPrompt", alter: "إعادة فتح الطلب"), systemImage: "arrow.counterclockwise")
+                            }
                         }
                     }
                 } label: {
@@ -388,17 +395,26 @@ public struct WantedPetDetailView: View {
             // Header: Category & Breed
             HStack(spacing: 12) {
                 // Species Icon Squircle
+                let accentColor = pet.kindAccentColor
+                let petSymbol = pet.kindPetSymbol
+
                 ZStack {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(AdminSurface.primary.opacity(0.12))
-                    Image(systemName: iconForKind(pet.mainKindName ?? pet.requestedPetTitle))
-                        .font(.system(size: 24))
-                        .foregroundStyle(AdminSurface.primary)
+                        .fill(
+                            LinearGradient(
+                                colors: [accentColor.opacity(0.18), accentColor.opacity(0.08)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                    Image(systemName: petSymbol)
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(accentColor)
                 }
                 .frame(width: 52, height: 52)
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(AdminSurface.primary.opacity(0.25), lineWidth: 1)
+                        .strokeBorder(accentColor.opacity(0.28), lineWidth: 1)
                 )
 
                 VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 3) {
@@ -525,7 +541,7 @@ public struct WantedPetDetailView: View {
     // MARK: - 4. Intelligent Store Inventory Match Radar
 
     private func storeInventoryMatchRadar(_ pet: CustomerWantedPet) -> some View {
-        VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 12) {
+        VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 14) {
             // Header with Radar Scanner Trigger
             HStack {
                 HStack(spacing: 7) {
@@ -557,8 +573,8 @@ public struct WantedPetDetailView: View {
                             .font(Font.custom("Beiruti-Bold", size: 12))
                     }
                     .foregroundStyle(AdminSurface.primary)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
                     .background(AdminSurface.primary.opacity(0.10), in: Capsule())
                 }
                 .buttonStyle(DossierScaleButtonStyle())
@@ -567,82 +583,169 @@ public struct WantedPetDetailView: View {
             if isScanningRadar {
                 HStack(spacing: 8) {
                     ProgressView().tint(AdminSurface.primary)
-                    Text(Language.get("WantedPet_Radar_Scanning", alter: "جاري فحص المخزون..."))
+                    Text(Language.get("WantedPet_Radar_Scanning", alter: "جاري فحص مخزون الحيوانات الحية..."))
                         .font(Font.custom("Beiruti-Regular", size: 13))
                         .foregroundStyle(AdminSurface.secondaryText)
                 }
-                .padding(.vertical, 12)
+                .padding(.vertical, 16)
                 .frame(maxWidth: .infinity)
             } else if !matchingInventoryPets.isEmpty {
-                // Matching Pets Found!
-                VStack(spacing: 10) {
-                    HStack(spacing: 5) {
+                // Matching Live Animals Found!
+                VStack(spacing: 12) {
+                    HStack(spacing: 6) {
                         Image(systemName: "checkmark.seal.fill")
-                            .font(.system(size: 13))
+                            .font(.system(size: 14))
                             .foregroundStyle(Color(uiColor: .ppSuccess))
                         Text(String(format: Language.get("WantedPet_Radar_MatchesFound", alter: "تم العثور على %d حيوان مطابق في المخزون!"), matchingInventoryPets.count))
-                            .font(Font.custom("Beiruti-Bold", size: 13))
+                            .font(Font.custom("Beiruti-Bold", size: 14))
                             .foregroundStyle(Color(uiColor: .ppSuccess))
                         Spacer()
                     }
 
-                    ForEach(matchingInventoryPets.prefix(3)) { matchPet in
-                        HStack(spacing: 12) {
-                            // Pet Icon or Thumbnail
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(AdminSurface.cardElevated)
-                                Image(systemName: "pawprint.fill")
-                                    .font(.system(size: 18))
-                                    .foregroundStyle(AdminSurface.primary)
-                            }
-                            .frame(width: 44, height: 44)
-
-                            VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 2) {
-                                Text(matchPet.name)
-                                    .font(Font.custom("Beiruti-Bold", size: 14))
-                                    .foregroundStyle(AdminSurface.primaryText)
-                                    .lineLimit(1)
-
-                                HStack(spacing: 6) {
-                                    if let tag = matchPet.ringTag, !tag.isEmpty {
-                                        Text("#\(tag)")
-                                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                            .foregroundStyle(AdminSurface.secondaryText)
+                    ForEach(matchingInventoryPets.prefix(6)) { matchPet in
+                        VStack(spacing: 10) {
+                            HStack(spacing: 12) {
+                                // Thumbnail with AdminRemoteImage
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(AdminSurface.cardElevated)
+                                    AdminRemoteImage(
+                                        urlString: matchPet.imageUrl,
+                                        contentMode: .fill,
+                                        targetSize: CGSize(width: 52, height: 52)
+                                    ) {
+                                        Image(systemName: iconForKind(matchPet.name))
+                                            .font(.system(size: 20))
+                                            .foregroundStyle(AdminSurface.primary)
                                     }
-                                    if let branch = matchPet.branchName, !branch.isEmpty {
-                                        Text("• " + branch)
-                                            .font(Font.custom("Beiruti-Regular", size: 11))
-                                            .foregroundStyle(AdminSurface.secondaryText)
+                                    .frame(width: 52, height: 52)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                }
+                                .frame(width: 52, height: 52)
+                                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.5))
+
+                                VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 4) {
+                                    HStack(spacing: 6) {
+                                        Text(matchPet.name)
+                                            .font(Font.custom("Beiruti-Bold", size: 15))
+                                            .foregroundStyle(AdminSurface.primaryText)
+                                            .lineLimit(1)
+
+                                        if matchPet.isExactBreedMatch && matchPet.isGenderMatch {
+                                            Text(Language.get("WantedPet_ExactMatchPill", alter: "تطابق تام"))
+                                                .font(Font.custom("Beiruti-Bold", size: 10))
+                                                .foregroundStyle(.white)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 2)
+                                                .background(Color(uiColor: .ppSuccess), in: Capsule())
+                                        } else if matchPet.isExactBreedMatch {
+                                            Text(Language.get("WantedPet_BreedMatchPill", alter: "مطابق للنوع"))
+                                                .font(Font.custom("Beiruti-Bold", size: 10))
+                                                .foregroundStyle(AdminSurface.primary)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 2)
+                                                .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                                        }
+                                    }
+
+                                    HStack(spacing: 6) {
+                                        if let tag = matchPet.ringTag, !tag.isEmpty {
+                                            Text("#\(tag)")
+                                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                                .foregroundStyle(AdminSurface.primaryText)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 2)
+                                                .background(AdminSurface.cardElevated, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                                        }
+
+                                        if let g = matchPet.gender, !g.isEmpty {
+                                            HStack(spacing: 3) {
+                                                Image(systemName: g.contains("أنثى") ? "arrow.down.circle.fill" : "arrow.up.right.circle.fill")
+                                                    .font(.system(size: 10))
+                                                Text(g)
+                                                    .font(Font.custom("Beiruti-Medium", size: 11))
+                                            }
+                                            .foregroundStyle(g.contains("أنثى") ? Color.pink : Color.blue)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background((g.contains("أنثى") ? Color.pink : Color.blue).opacity(0.12), in: Capsule())
+                                        }
+
+                                        if let branch = matchPet.branchName, !branch.isEmpty {
+                                            Text("• " + branch)
+                                                .font(Font.custom("Beiruti-Regular", size: 11))
+                                                .foregroundStyle(AdminSurface.secondaryText)
+                                        }
+                                    }
+                                }
+
+                                Spacer()
+
+                                VStack(alignment: Language.isRTL() ? .leading : .trailing, spacing: 2) {
+                                    if let p = matchPet.price, p > 0 {
+                                        Text(String(format: "%.0f %@", p, Language.isRTL() ? "ر.ق" : "QAR"))
+                                            .font(Font.custom("Beiruti-Bold", size: 15))
+                                            .foregroundStyle(Color(uiColor: .ppSuccess))
                                     }
                                 }
                             }
 
-                            Spacer()
-
-                            VStack(alignment: Language.isRTL() ? .leading : .trailing, spacing: 4) {
-                                if let p = matchPet.price, p > 0 {
-                                    Text(String(format: "%.0f %@", p, Language.isRTL() ? "ر.ق" : "QAR"))
-                                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                                        .foregroundStyle(Color(uiColor: .ppSuccess))
-                                }
-
+                            // Action buttons row for this match
+                            HStack(spacing: 8) {
                                 Button {
                                     notifyCustomerWithMatch(pet: pet, match: matchPet)
                                 } label: {
-                                    Text(Language.get("WantedPet_Radar_SendToCustomer", alter: "مراسلة بالتوفر"))
-                                        .font(Font.custom("Beiruti-Bold", size: 11))
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color(uiColor: .ppSuccess), in: Capsule())
+                                    HStack(spacing: 5) {
+                                        Image(systemName: "message.fill")
+                                            .font(.system(size: 11))
+                                        Text(Language.get("WantedPet_Radar_SendToCustomer", alter: "مراسلة بالتوفر عبر واتساب"))
+                                            .font(Font.custom("Beiruti-Bold", size: 12))
+                                    }
+                                    .foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        LinearGradient(
+                                            colors: [Color(red: 0.16, green: 0.78, blue: 0.40), Color(red: 0.11, green: 0.69, blue: 0.34)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        ),
+                                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    )
+                                    .shadow(color: Color(red: 0.11, green: 0.69, blue: 0.34).opacity(0.25), radius: 3, y: 1.5)
                                 }
                                 .buttonStyle(DossierScaleButtonStyle())
+
+                                if canManageRequests && pet.status.isActive {
+                                    Button {
+                                        confirmFulfillRequest(petId: matchPet.unitId ?? matchPet.productId)
+                                    } label: {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .font(.system(size: 11))
+                                            Text(Language.get("WantedPet_Fulfill_Short", alter: "إتمام بهذا الحيوان"))
+                                                .font(Font.custom("Beiruti-Bold", size: 12))
+                                        }
+                                        .foregroundStyle(AdminSurface.primary)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 8)
+                                        .background(AdminSurface.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    }
+                                    .buttonStyle(DossierScaleButtonStyle())
+                                }
                             }
                         }
-                        .padding(10)
-                        .background(Color(uiColor: .ppSuccess).opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color(uiColor: .ppSuccess).opacity(0.20), lineWidth: 0.75))
+                        .padding(12)
+                        .background(AdminSurface.cardElevated.opacity(0.5), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(
+                                    matchPet.isExactBreedMatch && matchPet.isGenderMatch
+                                        ? Color(uiColor: .ppSuccess).opacity(0.40)
+                                        : AdminSurface.hairline,
+                                    lineWidth: matchPet.isExactBreedMatch && matchPet.isGenderMatch ? 1.0 : 0.5
+                                )
+                        )
                     }
                 }
             } else {
@@ -651,21 +754,21 @@ public struct WantedPetDetailView: View {
                     Image(systemName: "antenna.radiowaves.left.and.right")
                         .font(.system(size: 22))
                         .foregroundStyle(AdminSurface.secondaryText)
-                        .frame(width: 42, height: 42)
+                        .frame(width: 44, height: 44)
                         .background(AdminSurface.cardElevated, in: Circle())
 
-                    VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 2) {
+                    VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 3) {
                         Text(Language.get("WantedPet_Radar_NoMatches", alter: "لا يتوفر حالياً في المخزون — الرادار نشط"))
-                            .font(Font.custom("Beiruti-Bold", size: 13))
+                            .font(Font.custom("Beiruti-Bold", size: 14))
                             .foregroundStyle(AdminSurface.primaryText)
 
                         Text(Language.get("WantedPets_Card_Subtitle", alter: "سيتم تنبيهك فور إضافة حيوان مطابق في فروع بيور بيتس."))
-                            .font(Font.custom("Beiruti-Regular", size: 11))
+                            .font(Font.custom("Beiruti-Regular", size: 12))
                             .foregroundStyle(AdminSurface.secondaryText)
                     }
                     Spacer()
                 }
-                .padding(12)
+                .padding(14)
                 .background(AdminSurface.cardElevated.opacity(0.6), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
         }
@@ -726,7 +829,7 @@ public struct WantedPetDetailView: View {
                 .background(AdminSurface.hairline)
 
             // Smart Forward Progression Dock (Context-Aware Action Buttons)
-            if pet.status == .waiting {
+            if pet.status == .waiting && canManageRequests {
                 // Primary Action: Mark Contacted
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -744,7 +847,7 @@ public struct WantedPetDetailView: View {
                     .shadow(color: Color(uiColor: .systemBlue).opacity(0.3), radius: 8, y: 3)
                 }
                 .buttonStyle(DossierScaleButtonStyle())
-            } else if pet.status == .contacted {
+            } else if pet.status == .contacted && canManageRequests {
                 HStack(spacing: 10) {
                     // Mark as Interested
                     Button {
@@ -776,7 +879,7 @@ public struct WantedPetDetailView: View {
                     }
                     .buttonStyle(DossierScaleButtonStyle())
                 }
-            } else if pet.status == .interested {
+            } else if pet.status == .interested && canManageRequests {
                 // Primary Action: Fulfill Request Celebration
                 Button {
                     showFulfillSheet = true
@@ -839,17 +942,19 @@ public struct WantedPetDetailView: View {
                             .foregroundStyle(AdminSurface.secondaryText)
                     }
 
-                    Button {
-                        transitionStatus(to: .waiting)
-                    } label: {
-                        Text(Language.get("WantedPet_Action_ReopenPrompt", alter: "إعادة فتح الطلب"))
-                            .font(Font.custom("Beiruti-Bold", size: 13))
-                            .foregroundStyle(AdminSurface.primary)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 6)
-                            .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+                    if canManageRequests {
+                        Button {
+                            transitionStatus(to: .waiting)
+                        } label: {
+                            Text(Language.get("WantedPet_Action_ReopenPrompt", alter: "إعادة فتح الطلب"))
+                                .font(Font.custom("Beiruti-Bold", size: 13))
+                                .foregroundStyle(AdminSurface.primary)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 6)
+                                .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+                        }
+                        .buttonStyle(DossierScaleButtonStyle())
                     }
-                    .buttonStyle(DossierScaleButtonStyle())
                 }
                 .padding(14)
                 .frame(maxWidth: .infinity)
@@ -858,7 +963,7 @@ public struct WantedPetDetailView: View {
             }
 
             // Discreet Secondary Close Option for Active Orders
-            if pet.status.isActive {
+            if pet.status.isActive && canManageRequests {
                 Button {
                     showCloseSheet = true
                 } label: {
@@ -1286,39 +1391,194 @@ public struct WantedPetDetailView: View {
     private func scanStoreRadar(for pet: CustomerWantedPet) {
         guard pet.mainKindId > 0 else { return }
         let targetKindId = pet.mainKindId
+        let targetSubkindId = pet.subkindId
+        let targetSex = pet.sexPreference
         let fallbackTitle = pet.requestedPetTitle
         isScanningRadar = true
 
+        // Strict query on petAccessories filtering only for live pets (accessKindType == 3)
         Firestore.firestore().collection("petAccessories")
-            .whereField("petMainCategoryID", isEqualTo: targetKindId)
-            .limit(to: 12)
-            .getDocuments { snapshot, _ in
-                DispatchQueue.main.async {
+            .whereField("accessKindType", isEqualTo: 3)
+            .getDocuments { snapshot, error in
+                guard let docs = snapshot?.documents, !docs.isEmpty else {
+                    DispatchQueue.main.async {
+                        self.isScanningRadar = false
+                        self.hasScannedRadar = true
+                        self.matchingInventoryPets = []
+                    }
+                    return
+                }
+
+                // Filter docs that match targetKindId and are active/not deleted
+                let matchingCatalogDocs = docs.filter { doc in
+                    let d = doc.data()
+                    let isDeleted = (d["isDeleted"] as? Bool) ?? false
+                    let isBlocked = (d["isBlocked"] as? Bool) ?? false
+                    let active = (d["active"] as? Bool) ?? true
+                    guard !isDeleted, !isBlocked, active else { return false }
+
+                    let mainId = (d["petMainCategoryID"] as? Int) ?? ((d["petMainCategoryID"] as? NSNumber)?.intValue ?? 0)
+                    let mainIds = (d["petMainCategoryIDs"] as? [Int]) ?? ((d["petMainCategoryIDs"] as? [NSNumber])?.map { $0.intValue } ?? [])
+                    return mainId == targetKindId || mainIds.contains(targetKindId)
+                }
+
+                if matchingCatalogDocs.isEmpty {
+                    DispatchQueue.main.async {
+                        self.isScanningRadar = false
+                        self.hasScannedRadar = true
+                        self.matchingInventoryPets = []
+                    }
+                    return
+                }
+
+                let group = DispatchGroup()
+                var collectedMatches: [StoreMatchingPet] = []
+                let lock = NSLock()
+
+                for doc in matchingCatalogDocs {
+                    let d = doc.data()
+                    let docId = doc.documentID
+                    let catalogName = (d["name"] as? String) ?? (d["title"] as? String) ?? fallbackTitle
+                    let catalogPrice = (d["sellingPrice"] as? Double) ?? (d["price"] as? Double)
+                    let catalogImage: String? = {
+                        if let arr = d["imageURLsArray"] as? [String], let first = arr.first, !first.isEmpty {
+                            return first
+                        }
+                        return (d["image"] as? String) ?? (d["imageUrl"] as? String)
+                    }()
+                    let branchId = (d["branchID"] as? String) ?? (d["storeID"] as? String) ?? ""
+                    let branchName: String = {
+                        if !branchId.isEmpty {
+                            return PPBranchContextManager.shared().localizedBranchName(forID: branchId, fallback: "بيور بيتس")
+                        }
+                        return (d["branchName"] as? String) ?? "بيور بيتس"
+                    }()
+                    let catalogSubkindId = (d["petSubCategoryID"] as? Int) ?? ((d["petSubCategoryID"] as? NSNumber)?.intValue ?? 0)
+                    let isBreedMatch = (targetSubkindId != nil && targetSubkindId! > 0 && catalogSubkindId == targetSubkindId!)
+                    let inventoryMode = (d["inventoryMode"] as? String) ?? ""
+
+                    if inventoryMode == "INDIVIDUAL_TRACKED" {
+                        group.enter()
+                        doc.reference.collection("inventoryUnits")
+                            .whereField("status", isEqualTo: "AVAILABLE")
+                            .limit(to: 10)
+                            .getDocuments { unitsSnap, _ in
+                                defer { group.leave() }
+                                let unitDocs = unitsSnap?.documents ?? []
+                                lock.lock()
+                                defer { lock.unlock() }
+
+                                if !unitDocs.isEmpty {
+                                    for uDoc in unitDocs {
+                                        let uData = uDoc.data()
+                                        let ring = (uData["ringTag"] as? String) ?? (uData["tag"] as? String)
+                                        let unitPrice = (uData["sellingPrice"] as? Double) ?? catalogPrice
+                                        let rawGender = ((uData["gender"] as? String) ?? "").uppercased()
+                                        let genderDisplay: String? = {
+                                            switch rawGender {
+                                            case "FEMALE": return Language.get("LivePetUnit_Gender_Female", alter: "أنثى")
+                                            case "MALE": return Language.get("LivePetUnit_Gender_Male", alter: "ذكر")
+                                            case "PAIR": return Language.get("LivePetUnit_Gender_Pair", alter: "زوج")
+                                            default: return nil
+                                            }
+                                        }()
+                                        let isGenderMatch: Bool = {
+                                            switch targetSex {
+                                            case .female: return rawGender == "FEMALE"
+                                            case .male: return rawGender == "MALE"
+                                            case .pair: return rawGender == "PAIR"
+                                            case .any: return true
+                                            }
+                                        }()
+
+                                        var score = 50
+                                        if isBreedMatch { score += 40 }
+                                        if isGenderMatch { score += 20 }
+                                        if let p = unitPrice {
+                                            if let bMax = pet.budgetMax, p <= bMax { score += 10 }
+                                            if let bMin = pet.budgetMin, p < bMin { score -= 10 }
+                                        }
+
+                                        collectedMatches.append(
+                                            StoreMatchingPet(
+                                                id: uDoc.documentID,
+                                                name: catalogName,
+                                                price: unitPrice,
+                                                ringTag: ring,
+                                                branchName: branchName,
+                                                imageUrl: catalogImage,
+                                                gender: genderDisplay,
+                                                isExactBreedMatch: isBreedMatch,
+                                                isGenderMatch: isGenderMatch,
+                                                unitId: uDoc.documentID,
+                                                productId: docId,
+                                                matchScore: score
+                                            )
+                                        )
+                                    }
+                                } else {
+                                    let availableCount = (d["availableUnitPricedCount"] as? Int) ?? (d["quantity"] as? Int) ?? 0
+                                    let noStock = (d["noStock"] as? Bool) ?? false
+                                    if availableCount > 0 && !noStock {
+                                        var score = 40
+                                        if isBreedMatch { score += 40 }
+                                        collectedMatches.append(
+                                            StoreMatchingPet(
+                                                id: docId,
+                                                name: catalogName,
+                                                price: catalogPrice,
+                                                ringTag: nil,
+                                                branchName: branchName,
+                                                imageUrl: catalogImage,
+                                                gender: nil,
+                                                isExactBreedMatch: isBreedMatch,
+                                                isGenderMatch: true,
+                                                unitId: nil,
+                                                productId: docId,
+                                                matchScore: score
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                    } else {
+                        // QUANTITY_TRACKED or legacy
+                        let qty = (d["quantity"] as? Int) ?? 0
+                        let noStock = (d["noStock"] as? Bool) ?? false
+                        if qty > 0 && !noStock {
+                            var score = 40
+                            if isBreedMatch { score += 40 }
+                            lock.lock()
+                            collectedMatches.append(
+                                StoreMatchingPet(
+                                    id: docId,
+                                    name: catalogName,
+                                    price: catalogPrice,
+                                    ringTag: (d["ringTag"] as? String) ?? (d["barcode"] as? String),
+                                    branchName: branchName,
+                                    imageUrl: catalogImage,
+                                    gender: nil,
+                                    isExactBreedMatch: isBreedMatch,
+                                    isGenderMatch: true,
+                                    unitId: nil,
+                                    productId: docId,
+                                    matchScore: score
+                                )
+                            )
+                            lock.unlock()
+                        }
+                    }
+                }
+
+                group.notify(queue: .main) {
                     self.isScanningRadar = false
                     self.hasScannedRadar = true
-                    guard let docs = snapshot?.documents else { return }
-
-                    var results: [StoreMatchingPet] = []
-                    for doc in docs {
-                        let d = doc.data()
-                        let name = (d["name"] as? String) ?? (d["title"] as? String) ?? ""
-                        let price = (d["sellingPrice"] as? Double) ?? (d["price"] as? Double)
-                        let ring = (d["ringTag"] as? String) ?? (d["tag"] as? String) ?? (d["code"] as? String)
-                        let branch = (d["branchName"] as? String) ?? (d["branchId"] as? String)
-                        let image = (d["image"] as? String) ?? (d["imageUrl"] as? String)
-
-                        results.append(
-                            StoreMatchingPet(
-                                id: doc.documentID,
-                                name: name.isEmpty ? fallbackTitle : name,
-                                price: price,
-                                ringTag: ring,
-                                branchName: branch,
-                                imageUrl: image
-                            )
-                        )
+                    self.matchingInventoryPets = collectedMatches.sorted { a, b in
+                        if a.matchScore != b.matchScore {
+                            return a.matchScore > b.matchScore
+                        }
+                        return (a.price ?? 0) < (b.price ?? 0)
                     }
-                    self.matchingInventoryPets = results
                 }
             }
     }
@@ -1326,10 +1586,27 @@ public struct WantedPetDetailView: View {
     private func notifyCustomerWithMatch(pet: CustomerWantedPet, match: StoreMatchingPet) {
         let rawNumber = pet.normalizedPhoneNumber.isEmpty ? pet.phoneNumber : pet.normalizedPhoneNumber
         let digits = rawNumber.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
+
+        var details: [String] = []
+        if let ring = match.ringTag, !ring.isEmpty {
+            details.append(String(format: Language.get("WantedPets_WhatsApp_Detail_Ring", alter: "رقم التعريف: #%@"), ring))
+        }
+        if let g = match.gender, !g.isEmpty {
+            details.append(String(format: Language.get("WantedPets_WhatsApp_Detail_Gender", alter: "الجنس: %@"), g))
+        }
+        if let p = match.price, p > 0 {
+            details.append(String(format: Language.get("WantedPets_WhatsApp_Detail_Price", alter: "السعر: %.0f %@"), p, Language.isRTL() ? "ر.ق" : "QAR"))
+        }
+        if let branch = match.branchName, !branch.isEmpty {
+            details.append(String(format: Language.get("WantedPets_WhatsApp_Detail_Branch", alter: "الفرع: %@"), branch))
+        }
+        let detailString = details.isEmpty ? "" : " (" + details.joined(separator: " • ") + ")"
+
         let template = String(
-            format: Language.get("WantedPets_WhatsApp_CheckIn_Template", alter: "مرحباً %@، نتواصل معك من بيور بيتس بخصوص طلبك لـ %@. هل لا يزال طلبك قائماً؟"),
+            format: Language.get("WantedPets_WhatsApp_MatchFound_Template", alter: "مرحباً %@، يسعدنا إبلاغك بتوفر حيوان مطابق لطلبك في بيور بيتس: %@%@. هل ترغب بحجزه لك؟"),
             pet.customerName,
-            match.name
+            match.name,
+            detailString
         )
         var components = URLComponents()
         components.scheme = "https"
@@ -1343,13 +1620,19 @@ public struct WantedPetDetailView: View {
         UIApplication.shared.open(url) { opened in
             if opened && pet.status == .waiting {
                 DispatchQueue.main.async {
-                    self.showAutoMarkContactedPrompt = true
+                    if self.canManageRequests {
+                        self.showAutoMarkContactedPrompt = true
+                    }
                 }
             }
         }
     }
 
     private func transitionStatus(to status: WantedPetStatus, channel: String? = nil) {
+        guard canManageRequests else {
+            errorMessage = Language.get("WantedPets_View_Only", alter: "تعديل الطلبات يتطلب صلاحية إدارة المخزون")
+            return
+        }
         Task {
             do {
                 try await service.transitionStatus(id: wantedPetId, targetStatus: status, contactChannel: channel)
@@ -1367,6 +1650,10 @@ public struct WantedPetDetailView: View {
     }
 
     private func confirmCloseRequest(reason: String) {
+        guard canManageRequests else {
+            errorMessage = Language.get("WantedPets_View_Only", alter: "تعديل الطلبات يتطلب صلاحية إدارة المخزون")
+            return
+        }
         Task {
             do {
                 try await service.transitionStatus(id: wantedPetId, targetStatus: .closed, closeReason: reason)
@@ -1384,6 +1671,10 @@ public struct WantedPetDetailView: View {
     }
 
     private func confirmFulfillRequest(petId: String) {
+        guard canManageRequests else {
+            errorMessage = Language.get("WantedPets_View_Only", alter: "تعديل الطلبات يتطلب صلاحية إدارة المخزون")
+            return
+        }
         Task {
             do {
                 try await service.transitionStatus(id: wantedPetId, targetStatus: .fulfilled, fulfilledPetId: petId.isEmpty ? nil : petId)
@@ -1420,7 +1711,9 @@ public struct WantedPetDetailView: View {
         UIApplication.shared.open(url) { opened in
             if opened && pet.status == .waiting {
                 DispatchQueue.main.async {
-                    self.showAutoMarkContactedPrompt = true
+                    if self.canManageRequests {
+                        self.showAutoMarkContactedPrompt = true
+                    }
                 }
             }
         }
@@ -1480,21 +1773,7 @@ public struct WantedPetDetailView: View {
     }
 
     private func iconForKind(_ name: String) -> String {
-        let lower = name.lowercased()
-        if lower.contains("قط") || lower.contains("cat") {
-            return "cat.fill"
-        } else if lower.contains("كلب") || lower.contains("كلاب") || lower.contains("dog") {
-            return "dog.fill"
-        } else if lower.contains("طير") || lower.contains("طيور") || lower.contains("bird") {
-            return "bird.fill"
-        } else if lower.contains("سمك") || lower.contains("أسماك") || lower.contains("fish") {
-            return "fish.fill"
-        } else if lower.contains("أرنب") || lower.contains("rabbit") || lower.contains("hamster") {
-            return "hare.fill"
-        } else if lower.contains("زواحف") || lower.contains("reptile") {
-            return "lizard.fill"
-        }
-        return "pawprint.fill"
+        return MainKindVisuals.symbol(for: item?.mainKindId ?? 0, name: name)
     }
 
     private func freshnessColor(for date: Date) -> Color {
@@ -1536,6 +1815,40 @@ public struct StoreMatchingPet: Identifiable, Hashable, Sendable {
     public let ringTag: String?
     public let branchName: String?
     public let imageUrl: String?
+    public let gender: String?
+    public let isExactBreedMatch: Bool
+    public let isGenderMatch: Bool
+    public let unitId: String?
+    public let productId: String
+    public let matchScore: Int
+
+    public init(
+        id: String,
+        name: String,
+        price: Double? = nil,
+        ringTag: String? = nil,
+        branchName: String? = nil,
+        imageUrl: String? = nil,
+        gender: String? = nil,
+        isExactBreedMatch: Bool = false,
+        isGenderMatch: Bool = false,
+        unitId: String? = nil,
+        productId: String = "",
+        matchScore: Int = 0
+    ) {
+        self.id = id
+        self.name = name
+        self.price = price
+        self.ringTag = ringTag
+        self.branchName = branchName
+        self.imageUrl = imageUrl
+        self.gender = gender
+        self.isExactBreedMatch = isExactBreedMatch
+        self.isGenderMatch = isGenderMatch
+        self.unitId = unitId
+        self.productId = productId
+        self.matchScore = matchScore
+    }
 }
 
 // MARK: - Tactile Scale Button Style

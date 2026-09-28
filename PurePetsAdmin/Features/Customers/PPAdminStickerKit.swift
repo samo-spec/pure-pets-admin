@@ -524,27 +524,16 @@ private struct PPAdminStickerPickerItem: View {
                             .stroke(AdminSurface.hairline, lineWidth: 0.5)
                     )
 
-                if let url = URL(string: sticker.downloadURLString) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFit()
-                                .padding(AdminSpacing.sm)
-                        case .failure:
-                            Image(systemName: "photo")
-                                .font(.system(size: 20, weight: .semibold))
-                                .foregroundColor(AdminSurface.secondaryText)
-                        case .empty:
-                            ProgressView()
-                                .scaleEffect(0.8)
-                                .tint(AdminSurface.primary)
-                        @unknown default:
-                            EmptyView()
-                        }
-                    }
+                AdminRemoteImage(
+                    urlString: sticker.downloadURLString,
+                    contentMode: .fit,
+                    targetSize: CGSize(width: 80, height: 80)
+                ) {
+                    Image(systemName: "photo")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(AdminSurface.secondaryText)
                 }
+                .padding(AdminSpacing.sm)
             }
             .aspectRatio(1.0, contentMode: .fit)
             .contentShape(RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous))

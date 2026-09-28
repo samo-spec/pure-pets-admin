@@ -7,6 +7,7 @@ import AudioToolbox
 
 /// The only remote-image pipeline used by the Admin app. Its named Kingfisher cache
 /// persists catalog, POS, banner, and profile media on disk for subsequent screens.
+@MainActor
 enum AdminRemoteImageCache {
     static let cache: ImageCache = {
         let cache = ImageCache(name: "com.pb.purepets.admin.remote-images")
@@ -16,10 +17,41 @@ enum AdminRemoteImageCache {
         return cache
     }()
 
-    static let options: KingfisherOptionsInfo = [
-        .targetCache(cache),
-        .cacheOriginalImage
-    ]
+    static var options: KingfisherOptionsInfo {
+        [
+            .targetCache(cache),
+            .cacheOriginalImage,
+            .transition(.fade(0.20)),
+            .scaleFactor(UIScreen.main.scale),
+            .keepCurrentImageWhileLoading,
+            .backgroundDecode
+        ]
+    }
+
+    /// Sanitizes any string or URL candidate into a valid, percent-encoded URL.
+    /// Safely handles whitespace trimming, unicode/Arabic characters, and pre-existing URLs.
+    static func sanitizeURL(from raw: Any?) -> URL? {
+        guard let raw else { return nil }
+        if let url = raw as? URL {
+            return sanitizeURL(from: url.absoluteString)
+        }
+        guard let rawString = raw as? String else { return nil }
+        let trimmed = rawString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        // Fast path: already a valid URL with scheme
+        if let direct = URL(string: trimmed), direct.scheme != nil {
+            return direct
+        }
+
+        // Percent-encode if string contains unencoded spaces or characters
+        if let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.union(.urlPathAllowed)),
+           let url = URL(string: encoded), url.scheme != nil {
+            return url
+        }
+
+        return nil
+    }
 }
 
 /// Shared, cache-backed SwiftUI remote image view. Every Admin SwiftUI screen uses
@@ -37,7 +69,19 @@ struct AdminRemoteImage<Placeholder: View>: View {
         targetSize: CGSize? = nil,
         @ViewBuilder placeholder: () -> Placeholder
     ) {
-        self.url = url
+        self.url = AdminRemoteImageCache.sanitizeURL(from: url)
+        self.contentMode = contentMode
+        self.targetSize = targetSize
+        self.placeholder = placeholder()
+    }
+
+    init(
+        urlString: String?,
+        contentMode: SwiftUI.ContentMode = .fill,
+        targetSize: CGSize? = nil,
+        @ViewBuilder placeholder: () -> Placeholder
+    ) {
+        self.url = AdminRemoteImageCache.sanitizeURL(from: urlString)
         self.contentMode = contentMode
         self.targetSize = targetSize
         self.placeholder = placeholder()
@@ -46,25 +90,69 @@ struct AdminRemoteImage<Placeholder: View>: View {
     var body: some View {
         Group {
             if let url {
+                let scale = UIScreen.main.scale
                 if let targetSize {
+                    let pixelSize = CGSize(width: max(targetSize.width * scale, 1), height: max(targetSize.height * scale, 1))
                     KFImage(url)
                         .placeholder { placeholder }
                         .targetCache(AdminRemoteImageCache.cache)
-                        .setProcessor(DownsamplingImageProcessor(size: targetSize))
+                        .setProcessor(DownsamplingImageProcessor(size: pixelSize))
+                        .scaleFactor(scale)
                         .cacheOriginalImage()
+                        .cancelOnDisappear(true)
+                        .fade(duration: 0.20)
                         .resizable()
                         .aspectRatio(contentMode: contentMode)
                 } else {
                     KFImage(url)
                         .placeholder { placeholder }
                         .targetCache(AdminRemoteImageCache.cache)
+                        .scaleFactor(scale)
                         .cacheOriginalImage()
+                        .cancelOnDisappear(true)
+                        .fade(duration: 0.20)
                         .resizable()
                         .aspectRatio(contentMode: contentMode)
                 }
             } else {
                 placeholder
             }
+        }
+    }
+}
+
+extension AdminRemoteImage where Placeholder == AnyView {
+    init(
+        url: URL?,
+        contentMode: SwiftUI.ContentMode = .fill,
+        targetSize: CGSize? = nil
+    ) {
+        self.init(url: url, contentMode: contentMode, targetSize: targetSize) {
+            AnyView(
+                Color(.systemGray6)
+                    .overlay(
+                        Image(systemName: "photo")
+                            .font(.system(size: 16, weight: .regular))
+                            .foregroundColor(Color(.tertiaryLabel))
+                    )
+            )
+        }
+    }
+
+    init(
+        urlString: String?,
+        contentMode: SwiftUI.ContentMode = .fill,
+        targetSize: CGSize? = nil
+    ) {
+        self.init(urlString: urlString, contentMode: contentMode, targetSize: targetSize) {
+            AnyView(
+                Color(.systemGray6)
+                    .overlay(
+                        Image(systemName: "photo")
+                            .font(.system(size: 16, weight: .regular))
+                            .foregroundColor(Color(.tertiaryLabel))
+                    )
+            )
         }
     }
 }
@@ -85,7 +173,7 @@ final class PPAdminImageLoader: NSObject {
         placeholder: UIImage?,
         completion: ((UIImage?) -> Void)?
     ) {
-        guard let urlString, let url = URL(string: urlString) else {
+        guard let url = AdminRemoteImageCache.sanitizeURL(from: urlString) else {
             imageView.image = placeholder
             completion?(placeholder)
             return
@@ -111,7 +199,7 @@ final class PPAdminImageLoader: NSObject {
         urlString: String?,
         completion: @escaping (UIImage?, NSError?, Bool) -> Void
     ) {
-        guard let urlString, let url = URL(string: urlString) else {
+        guard let url = AdminRemoteImageCache.sanitizeURL(from: urlString) else {
             completion(nil, NSError(domain: "PPAdminImageLoader", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid image URL"]), false)
             return
         }
@@ -134,8 +222,8 @@ final class PPAdminImageLoader: NSObject {
 
     @objc(cachedImageForURLString:)
     class func cachedImage(urlString: String?) -> UIImage? {
-        guard let urlString else { return nil }
-        return AdminRemoteImageCache.cache.retrieveImageInMemoryCache(forKey: urlString)
+        guard let url = AdminRemoteImageCache.sanitizeURL(from: urlString) else { return nil }
+        return AdminRemoteImageCache.cache.retrieveImageInMemoryCache(forKey: url.absoluteString)
     }
 
     @objc(removeImageForCacheKey:completion:)
@@ -360,6 +448,7 @@ public struct PPLottieFirebaseView: UIViewRepresentable {
         let container = UIView(frame: .zero)
         container.backgroundColor = .clear
         container.isOpaque = false
+        container.isUserInteractionEnabled = false
 
         let animationView = LOTAnimationView()
         animationView.translatesAutoresizingMaskIntoConstraints = false
@@ -367,6 +456,7 @@ public struct PPLottieFirebaseView: UIViewRepresentable {
         animationView.loopAnimation = loop
         animationView.backgroundColor = .clear
         animationView.isOpaque = false
+        animationView.isUserInteractionEnabled = false
 
         container.addSubview(animationView)
         NSLayoutConstraint.activate([

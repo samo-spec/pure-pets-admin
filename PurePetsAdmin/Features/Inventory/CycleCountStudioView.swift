@@ -868,19 +868,13 @@ public struct CycleCountStudioView: View {
                         .fill(AdminSurface.cardElevated)
                         .frame(width: 66, height: 66)
 
-                    if let url = imageURL {
-                        AsyncImage(url: url) { img in
-                            img.resizable().aspectRatio(contentMode: .fill)
-                        } placeholder: {
-                            ProgressView().scaleEffect(0.7)
-                        }
-                        .frame(width: 66, height: 66)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    } else {
+                    AdminRemoteImage(url: imageURL, contentMode: .fill, targetSize: CGSize(width: 66, height: 66)) {
                         Image(systemName: "cube.box.fill")
                             .font(.system(size: 26))
                             .foregroundColor(AdminSurface.secondaryText.opacity(0.5))
                     }
+                    .frame(width: 66, height: 66)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -1075,19 +1069,13 @@ public struct CycleCountStudioView: View {
                         .fill(AdminSurface.cardElevated)
                         .frame(width: 72, height: 72)
 
-                    if let url = imageURL {
-                        AsyncImage(url: url) { img in
-                            img.resizable().aspectRatio(contentMode: .fill)
-                        } placeholder: {
-                            ProgressView().scaleEffect(0.8)
-                        }
-                        .frame(width: 72, height: 72)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    } else {
+                    AdminRemoteImage(url: imageURL, contentMode: .fill, targetSize: CGSize(width: 72, height: 72)) {
                         Image(systemName: "cube.box.fill")
                             .font(.system(size: 30))
                             .foregroundColor(AdminSurface.secondaryText.opacity(0.5))
                     }
+                    .frame(width: 72, height: 72)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -1353,19 +1341,13 @@ public struct CycleCountStudioView: View {
                         .fill(AdminSurface.cardElevated)
                         .frame(width: 52, height: 52)
 
-                    if let url = imageURL {
-                        AsyncImage(url: url) { img in
-                            img.resizable().aspectRatio(contentMode: .fill)
-                        } placeholder: {
-                            ProgressView().scaleEffect(0.7)
-                        }
-                        .frame(width: 52, height: 52)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    } else {
+                    AdminRemoteImage(url: imageURL, contentMode: .fill, targetSize: CGSize(width: 52, height: 52)) {
                         Image(systemName: "cube.box.fill")
                             .font(.system(size: 20))
                             .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
                     }
+                    .frame(width: 52, height: 52)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -1649,19 +1631,13 @@ public struct CycleCountStudioView: View {
                                     .fill(AdminSurface.cardElevated)
                                     .frame(width: 76, height: 76)
 
-                                if let url = imageURL {
-                                    AsyncImage(url: url) { img in
-                                        img.resizable().aspectRatio(contentMode: .fill)
-                                    } placeholder: {
-                                        ProgressView().scaleEffect(0.8)
-                                    }
-                                    .frame(width: 76, height: 76)
-                                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                } else {
+                                AdminRemoteImage(url: imageURL, contentMode: .fill, targetSize: CGSize(width: 76, height: 76)) {
                                     Image(systemName: "cube.box.fill")
                                         .font(.system(size: 32))
                                         .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
                                 }
+                                .frame(width: 76, height: 76)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                             }
                             .overlay(
                                 RoundedRectangle(cornerRadius: 14, style: .continuous)

@@ -71,6 +71,14 @@ public struct WantedPetCategoryGroup: Identifiable, Hashable {
         let waitingItems = items.filter { $0.status == .waiting }.sorted { $0.createdAt < $1.createdAt }
         return waitingItems.first?.waitingDurationText
     }
+
+    public var accentColor: Color {
+        MainKindVisuals.color(for: mainKindId, name: displayName)
+    }
+
+    public var petSymbol: String {
+        MainKindVisuals.symbol(for: mainKindId, name: displayName)
+    }
 }
 
 // MARK: - Service Implementation

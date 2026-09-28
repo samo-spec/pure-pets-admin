@@ -362,14 +362,14 @@ struct PPInventoryFamilyRow: View {
             // The hero follows the selected color while expanded and returns to
             // the default marketplace member when the family is collapsed.
             if !isExpanded || !dynamicTypeSize.isAccessibilitySize {
-                AsyncImage(url: PetAccessory.firstImageURL(for: heroMember)) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().aspectRatio(contentMode: .fill)
-                    case .failure:
+                AdminRemoteImage(
+                    url: PetAccessory.firstImageURL(for: heroMember),
+                    contentMode: .fill,
+                    targetSize: CGSize(width: 56, height: 56)
+                ) {
+                    ZStack {
+                        Color(.systemGray6)
                         Image(systemName: "photo").foregroundStyle(AdminCommandInk.tertiary)
-                    default:
-                        ProgressView()
                     }
                 }
                 .frame(width: 56, height: 56)

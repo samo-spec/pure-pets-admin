@@ -29,7 +29,13 @@ public struct WaitingCustomersView: View {
     @State private var showDetailId: String? = nil
     @State private var showAddCustomerSheet: Bool = false
     @State private var feedbackNotice: String? = nil
+    @State private var actionError: String? = nil
     @State private var copiedId: String? = nil
+
+    private var canManageRequests: Bool {
+        guard let staff = PPStaffAuth.shared().cachedCurrentStaff else { return false }
+        return staff.isActive() && staff.hasPermission("stock.manage")
+    }
 
     private enum WaitingFilter: Hashable {
         case all
@@ -81,36 +87,43 @@ public struct WaitingCustomersView: View {
             }
 
             // 3. Floating Batch Action Island (When multi-selection active)
-            if isSelectionMode && !selectedIds.isEmpty {
+            if canManageRequests && isSelectionMode && !selectedIds.isEmpty {
                 batchActionBar
             }
         }
         .navigationTitle(String(format: Language.get("WaitingFor_Pet_Title", alter: "المنتظرون: %@"), petTitle))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    showAddCustomerSheet = true
-                } label: {
-                    Image(systemName: "person.badge.plus")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(AdminSurface.primary)
-                }
-                .accessibilityLabel(Language.get("WantedPets_Add_Title", alter: "إضافة طلب عميل"))
+            ToolbarItem(placement: .principal) {
+                Text(String(format: Language.get("WaitingFor_Pet_Title", alter: "المنتظرون: %@"), petTitle))
+                    .font(Font.custom("Beiruti-Bold", size: 18))
+                    .foregroundStyle(AdminSurface.primaryText)
             }
-
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(isSelectionMode ? Language.get("WantedPets_Selection_Done", alter: "تم") : Language.get("Select", alter: "تحديد")) {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) {
-                        isSelectionMode.toggle()
-                        if !isSelectionMode {
-                            selectedIds.removeAll()
+                if canManageRequests {
+                    HStack(spacing: 8) {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            showAddCustomerSheet = true
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 16, weight: .bold))
+                                .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
                         }
+                        .accessibilityLabel(Language.get("WantedPets_Add_Title", alter: "إضافة طلب عميل"))
+
+                        Button(isSelectionMode ? Language.get("WantedPets_Selection_Done", alter: "تم") : Language.get("Select", alter: "تحديد")) {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) {
+                                isSelectionMode.toggle()
+                                if !isSelectionMode {
+                                    selectedIds.removeAll()
+                                }
+                            }
+                        }
+                        .font(Font.custom("Beiruti-Bold", size: 15))
+                        .foregroundStyle(AdminSurface.primary)
                     }
                 }
-                .font(Font.custom("Beiruti-Bold", size: 15))
-                .foregroundStyle(AdminSurface.primary)
             }
         }
         .sheet(isPresented: $showAddCustomerSheet) {
@@ -153,6 +166,15 @@ public struct WaitingCustomersView: View {
                 }
             }
         }
+        .alert(Language.get("WantedPets_Action_Error_Title", alter: "تعذّر تنفيذ الإجراء"),
+               isPresented: Binding(get: { actionError != nil },
+                                    set: { if !$0 { actionError = nil } })) {
+            Button(Language.get("WantedPets_Dismiss_Error", alter: "حسنًا"), role: .cancel) {
+                actionError = nil
+            }
+        } message: {
+            Text(actionError ?? "")
+        }
     }
 
     // MARK: - 1. Hero Pet Demand Island
@@ -160,26 +182,28 @@ public struct WaitingCustomersView: View {
     private var heroPetHeaderCard: some View {
         let categoryName = MainKindsModel.kindName(forID: mainKindId)
         let totalCount = customers.count
+        let accentColor = MainKindVisuals.color(for: mainKindId, name: petTitle)
+        let petSymbol = MainKindVisuals.symbol(for: mainKindId, name: petTitle)
 
         return VStack(spacing: 12) {
             HStack(alignment: .center, spacing: 14) {
-                // Pet Avatar/Icon with subtle glow
+                // Pet Avatar/Icon with subtle glow & authentic species accent
                 ZStack {
                     Circle()
                         .fill(
                             LinearGradient(
-                                colors: [AdminSurface.primary.opacity(0.18), AdminSurface.primary.opacity(0.06)],
+                                colors: [accentColor.opacity(0.20), accentColor.opacity(0.06)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
                         )
-                    Image(systemName: "pawprint.fill")
+                    Image(systemName: petSymbol)
                         .font(.system(size: 22, weight: .bold))
-                        .foregroundStyle(AdminSurface.primary)
+                        .foregroundStyle(accentColor)
                 }
                 .frame(width: 50, height: 50)
                 .overlay(
-                    Circle().strokeBorder(AdminSurface.primary.opacity(0.25), lineWidth: 1)
+                    Circle().strokeBorder(accentColor.opacity(0.28), lineWidth: 1)
                 )
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -195,7 +219,7 @@ public struct WaitingCustomersView: View {
                         }
                         Text(Language.get("WantedPets_DemandHeader_Species", alter: "طلب عملاء مخصص"))
                             .font(Font.custom("Beiruti-Medium", size: 12))
-                            .foregroundStyle(AdminSurface.primary)
+                            .foregroundStyle(accentColor)
                     }
 
                     // Pet Breed Title
@@ -470,68 +494,101 @@ public struct WaitingCustomersView: View {
                 HStack(spacing: 8) {
                     // WhatsApp Action
                     Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         openWhatsApp(item)
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "message.fill")
-                                .font(.system(size: 13))
+                                .font(.system(size: 13, weight: .bold))
                             Text(Language.get("WhatsApp", alter: "واتساب"))
-                                .font(Font.custom("Beiruti-Bold", size: 13))
+                                .font(Font.custom("Beiruti-Bold", size: 14))
                         }
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, minHeight: 38)
-                        .background(Color(uiColor: .ppSuccess), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .background(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.16, green: 0.78, blue: 0.40),
+                                    Color(red: 0.11, green: 0.69, blue: 0.34)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        )
+                        .shadow(color: Color(red: 0.13, green: 0.74, blue: 0.36).opacity(0.24), radius: 4, y: 2)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(WaitingTactileButtonStyle())
 
                     // Phone Call Action
                     Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         callPhone(item.phoneNumber)
                     } label: {
                         Image(systemName: "phone.fill")
-                            .font(.system(size: 13))
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .frame(width: 42, height: 38)
-                            .background(AdminSurface.cardElevated, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(Color(uiColor: .systemBlue))
+                            .frame(width: 44, height: 38)
+                            .background(
+                                Color(uiColor: .systemBlue).opacity(0.10),
+                                in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .systemBlue).opacity(0.22), lineWidth: 1)
+                            )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(WaitingTactileButtonStyle())
 
                     // Quick Status Action (Mark Contacted / Interested)
                     if item.status == .waiting {
                         Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             markSingleContacted(item)
                         } label: {
                             HStack(spacing: 5) {
-                                Image(systemName: "phone.bubble.left.fill")
-                                    .font(.system(size: 11))
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 11, weight: .bold))
                                 Text(Language.get("WantedPet_Action_MarkContacted_Short", alter: "تم التواصل"))
                                     .font(Font.custom("Beiruti-Bold", size: 13))
                             }
                             .foregroundStyle(Color(uiColor: .systemBlue))
                             .padding(.horizontal, 10)
                             .frame(minHeight: 38)
-                            .background(Color(uiColor: .systemBlue).opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color(uiColor: .systemBlue).opacity(0.25), lineWidth: 0.75))
+                            .background(
+                                Color(uiColor: .systemBlue).opacity(0.09),
+                                in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .systemBlue).opacity(0.22), lineWidth: 1)
+                            )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(WaitingTactileButtonStyle())
                     } else if item.status == .contacted {
                         Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             markSingleInterested(item)
                         } label: {
                             HStack(spacing: 5) {
                                 Image(systemName: "star.fill")
-                                    .font(.system(size: 11))
+                                    .font(.system(size: 11, weight: .bold))
                                 Text(Language.get("WantedPet_Status_Interested", alter: "مهتم"))
                                     .font(Font.custom("Beiruti-Bold", size: 13))
                             }
                             .foregroundStyle(Color(uiColor: .systemPurple))
                             .padding(.horizontal, 10)
                             .frame(minHeight: 38)
-                            .background(Color(uiColor: .systemPurple).opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color(uiColor: .systemPurple).opacity(0.25), lineWidth: 0.75))
+                            .background(
+                                Color(uiColor: .systemPurple).opacity(0.09),
+                                in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .systemPurple).opacity(0.22), lineWidth: 1)
+                            )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(WaitingTactileButtonStyle())
                     } else {
                         // Current status badge
                         HStack(spacing: 4) {
@@ -542,7 +599,7 @@ public struct WaitingCustomersView: View {
                         }
                         .padding(.horizontal, 10)
                         .frame(minHeight: 38)
-                        .background(item.status.tintColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .background(item.status.tintColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
                     }
                 }
             }
@@ -895,19 +952,27 @@ public struct WaitingCustomersView: View {
     }
 
     private func markSingleContacted(_ item: CustomerWantedPet) {
+        guard canManageRequests else {
+            actionError = Language.get("WantedPets_View_Only", alter: "تعديل الطلبات يتطلب صلاحية إدارة المخزون")
+            return
+        }
         Task {
             do {
-                try await service.transitionStatus(id: item.id, targetStatus: .contacted, contactChannel: "whatsapp")
+                try await service.transitionStatus(id: item.id, targetStatus: .contacted)
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 feedbackNotice = Language.get("WantedPet_Contacted_Success", alter: "تم تحديث حالة العميل كـ تم التواصل")
                 loadCustomers()
             } catch {
-                // error handling
+                actionError = error.localizedDescription
             }
         }
     }
 
     private func markSingleInterested(_ item: CustomerWantedPet) {
+        guard canManageRequests else {
+            actionError = Language.get("WantedPets_View_Only", alter: "تعديل الطلبات يتطلب صلاحية إدارة المخزون")
+            return
+        }
         Task {
             do {
                 try await service.transitionStatus(id: item.id, targetStatus: .interested)
@@ -915,7 +980,7 @@ public struct WaitingCustomersView: View {
                 feedbackNotice = Language.get("WantedPet_Interested_Success", alter: "تم تحديد العميل كـ مهتم")
                 loadCustomers()
             } catch {
-                // error handling
+                actionError = error.localizedDescription
             }
         }
     }
@@ -937,23 +1002,29 @@ public struct WaitingCustomersView: View {
     }
 
     private func executeBatchContact() {
+        guard canManageRequests else {
+            actionError = Language.get("WantedPets_View_Only", alter: "تعديل الطلبات يتطلب صلاحية إدارة المخزون")
+            return
+        }
+        guard !isBatchContacting else { return }
         isBatchContacting = true
         let idsToUpdate = Array(selectedIds)
 
         Task {
             do {
-                _ = try await service.batchMarkContacted(ids: idsToUpdate, channel: "whatsapp")
+                let updatedCount = try await service.batchMarkContacted(ids: idsToUpdate, channel: "whatsapp")
                 await MainActor.run {
                     self.isBatchContacting = false
                     self.isSelectionMode = false
                     self.selectedIds.removeAll()
-                    self.feedbackNotice = String(format: Language.get("WantedPets_BatchContacted_Success", alter: "تم تحديث %d عملاء كـ تم التواصل"), idsToUpdate.count)
+                    self.feedbackNotice = String(format: Language.get("WantedPets_BatchContacted_Success", alter: "تم تحديث حالة %d من العملاء إلى تم التواصل"), updatedCount)
                     self.loadCustomers()
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 }
             } catch {
                 await MainActor.run {
                     self.isBatchContacting = false
+                    self.actionError = error.localizedDescription
                 }
             }
         }
@@ -979,5 +1050,16 @@ public struct WaitingCustomersView: View {
         let clean = phoneNumber.replacingOccurrences(of: "[^0-9+]", with: "", options: .regularExpression)
         guard let url = URL(string: "tel://\(clean)") else { return }
         UIApplication.shared.open(url)
+    }
+}
+
+private struct WaitingTactileButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1.0)
+            .opacity(configuration.isPressed ? 0.88 : 1.0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: configuration.isPressed)
     }
 }

@@ -644,7 +644,10 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
 
 - (void)scene:(UIScene *)scene openURLContexts:(NSSet<UIOpenURLContext *> *)URLContexts {
     UIOpenURLContext *context = URLContexts.anyObject;
-    if (context) {
+    if (context.URL) {
+        if ([[FIRAuth auth] canHandleURL:context.URL]) {
+            return;
+        }
         [GIDSignIn.sharedInstance handleURL:context.URL];
     }
 }

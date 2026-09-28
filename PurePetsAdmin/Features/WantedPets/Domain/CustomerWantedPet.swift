@@ -474,6 +474,14 @@ public struct CustomerWantedPet: Identifiable, Hashable, Sendable {
 
         return parts.isEmpty ? Language.get("WantedPet_AnySpecimen", alter: "أي مواصفات") : parts.joined(separator: " · ")
     }
+
+    public var kindAccentColor: Color {
+        MainKindVisuals.color(for: mainKindId, name: requestedPetTitle)
+    }
+
+    public var kindPetSymbol: String {
+        MainKindVisuals.symbol(for: mainKindId, name: requestedPetTitle)
+    }
 }
 
 // MARK: - Match Result
@@ -488,5 +496,210 @@ public struct WantedPetMatchResult: Identifiable, Hashable {
         self.wantedPet = wantedPet
         self.matchLevel = matchLevel
         self.matchReason = matchReason
+    }
+}
+
+// MARK: - MainKind Visual Identity & Pet Symbols
+
+public enum MainKindVisuals {
+    /// Safe hex parsing to SwiftUI Color
+    public static func colorFromHex(_ hex: String) -> Color? {
+        var clean = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.hasPrefix("#") { clean.removeFirst() }
+        guard clean.count == 6, let rgb = UInt64(clean, radix: 16) else { return nil }
+        let r = Double((rgb >> 16) & 0xFF) / 255.0
+        let g = Double((rgb >> 8) & 0xFF) / 255.0
+        let b = Double(rgb & 0xFF) / 255.0
+        return Color(red: r, green: g, blue: b)
+    }
+
+    /// Resolves the SF Symbol for a pet species based on its MainKind ID and/or name.
+    public static func symbol(for mainKindId: Int, name: String? = nil) -> String {
+        let text = "\(name ?? "")".lowercased()
+
+        // 1. Dogs (ID 6)
+        if mainKindId == 6 ||
+           text.contains("كلب") || text.contains("كلاب") || text.contains("جرو") ||
+           text.contains("جولدن") || text.contains("هاسكي") || text.contains("بيتبول") ||
+           text.contains("جيرمن") || text.contains("روتويلر") || text.contains("بولدوج") ||
+           text.contains("دوبرمان") || text.contains("تشيواوا") || text.contains("dog") ||
+           text.contains("golden") || text.contains("retriever") || text.contains("husky") ||
+           text.contains("puppy") || text.contains("canine") {
+            return "dog.fill"
+        }
+
+        // 2. Cats (ID 5)
+        if mainKindId == 5 ||
+           text.contains("قط") || text.contains("قطط") || text.contains("بسة") ||
+           text.contains("شيرازي") || text.contains("سيامي") || text.contains("هيمالايا") ||
+           text.contains("سكوتش") || text.contains("بريطاني") || text.contains("cat") ||
+           text.contains("kitten") || text.contains("siamese") || text.contains("persian") ||
+           text.contains("feline") {
+            return "cat.fill"
+        }
+
+        // 3. Birds & Parrots (ID 1)
+        if mainKindId == 1 ||
+           text.contains("طير") || text.contains("طيور") || text.contains("طائر") ||
+           text.contains("ببغاء") || text.contains("كناري") || text.contains("بلبل") ||
+           text.contains("كروان") || text.contains("كوكوتيل") || text.contains("بادجي") ||
+           text.contains("كنيور") || text.contains("حمام") || text.contains("عصفور") ||
+           text.contains("bird") || text.contains("parrot") || text.contains("canary") ||
+           text.contains("cockatiel") || text.contains("avian") {
+            return "bird.fill"
+        }
+
+        // 4. Falcons (ID 11)
+        if mainKindId == 11 || text.contains("صقر") || text.contains("صقور") || text.contains("شاهين") || text.contains("falcon") {
+            return "bird.fill"
+        }
+
+        // 5. Fish (ID 7)
+        if mainKindId == 7 ||
+           text.contains("سمك") || text.contains("أسماك") || text.contains("اسماك") ||
+           text.contains("حوض") || text.contains("أحواض") || text.contains("فايتر") ||
+           text.contains("جوبي") || text.contains("fish") || text.contains("aquarium") {
+            return "fish.fill"
+        }
+
+        // 6. Rabbits & Rodents / Hamsters (ID 8, 12, 13)
+        if mainKindId == 8 || mainKindId == 12 || mainKindId == 13 ||
+           text.contains("أرنب") || text.contains("ارنب") || text.contains("أرانب") ||
+           text.contains("ارانب") || text.contains("قوارض") || text.contains("هامستر") ||
+           text.contains("همستر") || text.contains("خنزير غينيا") || text.contains("وبر") ||
+           text.contains("rabbit") || text.contains("hare") || text.contains("bunny") ||
+           text.contains("hamster") || text.contains("rodent") {
+            return "hare.fill"
+        }
+
+        // 7. Horses (ID 3)
+        if mainKindId == 3 ||
+           text.contains("خيل") || text.contains("خيول") || text.contains("حصان") ||
+           text.contains("أفراس") || text.contains("فرس") || text.contains("مهور") ||
+           text.contains("horse") || text.contains("equestrian") {
+            return "figure.equestrian.sports"
+        }
+
+        // 8. Turtles & Reptiles
+        if text.contains("سلحفاة") || text.contains("سلحفاه") || text.contains("سلاحف") ||
+           text.contains("زواحف") || text.contains("turtle") || text.contains("tortoise") ||
+           text.contains("reptile") {
+            return "tortoise.fill"
+        }
+
+        // 9. Camels (ID 2), Sheep (ID 4), Monkeys (ID 9), Gazelles (ID 10), Marsupials (ID 14)
+        let resolvedModel: MainKindsModel? = MainKindsModel.mainKindModel(forID: mainKindId)
+        if let model = resolvedModel {
+            let symbol = model.petSFSymbolName
+            if !symbol.isEmpty && symbol != "pawprint.fill" {
+                return symbol
+            }
+        }
+
+        return "pawprint.fill"
+    }
+
+    /// Resolves the authentic MainKind brand accent color.
+    public static func color(for mainKindId: Int, name: String? = nil) -> Color {
+        let text = "\(name ?? "")".lowercased()
+
+        // 1. Dogs: PurePets Dog Amber #F97316
+        if mainKindId == 6 ||
+           text.contains("كلب") || text.contains("كلاب") || text.contains("جرو") ||
+           text.contains("جولدن") || text.contains("هاسكي") || text.contains("بيتبول") ||
+           text.contains("جيرمن") || text.contains("روتويلر") || text.contains("dog") ||
+           text.contains("golden") || text.contains("retriever") || text.contains("puppy") {
+            return Color(red: 0.976, green: 0.451, blue: 0.086) // #F97316
+        }
+
+        // 2. Cats: PurePets Cat Blue #3B82F6
+        if mainKindId == 5 ||
+           text.contains("قط") || text.contains("قطط") || text.contains("بسة") ||
+           text.contains("شيرازي") || text.contains("سيامي") || text.contains("هيمالايا") ||
+           text.contains("سكوتش") || text.contains("cat") || text.contains("kitten") ||
+           text.contains("siamese") || text.contains("persian") {
+            return Color(red: 0.23, green: 0.51, blue: 0.96) // #3B82F6
+        }
+
+        // 3. Birds: PurePets Bird Teal #14B8A6
+        if mainKindId == 1 ||
+           text.contains("طير") || text.contains("طيور") || text.contains("طائر") ||
+           text.contains("ببغاء") || text.contains("كناري") || text.contains("بلبل") ||
+           text.contains("كروان") || text.contains("كوكوتيل") || text.contains("بادجي") ||
+           text.contains("كنيور") || text.contains("bird") || text.contains("parrot") ||
+           text.contains("canary") {
+            return Color(red: 0.08, green: 0.72, blue: 0.65) // #14B8A6
+        }
+
+        // 4. Falcons: Falcon Forest Green #059669
+        if mainKindId == 11 || text.contains("صقر") || text.contains("صقور") || text.contains("falcon") {
+            return Color(red: 0.02, green: 0.59, blue: 0.41) // #059669
+        }
+
+        // 5. Fish: Deep Sea Blue #0077BE
+        if mainKindId == 7 ||
+           text.contains("سمك") || text.contains("أسماك") || text.contains("اسماك") ||
+           text.contains("حوض") || text.contains("أحواض") || text.contains("fish") ||
+           text.contains("aquarium") {
+            return Color(red: 0.0, green: 0.467, blue: 0.745) // #0077BE
+        }
+
+        // 6. Rabbits: Soft Rose Coral #EC4899
+        if mainKindId == 8 || mainKindId == 12 ||
+           text.contains("أرنب") || text.contains("ارنب") || text.contains("أرانب") ||
+           text.contains("ارانب") || text.contains("rabbit") || text.contains("bunny") ||
+           text.contains("hare") {
+            return Color(red: 0.925, green: 0.282, blue: 0.600) // #EC4899
+        }
+
+        // 7. Camels: Desert Amber #D57E3C
+        if mainKindId == 2 || text.contains("إبل") || text.contains("ناقة") || text.contains("جمل") || text.contains("camel") {
+            return Color(red: 0.835, green: 0.494, blue: 0.235) // #D57E3C
+        }
+
+        // 8. Horses: Equestrian Bronze #8D5B4C
+        if mainKindId == 3 || text.contains("خيل") || text.contains("خيول") || text.contains("حصان") || text.contains("horse") {
+            return Color(red: 0.553, green: 0.357, blue: 0.298) // #8D5B4C
+        }
+
+        // 9. Sheep: Warm Stone #A49179
+        if mainKindId == 4 || text.contains("أغنام") || text.contains("غنم") || text.contains("خروف") || text.contains("sheep") {
+            return Color(red: 0.643, green: 0.569, blue: 0.475) // #A49179
+        }
+
+        // 10. Monkeys: Royal Violet #8E44AD
+        if mainKindId == 9 || text.contains("قرود") || text.contains("قرد") || text.contains("monkey") {
+            return Color(red: 0.557, green: 0.267, blue: 0.678) // #8E44AD
+        }
+
+        // 11. Gazelles: Amber Brown #B45309
+        if mainKindId == 10 || text.contains("غزلان") || text.contains("غزال") || text.contains("gazelle") {
+            return Color(red: 0.706, green: 0.325, blue: 0.035) // #B45309
+        }
+
+        // 12. Rodents: Indigo #6366F1
+        if mainKindId == 13 || text.contains("قوارض") || text.contains("هامستر") || text.contains("همستر") || text.contains("rodent") {
+            return Color(red: 0.388, green: 0.400, blue: 0.945) // #6366F1
+        }
+
+        // 13. Marsupials: Purple #9333EA
+        if mainKindId == 14 || text.contains("الجرابيات") || text.contains("marsupial") {
+            return Color(red: 0.576, green: 0.200, blue: 0.918) // #9333EA
+        }
+
+        // 14. Reptiles: Reptile Green #10B981
+        if text.contains("سلاحف") || text.contains("زواحف") || text.contains("turtle") {
+            return Color(red: 0.063, green: 0.725, blue: 0.506) // #10B981
+        }
+
+        // Fallback to model's Firestore color
+        let resolvedColorModel: MainKindsModel? = MainKindsModel.mainKindModel(forID: mainKindId)
+        if let model = resolvedColorModel {
+            if let hex = model.petColor, let c = colorFromHex(hex) {
+                return c
+            }
+        }
+
+        return AdminSurface.primary
     }
 }

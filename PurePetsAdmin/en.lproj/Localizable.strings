@@ -5779,6 +5779,7 @@
 "StaffRole_VIEWER" = "Viewer";
 "StaffRole_SECURITY_ADMIN" = "Security Admin";
 "StaffRole_COMPLIANCE_AUDITOR" = "Compliance Auditor";
+"StaffRole_CUSTOM" = "Custom Role";
 
 /* Working Branch Scope & Permissions */
 "Staff_Branch_Scope_Title" = "Working Branch & Scope Permissions";
@@ -10389,6 +10390,7 @@
 /* Wanted Pets (Customer Wanted List) */
 "WantedPets_Title" = "Wanted Pets";
 "WantedPets_Subtitle" = "Customer requests for incoming pets & instant follow-up";
+"WantedPets_POS_Entry_Hint" = "Opens the customer pet request queue.";
 "WantedPets_Badge" = "Wanted";
 "WantedPets_Add_Action" = "New Request";
 "WantedPets_Added_Success" = "Request saved successfully";
@@ -10484,6 +10486,44 @@
 "WantedPets_QuickAdd_Title" = "Add Wanted Pet Request";
 "WantedPets_QuickAdd_Subtitle" = "Quick capture to notify customer upon arrival";
 "WantedPets_Customer_Section" = "Customer Information";
+"WantedPets_Capture_Title" = "Their next companion starts here";
+"WantedPets_Capture_Subtitle" = "Choose who to contact and which pet to watch for.";
+"WantedPets_Directory_Action" = "Choose from customer directory";
+"WantedPets_Name_Placeholder" = "Full customer name";
+"WantedPets_Color_Placeholder" = "Or enter a specific color";
+"WantedPets_Budget_Placeholder" = "Or enter a custom budget";
+"WantedPets_Notes_Placeholder" = "Other details that help us find a match";
+"WantedPets_Duplicate_Generic" = "This customer already has an active request for this pet.";
+"WantedPets_Review_Existing" = "Review existing request";
+"WantedPets_Directory_Hint" = "Find a customer or create a new profile";
+"WantedPets_Directory_A11y" = "Opens the POS customer directory";
+"WantedPets_Directory_Title" = "Customer directory";
+"WantedPets_Directory_Subtitle" = "Choose a customer or create a profile for this pet request.";
+"WantedPets_Directory_Subtitle_ReadOnly" = "Choose an existing customer for this pet request.";
+"WantedPets_Directory_Select" = "Use this customer";
+"WantedPets_Directory_SaveAndSelect" = "Save and use customer";
+"POS_Customer_InspectorHint_ReadOnly" = "Choose a customer to view details.";
+"WantedPets_Phone_Placeholder" = "+974 0000 0000";
+"WantedPets_Customer_Found" = "Customer found: %@";
+"WantedPets_Pet_Hint" = "Choose the category to watch for this customer.";
+"WantedPets_Loading_Categories" = "Loading pet categories...";
+"WantedPets_No_Categories" = "No pet categories are available right now.";
+"WantedPets_Categories_Error" = "Could not load pet categories.";
+"WantedPets_Breeds_Error" = "Could not load breeds.";
+"WantedPets_Expanded" = "Expanded";
+"WantedPets_Collapsed" = "Collapsed";
+"WantedPets_Currency_QAR" = "QAR";
+"WantedPets_Budget_UpTo" = "Up to %@ QAR";
+"WantedPets_Preferences_Hint" = "Sex, color, budget and notes";
+"WantedPets_Notes_Added" = "Notes added";
+"WantedPets_No_Manage_Permission" = "Stock management permission is required to save";
+"WantedPets_Prompt_ValidPhone" = "Enter a valid phone number";
+"WantedPets_Prompt_ShortName" = "Keep the customer name under 120 characters";
+"WantedPets_Prompt_ValidBudget" = "Enter a valid budget";
+"WantedPets_Save_Failed" = "Could not save the request. Try again.";
+"POS_Customer_AnyBranch" = "All branches";
+"POS_Customer_StatusActive" = "Customer directory profile";
+"ReservationBranch" = "Reservation branch";
 "WantedPets_Customer_Phone" = "Phone Number";
 "WantedPets_Customer_Name" = "Customer Name";
 "WantedPets_Contact_Source" = "Request Source";
@@ -10622,3 +10662,11 @@
 "WantedPet_WhatsApp_AutoMarkSkip" = "Keep Current Status";
 "WantedPet_Dismiss_Action" = "Back";
 "WantedPet_Share_Summary" = "Customer demand: %@ looking for %@ (Phone: %@)";
+"WantedPet_ExactMatchPill" = "Exact Match";
+"WantedPet_BreedMatchPill" = "Breed Match";
+"WantedPet_Fulfill_Short" = "Fulfill With This";
+"WantedPets_WhatsApp_Detail_Ring" = "Tag: #%@";
+"WantedPets_WhatsApp_Detail_Gender" = "Gender: %@";
+"WantedPets_WhatsApp_Detail_Price" = "Price: %.0f %@";
+"WantedPets_WhatsApp_Detail_Branch" = "Branch: %@";
+"WantedPets_WhatsApp_MatchFound_Template" = "Hello %@, we are pleased to inform you that a pet matching your request is available at Pure Pets: %@%@. Would you like us to reserve it for you?";

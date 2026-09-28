@@ -6481,6 +6481,66 @@ private struct LivePetArchivePressStyle: ButtonStyle {
     }
 }
 
+// MARK: - Dedicated Waiting Customers Card Section
+
+@available(iOS 16.0, *)
+private struct PPWaitingCustomersCardSection: View {
+    let item: PetAccessory
+    @Binding var showWaitingCustomersSheet: Bool
+
+    var body: some View {
+        let waitingCount = WantedPetsService.shared.waitingCountFor(
+            mainKindId: Int(item.petMainCategoryID),
+            subkindId: Int(item.petSubCategoryID) > 0 ? Int(item.petSubCategoryID) : nil
+        )
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            showWaitingCustomersSheet = true
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Color(uiColor: .systemOrange).opacity(0.12))
+                    Image(systemName: "person.2.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Color(uiColor: .systemOrange))
+                }
+                .frame(width: 40, height: 40)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(Language.get("WantedPets_Card_Title", alter: "العملاء المنتظرون لهذا الحيوان"))
+                            .font(Font.custom("Beiruti-Bold", size: 15))
+                            .foregroundStyle(AdminSurface.primaryText)
+
+                        if waitingCount > 0 {
+                            Text(String(format: Language.get("WantedPets_Waiting_Badge", alter: "%d ينتظرون"), waitingCount))
+                                .font(Font.custom("Beiruti-Bold", size: 12))
+                                .foregroundStyle(Color(uiColor: .systemOrange))
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2)
+                                .background(Color(uiColor: .systemOrange).opacity(0.12), in: Capsule())
+                        }
+                    }
+
+                    Text(String(format: Language.get("WantedPets_Card_Subtitle", alter: "%d عميل مسجل في قائمة الطلبات بانتظار هذا الحيوان"), waitingCount))
+                        .font(Font.custom("Beiruti-Regular", size: 12))
+                        .foregroundStyle(AdminCommandInk.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+            .padding(12)
+            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 @available(iOS 16.0, *)
 public struct PPInventoryItemDetailView: View {
     let item: PetAccessory
@@ -8138,104 +8198,55 @@ public struct PPInventoryItemDetailView: View {
 
     // MARK: - Live-Pet Operations Section
 
-    private var livePetOperationsSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            livePetCommandHeader
+    private var livePetOperationsSection: AnyView {
+        AnyView(
+            VStack(alignment: .leading, spacing: 14) {
+                livePetCommandHeader
 
-            if let success = liveModel.successMessage {
-                dossierStateNotice(
-                    success,
-                    symbol: "checkmark.circle.fill",
-                    tone: Color(uiColor: .ppSuccess)
-                )
-            }
-            if let error = liveModel.errorMessage, liveModel.operation == nil {
-                dossierStateNotice(
-                    error,
-                    symbol: "exclamationmark.triangle.fill",
-                    tone: Color(uiColor: .ppError)
-                )
-            }
-
-            if liveModel.mode == nil {
-                legacyTrackingDecision
-            } else {
-                livePetPrimaryCommands
-                archiveCatalogCommand
-
-                if liveModel.mode == .quantity {
-                    groupReconciliationCommand
-                } else if liveModel.mode == .individual {
-                    individualAnimalLedger
+                if let success = liveModel.successMessage {
+                    dossierStateNotice(
+                        success,
+                        symbol: "checkmark.circle.fill",
+                        tone: Color(uiColor: .ppSuccess)
+                    )
                 }
-            }
-
-            if liveModel.canViewReservations && !liveModel.reservations.isEmpty {
-                activeReservationsLedger
-            }
-
-            if item.isLivePet {
-                waitingCustomersCardSection
-            }
-        }
-        .padding(16)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
-        )
-    }
-
-    private var waitingCustomersCardSection: some View {
-        let waitingCount = WantedPetsService.shared.waitingCountFor(
-            mainKindId: Int(item.petMainCategoryID),
-            subkindId: Int(item.petSubCategoryID) > 0 ? Int(item.petSubCategoryID) : nil
-        )
-        return Button {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            showWaitingCustomersSheet = true
-        } label: {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(Color(uiColor: .systemOrange).opacity(0.12))
-                    Image(systemName: "person.2.fill")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(Color(uiColor: .systemOrange))
+                if let error = liveModel.errorMessage, liveModel.operation == nil {
+                    dossierStateNotice(
+                        error,
+                        symbol: "exclamationmark.triangle.fill",
+                        tone: Color(uiColor: .ppError)
+                    )
                 }
-                .frame(width: 40, height: 40)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(Language.get("WantedPets_Card_Title", alter: "العملاء المنتظرون لهذا الحيوان"))
-                            .font(Font.custom("Beiruti-Bold", size: 15))
-                            .foregroundStyle(AdminSurface.primaryText)
+                if liveModel.mode == nil {
+                    legacyTrackingDecision
+                } else {
+                    livePetPrimaryCommands
+                    archiveCatalogCommand
 
-                        if waitingCount > 0 {
-                            Text(String(format: Language.get("WantedPets_Waiting_Badge", alter: "%d ينتظرون"), waitingCount))
-                                .font(Font.custom("Beiruti-Bold", size: 12))
-                                .foregroundStyle(Color(uiColor: .systemOrange))
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 2)
-                                .background(Color(uiColor: .systemOrange).opacity(0.12), in: Capsule())
-                        }
+                    if liveModel.mode == .quantity {
+                        groupReconciliationCommand
+                    } else if liveModel.mode == .individual {
+                        individualAnimalLedger
                     }
-
-                    Text(String(format: Language.get("WantedPets_Card_Subtitle", alter: "%d عميل مسجل في قائمة الطلبات بانتظار هذا الحيوان"), waitingCount))
-                        .font(Font.custom("Beiruti-Regular", size: 12))
-                        .foregroundStyle(AdminCommandInk.secondary)
                 }
 
-                Spacer()
+                if liveModel.canViewReservations && !liveModel.reservations.isEmpty {
+                    activeReservationsLedger
+                }
 
-                Image(systemName: "chevron.forward")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(AdminSurface.secondaryText)
+                PPWaitingCustomersCardSection(
+                    item: item,
+                    showWaitingCustomersSheet: $showWaitingCustomersSheet
+                )
             }
-            .padding(12)
-            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        }
-        .buttonStyle(.plain)
+            .padding(16)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+            )
+        )
     }
 
     private var livePetCommandHeader: some View {
@@ -8278,41 +8289,43 @@ public struct PPInventoryItemDetailView: View {
         }
     }
 
-    private var legacyTrackingDecision: some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.md) {
-            HStack(alignment: .top, spacing: AdminSpacing.sm) {
-                Image(systemName: "exclamationmark.shield.fill")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Color(uiColor: .ppWarning))
-                    .frame(width: 28, height: 28)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(Language.get("LivePet_Legacy_Mode_Title", alter: "يلزم اعتماد نمط التتبع"))
-                        .font(Font.custom("Beiruti-Bold", size: 15))
-                        .foregroundStyle(AdminSurface.primaryText)
-                    Text(Language.get("LivePet_Legacy_Mode_Hint", alter: "هذا سجل قديم. اختر تتبعاً فردياً أو إدارة بالكمية قبل تنفيذ أي حركة جديدة."))
-                        .font(Font.custom("Beiruti-Regular", size: 12))
-                        .foregroundStyle(AdminCommandInk.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+    private var legacyTrackingDecision: AnyView {
+        AnyView(
+            VStack(alignment: .leading, spacing: AdminSpacing.md) {
+                HStack(alignment: .top, spacing: AdminSpacing.sm) {
+                    Image(systemName: "exclamationmark.shield.fill")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Color(uiColor: .ppWarning))
+                        .frame(width: 28, height: 28)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("LivePet_Legacy_Mode_Title", alter: "يلزم اعتماد نمط التتبع"))
+                            .font(Font.custom("Beiruti-Bold", size: 15))
+                            .foregroundStyle(AdminSurface.primaryText)
+                        Text(Language.get("LivePet_Legacy_Mode_Hint", alter: "هذا سجل قديم. اختر تتبعاً فردياً أو إدارة بالكمية قبل تنفيذ أي حركة جديدة."))
+                            .font(Font.custom("Beiruti-Regular", size: 12))
+                            .foregroundStyle(AdminCommandInk.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
-            }
 
-            Button {
-                liveModel.operation = .migrate
-            } label: {
-                Label(Language.get("LivePet_Migrate_Action", alter: "اعتماد نمط المخزون"), systemImage: "arrow.triangle.branch")
-                    .font(Font.custom("Beiruti-Bold", size: 15))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable)
-                    .background(Color(uiColor: .ppWarning), in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                Button {
+                    liveModel.operation = .migrate
+                } label: {
+                    Label(Language.get("LivePet_Migrate_Action", alter: "اعتماد نمط المخزون"), systemImage: "arrow.triangle.branch")
+                        .font(Font.custom("Beiruti-Bold", size: 15))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable)
+                        .background(Color(uiColor: .ppWarning), in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                }
+                .buttonStyle(CatalogPressStyle())
+                .disabled(!liveModel.canManageStock || liveModel.isMutating)
             }
-            .buttonStyle(CatalogPressStyle())
-            .disabled(!liveModel.canManageStock || liveModel.isMutating)
-        }
-        .padding(AdminSpacing.md)
-        .background(Color(uiColor: .ppWarning).opacity(0.09), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                .strokeBorder(Color(uiColor: .ppWarning).opacity(0.26), lineWidth: 1)
+            .padding(AdminSpacing.md)
+            .background(Color(uiColor: .ppWarning).opacity(0.09), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppWarning).opacity(0.26), lineWidth: 1)
+            )
         )
     }
 
@@ -8458,7 +8471,7 @@ public struct PPInventoryItemDetailView: View {
 
     // MARK: - Individual Animal Ledger
 
-    private var individualAnimalLedger: some View {
+    private var individualAnimalLedger: AnyView {
         let activeUnits = liveModel.units.filter { 
             $0.status == "AVAILABLE" || $0.status == "RESERVED" || $0.status == "QUARANTINED" || $0.status == "UNDER_INSPECTION" || $0.isUnderInspection 
         }.sorted()
@@ -8481,63 +8494,65 @@ public struct PPInventoryItemDetailView: View {
         }
         let ledgerSubtitle = subtitleParts.joined(separator: " • ")
 
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(Language.get("LivePetDossier_UnitLedgerTitle", alter: "سجل الحيوانات الفردية"))
-                        .font(Font.custom("Beiruti-Bold", size: 16))
-                        .foregroundStyle(AdminSurface.primaryText)
-                    Text(ledgerSubtitle)
-                        .font(Font.custom("Beiruti-Regular", size: 12))
-                        .foregroundStyle(activeUnits.isEmpty && soldCount == 0 ? Color(uiColor: .ppError) : AdminCommandInk.secondary)
-                }
-                Spacer(minLength: AdminSpacing.xs)
-                dossierStatusPill(
-                    title: inventoryTrackingTitle,
-                    symbol: inventoryTrackingSymbol,
-                    tint: inventoryTrackingTint
-                )
-            }
-
-            if liveModel.isLoading && liveModel.units.isEmpty {
-                dossierLoadingState
-            } else if activeUnits.isEmpty && historyUnits.isEmpty {
-                dossierUnitEmptyState
-            } else {
-                if !activeUnits.isEmpty {
-                    VStack(spacing: 8) {
-                        ForEach(activeUnits) { unit in
-                            livePetUnitRow(unit)
-                        }
+        return AnyView(
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("LivePetDossier_UnitLedgerTitle", alter: "سجل الحيوانات الفردية"))
+                            .font(Font.custom("Beiruti-Bold", size: 16))
+                            .foregroundStyle(AdminSurface.primaryText)
+                        Text(ledgerSubtitle)
+                            .font(Font.custom("Beiruti-Regular", size: 12))
+                            .foregroundStyle(activeUnits.isEmpty && soldCount == 0 ? Color(uiColor: .ppError) : AdminCommandInk.secondary)
                     }
-                } else {
+                    Spacer(minLength: AdminSpacing.xs)
+                    dossierStatusPill(
+                        title: inventoryTrackingTitle,
+                        symbol: inventoryTrackingSymbol,
+                        tint: inventoryTrackingTint
+                    )
+                }
+
+                if liveModel.isLoading && liveModel.units.isEmpty {
+                    dossierLoadingState
+                } else if activeUnits.isEmpty && historyUnits.isEmpty {
                     dossierUnitEmptyState
-                }
-
-                if !historyUnits.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
-                        livePetArchiveDisclosureHeader(count: historyUnits.count)
-
-                        if showHistoryUnits {
-                            VStack(spacing: 8) {
-                                ForEach(historyUnits) { unit in
-                                    livePetUnitRow(unit)
-                                        .opacity(0.85)
-                                }
+                } else {
+                    if !activeUnits.isEmpty {
+                        VStack(spacing: 8) {
+                            ForEach(activeUnits) { unit in
+                                livePetUnitRow(unit)
                             }
-                            .transition(
-                                .asymmetric(
-                                    insertion: .opacity.combined(with: .move(edge: .top)),
-                                    removal: .opacity
-                                )
-                            )
                         }
+                    } else {
+                        dossierUnitEmptyState
                     }
-                    .padding(.top, 6)
+
+                    if !historyUnits.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            livePetArchiveDisclosureHeader(count: historyUnits.count)
+
+                            if showHistoryUnits {
+                                VStack(spacing: 8) {
+                                    ForEach(historyUnits) { unit in
+                                        livePetUnitRow(unit)
+                                            .opacity(0.85)
+                                    }
+                                }
+                                .transition(
+                                    .asymmetric(
+                                        insertion: .opacity.combined(with: .move(edge: .top)),
+                                        removal: .opacity
+                                    )
+                                )
+                            }
+                        }
+                        .padding(.top, 6)
+                    }
                 }
             }
-        }
-        .padding(.top, 4)
+            .padding(.top, 4)
+        )
     }
 
     private func livePetArchiveDisclosureHeader(count: Int) -> some View {
@@ -8728,34 +8743,36 @@ public struct PPInventoryItemDetailView: View {
         )
     }
 
-    private var activeReservationsLedger: some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-            HStack(spacing: AdminSpacing.sm) {
-                Image(systemName: "calendar.badge.clock")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color(uiColor: .ppWarning))
-                    .frame(width: 28, height: 28)
-                    .background(Color(uiColor: .ppWarning).opacity(0.10), in: Circle())
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(Language.get("LivePet_Reservations_Title", alter: "الحجوزات النشطة"))
-                        .font(Font.custom("Beiruti-Bold", size: 15))
-                        .foregroundStyle(AdminSurface.primaryText)
-                    Text(String(
-                        format: Language.get("LivePetDossier_ReservationCount", alter: "%ld حجوزات بحاجة إلى متابعة"),
-                        liveModel.reservations.count
-                    ))
-                    .font(Font.custom("Beiruti-Regular", size: 11))
-                    .foregroundStyle(AdminCommandInk.secondary)
+    private var activeReservationsLedger: AnyView {
+        AnyView(
+            VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+                HStack(spacing: AdminSpacing.sm) {
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color(uiColor: .ppWarning))
+                        .frame(width: 28, height: 28)
+                        .background(Color(uiColor: .ppWarning).opacity(0.10), in: Circle())
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(Language.get("LivePet_Reservations_Title", alter: "الحجوزات النشطة"))
+                            .font(Font.custom("Beiruti-Bold", size: 15))
+                            .foregroundStyle(AdminSurface.primaryText)
+                        Text(String(
+                            format: Language.get("LivePetDossier_ReservationCount", alter: "%ld حجوزات بحاجة إلى متابعة"),
+                            liveModel.reservations.count
+                        ))
+                        .font(Font.custom("Beiruti-Regular", size: 11))
+                        .foregroundStyle(AdminCommandInk.secondary)
+                    }
                 }
-            }
 
-            VStack(spacing: AdminSpacing.xs) {
-                ForEach(liveModel.reservations) { reservation in
-                    reservationDossierRow(reservation)
+                VStack(spacing: AdminSpacing.xs) {
+                    ForEach(liveModel.reservations) { reservation in
+                        reservationDossierRow(reservation)
+                    }
                 }
             }
-        }
-        .padding(.top, AdminSpacing.sm)
+            .padding(.top, AdminSpacing.sm)
+        )
     }
 
     private func reservationDossierRow(_ reservation: PPLivePetReservation) -> some View {
@@ -15480,19 +15497,21 @@ private struct PPLivePetOperationSheet: View {
 
             if ok {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
+                dismiss()
                 if case .intake = context, model.item.isLivePet {
                     let mainKind = Int(model.item.petMainCategoryID)
                     let subKind = Int(model.item.petSubCategoryID) > 0 ? Int(model.item.petSubCategoryID) : nil
                     let waitingCount = WantedPetsService.shared.waitingCountFor(mainKindId: mainKind, subkindId: subKind)
                     if waitingCount > 0 {
-                        await PPAlertHelper.showInfo(
-                            in: nil,
-                            title: Language.get("LivePet_Intake_WaitingMatch_Title", alter: "يوجد عملاء بانتظار هذا الحيوان"),
-                            subtitle: String(format: Language.get("LivePet_Intake_WaitingMatch_Subtitle", alter: "تمت إضافة المخزون. يوجد %d عميل في قائمة الانتظار يبحثون عن هذا الحيوان."), waitingCount)
-                        )
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            PPAlertHelper.showInfo(
+                                in: nil,
+                                title: Language.get("LivePet_Intake_WaitingMatch_Title", alter: "يوجد عملاء بانتظار هذا الحيوان"),
+                                subtitle: String(format: Language.get("LivePet_Intake_WaitingMatch_Subtitle", alter: "تمت إضافة المخزون. يوجد %d عميل في قائمة الانتظار يبحثون عن هذا الحيوان."), waitingCount)
+                            )
+                        }
                     }
                 }
-                dismiss()
             }
         }
     }

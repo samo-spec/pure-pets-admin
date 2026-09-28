@@ -39,78 +39,90 @@ struct AdminAppShell: View {
     }
 
     private var shellContent: some View {
-        ZStack(alignment: .bottom) {
-            Group {
-                switch selectedTab {
-                case .command:
-                    AdminCommandOrbitDashboard(
-                        session: session,
-                        languageCode: sessionStore.languageCode,
-                        onNavigationDepthChanged: { commandShowsNestedWorkflow = $0 }
-                    )
-                    .ignoresSafeArea()
+        GeometryReader { shellGeometry in
+            let screenWidth = shellGeometry.size.width
+            let isPad = UIDevice.current.userInterfaceIdiom == .pad
+            let isLandscape = isPad && screenWidth >= 950
+            let isPadWide = isLandscape
 
-                case .work:
-                    AdminWorkDeckView(
-                        session: session,
-                        router: router,
-                        commandState: commandState,
-                        onOpenCommand: { selectedTab = .command }
-                    )
-                    .ignoresSafeArea()
+            ZStack(alignment: .bottom) {
+                Group {
+                    switch selectedTab {
+                    case .command:
+                        AdminCommandOrbitDashboard(
+                            session: session,
+                            languageCode: sessionStore.languageCode,
+                            onNavigationDepthChanged: { commandShowsNestedWorkflow = $0 }
+                        )
+                        .ignoresSafeArea()
 
-                case .operations:
-                    AdminOperationsDeckView(
-                        session: session,
-                        router: router,
-                        commandState: commandState,
-                        onOpenCommand: { selectedTab = .command }
-                    )
-                    .ignoresSafeArea()
+                    case .work:
+                        AdminWorkDeckView(
+                            session: session,
+                            router: router,
+                            commandState: commandState,
+                            isPadWide: isPadWide,
+                            onOpenCommand: { selectedTab = .command }
+                        )
+                        .ignoresSafeArea()
 
-                case .customers:
-                    AdminPeopleDeckView(
-                        session: session,
-                        router: router,
-                        commandState: commandState,
-                        onOpenCommand: { selectedTab = .command }
-                    )
-                    .ignoresSafeArea()
+                    case .operations:
+                        AdminOperationsDeckView(
+                            session: session,
+                            router: router,
+                            commandState: commandState,
+                            isPadWide: isPadWide,
+                            onOpenCommand: { selectedTab = .command }
+                        )
+                        .ignoresSafeArea()
 
-                case .more:
-                    AdminMoreView(
+                    case .customers:
+                        AdminPeopleDeckView(
+                            session: session,
+                            router: router,
+                            commandState: commandState,
+                            isPadWide: isPadWide,
+                            onOpenCommand: { selectedTab = .command }
+                        )
+                        .ignoresSafeArea()
+
+                    case .more:
+                        AdminMoreView(
+                            session: session,
+                            routes: available([.account, .notifications, .notificationComposer, .notificationSettings, .accounting, .audit, .categories, .banners, .listings, .adoptionManager]),
+                            router: router,
+                            commandState: commandState,
+                            isSigningOut: sessionStore.isSigningOut,
+                            isPadWide: isPadWide,
+                            onLogout: { promptLogoutConfirmation() },
+                            onOpenCommand: { selectedTab = .command }
+                        )
+                        .ignoresSafeArea()
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if isPuryFloatingAffordanceVisible {
+                    puryFloatingAffordance
+                        .padding(.bottom, puryFloatingBottomClearance)
+                        .padding(.trailing, 16)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+
+                if !(selectedTab == .command && commandShowsNestedWorkflow) {
+                    V6GlobalTabBar(
+                        selectedTab: $selectedTab,
+                        tabs: availableTabs,
                         session: session,
-                        routes: available([.account, .notifications, .notificationComposer, .notificationSettings, .accounting, .audit, .categories, .banners, .listings, .adoptionManager]),
-                        router: router,
-                        commandState: commandState,
-                        isSigningOut: sessionStore.isSigningOut,
-                        onLogout: { promptLogoutConfirmation() },
-                        onOpenCommand: { selectedTab = .command }
+                        scrollProgress: scrollProgress,
+                        isLandscape: isLandscape
                     )
-                    .ignoresSafeArea()
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            if isPuryFloatingAffordanceVisible {
-                puryFloatingAffordance
-                    .padding(.bottom, puryFloatingBottomClearance)
-                    .padding(.trailing, 16)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-
-            if !(selectedTab == .command && commandShowsNestedWorkflow) {
-                V6GlobalTabBar(
-                    selectedTab: $selectedTab,
-                    tabs: availableTabs,
-                    session: session,
-                    scrollProgress: scrollProgress
-                )
-            }
+            .ignoresSafeArea()
+            .tint(AdminSurface.primary)
+            .background(routePushLink)
         }
-        .ignoresSafeArea()
-        .tint(AdminSurface.primary)
-        .background(routePushLink)
         .fullScreenCover(isPresented: $showingPurySheet) {
             PuryAssistantSheetView(
                 session: session,
@@ -420,7 +432,6 @@ private final class AdminCommandOrbitContainerController: UIViewController, UINa
         super.viewDidAppear(animated)
         refreshBottomDockLanguage()
         applyBottomDockPolish()
-        PPAdminRefreshCommandSpineDashboard(dashboard)
     }
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
@@ -591,13 +602,14 @@ struct V6GlobalTabBar: View {
     var tabs: [AdminTab] = AdminTab.allCases
     var session: AdminSession? = nil
     var scrollProgress: CGFloat = 0.0
+    var isLandscape: Bool = true
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
-    private var isPadWidescreen: Bool {
-        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact
+    private var isPad: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad
     }
 
     private var bottomSafeAreaInset: CGFloat {
@@ -663,11 +675,12 @@ struct V6GlobalTabBar: View {
             specularTopHairline
 
             // Dedicated Form-Factor Ergonomics
-            if isPadWidescreen {
+            if isPad {
                 AdminPadCountertopTabBar(
                     selectedTab: $selectedTab,
                     tabs: tabs,
-                    session: session
+                    session: session,
+                    isLandscape: isLandscape
                 )
             } else {
                 AdminPhoneDockedTabBar(
@@ -795,66 +808,77 @@ private struct AdminPadCountertopTabBar: View {
     @Binding var selectedTab: AdminTab
     let tabs: [AdminTab]
     let session: AdminSession?
+    var isLandscape: Bool = true
     @ObservedObject private var branchStore = BranchContextStore.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var padTabAnimationNamespace
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        HStack(alignment: .center, spacing: 16) {
+        HStack(alignment: .center, spacing: isLandscape ? 16 : 8) {
             // Zone 1: Leading Branch Context & Radar Beacon
             leadingBranchRadarZone
-                .frame(minWidth: 180, maxWidth: 260, alignment: .leading)
+                .frame(
+                    minWidth: isLandscape ? 160 : nil,
+                    maxWidth: isLandscape ? 240 : 140,
+                    alignment: .leading
+                )
 
-            Spacer(minLength: 8)
+            Spacer(minLength: isLandscape ? 8 : 4)
 
             // Zone 2: Centered Anchored Segmented Command Rail
             centerCommandRailZone
-                .frame(maxWidth: 640)
+                .frame(maxWidth: isLandscape ? 640 : 440)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: isLandscape ? 8 : 4)
 
             // Zone 3: Trailing Operator Identity & Session Badge
             trailingOperatorZone
-                .frame(minWidth: 180, maxWidth: 260, alignment: .trailing)
+                .frame(
+                    minWidth: isLandscape ? 160 : nil,
+                    maxWidth: isLandscape ? 240 : 120,
+                    alignment: .trailing
+                )
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, isLandscape ? 20 : 12)
         .padding(.vertical, 6)
         .frame(height: 58)
     }
 
     private var leadingBranchRadarZone: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: isLandscape ? 8 : 6) {
             ZStack {
                 Circle()
                     .fill(Color(red: 0.15, green: 0.78, blue: 0.45).opacity(0.25))
-                    .frame(width: 18, height: 18)
+                    .frame(width: isLandscape ? 18 : 16, height: isLandscape ? 18 : 16)
                 Circle()
                     .fill(Color(red: 0.15, green: 0.78, blue: 0.45))
-                    .frame(width: 7, height: 7)
+                    .frame(width: isLandscape ? 7 : 6, height: isLandscape ? 7 : 6)
             }
             .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
                     Image(systemName: "building.2.crop.circle")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: isLandscape ? 11 : 10, weight: .semibold))
                         .foregroundColor(AdminSurface.secondaryText)
 
                     Text(branchDisplayName)
-                        .font(Font.custom("Beiruti-Bold", size: 12))
+                        .font(Font.custom("Beiruti-Bold", size: isLandscape ? 12 : 11))
                         .foregroundColor(AdminSurface.primaryText)
                         .lineLimit(1)
                 }
 
-                Text(branchStore.isSyncingBackend ? Language.get("Syncing...", alter: nil) : Language.get("Live Radar Online", alter: nil))
-                    .font(Font.custom("Beiruti-Regular", size: 10))
-                    .foregroundColor(branchStore.isSyncingBackend ? AdminSurface.primary : Color(red: 0.15, green: 0.78, blue: 0.45))
-                    .lineLimit(1)
+                if isLandscape {
+                    Text(branchStore.isSyncingBackend ? Language.get("Syncing...", alter: nil) : Language.get("Live Radar Online", alter: nil))
+                        .font(Font.custom("Beiruti-Regular", size: 10))
+                        .foregroundColor(branchStore.isSyncingBackend ? AdminSurface.primary : Color(red: 0.15, green: 0.78, blue: 0.45))
+                        .lineLimit(1)
+                }
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, isLandscape ? 10 : 8)
+        .padding(.vertical, isLandscape ? 6 : 5)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(AdminSurface.surface.opacity(colorScheme == .dark ? 0.45 : 0.65))
@@ -929,8 +953,8 @@ private struct AdminPadCountertopTabBar: View {
                         .matchedGeometryEffect(id: "ActivePadTabIndicator", in: padTabAnimationNamespace)
                 }
 
-                HStack(spacing: 6) {
-                    if isSelected {
+                HStack(spacing: isLandscape ? 6 : 4) {
+                    if isSelected && isLandscape {
                         Circle()
                             .fill(AdminSurface.primary)
                             .frame(width: 4, height: 4)
@@ -938,27 +962,29 @@ private struct AdminPadCountertopTabBar: View {
                     }
 
                     Image(systemName: symbol)
-                        .font(.system(size: 15, weight: isSelected ? .semibold : .medium))
+                        .font(.system(size: isLandscape ? 15 : 14, weight: isSelected ? .semibold : .medium))
                         .symbolRenderingMode(.hierarchical)
                         .foregroundColor(isSelected ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.85))
 
                     Text(title)
-                        .font(isSelected ? Font.custom("Beiruti-Bold", size: 13) : Font.custom("Beiruti-Medium", size: 12.5))
+                        .font(isSelected ? Font.custom("Beiruti-Bold", size: isLandscape ? 13 : 11.5) : Font.custom("Beiruti-Medium", size: isLandscape ? 12.5 : 11))
                         .foregroundColor(isSelected ? AdminSurface.primaryText : AdminSurface.secondaryText)
                         .lineLimit(1)
 
-                    Text(tab.shortcutBadge)
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundColor(isSelected ? AdminSurface.primary.opacity(0.85) : AdminSurface.secondaryText.opacity(0.45))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(isSelected ? AdminSurface.primary.opacity(0.12) : AdminSurface.hairline.opacity(0.2))
-                        )
+                    if isLandscape {
+                        Text(tab.shortcutBadge)
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(isSelected ? AdminSurface.primary.opacity(0.85) : AdminSurface.secondaryText.opacity(0.45))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(isSelected ? AdminSurface.primary.opacity(0.12) : AdminSurface.hairline.opacity(0.2))
+                            )
+                    }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
+                .padding(.horizontal, isLandscape ? 10 : 6)
+                .padding(.vertical, isLandscape ? 7 : 6)
             }
             .frame(maxWidth: .infinity)
             .contentShape(Capsule())
@@ -972,16 +998,23 @@ private struct AdminPadCountertopTabBar: View {
     }
 
     private var trailingOperatorZone: some View {
-        HStack(spacing: 8) {
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(operatorName)
-                    .font(Font.custom("Beiruti-Bold", size: 12))
-                    .foregroundColor(AdminSurface.primaryText)
-                    .lineLimit(1)
+        HStack(spacing: isLandscape ? 8 : 6) {
+            if isLandscape {
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(operatorName)
+                        .font(Font.custom("Beiruti-Bold", size: 12))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(1)
 
-                Text(operatorRole)
-                    .font(Font.custom("Beiruti-Regular", size: 10))
-                    .foregroundColor(AdminSurface.secondaryText)
+                    Text(operatorRole)
+                        .font(Font.custom("Beiruti-Regular", size: 10))
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                }
+            } else {
+                Text(operatorName)
+                    .font(Font.custom("Beiruti-Bold", size: 11))
+                    .foregroundColor(AdminSurface.primaryText)
                     .lineLimit(1)
             }
 
@@ -997,19 +1030,19 @@ private struct AdminPadCountertopTabBar: View {
                             endPoint: .bottomTrailing
                         )
                     )
-                    .frame(width: 28, height: 28)
+                    .frame(width: isLandscape ? 28 : 26, height: isLandscape ? 28 : 26)
                     .overlay(
                         Circle()
                             .strokeBorder(AdminSurface.primary.opacity(0.35), lineWidth: 0.75)
                     )
 
                 Text(operatorInitials)
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .font(.system(size: isLandscape ? 11 : 10, weight: .bold, design: .rounded))
                     .foregroundColor(AdminSurface.primary)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, isLandscape ? 10 : 8)
+        .padding(.vertical, isLandscape ? 6 : 5)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(AdminSurface.surface.opacity(colorScheme == .dark ? 0.45 : 0.65))
@@ -1019,7 +1052,7 @@ private struct AdminPadCountertopTabBar: View {
                 )
         )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(Language.get("Operator", alter: nil)): \(operatorName), \(operatorRole)")
+        .accessibilityLabel("\(operatorName), \(operatorRole)")
     }
 
     private var operatorName: String {
@@ -1080,15 +1113,12 @@ private struct AdminWorkDeckView: View {
     let session: AdminSession
     @ObservedObject var router: AdminRouter
     @ObservedObject var commandState: CommandCenterState
+    var isPadWide: Bool = false
     let onOpenCommand: () -> Void
 
     @ObservedObject private var branchStore = BranchContextStore.shared
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showingBranchSwitcher = false
-
-    private var isPadWide: Bool {
-        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact
-    }
 
     private var navigationConfiguration: PPGlobalNavigationConfiguration {
         PPGlobalNavigationConfiguration(
@@ -1980,6 +2010,11 @@ private struct AdminWorkDeckView: View {
             }
             .padding(22)
         }
+        .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .onTapGesture {
+            triggerHaptic(.medium)
+            router.present(.pointOfSale, session: session)
+        }
     }
 
     // MARK: - Financial Governance Module
@@ -2035,6 +2070,7 @@ private struct AdminWorkDeckView: View {
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundColor(AdminSurface.secondaryText)
                         }
+                        .allowsHitTesting(false)
                         .padding(12)
                         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .overlay(
@@ -2070,6 +2106,7 @@ private struct AdminWorkDeckView: View {
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundColor(AdminSurface.secondaryText)
                         }
+                        .allowsHitTesting(false)
                         .padding(12)
                         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .overlay(
@@ -2165,6 +2202,7 @@ private struct AdminWorkDeckView: View {
                     Spacer()
                 }
             }
+            .allowsHitTesting(false)
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -2230,6 +2268,7 @@ private struct AdminWorkDeckView: View {
                     Spacer()
                 }
             }
+            .allowsHitTesting(false)
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -2269,6 +2308,7 @@ private struct AdminWorkDeckView: View {
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(AdminSurface.secondaryText)
             }
+            .allowsHitTesting(false)
             .padding(14)
             .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
@@ -2440,6 +2480,7 @@ private struct AdminWorkDeckView: View {
                         .foregroundColor(tint)
                 }
             }
+            .allowsHitTesting(false)
             .padding(16)
             .frame(maxWidth: .infinity, minHeight: 180, alignment: .leading)
             .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -2467,15 +2508,12 @@ private struct AdminPeopleDeckView: View {
     let session: AdminSession
     @ObservedObject var router: AdminRouter
     @ObservedObject var commandState: CommandCenterState
+    var isPadWide: Bool = false
     let onOpenCommand: () -> Void
 
     @ObservedObject private var branchStore = BranchContextStore.shared
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showingBranchSwitcher = false
-
-    private var isPadWide: Bool {
-        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact
-    }
 
     private var navigationConfiguration: PPGlobalNavigationConfiguration {
         PPGlobalNavigationConfiguration(
@@ -2797,6 +2835,7 @@ private struct AdminPeopleDeckView: View {
                         Spacer()
                     }
                 }
+                .allowsHitTesting(false)
                 .padding(16)
             }
         }
@@ -2854,6 +2893,7 @@ private struct AdminPeopleDeckView: View {
                                 .foregroundColor(Color(red: 0.38, green: 0.38, blue: 0.95))
                         }
                     }
+                    .allowsHitTesting(false)
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -2918,6 +2958,7 @@ private struct AdminPeopleDeckView: View {
                                 .lineLimit(1)
                         }
                     }
+                    .allowsHitTesting(false)
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -2980,6 +3021,7 @@ private struct AdminPeopleDeckView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(AdminSurface.secondaryText)
             }
+            .allowsHitTesting(false)
             .padding(14)
             .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(
@@ -3296,6 +3338,11 @@ private struct AdminPeopleDeckView: View {
             }
             .padding(22)
         }
+        .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .onTapGesture {
+            triggerHaptic(.medium)
+            router.present(.users, session: session)
+        }
     }
 
     // MARK: - iPad Support Dispatch Card (Wing A Secondary)
@@ -3360,6 +3407,7 @@ private struct AdminPeopleDeckView: View {
                 .padding(.vertical, 10)
                 .background(Color(red: 0.15, green: 0.68, blue: 0.75).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
+            .allowsHitTesting(false)
             .padding(18)
             .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay(
@@ -3473,6 +3521,7 @@ private struct AdminPeopleDeckView: View {
                 .padding(.vertical, 10)
                 .background(Color(red: 0.38, green: 0.38, blue: 0.95).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
+            .allowsHitTesting(false)
             .padding(18)
             .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay(
@@ -3530,6 +3579,7 @@ private struct AdminPeopleDeckView: View {
                 .padding(.vertical, 6)
                 .background(AdminSurface.primary.opacity(0.10), in: Capsule())
             }
+            .allowsHitTesting(false)
             .padding(16)
             .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay(
@@ -3588,16 +3638,13 @@ private struct AdminOperationsDeckView: View {
     let session: AdminSession
     @ObservedObject var router: AdminRouter
     @ObservedObject var commandState: CommandCenterState
+    var isPadWide: Bool = false
     let onOpenCommand: () -> Void
 
     @ObservedObject private var branchStore = BranchContextStore.shared
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.locale) private var locale
     @State private var showingBranchSwitcher = false
-
-    private var isPadWide: Bool {
-        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact
-    }
 
     private var navigationConfiguration: PPGlobalNavigationConfiguration {
         PPGlobalNavigationConfiguration(
@@ -4121,6 +4168,11 @@ private struct AdminOperationsDeckView: View {
             }
             .padding(isPad ? 20 : 16)
         }
+        .contentShape(RoundedRectangle(cornerRadius: isPad ? 24 : 22, style: .continuous))
+        .onTapGesture {
+            triggerHaptic(.medium)
+            router.present(.delivery, session: session)
+        }
     }
 
     // MARK: - Merchant & Provider Ecosystem Desk
@@ -4532,6 +4584,7 @@ private struct AdminOperationsDeckView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
             }
+            .allowsHitTesting(false)
             .padding(.horizontal, 14)
             .frame(minHeight: 56)
             .contentShape(Rectangle())
@@ -4596,6 +4649,7 @@ private struct AdminMoreView: View {
     @ObservedObject var router: AdminRouter
     @ObservedObject var commandState: CommandCenterState
     let isSigningOut: Bool
+    var isPadWide: Bool = false
     let onLogout: () -> Void
     let onOpenCommand: () -> Void
 
@@ -4603,10 +4657,6 @@ private struct AdminMoreView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.locale) private var locale
     @State private var showingBranchSwitcher = false
-
-    private var isPadWide: Bool {
-        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact
-    }
 
     private var navigationConfiguration: PPGlobalNavigationConfiguration {
         PPGlobalNavigationConfiguration(
@@ -5159,6 +5209,7 @@ private struct AdminMoreView: View {
                                 .foregroundColor(.white)
                                 .shadow(color: Color.black.opacity(0.2), radius: 4, x: 0, y: 2)
                         }
+                        .allowsHitTesting(false)
                         .padding(12)
                         .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .overlay(
@@ -5283,6 +5334,7 @@ private struct AdminMoreView: View {
                             .padding(8)
                             .background(AdminSurface.primary.opacity(0.08), in: Circle())
                     }
+                    .allowsHitTesting(false)
                     .padding(14)
                     .background(
                         LinearGradient(
@@ -5568,6 +5620,7 @@ private struct AdminMoreView: View {
                     .padding(.vertical, 5)
                     .background(AdminSurface.primary.opacity(0.10), in: Capsule())
                 }
+                .allowsHitTesting(false)
                 .padding(.horizontal, 16)
                 .frame(minHeight: 58)
                 .contentShape(Rectangle())
@@ -5613,6 +5666,7 @@ private struct AdminMoreView: View {
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(Color(uiColor: .ppError).opacity(0.6))
                 }
+                .allowsHitTesting(false)
                 .padding(.horizontal, 16)
                 .frame(minHeight: 58)
                 .contentShape(Rectangle())
@@ -5664,6 +5718,7 @@ private struct AdminMoreView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
             }
+            .allowsHitTesting(false)
             .padding(.horizontal, 14)
             .frame(minHeight: 56)
             .contentShape(Rectangle())
@@ -5762,6 +5817,7 @@ private struct AdminCommandPulseStrip: View {
                     .foregroundColor(AdminSurface.secondaryText)
                     .accessibilityHidden(true)
             }
+            .allowsHitTesting(false)
             .padding(.horizontal, 14)
             .frame(minHeight: 64)
             .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminShellMetric.compactRadius, style: .continuous))

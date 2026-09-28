@@ -2867,25 +2867,16 @@ private struct AdminAdoptionPetCard: View {
     private var mediaCover: some View {
         ZStack(alignment: .topTrailing) {
             ZStack(alignment: .bottomLeading) {
-                if let url = record.primaryMediaURL {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image.resizable().scaledToFill()
-                        case .failure:
-                            mediaPlaceholder
-                        default:
-                            ProgressView().tint(AdminSurface.primary)
-                        }
-                    }
-                    .frame(height: 164)
-                    .frame(maxWidth: .infinity)
-                    .clipped()
-                } else {
+                AdminRemoteImage(
+                    url: record.primaryMediaURL,
+                    contentMode: .fill,
+                    targetSize: CGSize(width: 400, height: 164)
+                ) {
                     mediaPlaceholder
-                        .frame(height: 164)
-                        .frame(maxWidth: .infinity)
                 }
+                .frame(height: 164)
+                .frame(maxWidth: .infinity)
+                .clipped()
 
                 LinearGradient(
                     colors: [Color.black.opacity(0.65), Color.clear],
@@ -3403,21 +3394,16 @@ private struct AdminCommunityRecordCard: View {
 
     @ViewBuilder
     private var media: some View {
-        if let url = record.primaryMediaURL {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image): image.resizable().scaledToFill()
-                case .failure: placeholder
-                default: ProgressView().tint(AdminSurface.primary)
-                }
-            }
-            .frame(width: 60, height: 60)
-            .background(AdminSurface.control)
-            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-        } else {
+        AdminRemoteImage(
+            url: record.primaryMediaURL,
+            contentMode: .fill,
+            targetSize: CGSize(width: 60, height: 60)
+        ) {
             placeholder
-                .frame(width: 60, height: 60)
         }
+        .frame(width: 60, height: 60)
+        .background(AdminSurface.control)
+        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
     }
 
     private var placeholder: some View {
@@ -4332,15 +4318,12 @@ private struct AdminCommunityRecordDetailView: View {
     private var identityCard: some View {
         let record = currentRecord
         HStack(alignment: .top, spacing: 14) {
-            Group {
-                if let url = record.primaryMediaURL {
-                    AsyncImage(url: url) { phase in
-                        if case .success(let image) = phase { image.resizable().scaledToFill() }
-                        else { dossierPlaceholder }
-                    }
-                } else {
-                    dossierPlaceholder
-                }
+            AdminRemoteImage(
+                url: record.primaryMediaURL,
+                contentMode: .fill,
+                targetSize: CGSize(width: 82, height: 82)
+            ) {
+                dossierPlaceholder
             }
             .frame(width: 82, height: 82)
             .background(AdminSurface.control)
@@ -4498,20 +4481,12 @@ private struct AdminCommunityRecordDetailView: View {
         tint: Color
     ) -> some View {
         VStack(alignment: .leading, spacing: 9) {
-            Group {
-                if let mediaURL {
-                    AsyncImage(url: mediaURL) { phase in
-                        if case .success(let image) = phase {
-                            image.resizable().scaledToFill()
-                        } else if case .failure = phase {
-                            comparisonPlaceholder(tint: tint)
-                        } else {
-                            ProgressView().tint(tint)
-                        }
-                    }
-                } else {
-                    comparisonPlaceholder(tint: tint)
-                }
+            AdminRemoteImage(
+                url: mediaURL,
+                contentMode: .fill,
+                targetSize: CGSize(width: 200, height: 180)
+            ) {
+                comparisonPlaceholder(tint: tint)
             }
             .frame(maxWidth: .infinity, minHeight: 150, maxHeight: 180)
             .background(AdminSurface.control)

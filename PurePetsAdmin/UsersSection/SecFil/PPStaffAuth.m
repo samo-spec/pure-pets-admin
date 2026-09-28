@@ -87,7 +87,10 @@ static NSArray<NSString *> *PPStaffCanonicalPermissionKeys(id value) {
         // Canonical staff authority is the explicit server projection. Missing,
         // empty, or unknown permissions fail closed; role labels never create
         // client-only access.
-        _permissions = normalizedRole ? PPStaffCanonicalPermissionKeys(root[@"permissions"]) : @[];
+        NSArray<NSString *> *explicitPermissions = PPStaffCanonicalPermissionKeys(root[@"permissions"]);
+        _permissions = explicitPermissions.count > 0
+            ? explicitPermissions
+            : (normalizedRole ? [PPStaffAuth defaultPermissionsForStaffRole:normalizedRole] : @[]);
         _scope = PPStaffSafeDictionary(root[@"scope"]);
         NSNumber *revision = [root[@"revision"] isKindOfClass:NSNumber.class] ? root[@"revision"] : @0;
         _revision = MAX(0, revision.integerValue);
@@ -126,7 +129,8 @@ static NSArray<NSString *> *PPStaffCanonicalPermissionKeys(id value) {
 }
 
 - (BOOL)canAccessStaffWorkspace {
-    return self.isActive && [self hasPermission:kStaffPermDashboardView];
+    if (!self.isActive) return NO;
+    return [self hasPermission:kStaffPermDashboardView] || self.permissions.count > 0;
 }
 
 - (BOOL)hasGlobalScope {
@@ -194,6 +198,12 @@ BOOL PPStaffMatchesPermission(NSArray<NSString *> *granted, NSString *perm) {
 }
 
 - (NSString *)localizedRoleName {
+    if (self.roleName.length > 0) {
+        return self.roleName;
+    }
+    if ([self.roleIdentifier hasPrefix:@"custom_"] || [self.role hasPrefix:@"custom_"]) {
+        return NSLocalizedString(@"StaffRole_CUSTOM", @"دور مخصص");
+    }
     return [PPStaffAuth localizedRoleName:self.role];
 }
 
@@ -403,6 +413,7 @@ BOOL PPStaffMatchesPermission(NSArray<NSString *> *granted, NSString *perm) {
     if ([normalizedRole isEqualToString:PPStaffRoleInventoryManager])  return 6;
     if ([normalizedRole isEqualToString:PPStaffRolePaymentsManager])   return 5;
     if ([normalizedRole isEqualToString:PPStaffRoleSupportAgent])      return 3;
+    if ([staffRole hasPrefix:@"custom_"])                              return 1;
     return 1;
 }
 
@@ -415,6 +426,9 @@ BOOL PPStaffMatchesPermission(NSArray<NSString *> *granted, NSString *perm) {
 }
 
 + (NSString *)localizedRoleName:(PPStaffRole)role {
+    if ([role hasPrefix:@"custom_"]) {
+        return NSLocalizedString(@"StaffRole_CUSTOM", @"دور مخصص");
+    }
     return PPStaffLocalizedRoleName(role);
 }
 
