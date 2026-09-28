@@ -1591,6 +1591,9 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     if (self.pp_commandOrbitController) {
+        self.pp_commandOrbitController.view.frame = self.view.bounds;
+        [self.pp_commandOrbitController.view setNeedsLayout];
+        [self.pp_commandOrbitController.view layoutIfNeeded];
         self.pp_commandOrbitController.view.userInteractionEnabled = YES;
         [self.view bringSubviewToFront:self.pp_commandOrbitController.view];
     }
@@ -1607,6 +1610,27 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
         self.heroShadowView.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:self.heroShadowView.bounds
                                                                            cornerRadius:32.0].CGPath;
     }
+}
+
+- (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
+    [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
+    [coordinator animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext>  _Nonnull context) {
+        [self.view setNeedsLayout];
+        [self.view layoutIfNeeded];
+        if (self.pp_commandOrbitController) {
+            self.pp_commandOrbitController.view.frame = CGRectMake(0, 0, size.width, size.height);
+            [self.pp_commandOrbitController.view setNeedsLayout];
+            [self.pp_commandOrbitController.view layoutIfNeeded];
+        }
+    } completion:^(id<UIViewControllerTransitionCoordinatorContext>  _Nonnull context) {
+        [self.view setNeedsLayout];
+        [self.view layoutIfNeeded];
+        if (self.pp_commandOrbitController) {
+            self.pp_commandOrbitController.view.frame = self.view.bounds;
+            [self.pp_commandOrbitController.view setNeedsLayout];
+            [self.pp_commandOrbitController.view layoutIfNeeded];
+        }
+    }];
 }
 
 - (void)viewDidAppear:(BOOL)animated {

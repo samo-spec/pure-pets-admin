@@ -348,6 +348,10 @@ static NSDictionary *PPNavTitleAttributes(void) {
         Method swzAppear  = class_getInstanceMethod(self, @selector(pp_swz_viewWillAppear:));
         method_exchangeImplementations(origAppear, swzAppear);
         
+        Method origDidAppear = class_getInstanceMethod(self, @selector(viewDidAppear:));
+        Method swzDidAppear  = class_getInstanceMethod(self, @selector(pp_swz_viewDidAppear:));
+        method_exchangeImplementations(origDidAppear, swzDidAppear);
+        
         Method origDisappear = class_getInstanceMethod(self, @selector(viewWillDisappear:));
         Method swzDisappear  = class_getInstanceMethod(self, @selector(pp_swz_viewWillDisappear:));
         method_exchangeImplementations(origDisappear, swzDisappear);
@@ -355,6 +359,13 @@ static NSDictionary *PPNavTitleAttributes(void) {
 }
 
 #pragma mark - Swizzled implementations
+
+- (void)pp_swz_viewDidAppear:(BOOL)animated {
+    if (self.navigationController) {
+        [self.navigationController pp_enableSwipeToPop];
+    }
+    [self pp_swz_viewDidAppear:animated];
+}
 
 - (void)pp_swz_viewWillAppear:(BOOL)animated {
     if (self.navigationController) {
@@ -1050,6 +1061,35 @@ static const void *kPPInteractivePopDelegateKey = &kPPInteractivePopDelegateKey;
 
 @implementation PPInteractivePopGestureDelegate
 
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
+    UINavigationController *nav = self.navigationController;
+    if (!nav) return NO;
+    
+    // Only allow swipe to pop when there are 2 or more view controllers on the stack
+    if (nav.viewControllers.count <= 1) {
+        return NO;
+    }
+    
+    // Prevent starting pop gesture while an animated transition is in progress
+    id<UIViewControllerTransitionCoordinator> coordinator = nav.transitionCoordinator;
+    if (coordinator && [coordinator isAnimated]) {
+        return NO;
+    }
+
+    // Do not bypass custom back action (e.g. unsaved changes prompt)
+    if (PPCommandCenterNavigationHasCustomBackAction(nav.topViewController)) {
+        return NO;
+    }
+    
+    // Align gesture edges with current language layout direction
+    BOOL isRTL = [Language isRTL];
+    if ([gestureRecognizer isKindOfClass:[UIScreenEdgePanGestureRecognizer class]]) {
+        ((UIScreenEdgePanGestureRecognizer *)gestureRecognizer).edges = isRTL ? UIRectEdgeRight : UIRectEdgeLeft;
+    }
+    
+    return YES;
+}
+
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
     UINavigationController *nav = self.navigationController;
     if (!nav) return NO;
@@ -1070,16 +1110,28 @@ static const void *kPPInteractivePopDelegateKey = &kPPInteractivePopDelegateKey;
         return NO;
     }
     
+    // Dynamically ensure edges and semanticContentAttribute match current layout direction
+    BOOL isRTL = [Language isRTL];
+    if ([gestureRecognizer isKindOfClass:[UIScreenEdgePanGestureRecognizer class]]) {
+        ((UIScreenEdgePanGestureRecognizer *)gestureRecognizer).edges = isRTL ? UIRectEdgeRight : UIRectEdgeLeft;
+    }
+    
+    UISemanticContentAttribute expectedAttr = isRTL ? UISemanticContentAttributeForceRightToLeft : UISemanticContentAttributeForceLeftToRight;
+    if (nav.view.semanticContentAttribute != expectedAttr) {
+        nav.view.semanticContentAttribute = expectedAttr;
+    }
+    
     return YES;
 }
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
+    // When edge pop begins, do not allow simultaneous scrolling or panning
     return NO;
 }
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldBeRequiredToFailByGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
-    // Never install a failure requirement here. `UIScreenEdgePanGestureRecognizer` is itself a
-    // `UIPanGestureRecognizer`, so requiring every pan to fail first made nested navigation
+    // Never install a failure requirement here. UIScreenEdgePanGestureRecognizer is itself a
+    // UIPanGestureRecognizer, so requiring every pan to fail first made nested navigation
     // controllers depend on each other (a gesture dependency cycle) and blocked table scrolling.
     return NO;
 }
@@ -1125,6 +1177,7 @@ static const void *kPPInteractivePopDelegateKey = &kPPInteractivePopDelegateKey;
     self.interactivePopGestureRecognizer.enabled = YES;
 
     BOOL isRTL = [Language isRTL];
+    self.view.semanticContentAttribute = isRTL ? UISemanticContentAttributeForceRightToLeft : UISemanticContentAttributeForceLeftToRight;
     if ([self.interactivePopGestureRecognizer isKindOfClass:[UIScreenEdgePanGestureRecognizer class]]) {
         ((UIScreenEdgePanGestureRecognizer *)self.interactivePopGestureRecognizer).edges = isRTL ? UIRectEdgeRight : UIRectEdgeLeft;
     }

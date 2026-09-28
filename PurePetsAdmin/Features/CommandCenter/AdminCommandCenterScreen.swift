@@ -268,6 +268,27 @@ public final class AdminCommandOrbitHostingController: UIViewController {
     public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         configureScrollViews(in: view)
+        hostingController?.view.frame = view.bounds
+        hostingController?.view.setNeedsLayout()
+    }
+
+    public override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        coordinator.animate(alongsideTransition: { [weak self] _ in
+            guard let self = self else { return }
+            self.view.setNeedsLayout()
+            self.view.layoutIfNeeded()
+            self.hostingController?.view.frame = CGRect(origin: .zero, size: size)
+            self.hostingController?.view.setNeedsLayout()
+            self.hostingController?.view.layoutIfNeeded()
+        }) { [weak self] _ in
+            guard let self = self else { return }
+            self.view.setNeedsLayout()
+            self.view.layoutIfNeeded()
+            self.hostingController?.view.frame = self.view.bounds
+            self.hostingController?.view.setNeedsLayout()
+            self.hostingController?.view.layoutIfNeeded()
+        }
     }
 
     private func configureScrollViews(in container: UIView) {
@@ -543,6 +564,7 @@ struct AdminCommandCenterScreenView: View {
         GeometryReader { geometry in
             let safeTop = max(geometry.safeAreaInsets.top, PPStatusBarHelper.statusBarHeight, 44)
             let isRegular = geometry.size.width >= 760 && !dynamicTypeSize.isAccessibilitySize
+            let isLandscape = geometry.size.width > geometry.size.height
             let ipadMaxWidth: CGFloat = 1160
             let heroInset = AdminCommandMetric.pageMargin
             let contentAvailableWidth = max(min(geometry.size.width - 2 * heroInset, isRegular ? min(ipadMaxWidth, geometry.size.width - 2 * heroInset) : geometry.size.width - 2 * heroInset), 320)
@@ -563,7 +585,7 @@ struct AdminCommandCenterScreenView: View {
                         }
 
                         VStack(alignment: .leading, spacing: AdminSectionSpacing.interSection(isRegular: isRegular)) {
-                            phaseContent(isRegular: isRegular, containerWidth: contentAvailableWidth)
+                            phaseContent(isRegular: isRegular, isLandscape: isLandscape, containerWidth: contentAvailableWidth)
                         }
                         .padding(.horizontal, AdminCommandMetric.pageMargin)
                         .padding(.top, AdminSectionSpacing.navBarToFirstSection(isRegular: isRegular))
@@ -572,6 +594,7 @@ struct AdminCommandCenterScreenView: View {
                         .frame(maxWidth: .infinity)
                     }
                 }
+                .clipped()
                 .scrollBounceBehavior(.always, axes: .vertical)
                 .refreshable {
                     let impact = UIImpactFeedbackGenerator(style: .medium)
@@ -688,14 +711,14 @@ struct AdminCommandCenterScreenView: View {
     }
 
     @ViewBuilder
-    private func phaseContent(isRegular: Bool, containerWidth: CGFloat) -> some View {
+    private func phaseContent(isRegular: Bool, isLandscape: Bool, containerWidth: CGFloat) -> some View {
         switch phase {
         case .connecting:
             EmptyView()
         case .loading:
             EmptyView()
         case .ready, .allClear:
-            readyContent(isRegular: isRegular, containerWidth: containerWidth)
+            readyContent(isRegular: isRegular, isLandscape: isLandscape, containerWidth: containerWidth)
         case .degradedEmpty:
             CommandCenterSourcePanel(
                 tone: .critical,
@@ -715,12 +738,13 @@ struct AdminCommandCenterScreenView: View {
         }
     }
 
-    private func readyContent(isRegular: Bool, containerWidth: CGFloat) -> some View {
+    private func readyContent(isRegular: Bool, isLandscape: Bool, containerWidth: CGFloat) -> some View {
         let hasHotel = store.canAccessHotel
         return VStack(alignment: .leading, spacing: AdminSectionSpacing.interSection(isRegular: isRegular)) {
             // Deck 1: Sovereign POS Console Station (Fast Sell & POS History)
             CommandPOSDeck(
                 isRegular: isRegular,
+                isLandscape: isLandscape,
                 containerWidth: containerWidth,
                 canOpenWantedPets: store.canOpenWantedPets,
                 onRoute: { route($0) }
@@ -731,6 +755,7 @@ struct AdminCommandCenterScreenView: View {
             CommandStockDeck(
                 signals: store.snapshot.signals,
                 isRegular: isRegular,
+                isLandscape: isLandscape,
                 containerWidth: containerWidth,
                 onRoute: { route($0) }
             )
@@ -740,6 +765,7 @@ struct AdminCommandCenterScreenView: View {
             CommandQuickActionsDeck(
                 signals: store.snapshot.signals,
                 isRegular: isRegular,
+                isLandscape: isLandscape,
                 containerWidth: containerWidth,
                 onRoute: { route($0) }
             )
@@ -789,7 +815,7 @@ struct AdminCommandCenterScreenView: View {
             .transition(reduceMotion ? .identity : .opacity)
             .commandSectionEntrance(index: hasHotel ? 6 : 5, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
 
-            if isRegular && containerWidth >= 950 {
+            if isRegular && isLandscape && containerWidth >= 950 {
                 // Deck 6 & 7: iPad Dual-Wing Base Deck (Priority Runway + Source Ledger) — Landscape ONLY
                 HStack(alignment: .top, spacing: 14) {
                     CommandPriorityRunway(
@@ -1205,6 +1231,7 @@ private struct CommandCenterCockpitBackground: View {
                                 )
                                 .scaleEffect(breatheBrand ? 1.14 : 0.90)
                                 .blur(radius: 22)
+                                .allowsHitTesting(false)
 
                             // Orb 2: Operational Health Resonance (breathes in sync with readiness tone)
                             Circle()
@@ -1227,6 +1254,7 @@ private struct CommandCenterCockpitBackground: View {
                                 )
                                 .scaleEffect(breatheTelemetry ? 1.16 : 0.88)
                                 .blur(radius: 20)
+                                .allowsHitTesting(false)
 
                             // 3. Specular Prismatic Sheen (Sapphire Crystal Light Ray)
                             LinearGradient(
@@ -1244,9 +1272,12 @@ private struct CommandCenterCockpitBackground: View {
                             .rotationEffect(.degrees(22))
                             .offset(x: sheenSweep ? (w * 0.85) : -(w * 0.85))
                             .blendMode(colorScheme == .dark ? .plusLighter : .overlay)
+                            .allowsHitTesting(false)
                         }
                     }
                     .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                    .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                    .allowsHitTesting(false)
                 } else {
                     // Tranquil static studio lighting for Reduce Motion
                     LinearGradient(
@@ -1259,13 +1290,18 @@ private struct CommandCenterCockpitBackground: View {
                         endPoint: .bottomTrailing
                     )
                     .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                    .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                    .allowsHitTesting(false)
                 }
             }
+            .allowsHitTesting(false)
             .overlay {
                 // 4. Ultra-Thin Frosted Glass Depth
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(.ultraThinMaterial.opacity(colorScheme == .dark ? 0.20 : 0.30))
+                    .allowsHitTesting(false)
             }
+            .allowsHitTesting(false)
             .overlay {
                 // 5. Precision Sculpted Multi-Stop Bezel Rim
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -1282,8 +1318,10 @@ private struct CommandCenterCockpitBackground: View {
                         ),
                         lineWidth: contrast == .increased ? 1.25 : AdminStroke.hairline
                     )
+                    .allowsHitTesting(false)
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .shadow(
                 color: AdminShadow.card.color,
                 radius: AdminShadow.card.radius,
@@ -1294,6 +1332,7 @@ private struct CommandCenterCockpitBackground: View {
                 radius: 14,
                 y: 5
             )
+            .allowsHitTesting(false)
             .onAppear {
                 guard !reduceMotion else { return }
                 withAnimation(.easeInOut(duration: 7.2).repeatForever(autoreverses: true)) {
@@ -1333,6 +1372,7 @@ private struct CommandCenterChamberBackground: View {
                 // Ultra-thin material allowing subtle ambient aurora pass-through
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(.ultraThinMaterial.opacity(colorScheme == .dark ? 0.15 : 0.25))
+                    .allowsHitTesting(false)
             }
             .overlay {
                 // Precision micro-bevel border: top catches ambient light, bottom grounds it
@@ -1350,8 +1390,11 @@ private struct CommandCenterChamberBackground: View {
                         ),
                         lineWidth: contrast == .increased ? 1.0 : 0.75
                     )
+                    .allowsHitTesting(false)
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .allowsHitTesting(false)
     }
 }
 
@@ -1423,7 +1466,9 @@ private struct CommandCenterChrome: View {
         .padding(.bottom, 10)
         .background(
             CommandCenterCockpitBackground(readinessTone: readinessTone, cornerRadius: 22)
+                .allowsHitTesting(false)
         )
+        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .zIndex(1)
     }
 
@@ -1699,7 +1744,9 @@ private struct CommandCenterChrome: View {
         .padding(.vertical, 10)
         .background(
             CommandCenterCockpitBackground(readinessTone: readinessTone, cornerRadius: 24)
+                .allowsHitTesting(false)
         )
+        .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .zIndex(1)
     }
 
@@ -3211,7 +3258,6 @@ private struct CommandPOSWantedPetsEntry: View {
                 }
                 .accessibilityHidden(true)
             }
-            .allowsHitTesting(false)
             .padding(.horizontal, 12)
             .frame(maxWidth: .infinity)
             .frame(height: 48)
@@ -3236,6 +3282,7 @@ private struct CommandPOSWantedPetsEntry: View {
             )
             .contentShape(shape)
         }
+        .contentShape(shape)
         .buttonStyle(CommandPOSWantedPetsPressStyle())
         .hoverEffect(.highlight)
         .accessibilityLabel(title)
@@ -3260,6 +3307,7 @@ private struct CommandPOSWantedPetsPressStyle: ButtonStyle {
 
 private struct CommandPOSDeck: View {
     var isRegular: Bool = false
+    var isLandscape: Bool = false
     var containerWidth: CGFloat = 0
     let canOpenWantedPets: Bool
     let onRoute: (String) -> Void
@@ -3299,6 +3347,7 @@ private struct CommandPOSDeck: View {
                     arrowNudge: arrowNudge,
                     scannerSweep: scannerSweep,
                     reduceMotion: reduceMotion,
+                    isLandscape: isLandscape,
                     containerWidth: containerWidth,
                     canOpenWantedPets: canOpenWantedPets,
                     onRoute: onRoute
@@ -3741,10 +3790,6 @@ private struct CommandPOSiPhoneCockpit: View {
         VStack(spacing: 9) {
             // Hero Express Sale Button
             Button(action: {
-                guard telemetryStore.canSell || telemetryStore.canView || BranchContextStore.shared.currentStaff == nil else {
-                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                    return
-                }
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 onRoute("pos")
             }) {
@@ -3791,7 +3836,6 @@ private struct CommandPOSiPhoneCockpit: View {
                     .frame(width: 28, height: 28)
                     .background(Color.white.opacity(0.18), in: Circle())
                 }
-                .allowsHitTesting(false)
                 .padding(.horizontal, 14)
                 .frame(maxWidth: .infinity)
                 .frame(height: 58)
@@ -3812,7 +3856,9 @@ private struct CommandPOSiPhoneCockpit: View {
                         .strokeBorder(Color.white.opacity(0.28), lineWidth: 0.8)
                 )
                 .shadow(color: (telemetryStore.canSell ? emerald : Color.clear).opacity(colorScheme == .dark ? 0.38 : 0.24), radius: 8, y: 3)
+                .contentShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
             }
+            .contentShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
             .buttonStyle(CommandPOSCardPressStyle())
             .accessibilityLabel(Language.get("AdminPOS_StartFastCheckout", alter: "ابدأ عملية بيع سريعة"))
 
@@ -3844,7 +3890,6 @@ private struct CommandPOSiPhoneCockpit: View {
                                 .background(sapphire.opacity(colorScheme == .dark ? 0.20 : 0.08), in: Capsule())
                         }
                     }
-                    .allowsHitTesting(false)
                     .padding(.horizontal, 11)
                     .frame(maxWidth: .infinity)
                     .frame(height: 38)
@@ -3856,7 +3901,9 @@ private struct CommandPOSiPhoneCockpit: View {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .strokeBorder(sapphire.opacity(colorScheme == .dark ? 0.30 : 0.16), lineWidth: 0.8)
                     )
+                    .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
+                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .buttonStyle(CommandPOSCardPressStyle())
                 .accessibilityLabel(Language.get("AdminPOS_OpenLedger_Short", alter: "سجل الفواتير"))
 
@@ -3881,7 +3928,6 @@ private struct CommandPOSiPhoneCockpit: View {
                             .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(coral)
                     }
-                    .allowsHitTesting(false)
                     .padding(.horizontal, 11)
                     .frame(maxWidth: .infinity)
                     .frame(height: 38)
@@ -3893,7 +3939,9 @@ private struct CommandPOSiPhoneCockpit: View {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .strokeBorder(coral.opacity(colorScheme == .dark ? 0.30 : 0.16), lineWidth: 0.8)
                     )
+                    .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
+                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .buttonStyle(CommandPOSCardPressStyle())
                 .accessibilityLabel(Language.get("AdminPOS_ExpenseCard_Title", alter: "تسجيل مصروف"))
             }
@@ -3939,11 +3987,13 @@ private struct CommandPOSiPhoneCockpit: View {
                     )
                 )
         }
+        .allowsHitTesting(false)
     }
 
     private var cardBorder: some View {
         RoundedRectangle(cornerRadius: 22, style: .continuous)
             .strokeBorder(emerald.opacity(colorScheme == .dark ? 0.30 : 0.16), lineWidth: 0.9)
+            .allowsHitTesting(false)
     }
 }
 
@@ -5725,7 +5775,6 @@ private struct CommandPOSQuickExpenseConsoleiPad: View {
                 centerChamber
                 actionButton
             }
-            .allowsHitTesting(false)
             .padding(16)
             .background(
                 ZStack {
@@ -5752,6 +5801,7 @@ private struct CommandPOSQuickExpenseConsoleiPad: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .buttonStyle(CommandCardPressStyle(scale: 0.982, cornerRadius: 18))
         .keyboardShortcut("e", modifiers: .command)
         .hoverEffect(.lift)
@@ -5770,6 +5820,7 @@ private struct CommandPOSiPadFlightDeck: View {
     let arrowNudge: CGFloat
     let scannerSweep: CGFloat
     let reduceMotion: Bool
+    var isLandscape: Bool = false
     var containerWidth: CGFloat = 0
     let canOpenWantedPets: Bool
     let onRoute: (String) -> Void
@@ -5778,7 +5829,7 @@ private struct CommandPOSiPadFlightDeck: View {
     @State private var showsQuickExpenseSheet: Bool = false
 
     private var isLandscapeIPad: Bool {
-        containerWidth >= 950
+        isLandscape && containerWidth >= 950
     }
 
     var body: some View {
@@ -5797,6 +5848,7 @@ private struct CommandPOSiPadFlightDeck: View {
                         quickScanAction: { onRoute("pos") }
                     )
                     .frame(maxWidth: .infinity)
+                    .zIndex(10)
 
                     // Wing B: Dual Countertop Horizon — Sales Ledger (Card 1) + Add Expense (Card 2) (~55% Horizon)
                     HStack(alignment: .top, spacing: 12) {
@@ -5832,6 +5884,7 @@ private struct CommandPOSiPadFlightDeck: View {
                         quickScanAction: { onRoute("pos") }
                     )
                     .frame(maxWidth: .infinity)
+                    .zIndex(10)
 
                     HStack(alignment: .top, spacing: 12) {
                         CommandPOSHistoryConsoleiPad(
@@ -5900,62 +5953,50 @@ private struct CommandPOSFastSellConsoleiPad: View {
     @Environment(\.colorScheme) private var colorScheme
     private let accent = Color(red: 0.05, green: 0.72, blue: 0.51)
 
-    private var canOpenTerminal: Bool {
-        telemetryStore.canSell || telemetryStore.canView || BranchContextStore.shared.currentStaff == nil
-    }
-
     private func handlePrimaryTap() {
-        guard canOpenTerminal else {
-            UINotificationFeedbackGenerator().notificationOccurred(.warning)
-            return
-        }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         action()
     }
 
     private func handleQuickScanTap() {
-        guard canOpenTerminal else {
-            UINotificationFeedbackGenerator().notificationOccurred(.warning)
-            return
-        }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         quickScanAction()
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            // Top Telemetry Horizon
-            HStack(spacing: 6) {
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(telemetryStore.canSell ? accent : Color.orange)
-                        .frame(width: 6.5, height: 6.5)
-                    Text(telemetryStore.canSell ? Language.get("AdminPOS_ActiveTerminal_Badge", alter: "نظام نقطة البيع المباشر") : Language.get("AdminPOS_Status_AuditMode", alter: "وضع التدقيق والمشاهدة"))
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(telemetryStore.canSell ? accent : Color.orange)
+        Button(action: handlePrimaryTap) {
+            VStack(alignment: .leading, spacing: 14) {
+                // Top Telemetry Horizon
+                HStack(spacing: 6) {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(telemetryStore.canSell ? accent : Color.orange)
+                            .frame(width: 6.5, height: 6.5)
+                        Text(telemetryStore.canSell ? Language.get("AdminPOS_ActiveTerminal_Badge", alter: "نظام نقطة البيع المباشر") : Language.get("AdminPOS_Status_AuditMode", alter: "وضع التدقيق والمشاهدة"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(telemetryStore.canSell ? accent : Color.orange)
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background((telemetryStore.canSell ? accent : Color.orange).opacity(colorScheme == .dark ? 0.20 : 0.08), in: Capsule())
+
+                    HStack(spacing: 3.5) {
+                        Image(systemName: "person.badge.shield.checkmark.fill")
+                            .font(.system(size: 8.5))
+                            .foregroundStyle(AdminCommandInk.secondary)
+                        Text(telemetryStore.activeStaffName)
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.04), in: Capsule())
+
+                    Spacer()
                 }
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .background((telemetryStore.canSell ? accent : Color.orange).opacity(colorScheme == .dark ? 0.20 : 0.08), in: Capsule())
 
-                HStack(spacing: 3.5) {
-                    Image(systemName: "person.badge.shield.checkmark.fill")
-                        .font(.system(size: 8.5))
-                        .foregroundStyle(AdminCommandInk.secondary)
-                    Text(telemetryStore.activeStaffName)
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.04), in: Capsule())
-
-                Spacer()
-            }
-
-            // Center Body: Optical Reticle + Details (Interactive Trigger to open session)
-            Button(action: handlePrimaryTap) {
+                // Center Body: Optical Reticle + Details
                 HStack(alignment: .center, spacing: 14) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -6010,14 +6051,10 @@ private struct CommandPOSFastSellConsoleiPad: View {
 
                     Spacer(minLength: 0)
                 }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(CommandPressStyle())
 
-            // Primary & Quick Action Launchers (Sibling Buttons, Clean Architecture)
-            HStack(spacing: 10) {
-                // Primary Start Session Trigger with ⌘N Shortcut Badge
-                Button(action: handlePrimaryTap) {
+                // Primary Launch Bar + Quick Scan Action
+                HStack(spacing: 10) {
+                    // Start Session Primary Bar
                     HStack(spacing: 9) {
                         Image(systemName: "barcode.viewfinder")
                             .font(.system(size: 16, weight: .bold))
@@ -6062,14 +6099,8 @@ private struct CommandPOSFastSellConsoleiPad: View {
                             .strokeBorder(Color.white.opacity(0.28), lineWidth: 0.8)
                     )
                     .shadow(color: accent.opacity(colorScheme == .dark ? 0.40 : 0.22), radius: 7, y: 3)
-                    .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-                .buttonStyle(CommandCardPressStyle(scale: 0.98, pressedOpacity: 0.92, cornerRadius: 14))
-                .keyboardShortcut("n", modifiers: .command)
-                .contentShape(Rectangle())
 
-                // Quick Scan Direct Action
-                Button(action: handleQuickScanTap) {
+                    // Quick Scan Action Pill
                     HStack(spacing: 6) {
                         Image(systemName: "camera.viewfinder")
                             .font(.system(size: 14, weight: .bold))
@@ -6087,27 +6118,31 @@ private struct CommandPOSFastSellConsoleiPad: View {
                             .strokeBorder(accent.opacity(colorScheme == .dark ? 0.32 : 0.18), lineWidth: 0.75)
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
-                .buttonStyle(CommandCardPressStyle(scale: 0.94, pressedOpacity: 0.88, cornerRadius: 14))
-                .keyboardShortcut("b", modifiers: .command)
-                .contentShape(Rectangle())
-                .accessibilityLabel(Language.get("AdminPOS_QuickScan", alter: "مسح باركود مباشر"))
             }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(colorScheme == .dark ? Color(white: 0.14) : Color(white: 0.98))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(accent.opacity(colorScheme == .dark ? 0.32 : 0.16), lineWidth: 0.8)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(colorScheme == .dark ? Color(white: 0.14) : Color(white: 0.98))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(accent.opacity(colorScheme == .dark ? 0.32 : 0.16), lineWidth: 0.8)
-        )
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .onTapGesture {
-            handlePrimaryTap()
-        }
+        .buttonStyle(CommandCardPressStyle(scale: 0.985, pressedOpacity: 0.95, cornerRadius: 18))
+        .keyboardShortcut("n", modifiers: .command)
+        .background(
+            Button(action: handleQuickScanTap) {
+                EmptyView()
+            }
+            .keyboardShortcut("b", modifiers: .command)
+            .opacity(0)
+        )
+        .hoverEffect(.lift)
         .accessibilityLabel(Language.get("AdminPOS_TerminalTitle_iPad", alter: "نقطة البيع السريعة الفورية"))
         .accessibilityHint(Language.get(
             telemetryStore.canSell ? "AdminPOS_Launch_Session" : "AdminPOS_ViewOnly_Notice",
@@ -6348,8 +6383,8 @@ private struct CommandPOSHistoryConsoleiPad: View {
 
                 actionButton
             }
-            .allowsHitTesting(false)
             .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(colorScheme == .dark ? Color(white: 0.14) : Color(white: 0.98))
@@ -6360,6 +6395,7 @@ private struct CommandPOSHistoryConsoleiPad: View {
             )
             .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .buttonStyle(CommandCardPressStyle(scale: 0.985, pressedOpacity: 0.95, cornerRadius: 18))
         .keyboardShortcut("h", modifiers: .command)
         .hoverEffect(.lift)
@@ -6479,6 +6515,7 @@ private struct CommandStockSectionWidthKey: PreferenceKey {
 private struct CommandStockDeck: View {
     let signals: [AdminCommandOrbitSignal]
     var isRegular: Bool = false
+    var isLandscape: Bool = false
     var containerWidth: CGFloat = 0
     let onRoute: (String) -> Void
 
@@ -6497,7 +6534,7 @@ private struct CommandStockDeck: View {
     }
 
     private var isLandscapeIPad: Bool {
-        effectiveWidth >= 950
+        isLandscape && effectiveWidth >= 950
     }
 
     private func columnWidths(spacing: CGFloat) -> (livePets: CGFloat?, stacked: CGFloat?) {
@@ -6894,7 +6931,6 @@ private struct CommandStockVaultCardTallLivePets: View {
                 Spacer(minLength: 6)
                 contentSection
             }
-            .allowsHitTesting(false)
             .padding(.horizontal, 12)
             .padding(.vertical, 11)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -6910,6 +6946,7 @@ private struct CommandStockVaultCardTallLivePets: View {
             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(CommandStockCardPressStyle())
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .frame(maxWidth: .infinity)
         .frame(height: targetHeight)
         .frame(maxHeight: targetHeight == nil ? .infinity : nil)
@@ -7024,7 +7061,6 @@ private struct CommandStockVaultCardCompactiPhone: View {
                 topBar
                 titleAndSubtitle
             }
-            .allowsHitTesting(false)
             .padding(.horizontal, 12)
             .padding(.vertical, 11)
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -7040,6 +7076,7 @@ private struct CommandStockVaultCardCompactiPhone: View {
             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(CommandStockCardPressStyle())
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
     }
@@ -7135,7 +7172,6 @@ private struct CommandStockVaultCardiPhone: View {
                 Spacer(minLength: 4)
                 chevronPill
             }
-            .allowsHitTesting(false)
             .padding(.horizontal, 13)
             .padding(.vertical, 11)
             .background(
@@ -7150,6 +7186,7 @@ private struct CommandStockVaultCardiPhone: View {
             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(CommandStockCardPressStyle())
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
     }
@@ -7327,7 +7364,6 @@ private struct CommandStockVaultCardiPad: View {
                 Spacer(minLength: 2)
                 actionPill
             }
-            .allowsHitTesting(false)
             .padding(13)
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: 154)
@@ -7357,6 +7393,7 @@ private struct CommandStockVaultCardiPad: View {
             .contentShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
         }
         .buttonStyle(CommandStockCardPressStyle())
+        .contentShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
     }
@@ -7456,6 +7493,7 @@ private struct CommandQuickActionIcon: View {
 private struct CommandQuickActionsDeck: View {
     let signals: [AdminCommandOrbitSignal]
     var isRegular: Bool = false
+    var isLandscape: Bool = false
     var containerWidth: CGFloat = 0
     let onRoute: (String) -> Void
 
@@ -7589,7 +7627,7 @@ private struct CommandQuickActionsDeck: View {
     }
 
     private var isLandscapeIPad: Bool {
-        containerWidth >= 950
+        isLandscape && containerWidth >= 950
     }
 
     // iPad Operations Line (Panoramic Horizon in Landscape, 2x2 Balanced Matrix in Portrait)
@@ -7647,7 +7685,6 @@ private struct CommandQuickActionCard: View {
                     compactSingleLineContent
                 }
             }
-            .allowsHitTesting(false)
         }
         .buttonStyle(CommandQuickActionCardStyle())
         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -8070,7 +8107,6 @@ private struct CommandPriorityRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .allowsHitTesting(false)
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
         .background(
@@ -9071,7 +9107,6 @@ private struct CommandAccountingSovereignCard: View {
                 // Micro Financial Efficiency Progress Gauge
                 efficiencyGauge
             }
-            .allowsHitTesting(false)
             .padding(18)
             .background(cardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -9084,6 +9119,7 @@ private struct CommandAccountingSovereignCard: View {
             )
             .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         }
+        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .buttonStyle(CommandCardPressStyle(scale: 0.985, pressedOpacity: 0.95, cornerRadius: 22))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
@@ -9390,71 +9426,30 @@ private struct CommandHotelSovereignCard: View {
     @State private var isPulsing = false
 
     var body: some View {
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            VStack(alignment: .leading, spacing: 14) {
-                // The detail buttons are siblings of the full-card route, not
-                // nested inside it. A drag on either still belongs to ScrollView.
-                headerDeck.allowsHitTesting(false)
-                occupancyHero.allowsHitTesting(false)
-                operationalPillars
-                wingHorizonBar.allowsHitTesting(false)
-            }
-            .padding(18)
-            .background {
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    onRoute()
-                } label: {
-                    cardBackground
-                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                }
-                .buttonStyle(CommandCardPressStyle(scale: 1, cornerRadius: 22))
-                .accessibilityLabel(accessibilityLabel)
-                .accessibilityHint(Language.isRTL() ? "اضغط لفتح عمليات فندق ورعاية الحيوانات" : "Tap to open pets hotel operations hub")
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay(cardBorder)
-            .shadow(
-                color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.06),
-                radius: 12,
-                x: 0,
-                y: 5
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .accessibilityElement(children: .contain)
-        } else {
-            VStack(alignment: .leading, spacing: 14) {
-                headerDeck.allowsHitTesting(false)
-                occupancyHero.allowsHitTesting(false)
-                operationalPillars
-                wingHorizonBar.allowsHitTesting(false)
-            }
-            .padding(18)
-            .background {
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    onRoute()
-                } label: {
-                    cardBackground
-                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                }
-                .buttonStyle(CommandCardPressStyle(scale: 0.985, pressedOpacity: 0.95, cornerRadius: 22))
-                .accessibilityLabel(accessibilityLabel)
-                .accessibilityHint(Language.isRTL() ? "اضغط لفتح عمليات فندق ورعاية الحيوانات" : "Tap to open pets hotel operations hub")
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay(cardBorder)
-            .shadow(
-                color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.06),
-                radius: 12,
-                x: 0,
-                y: 5
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .accessibilityElement(children: .contain)
+        VStack(alignment: .leading, spacing: 14) {
+            headerDeck
+            occupancyHero
+            operationalPillars
+            wingHorizonBar
         }
+        .padding(18)
+        .background(cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(cardBorder)
+        .shadow(
+            color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.06),
+            radius: 12,
+            x: 0,
+            y: 5
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .onTapGesture {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onRoute()
+        }
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint(Language.isRTL() ? "اضغط لفتح عمليات فندق ورعاية الحيوانات" : "Tap to open pets hotel operations hub")
+        .accessibilityElement(children: .contain)
     }
 
     // MARK: - Header Deck

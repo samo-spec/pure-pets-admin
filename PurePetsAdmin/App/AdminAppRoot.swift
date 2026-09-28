@@ -451,6 +451,30 @@ final class AdminAppRootHostingController: UIViewController {
         sessionStore.restoreCurrentSession()
     }
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        hostingController?.view.frame = view.bounds
+    }
+
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        coordinator.animate(alongsideTransition: { [weak self] _ in
+            guard let self = self else { return }
+            self.view.setNeedsLayout()
+            self.view.layoutIfNeeded()
+            self.hostingController?.view.frame = CGRect(origin: .zero, size: size)
+            self.hostingController?.view.setNeedsLayout()
+            self.hostingController?.view.layoutIfNeeded()
+        }) { [weak self] _ in
+            guard let self = self else { return }
+            self.view.setNeedsLayout()
+            self.view.layoutIfNeeded()
+            self.hostingController?.view.frame = self.view.bounds
+            self.hostingController?.view.setNeedsLayout()
+            self.hostingController?.view.layoutIfNeeded()
+        }
+    }
+
     func routeToPaymentOrderID(_ orderID: String) {
         router.enqueuePaymentOrder(orderID)
         if case let .authenticated(session) = sessionStore.state {

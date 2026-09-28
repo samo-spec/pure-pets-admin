@@ -19,6 +19,11 @@
     [self pp_enableSwipeToPop];
 }
 
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    [self pp_enableSwipeToPop];
+}
+
 - (void)pp_applyPurePetsNavigationAppearance {
     UIFont *titleFont = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:20.0]];
     NSDictionary *titleAttributes = @{

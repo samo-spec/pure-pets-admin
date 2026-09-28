@@ -2568,12 +2568,7 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
     [super viewWillAppear:animated];
     // Hide default system navigation bar and let our sovereign Command Bar shine with native push semantics
     [self.navigationController setNavigationBarHidden:YES animated:animated];
-    self.navigationController.interactivePopGestureRecognizer.delegate = self;
-    self.navigationController.interactivePopGestureRecognizer.enabled = YES;
-}
-
-- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
-    return (self.navigationController.viewControllers.count > 1);
+    [self.navigationController pp_enableSwipeToPop];
 }
 
 #pragma mark - Sovereign Navigation Bar

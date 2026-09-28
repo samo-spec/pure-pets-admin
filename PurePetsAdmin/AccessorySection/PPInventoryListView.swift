@@ -2906,7 +2906,7 @@ struct PPInventoryListView: View {
             }
             .padding(.horizontal, AdminSpacing.base)
             .padding(.vertical, AdminSpacing.md)
-            .background(Color.white)
+            .background(AdminSurface.card)
 
             Rectangle()
                 .fill(Color(uiColor: .separator).opacity(0.35))
@@ -3034,16 +3034,27 @@ struct PPInventoryListView: View {
             .padding(AdminSpacing.base)
         }
         .multilineTextAlignment(.leading)
-        .background(Color.white)
+        .background(
+            Color(uiColor: UIColor { traits in traits.userInterfaceStyle == .dark ? UIColor.ppSurface : .white })
+        )
         .clipShape(RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
-                .strokeBorder(Color.black.opacity(0.06), lineWidth: 1)
+                .strokeBorder(
+                    Color(uiColor: UIColor { traits in traits.userInterfaceStyle == .dark ? UIColor(white: 1.0, alpha: 0.08) : UIColor(white: 0.0, alpha: 0.06) }),
+                    lineWidth: 1
+                )
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
-        .shadow(color: Color.black.opacity(0.04), radius: 12, x: 0, y: 4)
-        .shadow(color: Color.black.opacity(0.02), radius: 3, x: 0, y: 1)
+        .shadow(
+            color: Color(uiColor: UIColor { traits in traits.userInterfaceStyle == .dark ? UIColor.clear : UIColor(white: 0.0, alpha: 0.04) }),
+            radius: 12, x: 0, y: 4
+        )
+        .shadow(
+            color: Color(uiColor: UIColor { traits in traits.userInterfaceStyle == .dark ? UIColor.clear : UIColor(white: 0.0, alpha: 0.02) }),
+            radius: 3, x: 0, y: 1
+        )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inventory.hero")
     }
@@ -3064,7 +3075,10 @@ struct PPInventoryListView: View {
                 }
             }
             .frame(width: AdminTouchTarget.comfortable, height: AdminTouchTarget.comfortable)
-            .background(Color.white, in: Circle())
+            .background(
+                Color(uiColor: UIColor { traits in traits.userInterfaceStyle == .dark ? UIColor.ppElevatedSurface : .white }),
+                in: Circle()
+            )
             .contentShape(Circle())
         }
         .buttonStyle(CatalogPressStyle())
@@ -3184,12 +3198,29 @@ struct PPInventoryListView: View {
             .padding(.vertical, AdminSpacing.sm)
             .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum)
             .background(
-                isSelected ? Color(uiColor: .systemGray6) : Color.white,
+                isSelected
+                    ? Color(uiColor: UIColor { traits in
+                        traits.userInterfaceStyle == .dark
+                            ? UIColor(white: 0.20, alpha: 1.0)
+                            : .systemGray6
+                    })
+                    : Color(uiColor: UIColor { traits in
+                        traits.userInterfaceStyle == .dark
+                            ? UIColor(white: 0.12, alpha: 1.0)
+                            : .white
+                    }),
                 in: RoundedRectangle(cornerRadius: AdminRadius.small)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: AdminRadius.small)
-                    .strokeBorder(Color.black.opacity(0.06), lineWidth: 0.5)
+                    .strokeBorder(
+                        Color(uiColor: UIColor { traits in
+                            traits.userInterfaceStyle == .dark
+                                ? UIColor(white: 1.0, alpha: 0.08)
+                                : UIColor(white: 0.0, alpha: 0.06)
+                        }),
+                        lineWidth: 0.5
+                    )
             )
             .overlay(alignment: .bottom) {
                 Capsule()
@@ -3245,7 +3276,16 @@ struct PPInventoryListView: View {
             .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum, alignment: .leading)
             .padding(.horizontal, AdminSpacing.xs)
             .padding(.vertical, AdminSpacing.sm)
-            .background(isSelected ? Color.white : .clear, in: RoundedRectangle(cornerRadius: AdminRadius.small))
+            .background(
+                isSelected
+                    ? Color(uiColor: UIColor { traits in
+                        traits.userInterfaceStyle == .dark
+                            ? UIColor(white: 0.16, alpha: 1.0)
+                            : .white
+                    })
+                    : .clear,
+                in: RoundedRectangle(cornerRadius: AdminRadius.small)
+            )
             .overlay(alignment: .bottom) {
                 Capsule()
                     .fill(isSelected ? color : .clear)
@@ -4877,12 +4917,27 @@ private struct FlagshipInventoryCard: View {
             operationalPanel
         }
         .padding(12)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(
+            Color(uiColor: UIColor { traits in traits.userInterfaceStyle == .dark ? UIColor.ppSurface : .white }),
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(isHovered ? AdminSurface.primary.opacity(0.40) : AdminSurface.borderSubtle.opacity(0.65), lineWidth: 0.75)
+                .strokeBorder(
+                    isHovered
+                        ? AdminSurface.primary.opacity(0.40)
+                        : Color(uiColor: UIColor { traits in
+                            traits.userInterfaceStyle == .dark
+                                ? UIColor(white: 1.0, alpha: 0.08)
+                                : UIColor(red: 0.93, green: 0.87, blue: 0.89, alpha: 0.65)
+                        }),
+                    lineWidth: 0.75
+                )
         }
-        .shadow(color: .black.opacity(0.03), radius: 8, x: 0, y: 3)
+        .shadow(
+            color: Color(uiColor: UIColor { traits in traits.userInterfaceStyle == .dark ? UIColor.clear : UIColor(white: 0.0, alpha: 0.03) }),
+            radius: 8, x: 0, y: 3
+        )
         .onHover { hovering in
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) { isHovered = hovering }
         }
@@ -11008,8 +11063,7 @@ public struct PPItemActionsHubView: View {
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor.ppBackground
-        navigationController?.interactivePopGestureRecognizer?.isEnabled = true
-        navigationController?.interactivePopGestureRecognizer?.delegate = nil
+        navigationController?.pp_enableSwipeToPop()
 
         let detailView = PPInventoryItemDetailView(
             item: item,
@@ -16887,7 +16941,7 @@ private struct CatalogPressStyle: ButtonStyle {
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         navigationController?.setNavigationBarHidden(true, animated: animated)
-        navigationController?.interactivePopGestureRecognizer?.isEnabled = true
+        navigationController?.pp_enableSwipeToPop()
     }
 }
 

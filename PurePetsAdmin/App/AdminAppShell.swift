@@ -42,7 +42,7 @@ struct AdminAppShell: View {
         GeometryReader { shellGeometry in
             let screenWidth = shellGeometry.size.width
             let isPad = UIDevice.current.userInterfaceIdiom == .pad
-            let isLandscape = isPad && screenWidth >= 950
+            let isLandscape = isPad && (shellGeometry.size.width > shellGeometry.size.height)
             let isPadWide = isLandscape
 
             ZStack(alignment: .bottom) {
@@ -388,6 +388,8 @@ private struct AdminCommandOrbitDashboard: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: AdminCommandOrbitContainerController, context: Context) {
         controller.onNavigationDepthChanged = onNavigationDepthChanged
         controller.refresh(session: session, languageCode: languageCode)
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
     }
 }
 
@@ -420,6 +422,30 @@ private final class AdminCommandOrbitContainerController: UIViewController, UINa
             navigationController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
         navigationController.didMove(toParent: self)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        workflowNavigationController?.view.frame = view.bounds
+    }
+
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        coordinator.animate(alongsideTransition: { [weak self] _ in
+            guard let self = self else { return }
+            self.view.setNeedsLayout()
+            self.view.layoutIfNeeded()
+            self.workflowNavigationController?.view.frame = CGRect(origin: .zero, size: size)
+            self.workflowNavigationController?.view.setNeedsLayout()
+            self.workflowNavigationController?.view.layoutIfNeeded()
+        }) { [weak self] _ in
+            guard let self = self else { return }
+            self.view.setNeedsLayout()
+            self.view.layoutIfNeeded()
+            self.workflowNavigationController?.view.frame = self.view.bounds
+            self.workflowNavigationController?.view.setNeedsLayout()
+            self.workflowNavigationController?.view.layoutIfNeeded()
+        }
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -578,6 +604,11 @@ private final class AdminCommandOrbitNavigationController: UINavigationControlle
     override func viewDidLoad() {
         super.viewDidLoad()
         super.setNavigationBarHidden(true, animated: false)
+        pp_enableSwipeToPop()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
         pp_enableSwipeToPop()
     }
 

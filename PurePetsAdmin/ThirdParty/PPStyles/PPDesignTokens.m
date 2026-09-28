@@ -63,7 +63,7 @@ static UIColor *PPDesignTokenDynamicHex(uint32_t lightHex,
 
 + (UIColor *)ppPrimaryShiner
 {
-    return PPDesignTokenDynamicHex(0xF6E2E8, 0x2B2024, 1.0, 1.0);
+    return PPDesignTokenDynamicHex(0xF6E2E8, 0x2A1C22, 1.0, 1.0);
 }
 
 + (UIColor *)ppPremiumAccent
@@ -83,7 +83,7 @@ static UIColor *PPDesignTokenDynamicHex(uint32_t lightHex,
 
 + (UIColor *)ppAccentText
 {
-    return PPDesignTokenDynamicHex(0xCB2654, 0xE05A7E, 1.0, 1.0);
+    return PPDesignTokenDynamicHex(0xCB2654, 0xFB7185, 1.0, 1.0);
 }
 
 + (UIColor *)ppQuickActionShopping
@@ -125,7 +125,7 @@ static UIColor *PPDesignTokenDynamicHex(uint32_t lightHex,
 
 + (UIColor *)ppBackground
 {
-    return PPDesignTokenDynamicHex(0xF8F8F9, 0x0E0B0C, 1.0, 1.0);
+    return PPDesignTokenDynamicHex(0xF8F8F9, 0x000000, 1.0, 1.0);
 }
 
 + (UIColor *)ppBackgroundSecondary
@@ -140,7 +140,7 @@ static UIColor *PPDesignTokenDynamicHex(uint32_t lightHex,
 
 + (UIColor *)ppSurface
 {
-    return PPDesignTokenDynamicHex(0xFFFFFF, 0x171214, 1.0, 1.0);
+    return PPDesignTokenDynamicHex(0xFFFFFF, 0x141416, 1.0, 1.0);
 }
 
 + (UIColor *)ppSurfaceRaised
@@ -150,7 +150,7 @@ static UIColor *PPDesignTokenDynamicHex(uint32_t lightHex,
 
 + (UIColor *)ppElevatedSurface
 {
-    return PPDesignTokenDynamicHex(0xFFFDFC, 0x21191C, 1.0, 1.0);
+    return PPDesignTokenDynamicHex(0xFFFDFC, 0x1C1C20, 1.0, 1.0);
 }
 
 + (UIColor *)ppSurfaceElevated
@@ -160,17 +160,17 @@ static UIColor *PPDesignTokenDynamicHex(uint32_t lightHex,
 
 + (UIColor *)ppSurfaceOverlay
 {
-    return PPDesignTokenDynamicHex(0xFDF3F6, 0x2B2024, 1.0, 1.0);
+    return PPDesignTokenDynamicHex(0xFDF3F6, 0x242429, 1.0, 1.0);
 }
 
 + (UIColor *)ppSurfaceBorder
 {
-    return PPDesignTokenDynamicHex(0xEEDDE3, 0x3B2D32, 1.0, 1.0);
+    return PPDesignTokenDynamicHex(0xEEDDE3, 0x2A2A30, 1.0, 1.0);
 }
 
 + (UIColor *)ppSecondarySurface
 {
-    return PPDesignTokenDynamicHex(0xF7F1ED, 0x2B2024, 1.0, 1.0);
+    return PPDesignTokenDynamicHex(0xF7F1ED, 0x1C1C20, 1.0, 1.0);
 }
 
 + (UIColor *)ppForeground
@@ -185,49 +185,49 @@ static UIColor *PPDesignTokenDynamicHex(uint32_t lightHex,
 
 + (UIColor *)ppWarmPorcelain
 {
-    return PPDesignTokenDynamicHex(0xF7F1ED, 0x2B2024, 1.0, 1.0);
+    return PPDesignTokenDynamicHex(0xF7F1ED, 0x1C1C20, 1.0, 1.0);
 }
 
 + (UIColor *)ppMineralBeige
 {
-    return PPDesignTokenDynamicHex(0xEEE3DA, 0x261E21, 1.0, 1.0);
+    return PPDesignTokenDynamicHex(0xEEE3DA, 0x18181C, 1.0, 1.0);
 }
 
 + (UIColor *)ppSoftRose
 {
-    return PPDesignTokenDynamicHex(0xF6E2E8, 0x2B2024, 1.0, 1.0);
+    return PPDesignTokenDynamicHex(0xF6E2E8, 0x23181C, 1.0, 1.0);
 }
 
 + (UIColor *)ppQuietLilac
 {
-    return PPDesignTokenDynamicHex(0xEEEAF3, 0x21191D, 1.0, 1.0);
+    return PPDesignTokenDynamicHex(0xEEEAF3, 0x1B1922, 1.0, 1.0);
 }
 
 + (UIColor *)ppSeparator
 {
-    return PPDesignTokenDynamicHex(0xE6DADD, 0x3B2D32, 1.0, 1.0);
+    return PPDesignTokenDynamicHex(0xE6DADD, 0x2A2A30, 1.0, 1.0);
 }
 
 + (UIColor *)ppBorder
 {
-    return PPDesignTokenDynamicHex(0xE6DADD, 0x3B2D32, 1.0, 1.0);
+    return PPDesignTokenDynamicHex(0xE6DADD, 0x2A2A30, 1.0, 1.0);
 }
 
 #pragma mark - Text
 
 + (UIColor *)ppTextPrimary
 {
-    return PPDesignTokenDynamicHex(0x2A1D21, 0xFFF8FA, 1.0, 1.0);
+    return PPDesignTokenDynamicHex(0x2A1D21, 0xF4F4F6, 1.0, 1.0);
 }
 
 + (UIColor *)ppTextSecondary
 {
-    return PPDesignTokenDynamicHex(0x75666B, 0xC2B4B9, 1.0, 1.0);
+    return PPDesignTokenDynamicHex(0x75666B, 0xA1A1AA, 1.0, 1.0);
 }
 
 + (UIColor *)ppTextTertiary
 {
-    return PPDesignTokenDynamicHex(0x75666B, 0xC2B4B9, 0.72, 0.72);
+    return PPDesignTokenDynamicHex(0x75666B, 0x71717A, 0.72, 0.72);
 }
 
 #pragma mark - Semantic system colors

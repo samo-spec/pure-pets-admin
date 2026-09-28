@@ -223,6 +223,8 @@
 @property (nonatomic, strong) UIView *roleBadgeView;
 @property (nonatomic, strong) UILabel *emailLabel;
 @property (nonatomic, strong) UIView *operatorHaloView;
+@property (nonatomic, strong) UIView *operatorHeroCard;
+@property (nonatomic, strong) NSArray<UIButton *> *quickActionButtons;
 
 // Telemetry
 @property (nonatomic, strong) UIButton *pingButton;
@@ -496,9 +498,16 @@
     card.translatesAutoresizingMaskIntoConstraints = NO;
     card.backgroundColor = [UIColor ppSurfaceElevated];
     card.layer.borderWidth = 1.0;
-    card.layer.borderColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.22].CGColor;
+    UIColor *cardBorderColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traits) {
+        if (traits.userInterfaceStyle == UIUserInterfaceStyleDark) {
+            return [UIColor ppSurfaceBorder];
+        }
+        return [[UIColor ppPrimary] colorWithAlphaComponent:0.22];
+    }];
+    card.layer.borderColor = cardBorderColor.CGColor;
     PPApplyContinuousCorners(card, PPCornerCard);
     PPApplyCardShadow(card);
+    self.operatorHeroCard = card;
 
     // Eyebrow & Status Strip
     UIView *topStrip = [[UIView alloc] init];
@@ -529,10 +538,22 @@
     // Avatar Container with Halo Ring
     _operatorHaloView = [[UIView alloc] init];
     _operatorHaloView.translatesAutoresizingMaskIntoConstraints = NO;
-    _operatorHaloView.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.12];
+    UIColor *haloBg = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traits) {
+        if (traits.userInterfaceStyle == UIUserInterfaceStyleDark) {
+            return [UIColor colorWithRed:0.18 green:0.18 blue:0.22 alpha:0.6];
+        }
+        return [[UIColor ppPrimary] colorWithAlphaComponent:0.12];
+    }];
+    _operatorHaloView.backgroundColor = haloBg;
     PPApplyContinuousCorners(_operatorHaloView, 34.0);
-    _operatorHaloView.layer.borderWidth = 2.0;
-    _operatorHaloView.layer.borderColor = [UIColor ppPrimary].CGColor;
+    _operatorHaloView.layer.borderWidth = 1.5;
+    UIColor *haloBorder = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traits) {
+        if (traits.userInterfaceStyle == UIUserInterfaceStyleDark) {
+            return [UIColor colorWithWhite:1.0 alpha:0.12];
+        }
+        return [UIColor ppPrimary];
+    }];
+    _operatorHaloView.layer.borderColor = haloBorder.CGColor;
     [card addSubview:_operatorHaloView];
 
     _avatarImageView = [[UIImageView alloc] init];
@@ -545,7 +566,12 @@
     _monogramLabel = [[UILabel alloc] init];
     _monogramLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _monogramLabel.font = [Styling fontBold:20.0];
-    _monogramLabel.textColor = [UIColor ppPrimary];
+    _monogramLabel.textColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traits) {
+        if (traits.userInterfaceStyle == UIUserInterfaceStyleDark) {
+            return [UIColor ppAccentText];
+        }
+        return [UIColor ppPrimary];
+    }];
     _monogramLabel.textAlignment = NSTextAlignmentCenter;
     [_operatorHaloView addSubview:_monogramLabel];
 
@@ -560,20 +586,35 @@
     // Canonical Role Badge
     _roleBadgeView = [[UIView alloc] init];
     _roleBadgeView.translatesAutoresizingMaskIntoConstraints = NO;
-    _roleBadgeView.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.10];
+    _roleBadgeView.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traits) {
+        if (traits.userInterfaceStyle == UIUserInterfaceStyleDark) {
+            return [UIColor colorWithRed:0.20 green:0.12 blue:0.16 alpha:0.5];
+        }
+        return [[UIColor ppPrimary] colorWithAlphaComponent:0.10];
+    }];
     PPApplyContinuousCorners(_roleBadgeView, 8.0);
     [card addSubview:_roleBadgeView];
 
     UIImageView *roleIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"shield.fill"]];
     roleIcon.translatesAutoresizingMaskIntoConstraints = NO;
-    roleIcon.tintColor = [UIColor ppPrimary];
+    roleIcon.tintColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traits) {
+        if (traits.userInterfaceStyle == UIUserInterfaceStyleDark) {
+            return [UIColor ppAccentText];
+        }
+        return [UIColor ppPrimary];
+    }];
     roleIcon.contentMode = UIViewContentModeScaleAspectFit;
     [_roleBadgeView addSubview:roleIcon];
 
     _roleBadgeLabel = [[UILabel alloc] init];
     _roleBadgeLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _roleBadgeLabel.font = [Styling fontBold:11.5];
-    _roleBadgeLabel.textColor = [UIColor ppPrimary];
+    _roleBadgeLabel.textColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traits) {
+        if (traits.userInterfaceStyle == UIUserInterfaceStyleDark) {
+            return [UIColor ppAccentText];
+        }
+        return [UIColor ppPrimary];
+    }];
     [_roleBadgeView addSubview:_roleBadgeLabel];
 
     _emailLabel = [[UILabel alloc] init];
@@ -629,6 +670,7 @@
     [quickActionsStack addArrangedSubview:profileBtn];
     [quickActionsStack addArrangedSubview:permsBtn];
     [quickActionsStack addArrangedSubview:vaultBtn];
+    self.quickActionButtons = @[profileBtn, permsBtn, vaultBtn];
 
     [NSLayoutConstraint activateConstraints:@[
         [topStrip.topAnchor constraintEqualToAnchor:card.topAnchor constant:14.0],
@@ -708,18 +750,44 @@
 - (UIButton *)pp_createTactilePillButtonWithTitle:(NSString *)title systemIcon:(NSString *)icon action:(SEL)action {
     UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
     btn.translatesAutoresizingMaskIntoConstraints = NO;
-    btn.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.08];
+
+    UIColor *btnBg = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traits) {
+        if (traits.userInterfaceStyle == UIUserInterfaceStyleDark) {
+            return [UIColor colorWithRed:0.14 green:0.14 blue:0.17 alpha:1.0];
+        }
+        return [[UIColor ppPrimary] colorWithAlphaComponent:0.08];
+    }];
+    btn.backgroundColor = btnBg;
     btn.layer.borderWidth = 0.5;
-    btn.layer.borderColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.25].CGColor;
+
+    UIColor *btnBorder = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traits) {
+        if (traits.userInterfaceStyle == UIUserInterfaceStyleDark) {
+            return [UIColor colorWithWhite:1.0 alpha:0.10];
+        }
+        return [[UIColor ppPrimary] colorWithAlphaComponent:0.25];
+    }];
+    btn.layer.borderColor = btnBorder.CGColor;
     PPApplyContinuousCorners(btn, 10.0);
 
     [btn setTitle:title forState:UIControlStateNormal];
-    [btn setTitleColor:[UIColor ppPrimary] forState:UIControlStateNormal];
+    UIColor *titleClr = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traits) {
+        if (traits.userInterfaceStyle == UIUserInterfaceStyleDark) {
+            return [UIColor ppTextPrimary];
+        }
+        return [UIColor ppPrimary];
+    }];
+    [btn setTitleColor:titleClr forState:UIControlStateNormal];
     btn.titleLabel.font = [Styling fontBold:11.5];
 
     UIImage *img = [UIImage systemImageNamed:icon];
     [btn setImage:img forState:UIControlStateNormal];
-    btn.tintColor = [UIColor ppPrimary];
+    UIColor *tintClr = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traits) {
+        if (traits.userInterfaceStyle == UIUserInterfaceStyleDark) {
+            return [UIColor ppAccentText];
+        }
+        return [UIColor ppPrimary];
+    }];
+    btn.tintColor = tintClr;
     btn.imageEdgeInsets = [Language isRTL] ? UIEdgeInsetsMake(0, 6, 0, -6) : UIEdgeInsetsMake(0, -6, 0, 6);
 
     [btn addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
@@ -778,15 +846,39 @@
     // Ping Connectivity Action Button
     _pingButton = [UIButton buttonWithType:UIButtonTypeCustom];
     _pingButton.translatesAutoresizingMaskIntoConstraints = NO;
-    _pingButton.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.09];
-    _pingButton.layer.borderWidth = 1.0;
-    _pingButton.layer.borderColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.25].CGColor;
+    UIColor *pingBg = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traits) {
+        if (traits.userInterfaceStyle == UIUserInterfaceStyleDark) {
+            return [UIColor colorWithRed:0.14 green:0.14 blue:0.17 alpha:1.0];
+        }
+        return [[UIColor ppPrimary] colorWithAlphaComponent:0.09];
+    }];
+    _pingButton.backgroundColor = pingBg;
+    _pingButton.layer.borderWidth = 0.8;
+    UIColor *pingBorder = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traits) {
+        if (traits.userInterfaceStyle == UIUserInterfaceStyleDark) {
+            return [UIColor colorWithWhite:1.0 alpha:0.12];
+        }
+        return [[UIColor ppPrimary] colorWithAlphaComponent:0.25];
+    }];
+    _pingButton.layer.borderColor = pingBorder.CGColor;
     PPApplyContinuousCorners(_pingButton, 12.0);
     [_pingButton setTitle:kLang(@"Settings_Telemetry_Ping_CTA") ?: @"فحص الاتصال الحي" forState:UIControlStateNormal];
-    [_pingButton setTitleColor:[UIColor ppPrimary] forState:UIControlStateNormal];
+    UIColor *pingTitleClr = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traits) {
+        if (traits.userInterfaceStyle == UIUserInterfaceStyleDark) {
+            return [UIColor ppTextPrimary];
+        }
+        return [UIColor ppPrimary];
+    }];
+    [_pingButton setTitleColor:pingTitleClr forState:UIControlStateNormal];
     _pingButton.titleLabel.font = [Styling fontBold:12.5];
     [_pingButton setImage:[UIImage systemImageNamed:@"antenna.radiowaves.left.and.right"] forState:UIControlStateNormal];
-    _pingButton.tintColor = [UIColor ppPrimary];
+    UIColor *pingTintClr = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traits) {
+        if (traits.userInterfaceStyle == UIUserInterfaceStyleDark) {
+            return [UIColor ppAccentText];
+        }
+        return [UIColor ppPrimary];
+    }];
+    _pingButton.tintColor = pingTintClr;
     _pingButton.imageEdgeInsets = [Language isRTL] ? UIEdgeInsetsMake(0, 6, 0, -6) : UIEdgeInsetsMake(0, -6, 0, 6);
     [_pingButton addTarget:self action:@selector(pp_testConnectivity) forControlEvents:UIControlEventTouchUpInside];
     [vStack addArrangedSubview:_pingButton];
@@ -794,7 +886,7 @@
     _pingSpinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
     _pingSpinner.translatesAutoresizingMaskIntoConstraints = NO;
     _pingSpinner.hidesWhenStopped = YES;
-    _pingSpinner.color = [UIColor ppPrimary];
+    _pingSpinner.color = pingTintClr;
     [_pingButton addSubview:_pingSpinner];
 
     [NSLayoutConstraint activateConstraints:@[
@@ -943,11 +1035,31 @@
 
     UIButton *langSwitchBtn = [UIButton buttonWithType:UIButtonTypeCustom];
     langSwitchBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    langSwitchBtn.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.10];
+    UIColor *langBg = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traits) {
+        if (traits.userInterfaceStyle == UIUserInterfaceStyleDark) {
+            return [UIColor colorWithRed:0.14 green:0.14 blue:0.17 alpha:1.0];
+        }
+        return [[UIColor ppPrimary] colorWithAlphaComponent:0.10];
+    }];
+    langSwitchBtn.backgroundColor = langBg;
+    UIColor *langBorder = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traits) {
+        if (traits.userInterfaceStyle == UIUserInterfaceStyleDark) {
+            return [UIColor colorWithWhite:1.0 alpha:0.10];
+        }
+        return UIColor.clearColor;
+    }];
+    langSwitchBtn.layer.borderWidth = 0.5;
+    langSwitchBtn.layer.borderColor = langBorder.CGColor;
     PPApplyContinuousCorners(langSwitchBtn, 8.0);
     NSString *currentLangTitle = [Language isRTL] ? @"العربية (RTL)" : @"English (LTR)";
     [langSwitchBtn setTitle:currentLangTitle forState:UIControlStateNormal];
-    [langSwitchBtn setTitleColor:[UIColor ppPrimary] forState:UIControlStateNormal];
+    UIColor *langTitleClr = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traits) {
+        if (traits.userInterfaceStyle == UIUserInterfaceStyleDark) {
+            return [UIColor ppTextPrimary];
+        }
+        return [UIColor ppPrimary];
+    }];
+    [langSwitchBtn setTitleColor:langTitleClr forState:UIControlStateNormal];
     langSwitchBtn.titleLabel.font = [Styling fontBold:12.0];
     langSwitchBtn.contentEdgeInsets = UIEdgeInsetsMake(6, 12, 6, 12);
     [langSwitchBtn addTarget:self action:@selector(pp_openLanguageSwitcher) forControlEvents:UIControlEventTouchUpInside];
@@ -1178,14 +1290,20 @@
     _themeDarkCheck.hidden = (current != UIUserInterfaceStyleDark);
     _themeSystemCheck.hidden = (current != UIUserInterfaceStyleUnspecified);
 
-    _themeLightCard.layer.borderColor = (current == UIUserInterfaceStyleLight) ? [UIColor ppPrimary].CGColor : [UIColor ppSurfaceBorder].CGColor;
-    _themeLightCard.layer.borderWidth = (current == UIUserInterfaceStyleLight) ? 2.0 : 1.0;
+    BOOL isDarkActive = (current == UIUserInterfaceStyleDark) ||
+        (current == UIUserInterfaceStyleUnspecified && self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark);
 
-    _themeDarkCard.layer.borderColor = (current == UIUserInterfaceStyleDark) ? [UIColor ppPrimary].CGColor : [UIColor ppSurfaceBorder].CGColor;
-    _themeDarkCard.layer.borderWidth = (current == UIUserInterfaceStyleDark) ? 2.0 : 1.0;
+    UIColor *selectedBorderColor = isDarkActive ? [UIColor ppAccentText] : [UIColor ppPrimary];
+    UIColor *unselectedBorderColor = [UIColor ppSurfaceBorder];
 
-    _themeSystemCard.layer.borderColor = (current == UIUserInterfaceStyleUnspecified) ? [UIColor ppPrimary].CGColor : [UIColor ppSurfaceBorder].CGColor;
-    _themeSystemCard.layer.borderWidth = (current == UIUserInterfaceStyleUnspecified) ? 2.0 : 1.0;
+    _themeLightCard.layer.borderColor = (current == UIUserInterfaceStyleLight) ? selectedBorderColor.CGColor : unselectedBorderColor.CGColor;
+    _themeLightCard.layer.borderWidth = (current == UIUserInterfaceStyleLight) ? 1.5 : 1.0;
+
+    _themeDarkCard.layer.borderColor = (current == UIUserInterfaceStyleDark) ? selectedBorderColor.CGColor : unselectedBorderColor.CGColor;
+    _themeDarkCard.layer.borderWidth = (current == UIUserInterfaceStyleDark) ? 1.5 : 1.0;
+
+    _themeSystemCard.layer.borderColor = (current == UIUserInterfaceStyleUnspecified) ? selectedBorderColor.CGColor : unselectedBorderColor.CGColor;
+    _themeSystemCard.layer.borderWidth = (current == UIUserInterfaceStyleUnspecified) ? 1.5 : 1.0;
 
     if (_customNavBar) {
         _customNavBar.backgroundColor = [UIColor ppSurface];
@@ -1196,6 +1314,18 @@
     if (_backButton) {
         _backButton.backgroundColor = [UIColor ppSurfaceElevated];
         _backButton.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.8].CGColor;
+    }
+    if (_operatorHeroCard) {
+        _operatorHeroCard.layer.borderColor = isDarkActive ? [UIColor ppSurfaceBorder].CGColor : [[UIColor ppPrimary] colorWithAlphaComponent:0.22].CGColor;
+    }
+    if (_operatorHaloView) {
+        _operatorHaloView.layer.borderColor = isDarkActive ? [UIColor colorWithWhite:1.0 alpha:0.12].CGColor : [UIColor ppPrimary].CGColor;
+    }
+    if (_pingButton) {
+        _pingButton.layer.borderColor = isDarkActive ? [UIColor colorWithWhite:1.0 alpha:0.12].CGColor : [[UIColor ppPrimary] colorWithAlphaComponent:0.25].CGColor;
+    }
+    for (UIButton *pill in self.quickActionButtons) {
+        pill.layer.borderColor = isDarkActive ? [UIColor colorWithWhite:1.0 alpha:0.10].CGColor : [[UIColor ppPrimary] colorWithAlphaComponent:0.25].CGColor;
     }
 }
 

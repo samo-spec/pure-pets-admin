@@ -473,6 +473,11 @@ private final class AdminGlobalNavigationStackController: UINavigationController
         pp_enableSwipeToPop()
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        pp_enableSwipeToPop()
+    }
+
     override func setNavigationBarHidden(_ hidden: Bool, animated: Bool) {
         super.setNavigationBarHidden(true, animated: false)
     }
