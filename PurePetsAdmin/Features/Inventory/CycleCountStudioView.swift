@@ -505,8 +505,9 @@ public struct CycleCountStudioView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: AdminSpacing.sm) {
-                        ForEach(items) { item in
+                        ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                             iPhoneTactileItemCard(item: item)
+                                .animateCellDisplay(id: "cc_item:\(item.id)", index: index)
                         }
                     }
                     .padding(AdminSpacing.screenMargin)
@@ -623,8 +624,9 @@ public struct CycleCountStudioView: View {
                             ],
                             spacing: AdminSpacing.md
                         ) {
-                            ForEach(items) { item in
+                            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                                 iPadTactileItemCard(item: item)
+                                    .animateCellDisplay(id: "cc_pad:\(item.id)", index: index)
                             }
                         }
                         .padding(AdminSpacing.lg)
@@ -2165,8 +2167,9 @@ public struct CycleCountStudioView: View {
                 // Discrepancy Items List
                 let items = filteredReviewItems(session: session)
                 VStack(spacing: AdminSpacing.sm) {
-                    ForEach(items) { item in
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         discrepancyCard(item: item)
+                            .animateCellDisplay(id: "cc_disc:\(item.id)", index: index)
                     }
                 }
 
@@ -2528,8 +2531,9 @@ public struct CycleCountStudioView: View {
                     )
                     .padding(.top, 40)
                 } else {
-                    ForEach(pastSessions) { session in
+                    ForEach(Array(pastSessions.enumerated()), id: \.element.id) { index, session in
                         historySessionCard(session: session)
+                            .animateCellDisplay(id: "cc_sess:\(session.id)", index: index)
                     }
                 }
             }

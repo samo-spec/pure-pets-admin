@@ -171,10 +171,10 @@ import UIKit
         if !PPAccessoryVariantColor.isValidIdentifier(identifier) {
             return Language.get("Variant_Error_ColorIdentifier", alter: "معرف اللون غير صالح.")
         }
-        if nameAr.isEmpty || nameAr.count > 60 {
+        if nameAr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || nameAr.count > 300 {
             return Language.get("Variant_Error_ColorNameAr", alter: "اسم اللون بالعربية مطلوب.")
         }
-        if nameEn.isEmpty || nameEn.count > 60 {
+        if nameEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || nameEn.count > 300 {
             return Language.get("Variant_Error_ColorNameEn", alter: "اسم اللون بالإنجليزية مطلوب.")
         }
         if !PPAccessoryVariantColor.isValidHex(hex) {
@@ -901,6 +901,7 @@ import UIKit
     /// BranchProductCommerce; the family never owns a price.
     @objc public let retailPrice: NSNumber?
     @objc public let wholesalePrice: NSNumber?
+    @objc public let costPrice: NSNumber?
     @objc public let hasResolvedRetailPrice: Bool
     @objc public let showInAppMarket: Bool
     /// Product revision observed when this variant was loaded, for optimistic
@@ -923,6 +924,7 @@ import UIKit
         quantity: Int = 0,
         retailPrice: NSNumber? = nil,
         wholesalePrice: NSNumber? = nil,
+        costPrice: NSNumber? = nil,
         hasResolvedRetailPrice: Bool = false,
         showInAppMarket: Bool = false,
         revision: Int = 0,
@@ -941,6 +943,7 @@ import UIKit
         self.quantity = max(0, quantity)
         self.retailPrice = retailPrice
         self.wholesalePrice = wholesalePrice
+        self.costPrice = costPrice
         self.hasResolvedRetailPrice = hasResolvedRetailPrice
         self.showInAppMarket = showInAppMarket
         self.revision = max(0, revision)
@@ -973,6 +976,7 @@ import UIKit
             quantity: accessory.quantity,
             retailPrice: accessory.hasResolvedSellingPrice ? accessory.finalPrice : nil,
             wholesalePrice: accessory.wholesalePrice,
+            costPrice: accessory.costPrice,
             hasResolvedRetailPrice: accessory.hasResolvedSellingPrice,
             showInAppMarket: accessory.showInAppMarket,
             revision: accessory.revision,
@@ -1011,6 +1015,7 @@ import UIKit
             isArchived: isArchived, isDefault: isDefault, sku: product.sku ?? "", barcode: product.barcode ?? "",
             primaryImageURL: PetAccessory.firstImageURL(for: product)?.absoluteString ?? "", quantity: product.quantity,
             retailPrice: product.hasResolvedSellingPrice ? product.finalPrice : nil, wholesalePrice: product.wholesalePrice,
+            costPrice: product.costPrice,
             hasResolvedRetailPrice: product.hasResolvedSellingPrice, showInAppMarket: product.showInAppMarket,
             revision: product.revision, media: (product.imageURLsArray ?? []).map { PPAccessoryVariantMedia(remoteURL: $0) },
             selectedOptions: selectedOptions, combinationKey: combinationKey)
@@ -1196,6 +1201,7 @@ import UIKit
                 quantity: product?.quantity ?? 0,
                 retailPrice: (product?.hasResolvedSellingPrice == true) ? product?.finalPrice : nil,
                 wholesalePrice: product?.wholesalePrice,
+                costPrice: product?.costPrice,
                 hasResolvedRetailPrice: product?.hasResolvedSellingPrice ?? false,
                 showInAppMarket: product?.showInAppMarket ?? false,
                 revision: product?.revision ?? 0,
@@ -1265,6 +1271,7 @@ import UIKit
             quantity: accessory.quantity,
             retailPrice: accessory.hasResolvedSellingPrice ? accessory.finalPrice : nil,
             wholesalePrice: accessory.wholesalePrice,
+            costPrice: accessory.costPrice,
             hasResolvedRetailPrice: accessory.hasResolvedSellingPrice,
             showInAppMarket: accessory.showInAppMarket,
             revision: accessory.revision,
@@ -1728,6 +1735,7 @@ import UIKit
                     quantity: variant.quantity,
                     retailPrice: variant.retailPrice,
                     wholesalePrice: variant.wholesalePrice,
+                    costPrice: variant.costPrice,
                     hasResolvedRetailPrice: variant.hasResolvedRetailPrice,
                     showInAppMarket: variant.showInAppMarket,
                     revision: variant.revision,
@@ -1832,6 +1840,7 @@ import UIKit
     @objc public var barcode: String { existingVariant?.barcode ?? "" }
     @objc public var retailPrice: NSNumber? { existingVariant?.retailPrice }
     @objc public var wholesalePrice: NSNumber? { existingVariant?.wholesalePrice }
+    @objc public var costPrice: NSNumber? { existingVariant?.costPrice }
     @objc public var primaryImageURL: String { existingVariant?.primaryImageURL ?? "" }
 
     /// Localized title combining values in order (e.g. "أحمر / وسط" or "Red / M")
@@ -2740,7 +2749,7 @@ public extension PetAccessory {
 
     /// Detects the collective variant dimension across all members in a family.
     static func detectFamilyDimension(members: [PetAccessory]) -> PPAccessoryVariantDimensionType {
-        guard !members.isEmpty else { return .color }
+        guard !members.isEmpty else { return .custom }
 
         // 1. Check if any member has an explicit variantAxis
         for m in members {
@@ -2783,11 +2792,11 @@ public extension PetAccessory {
             return .color
         }
 
-        // If no real color and any dimension is custom, return custom
-        if uniqueDimensions.contains(.custom) {
-            return .custom
+        // Modern color options can be explicit even without a legacy color swatch.
+        if uniqueDimensions.count == 1 && uniqueDimensions.contains(.color) {
+            return .color
         }
 
-        return .color
+        return uniqueDimensions.contains(.multiple) ? .multiple : .custom
     }
 }

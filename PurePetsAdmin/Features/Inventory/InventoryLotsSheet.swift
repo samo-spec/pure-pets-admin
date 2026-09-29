@@ -249,6 +249,7 @@ public struct InventoryLotsSheet: View {
                         // FEFO Dispatch Beacon Hero Card
                         if let beaconLot = earliestExpiringLot {
                             fefoDispatchBeaconCard(lot: beaconLot)
+                                .animateCellDisplay(id: "beacon:\(beaconLot.id)", index: 0)
                         }
 
                         // Filter & Search Matrix
@@ -259,8 +260,9 @@ public struct InventoryLotsSheet: View {
                             filterEmptyState
                         } else {
                             LazyVStack(spacing: 12) {
-                                ForEach(filteredLots) { lot in
+                                ForEach(Array(filteredLots.enumerated()), id: \.element.id) { index, lot in
                                     tacticalLotCard(lot: lot, isRegular: false)
+                                        .animateCellDisplay(id: "lot:\(lot.id)", index: index)
                                 }
                             }
                         }
@@ -312,6 +314,7 @@ public struct InventoryLotsSheet: View {
                                 // Prominent FEFO Dispatch Priority Banner
                                 if let beaconLot = earliestExpiringLot, selectedFilter == .all || selectedFilter == .active {
                                     fefoDispatchBeaconCard(lot: beaconLot)
+                                        .animateCellDisplay(id: "beacon_pad:\(beaconLot.id)", index: 0)
                                 }
 
                                 // Adaptive Grid of Tactile Specimen Cards
@@ -319,8 +322,9 @@ public struct InventoryLotsSheet: View {
                                     GridItem(.adaptive(minimum: 280, maximum: 380), spacing: 14)
                                 ]
                                 LazyVGrid(columns: columns, spacing: 14) {
-                                    ForEach(filteredLots) { lot in
+                                    ForEach(Array(filteredLots.enumerated()), id: \.element.id) { index, lot in
                                         tacticalLotCard(lot: lot, isRegular: true)
+                                            .animateCellDisplay(id: "lot_pad:\(lot.id)", index: index)
                                     }
                                 }
                             }
@@ -1224,6 +1228,9 @@ public struct InventoryLotsSheet: View {
     }
 
     private func refreshLotsAsync() async {
+        AdminCellDisplayRegistry.shared.clear(prefix: "lot:")
+        AdminCellDisplayRegistry.shared.clear(prefix: "lot_pad:")
+        AdminCellDisplayRegistry.shared.clear(prefix: "beacon:")
         do {
             let fetched = try await lotService.fetchLots(
                 branchId: resolvedBranchID,
@@ -1329,6 +1336,9 @@ private struct FEFOLoadingHubView: View {
         }
         .onDisappear {
             tickerTask?.cancel()
+            AdminCellDisplayRegistry.shared.clear(prefix: "lot:")
+            AdminCellDisplayRegistry.shared.clear(prefix: "lot_pad:")
+            AdminCellDisplayRegistry.shared.clear(prefix: "beacon:")
         }
     }
 

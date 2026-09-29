@@ -2048,8 +2048,9 @@ private struct LivePetVeterinaryQuarantineDeckView: View {
                 )
             } else {
                 VStack(spacing: 8) {
-                    ForEach(quarantinedUnits) { unit in
+                    ForEach(Array(quarantinedUnits.enumerated()), id: \.element.id) { index, unit in
                         quarantinedUnitCard(unit)
+                            .animateCellDisplay(id: "quar_unit:\(unit.id)", index: index)
                     }
                 }
             }

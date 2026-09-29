@@ -358,7 +358,27 @@ final class POSHistoryViewModel: ObservableObject {
                       BranchContextStore.shared.activeBranch?.branchID == branchID else { return }
                 self.isLoading = false
                 if let error {
-                    self.errorMessage = error.localizedDescription
+                    let nsError = error as NSError
+                    if nsError.domain == "FIRFirestoreErrorDomain" && nsError.code == 7 ||
+                       error.localizedDescription.localizedCaseInsensitiveContains("permission") ||
+                       error.localizedDescription.localizedCaseInsensitiveContains("insufficient") {
+                        self.errorMessage = Language.get(
+                            "POS_History_PermissionDenied",
+                            alter: "لا تملك الصلاحية الكافية لعرض سجل مبيعات هذا الفرع (تتطلب صلاحية pos.history)."
+                        )
+                    } else if nsError.code == 14 ||
+                              error.localizedDescription.localizedCaseInsensitiveContains("network") ||
+                              error.localizedDescription.localizedCaseInsensitiveContains("unavailable") {
+                        self.errorMessage = Language.get(
+                            "POS_History_NetworkError",
+                            alter: "تعذر الاتصال بالخادم لتحميل سجل المبيعات. يرجى التحقق من اتصال الإنترنت."
+                        )
+                    } else {
+                        self.errorMessage = Language.get(
+                            "POS_History_LoadFailed",
+                            alter: "تعذر تحميل سجل المبيعات حالياً. يرجى المحاولة مرة أخرى."
+                        )
+                    }
                     return
                 }
                 self.receipts = receipts ?? []
@@ -604,6 +624,7 @@ final class POSHistoryViewModel: ObservableObject {
 struct AdminPOSHistoryView: View {
     let session: AdminSession
     var onDismiss: (() -> Void)? = nil
+    var onStartFastSell: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var branchStore = BranchContextStore.shared
     @StateObject private var viewModel = POSHistoryViewModel()
@@ -619,9 +640,10 @@ struct AdminPOSHistoryView: View {
     @State private var isShowingFastSell: Bool = false
     @State private var isSearchActive: Bool = false
 
-    init(session: AdminSession, onDismiss: (() -> Void)? = nil) {
+    init(session: AdminSession, onDismiss: (() -> Void)? = nil, onStartFastSell: (() -> Void)? = nil) {
         self.session = session
         self.onDismiss = onDismiss
+        self.onStartFastSell = onStartFastSell
     }
 
     var body: some View {
@@ -776,11 +798,36 @@ struct AdminPOSHistoryView: View {
                 }
             )
         }
-        // Fast Sell Launch Sheet
-        .sheet(isPresented: $isShowingFastSell) {
-            AdminPOSFastSellView(session: session) {
-                isShowingFastSell = false
-                viewModel.load(branchID: branchStore.activeBranch?.branchID)
+        // Fast Sell Push Navigation
+        .background(
+            NavigationLink(
+                isActive: $isShowingFastSell,
+                destination: {
+                    AdminPOSFastSellView(session: session) {
+                        isShowingFastSell = false
+                        viewModel.load(branchID: branchStore.activeBranch?.branchID)
+                    }
+                    .navigationTitle("")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .navigationBarBackButtonHidden(true)
+                    .navigationBarHidden(true)
+                    .toolbar(.hidden, for: .navigationBar)
+                    .ignoresSafeArea()
+                },
+                label: {
+                    EmptyView()
+                }
+            )
+            .hidden()
+            .accessibilityHidden(true)
+        )
+        .enableSwipeToPop {
+            let impact = UIImpactFeedbackGenerator(style: .light)
+            impact.impactOccurred()
+            if let onDismiss {
+                onDismiss()
+            } else {
+                dismiss()
             }
         }
     }
@@ -793,27 +840,13 @@ struct AdminPOSHistoryView: View {
 
             HStack(spacing: 12) {
                 // Back Button (RTL Safe)
-                Button(action: {
-                    let impact = UIImpactFeedbackGenerator(style: .light)
-                    impact.impactOccurred()
+                AdminSquircleBackButton {
                     if let onDismiss {
                         onDismiss()
                     } else {
                         dismiss()
                     }
-                }) {
-                    Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(AdminSurface.primaryText)
-                        .frame(width: 42, height: 42)
-                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
-                        )
-                        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
                 }
-                .buttonStyle(.plain)
 
                 // Title & Vault Connected Beacon
                 VStack(alignment: .leading, spacing: 2) {
@@ -1317,7 +1350,11 @@ struct AdminPOSHistoryView: View {
             Button {
                 let impact = UIImpactFeedbackGenerator(style: .medium)
                 impact.impactOccurred()
-                isShowingFastSell = true
+                if let onStartFastSell {
+                    onStartFastSell()
+                } else {
+                    isShowingFastSell = true
+                }
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "plus.circle.fill")

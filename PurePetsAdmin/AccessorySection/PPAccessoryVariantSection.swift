@@ -59,6 +59,36 @@ enum PPAccessoryVariantColorLibrary {
 // MARK: - Section model
 
 @MainActor
+private final class PPVariantStudioPendingUpdate {
+    let productId: String
+    let intent: NSDictionary
+    let images: [UIImage]
+    let primaryImage: UIImage?
+    let catalogRequest: [String: Any]
+    let commerceRequest: [String: Any]?
+    let mediaCommit: PPAccessoryVariantMediaCommit
+    var catalogResult: PPInventoryCommandResult?
+    var commerceSaved = false
+
+    init(productId: String, intent: NSDictionary, images: [UIImage], primaryImage: UIImage?,
+         catalogRequest: [String: Any], commerceRequest: [String: Any]?, mediaCommit: PPAccessoryVariantMediaCommit) {
+        self.productId = productId
+        self.intent = intent
+        self.images = images
+        self.primaryImage = primaryImage
+        self.catalogRequest = catalogRequest
+        self.commerceRequest = commerceRequest
+        self.mediaCommit = mediaCommit
+    }
+
+    func matches(productId: String, intent: NSDictionary, images: [UIImage], primaryImage: UIImage?) -> Bool {
+        self.productId == productId && self.intent == intent
+            && self.images.count == images.count && zip(self.images, images).allSatisfy { $0 === $1 }
+            && self.primaryImage === primaryImage
+    }
+}
+
+@MainActor
 final class PPAccessoryVariantSectionModel: ObservableObject {
     /// Baseline as loaded from the server; the comparison target for dirty state.
     @Published private(set) var baseline: PPAccessoryVariantFamily?
@@ -108,8 +138,20 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
     private var pendingVariantAttachDraft: PPAccessoryVariantFamily?
     private var pendingVariantCreationIntent: [String: String]?
     private var pendingCreatedVariantProduct: PetAccessory?
+    private var pendingStudioUpdate: PPVariantStudioPendingUpdate?
 
     var canManageVariants: Bool { PPAccessoryVariantService.shared.canManageVariants }
+    var canViewCosts: Bool {
+        guard let staff = PPStaffAuth.shared().cachedCurrentStaff else { return false }
+        let branch = rootAccessory.flatMap { PPAccessoryVariantService.costBranch(for: $0) }
+        guard staff.isActive(), branch != nil || staff.hasGlobalScope() else { return false }
+        return staff.isAdmin() || staff.hasPermission("stock.cost.view", inBranch: branch)
+    }
+
+    var hasPendingStudioSave: Bool {
+        pendingStudioUpdate != nil || pendingSaveDraft != nil
+            || (pendingVariantCreationIntent != nil && failure?.allowsSameCommandRetry == true)
+    }
 
     var isDirty: Bool {
         guard let draft else { return false }
@@ -346,6 +388,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
             quantity: existing.quantity,
             retailPrice: existing.retailPrice,
             wholesalePrice: existing.wholesalePrice,
+            costPrice: existing.costPrice,
             hasResolvedRetailPrice: existing.hasResolvedRetailPrice,
             showInAppMarket: existing.showInAppMarket,
             revision: existing.revision,
@@ -385,6 +428,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
                 quantity: firstVariant.quantity,
                 retailPrice: firstVariant.retailPrice,
                 wholesalePrice: firstVariant.wholesalePrice,
+                costPrice: firstVariant.costPrice,
                 hasResolvedRetailPrice: firstVariant.hasResolvedRetailPrice,
                 showInAppMarket: firstVariant.showInAppMarket,
                 revision: firstVariant.revision,
@@ -614,10 +658,12 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         barcode: String,
         retailPrice: Double,
         wholesalePrice: Double?,
+        costPrice: Double? = nil,
         quantity: Int = 0,
         images: [UIImage] = []
     ) async -> Bool {
         guard canManageVariants, !isSaving, !isCreatingVariant else { return false }
+        let costPrice = canViewCosts ? costPrice : nil
         // Persist newly added sizes/options before loading the family for the
         // attach transaction; otherwise the new combination references old data.
         if draft?.familyId.isEmpty == true || isDirty || pendingSaveDraft != nil {
@@ -681,8 +727,9 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         } else {
             requestedOptions[PPAccessoryVariantContract.axisColor] = color.identifier
         }
-        guard retailPrice.isFinite, retailPrice > 0,
-              wholesalePrice == nil || (wholesalePrice!.isFinite && wholesalePrice! > 0) else {
+        guard retailPrice.isFinite, retailPrice > 0, retailPrice <= 999_999_999.99,
+              wholesalePrice == nil || (wholesalePrice!.isFinite && wholesalePrice! > 0 && wholesalePrice! <= 999_999_999.99),
+              costPrice == nil || (costPrice!.isFinite && costPrice! >= 0 && costPrice! <= 999_999_999.99), quantity >= 0 else {
             failure = PPAccessoryVariantFailureState(
                 message: Language.get("Variant_Add_InvalidPrice", alter: "أدخل سعر بيع صالحاً للون الجديد."),
                 recovery: .correctInput
@@ -697,6 +744,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
             "barcode": barcode.trimmingCharacters(in: .whitespacesAndNewlines),
             "retailPrice": String(retailPrice),
             "wholesalePrice": wholesalePrice.map { String($0) } ?? "",
+            "costPrice": costPrice.map { String($0) } ?? "",
             "quantity": String(max(0, quantity))
         ]
         if let pendingVariantCreationIntent, pendingVariantCreationIntent != creationIntent {
@@ -733,6 +781,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
                     barcode: barcode,
                     retailPrice: retailPrice,
                     wholesalePrice: wholesalePrice,
+                    costPrice: costPrice,
                     quantity: max(0, quantity),
                     commandId: createCommandId
                 )
@@ -791,6 +840,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
                 quantity: refreshedProduct.quantity,
                 retailPrice: refreshedProduct.hasResolvedSellingPrice ? refreshedProduct.finalPrice : nil,
                 wholesalePrice: refreshedProduct.wholesalePrice,
+                costPrice: refreshedProduct.costPrice,
                 hasResolvedRetailPrice: refreshedProduct.hasResolvedSellingPrice,
                 showInAppMarket: false,
                 revision: refreshedProduct.revision,
@@ -843,6 +893,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         barcode: String,
         retailPrice: Double,
         wholesalePrice: Double?,
+        costPrice: Double? = nil,
         quantity: Int = 0,
         images: [UIImage] = []
     ) async -> Bool {
@@ -855,7 +906,8 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         return await createAndAttachVariant(
             color: resolvedColor, selectedOptions: selectedOptions,
             sku: sku, barcode: barcode, retailPrice: retailPrice,
-            wholesalePrice: wholesalePrice, quantity: quantity, images: images
+            wholesalePrice: wholesalePrice, costPrice: costPrice,
+            quantity: quantity, images: images
         )
     }
 
@@ -863,6 +915,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
     func applyBulkPricing(
         retailPrice: Double,
         wholesalePrice: Double?,
+        costPrice: Double? = nil,
         forProductIds productIds: [String]
     ) async -> Bool {
         guard !productIds.isEmpty else { return false }
@@ -877,6 +930,9 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
                 let product = try await PPAccessoryVariantService.shared.loadProduct(productId: productId)
                 product.price = NSNumber(value: retailPrice)
                 product.wholesalePrice = wholesalePrice.map { NSNumber(value: $0) }
+                if let costPrice {
+                    product.costPrice = NSNumber(value: costPrice)
+                }
                 let retailMinor = Int((retailPrice * 100.0).rounded())
                 let wholesaleMinor = wholesalePrice.map { Int(($0 * 100.0).rounded()) }
 
@@ -932,8 +988,9 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         return successCount > 0
     }
 
-    /// Updates an existing variant's color, pricing, quantity, SKU, barcode, and photos.
-    /// Uses audited callable facades exclusively without direct Firestore writes.
+    /// Saves exact-member catalog/media and commerce commands, then writes the
+    /// family only when its identity actually changed. Each accepted phase is
+    /// retained across retry; a missing sibling cannot veto a catalog-only edit.
     func updateVariant(
         productId: String,
         color: PPAccessoryVariantColor,
@@ -942,135 +999,219 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
         barcode: String,
         retailPrice: Double,
         wholesalePrice: Double?,
+        costPrice: Double? = nil,
         quantity: Int,
         newImages: [UIImage] = [],
-        retainedURLs: [String]? = nil
+        retainedURLs: [String]? = nil,
+        preferredPrimaryStagedImage: UIImage? = nil
     ) async -> Bool {
-        guard draft != nil, !isEditingLocked else { return false }
+        guard !isSaving, !isCreatingVariant, !isDissolving,
+              let currentDraft = draft,
+              let observedVariant = currentDraft.variant(forProductId: productId),
+              let staff = PPStaffAuth.shared().cachedCurrentStaff else { return false }
+        let branch = (rootAccessory?.branchID ?? rootAccessory?.storeID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard staff.isAdmin() || staff.hasPermission("stock.manage", inBranch: branch.isEmpty ? nil : branch) else {
+            failure = PPAccessoryVariantFailureState(message: Language.get("Variant_Error_PermissionDenied", alter: "لا تملك صلاحية تعديل ألوان هذا المنتج."), recovery: .permissionDenied)
+            return false
+        }
+        // Bounded before every major-to-minor conversion; also reject negative
+        // quantities before any upload or callable can commit a partial change.
+        let maximumPrice = 999_999_999.99
+        guard retailPrice.isFinite, retailPrice > 0, retailPrice <= maximumPrice,
+              wholesalePrice == nil || (wholesalePrice!.isFinite && wholesalePrice! > 0 && wholesalePrice! <= maximumPrice),
+              costPrice == nil || (costPrice!.isFinite && costPrice! >= 0 && costPrice! <= maximumPrice),
+              quantity >= 0 else {
+            failure = PPAccessoryVariantFailureState(message: Language.get("Variant_Add_InvalidPrice", alter: "أدخل سعر بيع صالحاً للون الجديد."), recovery: .correctInput)
+            return false
+        }
+        let intent: NSDictionary = [
+            "color": color.payload(), "options": selectedOptions ?? observedVariant.selectedOptions,
+            "sku": sku.trimmingCharacters(in: .whitespacesAndNewlines),
+            "barcode": barcode.trimmingCharacters(in: .whitespacesAndNewlines),
+            "retail": retailPrice, "wholesale": wholesalePrice as Any? ?? NSNull(),
+            "cost": (canViewCosts ? costPrice : nil) as Any? ?? NSNull(), "quantity": quantity,
+            "retained": retainedURLs ?? images(forProductId: productId),
+        ]
+        if let pending = pendingStudioUpdate,
+           !pending.matches(productId: productId, intent: intent, images: newImages, primaryImage: preferredPrimaryStagedImage) {
+            failure = PPAccessoryVariantFailureState(message: Language.get("Variant_Studio_PendingSaveChanged", alter: "أكمل إعادة محاولة الحفظ السابق قبل تغيير هذه الحقول."), recovery: .retrySameCommand)
+            return false
+        }
         isSaving = true
         failure = nil
         confirmation = nil
         defer { isSaving = false }
 
         do {
-            // 1. Update color and selected options in family draft
-            updateColor(color, forProductId: productId)
-            if let selectedOptions, let currentDraft = draft, let idx = currentDraft.variants.firstIndex(where: { $0.productId == productId }) {
-                var opts = selectedOptions
-                if let colorDef = currentDraft.optionDefinitions.first(where: { $0.isColorOption }) {
-                    opts[colorDef.id] = color.identifier
+            if pendingStudioUpdate == nil {
+                // Avoid synthesizing color metadata when this is a pure catalog
+                // edit. Canonical option IDs keep aliases from manufacturing dirt.
+                if !observedVariant.color.isEqual(color) { updateColor(color, forProductId: productId) }
+                if let selectedOptions, let variant = draft?.variant(forProductId: productId) {
+                    var normalized: [String: String] = [:]
+                    for definition in currentDraft.optionDefinitions {
+                        if definition.isColorOption {
+                            normalized[definition.id] = color.identifier
+                        } else if let value = selectedOptions[definition.id] ?? selectedOptions[definition.key] {
+                            normalized[definition.id] = value
+                        }
+                    }
+                    if !currentDraft.optionDefinitions.isEmpty {
+                        variant.selectedOptions = normalized
+                        variant.combinationKey = PPAccessoryVariantFamily.combinationKey(from: normalized)
+                    }
                 }
-                opts[PPAccessoryVariantContract.axisColor] = color.identifier
-                currentDraft.variants[idx].selectedOptions = opts
-                currentDraft.variants[idx].combinationKey = PPAccessoryVariantFamily.combinationKey(from: opts)
-                currentDraft.autoBindMissingOptionSelections()
-                self.draft = currentDraft
-            }
+                revalidate()
+                guard validationMessages.isEmpty else {
+                    failure = PPAccessoryVariantFailureState(message: validationMessages[0], recovery: .correctInput)
+                    return false
+                }
+                if isDirty, let draft { try await PPAccessoryVariantService.shared.validateStudioFamily(draft) }
 
-            revalidate()
-            guard validationMessages.isEmpty else {
-                failure = PPAccessoryVariantFailureState(message: validationMessages[0], recovery: .correctInput)
-                return false
-            }
+                let product = try await PPAccessoryVariantService.shared.loadProduct(productId: productId)
+                guard product.accessoryID == productId, product.revision == observedVariant.revision else {
+                    throw PPAccessoryVariantService.staleRevision(expected: observedVariant.revision, current: product.revision)
+                }
+                let actualBranch = (product.branchID ?? product.storeID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                guard staff.isAdmin() || staff.hasPermission("stock.manage", inBranch: actualBranch.isEmpty ? nil : actualBranch) else {
+                    failure = PPAccessoryVariantFailureState(message: Language.get("Variant_Error_PermissionDenied", alter: "لا تملك صلاحية تعديل ألوان هذا المنتج."), recovery: .permissionDenied)
+                    return false
+                }
+                let pricingChanged = observedVariant.retailPrice?.doubleValue != retailPrice
+                    || observedVariant.wholesalePrice?.doubleValue != wholesalePrice
+                let commerceRequest = pricingChanged ? try await PPAccessoryVariantService.shared.prepareStudioCommerce(
+                    product: product, retailPrice: retailPrice, wholesalePrice: wholesalePrice,
+                    commandId: "variant-pricing-\(productId)-\(UUID().uuidString)"
+                ) : nil
+                product.sku = sku.trimmingCharacters(in: .whitespacesAndNewlines)
+                product.barcode = barcode.trimmingCharacters(in: .whitespacesAndNewlines)
+                let actualCostBranch = PPAccessoryVariantService.costBranch(for: product)
+                let canWriteCost = staff.isActive() && (actualCostBranch != nil || staff.hasGlobalScope())
+                    && (staff.isAdmin() || staff.hasPermission("stock.cost.view", inBranch: actualCostBranch))
+                let explicitCost = canWriteCost ? costPrice : nil
+                product.costPrice = explicitCost.map { NSNumber(value: $0) }
+                product.quantity = quantity
+                product.noStock = quantity <= 0
 
-            // 2. Load underlying product and apply catalog updates
-            let product = try await PPAccessoryVariantService.shared.loadProduct(productId: productId)
-            product.sku = sku.trimmingCharacters(in: .whitespacesAndNewlines)
-            product.barcode = barcode.trimmingCharacters(in: .whitespacesAndNewlines)
-            product.price = NSNumber(value: retailPrice)
-            product.wholesalePrice = wholesalePrice.map { NSNumber(value: $0) }
-            product.quantity = max(0, quantity)
-            product.noStock = (quantity <= 0)
-
-            // Keep catalog and media in strict sync before the save command
-            if let retainedURLs {
-                retainedImageURLs[productId] = retainedURLs
-                product.imageURLsArray = retainedURLs
-            } else if let currentRetained = retainedImageURLs[productId] {
-                product.imageURLsArray = currentRetained
+                let urls = retainedURLs ?? images(forProductId: productId)
+                guard urls.count + newImages.count <= PPAccessoryVariantMediaService.maxImagesPerVariant else {
+                    throw PPAccessoryVariantMediaError.tooManyImages(limit: PPAccessoryVariantMediaService.maxImagesPerVariant)
+                }
+                // Reconcile the full sheet selection, preserving upload receipts
+                // and IDs. Appending here duplicated images on every retry.
+                let oldStaged = staged(forProductId: productId)
+                var staged = newImages.map { image in
+                    oldStaged.first(where: { $0.image === image }) ?? PPAccessoryVariantStagedImage(image: image)
+                }
+                do {
+                    try await PPAccessoryVariantMediaService.shared.uploadStagedImages(&staged, productId: productId, colorId: color.identifier)
+                } catch {
+                    stagedImages[productId] = staged
+                    throw error
+                }
+                stagedImages[productId] = staged
+                retainedImageURLs[productId] = urls
+                let originalCommit = PPAccessoryVariantMediaService.shared.commit(
+                    productId: productId, retainedURLs: urls, staged: staged,
+                    previousURLs: product.imageURLsArray ?? [], metadataByURL: imageMetadataByURL
+                )
+                var imageURLs = originalCommit.imageURLs
+                if let primary = preferredPrimaryStagedImage,
+                   let primaryURL = staged.first(where: { $0.image === primary })?.uploadedURL,
+                   let index = imageURLs.firstIndex(of: primaryURL) {
+                    imageURLs.remove(at: index)
+                    imageURLs.insert(primaryURL, at: 0)
+                }
+                let metadata = Dictionary(originalCommit.imageMeta.compactMap { entry -> (String, [String: Any])? in
+                    guard let url = entry["url"] as? String else { return nil }
+                    return (url, entry)
+                }, uniquingKeysWith: { first, _ in first })
+                let commit = PPAccessoryVariantMediaCommit(productId: productId, imageURLs: imageURLs,
+                    imageMeta: imageURLs.map { metadata[$0] ?? ["url": $0] }, orphanedURLs: originalCommit.orphanedURLs)
+                product.imageURLsArray = commit.imageURLs
+                product.imageMeta = commit.imageMeta
+                var request = try PPInventoryCommandService.shared.prepareProductSave(
+                    accessory: product, branchId: actualBranch.isEmpty ? nil : actualBranch,
+                    expectedRevision: observedVariant.revision,
+                    commandId: "variant-product-update-\(productId)-\(UUID().uuidString)"
+                )
+                // Pricing has a distinct revision and authority. Never replace
+                // existing selling units with a fabricated single-unit group.
+                if var payload = request["payload"] as? [String: Any] {
+                    payload.removeValue(forKey: "price")
+                    payload.removeValue(forKey: "wholesalePrice")
+                    if explicitCost == nil { payload.removeValue(forKey: "costPrice") }
+                    payload["sku"] = product.sku ?? ""
+                    payload["barcode"] = product.barcode ?? ""
+                    payload["imageMeta"] = commit.imageMeta
+                    request["payload"] = payload
+                }
+                pendingStudioUpdate = PPVariantStudioPendingUpdate(productId: productId, intent: intent,
+                    images: newImages, primaryImage: preferredPrimaryStagedImage,
+                    catalogRequest: request, commerceRequest: commerceRequest, mediaCommit: commit)
             }
-            if !newImages.isEmpty {
-                addImages(newImages, forProductId: productId)
-            }
-            if productId == rootAccessory?.accessoryID {
-                rootAccessory?.imageURLsArray = product.imageURLsArray
-            }
-
-            let retailMinor = Int((retailPrice * 100.0).rounded())
-            let wholesaleMinor = wholesalePrice.map { Int(($0 * 100.0).rounded()) }
-            var singleGroup: [String: Any] = [
-                "id": "single",
-                "nameAr": "حبة",
-                "nameEn": "Single",
-                "unitsPerGroup": 1,
-                "barcode": product.barcode?.isEmpty == false ? product.barcode! : NSNull(),
-                "sku": product.sku?.isEmpty == false ? product.sku! : NSNull(),
-                "sortOrder": 0,
-                "retailEnabled": true,
-                "wholesaleEnabled": wholesaleMinor != nil,
-                "retailPriceMinor": retailMinor,
-                "wholesalePriceMinor": wholesaleMinor ?? NSNull(),
-                "defaultForRetail": true,
-                "defaultForWholesale": wholesaleMinor != nil,
-                "active": true,
-            ]
-            if wholesaleMinor == nil { singleGroup["wholesalePriceMinor"] = NSNull() }
-            let commerce: [String: Any] = [
-                "currency": "QAR",
-                "baseUnit": ["id": "piece", "nameAr": "قطعة", "nameEn": "Piece"],
-                "quantityGroups": [singleGroup],
-            ]
-
-            let branchId = (product.branchID ?? product.storeID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let updateCommandId = "variant-product-update-\(productId)-\(UUID().uuidString)"
-            let saveResult = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<PPInventoryCommandResult, Error>) in
-                PPInventoryCommandService.shared.saveProduct(
-                    accessory: product,
-                    branchId: branchId.isEmpty ? nil : branchId,
-                    commerce: commerce,
-                    expectedRevision: product.revision > 0 ? product.revision : nil,
-                    commandId: updateCommandId
-                ) { result, error in
-                    if let error {
-                        continuation.resume(throwing: error)
-                    } else if let result, result.success {
-                        continuation.resume(returning: result)
-                    } else {
-                        continuation.resume(throwing: PPAccessoryVariantServiceError.invalidResponse)
+            guard let pending = pendingStudioUpdate else { throw PPAccessoryVariantServiceError.invalidResponse }
+            if pending.catalogResult == nil {
+                pending.catalogResult = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<PPInventoryCommandResult, Error>) in
+                    PPInventoryCommandService.shared.executeProductSave(request: pending.catalogRequest) { result, error in
+                        if let error { continuation.resume(throwing: error) }
+                        else if let result, result.success, result.productId == productId { continuation.resume(returning: result) }
+                        else { continuation.resume(throwing: PPAccessoryVariantServiceError.invalidResponse) }
                     }
                 }
             }
-
-            // 3. Update media if requested
-            if hasMediaChanges(forProductId: productId) {
-                await saveMedia(forProductId: productId, expectedRevision: saveResult.revision)
-                guard failure == nil else { return false }
+            if !pending.commerceSaved {
+                if let request = pending.commerceRequest { try await PPAccessoryVariantService.shared.persistStudioCommerce(request) }
+                pending.commerceSaved = true
             }
-
-            // Our own catalog/media write advanced this member's revision.
-            // Use authoritative readback before the subsequent family command.
-            let confirmedProduct = try await PPAccessoryVariantService.shared.loadProduct(productId: productId)
-            guard confirmedProduct.revision >= saveResult.revision,
-                  let pendingDraft = draft,
-                  let index = pendingDraft.variants.firstIndex(where: { $0.productId == productId }) else {
+            let confirmed = try await PPAccessoryVariantService.shared.loadProduct(productId: productId)
+            guard confirmed.revision >= (pending.catalogResult?.revision ?? Int.max),
+                  let working = draft, let index = working.variants.firstIndex(where: { $0.productId == productId }) else {
                 throw PPAccessoryVariantServiceError.invalidResponse
             }
-            pendingDraft.variants[index] = pendingDraft.variants[index].refreshingCatalog(from: confirmedProduct)
-            if productId == rootAccessory?.accessoryID {
-                rootAccessory?.imageURLsArray = confirmedProduct.imageURLsArray
+            if let payload = pending.catalogRequest["payload"] as? [String: Any],
+               let expectedCost = payload["costPrice"] as? NSNumber,
+               confirmed.costPrice?.doubleValue != expectedCost.doubleValue {
+                // An accepted command is insufficient: protected cost readback
+                // must confirm the exact value, including an explicit zero.
+                throw PPAccessoryVariantServiceError.invalidResponse
             }
-            self.draft = pendingDraft
+            working.variants[index] = working.variants[index].refreshingCatalog(from: confirmed)
+            if let baseline, let index = baseline.variants.firstIndex(where: { $0.productId == productId }) {
+                baseline.variants[index] = baseline.variants[index].refreshingCatalog(from: confirmed)
+            }
+            self.draft = working
+            stagedImages[productId] = []
+            retainedImageURLs[productId] = confirmed.imageURLsArray ?? []
+            originalImageURLs[productId] = confirmed.imageURLsArray ?? []
+            if productId == rootAccessory?.accessoryID { rootAccessory = confirmed }
+            // Only orphaned media absent from confirmed state can be removed.
+            await PPAccessoryVariantMediaService.shared.deleteOrphans(pending.mediaCommit.orphanedURLs.filter { !(confirmed.imageURLsArray ?? []).contains($0) })
 
-            // 4. Save family to sync color and variant ordering/attributes
-            await save()
-            guard failure == nil, pendingSaveDraft == nil, !isDirty else { return false }
+            if pendingSaveDraft != nil || isDirty { await save() }
+            guard failure == nil, pendingSaveDraft == nil, !isDirty else {
+                if let failure, !failure.allowsSameCommandRetry { pendingStudioUpdate = nil }
+                return false
+            }
+            pendingStudioUpdate = nil
             selectedProductId = productId
             confirmation = Language.get("Variant_Studio_UpdateSuccess", alter: "تم حفظ وتحديث اللون بنجاح.")
             return true
         } catch {
-            failure = PPAccessoryVariantFailureState(error: error)
+            let state = PPAccessoryVariantFailureState(error: error)
+            // A rejected catalog command is safe to correct. Accepted phases or
+            // ambiguous transport outcomes keep the exact command for retry.
+            if !state.allowsSameCommandRetry { pendingStudioUpdate = nil }
+            failure = namedStudioFailure(state)
             return false
         }
+    }
+
+    private func namedStudioFailure(_ state: PPAccessoryVariantFailureState) -> PPAccessoryVariantFailureState {
+        guard !state.affectedProductIds.isEmpty else { return state }
+        let names = state.affectedProductIds.compactMap { draft?.variant(forProductId: $0)?.color.localizedName }
+        guard !names.isEmpty else { return state }
+        return PPAccessoryVariantFailureState(message: "\(state.message) (\(names.joined(separator: Language.isRTL() ? "، " : ", ")))", recovery: state.recovery)
     }
 
     private func clearPendingVariantCreation() {
@@ -1649,12 +1790,15 @@ struct PPAccessoryVariantSection: View {
         }
     }
 
+    private struct VariantMediaPickerTarget: Identifiable {
+        let id: String
+    }
+
     @State private var selectedTab: VariantSectionTab = .options
     @State private var presentationMode: VariantPresentationMode = .matrix
     @State private var isPresentingColorEditor = false
     @State private var editingProductId: String?
-    @State private var isPresentingMediaPicker = false
-    @State private var mediaTargetProductId: String?
+    @State private var mediaPickerTarget: VariantMediaPickerTarget?
     @State private var previewMedia: PPLivePetPreviewMedia?
     @State private var activeStudioMode: VariantStudioMode? = nil
     @State private var copiedHexBanner: String? = nil
@@ -1756,18 +1900,16 @@ struct PPAccessoryVariantSection: View {
                 alter: "هل أنت متأكد من رغبتك في إلغاء مجموعة المتغيرات؟ سيتم الاحتفاظ بهذا المنتج كصنف عادي مستقل وحذف باقي المتغيرات التابعة له."
             ))
         }
-        .sheet(isPresented: $isPresentingMediaPicker) {
-            let target = mediaTargetProductId ?? ""
+        .sheet(item: $mediaPickerTarget) { target in
             let remaining = max(
                 0,
                 PPAccessoryVariantMediaService.maxImagesPerVariant
-                    - model.totalImageCount(forProductId: target)
+                    - model.totalImageCount(forProductId: target.id)
             )
             PPVariantImagePickerSheet(maxSelection: max(1, remaining)) { images in
-                if !target.isEmpty {
-                    model.addImages(images, forProductId: target)
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    model.addImages(images, forProductId: target.id)
                 }
-                isPresentingMediaPicker = false
             }
         }
         .fullScreenCover(item: $previewMedia) { media in
@@ -1791,7 +1933,7 @@ struct PPAccessoryVariantSection: View {
                     return nil
                 }(),
                 existingVariants: model.draft?.variants ?? [],
-                onCreate: { color, options, sku, barcode, retail, wholesale, quantity, images in
+                onCreate: { color, options, sku, barcode, retail, cost, wholesale, quantity, images in
                     await model.createAndAttachVariant(
                         color: color,
                         selectedOptions: options,
@@ -1799,11 +1941,12 @@ struct PPAccessoryVariantSection: View {
                         barcode: barcode,
                         retailPrice: retail,
                         wholesalePrice: wholesale,
+                        costPrice: cost,
                         quantity: quantity,
                         images: images
                     )
                 },
-                onUpdate: { productId, color, options, sku, barcode, retail, wholesale, quantity, newImages, retainedURLs in
+                onUpdate: { productId, color, options, sku, barcode, retail, cost, wholesale, quantity, newImages, retainedURLs, primaryImage in
                     await model.updateVariant(
                         productId: productId,
                         color: color,
@@ -1812,9 +1955,11 @@ struct PPAccessoryVariantSection: View {
                         barcode: barcode,
                         retailPrice: retail,
                         wholesalePrice: wholesale,
+                        costPrice: cost,
                         quantity: quantity,
                         newImages: newImages,
-                        retainedURLs: retainedURLs
+                        retainedURLs: retainedURLs,
+                        preferredPrimaryStagedImage: primaryImage
                     )
                 },
                 onOpenFullRecord: { productId in
@@ -1823,7 +1968,9 @@ struct PPAccessoryVariantSection: View {
                 errorMessage: {
                     model.failure?.message
                 },
-                optionDefinitions: model.draft?.optionDefinitions ?? []
+                optionDefinitions: model.draft?.optionDefinitions ?? [],
+                canViewCosts: model.canViewCosts,
+                hasPendingSave: model.hasPendingStudioSave
             )
         }
         .sheet(isPresented: $isPresentingColorEditor) {
@@ -1955,8 +2102,10 @@ struct PPAccessoryVariantSection: View {
                     .font(AdminType.caption2)
                     .foregroundStyle(AdminSurface.secondaryText)
                     .lineLimit(1)
+                    .truncationMode(.tail)
                     .animation(.easeInOut(duration: 0.2), value: selectedTab)
             }
+            .layoutPriority(0)
 
             Spacer(minLength: 8)
 
@@ -1993,6 +2142,8 @@ struct PPAccessoryVariantSection: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel(Language.get("Options_Menu", alter: "خيارات إضافية"))
                 }
+                .layoutPriority(1)
+                .fixedSize(horizontal: true, vertical: false)
             }
         }
     }
@@ -2004,14 +2155,15 @@ struct PPAccessoryVariantSection: View {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 activeStudioMode = .create
             } label: {
-                HStack(spacing: 5) {
+                HStack(spacing: 6) {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 13, weight: .bold))
                     Text(Language.get("Variant_Add_Action", alter: "إضافة لون"))
                         .font(PPBrandFont.bold(size: 12.5))
                         .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, 14)
                 .padding(.vertical, 7)
                 .background(AdminSurface.primary.opacity(0.12), in: Capsule())
                 .overlay(
@@ -2020,6 +2172,8 @@ struct PPAccessoryVariantSection: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(AdminSurface.primary)
+            .layoutPriority(1)
+            .fixedSize(horizontal: true, vertical: false)
             .disabled(
                 model.isCreatingVariant ||
                 model.isSaving ||
@@ -2035,14 +2189,15 @@ struct PPAccessoryVariantSection: View {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 isPresentingOptionPalette = true
             } label: {
-                HStack(spacing: 5) {
+                HStack(spacing: 6) {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 13, weight: .bold))
                     Text(Language.get("Options_Add_Option", alter: "إضافة خيار"))
                         .font(PPBrandFont.bold(size: 12.5))
                         .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, 14)
                 .padding(.vertical, 7)
                 .background(AdminSurface.primary.opacity(0.12), in: Capsule())
                 .overlay(
@@ -2051,6 +2206,8 @@ struct PPAccessoryVariantSection: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(AdminSurface.primary)
+            .layoutPriority(1)
+            .fixedSize(horizontal: true, vertical: false)
             .disabled(draft.optionDefinitions.count >= PPAccessoryVariantContract.maxOptionsPerFamily)
             .accessibilityLabel(Language.get("Options_Add_Option", alter: "إضافة خيار"))
         }
@@ -2891,12 +3048,21 @@ struct PPAccessoryVariantSection: View {
         let retailFormatted = formattedRetailPrice(for: variant)
             ?? Language.get("Inventory_Price_Unavailable", alter: "السعر غير متاح")
 
-        let wholesaleSubtitle: String? = {
-            guard let wholesale = variant.wholesalePrice, wholesale.doubleValue > 0 else { return nil }
-            return String(
-                format: Language.get("Wholesale_Price_Format", alter: "جملة: %@"),
-                PetAccessory.formatCurrency(wholesale).normalizedEnglishDigits
-            )
+        let priceSubtitle: String? = {
+            var parts: [String] = []
+            if model.canViewCosts, let cost = variant.costPrice, cost.doubleValue.isFinite, cost.doubleValue >= 0 {
+                parts.append(String(
+                    format: Language.get("Cost_Short", alter: "تكلفة: %@"),
+                    PetAccessory.formatCurrency(cost).normalizedEnglishDigits
+                ))
+            }
+            if let wholesale = variant.wholesalePrice, wholesale.doubleValue > 0 {
+                parts.append(String(
+                    format: Language.get("Wholesale_Price_Format", alter: "جملة: %@"),
+                    PetAccessory.formatCurrency(wholesale).normalizedEnglishDigits
+                ))
+            }
+            return parts.isEmpty ? nil : parts.joined(separator: " · ")
         }()
 
         let stockStatusText = variant.quantity > 0
@@ -2926,7 +3092,7 @@ struct PPAccessoryVariantSection: View {
                     iconTint: AdminSurface.amber,
                     title: Language.get("Variant_Spec_Retail", alter: "سعر البيع المعتمد"),
                     value: retailFormatted.normalizedEnglishDigits,
-                    subtitle: wholesaleSubtitle,
+                    subtitle: priceSubtitle,
                     subtitleColor: AdminCommandInk.secondary,
                     isMonospaced: false,
                     onTap: model.canManageVariants ? {
@@ -3126,8 +3292,7 @@ struct PPAccessoryVariantSection: View {
                     if model.canManageVariants && model.canAddImage(forProductId: variant.productId) {
                         Button {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            mediaTargetProductId = variant.productId
-                            isPresentingMediaPicker = true
+                            mediaPickerTarget = VariantMediaPickerTarget(id: variant.productId)
                         } label: {
                             VStack(spacing: 5) {
                                 ZStack {
@@ -3769,20 +3934,30 @@ struct PPAccessoryVariantStudioSheet: View {
     let isSubmitting: Bool
     let existingStagedImages: [UIImage]
     let existingVariants: [PPAccessoryVariant]
-    let onCreate: (PPAccessoryVariantColor, [String: String], String, String, Double, Double?, Int, [UIImage]) async -> Bool
-    let onUpdate: (String, PPAccessoryVariantColor, [String: String], String, String, Double, Double?, Int, [UIImage], [String]?) async -> Bool
+    let onCreate: (PPAccessoryVariantColor, [String: String], String, String, Double, Double?, Double?, Int, [UIImage]) async -> Bool
+    let onUpdate: (String, PPAccessoryVariantColor, [String: String], String, String, Double, Double?, Double?, Int, [UIImage], [String]?, UIImage?) async -> Bool
     var onOpenFullRecord: ((String) -> Void)? = nil
     var errorMessage: (() -> String?)? = nil
     var optionDefinitions: [PPAccessoryOptionDefinition] = []
+    var canViewCosts: Bool = false
+    var hasPendingSave: Bool = false
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    private enum StudioField: Hashable { case retail, cost, wholesale, barcode, sku }
+    @FocusState private var focusedField: StudioField?
+    @State private var initialFingerprint: String?
+    @State private var showsDiscardConfirmation = false
+    @State private var pendingRecordID: String?
+    @State private var preferredPrimaryStagedImage: UIImage?
 
     @State private var color: PPAccessoryVariantColor
     @State private var selectedOptions: [String: String]
     @State private var sku: String
     @State private var barcode: String
     @State private var retailPriceText: String
+    @State private var costPriceText: String
     @State private var wholesaleEnabled: Bool
     @State private var wholesalePriceText: String
     @State private var quantity: Int
@@ -3795,6 +3970,8 @@ struct PPAccessoryVariantStudioSheet: View {
     @State private var localFailure: String?
     @State private var localSubmitting = false
     @State private var isHexCopied = false
+    @State private var showsColorTools = false
+    @State private var copiedField: StudioField?
 
     private let presetColors: [PPAccessoryVariantColor] = PPAccessoryVariantColorLibrary.entries
 
@@ -3805,11 +3982,13 @@ struct PPAccessoryVariantStudioSheet: View {
         existingStagedImages: [UIImage] = [],
         existingRetainedURLs: [String]? = nil,
         existingVariants: [PPAccessoryVariant] = [],
-        onCreate: @escaping (PPAccessoryVariantColor, [String: String], String, String, Double, Double?, Int, [UIImage]) async -> Bool,
-        onUpdate: @escaping (String, PPAccessoryVariantColor, [String: String], String, String, Double, Double?, Int, [UIImage], [String]?) async -> Bool,
+        onCreate: @escaping (PPAccessoryVariantColor, [String: String], String, String, Double, Double?, Double?, Int, [UIImage]) async -> Bool,
+        onUpdate: @escaping (String, PPAccessoryVariantColor, [String: String], String, String, Double, Double?, Double?, Int, [UIImage], [String]?, UIImage?) async -> Bool,
         onOpenFullRecord: ((String) -> Void)? = nil,
         errorMessage: (() -> String?)? = nil,
-        optionDefinitions: [PPAccessoryOptionDefinition] = []
+        optionDefinitions: [PPAccessoryOptionDefinition] = [],
+        canViewCosts: Bool = false,
+        hasPendingSave: Bool = false
     ) {
         self.mode = mode
         self.usedColorIdentifiers = usedColorIdentifiers
@@ -3821,6 +4000,8 @@ struct PPAccessoryVariantStudioSheet: View {
         self.onOpenFullRecord = onOpenFullRecord
         self.errorMessage = errorMessage
         self.optionDefinitions = optionDefinitions
+        self.canViewCosts = canViewCosts
+        self.hasPendingSave = hasPendingSave
 
         var initialOptions: [String: String] = [:]
         switch mode {
@@ -3831,6 +4012,7 @@ struct PPAccessoryVariantStudioSheet: View {
             _sku = State(initialValue: "")
             _barcode = State(initialValue: "")
             _retailPriceText = State(initialValue: "")
+            _costPriceText = State(initialValue: "")
             _wholesaleEnabled = State(initialValue: false)
             _wholesalePriceText = State(initialValue: "")
             _quantity = State(initialValue: 0)
@@ -3849,6 +4031,8 @@ struct PPAccessoryVariantStudioSheet: View {
             _barcode = State(initialValue: variant.barcode)
             let retailVal = variant.retailPrice?.doubleValue ?? 0
             _retailPriceText = State(initialValue: retailVal > 0 ? String(format: "%.2f", retailVal).replacingOccurrences(of: ".00", with: "") : "")
+            let costVal = canViewCosts ? variant.costPrice?.doubleValue : nil
+            _costPriceText = State(initialValue: costVal.map { String(format: "%.2f", $0).replacingOccurrences(of: ".00", with: "") } ?? "")
             let wholesaleVal = variant.wholesalePrice?.doubleValue ?? 0
             _wholesaleEnabled = State(initialValue: wholesaleVal > 0)
             _wholesalePriceText = State(initialValue: wholesaleVal > 0 ? String(format: "%.2f", wholesaleVal).replacingOccurrences(of: ".00", with: "") : "")
@@ -3870,35 +4054,38 @@ struct PPAccessoryVariantStudioSheet: View {
         }
     }
 
-    private var retailPrice: Double? {
-        Double(retailPriceText.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines))
+    private func parsedAmount(_ text: String) -> Double? {
+        let normalized = text.normalizedEnglishDigits
+            .replacingOccurrences(of: "٫", with: ".")
+            .replacingOccurrences(of: ",", with: ".")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalized.range(of: "^(?:[0-9]+(?:\\.[0-9]{0,2})?|\\.[0-9]{1,2})$", options: .regularExpression) != nil,
+              let value = Double(normalized), value.isFinite,
+              value >= 0, value <= 999_999_999.99 else { return nil }
+        return value
     }
-
-    private var wholesalePrice: Double? {
-        guard wholesaleEnabled else { return nil }
-        return Double(wholesalePriceText.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines))
-    }
+    private var retailPrice: Double? { parsedAmount(retailPriceText) }
+    private var costPrice: Double? { canViewCosts ? parsedAmount(costPriceText) : nil }
+    private var wholesalePrice: Double? { wholesaleEnabled ? parsedAmount(wholesalePriceText) : nil }
 
     private var hasGenericOptions: Bool {
         !optionDefinitions.filter { !$0.isColorOption && !$0.values.isEmpty }.isEmpty
     }
 
-    private var currentCombinationKey: String {
-        var opts = selectedOptions
-        if let colorDef = optionDefinitions.first(where: { $0.isColorOption }) {
-            opts[colorDef.id] = color.identifier
+    private func canonicalCombination(_ options: [String: String], colorID: String) -> String {
+        var canonical: [String: String] = [:]
+        for definition in optionDefinitions where !definition.values.isEmpty {
+            if definition.isColorOption { canonical[definition.id] = colorID }
+            else if let value = options[definition.id] ?? options[definition.key] { canonical[definition.id] = value }
         }
-        opts[PPAccessoryVariantContract.axisColor] = color.identifier
-        return PPAccessoryVariantFamily.combinationKey(from: opts)
+        return PPAccessoryVariantFamily.combinationKey(from: canonical)
     }
-
     private var combinationConflictMessage: String? {
         guard hasGenericOptions else { return nil }
-        let currentKey = currentCombinationKey
-        for v in existingVariants {
-            if case .edit(let current) = mode, v.productId == current.productId { continue }
-            let vKey = v.combinationKey.isEmpty ? PPAccessoryVariantFamily.combinationKey(from: v.selectedOptions) : v.combinationKey
-            if vKey == currentKey {
+        let key = canonicalCombination(selectedOptions, colorID: color.identifier)
+        for variant in existingVariants {
+            if case .edit(let current) = mode, variant.productId == current.productId { continue }
+            if canonicalCombination(variant.selectedOptions, colorID: variant.color.identifier) == key {
                 return Language.get("Variant_Error_CombinationTaken", alter: "هذه التوليفة مستخدمة بالفعل في هذا المنتج.")
             }
         }
@@ -3951,1182 +4138,726 @@ struct PPAccessoryVariantStudioSheet: View {
         if barcodeConflictMessage != nil { return false }
         if skuConflictMessage != nil { return false }
         guard let retailPrice, retailPrice.isFinite, retailPrice > 0 else { return false }
+        if canViewCosts, !costPriceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           costPrice == nil { return false }
         if wholesaleEnabled {
             guard let wholesalePrice, wholesalePrice.isFinite, wholesalePrice > 0 else { return false }
         }
         return true
     }
 
+    private var busy: Bool { localSubmitting || isSubmitting }
+    private var studioMotion: Animation? { AdminAnimation.motion(AdminAnimation.standard, reduceMotion: reduceMotion) }
+    private var adaptiveRow: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: 16))
+    }
+    private var originalColorID: String? {
+        if case .edit(let variant) = mode { return variant.color.identifier }
+        return nil
+    }
+    private var draftFingerprint: String {
+        var values = [color.identifier, color.nameAr, color.nameEn, color.hex, sku, barcode,
+                      retailPriceText, costPriceText, wholesalePriceText, String(wholesaleEnabled), String(quantity)]
+        values.append(contentsOf: selectedOptions.keys.sorted().map { "\($0)=\(selectedOptions[$0] ?? "")" })
+        values.append(contentsOf: retainedRemoteURLs)
+        values.append(contentsOf: stagedImages.map { String(describing: ObjectIdentifier($0)) })
+        values.append(preferredPrimaryStagedImage.map { String(describing: ObjectIdentifier($0)) } ?? "")
+        return values.joined(separator: "\u{1F}")
+    }
+    private var hasUnsavedChanges: Bool { initialFingerprint.map { $0 != draftFingerprint } ?? false }
+
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    chromaticAtelierCard
-                    genericOptionsCard
-                    photosAtelierCard
-                    stockQuantityDialCard
-                    commercePricingCard
-                    identifiersCard
-
-                    if mode.isEdit, let onOpenFullRecord, case .edit(let variant) = mode {
-                        deepLinkRecordButton(variant: variant, action: onOpenFullRecord)
-                    }
-
-                    safetyNoteCard
-
-                    if let localFailure {
-                        failureBanner(localFailure)
-                    }
-                }
-                .padding(16)
-            }
-            .background(AdminSurface.background.ignoresSafeArea())
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text(mode.navigationTitle)
-                        .font(PPBrandFont.bold(size: 18, relativeTo: .headline))
-                        .foregroundStyle(AdminSurface.primaryText)
-                }
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(Language.get("Cancel", alter: "إلغاء")) { dismiss() }
-                        .disabled(localSubmitting || isSubmitting)
-                        .font(PPBrandFont.medium(size: 15))
-                        .foregroundStyle(AdminCommandInk.secondary)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button {
-                        submit()
-                    } label: {
-                        if localSubmitting || isSubmitting {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Text(mode.isEdit
-                                 ? Language.get("Variant_Studio_Save", alter: "حفظ التعديلات")
-                                 : Language.get("Variant_Add_Create", alter: "إنشاء اللون"))
-                                .font(PPBrandFont.bold(size: 15))
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        if let localFailure { failureBanner(localFailure).id("studio.failure") }
+                        if hasPendingSave {
+                            Text(Language.get("Variant_Studio_PendingHint", alter: "لم يكتمل تأكيد الحفظ. أعد المحاولة بنفس التعديلات لإكمال العملية بأمان."))
+                                .font(AdminType.footnote)
+                                .foregroundStyle(AdminCommandInk.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
+                        VStack(alignment: .leading, spacing: 20) {
+                            chromaticAtelierCard
+                            genericOptionsCard
+                        }.modifier(PPVariantStudioPanel())
+                        photosAtelierCard.modifier(PPVariantStudioPanel())
+                        stockQuantityDialCard.modifier(PPVariantStudioPanel())
+                        commercePricingCard.modifier(PPVariantStudioPanel())
+                        identifiersCard.modifier(PPVariantStudioPanel())
+                        if mode.isEdit, let onOpenFullRecord, case .edit(let variant) = mode {
+                            deepLinkRecordButton(variant: variant, action: onOpenFullRecord)
+                        }
+                        safetyNoteCard
                     }
-                    .disabled(!canSubmit)
+                    .frame(maxWidth: 680, alignment: .leading)
+                    .padding(16)
+                    .frame(maxWidth: .infinity)
+                    .disabled(busy || hasPendingSave)
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: localFailure) { _, failure in
+                    guard let failure else { return }
+                    withAnimation(studioMotion) { proxy.scrollTo("studio.failure", anchor: .top) }
+                    UIAccessibility.post(notification: .announcement, argument: failure)
+                }
+                .background(AdminSurface.background.ignoresSafeArea())
+                .safeAreaInset(edge: .bottom, spacing: 0) { studioSaveDock }
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .principal) {
+                        Text(Language.get("Variant_Studio_Workspace", alter: "تحرير المتغير"))
+                            .font(AdminType.headlineBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                    }
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(Language.get("Cancel", alter: "إلغاء")) {
+                            focusedField = nil
+                            if hasUnsavedChanges { showsDiscardConfirmation = true } else { dismiss() }
+                        }
+                        .font(AdminType.callout)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .disabled(busy || hasPendingSave)
+                    }
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button(Language.get("Done", alter: "تم")) { focusedField = nil }
+                    }
                 }
             }
         }
+        .tint(AdminSurface.primary)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .interactiveDismissDisabled(busy || hasPendingSave || hasUnsavedChanges)
         .onAppear {
             PPBrandFont.registerIfNeeded()
+            if initialFingerprint == nil { initialFingerprint = draftFingerprint }
+        }
+        .confirmationDialog(Language.get("Variant_Studio_DiscardTitle", alter: "تجاهل التعديلات؟"),
+                            isPresented: $showsDiscardConfirmation, titleVisibility: .visible) {
+            Button(Language.get("Discard", alter: "تجاهل"), role: .destructive) {
+                dismiss()
+                if let pendingRecordID { onOpenFullRecord?(pendingRecordID) }
+            }
+            Button(Language.get("Variant_Studio_KeepEditing", alter: "متابعة التعديل"), role: .cancel) { pendingRecordID = nil }
         }
         .sheet(isPresented: $isChoosingColorFullStudio) {
             PPAccessoryVariantColorEditorSheet(
                 initialColor: color,
-                usedIdentifiers: usedColorIdentifiers,
-                excludingIdentifier: mode.isEdit ? color.identifier : nil
+                usedIdentifiers: hasGenericOptions ? [] : usedColorIdentifiers,
+                excludingIdentifier: originalColorID
             ) { chosen in
                 color = chosen
                 isChoosingColorFullStudio = false
             }
         }
         .sheet(isPresented: $isPresentingImagePicker) {
-            let currentCount = retainedRemoteURLs.count + stagedImages.count
-            let remaining = max(1, PPAccessoryVariantMediaService.maxImagesPerVariant - currentCount)
-            PPVariantImagePickerSheet(maxSelection: remaining) { picked in
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                    stagedImages.append(contentsOf: picked)
-                }
+            PPVariantImagePickerSheet(maxSelection: max(1, remainingImageSlots)) { picked in
+                withAnimation(studioMotion) { stagedImages.append(contentsOf: picked.prefix(remainingImageSlots)) }
                 isPresentingImagePicker = false
             }
         }
-        .fullScreenCover(item: $previewMedia) { media in
-            PPLivePetMediaPreview(media: media)
-        }
+        .fullScreenCover(item: $previewMedia) { media in PPLivePetMediaPreview(media: media) }
     }
 
-    // MARK: - 1. Chromatic Identity Hero Card
+    private var studioRule: some View {
+        Rectangle().fill(AdminSurface.hairline).frame(height: AdminStroke.hairline).accessibilityHidden(true)
+    }
+
+    private func sectionHeading(_ title: String, symbol: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(AdminSurface.primary)
+                .frame(width: 34, height: 34)
+                .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                .accessibilityHidden(true)
+            Text(title).font(AdminType.headlineBold).foregroundStyle(AdminSurface.primaryText)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+    }
+
+    // MARK: Identity and options
+
+    private var meaningfulColor: Bool {
+        !hasGenericOptions || optionDefinitions.contains(where: \.isColorOption)
+    }
+    private var optionIdentity: String {
+        let names = optionDefinitions.filter { !$0.isColorOption }.compactMap { definition in
+            definition.values.first(where: { $0.id == (selectedOptions[definition.id] ?? selectedOptions[definition.key]) })?.localizedName
+        }
+        return names.isEmpty ? color.localizedName : names.joined(separator: " · ")
+    }
+    @ViewBuilder private var identitySpecimen: some View {
+        if !meaningfulColor, let first = retainedRemoteURLs.first, let url = URL(string: first) {
+            AdminRemoteImage(url: url, contentMode: .fit) { Image(systemName: "shippingbox") }
+                .frame(width: 72, height: 84)
+                .background(AdminSurface.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(AdminSurface.primaryText.opacity(0.10)))
+                .accessibilityHidden(true)
+        } else {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(color.uiColorValue)
+                .frame(width: 62, height: 72)
+                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(AdminSurface.primaryText.opacity(0.18)))
+                .accessibilityHidden(true)
+        }
+    }
 
     private var chromaticAtelierCard: some View {
-        VStack(spacing: 14) {
-            HStack(spacing: 14) {
-                // 3D Illuminated Specular Swatch Orb
-                ZStack {
-                    Circle()
-                        .fill(color.uiColorValue)
-                        .frame(width: 64, height: 64)
-                        .blur(radius: 16)
-                        .opacity(0.38)
-
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    color.uiColorValue,
-                                    color.uiColorValue.opacity(0.85)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 52, height: 52)
-                        .overlay(
-                            Circle().strokeBorder(
-                                color.requiresContrastBorder
-                                    ? AdminSurface.primaryText.opacity(0.40)
-                                    : Color.white.opacity(0.25),
-                                lineWidth: color.requiresContrastBorder ? 1.5 : 1
-                            )
-                        )
-                        .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: 3)
-                        .overlay(
-                            Image(systemName: "circle.hexagongrid.fill")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(color.uiColor.isDarkTone ? Color.white.opacity(0.90) : Color.black.opacity(0.70))
-                        )
-                }
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(color.localizedName)
-                        .font(AdminType.title3Bold)
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(alignment: .top, spacing: 16) {
+                identitySpecimen
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(mode.isEdit
+                         ? Language.get("Variant_Studio_Editing", alter: "تعديل هذا المتغير")
+                         : Language.get("Variant_Studio_Creating", alter: "متغير جديد"))
+                        .font(AdminType.captionBold)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                    Text(meaningfulColor ? color.localizedName : optionIdentity)
+                        .font(AdminType.title2)
                         .foregroundStyle(AdminSurface.primaryText)
-
-                    let altName = Language.isRTL() ? color.nameEn : color.nameAr
-                    if !altName.isEmpty {
-                        Text(altName)
-                            .font(AdminType.caption)
-                            .foregroundStyle(AdminCommandInk.secondary)
-                    }
-
-                    HStack(spacing: 6) {
-                        Button {
-                            UIPasteboard.general.string = color.hex
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
-                                isHexCopied = true
-                            }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                                withAnimation { isHexCopied = false }
-                            }
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: isHexCopied ? "checkmark" : "doc.on.doc")
-                                    .font(.system(size: 9, weight: .bold))
-                                Text(isHexCopied ? Language.get("Variant_Hex_Copied", alter: "تم النسخ") : color.hex)
-                                    .font(AdminType.caption2.monospaced())
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(AdminSurface.control, in: Capsule())
-                            .foregroundStyle(isHexCopied ? AdminSurface.emerald : AdminSurface.primaryText)
-                        }
-                        .buttonStyle(.plain)
-
-                        if color.requiresContrastBorder {
-                            Text(Language.get("Variant_Contrast_Attention", alter: "إطار تباين"))
-                                .font(AdminType.caption2)
-                                .foregroundStyle(AdminSurface.amber)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(AdminSurface.amber.opacity(0.12), in: Capsule())
-                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                    let alternate = Language.isRTL() ? color.nameEn : color.nameAr
+                    if meaningfulColor && !alternate.isEmpty {
+                        Text(alternate).font(AdminType.footnote).foregroundStyle(AdminCommandInk.secondary)
+                            .environment(\.layoutDirection, Language.isRTL() ? .leftToRight : .rightToLeft)
                     }
                 }
-
-                Spacer(minLength: 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-
-            Divider()
-                .foregroundStyle(AdminSurface.hairline)
-
-            // Quick Preset Swatches Rail + Custom Atelier Button
+            if !meaningfulColor {
+                Button {
+                    withAnimation(studioMotion) { showsColorTools.toggle() }
+                } label: {
+                    HStack(spacing: 8) {
+                        Circle().fill(color.uiColorValue).frame(width: 16, height: 16)
+                            .overlay(Circle().strokeBorder(AdminSurface.primaryText.opacity(0.2)))
+                        Text(Language.get("Variant_Action_EditColor", alter: "تغيير اللون")).font(AdminType.footnoteBold)
+                        Spacer()
+                        Image(systemName: showsColorTools ? "chevron.up" : "chevron.down").font(.system(size: 11, weight: .bold))
+                    }.foregroundStyle(AdminCommandInk.secondary).frame(minHeight: 44)
+                }.buttonStyle(PPVariantStudioPressStyle())
+            }
+            if meaningfulColor || showsColorTools {
+            adaptiveRow {
+                Button {
+                    UIPasteboard.general.string = color.hex
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    isHexCopied = true
+                } label: {
+                    Label(isHexCopied ? Language.get("Variant_Hex_Copied", alter: "تم النسخ") : color.hex,
+                          systemImage: isHexCopied ? "checkmark" : "doc.on.doc")
+                        .font(AdminType.footnote.monospaced())
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .frame(minHeight: 44)
+                        .environment(\.layoutDirection, .leftToRight)
+                }
+                .buttonStyle(PPVariantStudioPressStyle())
+                .onChange(of: color.hex) { _, _ in isHexCopied = false }
+                if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
+                Button { isChoosingColorFullStudio = true } label: {
+                    Label(Language.get("Variant_Action_EditColor", alter: "تغيير اللون"), systemImage: "slider.horizontal.3")
+                        .font(AdminType.footnoteBold)
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(PPVariantStudioPressStyle())
+                .foregroundStyle(AdminSurface.primary)
+            }
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     ForEach(presetColors, id: \.identifier) { preset in
-                        let isSelected = color.identifier == preset.identifier
-                        let isTaken = !hasGenericOptions && usedColorIdentifiers.contains(preset.identifier) &&
-                            (!mode.isEdit || (mode.isEdit && preset.identifier != color.identifier))
-
+                        let selected = color.identifier == preset.identifier
+                        let unavailable = !hasGenericOptions && usedColorIdentifiers.contains(preset.identifier)
+                            && preset.identifier != originalColorID
                         Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
-                                color = preset
-                            }
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            withAnimation(studioMotion) { color = preset }
                         } label: {
                             ZStack {
-                                Circle()
-                                    .strokeBorder(isSelected ? AdminSurface.primary : Color.clear, lineWidth: 2)
-                                    .frame(width: 38, height: 38)
-
-                                Circle()
-                                    .fill(preset.uiColorValue)
-                                    .frame(width: 30, height: 30)
-                                    .overlay(
-                                        Circle().strokeBorder(
-                                            preset.requiresContrastBorder ? AdminSurface.primaryText.opacity(0.35) : Color.clear,
-                                            lineWidth: 0.75
-                                        )
-                                    )
-
-                                if isSelected {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 11, weight: .bold))
+                                Circle().fill(preset.uiColorValue).frame(width: 30, height: 30)
+                                    .overlay(Circle().strokeBorder(AdminSurface.primaryText.opacity(0.2), lineWidth: 1))
+                                if selected || unavailable {
+                                    Image(systemName: selected ? "checkmark" : "lock.fill")
+                                        .font(.system(size: 12, weight: .bold))
                                         .foregroundStyle(preset.uiColor.isDarkTone ? Color.white : Color.black)
                                 }
-
-                                if isTaken && !isSelected {
-                                    Image(systemName: "lock.fill")
-                                        .font(.system(size: 9))
-                                        .foregroundStyle(.white)
-                                }
                             }
+                            .frame(width: 46, height: 46)
+                            .overlay(Circle().strokeBorder(selected ? AdminSurface.primary : .clear, lineWidth: 2))
+                            .opacity(unavailable && !selected ? 0.4 : 1)
+                            .contentShape(Circle())
                         }
-                        .buttonStyle(.plain)
-                        .disabled(isTaken)
-                        .opacity(isTaken && !isSelected ? 0.35 : 1.0)
+                        .buttonStyle(PPVariantStudioPressStyle())
+                        .disabled(unavailable)
                         .accessibilityLabel(preset.accessibilityName)
+                        .accessibilityAddTraits(selected ? .isSelected : [])
                     }
-
-                    // Full Custom Studio Button
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        isChoosingColorFullStudio = true
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "slider.horizontal.3")
-                                .font(.system(size: 11, weight: .bold))
-                            Text(Language.get("Variant_Studio_Custom_Palette", alter: "استوديو الألوان الكامل"))
-                                .font(AdminType.caption2Bold)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(AdminSurface.primary.opacity(0.08), in: Capsule())
-                        .overlay(Capsule().strokeBorder(AdminSurface.primary.opacity(0.25), lineWidth: 1))
-                        .foregroundStyle(AdminSurface.primary)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 2)
-                .padding(.vertical, 4)
+                }.padding(.vertical, 2)
+            }
             }
         }
-        .padding(14)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(AdminSurface.hairline, lineWidth: 1)
-        )
+        .multilineTextAlignment(.leading)
     }
 
-    // MARK: - 1.5. Generic Options & Specifications Card
-
-    @ViewBuilder
-    private var genericOptionsCard: some View {
-        let activeGenericDefs = optionDefinitions.filter { !$0.isColorOption && !$0.values.isEmpty }
-        if !activeGenericDefs.isEmpty {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 8) {
-                    Image(systemName: "slider.horizontal.2.square.on.square")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(AdminSurface.primary)
-                    Text(Language.get("Variant_Studio_Options_Title", alter: "خيارات ومواصفات هذا المتغير"))
-                        .font(PPBrandFont.bold(size: 15))
-                        .foregroundStyle(AdminSurface.primaryText)
-                    Spacer()
-                }
-
-                Text(Language.get("Variant_Studio_Options_Subtitle", alter: "حدد قيمة كل خيار لربط هذا المتغير بالمواصفات المحددة بدقة داخل النظام."))
-                    .font(PPBrandFont.regular(size: 12))
-                    .foregroundStyle(AdminCommandInk.secondary)
-
-                ForEach(activeGenericDefs, id: \.id) { def in
+    @ViewBuilder private var genericOptionsCard: some View {
+        let definitions = optionDefinitions.filter { !$0.isColorOption && !$0.values.isEmpty }
+        if !definitions.isEmpty {
+            VStack(alignment: .leading, spacing: 18) {
+                ForEach(definitions, id: \.id) { definition in
                     VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text(def.localizedName)
-                                .font(PPBrandFont.bold(size: 13))
-                                .foregroundStyle(AdminSurface.primaryText)
-
-                            Spacer()
-
-                            let chosenValId = selectedOptions[def.id] ?? selectedOptions[def.key]
-                            if let chosenVal = def.values.first(where: { $0.id == chosenValId }) {
-                                Text(chosenVal.localizedName)
-                                    .font(PPBrandFont.bold(size: 12))
-                                    .foregroundStyle(AdminSurface.primary)
-                                    .padding(.horizontal, 9)
-                                    .padding(.vertical, 3)
-                                    .background(AdminSurface.primary.opacity(0.10), in: Capsule())
-                            }
-                        }
-
+                        Text(definition.localizedName).font(AdminType.footnoteBold).foregroundStyle(AdminCommandInk.secondary)
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
-                                ForEach(def.values, id: \.id) { val in
-                                    let isSelected = (selectedOptions[def.id] == val.id) || (selectedOptions[def.key] == val.id)
+                                ForEach(definition.values, id: \.id) { value in
+                                    let selected = (selectedOptions[definition.id] ?? selectedOptions[definition.key]) == value.id
                                     Button {
-                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                        withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                                            selectedOptions[def.id] = val.id
-                                            selectedOptions[def.key] = val.id
+                                        UISelectionFeedbackGenerator().selectionChanged()
+                                        withAnimation(studioMotion) {
+                                            selectedOptions[definition.id] = value.id
+                                            selectedOptions[definition.key] = value.id
                                         }
                                     } label: {
                                         HStack(spacing: 6) {
-                                            if isSelected {
-                                                Image(systemName: "checkmark")
-                                                    .font(.system(size: 10, weight: .black))
-                                            }
-                                            Text(val.localizedName)
-                                                .font(isSelected ? PPBrandFont.bold(size: 13) : PPBrandFont.medium(size: 13))
+                                            if selected { Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)) }
+                                            Text(value.localizedName).font(AdminType.footnoteBold)
                                         }
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 8)
-                                        .background(
-                                            isSelected ? AdminSurface.primary : AdminSurface.control,
-                                            in: Capsule()
-                                        )
-                                        .overlay(
-                                            Capsule().strokeBorder(
-                                                isSelected ? AdminSurface.primary : AdminSurface.hairline,
-                                                lineWidth: 1
-                                            )
-                                        )
-                                        .foregroundStyle(isSelected ? Color.white : AdminSurface.primaryText)
+                                        .padding(.horizontal, 14).frame(minHeight: 44)
+                                        .foregroundStyle(selected ? Color.white : AdminSurface.primaryText)
+                                        .background(selected ? AdminSurface.primary : AdminSurface.primaryText.opacity(0.045), in: Capsule())
+                                        .overlay(Capsule().strokeBorder(selected ? AdminSurface.primary : AdminSurface.primaryText.opacity(0.14), lineWidth: 1))
                                     }
-                                    .buttonStyle(.plain)
+                                    .buttonStyle(PPVariantStudioPressStyle()).accessibilityAddTraits(selected ? .isSelected : [])
                                 }
                             }
-                            .padding(.vertical, 3)
                         }
                     }
-                    if def.id != activeGenericDefs.last?.id {
-                        Divider().foregroundStyle(AdminSurface.hairline)
-                    }
                 }
-
-                if let conflict = combinationConflictMessage {
-                    HStack(spacing: 6) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(AdminSurface.crimson)
-                        Text(conflict)
-                            .font(PPBrandFont.medium(size: 12))
-                            .foregroundStyle(AdminSurface.crimson)
-                    }
-                    .padding(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(AdminSurface.crimson.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                }
+                if let message = combinationConflictMessage { failureBanner(message) }
             }
-            .padding(14)
-            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(combinationConflictMessage != nil ? AdminSurface.crimson : AdminSurface.hairline, lineWidth: combinationConflictMessage != nil ? 1.5 : 1)
-            )
         }
     }
 
-    // MARK: - 2. Color Photos Darkroom & Atelier Card
+    // MARK: Photos
+
+    private var remainingImageSlots: Int {
+        max(0, PPAccessoryVariantMediaService.maxImagesPerVariant - retainedRemoteURLs.count - stagedImages.count)
+    }
 
     private var photosAtelierCard: some View {
-        let totalCount = retainedRemoteURLs.count + stagedImages.count
-        let maxCount = PPAccessoryVariantMediaService.maxImagesPerVariant
-        let canAdd = totalCount < maxCount
-
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                HStack(spacing: 6) {
-                    Image(systemName: "photo.stack.fill")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(AdminSurface.primary)
-                    Text(Language.get("Variant_Studio_Photos_Title", alter: "صور هذا اللون"))
-                        .font(AdminType.subheadlineBold)
-                        .foregroundStyle(AdminSurface.primaryText)
-                }
-
-                Spacer()
-
-                Text(verbatim: "\(totalCount.englishDigits)/\(maxCount.englishDigits)")
-                    .font(AdminType.caption2Bold)
-                    .foregroundStyle(AdminCommandInk.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
-                    .background(AdminSurface.control, in: Capsule())
-
-                if canAdd {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        isPresentingImagePicker = true
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 11, weight: .bold))
-                            Text(Language.get("Variant_Studio_Photos_Add", alter: "إضافة صور"))
-                                .font(AdminType.caption2Bold)
-                        }
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 4)
-                        .background(AdminSurface.primary.opacity(0.10), in: Capsule())
-                        .foregroundStyle(AdminSurface.primary)
-                    }
-                    .buttonStyle(.plain)
-                }
+        VStack(alignment: .leading, spacing: 12) {
+            adaptiveRow {
+                sectionHeading(Language.get("Variant_Studio_Photos_Heading", alter: "صور المتغير"), symbol: "photo.on.rectangle.angled")
+                if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
+                Text("\(retainedRemoteURLs.count + stagedImages.count) / \(PPAccessoryVariantMediaService.maxImagesPerVariant)")
+                    .font(AdminType.captionBold.monospacedDigit()).foregroundStyle(AdminCommandInk.secondary)
+                    .environment(\.layoutDirection, .leftToRight)
             }
-
-            Text(Language.get("Variant_Studio_Photos_Subtitle", alter: "الصور المخصصة لهذا اللون. تظهر تلقائياً للعميل عند اختيار هذا اللون."))
-                .font(AdminType.caption2)
-                .foregroundStyle(AdminCommandInk.secondary)
-
-            // Photos Reel
+            Text(Language.get("Variant_Studio_PhotoHint", alter: "الصورة الرئيسية تظهر أولاً. اضغط على النجمة لتغييرها."))
+                .font(AdminType.footnote).foregroundStyle(AdminCommandInk.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    // Add Photo Card Tile
-                    if canAdd {
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            isPresentingImagePicker = true
-                        } label: {
-                            VStack(spacing: 5) {
-                                ZStack {
-                                    Circle()
-                                        .fill(AdminSurface.primary.opacity(0.10))
-                                        .frame(width: 32, height: 32)
-                                    Image(systemName: "camera.fill")
-                                        .font(.system(size: 13, weight: .bold))
-                                        .foregroundStyle(AdminSurface.primary)
-                                }
-                                Text(Language.get("Variant_Studio_Photos_Add", alter: "إضافة صور"))
-                                    .font(AdminType.caption2Bold)
-                                    .foregroundStyle(AdminSurface.primary)
-                            }
-                            .frame(width: 82, height: 82)
-                            .background(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .fill(AdminSurface.primary.opacity(0.04))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [5]))
-                                    .foregroundStyle(AdminSurface.primary.opacity(0.35))
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    // Existing Remote Uploaded Images
+                HStack(alignment: .top, spacing: 12) {
                     ForEach(Array(retainedRemoteURLs.enumerated()), id: \.element) { index, url in
-                        ZStack(alignment: .topTrailing) {
-                            Button {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                if let parsed = URL(string: url) {
-                                    previewMedia = PPLivePetPreviewMedia(source: .remote(parsed))
-                                }
-                            } label: {
-                                AdminRemoteImage(url: URL(string: url), contentMode: .fill) {
-                                    ZStack {
-                                        Color.gray.opacity(0.12)
-                                        Image(systemName: "photo")
-                                            .font(.system(size: 20))
-                                            .foregroundStyle(AdminCommandInk.tertiary)
-                                    }
-                                }
-                                .frame(width: 82, height: 82)
-                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                        .strokeBorder(index == 0 ? AdminSurface.amber : AdminSurface.hairline, lineWidth: index == 0 ? 2 : 1)
-                                )
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(String(format: Language.get("Variant_Media_Preview_Format", alter: "معاينة الصورة رقم %ld"), index + 1))
-
-                            // Delete button
-                            Button {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                                    _ = retainedRemoteURLs.remove(at: index)
-                                }
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 18))
-                                    .symbolRenderingMode(.palette)
-                                    .foregroundStyle(.white, Color.black.opacity(0.65))
-                            }
-                            .buttonStyle(.plain)
-                            .padding(4)
-                            .accessibilityLabel(Language.get("Variant_Media_Remove", alter: "إزالة الصورة"))
-
-                            // Primary Cover Badge or Make Primary Button
-                            if index == 0 {
-                                HStack(spacing: 3) {
-                                    Image(systemName: "star.fill")
-                                        .font(.system(size: 8))
-                                    Text(Language.get("Variant_Studio_Photos_Primary", alter: "الرئيسية"))
-                                        .font(AdminType.caption2Bold)
-                                }
-                                .foregroundStyle(AdminSurface.amber)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.black.opacity(0.70), in: Capsule())
-                                .padding(4)
-                                .frame(width: 82, height: 82, alignment: .bottomLeading)
-                            } else {
-                                Button {
-                                    promoteRemoteImageToPrimary(at: index)
-                                } label: {
-                                    Image(systemName: "star")
-                                        .font(.system(size: 11, weight: .bold))
-                                        .foregroundStyle(.white)
-                                        .padding(5)
-                                        .background(Color.black.opacity(0.60), in: Circle())
-                                }
-                                .buttonStyle(.plain)
-                                .padding(4)
-                                .frame(width: 82, height: 82, alignment: .bottomLeading)
-                                .accessibilityLabel(Language.get("Variant_Media_MakePrimary", alter: "تعيين كصورة رئيسية"))
+                        mediaTile(primary: index == 0 && preferredPrimaryStagedImage == nil,
+                                  preview: {
+                            if let parsed = URL(string: url) { previewMedia = PPLivePetPreviewMedia(source: .remote(parsed)) }
+                        }, promote: { promoteRemoteImageToPrimary(at: index) }, remove: {
+                            guard retainedRemoteURLs.indices.contains(index) else { return }
+                            withAnimation(studioMotion) { retainedRemoteURLs.remove(at: index) }
+                        }) {
+                            AdminRemoteImage(url: URL(string: url), contentMode: .fit) {
+                                Image(systemName: "photo").foregroundStyle(AdminCommandInk.tertiary)
                             }
                         }
+                        .accessibilityLabel(String(format: Language.get("Variant_Media_Preview_Format", alter: "معاينة الصورة رقم %ld"), index + 1))
                     }
-
-                    // Newly Staged Local Images
-                    ForEach(Array(stagedImages.enumerated()), id: \.offset) { index, img in
-                        let isTotalPrimary = retainedRemoteURLs.isEmpty && index == 0
-                        ZStack(alignment: .topTrailing) {
-                            Button {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                previewMedia = PPLivePetPreviewMedia(source: .local(img))
-                            } label: {
-                                Image(uiImage: img)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: 82, height: 82)
-                                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                            .strokeBorder(isTotalPrimary ? AdminSurface.amber : AdminSurface.primary.opacity(0.4), lineWidth: isTotalPrimary ? 2 : 1)
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(Language.get("Variant_Media_Staged_Preview", alter: "معاينة الصورة المحددة"))
-
-                            // Delete button
-                            Button {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                                    _ = stagedImages.remove(at: index)
-                                }
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 18))
-                                    .symbolRenderingMode(.palette)
-                                    .foregroundStyle(.white, Color.black.opacity(0.65))
-                            }
-                            .buttonStyle(.plain)
-                            .padding(4)
-                            .accessibilityLabel(Language.get("Variant_Media_Remove", alter: "إزالة الصورة"))
-
-                            // Primary badge or Make Primary Button
-                            if isTotalPrimary {
-                                HStack(spacing: 3) {
-                                    Image(systemName: "star.fill")
-                                        .font(.system(size: 8))
-                                    Text(Language.get("Variant_Studio_Photos_Primary", alter: "الرئيسية"))
-                                        .font(AdminType.caption2Bold)
-                                }
-                                .foregroundStyle(AdminSurface.amber)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.black.opacity(0.70), in: Capsule())
-                                .padding(4)
-                                .frame(width: 82, height: 82, alignment: .bottomLeading)
-                            } else {
-                                Button {
-                                    promoteStagedImageToPrimary(at: index)
-                                } label: {
-                                    Image(systemName: "star")
-                                        .font(.system(size: 11, weight: .bold))
-                                        .foregroundStyle(.white)
-                                        .padding(5)
-                                        .background(Color.black.opacity(0.60), in: Circle())
-                                }
-                                .buttonStyle(.plain)
-                                .padding(4)
-                                .frame(width: 82, height: 82, alignment: .bottomLeading)
-                                .accessibilityLabel(Language.get("Variant_Media_MakePrimary", alter: "تعيين كصورة رئيسية"))
-                            }
+                    ForEach(Array(stagedImages.enumerated()), id: \.offset) { index, image in
+                        let primary = preferredPrimaryStagedImage.map { $0 === image }
+                            ?? (retainedRemoteURLs.isEmpty && index == 0)
+                        mediaTile(primary: primary,
+                                  preview: { previewMedia = PPLivePetPreviewMedia(source: .local(image)) },
+                                  promote: { promoteStagedImageToPrimary(at: index) }, remove: {
+                            guard stagedImages.indices.contains(index) else { return }
+                            if preferredPrimaryStagedImage === image { preferredPrimaryStagedImage = nil }
+                            withAnimation(studioMotion) { stagedImages.remove(at: index) }
+                        }) {
+                            Image(uiImage: image).resizable().scaledToFit()
                         }
                     }
-                }
-                .padding(.vertical, 4)
-            }
-
-            if totalCount > 1 {
-                Text(Language.get("Variant_Studio_Photos_MakePrimary", alter: "اضغط على أي صورة لجعلها الرئيسية"))
-                    .font(AdminType.caption2)
-                    .foregroundStyle(AdminCommandInk.tertiary)
+                    if remainingImageSlots > 0 {
+                        Button { isPresentingImagePicker = true } label: {
+                            VStack(spacing: 12) {
+                                Image(systemName: "plus").font(.system(size: 25, weight: .light))
+                                Text(Language.get("Variant_Studio_Photos_Add", alter: "إضافة صور"))
+                                    .font(AdminType.footnoteBold).multilineTextAlignment(.center)
+                            }
+                            .foregroundStyle(AdminSurface.primary)
+                            .frame(width: 112, height: 150)
+                            .background(AdminSurface.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(AdminSurface.primary.opacity(0.32), style: StrokeStyle(lineWidth: 1, dash: [4, 4])))
+                        }.buttonStyle(PPVariantStudioPressStyle())
+                    }
+                }.padding(.vertical, 2)
             }
         }
-        .padding(14)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(AdminSurface.hairline, lineWidth: 1)
-        )
+    }
+
+    private func mediaTile<Content: View>(primary: Bool, preview: @escaping () -> Void,
+                                         promote: @escaping () -> Void, remove: @escaping () -> Void,
+                                         @ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 0) {
+            Button(action: preview) {
+                content().frame(width: 112, height: 108).clipped()
+                    .background(AdminSurface.primaryText.opacity(0.04))
+            }
+            .buttonStyle(PPVariantStudioPressStyle())
+            .accessibilityLabel(Language.get("Variant_Media_Staged_Preview", alter: "معاينة الصورة المحددة"))
+            HStack(spacing: 0) {
+                Button(action: promote) {
+                    Image(systemName: primary ? "star.fill" : "star")
+                        .foregroundStyle(primary ? AdminSurface.primary : AdminCommandInk.secondary)
+                        .frame(width: 56, height: 44).contentShape(Rectangle())
+                }
+                .accessibilityLabel(Language.get("Variant_Media_MakePrimary", alter: "تعيين كصورة رئيسية"))
+                .accessibilityAddTraits(primary ? .isSelected : [])
+                Button(action: remove) {
+                    Image(systemName: "minus.circle")
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .frame(width: 56, height: 44).contentShape(Rectangle())
+                }
+                .accessibilityLabel(Language.get("Variant_Media_Remove", alter: "إزالة الصورة"))
+            }.font(.system(size: 16, weight: .medium)).buttonStyle(PPVariantStudioPressStyle())
+                .background(primary ? AdminSurface.primary.opacity(0.07) : AdminSurface.primaryText.opacity(0.035))
+        }
+        .background(AdminSurface.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .strokeBorder(primary ? AdminSurface.primary : AdminSurface.hairline, lineWidth: primary ? 1.5 : 1))
     }
 
     private func promoteRemoteImageToPrimary(at index: Int) {
-        guard index > 0, retainedRemoteURLs.indices.contains(index) else { return }
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
-            let item = retainedRemoteURLs.remove(at: index)
-            retainedRemoteURLs.insert(item, at: 0)
+        guard retainedRemoteURLs.indices.contains(index) else { return }
+        preferredPrimaryStagedImage = nil
+        UISelectionFeedbackGenerator().selectionChanged()
+        withAnimation(studioMotion) {
+            let url = retainedRemoteURLs.remove(at: index)
+            retainedRemoteURLs.insert(url, at: 0)
         }
     }
-
     private func promoteStagedImageToPrimary(at index: Int) {
         guard stagedImages.indices.contains(index) else { return }
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
-            let item = stagedImages.remove(at: index)
-            // If there are remote URLs, place at front of staged or bring to index 0
-            if retainedRemoteURLs.isEmpty {
-                stagedImages.insert(item, at: 0)
-            } else {
-                stagedImages.insert(item, at: 0)
-            }
+        UISelectionFeedbackGenerator().selectionChanged()
+        withAnimation(studioMotion) {
+            let image = stagedImages.remove(at: index)
+            stagedImages.insert(image, at: 0)
+            preferredPrimaryStagedImage = image
         }
     }
 
-    // MARK: - 3. Tactile Stock & Quantity Dial Card
+    // MARK: Quantity
 
     private var stockQuantityDialCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                HStack(spacing: 6) {
-                    Image(systemName: "shippingbox.fill")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(AdminSurface.primary)
-                    Text(Language.get("Variant_Studio_Stock_Title", alter: "الكمية والمخزون الحالي"))
-                        .font(AdminType.subheadlineBold)
-                        .foregroundStyle(AdminSurface.primaryText)
-                }
-
-                Spacer()
-
-                // Dynamic Health Pill
-                if quantity == 0 {
-                    HStack(spacing: 4) {
-                        Image(systemName: "slash.circle.fill")
-                            .font(.system(size: 10))
-                        Text(Language.get("Variant_Studio_Stock_Zero", alter: "نفد المخزون (0 حبة)"))
-                            .font(AdminType.caption2Bold)
-                    }
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .background(AdminSurface.crimson.opacity(0.12), in: Capsule())
-                    .foregroundStyle(AdminSurface.crimson)
-                } else if quantity <= 5 {
-                    HStack(spacing: 4) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 10))
-                        Text(String(
-                            format: Language.get("Variant_Studio_Stock_Low_Format", alter: "مخزون محدود (%@ حبة)"),
-                            NSNumber(value: quantity)
-                        ).normalizedEnglishDigits)
-                        .font(AdminType.caption2Bold)
-                    }
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .background(AdminSurface.amber.opacity(0.12), in: Capsule())
-                    .foregroundStyle(AdminSurface.amber)
-                } else {
-                    HStack(spacing: 4) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 10))
-                        Text(String(
-                            format: Language.get("Variant_Studio_Stock_InStock_Format", alter: "متوفر (%@ حبة)"),
-                            NSNumber(value: quantity)
-                        ).normalizedEnglishDigits)
-                        .font(AdminType.caption2Bold)
-                    }
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .background(AdminSurface.emerald.opacity(0.12), in: Capsule())
-                    .foregroundStyle(AdminSurface.emerald)
+        VStack(alignment: .leading, spacing: 16) {
+            sectionHeading(Language.get("Variant_Studio_Stock_Title", alter: "الكمية والمخزون الحالي"), symbol: "shippingbox")
+            VStack(spacing: 12) {
+                if dynamicTypeSize.isAccessibilitySize { quantityReadout }
+                HStack(spacing: 16) {
+                    quantityButton(symbol: "minus", delta: -1)
+                    if dynamicTypeSize.isAccessibilitySize { Spacer() }
+                    else { quantityReadout }
+                    quantityButton(symbol: "plus", delta: 1)
                 }
             }
-
-            // Tactile Stepper Box
-            HStack(spacing: 16) {
-                // Decrement Button
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    withAnimation(.spring(response: 0.22, dampingFraction: 0.7)) {
-                        quantity = max(0, quantity - 1)
+            .padding(16)
+            .background(AdminSurface.primaryText.opacity(0.065), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(AdminSurface.primaryText.opacity(0.12)))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach([1, 5, 10, 25, 50], id: \.self) { delta in
+                        Button { changeQuantity(by: delta) } label: {
+                            Text(verbatim: "+\(delta)").font(.system(.subheadline, design: .rounded, weight: .semibold))
+                                .frame(minWidth: 44, minHeight: 44)
+                                .padding(.horizontal, 4)
+                                .background(AdminSurface.primaryText.opacity(0.05), in: Capsule())
+                                .overlay(Capsule().strokeBorder(AdminSurface.primaryText.opacity(0.12)))
+                                .environment(\.layoutDirection, .leftToRight)
+                        }.buttonStyle(PPVariantStudioPressStyle()).foregroundStyle(AdminSurface.primaryText)
                     }
-                } label: {
-                    Image(systemName: "minus")
-                        .font(.system(size: 18, weight: .bold))
-                        .frame(width: 48, height: 48)
-                        .background(AdminSurface.control, in: Circle())
-                        .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 1))
-                        .foregroundStyle(quantity > 0 ? AdminSurface.primaryText : AdminCommandInk.tertiary)
+                    Button { withAnimation(studioMotion) { quantity = 0 } } label: {
+                        Text(Language.get("Reset", alter: "تصفير")).font(AdminType.footnoteBold)
+                            .padding(.horizontal, 12).frame(minHeight: 44)
+                    }.buttonStyle(PPVariantStudioPressStyle()).foregroundStyle(AdminCommandInk.secondary).disabled(quantity == 0)
                 }
-                .buttonStyle(.plain)
-                .disabled(quantity <= 0)
-
-                Spacer()
-
-                // Numeric Display / Direct Input
-                VStack(spacing: 2) {
-                    Text(verbatim: "\(quantity.englishDigits)")
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
-                        .foregroundStyle(quantity > 0 ? AdminSurface.primaryText : AdminSurface.crimson)
-                        .monospacedDigit()
-                    Text(Language.get("Piece", alter: "حبة"))
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(AdminCommandInk.secondary)
-                }
-
-                Spacer()
-
-                // Increment Button
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    withAnimation(.spring(response: 0.22, dampingFraction: 0.7)) {
-                        quantity += 1
-                    }
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 18, weight: .bold))
-                        .frame(width: 48, height: 48)
-                        .background(AdminSurface.primary.opacity(0.12), in: Circle())
-                        .overlay(Circle().strokeBorder(AdminSurface.primary.opacity(0.3), lineWidth: 1))
-                        .foregroundStyle(AdminSurface.primary)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 14)
-            .background(AdminSurface.control.opacity(0.5), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-            // Quick Intake Shortcuts Bar
-            HStack(spacing: 8) {
-                stockQuickPill("+1", delta: 1)
-                stockQuickPill("+5", delta: 5)
-                stockQuickPill("+10", delta: 10)
-                stockQuickPill("+25", delta: 25)
-                stockQuickPill("+50", delta: 50)
-                Spacer()
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
-                        quantity = 0
-                    }
-                } label: {
-                    Text(Language.get("Reset", alter: "تصفير"))
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(AdminSurface.crimson)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(AdminSurface.crimson.opacity(0.08), in: Capsule())
-                }
-                .buttonStyle(.plain)
             }
         }
-        .padding(14)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(AdminSurface.hairline, lineWidth: 1)
-        )
     }
-
-    private func stockQuickPill(_ title: String, delta: Int) -> some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            withAnimation(.spring(response: 0.22, dampingFraction: 0.7)) {
-                quantity += delta
-            }
-        } label: {
-            Text(title)
-                .font(AdminType.caption2Bold.monospacedDigit())
+    private var quantityReadout: some View {
+        VStack(spacing: 0) {
+            Text(quantity.englishDigits)
+                .font(.system(.largeTitle, design: .rounded, weight: .semibold))
+                .monospacedDigit().contentTransition(.numericText())
                 .foregroundStyle(AdminSurface.primaryText)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .background(AdminSurface.control, in: Capsule())
-                .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+            Text(Language.get("Piece", alter: "حبة"))
+                .font(AdminType.footnote).foregroundStyle(AdminCommandInk.secondary)
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Language.get("Variant_Studio_Stock_Title", alter: "الكمية والمخزون الحالي"))
+        .accessibilityValue(quantity.englishDigits)
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: changeQuantity(by: 1)
+            case .decrement: changeQuantity(by: -1)
+            @unknown default: break
+            }
+        }
+    }
+    private func changeQuantity(by delta: Int) {
+        let (updated, overflow) = quantity.addingReportingOverflow(delta)
+        guard !overflow else { return }
+        UISelectionFeedbackGenerator().selectionChanged()
+        withAnimation(studioMotion) { quantity = max(0, updated) }
+    }
+    private func quantityButton(symbol: String, delta: Int) -> some View {
+        Button { changeQuantity(by: delta) } label: {
+            Image(systemName: symbol).font(.system(size: 20, weight: .medium))
+                .frame(width: 48, height: 48)
+                .background(delta > 0 ? AdminSurface.primary : AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16))
+                .foregroundStyle(delta > 0 ? Color.white : AdminSurface.primaryText)
+                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(AdminSurface.primaryText.opacity(0.08)))
+                .shadow(color: Color.black.opacity(0.08), radius: 5, y: 3)
+                .opacity(delta < 0 && quantity == 0 ? 0.35 : 1)
+        }
+        .buttonStyle(PPVariantStudioPressStyle()).disabled(delta < 0 && quantity == 0)
+        .accessibilityLabel(Language.get(delta > 0 ? "Variant_Studio_IncreaseQuantity" : "Variant_Studio_DecreaseQuantity", alter: delta > 0 ? "زيادة" : "تقليل"))
     }
 
-    // MARK: - 4. Commerce & Pricing Card
+    // MARK: Pricing
 
     private var commercePricingCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label(Language.get("Variant_Add_Pricing", alter: "تسعير هذا اللون"), systemImage: "tag.fill")
-                    .font(PPBrandFont.bold(size: 15))
-                    .foregroundStyle(AdminSurface.primaryText)
-                Spacer()
-            }
-
-            priceInputField(
-                title: Language.get("Variant_RetailPrice", alter: "سعر البيع"),
-                text: $retailPriceText,
-                required: true
-            )
-
-            Toggle(isOn: $wholesaleEnabled.animation(reduceMotion ? nil : .easeInOut(duration: 0.16))) {
-                Text(Language.get("Variant_Add_Wholesale", alter: "سعر جملة مستقل"))
-                    .font(PPBrandFont.bold(size: 13))
-                    .foregroundStyle(AdminSurface.primaryText)
-            }
-
-            if wholesaleEnabled {
-                priceInputField(
-                    title: Language.get("Variant_WholesalePrice", alter: "سعر الجملة"),
-                    text: $wholesalePriceText,
-                    required: true
-                )
-
-                // Margin Delta Calculation
-                if let ret = retailPrice, let who = wholesalePrice, ret > 0, who > 0 {
-                    let delta = ret - who
-                    let marginPercent = Int(round((delta / ret) * 100.0))
-                    HStack(spacing: 6) {
-                        Image(systemName: delta >= 0 ? "arrow.up.right" : "arrow.down.right")
-                            .font(.system(size: 11, weight: .bold))
-                        Text(String(
-                            format: Language.get("Variant_Studio_Margin_Delta", alter: "فارق السعر: %@ (هامش الربح: %@%%)"),
-                            String(format: "%.2f QAR", delta).normalizedEnglishDigits,
-                            "\(marginPercent)".normalizedEnglishDigits
-                        ))
-                        .font(PPBrandFont.bold(size: 12))
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        (delta >= 0 ? AdminSurface.emerald : AdminSurface.crimson).opacity(0.10),
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    )
-                    .foregroundStyle(delta >= 0 ? AdminSurface.emerald : AdminSurface.crimson)
+        VStack(alignment: .leading, spacing: 14) {
+            sectionHeading(Language.get("Variant_Studio_PricingHeading", alter: "التسعير"), symbol: "tag")
+            priceInputField(title: Language.get("Variant_RetailPrice", alter: "سعر البيع"), text: $retailPriceText, field: .retail, prominent: true)
+            if canViewCosts {
+                priceInputField(title: Language.get("Price_Cost", alter: "سعر التكلفة (اختياري)"), text: $costPriceText, field: .cost)
+                if mode.isEdit, costPriceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(Language.get("Variant_Studio_CostUnchanged", alter: "ترك الحقل فارغًا يحافظ على التكلفة المحفوظة."))
+                        .font(AdminType.footnote).foregroundStyle(AdminCommandInk.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let retail = retailPrice, let cost = costPrice, retail > 0 {
+                    marginNote(amount: retail - cost, percentage: ((retail - cost) / retail) * 100)
                 }
             }
-        }
-        .padding(14)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(AdminSurface.hairline, lineWidth: 1)
-        )
-    }
-
-    private func priceInputField(title: String, text: Binding<String>, required: Bool) -> some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(PPBrandFont.bold(size: 13))
+            Toggle(isOn: $wholesaleEnabled.animation(studioMotion)) {
+                Text(Language.get("Variant_Add_Wholesale", alter: "سعر جملة مستقل")).font(AdminType.bodyBold)
                     .foregroundStyle(AdminSurface.primaryText)
-                Text(Language.get("QAR", alter: "ر.ق"))
-                    .font(PPBrandFont.medium(size: 11))
-                    .foregroundStyle(AdminCommandInk.tertiary)
             }
-            Spacer()
-            TextField("0.00", text: text)
-                .keyboardType(.decimalPad)
-                .multilineTextAlignment(.trailing)
-                .font(.system(size: 16, weight: .bold, design: .rounded))
-                .frame(width: 130)
-                .padding(.horizontal, 12)
-                .frame(minHeight: 44)
-                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .environment(\.layoutDirection, .leftToRight)
-                .accessibilityLabel(title)
+            .frame(minHeight: 44)
+            if wholesaleEnabled {
+                priceInputField(title: Language.get("Variant_WholesalePrice", alter: "سعر الجملة"), text: $wholesalePriceText, field: .wholesale)
+            }
+        }
+    }
+    private func priceInputField(title: String, text: Binding<String>, field: StudioField, prominent: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(title).font(AdminType.footnoteBold)
+                Spacer(minLength: 8)
+                Image(systemName: focusedField == field ? "pencil.line" : "pencil")
+                    .font(.system(size: 11, weight: .semibold)).accessibilityHidden(true)
+            }.foregroundStyle(focusedField == field ? AdminSurface.primary : AdminCommandInk.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                TextField("0.00", text: text)
+                    .keyboardType(.decimalPad)
+                    .focused($focusedField, equals: field)
+                    .font(.system(prominent ? .largeTitle : .title2, design: .rounded, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                    .environment(\.layoutDirection, .leftToRight)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .accessibilityLabel(title)
+                Text(Language.get("QAR", alter: "ر.ق"))
+                    .font(AdminType.footnoteBold).foregroundStyle(prominent ? AdminSurface.primary : AdminCommandInk.secondary)
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(prominent ? AdminSurface.primary.opacity(0.09) : AdminSurface.primaryText.opacity(0.05), in: Capsule())
+            }
+            .padding(.horizontal, 16).padding(.vertical, 8)
+            .background(focusedField == field ? AdminSurface.primary.opacity(0.04) : AdminSurface.primaryText.opacity(prominent ? 0.055 : 0.03), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(focusedField == field ? AdminSurface.primary : AdminSurface.primaryText.opacity(0.15), lineWidth: 1.5))
+            .animation(studioMotion, value: focusedField)
+            if !text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               parsedAmount(text.wrappedValue) == nil || (field != .cost && parsedAmount(text.wrappedValue) == 0) {
+                Text(Language.get(field == .cost ? "Variant_Studio_InvalidCost" : "Variant_Studio_InvalidPrice",
+                                  alter: field == .cost ? "أدخل تكلفة صحيحة غير سالبة، بمنزلتين عشريتين كحد أقصى." : "أدخل سعرًا أكبر من صفر، بمنزلتين عشريتين كحد أقصى."))
+                    .font(AdminType.footnote).foregroundStyle(AdminSurface.crimson)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+    @ViewBuilder private func marginNote(amount: Double, percentage: Double) -> some View {
+        if amount.isFinite, percentage.isFinite {
+            Label(String(format: Language.get("Variant_Studio_Profit_Format", alter: "الربح: %@ (هامش الربح: %@%%)"),
+                         PetAccessory.formatCurrency(NSNumber(value: amount)), String(format: "%.0f", percentage)),
+                  systemImage: amount >= 0 ? "arrow.up.right" : "arrow.down.right")
+                .font(AdminType.footnoteBold)
+                .foregroundStyle(amount >= 0 ? AdminSurface.emerald : AdminSurface.crimson)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+                .background((amount >= 0 ? AdminSurface.emerald : AdminSurface.crimson).opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
+                .accessibilityElement(children: .combine)
         }
     }
 
-    // MARK: - 5. Identifiers Card (SKU & Barcode)
+    // MARK: Product identifiers
 
     private var identifiersCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Label(Language.get("Variant_Add_Identifiers", alter: "هوية اللون في المخزون"), systemImage: "barcode.viewfinder")
-                .font(PPBrandFont.bold(size: 15))
-                .foregroundStyle(AdminSurface.primaryText)
-
-            // Barcode Section with Camera Scanner & PP Generator
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Text(Language.get("CatalogIntake_BarcodeLabel", alter: "الباركود"))
-                        .font(PPBrandFont.bold(size: 13))
-                        .foregroundStyle(AdminSurface.primaryText)
-
-                    if barcodeConflictMessage != nil {
-                        HStack(spacing: 3) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 9, weight: .bold))
-                            Text(Language.get("Validation_Duplicate", alter: "مكرر"))
-                                .font(PPBrandFont.bold(size: 11))
-                        }
-                        .foregroundStyle(AdminSurface.crimson)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(AdminSurface.crimson.opacity(0.12), in: Capsule())
-                    }
-
-                    Spacer()
-                }
-
-                HStack(spacing: 8) {
-                    Image(systemName: "barcode")
-                        .foregroundStyle(barcodeConflictMessage != nil ? AdminSurface.crimson : AdminCommandInk.secondary)
-
-                    TextField(Language.get("CatalogIntake_BarcodePlaceholder", alter: "امسح أو اكتب الباركود"), text: $barcode)
-                        .font(AdminType.body.monospaced())
-                        .englishAlphanumericInput(text: $barcode)
-                        .environment(\.layoutDirection, .leftToRight)
-
-                    if !barcode.isEmpty {
-                        Button {
-                            UIPasteboard.general.string = barcode
-                            UINotificationFeedbackGenerator().notificationOccurred(.success)
-                        } label: {
-                            Image(systemName: "doc.on.doc")
-                                .font(.system(size: 13))
-                                .foregroundStyle(AdminCommandInk.tertiary)
-                                .frame(width: 28, height: 36)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-
-                        Button {
-                            barcode = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 14))
-                                .foregroundStyle(AdminCommandInk.tertiary)
-                                .frame(width: 28, height: 36)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(Language.get("Clear", alter: "مسح"))
-                    }
-
-                    Button {
-                        generatePPBarcode()
-                    } label: {
-                        HStack(spacing: 2) {
-                            Text("PP")
-                                .font(.system(size: 11, weight: .black, design: .rounded))
-                            Image(systemName: "sparkles")
-                                .font(.system(size: 10, weight: .bold))
-                        }
-                        .foregroundColor(AdminSurface.primary)
-                        .frame(height: 36)
-                        .padding(.horizontal, 7)
-                        .background(AdminSurface.primarySoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Language.get("CatalogIntake_GeneratePPBarcode", alter: "توليد باركود PP"))
-
-                    AdminBarcodeScanButton { scanned in
-                        barcode = scanned
-                    }
-                }
-                .padding(.leading, 12)
-                .padding(.trailing, 6)
-                .frame(minHeight: 48)
-                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(
-                            barcodeConflictMessage != nil ? AdminSurface.crimson : AdminSurface.hairline,
-                            lineWidth: barcodeConflictMessage != nil ? 1.5 : 0.75
-                        )
-                )
-
-                if let conflict = barcodeConflictMessage {
-                    HStack(alignment: .top, spacing: 6) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(AdminSurface.crimson)
-                            .padding(.top, 1)
-                        Text(conflict)
-                            .font(PPBrandFont.bold(size: 12))
-                            .foregroundStyle(AdminSurface.crimson)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(.horizontal, 4)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-            }
-
-            // SKU Section with Generator
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Text(Language.get("CatalogIntake_SKULabel", alter: "رمز المنتج (SKU)"))
-                        .font(PPBrandFont.bold(size: 13))
-                        .foregroundStyle(AdminSurface.primaryText)
-
-                    if skuConflictMessage != nil {
-                        HStack(spacing: 3) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 9, weight: .bold))
-                            Text(Language.get("Validation_Duplicate", alter: "مكرر"))
-                                .font(PPBrandFont.bold(size: 11))
-                        }
-                        .foregroundStyle(AdminSurface.crimson)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(AdminSurface.crimson.opacity(0.12), in: Capsule())
-                    }
-
-                    Spacer()
-
-                    Button {
-                        generateVariantSKU()
-                    } label: {
-                        Label(Language.get("Generate_SKU_Auto", alter: "توليد SKU"), systemImage: "wand.and.stars")
-                            .font(PPBrandFont.bold(size: 12))
-                            .foregroundStyle(AdminSurface.primary)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                HStack(spacing: 8) {
-                    Image(systemName: "tag.fill")
-                        .foregroundStyle(skuConflictMessage != nil ? AdminSurface.crimson : AdminCommandInk.secondary)
-
-                    TextField(Language.get("CatalogIntake_SKUPlaceholder", alter: "مثال: CLR-102"), text: $sku)
-                        .font(AdminType.body.monospaced())
-                        .englishAlphanumericInput(text: $sku)
-                        .environment(\.layoutDirection, .leftToRight)
-
-                    if !sku.isEmpty {
-                        Button {
-                            UIPasteboard.general.string = sku
-                            UINotificationFeedbackGenerator().notificationOccurred(.success)
-                        } label: {
-                            Image(systemName: "doc.on.doc")
-                                .font(.system(size: 13))
-                                .foregroundStyle(AdminCommandInk.tertiary)
-                                .frame(width: 28, height: 36)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-
-                        Button {
-                            sku = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 14))
-                                .foregroundStyle(AdminCommandInk.tertiary)
-                                .frame(width: 28, height: 36)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(Language.get("Clear", alter: "مسح"))
-                    }
-                }
-                .padding(.horizontal, 12)
-                .frame(minHeight: 48)
-                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(
-                            skuConflictMessage != nil ? AdminSurface.crimson : AdminSurface.hairline,
-                            lineWidth: skuConflictMessage != nil ? 1.5 : 0.75
-                        )
-                )
-
-                if let conflict = skuConflictMessage {
-                    HStack(alignment: .top, spacing: 6) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(AdminSurface.crimson)
-                            .padding(.top, 1)
-                        Text(conflict)
-                            .font(PPBrandFont.bold(size: 12))
-                            .foregroundStyle(AdminSurface.crimson)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(.horizontal, 4)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-            }
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeading(Language.get("Variant_Studio_IdentifiersHeading", alter: "تعريف المتغير"), symbol: "barcode")
+            identifierField(title: Language.get("CatalogIntake_BarcodeLabel", alter: "الباركود"), text: $barcode, field: .barcode)
+            adaptiveRow {
+                Button { generatePPBarcode() } label: {
+                    Label(Language.get("CatalogIntake_GeneratePPBarcode", alter: "توليد باركود PP"), systemImage: "sparkles")
+                        .font(AdminType.footnoteBold).frame(minHeight: 44)
+                }.buttonStyle(PPVariantStudioPressStyle())
+                if !dynamicTypeSize.isAccessibilitySize { Spacer() }
+                AdminBarcodeScanButton { barcode = $0 }.frame(minWidth: 44, minHeight: 44)
+            }.foregroundStyle(AdminSurface.primary)
+            if let message = barcodeConflictMessage { failureBanner(message) }
+            identifierField(title: Language.get("CatalogIntake_SKULabel", alter: "رمز المنتج (SKU)"), text: $sku, field: .sku)
+            Button { generateVariantSKU() } label: {
+                Label(Language.get("Generate_SKU_Auto", alter: "توليد SKU"), systemImage: "wand.and.stars")
+                    .font(AdminType.footnoteBold).frame(minHeight: 44)
+            }.buttonStyle(PPVariantStudioPressStyle()).foregroundStyle(AdminSurface.primary)
+            if let message = skuConflictMessage { failureBanner(message) }
         }
-        .padding(14)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(AdminSurface.hairline, lineWidth: 1)
-        )
     }
-
+    private func identifierField(title: String, text: Binding<String>, field: StudioField) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(title, systemImage: field == .barcode ? "barcode" : "number")
+                .font(AdminType.footnoteBold)
+                .foregroundStyle(focusedField == field ? AdminSurface.primary : AdminCommandInk.secondary)
+            VStack(spacing: 0) {
+                TextField(title, text: text)
+                    .font(.system(.body, design: .monospaced, weight: .medium))
+                    .englishAlphanumericInput(text: text)
+                    .focused($focusedField, equals: field)
+                    .multilineTextAlignment(.leading)
+                    .environment(\.layoutDirection, .leftToRight)
+                    .padding(.horizontal, 16).frame(minHeight: 52)
+                    .accessibilityLabel(title)
+                if !text.wrappedValue.isEmpty {
+                    studioRule
+                    HStack {
+                        Button {
+                            UIPasteboard.general.string = text.wrappedValue
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            copiedField = field
+                        } label: {
+                            Label(copiedField == field ? Language.get("Variant_Hex_Copied", alter: "تم النسخ") : Language.get("Copy", alter: "نسخ"), systemImage: copiedField == field ? "checkmark" : "doc.on.doc")
+                                .font(AdminType.captionBold).frame(minHeight: 44)
+                        }
+                        Spacer()
+                        Button { text.wrappedValue = "" } label: {
+                            Label(Language.get("Clear", alter: "مسح"), systemImage: "xmark.circle")
+                                .font(AdminType.captionBold).frame(minHeight: 44)
+                        }
+                    }.buttonStyle(PPVariantStudioPressStyle()).foregroundStyle(AdminCommandInk.secondary).padding(.horizontal, 16)
+                        .background(AdminSurface.primaryText.opacity(0.035))
+                }
+            }
+            .background(AdminSurface.primaryText.opacity(0.025), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(focusedField == field ? AdminSurface.primary : AdminSurface.primaryText.opacity(0.15), lineWidth: 1.5))
+            .animation(studioMotion, value: focusedField)
+            .onChange(of: text.wrappedValue) { _, _ in if copiedField == field { copiedField = nil } }
+        }
+    }
     private func generatePPBarcode() {
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        UISelectionFeedbackGenerator().selectionChanged()
         let timestamp = Int(Date().timeIntervalSince1970) % 1_000_000_000
-        let randomDigit = Int.random(in: 0...9)
-        barcode = String(format: "PP%09d%d", timestamp, randomDigit)
+        barcode = String(format: "PP%09d%d", timestamp, Int.random(in: 0...9))
     }
-
     private func generateVariantSKU() {
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        let colorTag = color.nameEn.filter { $0.isLetter }.prefix(3).uppercased()
-        let prefix = colorTag.isEmpty ? "CLR" : String(colorTag)
-        sku = "\(prefix)-\(Int.random(in: 100...999))"
+        UISelectionFeedbackGenerator().selectionChanged()
+        let tag = color.nameEn.filter { $0.isLetter }.prefix(3).uppercased()
+        sku = "\(tag.isEmpty ? "CLR" : String(tag))-\(Int.random(in: 100...999))"
     }
 
-    // MARK: - 6. Safety & Deep-link Records
+    // MARK: Saving and recovery
 
+    private var studioSaveDock: some View {
+        VStack(spacing: 0) {
+            studioRule
+            Button(action: submit) {
+                HStack(spacing: 10) {
+                    if busy { ProgressView().tint(.white) }
+                    else { Image(systemName: "checkmark").font(.system(size: 15, weight: .bold)) }
+                    Text(busy ? Language.get("Saving", alter: "جارٍ الحفظ...")
+                         : hasPendingSave ? Language.get("Variant_Studio_ResumeSave", alter: "إكمال الحفظ")
+                         : Language.get(mode.isEdit ? "Variant_Studio_Save" : "Variant_Add_Create",
+                                        alter: mode.isEdit ? "حفظ التعديلات" : "إنشاء اللون"))
+                        .font(AdminType.bodyBold)
+                }
+                .foregroundStyle(canSubmit || busy ? Color.white : AdminCommandInk.secondary)
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .padding(.vertical, dynamicTypeSize.isAccessibilitySize ? 8 : 0)
+                .background(canSubmit || busy ? AdminSurface.primary : AdminSurface.control,
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .buttonStyle(PPVariantStudioPressStyle()).disabled(!canSubmit)
+            .accessibilityIdentifier("variant.studio.save")
+            .padding(.horizontal, 20).padding(.vertical, 12)
+            .frame(maxWidth: 720)
+        }.frame(maxWidth: .infinity).background(AdminSurface.surface)
+    }
+    private func failureBanner(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(message, systemImage: "exclamationmark.circle.fill")
+                .font(AdminType.footnoteBold).foregroundStyle(AdminSurface.crimson)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(Language.get("Variant_Recovery_DraftKept", alter: "تم الاحتفاظ بتعديلاتك."))
+                .font(AdminType.footnote).foregroundStyle(AdminCommandInk.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading).padding(16)
+        .background(AdminSurface.crimson.opacity(0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+    private var safetyNoteCard: some View {
+        Text(Language.get("Variant_Studio_SaveScope", alter: "تُحفظ الصور والأسعار والمخزون لهذا المتغير فقط."))
+            .font(AdminType.footnote).foregroundStyle(AdminCommandInk.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
     private func deepLinkRecordButton(variant: PPAccessoryVariant, action: @escaping (String) -> Void) -> some View {
         Button {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            dismiss()
-            action(variant.productId)
+            focusedField = nil
+            if hasUnsavedChanges {
+                pendingRecordID = variant.productId
+                showsDiscardConfirmation = true
+            } else { dismiss(); action(variant.productId) }
         } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "arrow.up.forward.app.fill")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(AdminSurface.primary)
+            HStack(spacing: 12) {
                 Text(Language.get("Variant_Studio_OpenFullRecord", alter: "فتح السجل الكامل في إدارة الأصناف"))
-                    .font(AdminType.caption1Bold)
-                    .foregroundStyle(AdminSurface.primary)
-                Spacer()
-                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
-                    .font(.system(size: 12))
-                    .foregroundStyle(AdminCommandInk.tertiary)
-            }
-            .padding(12)
-            .background(AdminSurface.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var safetyNoteCard: some View {
-        Label(
-            Language.get(
-                "Variant_Studio_SafetyNote",
-                alter: "ترتبط كل حركة مخزون وصور بهذا اللون بالتحديد وبشكل مستقل وآمن داخل النظام."
-            ),
-            systemImage: "checkmark.shield.fill"
-        )
-        .font(PPBrandFont.regular(size: 12))
-        .foregroundStyle(AdminCommandInk.secondary)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private func failureBanner(_ message: String) -> some View {
-        Label(message, systemImage: "exclamationmark.triangle.fill")
-            .font(PPBrandFont.medium(size: 13))
-            .foregroundStyle(AdminSurface.crimson)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(AdminSurface.crimson.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .font(AdminType.footnoteBold).fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                Image(systemName: "arrow.up.forward").flipsForRightToLeftLayoutDirection(true)
+            }.foregroundStyle(AdminSurface.primary).frame(minHeight: 48)
+        }.buttonStyle(PPVariantStudioPressStyle())
     }
 
     // MARK: - Submit
 
     private func submit() {
         guard canSubmit, let retailPrice else { return }
+        focusedField = nil
         localSubmitting = true
         localFailure = nil
         Task { @MainActor in
@@ -5139,6 +4870,7 @@ struct PPAccessoryVariantStudioSheet: View {
                     sku,
                     barcode,
                     retailPrice,
+                    costPrice,
                     wholesalePrice,
                     quantity,
                     stagedImages
@@ -5151,10 +4883,12 @@ struct PPAccessoryVariantStudioSheet: View {
                     sku,
                     barcode,
                     retailPrice,
+                    costPrice,
                     wholesalePrice,
                     quantity,
                     stagedImages,
-                    retainedRemoteURLs
+                    retainedRemoteURLs,
+                    preferredPrimaryStagedImage
                 )
             }
             localSubmitting = false
@@ -5169,6 +4903,28 @@ struct PPAccessoryVariantStudioSheet: View {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
             }
         }
+    }
+}
+
+private struct PPVariantStudioPanel: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(AdminSurface.primaryText.opacity(0.09), lineWidth: 1))
+            .shadow(color: Color.black.opacity(0.025), radius: 12, y: 5)
+    }
+}
+
+private struct PPVariantStudioPressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)
+            .opacity(configuration.isPressed ? 0.78 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: configuration.isPressed)
     }
 }
 
@@ -5661,9 +5417,9 @@ struct PPAccessoryVariantColorEditorSheet: View {
                     .font(AdminType.caption2Bold)
                     .foregroundStyle(AdminCommandInk.secondary)
                 Spacer()
-                Text("\(nameAr.count)/60")
+                Text("\(nameAr.count)/300")
                     .font(AdminType.caption2.monospaced())
-                    .foregroundStyle(nameAr.count > 60 ? AdminSurface.crimson : AdminCommandInk.tertiary)
+                    .foregroundStyle(nameAr.count > 300 ? AdminSurface.crimson : AdminCommandInk.tertiary)
             }
 
             HStack {
@@ -5695,9 +5451,9 @@ struct PPAccessoryVariantColorEditorSheet: View {
                     .font(AdminType.caption2Bold)
                     .foregroundStyle(AdminCommandInk.secondary)
                 Spacer()
-                Text("\(nameEn.count)/60")
+                Text("\(nameEn.count)/300")
                     .font(AdminType.caption2.monospaced())
-                    .foregroundStyle(nameEn.count > 60 ? AdminSurface.crimson : AdminCommandInk.tertiary)
+                    .foregroundStyle(nameEn.count > 300 ? AdminSurface.crimson : AdminCommandInk.tertiary)
             }
 
             HStack {
@@ -5826,42 +5582,111 @@ struct PPVariantImagePickerSheet: UIViewControllerRepresentable {
         return picker
     }
 
-    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {
+        context.coordinator.parent = self
+    }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     final class Coordinator: NSObject, PHPickerViewControllerDelegate {
-        let parent: PPVariantImagePickerSheet
+        var parent: PPVariantImagePickerSheet
 
         init(_ parent: PPVariantImagePickerSheet) {
             self.parent = parent
         }
 
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            let onPicked = parent.onPicked
             parent.dismiss()
             guard !results.isEmpty else {
-                parent.onPicked([])
+                onPicked([])
                 return
             }
 
-            var images: [UIImage] = []
-            let group = DispatchGroup()
-            let lock = NSLock()
+            final class ImageAccumulator: @unchecked Sendable {
+                private let lock = NSLock()
+                private var slots: [UIImage?]
 
-            for result in results where result.itemProvider.canLoadObject(ofClass: UIImage.self) {
-                group.enter()
-                result.itemProvider.loadObject(ofClass: UIImage.self) { object, _ in
-                    if let image = object as? UIImage {
-                        lock.lock()
-                        images.append(image)
-                        lock.unlock()
+                init(count: Int) {
+                    self.slots = Array(repeating: nil, count: count)
+                }
+
+                func set(image: UIImage, at index: Int) {
+                    lock.lock()
+                    if index < slots.count {
+                        slots[index] = image
                     }
-                    group.leave()
+                    lock.unlock()
+                }
+
+                var orderedImages: [UIImage] {
+                    lock.lock()
+                    defer { lock.unlock() }
+                    return slots.compactMap { $0 }
                 }
             }
 
-            group.notify(queue: .main) { [parent] in
-                parent.onPicked(images)
+            final class AtomicGate: @unchecked Sendable {
+                private let lock = NSLock()
+                private var opened = false
+                func openOnce() -> Bool {
+                    lock.lock()
+                    defer { lock.unlock() }
+                    if opened { return false }
+                    opened = true
+                    return true
+                }
+            }
+
+            let accumulator = ImageAccumulator(count: results.count)
+            let group = DispatchGroup()
+
+            for (index, result) in results.enumerated() {
+                group.enter()
+                let provider = result.itemProvider
+                let gate = AtomicGate()
+
+                let finish: @Sendable (UIImage?) -> Void = { img in
+                    guard gate.openOnce() else { return }
+                    if let img = img {
+                        accumulator.set(image: img, at: index)
+                    }
+                    group.leave()
+                }
+
+                if provider.canLoadObject(ofClass: UIImage.self) {
+                    provider.loadObject(ofClass: UIImage.self) { [finish] object, _ in
+                        if let image = object as? UIImage {
+                            finish(image)
+                        } else if provider.hasItemConformingToTypeIdentifier("public.image") {
+                            provider.loadDataRepresentation(forTypeIdentifier: "public.image") { [finish] data, _ in
+                                let img = data.flatMap { UIImage(data: $0) }
+                                finish(img)
+                            }
+                        } else {
+                            finish(nil)
+                        }
+                    }
+                } else if provider.hasItemConformingToTypeIdentifier("public.image") {
+                    provider.loadDataRepresentation(forTypeIdentifier: "public.image") { [finish] data, _ in
+                        let img = data.flatMap { UIImage(data: $0) }
+                        finish(img)
+                    }
+                } else if provider.hasItemConformingToTypeIdentifier("public.item") {
+                    provider.loadFileRepresentation(forTypeIdentifier: "public.item") { [finish] url, _ in
+                        if let url = url, let data = try? Data(contentsOf: url), let img = UIImage(data: data) {
+                            finish(img)
+                        } else {
+                            finish(nil)
+                        }
+                    }
+                } else {
+                    finish(nil)
+                }
+            }
+
+            group.notify(queue: .main) {
+                onPicked(accumulator.orderedImages)
             }
         }
     }

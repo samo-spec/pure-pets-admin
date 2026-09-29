@@ -2622,6 +2622,7 @@ struct PPInventoryListView: View {
         }
         .onDisappear {
             viewModel.stopListening()
+            AdminCellDisplayRegistry.shared.clear()
         }
         .onChange(of: viewModel.searchText) { _ in
             // Wrapped so `ForEach` diffing animates the insert/remove/move set as
@@ -2794,6 +2795,8 @@ struct PPInventoryListView: View {
                 let isSelected = viewModel.activeTab == tab
                 Button {
                     UISelectionFeedbackGenerator().selectionChanged()
+                    AdminCellDisplayRegistry.shared.clear(prefix: "item:")
+                    AdminCellDisplayRegistry.shared.clear(prefix: "family:")
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
                         viewModel.switchTab(to: tab)
                     }
@@ -3093,6 +3096,8 @@ struct PPInventoryListView: View {
 
     private func refreshHero() async {
         guard !viewModel.isLoading else { return }
+        AdminCellDisplayRegistry.shared.clear(prefix: "item:")
+        AdminCellDisplayRegistry.shared.clear(prefix: "family:")
         if branchProjection.inventoryError != nil || branchProjection.settingsError != nil {
             branchProjection.bindToBranch(branchProjection.currentBranchId)
         }
@@ -3527,17 +3532,41 @@ struct PPInventoryListView: View {
                                 },
                                 set: { selectedFamilyProductIds[familyId] = $0 }
                             ),
-                            // Same branch projection the selected color inspector uses,
-                            // so family totals and child detail cannot disagree.
+                            // Resolve every option from the exact same confirmed
+                            // branch state as the selected product inspector.
                             availability: { member in
-                                viewModel.effectiveStock(for: member)
+                                let selectedBranch = branchContext.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                                let hasBranch = !selectedBranch.isEmpty && selectedBranch != "main_store"
+                                let matchesBranch = branchProjection.currentBranchId == selectedBranch
+                                let record = matchesBranch && hasBranch
+                                    ? branchProjection.inventory(for: member.accessoryID) : nil
+                                let state = inventoryCellStockState(for: member, hasBranch: hasBranch,
+                                                                    matchesBranch: matchesBranch, record: record)
+                                if state == .selectBranch {
+                                    // The inspector still shows the catalog
+                                    // quantity in this global/main-store state.
+                                    return PPInventoryFamilyStockSnapshot(
+                                        quantity: max(0, member.quantity), caption: state.caption
+                                    )
+                                }
+                                guard state == .ready else {
+                                    return PPInventoryFamilyStockSnapshot(quantity: nil, caption: state.caption)
+                                }
+                                return PPInventoryFamilyStockSnapshot(
+                                    quantity: hasBranch ? (record?.availableQuantity ?? 0) : max(0, member.quantity),
+                                    caption: nil
+                                )
                             },
                             retailPrice: { member in
                                 guard member.hasResolvedSellingPrice else { return nil }
-                                let fallback = member.finalPrice.doubleValue
-                                let resolved = PPBranchInventoryService.shared.effectiveSellingPrice(
+                                let selectedBranch = branchContext.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                                let hasBranch = !selectedBranch.isEmpty && selectedBranch != "main_store"
+                                guard hasBranch else { return member.finalPrice.doubleValue }
+                                guard branchProjection.currentBranchId == selectedBranch,
+                                      branchProjection.hasConfirmedCommercePrice(for: member.accessoryID) else { return nil }
+                                let resolved = branchProjection.effectiveSellingPrice(
                                     for: member.accessoryID,
-                                    fallbackPrice: fallback
+                                    fallbackPrice: member.finalPrice.doubleValue
                                 )
                                 return resolved > 0 ? resolved : nil
                             },
@@ -3597,12 +3626,7 @@ struct PPInventoryListView: View {
                     )
                 }
             }
-            .inventoryRowReveal(
-                index: index,
-                hasAppeared: hasAppeared,
-                revealComplete: initialRevealComplete,
-                reduceMotion: reduceMotion
-            )
+            .animateCellDisplay(id: group.id, index: index)
             // Rows arriving or leaving on a filter change read as replacement, not
             // navigation: they fade and settle in place instead of flying in.
             .transition(
@@ -4879,16 +4903,6 @@ private struct FlagshipInventoryCard: View {
         guard stockState == .ready, let quantity else { return "clock" }
         return quantity == 0 ? "minus.circle" : (quantity <= 3 ? "exclamationmark.circle" : "checkmark.circle")
     }
-    private var operationalAccent: Color {
-        switch stockState {
-        case .ready:
-            return statusColor
-        case .pending:
-            return AdminSurface.amber
-        case .selectBranch, .loading, .unconfirmed, .missing:
-            return AdminSurface.primary
-        }
-    }
     private var hasDiscount: Bool {
         guard let sellingPrice, sellingPrice.doubleValue == item.finalPrice.doubleValue else { return false }
         return item.price.doubleValue > sellingPrice.doubleValue
@@ -4905,39 +4919,32 @@ private struct FlagshipInventoryCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if dynamicTypeSize.isAccessibilitySize {
-                accessibleIdentity
-            } else {
-                ViewThatFits(in: .horizontal) {
-                    wideIdentity.frame(minWidth: 620)
-                    compactIdentity
+        VStack(alignment: .leading, spacing: 0) {
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    accessibleIdentity
+                } else {
+                    ViewThatFits(in: .horizontal) {
+                        wideIdentity.frame(minWidth: 620)
+                        compactIdentity
+                    }
                 }
             }
+            .padding(AdminSpacing.base)
+
             operationalPanel
         }
-        .padding(12)
-        .background(
-            Color(uiColor: UIColor { traits in traits.userInterfaceStyle == .dark ? UIColor.ppSurface : .white }),
-            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
-        )
+        .background(AdminSurface.surface)
+        .clipShape(RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous)
                 .strokeBorder(
-                    isHovered
-                        ? AdminSurface.primary.opacity(0.40)
-                        : Color(uiColor: UIColor { traits in
-                            traits.userInterfaceStyle == .dark
-                                ? UIColor(white: 1.0, alpha: 0.08)
-                                : UIColor(red: 0.93, green: 0.87, blue: 0.89, alpha: 0.65)
-                        }),
-                    lineWidth: 0.75
+                    isHovered ? AdminSurface.primary.opacity(0.4) : AdminSurface.borderSubtle,
+                    lineWidth: AdminStroke.hairline
                 )
+                .allowsHitTesting(false)
         }
-        .shadow(
-            color: Color(uiColor: UIColor { traits in traits.userInterfaceStyle == .dark ? UIColor.clear : UIColor(white: 0.0, alpha: 0.03) }),
-            radius: 8, x: 0, y: 3
-        )
+        .shadow(color: .black.opacity(0.035), radius: 10, x: 0, y: 4)
         .onHover { hovering in
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) { isHovered = hovering }
         }
@@ -4993,20 +5000,22 @@ private struct FlagshipInventoryCard: View {
         .accessibilityIdentifier("inventory.product.\(item.accessoryID)")
     }
 
-    // The portrait and selling price form one identity. The operational panel
-    // is a separate touch region, so quantity buttons never open the dossier.
+    // Identity opens the dossier; the dock contains sibling controls. There is
+    // deliberately no card-wide gesture that could intercept an operation.
     private var compactIdentity: some View {
         Button(action: onTap) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 5) {
-                    categoryLine
-                    productTitle
-                    priceReadout
-                    metadata
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: AdminSpacing.md) {
+                HStack(alignment: .top, spacing: AdminSpacing.md) {
+                    portrait(size: dynamicTypeSize >= .xxLarge ? 64 : 84)
 
-                portrait(size: dynamicTypeSize >= .xxLarge ? 72 : 88)
+                    VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                        categoryLine
+                        productTitle
+                        priceReadout
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                metadata
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
@@ -5020,8 +5029,9 @@ private struct FlagshipInventoryCard: View {
 
     private var wideIdentity: some View {
         Button(action: onTap) {
-            HStack(alignment: .center, spacing: 20) {
-                VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: AdminSpacing.base) {
+                portrait(size: 104)
+                VStack(alignment: .leading, spacing: AdminSpacing.sm) {
                     categoryLine
                     productTitle
                     metadata
@@ -5030,7 +5040,6 @@ private struct FlagshipInventoryCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 priceReadout
                     .frame(width: 180, alignment: .leading)
-                portrait(size: 112)
             }
             .contentShape(Rectangle())
         }
@@ -5043,10 +5052,10 @@ private struct FlagshipInventoryCard: View {
 
     private var accessibleIdentity: some View {
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: AdminSpacing.md) {
+                portrait(size: 80)
                 categoryLine
                 productTitle
-                portrait(size: 104)
                 priceReadout
                 metadata
                 technicalIdentity
@@ -5101,8 +5110,11 @@ private struct FlagshipInventoryCard: View {
         AdminRemoteImage(url: imageURL, contentMode: .fill, targetSize: CGSize(width: size, height: size)) {
             ZStack {
                 AdminSurface.control
-                Image(systemName: theme.glyphName)
-                    .font(.system(size: 30, weight: .light))
+                RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                    .strokeBorder(AdminSurface.borderSubtle, lineWidth: AdminStroke.hairline)
+                    .padding(AdminSpacing.sm)
+                Image(systemName: item.isLivePet ? "pawprint" : (item.isFood ? "leaf" : (item.isPetMedicine ? "cross.case" : "shippingbox")))
+                    .font(.system(size: size * 0.3, weight: .light))
                     .foregroundStyle(AdminSurface.secondaryText)
             }
             // The shared loader uses this for both loading and failure. A quiet
@@ -5110,7 +5122,7 @@ private struct FlagshipInventoryCard: View {
         }
         .frame(width: size, height: size)
         .clipped()
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
         .overlay(alignment: .bottomTrailing) {
             if item.imageURLsArray.count > 1 {
                 Label(item.imageURLsArray.count.englishDigits, systemImage: "photo.on.rectangle")
@@ -5200,20 +5212,23 @@ private struct FlagshipInventoryCard: View {
 
     private var priceReadout: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(verbatim: formattedPrice.normalizedEnglishDigits)
+            Text(verbatim: sellingPrice != nil
+                 ? "\u{2066}\(formattedPrice.normalizedEnglishDigits)\u{2069}"
+                 : formattedPrice)
                 .font(sellingPrice != nil ? AdminType.title2 : AdminType.footnoteBold)
                 .foregroundStyle(sellingPrice != nil ? AdminSurface.primary : AdminSurface.secondaryText)
                 .monospacedDigit()
-                .environment(\.layoutDirection, sellingPrice != nil ? .leftToRight : layoutDirection)
+                .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             if hasDiscount {
-                Text(verbatim: PetAccessory.formatCurrency(item.price).normalizedEnglishDigits)
+                Text(verbatim: "\u{2066}\(PetAccessory.formatCurrency(item.price).normalizedEnglishDigits)\u{2069}")
                     .font(AdminType.caption)
                     .strikethrough()
                     .foregroundStyle(AdminSurface.secondaryText)
-                    .environment(\.layoutDirection, .leftToRight)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if let wholesale = item.wholesalePrice, wholesale.doubleValue > 0 {
                 supportingPrice(Language.get("Wholesale_Short", alter: "جملة:"), value: wholesale)
@@ -5241,19 +5256,23 @@ private struct FlagshipInventoryCard: View {
     }
 
     private var operationalPanel: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
             if dynamicTypeSize.isAccessibilitySize {
                 availabilityReadout
                 operationControls
-                    .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .center, spacing: 8) {
+                    HStack(alignment: .center, spacing: AdminSpacing.md) {
                         availabilityReadout.fixedSize(horizontal: true, vertical: false)
-                        Spacer(minLength: 0)
-                        operationControls.fixedSize(horizontal: true, vertical: false)
+                        Rectangle()
+                            .fill(AdminSurface.borderSubtle)
+                            .frame(width: AdminStroke.hairline, height: 32)
+                            .accessibilityHidden(true)
+                        operationControls
+                            .fixedSize(horizontal: true, vertical: false)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
                     }
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: AdminSpacing.sm) {
                         availabilityReadout
                         operationControls
                     }
@@ -5277,88 +5296,87 @@ private struct FlagshipInventoryCard: View {
             }
 
             if item.isLivePet {
-                PPInventoryMetadataLayout(spacing: 10, lineSpacing: 6, direction: layoutDirection) {
-                    Label(trackingTitle, systemImage: tracksUnits ? "tag" : "square.stack")
-                    if reservedQuantity > 0 {
-                        Label(String(format: Language.get("LivePet_Reserved_Format", alter: "محجوز (%@)"), reservedQuantity.englishDigits), systemImage: "lock")
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .center, spacing: AdminSpacing.md) {
+                        livePetTrackingBadges
                     }
-                    if canManageStock, let action = onQuarantineStudio {
-                        Button(action: action) {
-                            Label(Language.get("Quarantine_Studio", alter: "الحجر البيطري"), systemImage: "cross.case")
-                                .frame(minHeight: 44)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(CatalogPressStyle())
-                        .foregroundStyle(AdminSurface.primary)
+                    VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                        livePetTrackingBadges
                     }
                 }
                 .font(AdminType.captionBold)
                 .foregroundStyle(AdminSurface.secondaryText)
-            } else if tracksLots {
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else if tracksLots && (!canManageStock || onManageLots == nil) {
+                // The enabled lot action already names this workflow. Keep its
+                // explanation when permission or capability removes the action.
                 Label(trackingTitle, systemImage: "shippingbox")
                     .font(AdminType.caption)
                     .foregroundStyle(AdminSurface.secondaryText)
             }
         }
         .multilineTextAlignment(.leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(AdminSpacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(AdminSurface.backgroundSecondary)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [operationalAccent.opacity(0.13), operationalAccent.opacity(0.035)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(operationalAccent.opacity(0.24), lineWidth: 0.75)
-        }
-        .overlay(alignment: .leading) {
-            Capsule(style: .continuous)
-                .fill(operationalAccent.opacity(0.82))
-                .frame(width: 3)
-                .padding(.vertical, 10)
+        .background(AdminSurface.control)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(AdminSurface.borderSubtle)
+                .frame(height: AdminStroke.hairline)
+                .allowsHitTesting(false)
                 .accessibilityHidden(true)
+        }
+    }
+
+    @ViewBuilder private var livePetTrackingBadges: some View {
+        Label(trackingTitle, systemImage: tracksUnits ? "tag" : "square.stack")
+        if reservedQuantity > 0 {
+            Label(String(format: Language.get("LivePet_Reserved_Format", alter: "محجوز (%@)"), reservedQuantity.englishDigits), systemImage: "lock")
+        }
+        if canManageStock, let action = onQuarantineStudio {
+            Button(action: action) {
+                Label(Language.get("Quarantine_Studio", alter: "الحجر البيطري"), systemImage: "cross.case")
+                    .padding(.vertical, AdminSpacing.xs)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(CatalogPressStyle())
+            .foregroundStyle(AdminSurface.primary)
         }
     }
 
     private var availabilityReadout: some View {
         let layout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
-            : AnyLayout(HStackLayout(alignment: .center, spacing: 6))
+            ? AnyLayout(HStackLayout(alignment: .center, spacing: AdminSpacing.md))
+            : AnyLayout(VStackLayout(alignment: .leading, spacing: AdminSpacing.xxs))
         return layout {
             Text(verbatim: quantity.map { $0.englishDigits } ?? "—")
-                .font(AdminType.title3Bold)
+                .font(AdminType.title2)
                 .monospacedDigit()
                 .foregroundStyle(AdminSurface.primaryText)
-                .environment(\.layoutDirection, .leftToRight)
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
                 .modifier(PPInventoryCellCountTransition(value: quantity, isConfirmed: stockState == .ready))
-            Label {
-                Text(statusTitle).foregroundStyle(AdminSurface.primaryText)
-            } icon: {
-                Image(systemName: statusSymbol).foregroundStyle(statusColor)
+            HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.xs) {
+                Image(systemName: statusSymbol)
+                    .foregroundStyle(statusColor)
+                    .accessibilityHidden(true)
+                Text(statusTitle)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .font(AdminType.captionBold)
-            .fixedSize(horizontal: false, vertical: true)
+            .font(AdminType.caption)
         }
+        .padding(.horizontal, AdminSpacing.xs)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(statusTitle)
         .accessibilityValue(quantity.map { $0.englishDigits } ?? Language.get("InventoryCell_Missing", alter: "رصيد الفرع غير متاح"))
     }
 
     private var operationControls: some View {
-        PPInventoryMetadataLayout(spacing: 8, lineSpacing: 8, direction: layoutDirection) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: AdminSpacing.sm))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: AdminSpacing.sm))
+        return layout {
             if item.isLivePet || tracksUnits {
                 detailAction
             } else if tracksLots {
@@ -5375,14 +5393,29 @@ private struct FlagshipInventoryCard: View {
             }
             if let action = onOpenActionMenu {
                 Button(action: action) {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
+                    Group {
+                        if dynamicTypeSize.isAccessibilitySize {
+                            Label(Language.get("MoreActions", alter: "إجراءات إضافية"), systemImage: "ellipsis")
+                                .font(AdminType.footnoteBold)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum, alignment: .leading)
+                                .padding(.horizontal, AdminSpacing.md)
+                        } else {
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 18, weight: .semibold))
+                                .frame(width: AdminTouchTarget.comfortable, height: AdminTouchTarget.comfortable)
+                        }
+                    }
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                            .strokeBorder(AdminSurface.borderSubtle, lineWidth: AdminStroke.hairline)
+                    }
+                    .contentShape(RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
                 }
                 .buttonStyle(CatalogPressStyle())
-                .accessibilityLabel(Language.get("Specimen_Actions", alter: "خيارات الصنف"))
+                .accessibilityLabel(Language.get("MoreActions", alter: "إجراءات إضافية"))
                 .accessibilityIdentifier("inventory.product.actions.\(item.accessoryID)")
             }
         }
@@ -5393,16 +5426,24 @@ private struct FlagshipInventoryCard: View {
             adjustmentButton(symbol: "minus", delta: -1, key: "InventoryCell_Decrease", fallback: "إنقاص الكمية بمقدار واحد")
                 .disabled(!canAdjust || (quantity ?? 0) <= 0)
             Button(action: presentQuantityPad) {
-                Group {
+                HStack(spacing: AdminSpacing.xs) {
                     if stockState.isBusy {
                         ProgressView().tint(AdminSurface.primary)
                     } else {
                         Image(systemName: "pencil")
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(canAdjust ? AdminSurface.primary : AdminSurface.secondaryText)
                     }
+                    if dynamicTypeSize.isAccessibilitySize {
+                        Text(Language.get("EditQuantity", alter: "تعديل الكمية"))
+                            .font(AdminType.footnoteBold)
+                            .foregroundStyle(canAdjust ? AdminSurface.primary : AdminSurface.secondaryText)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
-                .frame(width: 44, height: 44)
+                .environment(\.layoutDirection, layoutDirection)
+                .frame(minWidth: AdminTouchTarget.comfortable, minHeight: AdminTouchTarget.comfortable)
                 .contentShape(Rectangle())
             }
             .buttonStyle(CatalogPressStyle())
@@ -5416,8 +5457,8 @@ private struct FlagshipInventoryCard: View {
         }
         // Arithmetic order is stable; the containing panel follows the app language.
         .environment(\.layoutDirection, .leftToRight)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(AdminSurface.borderSubtle, lineWidth: 0.75))
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous).strokeBorder(AdminSurface.borderSubtle, lineWidth: AdminStroke.hairline))
     }
 
     private func adjustmentButton(symbol: String, delta: Int, key: String, fallback: String) -> some View {
@@ -5429,7 +5470,7 @@ private struct FlagshipInventoryCard: View {
             Image(systemName: symbol)
                 .font(.system(size: 14, weight: .bold))
                 .foregroundStyle(canAdjust && (delta > 0 || (quantity ?? 0) > 0) ? AdminSurface.primaryText : AdminSurface.secondaryText.opacity(0.4))
-                .frame(width: 44, height: 44)
+                .frame(width: AdminTouchTarget.comfortable, height: AdminTouchTarget.comfortable)
                 .contentShape(Rectangle())
         }
         .buttonStyle(CatalogPressStyle())
@@ -5439,18 +5480,12 @@ private struct FlagshipInventoryCard: View {
 
     private var detailAction: some View {
         Button(action: onTap) {
-            Label(
+            railActionLabel(
                 item.isLivePet && tracksUnits
                     ? Language.get("InventoryCell_AnimalRecords", alter: "سجل الحيوانات")
                     : Language.get("ViewDetails", alter: "عرض التفاصيل"),
                 systemImage: item.isLivePet ? "pawprint" : "tag"
             )
-            .font(AdminType.footnoteBold)
-            .foregroundStyle(AdminSurface.primary)
-            .padding(.horizontal, 12)
-            .frame(minHeight: 44)
-            .fixedSize(horizontal: false, vertical: true)
-            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         }
         .buttonStyle(CatalogPressStyle())
     }
@@ -5461,21 +5496,44 @@ private struct FlagshipInventoryCard: View {
                 if compact {
                     Image(systemName: "shippingbox")
                         .font(.system(size: 17, weight: .medium))
-                        .frame(width: 44, height: 44)
+                        .frame(width: AdminTouchTarget.comfortable, height: AdminTouchTarget.comfortable)
+                        .foregroundStyle(AdminSurface.primary)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
                 } else {
-                    Label(Language.get("InventoryCell_Lots", alter: "الشحنات والصلاحية"), systemImage: "shippingbox")
-                        .font(AdminType.footnoteBold)
-                        .padding(.horizontal, 12)
-                        .frame(minHeight: 44)
-                        .fixedSize(horizontal: false, vertical: true)
+                    railActionLabel(Language.get("InventoryCell_Lots", alter: "الشحنات والصلاحية"), systemImage: "shippingbox")
                 }
             }
-            .foregroundStyle(AdminSurface.primary)
-            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(CatalogPressStyle())
         .accessibilityLabel(Language.get("Manage_Lots", alter: "إدارة الشحنات والصلاحية"))
+    }
+
+    private func railActionLabel(_ title: String, systemImage: String) -> some View {
+        HStack(spacing: AdminSpacing.sm) {
+            Image(systemName: systemImage)
+                .font(.system(size: 18, weight: .medium))
+                .accessibilityHidden(true)
+            Text(title)
+                .font(AdminType.footnoteBold)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(1)
+            Image(systemName: "chevron.forward")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(AdminSurface.secondaryText)
+                .accessibilityHidden(true)
+        }
+        .foregroundStyle(AdminSurface.primary)
+        .padding(.horizontal, AdminSpacing.md)
+        .padding(.vertical, AdminSpacing.sm)
+        .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable, alignment: .leading)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                .strokeBorder(AdminSurface.borderSubtle, lineWidth: AdminStroke.hairline)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
     }
 
     @ViewBuilder private var contextActions: some View {
@@ -8575,8 +8633,9 @@ public struct PPInventoryItemDetailView: View {
                 } else {
                     if !activeUnits.isEmpty {
                         VStack(spacing: 8) {
-                            ForEach(activeUnits) { unit in
+                            ForEach(Array(activeUnits.enumerated()), id: \.element.id) { index, unit in
                                 livePetUnitRow(unit)
+                                    .animateCellDisplay(id: "unit:\(unit.id)", index: index)
                             }
                         }
                     } else {
@@ -8589,9 +8648,10 @@ public struct PPInventoryItemDetailView: View {
 
                             if showHistoryUnits {
                                 VStack(spacing: 8) {
-                                    ForEach(historyUnits) { unit in
+                                    ForEach(Array(historyUnits.enumerated()), id: \.element.id) { index, unit in
                                         livePetUnitRow(unit)
                                             .opacity(0.85)
+                                            .animateCellDisplay(id: "unit_hist:\(unit.id)", index: index)
                                     }
                                 }
                                 .transition(

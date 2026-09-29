@@ -10140,7 +10140,11 @@
 "Variant_BulkPricing_Count" = "عدد الأصناف";
 "Variant_BulkPricing_Values" = "الأسعار الجديدة";
 "Price_Retail" = "سعر البيع";
+"Price_Cost" = "سعر التكلفة (اختياري)";
 "Price_Wholesale" = "سعر الجملة (اختياري)";
+"Variant_CostPrice" = "سعر التكلفة";
+"Variant_Studio_Profit_Format" = "الربح: %@ (هامش الربح: %@%%)";
+"Variant_Studio_Cost_Exceeds_Retail" = "تنبيه: سعر التكلفة أعلى من سعر البيع!";
 "Variant_Bulk_Pricing_Title" = "تسعير جماعي";
 "Apply" = "تطبيق";
 "Variant_Combination_Details" = "تفاصيل التوليفة";
@@ -10465,6 +10469,10 @@
 "WantedPets_Overview_Label" = "حركة الطلبات";
 "WantedPets_Overview_Waiting" = "طلبات قيد الانتظار";
 "WantedPets_Overview_Recent" = "ضمن أحدث الطلبات";
+"WantedPets_Header_Updating" = "جارٍ تحديث الطلبات";
+"WantedPets_Header_Last_Loaded" = "آخر بيانات محمّلة";
+"WantedPets_Header_Awaiting_Contact" = "بانتظار التواصل";
+"WantedPets_Header_Search" = "الاسم، الهاتف، أو الحيوان";
 "WantedPets_Filter_Hint" = "عرض الطلبات بهذه الحالة";
 "WantedPets_Filters_Label" = "تصفية الطلبات";
 "WantedPets_Group_Heading" = "الحيوانات المطلوبة";
@@ -10738,3 +10746,33 @@
 "WantedPets_WhatsApp_Detail_Price" = "السعر: %.0f %@";
 "WantedPets_WhatsApp_Detail_Branch" = "الفرع: %@";
 "WantedPets_WhatsApp_MatchFound_Template" = "مرحباً %@، يسعدنا إبلاغك بتوفر حيوان مطابق لطلبك في بيور بيتس: %@%@. هل ترغب بحجزه لك؟";
+
+/* Variant editor workspace */
+"Variant_Studio_Workspace" = "تحرير المتغير";
+"Variant_Studio_DiscardTitle" = "تجاهل التعديلات؟";
+"Variant_Studio_KeepEditing" = "متابعة التعديل";
+"Variant_Studio_Editing" = "تعديل هذا المتغير";
+"Variant_Studio_Creating" = "متغير جديد";
+"Variant_Studio_Photos_Heading" = "صور المتغير";
+"Variant_Studio_PhotoHint" = "الصورة الرئيسية تظهر أولاً. اضغط على النجمة لتغييرها.";
+"Variant_Studio_PricingHeading" = "التسعير";
+"Variant_Studio_IdentifiersHeading" = "تعريف المتغير";
+"Variant_Studio_SaveScope" = "تُحفظ الصور والأسعار والمخزون لهذا المتغير فقط.";
+"Variant_Studio_PendingSaveChanged" = "أكمل إعادة محاولة الحفظ السابق قبل تغيير هذه الحقول.";
+"Variant_Error_ProductMissingNamed" = "هذا الخيار لم يعد موجودًا: %@. أعد التحميل والمقارنة قبل الحفظ.";
+"Variant_Studio_FullPricingRequired" = "افتح السجل الكامل لإدارة أسعار وحدات البيع لهذا الصنف.";
+"Variant_Studio_IncreaseQuantity" = "زيادة الكمية";
+"Variant_Studio_DecreaseQuantity" = "تقليل الكمية";
+
+"Variant_Studio_PendingHint" = "لم يكتمل تأكيد الحفظ. أعد المحاولة بنفس التعديلات لإكمال العملية بأمان.";
+
+"Variant_Studio_ResumeSave" = "إكمال الحفظ";
+
+"Variant_Studio_CostUnchanged" = "ترك الحقل فارغًا يحافظ على التكلفة المحفوظة.";
+
+"Variant_Studio_InvalidCost" = "أدخل تكلفة صحيحة غير سالبة، بمنزلتين عشريتين كحد أقصى.";
+
+"Variant_Studio_InvalidPrice" = "أدخل سعرًا أكبر من صفر، بمنزلتين عشريتين كحد أقصى.";
+
+"Piece" = "حبة";
+"CatalogIntake_GeneratePPBarcode" = "توليد باركود PP";

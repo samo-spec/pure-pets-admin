@@ -59,11 +59,8 @@ public struct PPSwipeToPopViewModifier: ViewModifier {
                     }
                 }
             )
-            .overlay(alignment: isRTL ? .trailing : .leading) {
-                // The fallback edge strip is ONLY active when native UINavigationController is NOT available.
-                // When UINavigationController is present, native interactivePopGestureRecognizer handles
-                // the full interactive transition with Apple's built-in physics and animation.
-                if !hasUIKitNavigationController && isEnabled {
+            .overlay(alignment: .leading) {
+                if isEnabled {
                     PPSwipeToPopFallbackEdgeStrip(
                         isRTL: isRTL,
                         onPop: {
@@ -78,11 +75,13 @@ public struct PPSwipeToPopViewModifier: ViewModifier {
         guard !isPopping else { return }
         isPopping = true
 
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
         if let onCustomPop = onCustomPop {
             onCustomPop()
         } else {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
             dismissAction()
+            PPAdminNavigationFallback.popOrDismiss()
         }
 
         // Reset debounce after animation window
@@ -152,6 +151,11 @@ public final class PPSwipeToPopBridgeViewController: UIViewController {
         applyConfiguration()
     }
 
+    public override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        applyConfiguration()
+    }
+
     public override func didMove(toParent parent: UIViewController?) {
         super.didMove(toParent: parent)
         applyConfiguration()
@@ -201,9 +205,8 @@ public final class PPSwipeToPopBridgeViewController: UIViewController {
 
 // MARK: - Velocity-Aware Leading-Edge Fallback Drag Gesture
 
-/// Fallback edge strip: ONLY rendered when no native UINavigationController is found.
-/// Pinned to a narrow 24pt strip along the leading edge so it never interferes with
-/// scrolling, carousels, sliders, cards, or buttons deeper in the screen.
+/// Fallback edge strip: Pinned to a narrow 28pt strip along the leading edge so it never
+/// interferes with scrolling, carousels, sliders, cards, or buttons deeper in the screen.
 public struct PPSwipeToPopFallbackEdgeStrip: View {
     public let isRTL: Bool
     public let onPop: () -> Void
@@ -217,57 +220,54 @@ public struct PPSwipeToPopFallbackEdgeStrip: View {
     }
 
     public var body: some View {
-        GeometryReader { _ in
-            Color.clear
-                .contentShape(Rectangle())
-                .frame(width: 24)
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 12, coordinateSpace: .global)
-                        .onChanged { value in
-                            guard !hasTriggered else { return }
+        Color.clear
+            .frame(width: 28)
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 10, coordinateSpace: .global)
+                    .onChanged { value in
+                        guard !hasTriggered else { return }
 
+                        let translationX = value.translation.width
+                        let translationY = value.translation.height
+
+                        // Ignore if movement is primarily vertical (preserve vertical scrolling)
+                        guard abs(translationX) > abs(translationY) * 1.2 else { return }
+
+                        // Validate direction:
+                        // LTR: must swipe right (translationX > 0)
+                        // RTL: must swipe left (translationX < 0)
+                        let isValidDirection = isRTL ? (translationX < 0) : (translationX > 0)
+                        guard isValidDirection else { return }
+
+                        dragOffset = abs(translationX)
+
+                        // Velocity / distance check:
+                        let predictedX = abs(value.predictedEndTranslation.width)
+                        if dragOffset > 75 || (dragOffset > 30 && predictedX > 140) {
+                            hasTriggered = true
+                            onPop()
+                        }
+                    }
+                    .onEnded { value in
+                        if !hasTriggered {
                             let translationX = value.translation.width
                             let translationY = value.translation.height
-
-                            // Ignore if movement is primarily vertical (preserve vertical scrolling)
-                            guard abs(translationX) > abs(translationY) * 1.35 else { return }
-
-                            // Validate direction:
-                            // LTR: must swipe right (translationX > 0)
-                            // RTL: must swipe left (translationX < 0)
                             let isValidDirection = isRTL ? (translationX < 0) : (translationX > 0)
-                            guard isValidDirection else { return }
 
-                            dragOffset = abs(translationX)
-
-                            // Velocity / distance check:
-                            // Pop if dragged > 90pt, or dragged > 35pt with high predicted velocity
-                            let predictedX = abs(value.predictedEndTranslation.width)
-                            if dragOffset > 90 || (dragOffset > 35 && predictedX > 160) {
-                                hasTriggered = true
-                                onPop()
-                            }
-                        }
-                        .onEnded { value in
-                            if !hasTriggered {
-                                let translationX = value.translation.width
-                                let translationY = value.translation.height
-                                let isValidDirection = isRTL ? (translationX < 0) : (translationX > 0)
-
-                                if isValidDirection && abs(translationX) > abs(translationY) * 1.35 {
-                                    let predictedX = abs(value.predictedEndTranslation.width)
-                                    if abs(translationX) > 70 || predictedX > 140 {
-                                        hasTriggered = true
-                                        onPop()
-                                    }
+                            if isValidDirection && abs(translationX) > abs(translationY) * 1.2 {
+                                let predictedX = abs(value.predictedEndTranslation.width)
+                                if abs(translationX) > 60 || predictedX > 120 {
+                                    hasTriggered = true
+                                    onPop()
                                 }
                             }
-                            dragOffset = 0
-                            hasTriggered = false
                         }
-                )
-        }
-        .frame(width: 24)
-        .ignoresSafeArea(.container, edges: isRTL ? .trailing : .leading)
+                        dragOffset = 0
+                        hasTriggered = false
+                    }
+            )
+            .frame(width: 28)
+            .ignoresSafeArea(.container, edges: .leading)
     }
 }

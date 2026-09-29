@@ -88,8 +88,11 @@ import FirebaseFunctions
             .filter { !$0.isEmpty } ?? []
 
         let products = try await loadProducts(ids: productIds)
-        guard products.count == productIds.count,
-              ((data["revision"] as? NSNumber)?.intValue ?? 0) >= minimumRevision else {
+        let missing = productIds.filter { products[$0] == nil || products[$0]?.isDeleted == true }
+        guard missing.isEmpty else {
+            throw Self.unavailableProducts(missing)
+        }
+        guard ((data["revision"] as? NSNumber)?.intValue ?? 0) >= minimumRevision else {
             throw PPAccessoryVariantServiceError.invalidResponse
         }
 
@@ -109,14 +112,16 @@ import FirebaseFunctions
     public func resolveFamily(for accessory: PetAccessory) async throws -> PPAccessoryVariantFamily {
         let familyId = (accessory.productFamilyId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !familyId.isEmpty else {
+            try await hydrateCost(for: accessory)
             return PPAccessoryVariantFamily.legacySingleVariant(from: accessory)
         }
         do {
             return try await loadFamily(familyId: familyId)
         } catch PPAccessoryVariantServiceError.familyNotFound,
                 PPAccessoryVariantServiceError.invalidFamilyIdentifier {
-            print("[PPAccessoryVariantService] Family \(familyId) missing for accessory \(accessory.accessoryID ?? ""). Self-healing to legacy single-variant.")
+            print("[PPAccessoryVariantService] Family \(familyId) missing for accessory \(accessory.accessoryID). Self-healing to legacy single-variant.")
             accessory.productFamilyId = nil
+            try await hydrateCost(for: accessory)
             return PPAccessoryVariantFamily.legacySingleVariant(from: accessory)
         }
     }
@@ -136,6 +141,9 @@ import FirebaseFunctions
                 )
             }
         }
+        for product in result.values {
+            try await hydrateCost(for: product)
+        }
         return result
     }
 
@@ -146,9 +154,164 @@ import FirebaseFunctions
         guard !trimmed.isEmpty else { throw PPAccessoryVariantServiceError.invalidFamilyIdentifier }
         let snapshot = try await db.collection("petAccessories").document(trimmed).getDocument(source: .server)
         guard snapshot.exists, let data = snapshot.data() else {
-            throw PPAccessoryVariantServiceError.familyNotFound
+            throw Self.unavailableProducts([trimmed])
         }
-        return PetAccessory(dictionary: data, documentID: trimmed)
+        let product = PetAccessory(dictionary: data, documentID: trimmed)
+        guard !product.isDeleted else { throw Self.unavailableProducts([trimmed]) }
+        try await hydrateCost(for: product)
+        return product
+    }
+
+    /// Catalog cost is deliberately removed by the server. The newest protected
+    /// inbound/cost-adjustment movement is the editor's saved unit cost; a zero
+    /// is a legitimate value and must not fall through to an older purchase.
+    @MainActor
+    private func hydrateCost(for product: PetAccessory) async throws {
+        let legacyCost = product.costPrice
+        product.costPrice = nil
+        let branch = Self.costBranch(for: product)
+        guard let staff = PPStaffAuth.shared().cachedCurrentStaff,
+              staff.isActive(), branch != nil || staff.hasGlobalScope(),
+              staff.isAdmin() || staff.hasPermission("stock.cost.view", inBranch: branch) else { return }
+        guard !product.isDeleted, product.accessKindType != .typeLivePets else { return }
+        var query = db.collection("stockMovements")
+            .whereField("productId", isEqualTo: product.accessoryID)
+            .whereField("type", isEqualTo: "stock_in")
+        if let branch { query = query.whereField("branchId", isEqualTo: branch) }
+        query = query.order(by: "timestamp", descending: true).limit(to: 50)
+        // Paginate because recent inbound movements may legitimately omit cost.
+        // Stop with an explicit read failure at the bound instead of presenting
+        // an invented empty/older value as authoritative.
+        for _ in 0..<10 {
+            let snapshot = try await query.getDocuments(source: .server)
+            for document in snapshot.documents {
+                if let cost = Self.recordedCost(in: document.data()) {
+                    product.costPrice = NSNumber(value: cost)
+                    return
+                }
+            }
+            guard snapshot.documents.count == 50, let last = snapshot.documents.last else {
+                if let legacyCost, legacyCost.doubleValue.isFinite, legacyCost.doubleValue >= 0 {
+                    product.costPrice = legacyCost
+                }
+                return
+            }
+            query = query.start(afterDocument: last)
+        }
+        throw PPAccessoryVariantServiceError.invalidResponse
+    }
+
+    static func costBranch(for product: PetAccessory) -> String? {
+        for value in [product.branchID, product.storeID] {
+            let trimmed = (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty, trimmed != "main_store" { return trimmed }
+        }
+        return nil
+    }
+
+    static func recordedCost(in movement: [String: Any]) -> Double? {
+        let value: Double?
+        if let number = movement["costPrice"] as? NSNumber { value = number.doubleValue }
+        else if let string = movement["costPrice"] as? String { value = Double(string.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        else { value = nil }
+        guard let value, value.isFinite, value >= 0 else { return nil }
+        return value
+    }
+
+    private static func unavailableProducts(_ ids: [String]) -> PPAccessoryVariantServiceError {
+        .server(PPAccessoryVariantError(
+            domainCode: PPAccessoryVariantError.Code.productNotFound,
+            message: Language.get("Variant_Error_ProductMissingServer", alter: "أحد الألوان لم يعد موجودًا. أعد تحميل البيانات."),
+            recovery: .reloadAndCompare,
+            affectedProductIds: ids
+        ))
+    }
+
+    /// Check a real family edit before any catalog/media mutation. The callable
+    /// still performs its own transaction checks; this only prevents predictable
+    /// partial saves when a member disappeared or another editor advanced it.
+    func validateStudioFamily(_ family: PPAccessoryVariantFamily) async throws {
+        guard !family.familyId.isEmpty, !family.isLegacySingleVariant else { return }
+        let current = try await loadFamily(familyId: family.familyId)
+        guard current.revision == family.revision else {
+            throw Self.staleRevision(expected: family.revision, current: current.revision)
+        }
+        for variant in family.variants {
+            guard let member = current.variant(forProductId: variant.productId) else {
+                throw Self.unavailableProducts([variant.productId])
+            }
+            guard member.revision == variant.revision else {
+                throw Self.staleRevision(expected: variant.revision, current: member.revision)
+            }
+        }
+    }
+
+    static func staleRevision(expected: Int, current: Int) -> PPAccessoryVariantServiceError {
+        .server(PPAccessoryVariantError(
+            domainCode: PPAccessoryVariantError.Code.staleVariantRevision,
+            message: Language.get("Variant_Error_StaleRevisionServer", alter: "عدّل موظف آخر هذا المنتج أثناء تعديلك. أعد التحميل وقارن قبل الحفظ."),
+            recovery: .reloadAndCompare,
+            expectedRevision: NSNumber(value: expected),
+            currentRevision: NSNumber(value: current)
+        ))
+    }
+
+    /// Keep all selling units and their identifiers. Only the selected default
+    /// retail/wholesale prices change; pricing concurrency belongs to commerce.
+    @MainActor
+    func prepareStudioCommerce(
+        product: PetAccessory,
+        retailPrice: Double,
+        wholesalePrice: Double?,
+        commandId: String
+    ) async throws -> [String: Any]? {
+        let previousWholesale = product.wholesalePrice?.doubleValue
+        guard product.price.doubleValue != retailPrice || previousWholesale != wholesalePrice else { return nil }
+        let response = try await functions.httpsCallable("getProductCommerce").call(["productId": product.accessoryID])
+        guard let data = response.data as? [String: Any],
+              let commerce = data["productCommerce"] as? [String: Any],
+              let base = commerce["baseUnit"] as? [String: Any],
+              var groups = commerce["quantityGroups"] as? [[String: Any]], !groups.isEmpty,
+              let revision = commerce["pricingRevision"] as? NSNumber else {
+            throw PPAccessoryVariantServiceError.invalidResponse
+        }
+        // A redacted wholesale projection cannot safely be written back.
+        guard data["hasWholesaleAccess"] as? Bool == true else {
+            throw PPAccessoryVariantServiceError.validationFailed([Language.get("Variant_Studio_FullPricingRequired", alter: "افتح السجل الكامل لإدارة أسعار وحدات البيع لهذا الصنف.")])
+        }
+        guard let retailIndex = groups.firstIndex(where: { $0["defaultForRetail"] as? Bool == true && $0["retailEnabled"] as? Bool == true })
+            ?? groups.firstIndex(where: { $0["retailEnabled"] as? Bool == true }) else {
+            throw PPAccessoryVariantServiceError.invalidResponse
+        }
+        groups[retailIndex]["retailPriceMinor"] = Int((retailPrice * 100).rounded())
+        if previousWholesale != wholesalePrice {
+            let wholesaleIndices = groups.indices.filter { groups[$0]["wholesaleEnabled"] as? Bool == true }
+            // Turning off a simple default must never destroy the other units'
+            // independent wholesale offers. Their editor lives in the full record.
+            if wholesalePrice == nil && wholesaleIndices.count > 1 {
+                throw PPAccessoryVariantServiceError.validationFailed([Language.get("Variant_Studio_FullPricingRequired", alter: "افتح السجل الكامل لإدارة أسعار وحدات البيع لهذا الصنف.")])
+            }
+            let wholesaleIndex = groups.firstIndex(where: { $0["defaultForWholesale"] as? Bool == true && $0["wholesaleEnabled"] as? Bool == true })
+                ?? wholesaleIndices.first ?? retailIndex
+            groups[wholesaleIndex]["wholesaleEnabled"] = wholesalePrice != nil
+            groups[wholesaleIndex]["defaultForWholesale"] = wholesalePrice != nil
+            groups[wholesaleIndex]["wholesalePriceMinor"] = wholesalePrice.map { Int(($0 * 100).rounded()) } as Any? ?? NSNull()
+        }
+        return [
+            "productId": product.accessoryID, "commandId": commandId,
+            "expectedRevision": revision, "currency": commerce["currency"] as? String ?? "QAR",
+            "baseUnit": base, "quantityGroups": groups,
+        ]
+    }
+
+    @MainActor
+    func persistStudioCommerce(_ request: [String: Any]) async throws {
+        let boxed = PPVariantSendableDictionary(dict: request)
+        let response = try await functions.httpsCallable("upsertProductCommerce").call(boxed.dict)
+        guard let result = response.data as? [String: Any], result["ok"] as? Bool == true,
+              result["productId"] as? String == request["productId"] as? String else {
+            throw PPAccessoryVariantServiceError.invalidResponse
+        }
     }
 
     /// Creates the standalone sellable product that will become a new color.
@@ -163,9 +326,15 @@ import FirebaseFunctions
         barcode: String,
         retailPrice: Double,
         wholesalePrice: Double?,
+        costPrice: Double? = nil,
         quantity: Int = 0,
         commandId: String
     ) async throws -> PetAccessory {
+        guard retailPrice.isFinite, retailPrice > 0, retailPrice <= 999_999_999.99,
+              wholesalePrice == nil || (wholesalePrice!.isFinite && wholesalePrice! > 0 && wholesalePrice! <= 999_999_999.99),
+              costPrice == nil || (costPrice!.isFinite && costPrice! >= 0 && costPrice! <= 999_999_999.99), quantity >= 0 else {
+            throw PPAccessoryVariantServiceError.validationFailed([Language.get("Variant_Add_InvalidPrice", alter: "أدخل سعر بيع صالحاً للون الجديد.")])
+        }
         let created = PetAccessory.deepCopy(from: template)
         created.accessoryID = ""
         created.productFamilyId = nil
@@ -183,7 +352,14 @@ import FirebaseFunctions
         created.barcode = barcode.trimmingCharacters(in: .whitespacesAndNewlines)
         created.price = NSNumber(value: retailPrice)
         created.wholesalePrice = wholesalePrice.map { NSNumber(value: $0) }
-        created.costPrice = nil
+        let allowedCost = await MainActor.run {
+            let branch = Self.costBranch(for: template)
+            guard let staff = PPStaffAuth.shared().cachedCurrentStaff,
+                  staff.isActive(), branch != nil || staff.hasGlobalScope(),
+                  staff.isAdmin() || staff.hasPermission("stock.cost.view", inBranch: branch) else { return Optional<Double>.none }
+            return costPrice
+        }
+        created.costPrice = allowedCost.map { NSNumber(value: $0) }
         created.discountPercent = nil
         created.discountAmount = nil
         created.hasOffer = false
@@ -236,7 +412,7 @@ import FirebaseFunctions
             }
         }
         guard let productId = result.productId else { throw PPAccessoryVariantServiceError.invalidResponse }
-        return try await withCheckedThrowingContinuation { continuation in
+        let confirmed: PetAccessory = try await withCheckedThrowingContinuation { continuation in
             PPInventoryCommandService.shared.readBackProduct(
                 productId: productId,
                 minimumRevision: max(1, result.revision)
@@ -250,6 +426,11 @@ import FirebaseFunctions
                 }
             }
         }
+        try await hydrateCost(for: confirmed)
+        if let allowedCost, confirmed.costPrice?.doubleValue != allowedCost {
+            throw PPAccessoryVariantServiceError.invalidResponse
+        }
+        return confirmed
     }
 
     // MARK: - Write

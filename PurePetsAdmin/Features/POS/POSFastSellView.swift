@@ -2873,6 +2873,18 @@ struct AdminPOSFastSellView: View {
 
     var body: some View {
         posContent
+            .enableSwipeToPop(isEnabled: !viewModel.isCheckoutBusy) {
+                dismissKeyboard()
+                guard !viewModel.isCheckoutBusy else {
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    return
+                }
+                if let onDismiss {
+                    onDismiss()
+                } else {
+                    dismiss()
+                }
+            }
     }
 
     private var posContent: some View {
@@ -3326,7 +3338,7 @@ struct AdminPOSFastSellView: View {
             title: Language.get("POS_Title", alter: "بيع سريع"),
             subtitle: headerBranchSubtitle,
             statusDotColor: Color(uiColor: .ppSuccess),
-            isModal: true,
+            isModal: false,
             customTopSpacing: PPStatusBarHelper.statusBarHeight,
             onBack: {
                 dismissKeyboard()

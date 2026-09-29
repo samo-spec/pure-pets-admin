@@ -3195,22 +3195,6 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         if trimmedName.isEmpty || basePrice <= 0 {
             return (false, Language.get("Name and price are required.", alter: "يرجى إدخال اسم وسعر المنتج بدقة."))
         }
-        let nameArWords = trimmedName.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
-        if nameArWords.count > 4 {
-            return (false, Language.get(
-                "CatalogIntake_ValidationNameWordCount",
-                alter: "يجب ألا يتجاوز اسم المنتج 4 كلمات. الاسم الحالي يتكون من \(nameArWords.count) كلمات."
-            ))
-        }
-        if !trimmedNameEn.isEmpty {
-            let nameEnWords = trimmedNameEn.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
-            if nameEnWords.count > 4 {
-                return (false, Language.get(
-                    "CatalogIntake_ValidationNameWordCountEn",
-                    alter: "يجب ألا يتجاوز الاسم بالإنجليزية 4 كلمات. الاسم الحالي يتكون من \(nameEnWords.count) كلمات."
-                ))
-            }
-        }
         if !isLivePet {
             if (PPInventoryDecimalText.minorUnits(priceText) ?? 0) <= 0 {
                 return (false, Language.get("CatalogIntake_ValidationPrice", alter: "أدخل سعراً صالحاً لا يتجاوز 999999999.99 وبحد أقصى منزلتين عشريتين."))
@@ -3267,11 +3251,11 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             return (false, Language.get(key, alter: "أدخل مبلغ خصم صالحاً وبحد أقصى منزلتين عشريتين."))
         }
         if isLivePet {
-            if trimmedName.utf16.count > 90 {
-                return (false, Language.get("LivePetIntake_ValidationNameLength", alter: "يجب ألا يتجاوز الاسم 90 حرفاً."))
+            if trimmedName.utf16.count > 300 {
+                return (false, Language.get("LivePetIntake_ValidationNameLength", alter: "يجب ألا يتجاوز الاسم 300 حرف."))
             }
-            if !trimmedNameEn.isEmpty && trimmedNameEn.utf16.count > 90 {
-                return (false, Language.get("LivePetIntake_ValidationNameLengthEn", alter: "يجب ألا يتجاوز الاسم بالإنجليزية 90 حرفاً."))
+            if !trimmedNameEn.isEmpty && trimmedNameEn.utf16.count > 300 {
+                return (false, Language.get("LivePetIntake_ValidationNameLengthEn", alter: "يجب ألا يتجاوز الاسم بالإنجليزية 300 حرف."))
             }
             if desc.trimmingCharacters(in: .whitespacesAndNewlines).utf16.count > 4_000 {
                 return (false, Language.get("LivePetIntake_ValidationDescriptionLength", alter: "يجب ألا يتجاوز الوصف 4000 حرف."))
@@ -5398,9 +5382,9 @@ struct PPBilingualInputField: View {
             }
 
             if currentCount > 0 {
-                Text(verbatim: "\(currentCount.englishDigits)/90")
+                Text(verbatim: "\(currentCount.englishDigits)/300")
                     .font(AdminType.caption2)
-                    .foregroundStyle(currentCount > 90 ? Color.red : AdminSurface.secondaryText.opacity(0.6))
+                    .foregroundStyle(currentCount > 300 ? Color.red : AdminSurface.secondaryText.opacity(0.6))
                     .monospacedDigit()
             }
         }
@@ -6688,7 +6672,6 @@ struct PPAccessoryEditorScreen: View {
                 englishPlaceholder: Language.get("EnterItemNameEn", alter: "Enter item name in English..."),
                 selectedLanguage: $bilingualLanguage,
                 isFocused: focusedField == .name,
-                maxWordCount: 4,
                 itemType: viewModel.isLivePet ? "live_pet" : (viewModel.isFood ? "food" : "accessory"),
                 contextAttributes: viewModel.authoringAttributes,
                 enablePuryTranslator: true,
@@ -14054,12 +14037,12 @@ private struct PPLivePetIntakeJourney: View {
             if trimmedName.isEmpty {
                 return tr("LivePetIntake_ValidationName", "أدخل اسماً واضحاً للحيوان أو الصنف.")
             }
-            if trimmedName.utf16.count > 90 {
-                return tr("LivePetIntake_ValidationNameLength", "يجب ألا يتجاوز الاسم 90 حرفاً.")
+            if trimmedName.utf16.count > 300 {
+                return tr("LivePetIntake_ValidationNameLength", "يجب ألا يتجاوز الاسم 300 حرف.")
             }
             let trimmedNameEn = viewModel.nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmedNameEn.isEmpty && trimmedNameEn.utf16.count > 90 {
-                return tr("LivePetIntake_ValidationNameLengthEn", "يجب ألا يتجاوز الاسم بالإنجليزية 90 حرفاً.")
+            if !trimmedNameEn.isEmpty && trimmedNameEn.utf16.count > 300 {
+                return tr("LivePetIntake_ValidationNameLengthEn", "يجب ألا يتجاوز الاسم بالإنجليزية 300 حرف.")
             }
             if viewModel.desc.trimmingCharacters(in: .whitespacesAndNewlines).utf16.count > 4_000 {
                 return tr("LivePetIntake_ValidationDescriptionLength", "يجب ألا يتجاوز الوصف 4000 حرف.")
@@ -20164,8 +20147,8 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 return tr("CatalogIntake_ValidationName", "أدخل اسم الصنف أولاً.")
             }
             let trimmedNameEn = viewModel.nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmedNameEn.isEmpty && trimmedNameEn.utf16.count > 90 {
-                return tr("CatalogIntake_ValidationNameLengthEn", "يجب ألا يتجاوز الاسم بالإنجليزية 90 حرفاً.")
+            if !trimmedNameEn.isEmpty && trimmedNameEn.utf16.count > 300 {
+                return tr("CatalogIntake_ValidationNameLengthEn", "يجب ألا يتجاوز الاسم بالإنجليزية 300 حرفاً.")
             }
         case .bioVault:
             if viewModel.selectedMainKind == nil {

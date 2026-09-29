@@ -126,6 +126,10 @@ public struct WantedPetDetailView: View {
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .navigationBarHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .enableSwipeToPop {
+            handleDismiss()
+        }
         .onAppear {
             loadItemLive()
         }
@@ -167,103 +171,79 @@ public struct WantedPetDetailView: View {
     // MARK: - 1. Top Command & Navigation Bar
 
     private var topNavigationBar: some View {
-        HStack(spacing: 12) {
-            // Dismiss / Back Button
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        AdminSovereignNavigationBar(
+            title: Language.get("WantedPets_Detail_Title", alter: "تفاصيل الطلب"),
+            subtitle: item.map { $0.customerName + " • " + $0.requestedPetTitle },
+            statusDotColor: item?.status.tintColor,
+            isModal: false,
+            onBack: {
                 handleDismiss()
-            } label: {
-                Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .frame(width: 40, height: 40)
-                    .background(AdminSurface.surface, in: Circle())
-                    .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
-                    .shadow(color: AdminShadow.navigation.color, radius: AdminShadow.navigation.radius, y: AdminShadow.navigation.y)
             }
-            .buttonStyle(DossierScaleButtonStyle())
-
-            // Title & Customer Context
-            VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 2) {
-                Text(Language.get("WantedPets_Detail_Title", alter: "تفاصيل الطلب"))
-                    .font(Font.custom("Beiruti-Bold", size: 19))
-                    .foregroundStyle(AdminSurface.primaryText)
-
-                if let pet = item {
-                    Text(pet.customerName + " • " + pet.requestedPetTitle)
-                        .font(Font.custom("Beiruti-Regular", size: 12))
-                        .foregroundStyle(AdminSurface.secondaryText)
-                        .lineLimit(1)
-                }
-            }
-
-            Spacer()
-
-            // Status Badge & Context Menu
+        ) {
             if let pet = item {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(pet.status.tintColor)
-                        .frame(width: 7, height: 7)
+                HStack(spacing: 8) {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(pet.status.tintColor)
+                            .frame(width: 7, height: 7)
 
-                    Text(pet.status.title)
-                        .font(Font.custom("Beiruti-Bold", size: 12))
-                        .foregroundStyle(pet.status.tintColor)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(pet.status.tintColor.opacity(0.12), in: Capsule())
-
-                // Quick Action Overflow Menu
-                Menu {
-                    Button {
-                        shareDossierSummary(pet)
-                    } label: {
-                        Label(Language.get("Share", alter: "مشاركة"), systemImage: "square.and.arrow.up")
+                        Text(pet.status.title)
+                            .font(Font.custom("Beiruti-Bold", size: 12))
+                            .foregroundStyle(pet.status.tintColor)
                     }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(pet.status.tintColor.opacity(0.12), in: Capsule())
 
-                    Button {
-                        copyCustomerInfo(pet)
-                    } label: {
-                        Label(Language.get("Copy", alter: "نسخ البيانات"), systemImage: "doc.on.doc")
-                    }
+                    // Quick Action Overflow Menu
+                    Menu {
+                        Button {
+                            shareDossierSummary(pet)
+                        } label: {
+                            Label(Language.get("Share", alter: "مشاركة"), systemImage: "square.and.arrow.up")
+                        }
 
-                    if canManageRequests {
-                        Divider()
+                        Button {
+                            copyCustomerInfo(pet)
+                        } label: {
+                            Label(Language.get("Copy", alter: "نسخ البيانات"), systemImage: "doc.on.doc")
+                        }
 
-                        if pet.status.isActive {
-                            Button(role: .destructive) {
-                                showCloseSheet = true
-                            } label: {
-                                Label(Language.get("WantedPet_Action_ClosePrompt", alter: "إغلاق الطلب"), systemImage: "xmark.circle")
-                            }
-                        } else {
-                            Button {
-                                transitionStatus(to: .waiting)
-                            } label: {
-                                Label(Language.get("WantedPet_Action_ReopenPrompt", alter: "إعادة فتح الطلب"), systemImage: "arrow.counterclockwise")
+                        if canManageRequests {
+                            Divider()
+
+                            if pet.status.isActive {
+                                Button(role: .destructive) {
+                                    showCloseSheet = true
+                                } label: {
+                                    Label(Language.get("WantedPet_Action_ClosePrompt", alter: "إغلاق الطلب"), systemImage: "xmark.circle")
+                                }
+                            } else {
+                                Button {
+                                    transitionStatus(to: .waiting)
+                                } label: {
+                                    Label(Language.get("WantedPet_Action_ReopenPrompt", alter: "إعادة فتح الطلب"), systemImage: "arrow.counterclockwise")
+                                }
                             }
                         }
+                    } label: {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(AdminSurface.surface)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                                )
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(AdminSurface.primaryText)
+                        }
+                        .frame(width: 44, height: 44)
+                        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
                     }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .frame(width: 38, height: 38)
-                        .background(AdminSurface.surface, in: Circle())
-                        .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
                 }
             }
         }
-        .padding(.horizontal, AdminSpacing.base)
-        .padding(.vertical, 10)
-        .background(AdminSurface.background)
-        .overlay(
-            Rectangle()
-                .fill(AdminSurface.hairline)
-                .frame(height: 0.5),
-            alignment: .bottom
-        )
     }
 
     // MARK: - 2. Customer Passport & Quick Tactical Command Deck

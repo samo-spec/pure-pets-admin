@@ -10,9 +10,20 @@ import UIKit
 import SwiftUI
 
 @objc public final class WantedPetsHostingController: UIViewController {
+    public init() {
+        super.init(nibName: nil, bundle: nil)
+        self.hidesBottomBarWhenPushed = true
+    }
+
+    public required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        self.hidesBottomBarWhenPushed = true
+    }
+
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
+        navigationController?.pp_enableSwipeToPop()
 
         let host = UIHostingController(rootView: WantedPetsHomeView(onDismiss: { [weak self] in
             guard let self = self else { return }
@@ -51,6 +62,7 @@ import SwiftUI
         self.mainKindId = mainKindId
         self.subkindId = subkindId
         super.init(nibName: nil, bundle: nil)
+        self.hidesBottomBarWhenPushed = true
     }
 
     required init?(coder: NSCoder) {
@@ -60,6 +72,7 @@ import SwiftUI
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
+        navigationController?.pp_enableSwipeToPop()
 
         let subId: Int? = subkindId > 0 ? subkindId : nil
         let host = UIHostingController(
@@ -84,7 +97,7 @@ import SwiftUI
 
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        navigationController?.setNavigationBarHidden(false, animated: animated)
+        navigationController?.setNavigationBarHidden(true, animated: animated)
     }
 }
 
@@ -98,6 +111,7 @@ import SwiftUI
         self.wantedPetId = wantedPetId
         self.isFullScreenPresentation = isFullScreen
         super.init(nibName: nil, bundle: nil)
+        self.hidesBottomBarWhenPushed = true
         if isFullScreen {
             self.modalPresentationStyle = .fullScreen
         }
@@ -108,8 +122,12 @@ import SwiftUI
     }
 
     @objc public static func present(from presenter: UIViewController, wantedPetId: String) {
-        let vc = WantedPetDetailHostingController(wantedPetId: wantedPetId, isFullScreen: true)
-        presenter.present(vc, animated: true)
+        if let nav = presenter.navigationController {
+            push(on: nav, wantedPetId: wantedPetId)
+        } else {
+            let vc = WantedPetDetailHostingController(wantedPetId: wantedPetId, isFullScreen: false)
+            PPAdminNavigationFallback.presentOrPush(vc, from: presenter)
+        }
     }
 
     @objc public static func push(on navigationController: UINavigationController, wantedPetId: String) {
@@ -120,6 +138,7 @@ import SwiftUI
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
+        navigationController?.pp_enableSwipeToPop()
 
         let host = UIHostingController(
             rootView: WantedPetDetailView(

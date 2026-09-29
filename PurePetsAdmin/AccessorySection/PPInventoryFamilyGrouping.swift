@@ -95,21 +95,31 @@ enum PPInventoryDisplayGroup: Identifiable {
 
 // MARK: - Family row
 
-/// Collapsed header for one colour family.
+/// The same displayed quantity and stock context as the exact-product inspector.
+/// A missing quantity is unresolved state, never stock zero.
+struct PPInventoryFamilyStockSnapshot {
+    let quantity: Int?
+    let caption: String?
+}
+
+/// One inventory family and its exact sellable options.
 ///
-/// Presents merchandising identity and a per-colour availability summary. It
-/// deliberately exposes **no** family-level stock mutation: a color selection
-/// expands one exact sellable member into the compact child inspector owned by
-/// the inventory list.
+/// The family overview never mutates stock. Selecting an option opens the
+/// existing exact-product inspector owned by the inventory list.
 struct PPInventoryFamilyRow: View {
+    private struct PositionedMember: Identifiable {
+        let member: PetAccessory
+        let index: Int
+        var id: String { member.accessoryID }
+    }
+
     let members: [PetAccessory]
     @Binding var isExpanded: Bool
     @Binding var selectedProductId: String
-    /// Live availability for one colour, supplied by the list so the family row
-    /// uses the same branch projection as every other row rather than a second
-    /// source of truth.
-    let availability: (PetAccessory) -> Int
-    /// Branch-effective default retail price for this exact color product.
+    /// Availability for one option, supplied by the list from the inspector's
+    /// branch projection or its catalog quantity when no branch is selected.
+    let availability: (PetAccessory) -> PPInventoryFamilyStockSnapshot
+    /// Branch-effective default retail price for this exact product.
     /// Returning nil means the price is unresolved and must not be invented.
     let retailPrice: (PetAccessory) -> Double?
     let lowStockThreshold: Int
@@ -120,12 +130,17 @@ struct PPInventoryFamilyRow: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private var defaultMember: PetAccessory {
         members.first { $0.isDefaultVariant } ?? members[0]
     }
 
-    /// While expanded, the parent vitrine follows the selected sellable color.
+    private var positionedMembers: [PositionedMember] {
+        members.enumerated().map { PositionedMember(member: $0.element, index: $0.offset) }
+    }
+
+    /// While expanded, the parent image follows the selected sellable product.
     /// Collapsed families return to the default marketplace member so the list
     /// remains stable and immediately recognizable.
     private var heroMember: PetAccessory {
@@ -133,8 +148,8 @@ struct PPInventoryFamilyRow: View {
         return members.first { $0.accessoryID == selectedProductId } ?? defaultMember
     }
 
-    /// A quiet brand cue distinguishes a logical colour family from the
-    /// concrete stock cards revealed below it without inventing new state.
+    /// A quiet brand cue distinguishes a logical family from the exact stock
+    /// inspector revealed below it without inventing new state.
     private var familyAccent: Color {
         AdminSurface.primary
     }
@@ -147,8 +162,18 @@ struct PPInventoryFamilyRow: View {
         members.filter { !$0.isArchived }
     }
 
-    private var totalAvailable: Int {
-        activeMembers.reduce(0) { $0 + availability($1) }
+    private var totalAvailable: Int? {
+        guard !activeMembers.isEmpty else { return 0 }
+        let quantities = activeMembers.map { availability($0).quantity }
+        guard quantities.allSatisfy({ $0 != nil }) else { return nil }
+        return quantities.reduce(0) { $0 + ($1 ?? 0) }
+    }
+
+    private var stockContextCaption: String? {
+        for member in activeMembers {
+            if let caption = availability(member).caption { return caption }
+        }
+        return nil
     }
 
     private var archivedCount: Int {
@@ -160,6 +185,7 @@ struct PPInventoryFamilyRow: View {
     }
 
     private var priceSummary: String? {
+        guard !activeMembers.isEmpty, resolvedPrices.count == activeMembers.count else { return nil }
         guard let minimum = resolvedPrices.first, let maximum = resolvedPrices.last else { return nil }
         if abs(maximum - minimum) < 0.005 {
             return PetAccessory.formatCurrency(NSNumber(value: minimum))
@@ -171,15 +197,15 @@ struct PPInventoryFamilyRow: View {
         )
     }
 
-    private var hasLowStockColour: Bool {
+    private var hasLowStockOption: Bool {
         activeMembers.contains { member in
-            let quantity = availability(member)
+            guard let quantity = availability(member).quantity else { return false }
             return quantity > 0 && quantity <= lowStockThreshold
         }
     }
 
-    private var hasOutOfStockColour: Bool {
-        activeMembers.contains { availability($0) <= 0 }
+    private var hasOutOfStockOption: Bool {
+        activeMembers.contains { (availability($0).quantity ?? Int.max) <= 0 }
     }
 
     var body: some View {
@@ -200,9 +226,7 @@ struct PPInventoryFamilyRow: View {
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
-            .padding(.horizontal, 14)
-            .padding(.top, 14)
-            .padding(.bottom, 12)
+            .padding(AdminSpacing.base)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilitySummary)
             .accessibilityHint(isExpanded
@@ -210,15 +234,11 @@ struct PPInventoryFamilyRow: View {
                 : familyDimension.expandHint)
             .accessibilityAddTraits(.isButton)
 
-            if isExpanded {
-                expandedOptions
-            } else {
-                swatchSummary
-            }
+            swatchSummary
         }
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(isExpanded ? Color.clear : Color.white)
+                .fill(isExpanded ? Color.clear : AdminSurface.surface)
         )
         .clipShape(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -235,243 +255,146 @@ struct PPInventoryFamilyRow: View {
                     .transition(.opacity)
             }
         }
-    }
-
-    // The open family is a single workspace. Options become readable tabs;
-    // only the closed row keeps the original compact summary chips.
-    private var expandedOptions: some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(spacing: AdminSpacing.xs) {
-                    ForEach(members, id: \.accessoryID) { member in
-                        expandedOption(member)
-                    }
-                }
-                .padding(.horizontal, AdminSpacing.base)
-            } else {
-                ScrollViewReader { proxy in
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(alignment: .top, spacing: AdminSpacing.xs) {
-                            ForEach(members, id: \.accessoryID) { member in
-                                expandedOption(member)
-                                    .frame(width: 156)
-                                    .id(member.accessoryID)
-                            }
-                        }
-                        .padding(.horizontal, AdminSpacing.base)
-                    }
-                    .onAppear { proxy.scrollTo(heroMember.accessoryID, anchor: .center) }
-                    .onChange(of: heroMember.accessoryID) { productId in
-                        withAnimation(AdminAnimation.motion(AdminAnimation.fast, reduceMotion: reduceMotion)) {
-                            proxy.scrollTo(productId, anchor: .center)
-                        }
-                    }
-                }
-            }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .onChange(of: members.map(\.accessoryID), initial: true) { _, productIds in
+            // Commit the visible fallback so clearing a filter cannot silently
+            // restore a previously hidden product beneath the inspector controls.
+            guard isExpanded, !productIds.contains(selectedProductId) else { return }
+            selectedProductId = defaultMember.accessoryID
         }
-        .padding(.bottom, AdminSpacing.md)
-        .accessibilityElement(children: .contain)
     }
 
-    private func expandedOption(_ member: PetAccessory) -> some View {
-        let colour = member.pos_hasRealColor ? member.pos_variantColor : nil
-        // Filtering can remove a previously selected member. The list inspector
-        // then displays the default; the visible selection must follow it too.
-        let selected = member.accessoryID == heroMember.accessoryID
-        let quantity = availability(member)
-        let shape = RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+    private var metricsLayout: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: AdminSpacing.sm))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: AdminSpacing.md))
+    }
 
-        return Button {
-            guard !selected else { return }
-            UISelectionFeedbackGenerator().selectionChanged()
-            withAnimation(AdminAnimation.motion(AdminAnimation.fast, reduceMotion: reduceMotion)) {
-                selectedProductId = member.accessoryID
-            }
-        } label: {
-            VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-                HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.sm) {
-                    if let colour {
-                        Circle()
-                            .fill(Color(uiColor: colour.uiColor))
-                            .overlay {
-                                Circle().strokeBorder(AdminSurface.primaryText.opacity(0.25), lineWidth: 1)
-                            }
-                            .frame(width: 14, height: 14)
-                            .accessibilityHidden(true)
-                    } else {
-                        Image(systemName: member.pos_variantDimension.outlineSymbolName)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(AdminSurface.primary)
-                            .accessibilityHidden(true)
+    private var header: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.md) {
+            HStack(alignment: .top, spacing: AdminSpacing.md) {
+                if !dynamicTypeSize.isAccessibilitySize {
+                    AdminRemoteImage(
+                        url: PetAccessory.firstImageURL(for: heroMember),
+                        contentMode: .fill,
+                        targetSize: CGSize(width: 68, height: 68)
+                    ) {
+                        ZStack {
+                            AdminSurface.control
+                            Image(systemName: "photo")
+                                .foregroundStyle(AdminCommandInk.tertiary)
+                        }
                     }
+                    .frame(width: 68, height: 68)
+                    .clipShape(RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                            .strokeBorder(AdminSurface.hairline, lineWidth: AdminStroke.hairline)
+                    }
+                    .accessibilityHidden(true)
+                }
 
-                    Text(member.pos_variantDisplayName)
-                        .font(AdminType.footnoteBold)
+                VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+                    Text(expandedFamilyTitle)
+                        .font(AdminType.headlineBold)
                         .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 3)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 11, weight: .bold))
+                    Text(String(format: familyDimension.shortCountFormat,
+                                NSNumber(value: activeMembers.count)))
+                        .font(AdminType.captionBold)
                         .foregroundStyle(AdminSurface.primary)
-                        .opacity(selected ? 1 : 0)
-                        .accessibilityHidden(true)
+                        .padding(.horizontal, AdminSpacing.sm)
+                        .padding(.vertical, AdminSpacing.xs)
+                        .background(AdminSurface.primarySoft, in: Capsule())
                 }
 
-                Text(member.isArchived
-                     ? Language.get("Variant_State_Archived", alter: "مؤرشف")
-                     : String(format: Language.get("Variant_State_AvailableCount", alter: "%@ متوفر"),
-                              NSNumber(value: quantity)))
-                    .font(AdminType.caption)
-                    .foregroundStyle(member.isArchived ? AdminCommandInk.secondary
-                                     : quantity <= 0 ? AdminSurface.crimson : AdminCommandInk.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                    .animation(AdminAnimation.motion(AdminAnimation.disclosure,
+                                                     reduceMotion: reduceMotion), value: isExpanded)
+                    .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                    .background(AdminSurface.control, in: Circle())
+                    .accessibilityHidden(true)
+            }
 
-                if let price = retailPrice(member) {
-                    Text(PetAccessory.formatCurrency(NSNumber(value: price)).normalizedEnglishDigits)
+            metricsLayout {
+                HStack(spacing: AdminSpacing.xs) {
+                    Circle()
+                        .fill(totalAvailable == nil ? AdminCommandInk.secondary
+                              : totalAvailable == 0 ? AdminSurface.crimson : AdminSurface.emerald)
+                        .frame(width: 7, height: 7)
+                        .accessibilityHidden(true)
+                    if let totalAvailable {
+                        Text(String(format: Language.get("Inventory_Family_TotalAvailable", alter: "%@ متوفر"),
+                                    NSNumber(value: totalAvailable)))
+                            .font(AdminType.footnoteBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text(stockContextCaption ?? Language.get("InventoryCell_Unconfirmed", alter: "الرصيد غير مؤكد · اسحب للتحديث"))
+                            .font(AdminType.footnoteBold)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Spacer(minLength: 0)
+                }
+
+                if let priceSummary {
+                    Text(priceSummary.normalizedEnglishDigits)
                         .font(AdminType.footnoteBold)
                         .foregroundStyle(AdminSurface.primaryText)
                         .fixedSize(horizontal: false, vertical: true)
                         .environment(\.layoutDirection, .leftToRight)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text(Language.get("Inventory_Price_Unavailable", alter: "السعر غير متاح"))
+                        .font(AdminType.footnoteBold)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .multilineTextAlignment(.leading)
-            .padding(AdminSpacing.md)
-            .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum, alignment: .leading)
-            .background(selected ? AdminSurface.control : Color.clear, in: shape)
-            .overlay(alignment: .bottom) {
-                Capsule()
-                    .fill(AdminSurface.primary)
-                    .frame(height: colorSchemeContrast == .increased ? 3 : 2)
-                    .padding(.horizontal, AdminSpacing.md)
-                    .opacity(selected ? 1 : 0)
+
+            if (totalAvailable != nil && stockContextCaption != nil)
+                || hasOutOfStockOption || hasLowStockOption || archivedCount > 0 {
+                VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                    if totalAvailable != nil, let stockContextCaption {
+                        statusNote(stockContextCaption, color: AdminCommandInk.secondary)
+                    }
+                    if hasOutOfStockOption {
+                        statusNote(familyDimension.outOfStockBadgeText, color: AdminSurface.crimson)
+                    }
+                    if hasLowStockOption {
+                        statusNote(Language.get("Inventory_Family_HasLowStock", alter: "مخزون منخفض"),
+                                   color: AdminSurface.amber)
+                    }
+                    if archivedCount > 0 {
+                        statusNote(String(format: Language.get("Inventory_Family_ArchivedCount", alter: "%@ مؤرشف"),
+                                          NSNumber(value: archivedCount)),
+                                   color: AdminCommandInk.secondary)
+                    }
+                }
             }
-            .contentShape(shape)
         }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(colourAccessibilityLabel(colour: colour, member: member, quantity: quantity))
-        .accessibilityHint(familyDimension.selectHint)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityIdentifier("inventory.family.option.\(member.accessoryID)")
+        .multilineTextAlignment(.leading)
     }
 
-    private var header: some View {
-        HStack(spacing: 12) {
-            // The hero follows the selected color while expanded and returns to
-            // the default marketplace member when the family is collapsed.
-            if !isExpanded || !dynamicTypeSize.isAccessibilitySize {
-                AdminRemoteImage(
-                    url: PetAccessory.firstImageURL(for: heroMember),
-                    contentMode: .fill,
-                    targetSize: CGSize(width: 56, height: 56)
-                ) {
-                    ZStack {
-                        Color(.systemGray6)
-                        Image(systemName: "photo").foregroundStyle(AdminCommandInk.tertiary)
-                    }
-                }
-                .frame(width: 56, height: 56)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
-
-            if isExpanded {
-                expandedHeaderDetails
-            } else {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(defaultMember.name ?? "")
-                        .font(AdminType.subheadlineBold)
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(2)
-
-                    HStack(spacing: 6) {
-                        Text(String(
-                            format: familyDimension.shortCountFormat,
-                            NSNumber(value: activeMembers.count)
-                        ))
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(AdminSurface.primary)
-
-                        Text(verbatim: "·")
-                            .foregroundStyle(AdminCommandInk.tertiary)
-
-                        Text(String(
-                            format: Language.get("Inventory_Family_TotalAvailable", alter: "%@ متوفر"),
-                            NSNumber(value: totalAvailable)
-                        ))
-                        .font(AdminType.caption2)
-                        .foregroundStyle(totalAvailable <= 0 ? AdminSurface.crimson : AdminCommandInk.secondary)
-                    }
-
-                    if let priceSummary {
-                        HStack(spacing: 4) {
-                            Image(systemName: resolvedPrices.count > 1 && (resolvedPrices.last ?? 0) != (resolvedPrices.first ?? 0)
-                                ? "arrow.left.and.right"
-                                : "tag.fill")
-                                .font(.system(size: 9, weight: .semibold))
-                            Text(priceSummary.normalizedEnglishDigits)
-                                .font(AdminType.caption2Bold)
-                                .lineLimit(1)
-                        }
-                        .foregroundStyle(AdminCommandInk.secondary)
-                        .accessibilityLabel(String(
-                            format: Language.get("Inventory_Family_Price_A11y", alter: "نطاق السعر: %@"),
-                            priceSummary
-                        ))
-                    }
-
-                    if hasLowStockColour || hasOutOfStockColour || archivedCount > 0 {
-                        HStack(spacing: 6) {
-                            if hasOutOfStockColour {
-                                badge(
-                                    familyDimension.outOfStockBadgeText,
-                                    systemImage: "exclamationmark.octagon.fill",
-                                    tint: AdminSurface.crimson
-                                )
-                            }
-                            if hasLowStockColour {
-                                badge(
-                                    Language.get("Inventory_Family_HasLowStock", alter: "مخزون منخفض"),
-                                    systemImage: "exclamationmark.triangle.fill",
-                                    tint: AdminSurface.amber
-                                )
-                            }
-                            if archivedCount > 0 {
-                                badge(
-                                    String(
-                                        format: Language.get("Inventory_Family_ArchivedCount", alter: "%@ مؤرشف"),
-                                        NSNumber(value: archivedCount)
-                                    ),
-                                    systemImage: "archivebox.fill",
-                                    tint: AdminCommandInk.tertiary
-                                )
-                            }
-                        }
-                    }
-                }
-
-            }
-
-            Spacer(minLength: 4)
-
-            // A single glyph that rotates, rather than two glyphs swapped. Swapping
-            // `chevron.down` for `chevron.up` pops — there is no intermediate state,
-            // so the indicator teleports while the panel below it animates. Rotating
-            // one chevron ties the indicator to the same spring as the disclosure.
-            //
-            // `chevron.down` rotated 180° is visually identical to `chevron.up`, and
-            // a vertical chevron needs no RTL mirroring.
-            Image(systemName: "chevron.down")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(AdminCommandInk.secondary)
-                .rotationEffect(.degrees(isExpanded ? 180 : 0))
-                .animation(
-                    AdminAnimation.motion(AdminAnimation.disclosure, reduceMotion: reduceMotion),
-                    value: isExpanded
-                )
-                .frame(width: 32, height: 32)
+    private func statusNote(_ text: String, color: Color) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.sm) {
+            Circle()
+                .fill(color)
+                .frame(width: 6, height: 6)
                 .accessibilityHidden(true)
+            Text(text)
+                .font(AdminType.captionBold)
+                .foregroundStyle(AdminSurface.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -485,266 +408,227 @@ struct PPInventoryFamilyRow: View {
 
     }
 
-    private var expandedHeaderDetails: some View {
-        return VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-            Text(expandedFamilyTitle)
-                .font(AdminType.headline)
-                .foregroundStyle(AdminSurface.primaryText)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text(String(format: familyDimension.shortCountFormat, NSNumber(value: activeMembers.count))
-                 + " · " + String(format: Language.get("Inventory_Family_TotalAvailable", alter: "%@ متوفر"),
-                                  NSNumber(value: totalAvailable)))
-                .font(AdminType.caption)
-                .foregroundStyle(AdminCommandInk.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if let priceSummary {
-                Text(priceSummary.normalizedEnglishDigits)
-                    .font(AdminType.captionBold)
-                    .foregroundStyle(AdminCommandInk.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .environment(\.layoutDirection, .leftToRight)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            if hasOutOfStockColour {
-                expandedFlag(familyDimension.outOfStockBadgeText,
-                             symbol: "exclamationmark.circle.fill", color: AdminSurface.crimson)
-            }
-            if hasLowStockColour {
-                expandedFlag(Language.get("Inventory_Family_HasLowStock", alter: "مخزون منخفض"),
-                             symbol: "exclamationmark.triangle.fill", color: AdminSurface.amber)
-            }
-            if archivedCount > 0 {
-                expandedFlag(String(format: Language.get("Inventory_Family_ArchivedCount", alter: "%@ مؤرشف"),
-                                    NSNumber(value: archivedCount)),
-                             symbol: "archivebox.fill", color: AdminCommandInk.secondary)
-            }
-        }
-        .multilineTextAlignment(.leading)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func expandedFlag(_ title: String, symbol: String, color: Color) -> some View {
-        Label(title, systemImage: symbol)
-            .font(AdminType.caption)
-            .foregroundStyle(color)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private func badge(_ text: String, systemImage: String, tint: Color) -> some View {
-        HStack(spacing: 3) {
-            Image(systemName: systemImage).font(.system(size: 8))
-            Text(text).font(AdminType.caption2Bold)
-        }
-        .foregroundStyle(tint)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(tint.opacity(0.12), in: Capsule())
-    }
-
-    /// Per-colour selector. The rail is the family navigation surface: tapping
-    /// a color selects that exact product and opens its compact child inspector.
-    /// Swatch plus text is always used; color is never the only identifier.
+    /// One continuous option shelf in both row states. Selecting a tile opens
+    /// the exact product inspector; the shelf never writes inventory itself.
     private var swatchSummary: some View {
         VStack(spacing: 0) {
             Rectangle()
-                .fill(AdminSurface.borderSubtle.opacity(0.55))
-                .frame(height: 0.5)
+                .fill(AdminSurface.hairline)
+                .frame(height: AdminStroke.hairline)
+                .accessibilityHidden(true)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(members, id: \.accessoryID) { member in
-                        let hasRealColor = member.pos_hasRealColor
-                        let colour = hasRealColor ? member.pos_variantColor : nil
-                        let productAccentColor: Color = colour.map { Color(uiColor: $0.uiColor) } ?? AdminSurface.primary
-                        let requiresContrast = colour?.requiresContrastBorder ?? false
-                        let quantity = availability(member)
-                        let isSelected = !selectedProductId.isEmpty && member.accessoryID == selectedProductId
-                        let shortBadge = member.pos_variantShortBadge
-
-                        Button {
-                            UISelectionFeedbackGenerator().selectionChanged()
-                            if reduceMotion {
-                                selectedProductId = member.accessoryID
-                                isExpanded = true
-                            } else {
-                                withAnimation(AdminAnimation.motion(AdminAnimation.fast, reduceMotion: reduceMotion)) {
-                                    selectedProductId = member.accessoryID
-                                    isExpanded = true
-                                }
-                            }
-                        } label: {
-                            HStack(spacing: 6) {
-                                if hasRealColor, let colour = colour {
-                                    ZStack {
-                                        Circle()
-                                            .fill(Color(uiColor: colour.uiColor))
-                                            .frame(width: 14, height: 14)
-                                        Circle()
-                                            .strokeBorder(
-                                                colour.requiresContrastBorder
-                                                    ? AdminSurface.primaryText.opacity(0.32)
-                                                    : Color.clear,
-                                                lineWidth: 1
-                                            )
-                                            .frame(width: 14, height: 14)
-                                        if isSelected {
-                                            Circle()
-                                                .strokeBorder(
-                                                    requiresContrast ? AdminSurface.primaryText : productAccentColor,
-                                                    lineWidth: 1.5
-                                                )
-                                                .frame(width: 18.5, height: 18.5)
-                                        }
-                                    }
-                                    .frame(width: 18.5, height: 18.5)
-                                } else if !shortBadge.isEmpty {
-                                    Text(shortBadge)
-                                        .font(Font.custom("Beiruti-Bold", size: 10, relativeTo: .caption2))
-                                        .foregroundStyle(isSelected ? AdminSurface.primary : AdminCommandInk.secondary)
-                                        .padding(.horizontal, 4.5)
-                                        .padding(.vertical, 2)
-                                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                                .strokeBorder(isSelected ? AdminSurface.primary : AdminSurface.hairline, lineWidth: isSelected ? 1 : 0.5)
-                                        )
-                                } else {
-                                    Image(systemName: member.pos_variantDimension.outlineSymbolName)
-                                        .font(.system(size: 11.5, weight: .semibold))
-                                        .foregroundStyle(isSelected ? AdminSurface.primary : AdminCommandInk.secondary)
-                                        .frame(width: 16, height: 16)
-                                }
-
-                                Text(member.pos_variantDisplayName)
-                                    .font(Font.custom(isSelected ? "Beiruti-Bold" : "Beiruti-Medium", size: 13, relativeTo: .caption))
-                                    .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminCommandInk.secondary)
-                                    .lineLimit(1)
-
-                                Text(verbatim: "\(quantity.englishDigits)")
-                                    .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
-                                    .foregroundStyle(
-                                        member.isArchived
-                                            ? AdminCommandInk.tertiary
-                                            : quantity <= 0
-                                                ? AdminSurface.crimson
-                                                : quantity <= lowStockThreshold
-                                                    ? AdminSurface.amber
-                                                    : AdminSurface.emerald
-                                    )
-
-                                if let price = retailPrice(member) {
-                                    Text(verbatim: "·")
-                                        .font(Font.custom("Beiruti-Medium", size: 11, relativeTo: .caption2))
-                                        .foregroundStyle(AdminCommandInk.tertiary)
-                                    Text(PetAccessory.formatCurrency(NSNumber(value: price)).normalizedEnglishDigits)
-                                        .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
-                                        .foregroundStyle(AdminSurface.primaryText)
-                                        .lineLimit(1)
-                                        .environment(\.layoutDirection, .leftToRight)
-                                }
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(
-                                isSelected
-                                    ? (requiresContrast ? AdminSurface.control : productAccentColor.opacity(0.16))
-                                    : (requiresContrast ? Color.white : productAccentColor.opacity(0.06)),
-                                in: RoundedRectangle(cornerRadius: 9.5, style: .continuous)
-                            )
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 9.5, style: .continuous)
-                                    .strokeBorder(
-                                        isSelected
-                                            ? (requiresContrast ? AdminSurface.primaryText.opacity(0.65) : productAccentColor.opacity(0.75))
-                                            : (requiresContrast ? AdminSurface.hairline : productAccentColor.opacity(0.22)),
-                                        lineWidth: isSelected ? 1.5 : 0.75
-                                    )
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .contentShape(RoundedRectangle(cornerRadius: 9.5, style: .continuous))
-                        .animation(
-                            AdminAnimation.motion(AdminAnimation.fast, reduceMotion: reduceMotion),
-                            value: isSelected
-                        )
-                        .opacity(member.isArchived ? 0.55 : 1)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(colourAccessibilityLabel(
-                            colour: colour,
-                            member: member,
-                            quantity: quantity
-                        ))
-                        .accessibilityHint(familyDimension.selectHint)
-                        .accessibilityAddTraits(isSelected ? .isSelected : [])
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: AdminSpacing.sm) {
+                    ForEach(positionedMembers) { position in
+                        optionTile(position.member, index: position.index)
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7.5)
+                .padding(AdminSpacing.base)
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: AdminSpacing.sm) {
+                            ForEach(positionedMembers) { position in
+                                optionTile(position.member, index: position.index)
+                                    .frame(width: horizontalSizeClass == .compact ? 190 : 210)
+                                    .id(position.id)
+                            }
+                        }
+                        .padding(.horizontal, AdminSpacing.base)
+                        .padding(.vertical, AdminSpacing.md)
+                    }
+                    .onChange(of: heroMember.accessoryID) { productId in
+                        guard isExpanded else { return }
+                        withAnimation(AdminAnimation.motion(AdminAnimation.fast, reduceMotion: reduceMotion)) {
+                            proxy.scrollTo(productId, anchor: .center)
+                        }
+                    }
+                    .onChange(of: isExpanded) { expanded in
+                        if expanded { proxy.scrollTo(heroMember.accessoryID, anchor: .center) }
+                    }
+                }
             }
         }
-        .background(AdminSurface.control.opacity(0.35))
+        .background(AdminSurface.backgroundSecondary.opacity(0.55))
+        .accessibilityElement(children: .contain)
     }
 
-    private func colourAccessibilityLabel(
-        colour: PPAccessoryVariantColor?,
+    private func optionTile(_ member: PetAccessory, index: Int) -> some View {
+        // Filtering can remove a selected member. The inspector then falls back
+        // to the default product; the rail must follow that same exact identity.
+        let selected = isExpanded && member.accessoryID == heroMember.accessoryID
+        let stock = availability(member)
+        let colour = member.pos_hasRealColor ? member.pos_variantColor : nil
+        let stateColor: Color = {
+            guard !member.isArchived, stock.caption == nil,
+                  let quantity = stock.quantity else { return AdminCommandInk.secondary }
+            if quantity <= 0 { return AdminSurface.crimson }
+            if quantity <= lowStockThreshold { return AdminSurface.amber }
+            return AdminSurface.emerald
+        }()
+        let shape = RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+
+        return Button {
+            guard !selected || selectedProductId != member.accessoryID else { return }
+            UISelectionFeedbackGenerator().selectionChanged()
+            withAnimation(AdminAnimation.motion(AdminAnimation.fast, reduceMotion: reduceMotion)) {
+                selectedProductId = member.accessoryID
+                isExpanded = true
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: AdminSpacing.md) {
+                HStack(alignment: .top, spacing: AdminSpacing.sm) {
+                    Group {
+                        if let colour {
+                            Circle()
+                                .fill(Color(uiColor: colour.uiColor))
+                                .overlay {
+                                    Circle()
+                                        .strokeBorder(AdminSurface.primaryText.opacity(
+                                            colour.requiresContrastBorder ? 0.4 : 0.15
+                                        ), lineWidth: 1)
+                                }
+                                .frame(width: 18, height: 18)
+                        } else {
+                            Text(String(format: "%02d", index + 1))
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(AdminSurface.primary)
+                                .environment(\.layoutDirection, .leftToRight)
+                        }
+                    }
+                    .frame(width: 28, height: 28)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .accessibilityHidden(true)
+
+                    Text(member.pos_variantDisplayName)
+                        .font(AdminType.footnoteBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .overlay(alignment: .bottom) {
+                    // Draw within the existing gap without affecting tile height.
+                    Rectangle()
+                        .fill(selected ? AdminSurface.primary : AdminSurface.hairline)
+                        .frame(height: AdminStroke.hairline)
+                        .offset(y: (AdminSpacing.md + AdminStroke.hairline) / 2)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+
+                metricsLayout {
+                    HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.xs) {
+                        Circle()
+                            .fill(stateColor)
+                            .frame(width: 6, height: 6)
+                            .accessibilityHidden(true)
+
+                        Text(optionStockText(member: member, stock: stock))
+                            .font(AdminType.captionBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    if !dynamicTypeSize.isAccessibilitySize {
+                        Spacer(minLength: AdminSpacing.xs)
+                    }
+
+                    if let price = retailPrice(member) {
+                        Text(PetAccessory.formatCurrency(NSNumber(value: price)).normalizedEnglishDigits)
+                            .font(AdminType.captionBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .environment(\.layoutDirection, .leftToRight)
+                    } else {
+                        Text(Language.get("Inventory_Price_Unavailable", alter: "السعر غير متاح"))
+                            .font(AdminType.captionBold)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .multilineTextAlignment(.leading)
+            .padding(AdminSpacing.md)
+            .frame(maxWidth: .infinity, minHeight: 84, alignment: .leading)
+            .background(selected ? AdminSurface.primarySoft : AdminSurface.surface, in: shape)
+            .overlay {
+                shape.strokeBorder(selected ? AdminSurface.primary : AdminSurface.hairline,
+                                   lineWidth: selected || colorSchemeContrast == .increased ? 1.5 : 0.75)
+            }
+            .overlay(alignment: .top) {
+                Capsule()
+                    .fill(selected ? AdminSurface.primary : stateColor)
+                    .frame(width: 28, height: 3)
+                    .padding(.top, 1)
+                    .accessibilityHidden(true)
+            }
+            .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(optionAccessibilityLabel(member: member, stock: stock))
+        .accessibilityHint(familyDimension.selectHint)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityIdentifier("inventory.family.option.\(member.accessoryID)")
+    }
+
+    private func optionStockText(member: PetAccessory, stock: PPInventoryFamilyStockSnapshot) -> String {
+        if stock.quantity == nil, let caption = stock.caption { return caption }
+        if member.isArchived { return Language.get("Variant_State_Archived", alter: "مؤرشف") }
+        guard let quantity = stock.quantity else {
+            return stock.caption ?? Language.get("InventoryCell_Unconfirmed", alter: "الرصيد غير مؤكد · اسحب للتحديث")
+        }
+        if quantity <= 0 { return Language.get("Variant_State_OutOfStock", alter: "غير متوفر") }
+        return String(format: Language.get("Variant_State_AvailableCount", alter: "%@ متوفر"),
+                      NSNumber(value: quantity))
+    }
+
+    private func optionAccessibilityLabel(
         member: PetAccessory,
-        quantity: Int
+        stock: PPInventoryFamilyStockSnapshot
     ) -> String {
         var parts: [String] = [member.pos_variantDisplayName]
-        if member.isArchived {
-            parts.append(Language.get("Variant_State_Archived", alter: "مؤرشف"))
-        } else if quantity <= 0 {
-            parts.append(Language.get("Variant_State_OutOfStock", alter: "غير متوفر"))
-        } else {
-            parts.append(String(
-                format: Language.get("Variant_State_AvailableCount", alter: "%@ متوفر"),
-                NSNumber(value: quantity)
-            ))
-        }
+        parts.append(optionStockText(member: member, stock: stock))
+        if stock.quantity != nil, let caption = stock.caption { parts.append(caption) }
         if let price = retailPrice(member) {
             parts.append(String(
                 format: Language.get("Variant_Price_A11y", alter: "السعر %@"),
                 PetAccessory.formatCurrency(NSNumber(value: price))
             ))
+        } else {
+            parts.append(Language.get("Inventory_Price_Unavailable", alter: "السعر غير متاح"))
         }
         if member.isDefaultVariant {
-            parts.append(isExpanded
-                ? Language.get("Inventory_Family_DefaultOption", alter: "الخيار الافتراضي")
-                : Language.get("Variant_State_Default", alter: "اللون الافتراضي"))
+            parts.append(Language.get("Inventory_Family_DefaultOption", alter: "الخيار الافتراضي"))
         }
-        return parts.joined(separator: ", ")
+        return parts.joined(separator: Language.isRTL() ? "، " : ", ")
     }
 
     private var accessibilitySummary: String {
-        if isExpanded {
-            var parts = [
-                expandedFamilyTitle,
-                String(format: familyDimension.shortCountFormat, NSNumber(value: activeMembers.count)),
-                String(format: Language.get("Inventory_Family_TotalAvailable", alter: "%@ متوفر"),
-                       NSNumber(value: totalAvailable))
-            ]
-            if let priceSummary { parts.append(priceSummary) }
-            return parts.joined(separator: Language.isRTL() ? "، " : ", ")
+        var parts = [expandedFamilyTitle,
+                     String(format: familyDimension.shortCountFormat, NSNumber(value: activeMembers.count))]
+        if let totalAvailable {
+            parts.append(String(format: Language.get("Inventory_Family_TotalAvailable", alter: "%@ متوفر"),
+                                NSNumber(value: totalAvailable)))
+        } else {
+            parts.append(stockContextCaption ?? Language.get("InventoryCell_Unconfirmed", alter: "الرصيد غير مؤكد · اسحب للتحديث"))
         }
-        var text = String(
-            format: Language.get(
-                "Inventory_Family_Summary_A11y",
-                alter: "%@، %@ ألوان، %@ متوفر إجمالاً"
-            ),
-            defaultMember.name ?? "",
-            NSNumber(value: activeMembers.count),
-            NSNumber(value: totalAvailable)
-        )
+        if totalAvailable != nil, let stockContextCaption { parts.append(stockContextCaption) }
         if let priceSummary {
-            text += String(
-                format: Language.get("Inventory_Family_Price_A11y_Suffix", alter: "، نطاق السعر %@"),
-                priceSummary
-            )
+            parts.append(String(format: Language.get("Inventory_Family_Price_A11y", alter: "نطاق السعر: %@"),
+                                priceSummary))
+        } else {
+            parts.append(Language.get("Inventory_Price_Unavailable", alter: "السعر غير متاح"))
         }
-        return text
+        if hasOutOfStockOption { parts.append(familyDimension.outOfStockBadgeText) }
+        if hasLowStockOption { parts.append(Language.get("Inventory_Family_HasLowStock", alter: "مخزون منخفض")) }
+        if archivedCount > 0 {
+            parts.append(String(format: Language.get("Inventory_Family_ArchivedCount", alter: "%@ مؤرشف"),
+                                NSNumber(value: archivedCount)))
+        }
+        return parts.joined(separator: Language.isRTL() ? "، " : ", ")
     }
 }
 

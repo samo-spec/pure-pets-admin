@@ -11,9 +11,6 @@
 @import Firebase;
 @import FirebaseAuth;
 @import FirebaseMessaging;
-@import FirebaseAuth;
-@import Firebase;
-@import FirebaseAuth;
 static NSString *const PPUserModelErrorDomain = @"UserModel";
 
 // Model / Firestore keys
@@ -818,6 +815,7 @@ static NSString *PPUserSanitizedCacheID(NSString *identifier) {
     __block BOOL isRefreshing = NO;
     __block BOOL needsRefresh = NO;
     __block void (^refreshMergedPermissions)(void) = nil;
+    __weak void (^weakRefreshMergedPermissions)(void) = nil;
     refreshMergedPermissions = ^{
         __strong typeof(weakSelf) self = weakSelf;
         if (!self) return;
@@ -835,10 +833,13 @@ static NSString *PPUserSanitizedCacheID(NSString *identifier) {
             }
             if (needsRefresh) {
                 needsRefresh = NO;
-                refreshMergedPermissions();
+                if (weakRefreshMergedPermissions) {
+                    weakRefreshMergedPermissions();
+                }
             }
         }];
     };
+    weakRefreshMergedPermissions = refreshMergedPermissions;
 
     NSMutableArray<id<FIRListenerRegistration>> *listeners = [NSMutableArray array];
     id<FIRListenerRegistration> canonicalListener =

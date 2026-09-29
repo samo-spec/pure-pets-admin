@@ -17,8 +17,69 @@ public struct WaitingCustomersView: View {
     public let initialCustomers: [CustomerWantedPet]?
 
     @StateObject private var service = WantedPetsService.shared
+    @Environment(\.dismiss) private var dismiss
     @State private var customers: [CustomerWantedPet] = []
     @State private var matchResults: [WantedPetMatchResult] = []
+
+    private var sovereignHeaderView: some View {
+        AdminSovereignNavigationBar(
+            title: String(format: Language.get("WaitingFor_Pet_Title", alter: "المنتظرون: %@"), petTitle),
+            subtitle: nil,
+            isModal: false,
+            onBack: {
+                dismiss()
+            }
+        ) {
+            if canManageRequests {
+                HStack(spacing: 8) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        showAddCustomerSheet = true
+                    } label: {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(AdminSurface.surface)
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                            Image(systemName: "plus")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(Color(uiColor: .ppPrimary))
+                        }
+                        .frame(width: 44, height: 44)
+                        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+                    }
+                    .accessibilityLabel(Language.get("WantedPets_Add_Title", alter: "إضافة طلب عميل"))
+
+                    Button {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) {
+                            isSelectionMode.toggle()
+                            if !isSelectionMode {
+                                selectedIds.removeAll()
+                            }
+                        }
+                    } label: {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(isSelectionMode ? Color(uiColor: .ppPrimary).opacity(0.12) : AdminSurface.surface)
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(
+                                    isSelectionMode
+                                        ? Color(uiColor: .ppPrimary).opacity(0.4)
+                                        : Color(uiColor: .ppSurfaceBorder).opacity(0.8),
+                                    lineWidth: 0.8
+                                )
+                            Text(isSelectionMode ? Language.get("WantedPets_Selection_Done", alter: "تم") : Language.get("Select", alter: "تحديد"))
+                                .font(Font.custom("Beiruti-Bold", size: 14))
+                                .foregroundStyle(Color(uiColor: .ppPrimary))
+                                .padding(.horizontal, 12)
+                        }
+                        .frame(height: 44)
+                        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+                    }
+                }
+            }
+        }
+    }
     
     // Interaction & Operational States
     @State private var searchText: String = ""
@@ -57,74 +118,48 @@ public struct WaitingCustomersView: View {
     }
 
     public var body: some View {
-        ZStack(alignment: .bottom) {
-            AdminSurface.background.ignoresSafeArea()
+        VStack(spacing: 0) {
+            sovereignHeaderView
 
-            ScrollView {
-                VStack(spacing: AdminSpacing.md) {
-                    // 1. Hero Pet Demand Island
-                    heroPetHeaderCard
-                        .padding(.horizontal, AdminSpacing.base)
-                        .padding(.top, AdminSpacing.xs)
+            ZStack(alignment: .bottom) {
+                AdminSurface.background.ignoresSafeArea()
 
-                    // 2. Queue List / Filtered Cards
-                    if customers.isEmpty {
-                        emptyStateView
+                ScrollView {
+                    VStack(spacing: AdminSpacing.md) {
+                        // 1. Hero Pet Demand Island
+                        heroPetHeaderCard
                             .padding(.horizontal, AdminSpacing.base)
-                    } else if filteredCustomers.isEmpty {
-                        emptyFilterView
-                            .padding(.horizontal, AdminSpacing.base)
-                    } else {
-                        LazyVStack(spacing: 12) {
-                            ForEach(Array(filteredCustomers.enumerated()), id: \.element.id) { index, item in
-                                customerCard(item, queueIndex: index)
-                            }
-                        }
-                        .padding(.horizontal, AdminSpacing.base)
-                        .padding(.bottom, isSelectionMode && !selectedIds.isEmpty ? 90 : AdminSpacing.xl)
-                    }
-                }
-            }
+                            .padding(.top, AdminSpacing.xs)
 
-            // 3. Floating Batch Action Island (When multi-selection active)
-            if canManageRequests && isSelectionMode && !selectedIds.isEmpty {
-                batchActionBar
-            }
-        }
-        .navigationTitle(String(format: Language.get("WaitingFor_Pet_Title", alter: "المنتظرون: %@"), petTitle))
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Text(String(format: Language.get("WaitingFor_Pet_Title", alter: "المنتظرون: %@"), petTitle))
-                    .font(Font.custom("Beiruti-Bold", size: 18))
-                    .foregroundStyle(AdminSurface.primaryText)
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                if canManageRequests {
-                    HStack(spacing: 8) {
-                        Button {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            showAddCustomerSheet = true
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 16, weight: .bold))
-                                .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
-                        }
-                        .accessibilityLabel(Language.get("WantedPets_Add_Title", alter: "إضافة طلب عميل"))
-
-                        Button(isSelectionMode ? Language.get("WantedPets_Selection_Done", alter: "تم") : Language.get("Select", alter: "تحديد")) {
-                            withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) {
-                                isSelectionMode.toggle()
-                                if !isSelectionMode {
-                                    selectedIds.removeAll()
+                        // 2. Queue List / Filtered Cards
+                        if customers.isEmpty {
+                            emptyStateView
+                                .padding(.horizontal, AdminSpacing.base)
+                        } else if filteredCustomers.isEmpty {
+                            emptyFilterView
+                                .padding(.horizontal, AdminSpacing.base)
+                        } else {
+                            LazyVStack(spacing: 12) {
+                                ForEach(Array(filteredCustomers.enumerated()), id: \.element.id) { index, item in
+                                    customerCard(item, queueIndex: index)
                                 }
                             }
+                            .padding(.horizontal, AdminSpacing.base)
+                            .padding(.bottom, isSelectionMode && !selectedIds.isEmpty ? 90 : AdminSpacing.xl)
                         }
-                        .font(Font.custom("Beiruti-Bold", size: 15))
-                        .foregroundStyle(AdminSurface.primary)
                     }
                 }
+
+                // 3. Floating Batch Action Island (When multi-selection active)
+                if canManageRequests && isSelectionMode && !selectedIds.isEmpty {
+                    batchActionBar
+                }
             }
+        }
+        .navigationBarHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .enableSwipeToPop {
+            dismiss()
         }
         .sheet(isPresented: $showAddCustomerSheet) {
             AddWantedPetSheet { _ in

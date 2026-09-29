@@ -77,11 +77,12 @@ struct PPAccessoryVariantMatrixView: View {
                     PPAccessoryBulkPricingSheet(
                         group: group,
                         allVariants: model.draft?.variants ?? [],
-                        onApply: { retail, wholesale, productIds in
+                        onApply: { retail, cost, wholesale, productIds in
                             Task {
                                 _ = await model.applyBulkPricing(
                                     retailPrice: retail,
                                     wholesalePrice: wholesale,
+                                    costPrice: cost,
                                     forProductIds: productIds
                                 )
                                 activeSheet = nil
@@ -93,7 +94,7 @@ struct PPAccessoryVariantMatrixView: View {
                         combination: combination,
                         family: model.draft,
                         errorMessage: { model.failure?.message },
-                        onCreate: { sku, barcode, retail, wholesale, quantity, images in
+                        onCreate: { sku, barcode, retail, cost, wholesale, quantity, images in
                                 let resolvedColor = combination.colorValue.flatMap { PPAccessoryVariantColor(optionValue: $0) }
                                 let succeeded = await model.createAndAttachCombinationVariant(
                                     selectedOptions: combination.selectedOptions,
@@ -102,6 +103,7 @@ struct PPAccessoryVariantMatrixView: View {
                                     barcode: barcode,
                                     retailPrice: retail,
                                     wholesalePrice: wholesale,
+                                    costPrice: cost,
                                     quantity: quantity,
                                     images: images
                                 )
@@ -116,8 +118,8 @@ struct PPAccessoryVariantMatrixView: View {
                         isSubmitting: model.isCreatingVariant || model.isSaving,
                         existingStagedImages: (model.stagedImages[variant.productId] ?? []).map(\.image),
                         existingVariants: model.draft?.variants ?? [],
-                        onCreate: { _, _, _, _, _, _, _, _ in false },
-                        onUpdate: { productId, color, options, sku, barcode, retail, wholesale, quantity, newImages, retainedURLs in
+                        onCreate: { _, _, _, _, _, _, _, _, _ in false },
+                        onUpdate: { productId, color, options, sku, barcode, retail, cost, wholesale, quantity, newImages, retainedURLs, primaryImage in
                             await model.updateVariant(
                                 productId: productId,
                                 color: color,
@@ -126,9 +128,11 @@ struct PPAccessoryVariantMatrixView: View {
                                 barcode: barcode,
                                 retailPrice: retail,
                                 wholesalePrice: wholesale,
+                                costPrice: cost,
                                 quantity: quantity,
                                 newImages: newImages,
-                                retainedURLs: retainedURLs
+                                retainedURLs: retainedURLs,
+                                preferredPrimaryStagedImage: primaryImage
                             )
                         },
                         onOpenFullRecord: { productId in
@@ -138,7 +142,8 @@ struct PPAccessoryVariantMatrixView: View {
                         errorMessage: {
                             model.failure?.message
                         },
-                        optionDefinitions: model.draft?.optionDefinitions ?? []
+                        optionDefinitions: model.draft?.optionDefinitions ?? [],
+                        canViewCosts: model.canViewCosts
                     )
                 case .manageLots(let variant, let accessory):
                     InventoryLotsSheet(
@@ -902,12 +907,13 @@ struct PPAccessoryVariantMatrixView: View {
 struct PPAccessoryBulkPricingSheet: View {
     let group: PPAccessoryMatrixGroup?
     let allVariants: [PPAccessoryVariant]
-    let onApply: (Double, Double?, [String]) -> Void
+    let onApply: (Double, Double?, Double?, [String]) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.layoutDirection) private var layoutDirection
 
     @State private var retailPriceText: String = ""
+    @State private var costPriceText: String = ""
     @State private var wholesalePriceText: String = ""
     @State private var isSubmitting: Bool = false
 
@@ -923,6 +929,12 @@ struct PPAccessoryBulkPricingSheet: View {
 
     private var retailPrice: Double {
         Double(retailPriceText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+    }
+
+    private var costPrice: Double? {
+        let trimmed = costPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return Double(trimmed)
     }
 
     private var wholesalePrice: Double? {
@@ -945,10 +957,23 @@ struct PPAccessoryBulkPricingSheet: View {
         return priced.reduce(0, +) / Double(priced.count)
     }
 
+    private var currentAvgCostPrice: Double {
+        let costed = targetVariants.compactMap { $0.costPrice?.doubleValue }.filter { $0 > 0 }
+        guard !costed.isEmpty else { return 0 }
+        return costed.reduce(0, +) / Double(costed.count)
+    }
+
     private var currentAvgWholesalePrice: Double {
         let costed = targetVariants.compactMap { $0.wholesalePrice?.doubleValue }.filter { $0 > 0 }
         guard !costed.isEmpty else { return 0 }
         return costed.reduce(0, +) / Double(costed.count)
+    }
+
+    private var isCostExceedingRetail: Bool {
+        guard let cost = costPrice, cost > retailPrice && retailPrice > 0 else {
+            return false
+        }
+        return true
     }
 
     private var isWholesaleExceedingRetail: Bool {
@@ -958,19 +983,23 @@ struct PPAccessoryBulkPricingSheet: View {
         return true
     }
 
+    private var effectiveCostBasis: Double? {
+        costPrice ?? wholesalePrice
+    }
+
     private var unitProfit: Double {
-        guard let wholesale = wholesalePrice else { return 0 }
-        return retailPrice - wholesale
+        guard let basis = effectiveCostBasis else { return 0 }
+        return retailPrice - basis
     }
 
     private var grossMarginPct: Double {
-        guard retailPrice > 0, let wholesale = wholesalePrice else { return 0 }
-        return ((retailPrice - wholesale) / retailPrice) * 100.0
+        guard retailPrice > 0, let basis = effectiveCostBasis else { return 0 }
+        return ((retailPrice - basis) / retailPrice) * 100.0
     }
 
     private var costMarkup: Double {
-        guard let wholesale = wholesalePrice, wholesale > 0 else { return 0 }
-        return retailPrice / wholesale
+        guard let basis = effectiveCostBasis, basis > 0 else { return 0 }
+        return retailPrice / basis
     }
 
     private var avgPriceShift: Double {
@@ -1399,7 +1428,54 @@ struct PPAccessoryBulkPricingSheet: View {
                 .padding(.top, 4)
             }
 
-            // Wholesale Price Section (Optional Cost Basis)
+            // Cost Price Section (Primary Cost Basis)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(Language.get("Price_Cost", alter: "سعر التكلفة (اختياري)"))
+                        .font(AdminType.footnote)
+                        .foregroundStyle(AdminSurface.secondaryText)
+
+                    Spacer()
+
+                    if currentAvgCostPrice > 0 && costPriceText.isEmpty {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            costPriceText = String(format: "%.2f", currentAvgCostPrice)
+                        } label: {
+                            Text(Language.get("Variant_Studio_Match_Base_Price", alter: "مطابقة التكلفة"))
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(AdminSurface.primary)
+                        }
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    Text(Language.get("QAR", alter: "ر.ق"))
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.secondaryText)
+
+                    TextField("0.00", text: $costPriceText)
+                        .keyboardType(.decimalPad)
+                        .font(.system(size: 18, weight: .medium, design: .rounded))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .multilineTextAlignment(.leading)
+
+                    if !costPriceText.isEmpty {
+                        Button {
+                            costPriceText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                        }
+                    }
+                }
+                .padding(12)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
+            }
+
+            // Wholesale Price Section (Optional Wholesale Pricing)
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text(Language.get("Price_Wholesale", alter: "سعر الجملة (اختياري)"))
@@ -1413,7 +1489,7 @@ struct PPAccessoryBulkPricingSheet: View {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             wholesalePriceText = String(format: "%.2f", currentAvgWholesalePrice)
                         } label: {
-                            Text(Language.get("Variant_Studio_Match_Base_Price", alter: "مطابقة التكلفة"))
+                            Text(Language.get("Variant_Studio_Match_Base_Price", alter: "مطابقة سعر الجملة"))
                                 .font(.system(size: 10, weight: .medium))
                                 .foregroundStyle(AdminSurface.primary)
                         }
@@ -1458,18 +1534,20 @@ struct PPAccessoryBulkPricingSheet: View {
 
     @ViewBuilder
     private var liveProfitTelemetryDeck: some View {
-        if let wholesale = wholesalePrice, wholesale > 0 && retailPrice > 0 {
-            if isWholesaleExceedingRetail {
+        if let basis = effectiveCostBasis, basis > 0 && retailPrice > 0 {
+            if basis > retailPrice {
                 // Hazard Warning Pill
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(AdminSurface.amber)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(Language.get("Variant_Bulk_Wholesale_Warning_Title", alter: "تنبيه: سعر الجملة يتجاوز سعر البيع!"))
+                        Text(costPrice != nil
+                            ? Language.get("Variant_Studio_Cost_Exceeds_Retail", alter: "تنبيه: سعر التكلفة أعلى من سعر البيع!")
+                            : Language.get("Variant_Bulk_Wholesale_Warning_Title", alter: "تنبيه: سعر الجملة يتجاوز سعر البيع!"))
                             .font(AdminType.captionRegular)
                             .foregroundStyle(AdminSurface.amber)
-                        Text(String(format: Language.get("Variant_Bulk_Wholesale_Loss_Format", alter: "خسارة لكل وحدة: -%.2f %@"), wholesale - retailPrice, Language.get("QAR", alter: "ر.ق")))
+                        Text(String(format: Language.get("Variant_Bulk_Wholesale_Loss_Format", alter: "خسارة لكل وحدة: -%.2f %@"), basis - retailPrice, Language.get("QAR", alter: "ر.ق")))
                             .font(.system(size: 11, weight: .bold, design: .rounded))
                             .foregroundStyle(AdminSurface.amber)
                     }
@@ -1538,7 +1616,7 @@ struct PPAccessoryBulkPricingSheet: View {
                 Image(systemName: "info.circle")
                     .font(.system(size: 12))
                     .foregroundStyle(AdminSurface.secondaryText)
-                Text(Language.get("Variant_Bulk_Cost_Tip", alter: "أدخل سعر الجملة لعرض هامش الربح والتحليلات المالية فورياً."))
+                Text(Language.get("Variant_Bulk_Cost_Tip", alter: "أدخل سعر التكلفة لعرض هامش الربح والتحليلات المالية فورياً."))
                     .font(AdminType.captionRegular)
                     .foregroundStyle(AdminSurface.secondaryText)
                 Spacer()
@@ -1626,7 +1704,7 @@ struct PPAccessoryBulkPricingSheet: View {
                     guard isPriceValid && !isSubmitting else { return }
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     isSubmitting = true
-                    onApply(retailPrice, wholesalePrice, targetVariants.map(\.productId))
+                    onApply(retailPrice, costPrice, wholesalePrice, targetVariants.map(\.productId))
                 } label: {
                     HStack(spacing: 8) {
                         if isSubmitting {
@@ -1675,6 +1753,9 @@ struct PPAccessoryBulkPricingSheet: View {
         if currentAvgRetailPrice > 0 && retailPriceText.isEmpty {
             retailPriceText = String(format: "%.2f", currentAvgRetailPrice)
         }
+        if currentAvgCostPrice > 0 && costPriceText.isEmpty {
+            costPriceText = String(format: "%.2f", currentAvgCostPrice)
+        }
         if currentAvgWholesalePrice > 0 && wholesalePriceText.isEmpty {
             wholesalePriceText = String(format: "%.2f", currentAvgWholesalePrice)
         }
@@ -1710,7 +1791,7 @@ struct PPAccessoryCreateCombinationSheet: View {
     let combination: PPAccessoryMatrixCombination
     let family: PPAccessoryVariantFamily?
     let errorMessage: () -> String?
-    let onCreate: (String, String, Double, Double?, Int, [UIImage]) async -> Bool
+    let onCreate: (String, String, Double, Double?, Double?, Int, [UIImage]) async -> Bool
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.layoutDirection) private var layoutDirection
@@ -1718,6 +1799,7 @@ struct PPAccessoryCreateCombinationSheet: View {
     @State private var skuText = ""
     @State private var barcodeText = ""
     @State private var retailPriceText = ""
+    @State private var costPriceText = ""
     @State private var wholesalePriceText = ""
     @State private var quantity = 0
     @State private var stagedImages: [UIImage] = []
@@ -1730,6 +1812,12 @@ struct PPAccessoryCreateCombinationSheet: View {
         Double(retailPriceText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
     }
 
+    private var costPrice: Double? {
+        let trimmed = costPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return Double(trimmed)
+    }
+
     private var wholesalePrice: Double? {
         let trimmed = wholesalePriceText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -1740,11 +1828,22 @@ struct PPAccessoryCreateCombinationSheet: View {
         retailPrice > 0
     }
 
+    private var isCostExceedingRetail: Bool {
+        if let cost = costPrice, cost > retailPrice && retailPrice > 0 {
+            return true
+        }
+        return false
+    }
+
     private var isWholesaleExceedingRetail: Bool {
         if let wholesale = wholesalePrice, wholesale > retailPrice && retailPrice > 0 {
             return true
         }
         return false
+    }
+
+    private var effectiveCostBasis: Double? {
+        costPrice ?? wholesalePrice
     }
 
     var body: some View {
@@ -1947,6 +2046,12 @@ struct PPAccessoryCreateCombinationSheet: View {
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         retailPriceText = String(format: "%.2f", baseRetail)
+                        if let baseCost = family?.variants.first?.costPrice?.doubleValue, baseCost > 0 {
+                            costPriceText = String(format: "%.2f", baseCost)
+                        }
+                        if let baseWholesale = family?.variants.first?.wholesalePrice?.doubleValue, baseWholesale > 0 {
+                            wholesalePriceText = String(format: "%.2f", baseWholesale)
+                        }
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.counterclockwise")
@@ -1995,7 +2100,40 @@ struct PPAccessoryCreateCombinationSheet: View {
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
             }
 
-            // Wholesale Price Field (Cost)
+            // Cost Price Field (Primary Profit Basis)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(Language.get("Price_Cost", alter: "سعر التكلفة (اختياري)"))
+                    .font(AdminType.footnote)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                HStack(spacing: 8) {
+                    Text(Language.get("QAR", alter: "ر.ق"))
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.secondaryText)
+
+                    TextField("0.00", text: $costPriceText)
+                        .keyboardType(.decimalPad)
+                        .font(.system(size: 18, weight: .medium, design: .rounded))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .multilineTextAlignment(.leading)
+
+                    if !costPriceText.isEmpty {
+                        Button {
+                            costPriceText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                        }
+                    }
+                }
+                .padding(12)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
+            }
+
+            // Wholesale Price Field (Optional)
             VStack(alignment: .leading, spacing: 6) {
                 Text(Language.get("Price_Wholesale", alter: "سعر الجملة (اختياري)"))
                     .font(AdminType.footnote)
@@ -2029,14 +2167,16 @@ struct PPAccessoryCreateCombinationSheet: View {
             }
 
             // Live Profit Engine Card
-            if let wholesale = wholesalePrice, wholesale > 0 && retailPrice > 0 {
-                if isWholesaleExceedingRetail {
+            if let basis = effectiveCostBasis, basis > 0 && retailPrice > 0 {
+                if basis > retailPrice {
                     // Warning Pill
                     HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(AdminSurface.amber)
-                        Text(Language.get("Variant_Studio_Margin_Warning", alter: "تنبيه: سعر الجملة أعلى من سعر البيع!"))
+                        Text(costPrice != nil
+                            ? Language.get("Variant_Studio_Cost_Exceeds_Retail", alter: "تنبيه: سعر التكلفة أعلى من سعر البيع!")
+                            : Language.get("Variant_Studio_Margin_Warning", alter: "تنبيه: سعر الجملة أعلى من سعر البيع!"))
                             .font(AdminType.captionRegular)
                             .foregroundStyle(AdminSurface.amber)
                         Spacer()
@@ -2045,9 +2185,9 @@ struct PPAccessoryCreateCombinationSheet: View {
                     .background(AdminSurface.amber.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(AdminSurface.amber.opacity(0.3), lineWidth: 1))
                 } else {
-                    let profit = retailPrice - wholesale
+                    let profit = retailPrice - basis
                     let marginPct = (profit / retailPrice) * 100
-                    let markup = retailPrice / wholesale
+                    let markup = retailPrice / basis
 
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 2) {
@@ -2478,7 +2618,7 @@ struct PPAccessoryCreateCombinationSheet: View {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     isSubmitting = true
                     Task {
-                        _ = await onCreate(skuText, barcodeText, retailPrice, wholesalePrice, quantity, stagedImages)
+                        _ = await onCreate(skuText, barcodeText, retailPrice, costPrice, wholesalePrice, quantity, stagedImages)
                         isSubmitting = false
                     }
                 } label: {
@@ -2523,6 +2663,9 @@ struct PPAccessoryCreateCombinationSheet: View {
         if let first = family?.variants.first {
             if let retail = first.retailPrice?.doubleValue, retailPriceText.isEmpty {
                 retailPriceText = String(format: "%.2f", retail)
+            }
+            if let cost = first.costPrice?.doubleValue, costPriceText.isEmpty {
+                costPriceText = String(format: "%.2f", cost)
             }
             if let wholesale = first.wholesalePrice?.doubleValue, wholesalePriceText.isEmpty {
                 wholesalePriceText = String(format: "%.2f", wholesale)

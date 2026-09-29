@@ -10072,7 +10072,11 @@
 "Variant_BulkPricing_Count" = "Item Count";
 "Variant_BulkPricing_Values" = "New Pricing";
 "Price_Retail" = "Retail Price";
+"Price_Cost" = "Cost Price (Optional)";
 "Price_Wholesale" = "Wholesale Price (Optional)";
+"Variant_CostPrice" = "Cost Price";
+"Variant_Studio_Profit_Format" = "Profit: %@ (Margin: %@%%)";
+"Variant_Studio_Cost_Exceeds_Retail" = "Warning: Cost price exceeds retail price!";
 "Variant_Bulk_Pricing_Title" = "Bulk Pricing";
 "Apply" = "Apply";
 "Variant_Combination_Details" = "Combination Details";
@@ -10397,6 +10401,10 @@
 "WantedPets_Overview_Label" = "REQUEST ACTIVITY";
 "WantedPets_Overview_Waiting" = "Requests waiting";
 "WantedPets_Overview_Recent" = "Among recent requests";
+"WantedPets_Header_Updating" = "Updating requests";
+"WantedPets_Header_Last_Loaded" = "Last loaded requests";
+"WantedPets_Header_Awaiting_Contact" = "Awaiting contact";
+"WantedPets_Header_Search" = "Name, phone, or pet";
 "WantedPets_Filter_Hint" = "Show requests in this status";
 "WantedPets_Filters_Label" = "Filter requests";
 "WantedPets_Group_Heading" = "Pets in demand";
@@ -10670,3 +10678,32 @@
 "WantedPets_WhatsApp_Detail_Price" = "Price: %.0f %@";
 "WantedPets_WhatsApp_Detail_Branch" = "Branch: %@";
 "WantedPets_WhatsApp_MatchFound_Template" = "Hello %@, we are pleased to inform you that a pet matching your request is available at Pure Pets: %@%@. Would you like us to reserve it for you?";
+
+/* Variant editor workspace */
+"Variant_Studio_Workspace" = "Edit variant";
+"Variant_Studio_DiscardTitle" = "Discard changes?";
+"Variant_Studio_KeepEditing" = "Keep editing";
+"Variant_Studio_Editing" = "Editing this variant";
+"Variant_Studio_Creating" = "New variant";
+"Variant_Studio_Photos_Heading" = "Variant photos";
+"Variant_Studio_PhotoHint" = "The cover appears first. Tap a star to change it.";
+"Variant_Studio_PricingHeading" = "Pricing";
+"Variant_Studio_IdentifiersHeading" = "Product identifiers";
+"Variant_Studio_SaveScope" = "Photos, prices, and inventory are saved for this variant.";
+"Variant_Studio_PendingSaveChanged" = "Finish retrying the previous save before changing these fields.";
+"Variant_Error_ProductMissingNamed" = "This option is no longer available: %@. Reload and compare before saving.";
+"Variant_Studio_FullPricingRequired" = "Open the full record to manage this product’s selling-unit prices.";
+"Variant_Studio_IncreaseQuantity" = "Increase quantity";
+"Variant_Studio_DecreaseQuantity" = "Decrease quantity";
+
+"Variant_Studio_PendingHint" = "The save is not fully confirmed. Retry the same changes to safely complete it.";
+
+"Variant_Studio_ResumeSave" = "Complete save";
+
+"Variant_Studio_CostUnchanged" = "Leave blank to keep the saved cost.";
+
+"Variant_Studio_InvalidCost" = "Enter a cost of zero or greater, with up to two decimal places.";
+
+"Variant_Studio_InvalidPrice" = "Enter a price greater than zero, with up to two decimal places.";
+
+"Piece" = "unit";

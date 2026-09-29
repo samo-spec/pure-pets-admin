@@ -298,6 +298,10 @@ final class AdminRouter: ObservableObject {
         presentedRoute = route
     }
 
+    func push(_ route: AdminRoute, session: AdminSession) {
+        present(route, session: session)
+    }
+
     func enqueuePaymentOrder(_ orderID: String) {
         let trimmed = orderID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }

@@ -54,6 +54,7 @@ final class AdminAccountViewModel: ObservableObject {
     @Published var showPasswordResetAlert: Bool = false
     @Published var passwordResetMessage: String = ""
     @Published var isSendingPasswordReset: Bool = false
+    @Published var customRoleNameResolved: String? = nil
 
     private var toastTask: Task<Void, Never>?
 
@@ -71,6 +72,25 @@ final class AdminAccountViewModel: ObservableObject {
             self.phone = initialPhone
             self.originalName = initialName
             self.originalPhone = initialPhone
+        }
+
+        // Dynamically resolve custom role title from staff_roles if applicable
+        if let staff = PPStaffAuth.shared().cachedCurrentStaff {
+            let roleStr = staff.role.rawValue
+            if roleStr.hasPrefix("custom_") {
+                let roleId = String(roleStr.dropFirst("custom_".count))
+                Firestore.firestore().collection("staff_roles").document(roleId).getDocument { [weak self] snapshot, error in
+                    guard let self = self, let data = snapshot?.data(), error == nil else { return }
+                    if let nameDict = data["name"] as? [String: Any] {
+                        let isArabic = Language.isRTL()
+                        if let name = (isArabic ? nameDict["ar"] : nameDict["en"]) as? String, !name.isEmpty {
+                            Task { @MainActor in
+                                self.customRoleNameResolved = name
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -108,27 +128,121 @@ final class AdminAccountViewModel: ObservableObject {
     }
 
     var authorityTierTitle: String {
-        guard let user = currentUser else {
-            return Language.isRTL() ? "🛡️ مسؤول معتمد (Admin)" : "🛡️ Authorized Administrator"
+        let staff = PPStaffAuth.shared().cachedCurrentStaff
+        let isArabic = Language.isRTL()
+
+        // 1. Sovereign Owner: STRICT check only
+        if currentUser?.isOwner == true || staff?.role == .owner {
+            return isArabic ? "👑 مالك النظام الإداري (Owner)" : "👑 System Owner"
         }
-        if user.role == .superAdmin || user.isSuperAdmin {
-            return Language.isRTL() ? "⚡ مدير عام المنصة (Super Admin)" : "⚡ Super Administrator"
-        } else if user.role == .admin || user.isAdmin {
-            return Language.isRTL() ? "🛡️ مسؤول معتمد (Admin)" : "🛡️ Authorized Administrator"
-        } else {
-            return Language.isRTL() ? "👑 مالك النظام الإداري (Sovereign Owner)" : "👑 Sovereign System Owner"
+
+        // 2. Super Administrator
+        if currentUser?.isSuperAdmin == true || currentUser?.role == .superAdmin || staff?.role == .superAdmin {
+            return isArabic ? "⚡ مدير عام المنصة (Super Admin)" : "⚡ Super Administrator"
         }
+
+        // 3. Administrator
+        if currentUser?.isAdmin == true || currentUser?.role == .admin || staff?.role.rawValue == "admin" {
+            return isArabic ? "🛡️ مسؤول معتمد (Admin)" : "🛡️ Authorized Administrator"
+        }
+
+        // 4. Custom Role with resolved name from Firestore staff_roles
+        if let customName = customRoleNameResolved, !customName.isEmpty {
+            return isArabic ? "💳 \(customName) معتمد (Staff)" : "💳 Authorized \(customName)"
+        }
+
+        // 5. Staff Doc Role check
+        if let staffDoc = staff {
+            let roleStr = staffDoc.role.rawValue
+            if roleStr.hasPrefix("custom_") {
+                if staffDoc.hasPermission("pos.sell") || staffDoc.hasPermission("pos.history") {
+                    return isArabic ? "💳 كاشير معتمد (Cashier)" : "💳 Authorized Cashier"
+                }
+                return isArabic ? "👤 موظف بصلاحيات مخصصة" : "👤 Custom Staff Member"
+            }
+
+            switch staffDoc.role {
+            case .accountant:
+                return isArabic ? "📊 محاسب معتمد (Accountant)" : "📊 Authorized Accountant"
+            case .inventoryManager:
+                return isArabic ? "📦 مدير مخزون (Inventory Manager)" : "📦 Inventory Manager"
+            case .branchManager:
+                return isArabic ? "🏢 مدير فرع (Branch Manager)" : "🏢 Branch Manager"
+            case .sales:
+                return isArabic ? "💼 مسؤول مبيعات (Sales)" : "💼 Sales Representative"
+            case .operationsManager:
+                return isArabic ? "⚙️ مدير عمليات (Operations Manager)" : "⚙️ Operations Manager"
+            case .supportAgent:
+                return isArabic ? "🎧 دعم فني وخدمة عملاء (Support)" : "🎧 Support Agent"
+            case .complianceAuditor:
+                return isArabic ? "📋 مدقق امتثال (Auditor)" : "📋 Compliance Auditor"
+            default:
+                break
+            }
+        }
+
+        // 6. POS permissions fallback
+        if let perms = staff?.permissions, perms.contains("pos.sell") || perms.contains("pos.history") {
+            return isArabic ? "💳 كاشير معتمد (Cashier)" : "💳 Authorized Cashier"
+        }
+
+        return isArabic ? "👤 موظف معتمد (Staff Member)" : "👤 Authorized Staff Member"
     }
 
     var authorityBadgeColor: Color {
-        guard let user = currentUser else { return AdminSurface.primary }
-        if user.role == .superAdmin || user.isSuperAdmin {
-            return Color.indigo
-        } else if user.role == .admin || user.isAdmin {
-            return AdminSurface.primary
-        } else {
-            return Color(red: 0.85, green: 0.65, blue: 0.15) // Gold for Owner
+        let staff = PPStaffAuth.shared().cachedCurrentStaff
+        if currentUser?.isOwner == true || staff?.role == .owner {
+            return Color(red: 0.85, green: 0.65, blue: 0.15) // Gold ONLY for Owner
         }
+        if currentUser?.isSuperAdmin == true || currentUser?.role == .superAdmin || staff?.role == .superAdmin {
+            return Color.indigo
+        }
+        if currentUser?.isAdmin == true || currentUser?.role == .admin || staff?.role.rawValue == "admin" {
+            return AdminSurface.primary
+        }
+        if let staffDoc = staff {
+            let roleStr = staffDoc.role.rawValue
+            if roleStr.hasPrefix("custom_") || staffDoc.hasPermission("pos.sell") || staffDoc.hasPermission("pos.history") {
+                return Color.teal
+            }
+            if staffDoc.role == .accountant {
+                return Color.orange
+            }
+            if staffDoc.role == .inventoryManager {
+                return Color.blue
+            }
+            if staffDoc.role == .branchManager {
+                return Color.purple
+            }
+        }
+        return AdminSurface.primary
+    }
+
+    var privilegeRadarData: (value: String, sub: String, symbol: String, color: Color) {
+        let isArabic = Language.isRTL()
+        let staff = PPStaffAuth.shared().cachedCurrentStaff
+
+        if currentUser?.isOwner == true || staff?.role == .owner {
+            return ("100%", isArabic ? "وصول سيادي كامل" : "Full Sovereign", "crown.fill", Color(red: 0.85, green: 0.65, blue: 0.15))
+        }
+        if currentUser?.isSuperAdmin == true || staff?.role == .superAdmin {
+            return ("100%", isArabic ? "وصول عام شامل" : "Super Admin", "bolt.shield.fill", Color.indigo)
+        }
+        if currentUser?.isAdmin == true || staff?.role.rawValue == "admin" {
+            return ("100%", isArabic ? "إدارة نظام شاملة" : "Full Admin", "shield.fill", AdminSurface.primary)
+        }
+
+        let perms = staff?.permissions ?? []
+        let count = perms.count > 0 ? perms.count : (currentUser?.permissions.count ?? 0)
+        let countStr = isArabic ? "\(count) صلاحيات" : "\(count) Perms"
+
+        if perms.contains("pos.sell") || perms.contains("pos.history") {
+            return (countStr, isArabic ? "نقطة بيع ومبيعات" : "POS & Sales", "creditcard.fill", Color.teal)
+        }
+        if count > 0 {
+            return (countStr, isArabic ? "نطاق تشغيلي محدد" : "Assigned Scope", "shield.lefthalf.filled", AdminSurface.primary)
+        }
+        return (isArabic ? "مقيّد" : "Restricted", isArabic ? "صلاحيات أساسية" : "Basic Access", "lock.shield", Color.secondary)
     }
 
     func copyToClipboard(_ text: String, message: String) {
@@ -578,13 +692,14 @@ struct AdminAccountView: View {
 
     private var cockpitTelemetryRadar: some View {
         HStack(spacing: AdminSpacing.sm) {
-            // Node 1: Permissions Scope (100%)
+            // Node 1: Dynamic Permissions Scope
+            let radarData = viewModel.privilegeRadarData
             telemetryRadarNode(
                 title: Language.isRTL() ? "نطاق الصلاحيات" : "Privilege Scope",
-                value: "100%",
-                sub: Language.isRTL() ? "وصول سيادي" : "Root Access",
-                symbol: "shield.checkered",
-                color: AdminSurface.primary
+                value: radarData.value,
+                sub: radarData.sub,
+                symbol: radarData.symbol,
+                color: radarData.color
             ) {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 viewModel.activeSheet = .permissionsMatrix
@@ -994,16 +1109,63 @@ struct AdminPermissionsInspectorSheetView: View {
     let user: UserModel?
     @Environment(\.dismiss) private var dismiss
 
+    private var staff: PPStaffDoc? {
+        PPStaffAuth.shared().cachedCurrentStaff
+    }
+
+    private var isOwner: Bool {
+        user?.isOwner == true || staff?.role == .owner
+    }
+
+    private var isSuperAdmin: Bool {
+        user?.isSuperAdmin == true || staff?.role == .superAdmin
+    }
+
+    private var isAdmin: Bool {
+        user?.isAdmin == true || staff?.role.rawValue == "admin"
+    }
+
+    private var isCashierOrPOS: Bool {
+        let perms = staff?.permissions ?? []
+        return perms.contains("pos.sell") || perms.contains("pos.history") || perms.contains("pos.view")
+    }
+
+    private var grantedPermissionsList: [String] {
+        if let perms = staff?.permissions, !perms.isEmpty {
+            return perms
+        }
+        if let userPerms = user?.permissions.allKeys as? [String] {
+            return userPerms
+        }
+        return []
+    }
+
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: AdminSpacing.md) {
-                    // Clearance Banner
+                    // Clearance Hero Banner
                     clearanceHeroCard
 
-                    // Subsystem Domains
-                    ForEach(subsystems) { domain in
-                        permissionDomainRow(domain)
+                    // Scope & Branch Assignment Card
+                    scopeAssignmentCard
+
+                    // Explicit Active Permissions Section
+                    if !grantedPermissionsList.isEmpty {
+                        explicitPermissionsCard
+                    }
+
+                    // Subsystem Domains Clearance Status
+                    VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                        Text(Language.isRTL() ? "حالة القطاعات التشغيلية" : "Subsystem Clearance Status")
+                            .font(AdminType.subheadlineBold)
+                            .foregroundColor(AdminSurface.primaryText)
+                            .padding(.horizontal, 4)
+                            .padding(.top, 4)
+
+                        ForEach(subsystems) { domain in
+                            permissionDomainRow(domain)
+                        }
                     }
 
                     // Cryptographic Footer
@@ -1013,7 +1175,7 @@ struct AdminPermissionsInspectorSheetView: View {
                 .padding(.vertical, AdminSpacing.base)
             }
             .background(AdminSurface.background.ignoresSafeArea())
-            .navigationTitle(Language.get("AdminPerm_NavTitle", alter: "سجل الصلاحيات السيادية"))
+            .navigationTitle(Language.isRTL() ? "سجل الصلاحيات المعتمدة" : "Authority & Permissions")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -1029,29 +1191,68 @@ struct AdminPermissionsInspectorSheetView: View {
     }
 
     private var clearanceHeroCard: some View {
-        HStack(spacing: AdminSpacing.md) {
-            Image(systemName: "shield.lefthalf.filled")
-                .font(.system(size: 28, weight: .bold))
-                .foregroundColor(AdminSurface.primary)
+        let isArabic = Language.isRTL()
+        let levelText: String
+        let titleText: String
+        let subText: String
+        let iconName: String
+        let tintColor: Color
+
+        if isOwner {
+            levelText = isArabic ? "المستوى ٥ (السيادة الكاملة)" : "Level 5 (Sovereign Authority)"
+            titleText = isArabic ? "وصول سيادي كامل لكافة أقسام المنصة" : "Full Platform Governance Access"
+            subText = isArabic ? "تمت المصادقة بموجب قواعد حماية أمان Firebase الصارمة" : "Authenticated under strict Firebase security rules"
+            iconName = "crown.fill"
+            tintColor = Color(red: 0.85, green: 0.65, blue: 0.15)
+        } else if isSuperAdmin {
+            levelText = isArabic ? "المستوى ٥ (إدارة عامة شاملة)" : "Level 5 (Super Administrator)"
+            titleText = isArabic ? "إشراف إداري وتنفيذي كامل على النظام" : "Full System Executive Oversight"
+            subText = isArabic ? "تمت المصادقة بموجب قواعد حماية أمان Firebase الصارمة" : "Authenticated under strict Firebase security rules"
+            iconName = "bolt.shield.fill"
+            tintColor = Color.indigo
+        } else if isAdmin {
+            levelText = isArabic ? "المستوى ٤ (مسؤول معتمد)" : "Level 4 (Authorized Admin)"
+            titleText = isArabic ? "إدارة العمليات والقطاعات المصرح بها" : "Operations & Assigned Sectors Management"
+            subText = isArabic ? "صلاحيات إدارية متعددة مع نطاق رقابة وتشغيل" : "Multi-domain administrative scope"
+            iconName = "shield.fill"
+            tintColor = AdminSurface.primary
+        } else if isCashierOrPOS {
+            levelText = isArabic ? "المستوى ١ (تشغيلي ميداني)" : "Level 1 (Field Operations)"
+            titleText = isArabic ? "نطاق عمليات نقطة البيع والكاشير المعتمد" : "Authorized POS & Cashier Operations"
+            subText = isArabic ? "مصرح لإجراء عمليات البيع الميداني، الفواتير، واستعراض سجل المبيعات" : "Authorized for fast-selling, receipts, and sales logs"
+            iconName = "creditcard.fill"
+            tintColor = Color.teal
+        } else {
+            levelText = isArabic ? "المستوى ٢ (موظف معتمد)" : "Level 2 (Authorized Staff)"
+            titleText = isArabic ? "نطاق تشغيلي محدد بحسب الدور الوظيفي" : "Role-Restricted Operational Scope"
+            subText = isArabic ? "صلاحيات مخصصة ومحددة حسب نطاق المهام المعتمدة" : "Specific operational permissions assigned"
+            iconName = "person.badge.shield.checkmark.fill"
+            tintColor = AdminSurface.primary
+        }
+
+        return HStack(spacing: AdminSpacing.md) {
+            Image(systemName: iconName)
+                .font(.system(size: 26, weight: .bold))
+                .foregroundColor(tintColor)
                 .frame(width: 54, height: 54)
-                .background(AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(tintColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack {
-                    Text(Language.get("AdminPerm_Hero_Level", alter: "المستوى ٥ (السيادة الكاملة)"))
+                    Text(levelText)
                         .font(AdminType.caption2Bold)
-                        .foregroundColor(AdminSurface.primary)
+                        .foregroundColor(tintColor)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 2)
-                        .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                        .background(tintColor.opacity(0.12), in: Capsule())
                     Spacer()
                 }
-                Text(Language.get("AdminPerm_Hero_Title", alter: "وصول سيادي كامل لكافة أقسام المنصة"))
+                Text(titleText)
                     .font(AdminType.subheadlineBold)
                     .foregroundColor(AdminSurface.primaryText)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Text(Language.get("AdminPerm_Hero_Subtitle", alter: "تمت المصادقة بموجب قواعد حماية أمان Firebase الصارمة"))
+                Text(subText)
                     .font(AdminType.caption2)
                     .foregroundColor(AdminSurface.secondaryText)
                     .multilineTextAlignment(.leading)
@@ -1062,8 +1263,132 @@ struct AdminPermissionsInspectorSheetView: View {
         .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                .strokeBorder(AdminSurface.primary.opacity(0.25), lineWidth: 1.0)
+                .strokeBorder(tintColor.opacity(0.25), lineWidth: 1.0)
         )
+    }
+
+    private var scopeAssignmentCard: some View {
+        let isArabic = Language.isRTL()
+        let isGlobal = staff?.hasGlobalScope() ?? true
+
+        return HStack(spacing: AdminSpacing.md) {
+            Image(systemName: isGlobal ? "globe.badge.chevron.backward" : "building.2.fill")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundColor(Color.indigo)
+                .frame(width: 42, height: 42)
+                .background(Color.indigo.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(isArabic ? "نطاق العمل الجغرافي المعتمد" : "Assigned Operational Scope")
+                    .font(AdminType.caption1Bold)
+                    .foregroundColor(AdminSurface.primaryText)
+
+                Text(isGlobal ? (isArabic ? "وصول شامل لكافة الفروع والمواقع (Global Scope)" : "Global Scope: All branches accessible")
+                              : (isArabic ? "مقيد بفروع محددة فقط" : "Restricted to assigned branches"))
+                    .font(AdminType.caption2)
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+
+            Spacer()
+
+            Text(isGlobal ? (isArabic ? "شامل" : "Global") : (isArabic ? "مخصص" : "Scoped"))
+                .font(AdminType.caption2Bold)
+                .foregroundColor(Color.indigo)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Color.indigo.opacity(0.10), in: Capsule())
+        }
+        .padding(AdminSpacing.cardPadding)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 1.0)
+        )
+    }
+
+    private var explicitPermissionsCard: some View {
+        let isArabic = Language.isRTL()
+
+        return VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+            HStack {
+                Image(systemName: "checklist.checked")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(Color(uiColor: .ppSuccess))
+                Text(isArabic ? "الصلاحيات الممنوحة صراحة (\(grantedPermissionsList.count))" : "Active Explicit Permissions (\(grantedPermissionsList.count))")
+                    .font(AdminType.subheadlineBold)
+                    .foregroundColor(AdminSurface.primaryText)
+                Spacer()
+            }
+            .padding(.horizontal, 4)
+
+            LazyVStack(spacing: 6) {
+                ForEach(grantedPermissionsList, id: \.self) { perm in
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(Color(uiColor: .ppSuccess))
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(localizedPermTitle(perm))
+                                .font(AdminType.caption1Bold)
+                                .foregroundColor(AdminSurface.primaryText)
+                            Text(perm)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+
+                        Spacer()
+
+                        Text(isArabic ? "مفعلة" : "Active")
+                            .font(AdminType.caption2Bold)
+                            .foregroundColor(Color(uiColor: .ppSuccess))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+                    )
+                }
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    private func localizedPermTitle(_ key: String) -> String {
+        let isArabic = Language.isRTL()
+        switch key {
+        case "pos.history":
+            return isArabic ? "سجل مبيعات نقطة البيع" : "POS Sales History"
+        case "pos.sell":
+            return isArabic ? "إجراء المبيعات الميدانية السريعة" : "POS Fast Selling"
+        case "pos.view":
+            return isArabic ? "استعراض واجهة الكاشير" : "POS Terminal View"
+        case "pos.manage":
+            return isArabic ? "إدارة نقطة البيع والإعدادات" : "POS Management"
+        case "stock.view":
+            return isArabic ? "استعراض المخزون والمنتجات" : "View Inventory & Stock"
+        case "stock.manage":
+            return isArabic ? "إدارة وتعديل المخزون" : "Manage Inventory & Stock"
+        case "payments.view":
+            return isArabic ? "استعراض المدفوعات والمعاملات" : "View Payments"
+        case "payments.manage":
+            return isArabic ? "إدارة بوابات الدفع والتحويلات" : "Manage Payments & Gateway"
+        case "accounting.view":
+            return isArabic ? "استعراض السجلات المحاسبية" : "View Accounting Ledger"
+        case "staff.manage":
+            return isArabic ? "إدارة الموظفين والأدوار" : "Manage Staff & Roles"
+        case "users.manage":
+            return isArabic ? "إدارة حسابات المستخدمين" : "Manage User Accounts"
+        case "audit.view":
+            return isArabic ? "استعراض سجل التدقيق الأمني" : "View Audit Trail"
+        default:
+            return key
+        }
     }
 
     private func permissionDomainRow(_ domain: PermissionDomain) -> some View {
@@ -1129,48 +1454,57 @@ struct AdminPermissionsInspectorSheetView: View {
     }
 
     private var subsystems: [PermissionDomain] {
-        [
-            PermissionDomain(
-                title: Language.get("AdminPerm_D1_Title", alter: "إدارة الطلبات والمدفوعات والمحاسبة"),
-                description: Language.get("AdminPerm_D1_Desc", alter: "اعتماد التحويلات، استرداد الأموال، ومتابعة بوابات الدفع QIB"),
-                clearanceTag: Language.get("AdminPerm_D1_Tag", alter: "صلاحية تنفيذ / ROOT"),
-                icon: "creditcard.fill",
-                tint: AdminSurface.primary
-            ),
+        let isArabic = Language.isRTL()
+        let perms = grantedPermissionsList
+        let hasPOS = isOwner || isSuperAdmin || isAdmin || perms.contains("pos.sell") || perms.contains("pos.history")
+        let hasStock = isOwner || isSuperAdmin || isAdmin || perms.contains("stock.manage") || perms.contains("stock.view")
+        let hasPayments = isOwner || isSuperAdmin || isAdmin || perms.contains("payments.manage") || perms.contains("accounting.manage")
+        let hasGovernance = isOwner || isSuperAdmin || perms.contains("staff.manage")
+        let hasServices = isOwner || isSuperAdmin || isAdmin || perms.contains("services.manage")
+        let hasAudit = isOwner || isSuperAdmin || perms.contains("audit.view")
+
+        return [
             PermissionDomain(
                 title: Language.get("AdminPerm_D2_Title", alter: "المخزون والمنتجات ونقاط البيع السريعة"),
-                description: Language.get("AdminPerm_D2_Desc", alter: "تعديل الأسعار وإدارة المخزون ونقاط البيع الميدانية في الفروع"),
-                clearanceTag: Language.get("AdminPerm_D2_Tag", alter: "صلاحية كتابة / ROOT"),
+                description: isArabic ? "عمليات البيع الميداني، إصدار الفواتير، وسجل المبيعات اليومية" : "Point of sale fast transactions, receipts, and branch logs",
+                clearanceTag: hasPOS ? (isArabic ? "مفعّلة ومصرح بها" : "Authorized / Active") : (isArabic ? "مقيّدة" : "Restricted"),
                 icon: "cart.fill",
-                tint: Color.orange
+                tint: hasPOS ? Color.teal : Color.secondary
             ),
             PermissionDomain(
-                title: Language.get("AdminPerm_D3_Title", alter: "الخدمات والعيادات البيطرية والمزودون"),
-                description: Language.get("AdminPerm_D3_Desc", alter: "مراجعة واعتماد ملفات العيادات والمزودين وجدولة الخدمات"),
-                clearanceTag: Language.get("AdminPerm_D3_Tag", alter: "صلاحية اعتماد / ROOT"),
-                icon: "cross.case.fill",
-                tint: Color.teal
+                title: Language.get("AdminPerm_D1_Title", alter: "إدارة الطلبات والمدفوعات والمحاسبة"),
+                description: isArabic ? "اعتماد التحويلات، استرداد الأموال، ومتابعة بوابات الدفع QIB" : "Payment processing, refunds, and financial ledgers",
+                clearanceTag: hasPayments ? (isArabic ? "مفعّلة ومصرح بها" : "Authorized / Active") : (isArabic ? "مقيّدة (إدارة عليا)" : "Restricted"),
+                icon: "creditcard.fill",
+                tint: hasPayments ? AdminSurface.primary : Color.secondary
+            ),
+            PermissionDomain(
+                title: isArabic ? "المخزون والمستودعات والتوريدات" : "Inventory & Warehouse Management",
+                description: isArabic ? "تعديل الأسعار وإدارة المخزون والتوريدات في الفروع" : "Stock adjustments, warehouse logistics, and item catalog",
+                clearanceTag: hasStock ? (isArabic ? "مفعّلة ومصرح بها" : "Authorized / Active") : (isArabic ? "مقيّدة" : "Restricted"),
+                icon: "shippingbox.fill",
+                tint: hasStock ? Color.orange : Color.secondary
             ),
             PermissionDomain(
                 title: Language.get("AdminPerm_D4_Title", alter: "المستخدمون وصلاحيات الموظفين والحوكمة"),
-                description: Language.get("AdminPerm_D4_Desc", alter: "تعيين الأدوار الإدارية، تجميد الحسابات، وإدارة فرق العمل"),
-                clearanceTag: Language.get("AdminPerm_D4_Tag", alter: "حوكمة وإشراف"),
+                description: isArabic ? "تعيين الأدوار الإدارية، تجميد الحسابات، وإدارة فرق العمل" : "Role assignments, staff onboarding, and security policies",
+                clearanceTag: hasGovernance ? (isArabic ? "حوكمة وإشراف" : "Governance") : (isArabic ? "إدارة عليا فقط" : "Admin Only"),
                 icon: "person.3.fill",
-                tint: Color.indigo
+                tint: hasGovernance ? Color.indigo : Color.secondary
             ),
             PermissionDomain(
-                title: Language.get("AdminPerm_D5_Title", alter: "مركز الإشعارات والبث الميداني"),
-                description: Language.get("AdminPerm_D5_Desc", alter: "إرسال التنبيهات المستهدفة والعامة لكافة مستخدمي المنصة"),
-                clearanceTag: Language.get("AdminPerm_D5_Tag", alter: "بث وإرسال"),
-                icon: "bell.badge.fill",
-                tint: Color.yellow
+                title: Language.get("AdminPerm_D3_Title", alter: "الخدمات والعيادات البيطرية والمزودون"),
+                description: isArabic ? "مراجعة واعتماد ملفات العيادات والمزودين وجدولة الخدمات" : "Veterinary clinic listings, bookings, and provider management",
+                clearanceTag: hasServices ? (isArabic ? "مفعّلة ومصرح بها" : "Authorized / Active") : (isArabic ? "مقيّدة" : "Restricted"),
+                icon: "cross.case.fill",
+                tint: hasServices ? Color.blue : Color.secondary
             ),
             PermissionDomain(
                 title: Language.get("AdminPerm_D6_Title", alter: "سجل التدقيق والمراقبة الأمنية السيادية"),
-                description: Language.get("AdminPerm_D6_Desc", alter: "تتبع فوري وغير قابل للتعديل لكافة العمليات والأوامر الحساسة"),
-                clearanceTag: Language.get("AdminPerm_D6_Tag", alter: "مراقبة أمنية"),
+                description: isArabic ? "تتبع فوري وغير قابل للتعديل لكافة العمليات والأوامر الحساسة" : "Tamper-evident audit trail for system commands",
+                clearanceTag: hasAudit ? (isArabic ? "مراقبة مباشرة" : "Live Audit") : (isArabic ? "مقيّدة" : "Restricted"),
                 icon: "doc.text.magnifyingglass",
-                tint: Color.green
+                tint: hasAudit ? Color.green : Color.secondary
             )
         ]
     }

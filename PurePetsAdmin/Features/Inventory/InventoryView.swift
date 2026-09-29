@@ -362,7 +362,10 @@ struct AdminInventoryView: View {
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear { viewModel.startListening() }
-        .onDisappear { viewModel.stopListening() }
+        .onDisappear {
+            viewModel.stopListening()
+            AdminCellDisplayRegistry.shared.clear()
+        }
         .confirmationDialog(
             Language.get("Inventory_Stock_Action_Title", alter: "إدارة مخزون الصنف"),
             isPresented: $showingStockActionSheet,
@@ -532,7 +535,7 @@ struct AdminInventoryView: View {
     private var inventoryList: some View {
         ScrollView {
             LazyVStack(spacing: AdminSpacing.sm) {
-                ForEach(viewModel.filteredItems, id: \.accessoryID) { item in
+                ForEach(Array(viewModel.filteredItems.enumerated()), id: \.element.accessoryID) { index, item in
                     InventoryItemRow(
                         item: item,
                         kind: viewModel.kind,
@@ -544,6 +547,7 @@ struct AdminInventoryView: View {
                             itemForQuarantine = item
                         }
                     )
+                    .animateCellDisplay(id: item.accessoryID, index: index)
                     .swipeActions(edge: .leading, allowsFullSwipe: false) {
                         Button {
                             itemForStockAction = item
@@ -612,6 +616,7 @@ struct AdminInventoryView: View {
             .padding(.vertical, AdminSpacing.sm)
         }
         .refreshable {
+            AdminCellDisplayRegistry.shared.clear()
             viewModel.stopListening()
             viewModel.startListening()
             try? await Task.sleep(nanoseconds: 300_000_000)

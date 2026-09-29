@@ -257,6 +257,12 @@ extension UIViewController {
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         navigationController?.setNavigationBarHidden(true, animated: animated)
+        navigationController?.pp_enableSwipeToPop()
+    }
+
+    public override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        navigationController?.pp_enableSwipeToPop()
     }
 }
 
@@ -264,15 +270,11 @@ extension UIViewController {
     public override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
         super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
         hidesBottomBarWhenPushed = true
-        definesPresentationContext = true
-        modalPresentationStyle = .fullScreen
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         hidesBottomBarWhenPushed = true
-        definesPresentationContext = true
-        modalPresentationStyle = .fullScreen
     }
 
     public override func viewDidLoad() {
@@ -280,18 +282,29 @@ extension UIViewController {
         view.backgroundColor = .ppBackground
 
         let session = AdminSession(source: PPAdminSessionSnapshot())
-        pp_embedSwiftUI(AdminPOSHistoryView(session: session) { [weak self] in
+        pp_embedSwiftUI(AdminPOSHistoryView(session: session, onDismiss: { [weak self] in
             guard let self = self else {
                 PPAdminNavigationFallback.popOrDismiss()
                 return
             }
             PPAdminNavigationFallback.popOrDismiss(from: self)
-        })
+        }, onStartFastSell: { [weak self] in
+            guard let self = self, let nav = self.navigationController else { return }
+            let fastSellVC = AdminPOSFastSellHostingController()
+            fastSellVC.hidesBottomBarWhenPushed = true
+            nav.pushViewController(fastSellVC, animated: true)
+        }))
     }
 
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         navigationController?.setNavigationBarHidden(true, animated: animated)
+        navigationController?.pp_enableSwipeToPop()
+    }
+
+    public override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        navigationController?.pp_enableSwipeToPop()
     }
 }
 

@@ -725,9 +725,9 @@ public struct PPLivePetBasicDataEditorView: View {
                     Spacer()
 
                     let currentText = (selectedLanguage == .arabic ? nameAr : nameEn)
-                    Text("\(currentText.count)/80")
+                    Text("\(currentText.count)/300")
                         .font(Font.custom("Beiruti-Regular", size: 12))
-                        .foregroundStyle(currentText.count > 80 ? AdminSurface.crimson : AdminSurface.secondaryText.opacity(0.7))
+                        .foregroundStyle(currentText.count > 300 ? AdminSurface.crimson : AdminSurface.secondaryText.opacity(0.7))
                 }
 
                 ZStack {

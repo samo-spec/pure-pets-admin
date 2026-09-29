@@ -3603,6 +3603,21 @@ void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
                         nav = (UINavigationController *)sel;
                     }
                 }
+                if (!nav && root) {
+                    NSMutableArray<UIViewController *> *queue = [NSMutableArray arrayWithObject:root];
+                    while (queue.count > 0) {
+                        UIViewController *curr = queue.firstObject;
+                        [queue removeObjectAtIndex:0];
+                        if ([curr isKindOfClass:[UINavigationController class]]) {
+                            nav = (UINavigationController *)curr;
+                            break;
+                        }
+                        if (curr.presentedViewController) {
+                            [queue addObject:curr.presentedViewController];
+                        }
+                        [queue addObjectsFromArray:curr.childViewControllers];
+                    }
+                }
             }
             if (nav) {
                 if (isIPadCommandSpine && nav.topViewController != self) {

@@ -174,11 +174,100 @@ private struct AdminEntranceModifier: ViewModifier {
     }
 }
 
-/// Reveals one list row during a screen's initial reveal window only.
+/// Registry that remembers cell identities that have completed their display animation
+/// during a browsing session, preventing recycled cells from flickering or re-animating
+/// when scrolling back up in a `LazyVStack` or `LazyVGrid`.
+public final class AdminCellDisplayRegistry: @unchecked Sendable {
+    public static let shared = AdminCellDisplayRegistry()
+    private var displayedKeys = Set<String>()
+    private let lock = NSLock()
+
+    private init() {}
+
+    public func hasDisplayed(key: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return displayedKeys.contains(key)
+    }
+
+    public func markDisplayed(key: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        displayedKeys.insert(key)
+    }
+
+    public func clear(prefix: String? = nil) {
+        lock.lock()
+        defer { lock.unlock() }
+        if let prefix = prefix {
+            displayedKeys = displayedKeys.filter { !$0.hasPrefix(prefix) }
+        } else {
+            displayedKeys.removeAll()
+        }
+    }
+}
+
+/// Animates a cell when it is displayed in an inventory list or grid.
 ///
-/// Once `revealComplete` is true the row renders with no modifier at all, which
-/// is what keeps a `LazyVStack` honest: recycled rows must not replay their
-/// entrance when they scroll back into view.
+/// Features:
+/// - Staggers arrival for initial viewport items (smooth waterfall).
+/// - Instantly animates scrolled-into-view items on appearance without trailing lag.
+/// - Fluid Apple spring with subtle upward translation, gentle scale (0.985 -> 1.0), and opacity fade.
+/// - Once displayed, remains stably settled at identity (no scroll jitter or flash).
+/// - Immediately settles without animation under Reduce Motion.
+public struct AdminCellDisplayModifier: ViewModifier {
+    let id: String?
+    let index: Int
+    let baseDelay: Double
+    let maxStaggeredIndex: Int
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hasDisplayed: Bool = false
+
+    public init(
+        id: String? = nil,
+        index: Int = 0,
+        baseDelay: Double = 0.0,
+        maxStaggeredIndex: Int = 6
+    ) {
+        self.id = id
+        self.index = index
+        self.baseDelay = baseDelay
+        self.maxStaggeredIndex = maxStaggeredIndex
+    }
+
+    public func body(content: Content) -> some View {
+        let isAlreadyRecorded = id.map { AdminCellDisplayRegistry.shared.hasDisplayed(key: $0) } ?? false
+        let isSettled = reduceMotion || hasDisplayed || isAlreadyRecorded
+
+        if isSettled {
+            content
+        } else {
+            content
+                .opacity(hasDisplayed ? 1.0 : 0.0)
+                .offset(y: hasDisplayed ? 0 : AdminAnimation.entranceOffset)
+                .scaleEffect(hasDisplayed ? 1.0 : 0.985)
+                .onAppear {
+                    guard !hasDisplayed else { return }
+                    if let id = id {
+                        AdminCellDisplayRegistry.shared.markDisplayed(key: id)
+                    }
+                    let stagger: Double = {
+                        if index < maxStaggeredIndex {
+                            return baseDelay + Double(index) * AdminAnimation.rowStagger
+                        } else {
+                            return 0.0
+                        }
+                    }()
+                    withAnimation(AdminAnimation.rowReveal.delay(stagger)) {
+                        hasDisplayed = true
+                    }
+                }
+        }
+    }
+}
+
+/// Compatibility bridge for row-level reveal.
 private struct AdminRowRevealModifier: ViewModifier {
     let index: Int
     let hasAppeared: Bool
@@ -186,21 +275,7 @@ private struct AdminRowRevealModifier: ViewModifier {
     let reduceMotion: Bool
 
     func body(content: Content) -> some View {
-        if reduceMotion || revealComplete {
-            content
-        } else {
-            content
-                .opacity(hasAppeared ? 1 : 0)
-                .offset(y: hasAppeared ? 0 : AdminAnimation.entranceOffset)
-                .animation(
-                    AdminAnimation.rowReveal.delay(
-                        // Rows start after the sections above them have settled.
-                        AdminAnimation.staggerDelay(index: index, reduceMotion: false)
-                            + AdminAnimation.rowStagger * 3
-                    ),
-                    value: hasAppeared
-                )
-        }
+        content.modifier(AdminCellDisplayModifier(index: index))
     }
 }
 
@@ -210,12 +285,12 @@ extension View {
         modifier(AdminEntranceModifier(step: step, hasAppeared: hasAppeared, reduceMotion: reduceMotion))
     }
 
-    /// Row-level reveal, active only during the initial reveal window.
+    /// Row-level reveal, active during row appearance.
     func inventoryRowReveal(
         index: Int,
-        hasAppeared: Bool,
-        revealComplete: Bool,
-        reduceMotion: Bool
+        hasAppeared: Bool = true,
+        revealComplete: Bool = false,
+        reduceMotion: Bool = false
     ) -> some View {
         modifier(AdminRowRevealModifier(
             index: index,
@@ -223,5 +298,14 @@ extension View {
             revealComplete: revealComplete,
             reduceMotion: reduceMotion
         ))
+    }
+
+    /// Animates this cell when it displays on screen in an inventory list or grid.
+    public func animateCellDisplay(
+        id: String? = nil,
+        index: Int = 0,
+        baseDelay: Double = 0.0
+    ) -> some View {
+        modifier(AdminCellDisplayModifier(id: id, index: index, baseDelay: baseDelay))
     }
 }

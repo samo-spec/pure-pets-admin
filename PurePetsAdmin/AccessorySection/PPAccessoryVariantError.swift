@@ -79,6 +79,8 @@ import Foundation
         public static let commandConflict = "VARIANT_FAMILY_COMMAND_CONFLICT"
         public static let staleFamilyRevision = "STALE_FAMILY_REVISION"
         public static let staleVariantRevision = "STALE_VARIANT_REVISION"
+        public static let staleCatalogRevision = "STALE_REVISION"
+        public static let stalePricingRevision = "STALE_PRICING_REVISION"
         public static let familyNotFound = "VARIANT_FAMILY_NOT_FOUND"
         public static let familyArchived = "VARIANT_FAMILY_ARCHIVED"
         public static let duplicateColor = "VARIANT_DUPLICATE_COLOR"
@@ -120,6 +122,7 @@ import Foundation
     /// reported as a validation problem the operator cannot act on.
     @objc public static func error(from error: NSError) -> PPAccessoryVariantError {
         let details = (error.userInfo["details"] as? [String: Any])
+            ?? (error.userInfo["FIRFunctionsErrorDetailsKey"] as? [String: Any])
             ?? (error.userInfo[NSLocalizedFailureReasonErrorKey] as? [String: Any])
             ?? [:]
         let domainCode = (details["domainCode"] as? String) ?? ""
@@ -259,7 +262,7 @@ import Foundation
                 Language.get("Variant_Error_FamilyArchivedServer", alter: "مجموعة الألوان مؤرشفة ولا يمكن تعديلها."),
                 .fatal
             )
-        case Code.staleFamilyRevision, Code.staleVariantRevision:
+        case Code.staleFamilyRevision, Code.staleVariantRevision, Code.staleCatalogRevision, Code.stalePricingRevision:
             return (
                 Language.get(
                     "Variant_Error_StaleRevisionServer",

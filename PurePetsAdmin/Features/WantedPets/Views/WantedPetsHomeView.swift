@@ -12,6 +12,7 @@ public struct WantedPetsHomeView: View {
     @StateObject private var service = WantedPetsService.shared
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dismiss) private var dismiss
     @FocusState private var isSearchFocused: Bool
 
     @State private var showAddSheet = false
@@ -29,35 +30,63 @@ public struct WantedPetsHomeView: View {
         self.onDismiss = onDismiss
     }
 
+    private func handleBack() {
+        if let onDismiss {
+            onDismiss()
+        } else {
+            dismiss()
+        }
+    }
+
+    private var sovereignHeaderView: some View {
+        AdminSovereignNavigationBar(
+            title: Language.get("WantedPets_Title", alter: "قائمة الطلبات"),
+            subtitle: nil,
+            isModal: false,
+            onBack: {
+                handleBack()
+            }
+        ) {
+            if canManageRequests {
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    showAddSheet = true
+                } label: {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(AdminSurface.surface)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                            )
+                        Image(systemName: "plus")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(Color(uiColor: .ppPrimary))
+                    }
+                    .frame(width: 44, height: 44)
+                    .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+                }
+                .disabled(service.isMutating)
+                .accessibilityLabel(Language.get("WantedPets_Add_Action", alter: "إضافة طلب جديد"))
+            }
+        }
+    }
+
     public var body: some View {
         NavigationStack {
-            List {
-                overview
-                    .listRowInsets(EdgeInsets(top: AdminSpacing.sm, leading: AdminSpacing.screenMargin,
-                                              bottom: AdminSpacing.lg, trailing: AdminSpacing.screenMargin))
-                    .wantedPetsRowChrome()
+            ZStack(alignment: .top) {
+                AdminSurface.background.ignoresSafeArea()
 
-                if let staff = PPStaffAuth.shared().cachedCurrentStaff,
-                   staff.isActive(), !staff.hasPermission("stock.manage") {
-                    Text(Language.get("WantedPets_View_Only", alter: "يمكنك عرض الطلبات، لكن تعديلها يتطلب صلاحية إدارة المخزون"))
-                        .font(AdminType.footnote)
-                        .foregroundStyle(AdminSurface.secondaryText)
-                        .listRowInsets(EdgeInsets(top: 0, leading: AdminSpacing.screenMargin,
-                                                  bottom: AdminSpacing.base, trailing: AdminSpacing.screenMargin))
-                        .wantedPetsRowChrome()
-                }
+                VStack(spacing: 0) {
+                    sovereignHeaderView
 
-                searchField
-                    .listRowInsets(EdgeInsets(top: 0, leading: AdminSpacing.screenMargin,
-                                              bottom: AdminSpacing.md, trailing: AdminSpacing.screenMargin))
-                    .wantedPetsRowChrome()
+                    List {
+                        topDeck
+                            .listRowInsets(EdgeInsets(top: AdminSpacing.sm, leading: AdminSpacing.screenMargin,
+                                                      bottom: AdminSpacing.lg, trailing: AdminSpacing.screenMargin))
+                            .wantedPetsRowChrome()
 
-                filterRail
-                    .listRowInsets(EdgeInsets(top: 0, leading: AdminSpacing.screenMargin,
-                                              bottom: AdminSpacing.lg, trailing: AdminSpacing.screenMargin))
-                    .wantedPetsRowChrome()
-
-                if let error = service.errorMessage, !service.items.isEmpty {
+                        if let error = service.errorMessage, !service.items.isEmpty {
                     refreshWarning(error)
                         .listRowInsets(EdgeInsets(top: 0, leading: AdminSpacing.screenMargin,
                                                   bottom: AdminSpacing.base, trailing: AdminSpacing.screenMargin))
@@ -131,41 +160,11 @@ public struct WantedPetsHomeView: View {
             .background(AdminSurface.background.ignoresSafeArea())
             .scrollDismissesKeyboard(.interactively)
             .refreshable { service.startLiveListener() }
-            .navigationTitle(Language.get("WantedPets_Title", alter: "قائمة الطلبات"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text(Language.get("WantedPets_Title", alter: "قائمة الطلبات"))
-                        .font(Font.custom("Beiruti-Bold", size: 18))
-                        .foregroundStyle(AdminSurface.primaryText)
-                }
-                ToolbarItem(placement: .navigationBarLeading) {
-                    if let onDismiss {
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            onDismiss()
-                        } label: {
-                            Image(systemName: "chevron.backward")
-                                .font(.system(size: 17, weight: .semibold))
-                                .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
-                        }
-                        .accessibilityLabel(Language.get("Back", alter: "رجوع"))
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    if canManageRequests {
-                        Button {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            showAddSheet = true
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 17, weight: .semibold))
-                                .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
-                        }
-                        .disabled(service.isMutating)
-                        .accessibilityLabel(Language.get("WantedPets_Add_Action", alter: "إضافة طلب جديد"))
-                    }
-                }
+            }
+            .navigationBarHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
+            .enableSwipeToPop {
+                handleBack()
             }
             .sheet(isPresented: $showAddSheet) {
                 AddWantedPetSheet { _ in
@@ -211,147 +210,253 @@ public struct WantedPetsHomeView: View {
                 refreshAuthorization()
             }
         }
-        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
+    .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+}
 
     // MARK: - The queue at a glance
 
-    private var overview: some View {
-        let isUnavailable = service.items.isEmpty && (service.isLoading || service.errorMessage != nil)
-        let countLayout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 0))
-            : AnyLayout(HStackLayout(alignment: .bottom, spacing: AdminSpacing.base))
+    private var topDeck: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.base) {
+            overview
 
-        return VStack(alignment: .leading, spacing: AdminSpacing.base) {
-            HStack(spacing: AdminSpacing.sm) {
-                Circle()
-                    .fill(AdminSurface.primary)
-                    .frame(width: 8, height: 8)
-                    .accessibilityHidden(true)
+            if let staff = PPStaffAuth.shared().cachedCurrentStaff,
+               staff.isActive(), !staff.hasPermission("stock.manage") {
+                Text(Language.get("WantedPets_View_Only", alter: "يمكنك عرض الطلبات، لكن تعديلها يتطلب صلاحية إدارة المخزون"))
+                    .font(AdminType.footnote)
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+
+            discoveryControls
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            LinearGradient(
+                colors: [AdminSurface.surface, AdminSurface.surface.opacity(0)],
+                startPoint: .bottom,
+                endPoint: .top
+            )
+            .clipShape(RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous))
+            .padding(.horizontal, -AdminSpacing.md)
+            .padding(.bottom, -AdminSpacing.md)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+    }
+
+    private var isOverviewUnavailable: Bool {
+        service.items.isEmpty && (service.isLoading || service.errorMessage != nil)
+    }
+
+    private var overviewScope: String {
+        if service.isLoading {
+            return Language.get("WantedPets_Header_Updating", alter: "جارٍ تحديث الطلبات")
+        }
+        if service.errorMessage != nil {
+            return isOverviewUnavailable
+                ? Language.get("WantedPets_Count_Unavailable", alter: "العدد غير متاح")
+                : Language.get("WantedPets_Header_Last_Loaded", alter: "آخر بيانات محمّلة")
+        }
+        return Language.get("WantedPets_Overview_Recent", alter: "ضمن أحدث الطلبات")
+    }
+
+    private func overviewCount(_ count: Int) -> String {
+        guard !isOverviewUnavailable else { return "—" }
+        return count.formatted(.number.locale(Locale(identifier: Language.isRTL() ? "ar" : "en")))
+    }
+
+    private var overview: some View {
+        let overviewLayout = dynamicTypeSize >= .xxLarge
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: AdminSpacing.base))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: AdminSpacing.lg))
+
+        return VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+            HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.sm) {
                 Text(Language.get("WantedPets_Overview_Label", alter: "حركة الطلبات"))
                     .font(AdminType.footnoteBold)
                     .foregroundStyle(AdminSurface.secondaryText)
-                Spacer(minLength: 8)
-                if service.isLoading && !service.items.isEmpty {
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: AdminSpacing.sm)
+                if service.isLoading {
                     ProgressView()
+                        .controlSize(.small)
                         .tint(AdminSurface.primary)
-                        .accessibilityLabel(Language.get("WantedPets_Loading", alter: "جاري التحميل..."))
+                        .accessibilityLabel(Language.get("WantedPets_Header_Updating", alter: "جارٍ تحديث الطلبات"))
                 }
             }
 
-            countLayout {
-                Text(isUnavailable ? "—" : "\(service.waitingCount)")
-                    .font(Font.custom("Beiruti-Bold", size: 72, relativeTo: .largeTitle))
-                    .monospacedDigit()
-                    .foregroundStyle(AdminSurface.primary)
-                    .contentTransition(reduceMotion ? .identity : .numericText())
-                    .minimumScaleFactor(0.8)
-                    .accessibilityHidden(true)
+            overviewLayout {
+                waitingFocus
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(Language.get("WantedPets_Overview_Waiting", alter: "طلبات قيد الانتظار"))
-                        .font(AdminType.title2)
-                        .foregroundStyle(AdminSurface.primaryText)
-                    Text(Language.get("WantedPets_Overview_Recent", alter: "ضمن أحدث الطلبات"))
-                        .font(AdminType.footnote)
-                        .foregroundStyle(AdminSurface.secondaryText)
+                VStack(spacing: 0) {
+                    statusMetric(count: service.contactedCount,
+                                 title: Language.get("WantedPets_Summary_Contacted", alter: "تم التواصل"),
+                                 symbol: "phone.fill", tint: Color(uiColor: .systemBlue),
+                                 filter: .contacted)
+
+                    Rectangle()
+                        .fill(AdminSurface.hairline.opacity(0.35))
+                        .frame(height: AdminStroke.hairline)
+                        .padding(.horizontal, AdminSpacing.md)
+                        .accessibilityHidden(true)
+
+                    statusMetric(count: service.interestedCount,
+                                 title: Language.get("WantedPets_Summary_Interested", alter: "مهتمون"),
+                                 symbol: "heart.fill", tint: AdminSurface.primary,
+                                 filter: .interested)
                 }
-                .padding(.bottom, AdminSpacing.sm)
+                .frame(maxWidth: .infinity)
+                .background(AdminSurface.surface,
+                            in: RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous))
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
 
-            Rectangle()
-                .fill(AdminSurface.hairline)
-                .frame(height: 1)
-                .accessibilityHidden(true)
-
-            let metricLayout = dynamicTypeSize.isAccessibilitySize
-                ? AnyLayout(VStackLayout(alignment: .leading, spacing: AdminSpacing.sm))
-                : AnyLayout(HStackLayout(spacing: AdminSpacing.base))
-
-            metricLayout {
-                statusMetric(count: service.contactedCount,
-                             isUnavailable: isUnavailable,
-                             title: Language.get("WantedPets_Summary_Contacted", alter: "تم التواصل"),
-                             icon: "phone.fill",
-                             tint: Color(uiColor: .systemBlue),
-                             filter: .contacted)
-                statusMetric(count: service.interestedCount,
-                             isUnavailable: isUnavailable,
-                             title: Language.get("WantedPets_Summary_Interested", alter: "مهتمون"),
-                             icon: "heart.fill",
-                             tint: AdminSurface.primary,
-                             filter: .interested)
-            }
+            Text(overviewScope)
+                .font(AdminType.footnote)
+                .foregroundStyle(AdminSurface.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(AdminSpacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
-                .strokeBorder(AdminSurface.hairline, lineWidth: 1)
-        }
+        .multilineTextAlignment(.leading)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(isUnavailable
-            ? Language.get("WantedPets_Count_Unavailable", alter: "العدد غير متاح")
-            : "\(service.waitingCount) \(Language.get("WantedPets_Overview_Waiting", alter: "طلبات قيد الانتظار"))")
     }
 
-    private func statusMetric(count: Int, isUnavailable: Bool, title: String, icon: String, tint: Color,
-                              filter: WantedPetsFilter) -> some View {
+    private var waitingFocus: some View {
         Button {
-            selectFilter(filter)
+            selectFilter(.waiting)
         } label: {
-            HStack(spacing: AdminSpacing.sm) {
-                Image(systemName: icon)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(tint)
-                    .frame(width: 24)
-                Text(isUnavailable ? "—" : "\(count)")
-                    .font(AdminType.headlineBold)
-                    .monospacedDigit()
+            VStack(alignment: .leading, spacing: 0) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .center, spacing: AdminSpacing.sm) {
+                        waitingCountLabel
+
+                        Image(systemName: "arrow.forward")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(AdminSurface.primary)
+                            .frame(width: 30, height: 30)
+                            .background(AdminSurface.primary.opacity(0.08), in: Circle())
+                            .accessibilityHidden(true)
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
+
+                    waitingCountLabel
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+
+                Text(Language.get("WantedPets_Header_Awaiting_Contact", alter: "بانتظار التواصل"))
+                    .font(AdminType.title3)
                     .foregroundStyle(AdminSurface.primaryText)
-                Text(title)
-                    .font(AdminType.footnote)
-                    .foregroundStyle(AdminSurface.secondaryText)
-                    .lineLimit(2)
-                Spacer(minLength: 0)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(minHeight: AdminTouchTarget.minimum)
+            .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum, alignment: .leading)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(isUnavailable
-            ? "\(title), \(Language.get("WantedPets_Count_Unavailable", alter: "العدد غير متاح"))"
-            : "\(count) \(title)")
+        .buttonStyle(WantedPetsPressStyle())
+        .disabled(isOverviewUnavailable)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Language.get("WantedPets_Header_Awaiting_Contact", alter: "بانتظار التواصل"))
+        .accessibilityValue(isOverviewUnavailable
+            ? Language.get("WantedPets_Count_Unavailable", alter: "العدد غير متاح")
+            : overviewCount(service.waitingCount))
+        .accessibilityAddTraits(service.selectedFilter == .waiting ? .isSelected : [])
+        .accessibilityHint(Language.get("WantedPets_Filter_Hint", alter: "عرض هذه الطلبات"))
+    }
+
+    private var waitingCountLabel: some View {
+        Text(overviewCount(service.waitingCount))
+            .font(dynamicTypeSize.isAccessibilitySize
+                  ? AdminType.title
+                  : Font.custom("Beiruti-Bold", size: 64, relativeTo: .largeTitle))
+            .monospacedDigit()
+            .foregroundStyle(AdminSurface.primary)
+            .contentTransition(reduceMotion ? .identity : .numericText())
+    }
+
+    private func statusMetric(count: Int, title: String, symbol: String,
+                              tint: Color, filter: WantedPetsFilter) -> some View {
+        let metricLayout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: AdminSpacing.xs))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: AdminSpacing.sm))
+
+        return Button {
+            selectFilter(filter)
+        } label: {
+            metricLayout {
+                VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                    Image(systemName: symbol)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(tint)
+                        .accessibilityHidden(true)
+                    Text(title)
+                        .font(AdminType.footnote)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Spacer(minLength: 0)
+                }
+                Text(overviewCount(count))
+                    .font(AdminType.title2)
+                    .monospacedDigit()
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .contentTransition(reduceMotion ? .identity : .numericText())
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .padding(.horizontal, AdminSpacing.md)
+            .padding(.vertical, AdminSpacing.sm)
+            .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(WantedPetsPressStyle())
+        .disabled(isOverviewUnavailable)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(isOverviewUnavailable
+            ? Language.get("WantedPets_Count_Unavailable", alter: "العدد غير متاح")
+            : overviewCount(count))
+        .accessibilityAddTraits(service.selectedFilter == filter ? .isSelected : [])
         .accessibilityHint(Language.get("WantedPets_Filter_Hint", alter: "عرض هذه الطلبات"))
     }
 
     // MARK: - Search and filters
 
+    private var discoveryControls: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.md) {
+            searchField
+            filterRail
+        }
+    }
+
     private var searchField: some View {
-        HStack(spacing: AdminSpacing.md) {
+        HStack(spacing: AdminSpacing.sm) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 18, weight: .medium))
-                .foregroundStyle(AdminSurface.secondaryText)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(isSearchFocused ? AdminSurface.primary : AdminSurface.secondaryText)
+                .frame(width: 28)
                 .accessibilityHidden(true)
 
-            TextField(Language.get("WantedPets_Search_Placeholder", alter: "بحث بالاسم، الهاتف، الفئة..."),
-                      text: $service.searchQuery)
-                .font(AdminType.body)
-                .foregroundStyle(AdminSurface.primaryText)
-                .multilineTextAlignment(.leading)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .submitLabel(.search)
-                .focused($isSearchFocused)
-                .accessibilityLabel(Language.get("WantedPets_Search_Placeholder", alter: "بحث بالاسم، الهاتف، الفئة..."))
+            TextField(Language.get("WantedPets_Header_Search", alter: "الاسم، الهاتف، أو الحيوان"),
+                      text: $service.searchQuery,
+                      prompt: Text(Language.get("WantedPets_Header_Search", alter: "الاسم، الهاتف، أو الحيوان"))
+                        .foregroundColor(AdminSurface.secondaryText))
+            .font(AdminType.body)
+            .foregroundStyle(AdminSurface.primaryText)
+            .multilineTextAlignment(.leading)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .submitLabel(.search)
+            .focused($isSearchFocused)
+            .onSubmit { isSearchFocused = false }
+            .padding(.vertical, AdminSpacing.md)
+            .accessibilityLabel(Language.get("WantedPets_Search_Placeholder", alter: "بحث بالاسم، الهاتف، الفئة..."))
+            .accessibilityIdentifier("wantedPets.search")
 
             if !service.searchQuery.isEmpty {
                 Button {
                     service.searchQuery = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18, weight: .medium))
                         .foregroundStyle(AdminSurface.secondaryText)
                         .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
                 }
@@ -361,39 +466,69 @@ public struct WantedPetsHomeView: View {
         }
         .padding(.leading, AdminSpacing.base)
         .padding(.trailing, service.searchQuery.isEmpty ? AdminSpacing.base : AdminSpacing.xs)
-        .frame(minHeight: 54)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+        .frame(minHeight: 56)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
-                .strokeBorder(AdminSurface.hairline, lineWidth: 1)
+            RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous)
+                .strokeBorder(isSearchFocused ? AdminSurface.primary : AdminSurface.hairline,
+                              lineWidth: isSearchFocused ? AdminStroke.medium : AdminStroke.hairline)
+                .allowsHitTesting(false)
         }
+        .animation(AdminAnimation.motion(AdminAnimation.fast, reduceMotion: reduceMotion), value: isSearchFocused)
     }
 
     private var filterRail: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: AdminSpacing.lg) {
+                HStack(spacing: AdminSpacing.sm) {
                     ForEach(WantedPetsFilter.allCases) { filter in
-                        let isSelected = service.selectedFilter == filter
-                        Button {
-                            selectFilter(filter)
-                        } label: {
-                            Text(filter.title)
-                                .font(isSelected ? AdminType.subheadlineBold : AdminType.subheadline)
-                                .foregroundStyle(isSelected ? AdminSurface.primary : AdminSurface.secondaryText)
-                                .lineLimit(1)
-                                .frame(minHeight: AdminTouchTarget.minimum)
-                                .overlay(alignment: .bottom) {
-                                    Capsule()
-                                        .fill(isSelected ? AdminSurface.primary : .clear)
-                                        .frame(height: 3)
+                        HStack(spacing: AdminSpacing.sm) {
+                            let isSelected = service.selectedFilter == filter
+                            Button {
+                                selectFilter(filter)
+                            } label: {
+                                HStack(spacing: AdminSpacing.xs) {
+                                    if filter == .byPet {
+                                        Image(systemName: "pawprint.fill")
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .accessibilityHidden(true)
+                                    }
+                                    Text(filter.title)
+                                        .font(AdminType.subheadlineBold)
+                                        .lineLimit(1)
+                                        .fixedSize(horizontal: true, vertical: false)
                                 }
+                                .padding(.horizontal, AdminSpacing.base)
+                                .padding(.vertical, AdminSpacing.sm)
+                                .frame(minHeight: AdminTouchTarget.minimum)
+                                .foregroundStyle(isSelected ? AdminSurface.surface : AdminSurface.primaryText)
+                                .background(isSelected ? AdminSurface.primaryText : AdminSurface.surface, in: Capsule())
+                                .overlay {
+                                    Capsule()
+                                        .strokeBorder(isSelected ? Color.clear : AdminSurface.hairline,
+                                                      lineWidth: AdminStroke.hairline)
+                                }
+                                .contentShape(Capsule())
+                            }
+                            .buttonStyle(WantedPetsPressStyle())
+                            .accessibilityLabel(filter.title)
+                            .accessibilityAddTraits(isSelected ? .isSelected : [])
+                            .accessibilityIdentifier("wantedPets.filter.\(filter.id)")
+
+                            if filter == .byPet {
+                                Capsule()
+                                    .fill(AdminSurface.hairline)
+                                    .frame(width: 1, height: 20)
+                                    .padding(.horizontal, AdminSpacing.xs)
+                                    .accessibilityHidden(true)
+                            }
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(isSelected ? .isSelected : [])
                         .id(filter.id)
                     }
                 }
+            }
+            .onAppear {
+                proxy.scrollTo(service.selectedFilter.id, anchor: .center)
             }
             .onChange(of: service.selectedFilter) { _, filter in
                 withAnimation(AdminAnimation.motion(.easeOut(duration: 0.2), reduceMotion: reduceMotion)) {
@@ -405,9 +540,9 @@ public struct WantedPetsHomeView: View {
     }
 
     private func selectFilter(_ filter: WantedPetsFilter) {
+        isSearchFocused = false
         guard service.selectedFilter != filter else { return }
         UISelectionFeedbackGenerator().selectionChanged()
-        isSearchFocused = false
         withAnimation(AdminAnimation.motion(AdminAnimation.filterSwap, reduceMotion: reduceMotion)) {
             service.selectedFilter = filter
         }
@@ -1072,7 +1207,7 @@ public struct WantedPetsHomeView: View {
     }
 }
 
-private extension View {
+fileprivate extension View {
     func wantedPetsRowChrome() -> some View {
         listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
