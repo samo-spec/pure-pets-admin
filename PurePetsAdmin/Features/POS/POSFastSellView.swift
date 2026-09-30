@@ -86,6 +86,13 @@ private enum POSFastSellSpace {
     static let root = "pos.fastsell.root"
 }
 
+private struct POSTransactionContextHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 /// Single money authority for the POS screen.
 ///
 /// Every displayed and submitted amount must agree with the server, because
@@ -2832,21 +2839,14 @@ private struct POSHeaderIcon: View {
     enum Kind { case back, down, plus, reservation, search, scan, filter }
     let kind: Kind
     let size: CGFloat
-    let mirrored: Bool
-    @Environment(\.layoutDirection) private var layoutDirection
 
-    init(_ kind: Kind, size: CGFloat, mirrored: Bool = false) {
+    init(_ kind: Kind, size: CGFloat) {
         self.kind = kind
         self.size = size
-        self.mirrored = mirrored
-    }
-
-    private var isRTL: Bool {
-        mirrored || layoutDirection == .rightToLeft || Language.isRTL()
     }
 
     var body: some View {
-        Glyph(kind: kind, isRTL: isRTL)
+        Glyph(kind: kind)
             .stroke(style: StrokeStyle(lineWidth: size * 1.8 / 24, lineCap: .round, lineJoin: .round))
             .frame(width: size, height: size)
             .accessibilityHidden(true)
@@ -2854,7 +2854,6 @@ private struct POSHeaderIcon: View {
 
     private struct Glyph: Shape {
         let kind: Kind
-        let isRTL: Bool
 
         func path(in rect: CGRect) -> Path {
             var path = Path()
@@ -2867,11 +2866,7 @@ private struct POSHeaderIcon: View {
             }
             switch kind {
             case .back:
-                if isRTL {
-                    line([(9, 18), (15, 12), (9, 6)])
-                } else {
-                    line([(15, 18), (9, 12), (15, 6)])
-                }
+                line([(15, 18), (9, 12), (15, 6)])
             case .down:
                 line([(6, 9), (12, 15), (18, 9)])
             case .plus:
@@ -2941,6 +2936,13 @@ struct AdminPOSFastSellView: View {
     @State private var animalSearchQuery = ""
     @State private var quantityEditingItem: POSCartItem? = nil
 
+    // Scroll header pinning & collapse choreography
+    @State private var isTransactionContextCollapsed = false
+    @State private var lastCatalogDragY: CGFloat = 0
+    @State private var catalogDirectionalTravel: CGFloat = 0
+    @State private var transactionContextHeight: CGFloat?
+    @State private var isCatalogDragging = false
+
     // Fly-to-cart choreography
     @State private var flyPayload: POSFlyPayload?
     @State private var flyProgress: CGFloat = 0
@@ -2961,6 +2963,20 @@ struct AdminPOSFastSellView: View {
 
     var body: some View {
         posContent
+            .onChange(of: isSearchFocused) { focused in
+                if focused && isTransactionContextCollapsed {
+                    withAnimation(AdminAnimation.motion(.spring(response: 0.35, dampingFraction: 0.82), reduceMotion: reduceMotion)) {
+                        isTransactionContextCollapsed = false
+                    }
+                }
+            }
+            .onChange(of: viewModel.catalogFilter) { _ in
+                if isTransactionContextCollapsed {
+                    withAnimation(AdminAnimation.motion(.spring(response: 0.35, dampingFraction: 0.82), reduceMotion: reduceMotion)) {
+                        isTransactionContextCollapsed = false
+                    }
+                }
+            }
             .enableSwipeToPop(isEnabled: !viewModel.isCheckoutBusy) {
                 dismissKeyboard()
                 guard !viewModel.isCheckoutBusy else {
@@ -2990,6 +3006,8 @@ struct AdminPOSFastSellView: View {
                 let topClearance = max(0, PPStatusBarHelper.statusBarHeight - geometry.frame(in: .global).minY)
                 VStack(spacing: 0) {
                     commandDeck(availableWidth: geometry.size.width, availableHeight: geometry.size.height - topClearance)
+
+                    commandCatalogSeparator
 
                     // `catalogGrid` owns its own empty presentation, and
                     // `commandStatusView` owns the loading/error banners, so the
@@ -3365,6 +3383,36 @@ struct AdminPOSFastSellView: View {
             .accessibilityHidden(true)
     }
 
+    private var contextDisclosureAnimation: Animation? {
+        reduceMotion ? nil : .interactiveSpring(response: 0.38, dampingFraction: 1)
+    }
+
+    /// A feathered paper edge: one fine rule dissolves toward both ends.
+    private var commandCatalogSeparator: some View {
+        ZStack {
+            LinearGradient(
+                colors: [commandPaper, AdminSurface.background],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            Rectangle()
+                .fill(LinearGradient(
+                    colors: [.clear, commandSeparator, commandMuted.opacity(0.35), commandSeparator, .clear],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                ))
+                .frame(height: AdminStroke.thin)
+                .padding(.horizontal, 24)
+        }
+        .frame(height: 12)
+        .opacity(isTransactionContextCollapsed ? 0 : 1)
+        .frame(height: isTransactionContextCollapsed ? 0 : 12, alignment: .top)
+        .clipped()
+        .animation(contextDisclosureAnimation, value: isTransactionContextCollapsed)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
     private func commandDeck(availableWidth: CGFloat, availableHeight: CGFloat) -> some View {
         Group {
             if usesExpandedHeaderLayout {
@@ -3379,12 +3427,17 @@ struct AdminPOSFastSellView: View {
             }
         }
         .background(commandPaper)
+        .animation(contextDisclosureAnimation, value: isTransactionContextCollapsed)
+        .zIndex(10)
         .disabled(viewModel.isCheckoutBusy)
     }
 
     private func commandDeckContent(availableWidth: CGFloat) -> some View {
         VStack(spacing: 0) {
             commandHeaderView
+                .frame(maxWidth: .infinity)
+                .background(commandPaper)
+                .zIndex(2)
             VStack(spacing: 0) {
                 if isBranchPickerVisible {
                     PPAdminBranchSwitcherBar(style: .compact, horizontalPadding: 0)
@@ -3392,9 +3445,35 @@ struct AdminPOSFastSellView: View {
                         .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
                 }
                 transactionContextView(availableWidth: availableWidth - 32)
-                    .padding(.bottom, 16)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: POSTransactionContextHeightKey.self,
+                                value: proxy.size.height
+                            )
+                        }
+                    }
+                    .overlay(commandRule, alignment: .top)
+                    .overlay(commandRule, alignment: .bottom)
+                    .opacity(isTransactionContextCollapsed ? 0 : 1)
+                    // Explicit measured endpoints interpolate continuously; an
+                    // intrinsic (nil) endpoint can snap during scroll relayout.
+                    .frame(height: isTransactionContextCollapsed ? 0 : transactionContextHeight, alignment: .top)
+                    .clipped()
+                    .allowsHitTesting(!isTransactionContextCollapsed)
+                    .accessibilityHidden(isTransactionContextCollapsed)
+                    .padding(.bottom, isTransactionContextCollapsed ? 0 : 16)
+                    .onPreferenceChange(POSTransactionContextHeightKey.self) { height in
+                        guard height > 0, abs(height - (transactionContextHeight ?? 0)) > 0.5 else { return }
+                        var transaction = Transaction()
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) { transactionContextHeight = height }
+                    }
+                    .zIndex(1)
                 omniSearchAndFilterBar
                     .padding(.bottom, 14)
+                    .zIndex(1)
                 commandStatusView
             }
             .padding(.horizontal, 16)
@@ -3435,7 +3514,8 @@ struct AdminPOSFastSellView: View {
                 dismiss()
             }
         } label: {
-            POSHeaderIcon(.back, size: 20, mirrored: Language.isRTL())
+            Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
+                .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(commandInk)
                 .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
                 .contentShape(Rectangle())
@@ -3510,6 +3590,7 @@ struct AdminPOSFastSellView: View {
         } label: {
             VStack(spacing: 4) {
                 POSHeaderIcon(.reservation, size: 20)
+                    .environment(\.layoutDirection, .leftToRight)
                 Text(Language.get("POS_Header_Reservations", alter: nil))
                     .font(commandFieldLabelFont)
                     .fixedSize(horizontal: false, vertical: true)
@@ -3555,8 +3636,6 @@ struct AdminPOSFastSellView: View {
                 }
             }
         }
-        .overlay(commandRule, alignment: .top)
-        .overlay(commandRule, alignment: .bottom)
     }
 
     private var sellTypeMenuButton: some View {
@@ -3993,6 +4072,13 @@ struct AdminPOSFastSellView: View {
             .onTapGesture {
                 dismissKeyboard()
             }
+            .onAppear {
+                if isTransactionContextCollapsed {
+                    withAnimation(AdminAnimation.motion(.spring(response: 0.35, dampingFraction: 0.82), reduceMotion: reduceMotion)) {
+                        isTransactionContextCollapsed = false
+                    }
+                }
+            }
         } else {
             ScrollView {
                 LazyVGrid(
@@ -4015,9 +4101,21 @@ struct AdminPOSFastSellView: View {
             }
             .posScrollDismissesKeyboardCompat()
             .simultaneousGesture(
-                DragGesture(minimumDistance: 8)
-                    .onChanged { _ in
-                        dismissKeyboard()
+                DragGesture(minimumDistance: 8, coordinateSpace: .global)
+                    .onChanged { value in
+                        if !isCatalogDragging {
+                            isCatalogDragging = true
+                            lastCatalogDragY = 0
+                            catalogDirectionalTravel = 0
+                            dismissKeyboard()
+                        }
+                        guard abs(value.translation.height) > abs(value.translation.width) else { return }
+                        handleCatalogDrag(value.translation.height)
+                    }
+                    .onEnded { _ in
+                        isCatalogDragging = false
+                        lastCatalogDragY = 0
+                        catalogDirectionalTravel = 0
                     }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -4034,6 +4132,28 @@ struct AdminPOSFastSellView: View {
                 GridItem(.flexible(), spacing: 8)
             ]
         }
+    }
+
+    // MARK: - Scroll Header Pinning & Apex Choreography
+
+    private func handleCatalogDrag(_ translationY: CGFloat) {
+        let delta = translationY - lastCatalogDragY
+        lastCatalogDragY = translationY
+        guard delta != 0 else { return }
+
+        // Accumulate slow movement too; reverse immediately when the finger
+        // changes direction. Global gesture coordinates ignore header resizing.
+        if (delta > 0 && catalogDirectionalTravel < 0)
+            || (delta < 0 && catalogDirectionalTravel > 0) {
+            catalogDirectionalTravel = delta
+        } else {
+            catalogDirectionalTravel += delta
+        }
+        guard abs(catalogDirectionalTravel) >= 18 else { return }
+        let shouldCollapse = catalogDirectionalTravel < 0
+        guard shouldCollapse != isTransactionContextCollapsed else { return }
+        // Animate only the header and separator, never the live product grid.
+        isTransactionContextCollapsed = shouldCollapse
     }
 
     // MARK: - Interaction
@@ -4262,10 +4382,29 @@ private struct POSApexFlightDeck: View {
     @State private var isCustomTender: Bool = false
     @State private var showsCustomCashSheet: Bool = false
     @State private var isShowingScanner: Bool = false
+    @State private var isCartExpanded: Bool = false
 
     private var hasItems: Bool { !viewModel.cartItems.isEmpty }
     private var emeraldColor: Color { Color(red: 0.06, green: 0.72, blue: 0.51) }
     private var sapphireColor: Color { Color(red: 0.14, green: 0.54, blue: 0.98) }
+
+    private func localizedCartHiddenText(_ count: Int) -> String {
+        if Language.isRTL() {
+            if count == 1 {
+                return Language.get("POS_Cart_OneMoreItem", alter: "+1 عنصر آخر")
+            } else if count == 2 {
+                return Language.get("POS_Cart_TwoMoreItems", alter: "+2 عنصران آخران")
+            } else if count <= 10 {
+                return String(format: Language.get("POS_Cart_FewMoreItems_Format", alter: "+%d عناصر أخرى"), count)
+            } else {
+                return String(format: Language.get("POS_Cart_ManyMoreItems_Format", alter: "+%d عنصرًا آخر"), count)
+            }
+        } else {
+            return count == 1
+                ? Language.get("POS_Cart_OneMoreItem_EN", alter: "+1 more item")
+                : String(format: Language.get("POS_Cart_MoreItems_Format_EN", alter: "+%d more items"), count)
+        }
+    }
 
     private func methodAccentColor(_ methodKey: String) -> Color {
         switch methodKey {
@@ -4427,6 +4566,13 @@ private struct POSApexFlightDeck: View {
                 isCustomTender = false
             }
         }
+        .onChange(of: viewModel.cartItems.count) { newCount in
+            if newCount <= 1 && isCartExpanded {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                    isCartExpanded = false
+                }
+            }
+        }
     }
 
     // MARK: - Cart Peek Drawer
@@ -4434,20 +4580,7 @@ private struct POSApexFlightDeck: View {
     private var cartPeekDrawer: some View {
         VStack(spacing: 6) {
             HStack(alignment: .center, spacing: 8) {
-                HStack(spacing: 5) {
-                    Image(systemName: "cart.fill")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(AdminSurface.primary)
-
-                    Text("\(viewModel.cartItemCount) \(Language.get("POS_Items", alter: "عناصر"))")
-                        .font(AdminType.captionBold)
-                        .foregroundColor(AdminSurface.primaryText)
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(AdminSurface.primary.opacity(0.12), in: Capsule(style: .continuous))
-
-                // Discount Indicator & Trigger
+                // 1. Discount Indicator & Trigger (Moved to leading anchor where the badge was)
                 if viewModel.discountAmount > 0 {
                     HStack(spacing: 4) {
                         Button(action: onOpenDiscount) {
@@ -4479,7 +4612,7 @@ private struct POSApexFlightDeck: View {
                         HStack(spacing: 4) {
                             Image(systemName: "tag")
                                 .font(.system(size: 10, weight: .semibold))
-                            Text(Language.get("POS_Discount", alter: "خصم"))
+                            Text(Language.get("POS_Discount", alter: "الخصم"))
                                 .font(AdminType.caption2Bold)
                         }
                         .foregroundColor(AdminSurface.secondaryText)
@@ -4488,6 +4621,43 @@ private struct POSApexFlightDeck: View {
                         .background(AdminSurface.control, in: Capsule(style: .continuous))
                     }
                     .accessibilityLabel(Language.get("POS_AddDiscount", alter: "إضافة خصم"))
+                }
+
+                // 2. Collapse / Expand Button (Moved to top row)
+                if viewModel.cartItems.count > 1 {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.spring(response: 0.36, dampingFraction: 0.82)) {
+                            isCartExpanded.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: isCartExpanded ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(AdminSurface.primary)
+
+                            Text(isCartExpanded
+                                 ? Language.get("POS_Cart_Collapse", alter: "طي عناصر السلة")
+                                 : localizedCartHiddenText(max(0, viewModel.cartItems.count - 1)))
+                                .font(AdminType.caption2Bold)
+                                .foregroundColor(isCartExpanded ? AdminSurface.secondaryText : AdminSurface.primaryText)
+
+                            Image(systemName: isCartExpanded ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(AdminSurface.primary)
+                        }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3.5)
+                        .background(AdminSurface.control, in: Capsule(style: .continuous))
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(AdminSurface.hairline, lineWidth: 0.5)
+                        )
+                    }
+                    .buttonStyle(POSVariantPressStyle())
+                    .accessibilityLabel(isCartExpanded
+                                        ? Language.get("POS_Cart_Collapse", alter: "طي عناصر السلة")
+                                        : localizedCartHiddenText(max(0, viewModel.cartItems.count - 1)))
                 }
 
                 Spacer()
@@ -4522,6 +4692,7 @@ private struct POSApexFlightDeck: View {
             POSStackedCartDeck(
                 items: viewModel.cartItems,
                 currency: currency,
+                isExpanded: $isCartExpanded,
                 onIncrease: { item in
                     if item.isIndividuallyTracked {
                         onOpenUnitPicker(item.accessory)
@@ -8296,6 +8467,7 @@ private struct POSCartCardRow: View {
 private struct POSStackedCartDeck: View {
     let items: [POSCartItem]
     let currency: (Double) -> String
+    @Binding var isExpanded: Bool
     let onIncrease: (POSCartItem) -> Void
     let onDecrease: (POSCartItem) -> Void
     let onRemove: (POSCartItem) -> Void
@@ -8304,7 +8476,6 @@ private struct POSStackedCartDeck: View {
     var onTapQuantity: ((POSCartItem) -> Void)? = nil
     var onOpenSellUnitPicker: ((POSCartItem) -> Void)? = nil
 
-    @State private var isExpanded: Bool = false
     @State private var dragOffset: CGFloat = 0
     @Environment(\.colorScheme) private var colorScheme
 
@@ -8425,59 +8596,6 @@ private struct POSStackedCartDeck: View {
             }
             .padding(.horizontal, 14)
             .padding(.top, displayItems.count >= 3 ? 15 : (displayItems.count == 2 ? 8 : 2))
-
-            // Expandable Trailer Handle (when more than 1 item)
-            if hiddenCount > 0 {
-                HStack(spacing: 5) {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(AdminSurface.primary)
-
-                    Text(localizedHiddenText(hiddenCount))
-                        .font(AdminType.caption2Bold)
-                        .foregroundColor(AdminSurface.primaryText)
-
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(AdminSurface.primary)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4.5)
-                .background(AdminSurface.control, in: Capsule(style: .continuous))
-                .overlay(
-                    Capsule(style: .continuous)
-                        .stroke(AdminSurface.hairline, lineWidth: 0.5)
-                )
-                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.25 : 0.05), radius: 3, x: 0, y: 1)
-                .contentShape(Capsule(style: .continuous))
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(localizedHiddenText(hiddenCount))
-                .accessibilityHint(Language.get("POS_Cart_Expand_Hint", alter: "اضغط مرتين لإظهار قائمة عناصر السلة بالكامل"))
-                .onTapGesture {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    withAnimation(.spring(response: 0.36, dampingFraction: 0.82)) {
-                        isExpanded = true
-                    }
-                }
-                .gesture(
-                    DragGesture(minimumDistance: 8)
-                        .onChanged { value in
-                            if value.translation.height > 0 {
-                                dragOffset = value.translation.height
-                            }
-                        }
-                        .onEnded { value in
-                            if value.translation.height > 18 {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                withAnimation(.spring(response: 0.36, dampingFraction: 0.82)) {
-                                    isExpanded = true
-                                }
-                            }
-                            dragOffset = 0
-                        }
-                )
-                .padding(.top, 2)
-            }
         }
     }
 
@@ -8524,50 +8642,6 @@ private struct POSStackedCartDeck: View {
                 .padding(.vertical, 2)
             }
             .frame(maxHeight: maxDeckHeight)
-
-            // Collapse Handle
-            HStack(spacing: 5) {
-                Image(systemName: "chevron.up")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(AdminSurface.primary)
-
-                Text(Language.get("POS_Cart_Collapse", alter: "طي عناصر السلة"))
-                    .font(AdminType.caption2Bold)
-                    .foregroundColor(AdminSurface.secondaryText)
-
-                Image(systemName: "chevron.up")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(AdminSurface.primary)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 4)
-            .background(AdminSurface.control, in: Capsule(style: .continuous))
-            .overlay(
-                Capsule(style: .continuous)
-                    .stroke(AdminSurface.hairline, lineWidth: 0.5)
-            )
-            .contentShape(Capsule(style: .continuous))
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(Language.get("POS_Cart_Collapse", alter: "طي عناصر السلة"))
-            .accessibilityHint(Language.get("POS_Cart_Collapse_Hint", alter: "اضغط مرتين للعودة لعرض السلة المكدس"))
-            .onTapGesture {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                withAnimation(.spring(response: 0.36, dampingFraction: 0.82)) {
-                    isExpanded = false
-                }
-            }
-            .gesture(
-                DragGesture(minimumDistance: 8)
-                    .onEnded { value in
-                        if value.translation.height < -18 {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            withAnimation(.spring(response: 0.36, dampingFraction: 0.82)) {
-                                isExpanded = false
-                            }
-                        }
-                    }
-            )
-            .padding(.bottom, 2)
         }
     }
 }

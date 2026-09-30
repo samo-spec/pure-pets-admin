@@ -1189,7 +1189,8 @@ struct POSBarcodeScannerScreen: View {
     let onResult: (String) -> Void
     let onCancel: () -> Void
 
-    @Environment(\.scenePhase) private var scenePhase
+    // This screen is also embedded by UIKit, which owns app activation.
+    @State private var applicationIsActive = UIApplication.shared.applicationState == .active
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var phase: POSBarcodeScannerPhase
     @State private var cameraState = POSBarcodeCameraState()
@@ -1214,7 +1215,7 @@ struct POSBarcodeScannerScreen: View {
             if phase == .ready {
                 POSBarcodeCameraView(
                     onResult: { code in
-                        guard !showingManualEntry, scenePhase == .active else { return }
+                        guard !showingManualEntry, applicationIsActive else { return }
                         finish(code)
                     },
                     onFailure: {
@@ -1223,7 +1224,7 @@ struct POSBarcodeScannerScreen: View {
                         phase = .unavailable
                     },
                     scanRegion: BarcodeScanGeometry.normalizedAperture(apertureFrame, in: cameraFrame),
-                    isActive: isVisible && scenePhase == .active && !showingManualEntry && !hasFinished,
+                    isActive: isVisible && applicationIsActive && !showingManualEntry && !hasFinished,
                     isTorchRequested: torchRequested,
                     onStateChange: { state in
                         guard !hasFinished else { return }
@@ -1280,18 +1281,20 @@ struct POSBarcodeScannerScreen: View {
         .onPreferenceChange(BarcodeCameraPreferenceKey.self) { cameraFrame = $0 }
         .onAppear {
             isVisible = true
+            applicationIsActive = UIApplication.shared.applicationState == .active
             refreshAuthorization()
         }
         .onDisappear {
             isVisible = false
             torchRequested = false
         }
-        .onChange(of: scenePhase) { _, value in
-            if value == .active {
-                refreshAuthorization()
-            } else {
-                torchRequested = false
-            }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            applicationIsActive = true
+            refreshAuthorization()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+            applicationIsActive = false
+            torchRequested = false
         }
         .onChange(of: showingManualEntry) { _, _ in torchRequested = false }
         .onChange(of: cameraState.status) { old, new in
@@ -2038,6 +2041,7 @@ final class ScannerViewController: UIViewController {
     private var captureRequested = true
     private var torchRequested = false
     private var isVisible = false
+    private var startupTimeout: DispatchWorkItem?
     private var isDisposed = false
     private var lastRunningRequest: Bool?
 
@@ -2056,6 +2060,7 @@ final class ScannerViewController: UIViewController {
         installObservers()
         updatePreviewGeometry()
         captureDriver.configure()
+        reconcileCapture()
     }
 
     override func viewDidLayoutSubviews() {
@@ -2066,6 +2071,14 @@ final class ScannerViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         isVisible = true
+        updatePreviewGeometry()
+        reconcileCapture()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        isVisible = true
+        updatePreviewGeometry()
         reconcileCapture()
     }
 
@@ -2078,19 +2091,19 @@ final class ScannerViewController: UIViewController {
 
     func setCaptureActive(_ active: Bool) {
         captureRequested = active
-        if isViewLoaded { reconcileCapture() }
+        reconcileCapture()
     }
 
     func setTorchRequested(_ requested: Bool) {
         guard torchRequested != requested else { return }
         torchRequested = requested
-        if isViewLoaded { captureDriver.setTorchRequested(requested) }
+        captureDriver.setTorchRequested(requested)
     }
 
     func shutdown() {
         guard !isDisposed else { return }
         isDisposed = true
-        isVisible = false
+        cancelStartupTimeout()
         onFailure = nil
         onStateChange = nil
         captureDriver.shutdown()
@@ -2102,7 +2115,31 @@ final class ScannerViewController: UIViewController {
         let shouldRun = captureRequested && isVisible && !isDisposed && UIApplication.shared.applicationState == .active
         guard lastRunningRequest != shouldRun else { return }
         lastRunningRequest = shouldRun
+        if shouldRun {
+            state.status = .starting
+            armStartupTimeout()
+        } else {
+            cancelStartupTimeout()
+        }
         captureDriver.setRunning(shouldRun)
+    }
+
+    private func cancelStartupTimeout() {
+        startupTimeout?.cancel()
+        startupTimeout = nil
+    }
+
+    private func armStartupTimeout() {
+        cancelStartupTimeout()
+        let timeout = DispatchWorkItem { [weak self] in
+            guard let self, !self.isDisposed, self.isVisible,
+                  self.captureRequested, self.lastRunningRequest == true,
+                  self.state.status == .starting else { return }
+            self.handleCaptureEvent(.failed)
+        }
+        startupTimeout = timeout
+        // Independent of the serial capture queue: startRunning may be blocked.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 12, execute: timeout)
     }
 
     private func updatePreviewGeometry() {
@@ -2110,17 +2147,12 @@ final class ScannerViewController: UIViewController {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         layer.frame = view.bounds
-        if let connection = layer.connection,
-           let orientation = view.window?.windowScene?.interfaceOrientation {
-            let angle: CGFloat
-            switch orientation {
-            case .portrait: angle = 90
-            case .portraitUpsideDown: angle = 270
-            case .landscapeLeft: angle = 180
-            case .landscapeRight: angle = 0
-            default: angle = 90
+        if let connection = layer.connection {
+            if #available(iOS 17.0, *), connection.isVideoRotationAngleSupported(90) {
+                connection.videoRotationAngle = 90
+            } else if connection.isVideoOrientationSupported {
+                connection.videoOrientation = .portrait
             }
-            if connection.isVideoRotationAngleSupported(angle) { connection.videoRotationAngle = angle }
         }
         CATransaction.commit()
 
@@ -2149,14 +2181,19 @@ final class ScannerViewController: UIViewController {
             updatePreviewGeometry()
             captureDriver.setTorchRequested(torchRequested)
             return
-        case .starting: state.status = .starting
+        case .starting:
+            state.status = .starting
+            if lastRunningRequest == true { armStartupTimeout() }
         case .reading:
+            cancelStartupTimeout()
             updatePreviewGeometry()
             state.status = .reading
         case .interrupted:
+            cancelStartupTimeout()
             state.status = .interrupted
             torchRequested = false
         case .failed:
+            cancelStartupTimeout()
             state.status = .unavailable
             onStateChange?(state)
             onFailure?()
@@ -2165,7 +2202,9 @@ final class ScannerViewController: UIViewController {
             state.isTorchAvailable = available
             state.isTorchOn = isOn
         }
-        if isVisible, captureRequested { onStateChange?(state) }
+        if captureRequested {
+            onStateChange?(state)
+        }
     }
 
     private func installObservers() {
@@ -2183,6 +2222,7 @@ final class ScannerViewController: UIViewController {
         })
         notifications.tokens.append(center.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
+                self?.cancelStartupTimeout()
                 self?.lastRunningRequest = false
                 self?.torchRequested = false
                 self?.captureDriver.setRunning(false)

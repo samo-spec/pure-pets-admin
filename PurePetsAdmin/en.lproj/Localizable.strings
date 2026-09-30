@@ -4903,6 +4903,8 @@
 "POS_Customer_TabCreate" = "Quick New Customer";
 "POS_Customer_SearchPlaceholder" = "Search by name or phone…";
 "POS_Customer_RecentWalkIns" = "Recent Customers";
+"POS_Customer_Syncing" = "Verifying with Firestore...";
+"POS_Customer_CacheSynced" = "Synced with Firestore & Cached";
 "POS_Customer_SelectedBadge" = "Currently Selected";
 "POS_Customer_NoMatchTitle" = "No matching customers";
 "POS_Customer_NoMatchSub" = "No customer matched “%@”.";

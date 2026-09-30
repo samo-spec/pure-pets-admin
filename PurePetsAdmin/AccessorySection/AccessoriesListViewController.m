@@ -61,6 +61,23 @@
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     
+    if (@available(iOS 13.0, *)) {
+        UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
+        [appearance configureWithTransparentBackground];
+        appearance.backgroundColor = [UIColor clearColor];
+        appearance.shadowColor = [UIColor clearColor];
+        appearance.backgroundImage = [[UIImage alloc] init];
+        appearance.shadowImage = [[UIImage alloc] init];
+        self.navigationController.navigationBar.standardAppearance = appearance;
+        self.navigationController.navigationBar.compactAppearance = appearance;
+        self.navigationController.navigationBar.scrollEdgeAppearance = appearance;
+        if (@available(iOS 15.0, *)) {
+            self.navigationController.navigationBar.compactScrollEdgeAppearance = appearance;
+        }
+    }
+    self.navigationController.navigationBar.backgroundColor = [UIColor clearColor];
+    self.navigationController.navigationBar.translucent = YES;
+    
     UIButton *plus = [self pp_ButtonWithSystemName:@"plus" action:@selector(addAccessory)];
     NSString *title = kLang(@"Manage Accessories");
     if (self.listKind == AccessTypeFood) {

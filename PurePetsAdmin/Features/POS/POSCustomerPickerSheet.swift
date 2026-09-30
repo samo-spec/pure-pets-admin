@@ -13,7 +13,7 @@ import FirebaseFunctions
 
 // MARK: - Customer Model
 
-struct POSCustomerRecord: Identifiable, Hashable, Sendable {
+struct POSCustomerRecord: Identifiable, Hashable, Sendable, Codable {
     let id: String
     let source: String
     let name: String
@@ -25,6 +25,10 @@ struct POSCustomerRecord: Identifiable, Hashable, Sendable {
     let createdAt: String?
     let note: String?
     let isLinkedAppUser: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, source, name, phone, phoneLookup, email, branchId, status, createdAt, note, isLinkedAppUser
+    }
 
     init(
         id: String,
@@ -50,6 +54,36 @@ struct POSCustomerRecord: Identifiable, Hashable, Sendable {
         self.createdAt = createdAt
         self.note = note
         self.isLinkedAppUser = isLinkedAppUser
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        source = try container.decodeIfPresent(String.self, forKey: .source) ?? "directory"
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        phone = try container.decodeIfPresent(String.self, forKey: .phone) ?? ""
+        phoneLookup = try container.decodeIfPresent(String.self, forKey: .phoneLookup) ?? ""
+        email = try container.decodeIfPresent(String.self, forKey: .email) ?? ""
+        branchId = try container.decodeIfPresent(String.self, forKey: .branchId) ?? ""
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? "active"
+        createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt)
+        note = try container.decodeIfPresent(String.self, forKey: .note)
+        isLinkedAppUser = try container.decodeIfPresent(Bool.self, forKey: .isLinkedAppUser) ?? false
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(source, forKey: .source)
+        try container.encode(name, forKey: .name)
+        try container.encode(phone, forKey: .phone)
+        try container.encode(phoneLookup, forKey: .phoneLookup)
+        try container.encode(email, forKey: .email)
+        try container.encode(branchId, forKey: .branchId)
+        try container.encode(status, forKey: .status)
+        try container.encodeIfPresent(createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(note, forKey: .note)
+        try container.encode(isLinkedAppUser, forKey: .isLinkedAppUser)
     }
 
     var initials: String {
@@ -157,6 +191,168 @@ enum POSCustomerPickerTab: Int, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - POS Customer Cache Store & Firestore Synchronizer
+
+final class POSCustomerCacheStore: ObservableObject, @unchecked Sendable {
+    static let shared = POSCustomerCacheStore()
+
+    private let storageKey = "purepets_pos_customers_directory_cache_v2"
+    private let lastSyncKey = "purepets_pos_customers_cache_last_sync_v2"
+    private let queue = DispatchQueue(label: "com.purepets.admin.pos.customercache", qos: .utility)
+
+    private var inMemoryCache: [POSCustomerRecord] = []
+    private var lastSyncTimestamp: Date? = nil
+
+    private init() {
+        loadFromDisk()
+    }
+
+    func getCachedCustomers() -> [POSCustomerRecord] {
+        queue.sync { inMemoryCache }
+    }
+
+    func getLastSyncDate() -> Date? {
+        queue.sync { lastSyncTimestamp }
+    }
+
+    func upsert(_ customer: POSCustomerRecord) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            var list = self.inMemoryCache
+            if let idx = list.firstIndex(where: { $0.id == customer.id }) {
+                list[idx] = customer
+            } else {
+                list.insert(customer, at: 0)
+            }
+            if list.count > 500 {
+                list = Array(list.prefix(500))
+            }
+            self.inMemoryCache = list
+            self.persistLocked(list)
+        }
+    }
+
+    func mergeAndPersist(incoming: [POSCustomerRecord]) -> [POSCustomerRecord] {
+        queue.sync {
+            var map: [String: POSCustomerRecord] = [:]
+            for c in inMemoryCache {
+                map[c.id] = c
+            }
+            for c in incoming {
+                map[c.id] = c
+            }
+            var result: [POSCustomerRecord] = []
+            var seen = Set<String>()
+            for c in incoming {
+                if !seen.contains(c.id) {
+                    result.append(c)
+                    seen.insert(c.id)
+                }
+            }
+            for c in inMemoryCache {
+                if !seen.contains(c.id) {
+                    if let updated = map[c.id] {
+                        result.append(updated)
+                    }
+                    seen.insert(c.id)
+                }
+            }
+            if result.count > 500 {
+                result = Array(result.prefix(500))
+            }
+            self.inMemoryCache = result
+            self.lastSyncTimestamp = Date()
+            self.persistLocked(result)
+            UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: lastSyncKey)
+            return result
+        }
+    }
+
+    func filterLocally(term: String) -> [POSCustomerRecord] {
+        let cleaned = term.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else {
+            return getCachedCustomers()
+        }
+
+        let normTerm = POSCustomerNormalization.normalize(cleaned)
+        let digitMap: [Character: Character] = [
+            "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4",
+            "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9",
+            "۰": "0", "۱": "1", "۲": "2", "۳": "3", "۴": "4",
+            "۵": "5", "۶": "6", "۷": "7", "۸": "8", "۹": "9"
+        ]
+        let cleanedDigits = cleaned.compactMap { digitMap[$0] ?? $0 }
+            .filter { $0.isNumber }
+            .map { String($0) }
+            .joined()
+
+        let list = getCachedCustomers()
+        return list.filter { customer in
+            if !cleanedDigits.isEmpty {
+                let customerDigits = customer.phone.compactMap { digitMap[$0] ?? $0 }
+                    .filter { $0.isNumber }
+                    .map { String($0) }
+                    .joined()
+                if customerDigits.contains(cleanedDigits) || customer.phoneLookup.contains(cleanedDigits) {
+                    return true
+                }
+            }
+
+            let normName = POSCustomerNormalization.normalize(customer.name)
+            if normName.contains(normTerm) {
+                return true
+            }
+
+            if !customer.email.isEmpty && customer.email.lowercased().contains(cleaned.lowercased()) {
+                return true
+            }
+
+            if let note = customer.note, !note.isEmpty {
+                let normNote = POSCustomerNormalization.normalize(note)
+                if normNote.contains(normTerm) {
+                    return true
+                }
+            }
+
+            return false
+        }
+    }
+
+    private func persistLocked(_ list: [POSCustomerRecord]) {
+        do {
+            let data = try JSONEncoder().encode(list)
+            UserDefaults.standard.set(data, forKey: storageKey)
+        } catch {
+            // Non-fatal
+        }
+    }
+
+    private func loadFromDisk() {
+        if let ts = UserDefaults.standard.object(forKey: lastSyncKey) as? Double {
+            lastSyncTimestamp = Date(timeIntervalSince1970: ts)
+        }
+        guard let data = UserDefaults.standard.data(forKey: storageKey) else { return }
+        do {
+            let decoded = try JSONDecoder().decode([POSCustomerRecord].self, from: data)
+            inMemoryCache = decoded
+        } catch {
+            // Non-fatal fallback
+        }
+    }
+}
+
+enum POSCustomerNormalization {
+    static func normalize(_ text: String) -> String {
+        var s = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        s = s.replacingOccurrences(of: "أ", with: "ا")
+             .replacingOccurrences(of: "إ", with: "ا")
+             .replacingOccurrences(of: "آ", with: "ا")
+             .replacingOccurrences(of: "ة", with: "ه")
+             .replacingOccurrences(of: "ى", with: "ي")
+        return s
+    }
+}
+
 // MARK: - ViewModel
 
 @MainActor
@@ -173,6 +369,11 @@ final class POSCustomerPickerViewModel: ObservableObject {
     @Published fileprivate var attachmentCandidate: POSCustomerAppAccount? = nil
     @Published var isAttachingUser = false
     @Published var attachmentError: String? = nil
+
+    // Cache & Firestore Verification State
+    @Published var isSyncingWithFirestore: Bool = false
+    @Published var lastSyncDate: Date? = nil
+    @Published var cachedDirectoryCount: Int = 0
 
     // Create Form Fields
     @Published var newName: String = ""
@@ -227,7 +428,7 @@ final class POSCustomerPickerViewModel: ObservableObject {
             .joined()
     }
 
-    // MARK: - Search Logic
+    // MARK: - Search & Cache Verification Logic
 
     func handleSearchQueryChanged(_ query: String) {
         searchTask?.cancel()
@@ -239,15 +440,28 @@ final class POSCustomerPickerViewModel: ObservableObject {
             return
         }
 
+        // 1. Instant local filter from cache (0ms latency)
+        let localMatches = POSCustomerCacheStore.shared.filterLocally(term: trimmed)
+        if !localMatches.isEmpty {
+            self.searchResults = localMatches
+            if highlightedCustomer == nil || !localMatches.contains(where: { $0.id == highlightedCustomer?.id }) {
+                highlightedCustomer = localMatches.first
+            }
+        }
+
+        // 2. Debounced live Firestore verification query
         searchTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 220_000_000)
             guard !Task.isCancelled else { return }
-            await self?.executeSearch(term: trimmed, generation: generation)
+            await self?.executeSearchAndVerify(term: trimmed, generation: generation)
         }
     }
 
-    private func executeSearch(term: String, generation: Int) async {
-        isLoading = true
+    private func executeSearchAndVerify(term: String, generation: Int) async {
+        if searchResults.isEmpty {
+            isLoading = true
+        }
+        isSyncingWithFirestore = true
         errorMessage = nil
         do {
             let callable = Functions.functions().httpsCallable("posCustomerCommand")
@@ -262,28 +476,68 @@ final class POSCustomerPickerViewModel: ObservableObject {
             guard let data = result.data as? [String: Any],
                   let items = data["customers"] as? [[String: Any]] else {
                 isLoading = false
+                isSyncingWithFirestore = false
                 return
             }
 
             let parsed = items.compactMap(parseCustomer)
-            searchResults = parsed
-            if highlightedCustomer == nil || !parsed.contains(where: { $0.id == highlightedCustomer?.id }) {
-                highlightedCustomer = parsed.first
+            
+            // Merge newly found customers into the persistent cache
+            let _ = POSCustomerCacheStore.shared.mergeAndPersist(incoming: parsed)
+
+            // Combine remote results with any local cache results to avoid missing anything
+            var combined = parsed
+            let localMatches = POSCustomerCacheStore.shared.filterLocally(term: term)
+            for local in localMatches {
+                if !combined.contains(where: { $0.id == local.id }) {
+                    combined.append(local)
+                }
+            }
+
+            searchResults = combined
+            if highlightedCustomer == nil || !combined.contains(where: { $0.id == highlightedCustomer?.id }) {
+                highlightedCustomer = combined.first
             }
             isLoading = false
+            isSyncingWithFirestore = false
+            lastSyncDate = Date()
         } catch {
             guard !Task.isCancelled, generation == directoryGeneration else { return }
             isLoading = false
-            errorMessage = error.localizedDescription
+            isSyncingWithFirestore = false
+            if searchResults.isEmpty {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
     func loadInitialDirectory() {
         guard searchText.isEmpty else { return }
+
+        // 1. Immediately load and present cached customers (0ms instant presentation)
+        let cached = POSCustomerCacheStore.shared.getCachedCustomers()
+        if !cached.isEmpty {
+            self.searchResults = cached
+            self.cachedDirectoryCount = cached.count
+            self.lastSyncDate = POSCustomerCacheStore.shared.getLastSyncDate()
+            self.isLoading = false
+            if self.highlightedCustomer == nil {
+                self.highlightedCustomer = cached.first ?? self.recentCustomers.first
+            }
+        } else {
+            self.isLoading = true
+        }
+
+        // 2. Concurrently verify and sync with Firestore
+        verifyAndSyncWithFirestore()
+    }
+
+    func verifyAndSyncWithFirestore() {
         directoryGeneration += 1
         let generation = directoryGeneration
-        isLoading = true
+        isSyncingWithFirestore = true
         errorMessage = nil
+
         Task { [weak self] in
             do {
                 let callable = Functions.functions().httpsCallable("posCustomerCommand")
@@ -297,20 +551,99 @@ final class POSCustomerPickerViewModel: ObservableObject {
                 guard let data = result.data as? [String: Any],
                       let items = data["customers"] as? [[String: Any]] else {
                     self.isLoading = false
-                    self.errorMessage = Language.get("POS_Customer_DirectoryLoadFailed", alter: "تعذر تحميل دليل العملاء. تحقق من الاتصال وحاول مرة أخرى.")
+                    self.isSyncingWithFirestore = false
+                    if self.searchResults.isEmpty {
+                        self.errorMessage = Language.get("POS_Customer_DirectoryLoadFailed", alter: "تعذر تحميل دليل العملاء. تحقق من الاتصال وحاول مرة أخرى.")
+                    }
                     return
                 }
+
                 let parsed = items.compactMap { self.parseCustomer($0) }
-                self.searchResults = parsed
-                if self.highlightedCustomer == nil {
-                    self.highlightedCustomer = parsed.first ?? self.recentCustomers.first
+                
+                // Merge authoritative Firestore records into local cache
+                let merged = POSCustomerCacheStore.shared.mergeAndPersist(incoming: parsed)
+                
+                // Update recents if any were modified on Firestore
+                self.syncRecentsWithUpdatedCustomers(merged)
+
+                // If user hasn't typed a search in the meantime, update searchResults
+                if self.searchText.isEmpty {
+                    self.searchResults = merged
+                    if self.highlightedCustomer == nil || !merged.contains(where: { $0.id == self.highlightedCustomer?.id }) {
+                        self.highlightedCustomer = merged.first ?? self.recentCustomers.first
+                    }
                 }
+                self.cachedDirectoryCount = merged.count
+                self.lastSyncDate = Date()
                 self.isLoading = false
+                self.isSyncingWithFirestore = false
             } catch {
                 guard let self, generation == self.directoryGeneration else { return }
                 self.isLoading = false
-                self.errorMessage = Language.get("POS_Customer_DirectoryLoadFailed", alter: "تعذر تحميل دليل العملاء. تحقق من الاتصال وحاول مرة أخرى.")
+                self.isSyncingWithFirestore = false
+                if self.searchResults.isEmpty {
+                    self.errorMessage = Language.get("POS_Customer_DirectoryLoadFailed", alter: "تعذر تحميل دليل العملاء. تحقق من الاتصال وحاول مرة أخرى.")
+                }
             }
+        }
+    }
+
+    func refreshFromFirestoreAsync() async {
+        isSyncingWithFirestore = true
+        do {
+            let callable = Functions.functions().httpsCallable("posCustomerCommand")
+            callable.timeoutInterval = 20
+            let payload: [String: Any] = [
+                "action": "search",
+                "term": searchText.trimmingCharacters(in: .whitespacesAndNewlines),
+                "pageSize": 25
+            ]
+            let result = try await callable.call(payload)
+            guard let data = result.data as? [String: Any],
+                  let items = data["customers"] as? [[String: Any]] else {
+                isSyncingWithFirestore = false
+                return
+            }
+            let parsed = items.compactMap { self.parseCustomer($0) }
+            let merged = POSCustomerCacheStore.shared.mergeAndPersist(incoming: parsed)
+            self.syncRecentsWithUpdatedCustomers(merged)
+            
+            if searchText.isEmpty {
+                self.searchResults = merged
+            } else {
+                var combined = parsed
+                let local = POSCustomerCacheStore.shared.filterLocally(term: searchText)
+                for l in local {
+                    if !combined.contains(where: { $0.id == l.id }) {
+                        combined.append(l)
+                    }
+                }
+                self.searchResults = combined
+            }
+            
+            self.cachedDirectoryCount = merged.count
+            self.lastSyncDate = Date()
+            self.isSyncingWithFirestore = false
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        } catch {
+            isSyncingWithFirestore = false
+        }
+    }
+
+    private func syncRecentsWithUpdatedCustomers(_ updatedList: [POSCustomerRecord]) {
+        var recentsChanged = false
+        var updatedRecents = recentCustomers
+        for updated in updatedList {
+            if let idx = updatedRecents.firstIndex(where: { $0.id == updated.id }) {
+                if updatedRecents[idx] != updated {
+                    updatedRecents[idx] = updated
+                    recentsChanged = true
+                }
+            }
+        }
+        if recentsChanged {
+            recentCustomers = updatedRecents
+            saveRecents()
         }
     }
 
@@ -364,6 +697,8 @@ final class POSCustomerPickerViewModel: ObservableObject {
                 self.searchResults.removeAll { $0.id == customer.id }
                 self.searchResults.insert(customer, at: 0)
                 self.rememberCustomer(customer)
+                POSCustomerCacheStore.shared.upsert(customer)
+                self.lastSyncDate = Date()
                 self.highlightedCustomer = customer
                 self.attachmentCandidate = nil
                 self.successFeedbackMessage = Language.get(
@@ -486,6 +821,8 @@ final class POSCustomerPickerViewModel: ObservableObject {
                 }
 
                 self.rememberCustomer(customer)
+                POSCustomerCacheStore.shared.upsert(customer)
+                self.lastSyncDate = Date()
                 self.highlightedCustomer = customer
                 self.isSubmitting = false
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -562,6 +899,8 @@ final class POSCustomerPickerViewModel: ObservableObject {
 
                 // Update recents
                 self.rememberCustomer(updatedCustomer)
+                POSCustomerCacheStore.shared.upsert(updatedCustomer)
+                self.lastSyncDate = Date()
                 self.highlightedCustomer = updatedCustomer
                 self.editingCustomer = nil
                 self.isEditingSubmitting = false
@@ -1474,6 +1813,7 @@ private struct iPhoneCustomerSensoryDeck: View {
                                 .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
                                 .foregroundColor(AdminSurface.secondaryText)
                             Spacer()
+                            syncStatusBadge
                         }
 
                         ScrollView(.horizontal, showsIndicators: false) {
@@ -1483,6 +1823,19 @@ private struct iPhoneCustomerSensoryDeck: View {
                                 }
                             }
                         }
+                    }
+                }
+
+                // Search Results Header & Sync Status (when search is active or recents empty)
+                if !viewModel.searchText.isEmpty || viewModel.recentCustomers.isEmpty {
+                    HStack {
+                        if !viewModel.searchText.isEmpty {
+                            Text(String(format: Language.get("POS_Catalog_ResultCount_Format", alter: "%ld نتيجة"), viewModel.searchResults.count))
+                                .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+                        Spacer()
+                        syncStatusBadge
                     }
                 }
 
@@ -1498,6 +1851,40 @@ private struct iPhoneCustomerSensoryDeck: View {
                 }
             }
             .padding(16)
+        }
+        .refreshable {
+            await viewModel.refreshFromFirestoreAsync()
+        }
+    }
+
+    @ViewBuilder
+    private var syncStatusBadge: some View {
+        if viewModel.isSyncingWithFirestore {
+            HStack(spacing: 5) {
+                ProgressView()
+                    .scaleEffect(0.6)
+                    .frame(width: 12, height: 12)
+                Text(Language.get("POS_Customer_Syncing", alter: "جارٍ التحقق والتحديث..."))
+                    .font(Font.custom("Beiruti-Medium", size: 11, relativeTo: .caption2))
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(AdminSurface.control, in: Capsule())
+            .transition(.opacity)
+        } else if viewModel.lastSyncDate != nil {
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.icloud.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Color(uiColor: .ppSuccess))
+                Text(Language.get("POS_Customer_CacheSynced", alter: "محدث ومحفوظ محلياً"))
+                    .font(Font.custom("Beiruti-Medium", size: 11, relativeTo: .caption2))
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(AdminSurface.control, in: Capsule())
+            .transition(.opacity)
         }
     }
 
@@ -2301,6 +2688,7 @@ private struct iPadCustomerSpatialCockpit: View {
                             .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption2))
                             .foregroundColor(AdminSurface.secondaryText)
                         Spacer()
+                        syncStatusBadge
                     }
 
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -2329,6 +2717,19 @@ private struct iPadCustomerSpatialCockpit: View {
                 }
             }
 
+            // Search Results Header & Sync Status (when search is active or recents empty)
+            if !viewModel.searchText.isEmpty || viewModel.recentCustomers.isEmpty {
+                HStack {
+                    if !viewModel.searchText.isEmpty {
+                        Text(String(format: Language.get("POS_Catalog_ResultCount_Format", alter: "%ld نتيجة"), viewModel.searchResults.count))
+                            .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption2))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                    Spacer()
+                    syncStatusBadge
+                }
+            }
+
             // Customer Stream
             ScrollView {
                 if viewModel.searchResults.isEmpty && !viewModel.isLoading {
@@ -2351,8 +2752,42 @@ private struct iPadCustomerSpatialCockpit: View {
                     .padding(.bottom, 12)
                 }
             }
+            .refreshable {
+                await viewModel.refreshFromFirestoreAsync()
+            }
         }
         .padding(16)
+    }
+
+    @ViewBuilder
+    private var syncStatusBadge: some View {
+        if viewModel.isSyncingWithFirestore {
+            HStack(spacing: 5) {
+                ProgressView()
+                    .scaleEffect(0.6)
+                    .frame(width: 12, height: 12)
+                Text(Language.get("POS_Customer_Syncing", alter: "جارٍ التحقق والتحديث..."))
+                    .font(Font.custom("Beiruti-Medium", size: 11, relativeTo: .caption2))
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(AdminSurface.control, in: Capsule())
+            .transition(.opacity)
+        } else if viewModel.lastSyncDate != nil {
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.icloud.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Color(uiColor: .ppSuccess))
+                Text(Language.get("POS_Customer_CacheSynced", alter: "محدث ومحفوظ محلياً"))
+                    .font(Font.custom("Beiruti-Medium", size: 11, relativeTo: .caption2))
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(AdminSurface.control, in: Capsule())
+            .transition(.opacity)
+        }
     }
 
     // MARK: - Customer Card in Left Stream

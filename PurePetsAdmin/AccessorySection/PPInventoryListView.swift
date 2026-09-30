@@ -2498,6 +2498,8 @@ struct PPInventoryListView: View {
             }
         }
         .ignoresSafeArea()
+        .navigationBarHidden(true)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .dismissKeyboardOnTapOutside()
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
@@ -2766,6 +2768,7 @@ struct PPInventoryListView: View {
                 title: viewModel.navigationTitle,
                 subtitle: (Language.get("CommandCenter_Work_Workspace", alter: "مساحة المخزون") + (viewModel.totalCount > 0 ? " • " + String(format: Language.get("Total_Items_Format", alter: "%@ صنف مسجل"), viewModel.totalCount.englishDigits) : "")).normalizedEnglishDigits,
                 statusDotColor: Color(uiColor: .ppSuccess),
+                showsTopFade: false,
                 onBack: {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     if let onDismiss = onDismiss {
@@ -7176,8 +7179,7 @@ public struct PPInventoryItemDetailView: View {
     }
 
     private var topNavigationBarFade: some View {
-        // Shared optical recipe — see PPGlobalNavigationTopFade.
-        PPGlobalNavigationTopFade(surface: appForegroundColor)
+        Color.clear
     }
 
     private var apexNavigationBar: some View {
@@ -16029,6 +16031,7 @@ private struct PPStockTransferSheet: View {
                 subtitle: Language.get("Stock_Transfer_LiveSync", alter: "مزامنة العهدة الفورية • توثيق الحركة"),
                 statusDotColor: Color(uiColor: .ppSuccess),
                 isModal: true,
+                showsTopFade: false,
                 onBack: {
                     dismiss()
                 }
@@ -16809,6 +16812,7 @@ private struct PPStockTransferSheet: View {
                 title: Language.get("Stock_Transfer_Select_Branch", alter: "اختر فرع الاستلام (المحول إليه)"),
                 subtitle: Language.get("Stock_Transfer_ActiveBranchesCount", alter: "الفروع المتاحة لاستقبال الشحنة"),
                 isModal: true,
+                showsTopFade: false,
                 onBack: {
                     showBranchPickerModal = false
                 }
@@ -17020,6 +17024,7 @@ private struct CatalogPressStyle: ButtonStyle {
 
     public override func viewDidLoad() {
         super.viewDidLoad()
+        configureTransparentNavigationBar()
         view.backgroundColor = UIColor.ppBackground
         extendedLayoutIncludesOpaqueBars = true
         edgesForExtendedLayout = .all
@@ -17068,8 +17073,27 @@ private struct CatalogPressStyle: ButtonStyle {
 
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        configureTransparentNavigationBar()
         navigationController?.setNavigationBarHidden(true, animated: animated)
         navigationController?.pp_enableSwipeToPop()
+    }
+
+    private func configureTransparentNavigationBar() {
+        guard let navBar = navigationController?.navigationBar else { return }
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithTransparentBackground()
+        appearance.backgroundColor = .clear
+        appearance.shadowColor = .clear
+        appearance.backgroundImage = UIImage()
+        appearance.shadowImage = UIImage()
+        navBar.standardAppearance = appearance
+        navBar.compactAppearance = appearance
+        navBar.scrollEdgeAppearance = appearance
+        if #available(iOS 15.0, *) {
+            navBar.compactScrollEdgeAppearance = appearance
+        }
+        navBar.backgroundColor = .clear
+        navBar.isTranslucent = true
     }
 }
 

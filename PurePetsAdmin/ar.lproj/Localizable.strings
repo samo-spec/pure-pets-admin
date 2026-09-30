@@ -4962,6 +4962,8 @@
 "POS_Customer_TabCreate" = "عميل جديد سريع";
 "POS_Customer_SearchPlaceholder" = "ابحث بالاسم أو رقم الهاتف…";
 "POS_Customer_RecentWalkIns" = "عملاء حديثون";
+"POS_Customer_Syncing" = "جارٍ التحقق والتحديث...";
+"POS_Customer_CacheSynced" = "محدث ومحفوظ محلياً";
 "POS_Customer_SelectedBadge" = "المحدد حالياً";
 "POS_Customer_NoMatchTitle" = "لا توجد نتائج مطابقة";
 "POS_Customer_NoMatchSub" = "لم نجد عميلاً باسم أو هاتف «%@».";
