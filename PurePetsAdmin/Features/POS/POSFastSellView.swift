@@ -93,6 +93,71 @@ private struct POSTransactionContextHeightKey: PreferenceKey {
     }
 }
 
+/// Observe the ScrollView's own pan recognizer without installing a competing
+/// gesture or replacing its delegate. Header layout changes cannot create pans.
+private struct POSCatalogPanObserver: UIViewRepresentable {
+    var onPan: (UIGestureRecognizer.State, CGPoint) -> Void
+
+    func makeUIView(context: Context) -> Probe {
+        let probe = Probe()
+        probe.isUserInteractionEnabled = false
+        probe.onPan = onPan
+        return probe
+    }
+
+    func updateUIView(_ uiView: Probe, context: Context) {
+        uiView.onPan = onPan
+        uiView.scheduleAttachment()
+    }
+
+    static func dismantleUIView(_ uiView: Probe, coordinator: ()) {
+        uiView.detach()
+        uiView.onPan = nil
+    }
+
+    final class Probe: UIView {
+        var onPan: ((UIGestureRecognizer.State, CGPoint) -> Void)?
+        private weak var observedScrollView: UIScrollView?
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if window == nil { detach() } else { scheduleAttachment() }
+        }
+
+        override func didMoveToSuperview() {
+            super.didMoveToSuperview()
+            scheduleAttachment()
+        }
+
+        func scheduleAttachment() {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.window != nil, self.onPan != nil else { return }
+                var ancestor = self.superview
+                while let view = ancestor {
+                    if let scrollView = view as? UIScrollView {
+                        guard self.observedScrollView !== scrollView else { return }
+                        self.detach()
+                        self.observedScrollView = scrollView
+                        scrollView.panGestureRecognizer.addTarget(self, action: #selector(self.panChanged(_:)))
+                        return
+                    }
+                    ancestor = view.superview
+                }
+                self.detach()
+            }
+        }
+
+        func detach() {
+            observedScrollView?.panGestureRecognizer.removeTarget(self, action: #selector(panChanged(_:)))
+            observedScrollView = nil
+        }
+
+        @objc private func panChanged(_ recognizer: UIPanGestureRecognizer) {
+            onPan?(recognizer.state, recognizer.translation(in: window))
+        }
+    }
+}
+
 /// Single money authority for the POS screen.
 ///
 /// Every displayed and submitted amount must agree with the server, because
@@ -2941,7 +3006,6 @@ struct AdminPOSFastSellView: View {
     @State private var lastCatalogDragY: CGFloat = 0
     @State private var catalogDirectionalTravel: CGFloat = 0
     @State private var transactionContextHeight: CGFloat?
-    @State private var isCatalogDragging = false
 
     // Fly-to-cart choreography
     @State private var flyPayload: POSFlyPayload?
@@ -4098,26 +4162,26 @@ struct AdminPOSFastSellView: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 12)
                 .padding(.bottom, viewModel.cartItems.isEmpty ? 165 : 260)
-            }
-            .posScrollDismissesKeyboardCompat()
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 8, coordinateSpace: .global)
-                    .onChanged { value in
-                        if !isCatalogDragging {
-                            isCatalogDragging = true
+                .background {
+                    POSCatalogPanObserver { state, translation in
+                        switch state {
+                        case .began:
                             lastCatalogDragY = 0
                             catalogDirectionalTravel = 0
                             dismissKeyboard()
+                        case .changed:
+                            guard abs(translation.y) > abs(translation.x) else { return }
+                            handleCatalogDrag(translation.y)
+                        case .ended, .cancelled, .failed:
+                            lastCatalogDragY = 0
+                            catalogDirectionalTravel = 0
+                        default:
+                            break
                         }
-                        guard abs(value.translation.height) > abs(value.translation.width) else { return }
-                        handleCatalogDrag(value.translation.height)
                     }
-                    .onEnded { _ in
-                        isCatalogDragging = false
-                        lastCatalogDragY = 0
-                        catalogDirectionalTravel = 0
-                    }
-            )
+                }
+            }
+            .posScrollDismissesKeyboardCompat()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
