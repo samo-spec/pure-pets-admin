@@ -1197,7 +1197,7 @@ struct POSBarcodeScannerScreen: View {
     @State private var cameraFrame = CGRect.zero
     @State private var torchRequested = false
     @State private var showingManualEntry = false
-    @State private var isVisible = false
+    @State private var isVisible = true
     @State private var hasFinished = false
 
     private let ink = Color(red: 0.055, green: 0.065, blue: 0.08)
@@ -1218,7 +1218,7 @@ struct POSBarcodeScannerScreen: View {
                         finish(code)
                     },
                     onFailure: {
-                        guard isVisible, scenePhase == .active, !hasFinished else { return }
+                        guard !hasFinished else { return }
                         torchRequested = false
                         phase = .unavailable
                     },
@@ -1226,7 +1226,7 @@ struct POSBarcodeScannerScreen: View {
                     isActive: isVisible && scenePhase == .active && !showingManualEntry && !hasFinished,
                     isTorchRequested: torchRequested,
                     onStateChange: { state in
-                        guard isVisible, !hasFinished else { return }
+                        guard !hasFinished else { return }
                         cameraState = state
                         if state.status == .interrupted || !state.isTorchAvailable { torchRequested = false }
                     }
@@ -1851,20 +1851,22 @@ private final class ScannerCaptureSessionDriver: @unchecked Sendable {
                 return
             }
             session.addOutput(metadata)
-            let supported: [AVMetadataObject.ObjectType] = [.qr, .ean8, .ean13, .pdf417, .code128]
+            metadata.setMetadataObjectsDelegate(metadataDelegate, queue: .main)
+            session.commitConfiguration()
+
+            let supported: [AVMetadataObject.ObjectType] = [
+                .qr, .ean8, .ean13, .pdf417, .code128, .code39, .code93, .upce, .dataMatrix, .aztec, .itf14
+            ]
             let available = Set(metadata.availableMetadataObjectTypes)
             let enabled = supported.filter { available.contains($0) }
-            guard !enabled.isEmpty else {
-                session.removeOutput(metadata)
-                session.removeInput(input)
-                session.commitConfiguration()
-                failConfiguration()
-                return
+            if !enabled.isEmpty {
+                metadata.metadataObjectTypes = enabled
+            } else if !metadata.availableMetadataObjectTypes.isEmpty {
+                metadata.metadataObjectTypes = metadata.availableMetadataObjectTypes
+            } else {
+                metadata.metadataObjectTypes = [.qr, .ean8, .ean13, .code128]
             }
-            metadata.setMetadataObjectsDelegate(metadataDelegate, queue: .main)
-            metadata.metadataObjectTypes = enabled
             metadata.rectOfInterest = regionOfInterest
-            session.commitConfiguration()
 
             device = camera
             output = metadata

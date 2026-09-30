@@ -2955,13 +2955,13 @@ struct PPInventoryListView: View {
             .padding(.vertical, AdminSpacing.md)
             .background(AdminSurface.card)
 
-            Rectangle()
-                .fill(Color(uiColor: .separator).opacity(0.35))
-                .frame(height: AdminStroke.hairline)
-                .accessibilityHidden(true)
+            if !isHeroCollapsed {
+                Rectangle()
+                    .fill(Color(uiColor: .separator).opacity(0.35))
+                    .frame(height: AdminStroke.hairline)
+                    .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: AdminSpacing.base) {
-                if !isHeroCollapsed {
+                VStack(alignment: .leading, spacing: AdminSpacing.base) {
                     if dynamicTypeSize.isAccessibilitySize {
                         VStack(alignment: .leading, spacing: AdminSpacing.base) {
                             heroValuation(valuation, total: total, unpriced: unpriced)
@@ -2982,53 +2982,51 @@ struct PPInventoryListView: View {
                             }
                         }
                     }
-                }
 
-                inventoryHealthBand(available: available, low: low, out: out)
-                    .padding(.top, isHeroCollapsed ? 0 : AdminSpacing.xs)
+                    inventoryHealthBand(available: available, low: low, out: out)
+                        .padding(.top, AdminSpacing.xs)
 
-                // One continuous ledger; selected filters have an underline as
-                // well as a tint, so selection never depends on color alone.
-                LazyVGrid(
-                    columns: Array(
-                        repeating: GridItem(.flexible(), spacing: AdminSpacing.sm, alignment: .leading),
-                        count: dynamicTypeSize >= .accessibility3 ? 1 : (dynamicTypeSize.isAccessibilitySize ? 2 : 4)
-                    ),
-                    alignment: .leading,
-                    spacing: AdminSpacing.md
-                ) {
-                    heroMetric(
-                        filter: .inStock,
-                        title: Language.get("InStock", alter: "متوفر"),
-                        count: available,
-                        color: Color(uiColor: .ppSuccess),
-                        icon: "checkmark.circle"
-                    )
-                    heroMetric(
-                        filter: .lowStock,
-                        title: Language.get("InventoryHero_Low", alter: "منخفض"),
-                        count: low,
-                        color: Color(uiColor: .ppWarning),
-                        icon: "exclamationmark.triangle"
-                    )
-                    heroMetric(
-                        filter: .outOfStock,
-                        title: Language.get("InventoryHero_Out", alter: "نافد"),
-                        count: out,
-                        color: Color(uiColor: .ppError),
-                        icon: "minus.circle"
-                    )
-                    heroMetric(
-                        filter: .hasOffer,
-                        title: Language.get("Offers", alter: "تخفيضات"),
-                        count: offers,
-                        color: AdminSurface.primary,
-                        icon: "tag"
-                    )
-                }
-                .disabled(!heroHasMetrics || total == 0)
+                    // One continuous ledger; selected filters have an underline as
+                    // well as a tint, so selection never depends on color alone.
+                    LazyVGrid(
+                        columns: Array(
+                            repeating: GridItem(.flexible(), spacing: AdminSpacing.sm, alignment: .leading),
+                            count: dynamicTypeSize >= .accessibility3 ? 1 : (dynamicTypeSize.isAccessibilitySize ? 2 : 4)
+                        ),
+                        alignment: .leading,
+                        spacing: AdminSpacing.md
+                    ) {
+                        heroMetric(
+                            filter: .inStock,
+                            title: Language.get("InStock", alter: "متوفر"),
+                            count: available,
+                            color: Color(uiColor: .ppSuccess),
+                            icon: "checkmark.circle"
+                        )
+                        heroMetric(
+                            filter: .lowStock,
+                            title: Language.get("InventoryHero_Low", alter: "منخفض"),
+                            count: low,
+                            color: Color(uiColor: .ppWarning),
+                            icon: "exclamationmark.triangle"
+                        )
+                        heroMetric(
+                            filter: .outOfStock,
+                            title: Language.get("InventoryHero_Out", alter: "نافد"),
+                            count: out,
+                            color: Color(uiColor: .ppError),
+                            icon: "minus.circle"
+                        )
+                        heroMetric(
+                            filter: .hasOffer,
+                            title: Language.get("Offers", alter: "تخفيضات"),
+                            count: offers,
+                            color: AdminSurface.primary,
+                            icon: "tag"
+                        )
+                    }
+                    .disabled(!heroHasMetrics || total == 0)
 
-                if !isHeroCollapsed {
                     LazyVGrid(
                         columns: Array(
                             repeating: GridItem(.flexible(), spacing: AdminSpacing.sm),
@@ -3081,8 +3079,8 @@ struct PPInventoryListView: View {
                         .accessibilityIdentifier("inventory.hero.visible-count")
                     }
                 }
+                .padding(AdminSpacing.base)
             }
-            .padding(AdminSpacing.base)
         }
         .multilineTextAlignment(.leading)
         .background(

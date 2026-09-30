@@ -2833,6 +2833,7 @@ private struct POSHeaderIcon: View {
     let kind: Kind
     let size: CGFloat
     let mirrored: Bool
+    @Environment(\.layoutDirection) private var layoutDirection
 
     init(_ kind: Kind, size: CGFloat, mirrored: Bool = false) {
         self.kind = kind
@@ -2840,16 +2841,20 @@ private struct POSHeaderIcon: View {
         self.mirrored = mirrored
     }
 
+    private var isRTL: Bool {
+        mirrored || layoutDirection == .rightToLeft || Language.isRTL()
+    }
+
     var body: some View {
-        Glyph(kind: kind)
+        Glyph(kind: kind, isRTL: isRTL)
             .stroke(style: StrokeStyle(lineWidth: size * 1.8 / 24, lineCap: .round, lineJoin: .round))
             .frame(width: size, height: size)
-            .scaleEffect(x: mirrored ? -1 : 1, y: 1)
             .accessibilityHidden(true)
     }
 
     private struct Glyph: Shape {
         let kind: Kind
+        let isRTL: Bool
 
         func path(in rect: CGRect) -> Path {
             var path = Path()
@@ -2862,7 +2867,11 @@ private struct POSHeaderIcon: View {
             }
             switch kind {
             case .back:
-                line([(15, 18), (9, 12), (15, 6)])
+                if isRTL {
+                    line([(9, 18), (15, 12), (9, 6)])
+                } else {
+                    line([(15, 18), (9, 12), (15, 6)])
+                }
             case .down:
                 line([(6, 9), (12, 15), (18, 9)])
             case .plus:
@@ -3385,6 +3394,7 @@ struct AdminPOSFastSellView: View {
                 transactionContextView(availableWidth: availableWidth - 32)
                     .padding(.bottom, 16)
                 omniSearchAndFilterBar
+                    .padding(.bottom, 14)
                 commandStatusView
             }
             .padding(.horizontal, 16)
@@ -3700,9 +3710,7 @@ struct AdminPOSFastSellView: View {
             POSHeaderIcon(.search, size: 18)
                 .foregroundStyle(commandMuted)
             TextField(searchPrompt, text: $viewModel.catalogSearchText,
-                      prompt: Text(searchPrompt)
-                        .foregroundColor(commandMuted)
-                        .multilineTextAlignment(.leading) as! Text)
+                      prompt: Text(searchPrompt).foregroundColor(commandMuted))
                 .font(Language.isRTL() ? PPBrandFont.regular(18, relativeTo: .body) : .system(size: commandEnglishSearchSize))
                 .multilineTextAlignment(.leading)
                 .foregroundStyle(commandInk)
@@ -3789,8 +3797,8 @@ struct AdminPOSFastSellView: View {
                 POSHeaderIcon(.down, size: 12)
             }
             .foregroundStyle(commandInk)
-            .padding(.horizontal, 10)
-            .frame(minWidth: AdminTouchTarget.minimum, minHeight: 56)
+            .padding(.horizontal, 14)
+            .frame(minWidth: 64, minHeight: 56)
             .contentShape(Rectangle())
         }
         .buttonStyle(POSVariantPressStyle())
@@ -4002,7 +4010,7 @@ struct AdminPOSFastSellView: View {
                     }
                 }
                 .padding(.horizontal, 12)
-                .padding(.top, 4)
+                .padding(.top, 12)
                 .padding(.bottom, viewModel.cartItems.isEmpty ? 165 : 260)
             }
             .posScrollDismissesKeyboardCompat()
