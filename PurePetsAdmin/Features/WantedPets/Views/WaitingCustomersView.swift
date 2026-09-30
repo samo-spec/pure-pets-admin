@@ -15,6 +15,7 @@ public struct WaitingCustomersView: View {
     public let mainKindId: Int
     public let subkindId: Int?
     public let initialCustomers: [CustomerWantedPet]?
+    private let onDismiss: (() -> Void)?
 
     @StateObject private var service = WantedPetsService.shared
     @Environment(\.dismiss) private var dismiss
@@ -26,15 +27,16 @@ public struct WaitingCustomersView: View {
             title: String(format: Language.get("WaitingFor_Pet_Title", alter: "المنتظرون: %@"), petTitle),
             subtitle: nil,
             isModal: false,
+            customTopSpacing: 0,
             onBack: {
-                dismiss()
+                handleBack()
             }
         ) {
             if canManageRequests {
                 HStack(spacing: 8) {
                     Button {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        showAddCustomerSheet = true
+                        showAddCustomerRequest = true
                     } label: {
                         ZStack {
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -88,7 +90,7 @@ public struct WaitingCustomersView: View {
     @State private var selectedIds: Set<String> = []
     @State private var isBatchContacting: Bool = false
     @State private var showDetailId: String? = nil
-    @State private var showAddCustomerSheet: Bool = false
+    @State private var showAddCustomerRequest: Bool = false
     @State private var feedbackNotice: String? = nil
     @State private var actionError: String? = nil
     @State private var copiedId: String? = nil
@@ -109,12 +111,22 @@ public struct WaitingCustomersView: View {
         petTitle: String,
         mainKindId: Int,
         subkindId: Int? = nil,
-        customers: [CustomerWantedPet]? = nil
+        customers: [CustomerWantedPet]? = nil,
+        onDismiss: (() -> Void)? = nil
     ) {
         self.petTitle = petTitle
         self.mainKindId = mainKindId
         self.subkindId = subkindId
         self.initialCustomers = customers
+        self.onDismiss = onDismiss
+    }
+
+    private func handleBack() {
+        if let onDismiss {
+            onDismiss()
+        } else {
+            dismiss()
+        }
     }
 
     public var body: some View {
@@ -158,10 +170,12 @@ public struct WaitingCustomersView: View {
         }
         .navigationBarHidden(true)
         .toolbar(.hidden, for: .navigationBar)
-        .enableSwipeToPop {
-            dismiss()
-        }
-        .sheet(isPresented: $showAddCustomerSheet) {
+        .modifier(WantedPetsRootSwipeNavigation(
+            isRootVisible: !showAddCustomerRequest && showDetailId == nil,
+            needsFallback: onDismiss != nil,
+            onBack: handleBack
+        ))
+        .navigationDestination(isPresented: $showAddCustomerRequest) {
             AddWantedPetSheet { _ in
                 loadCustomers()
                 feedbackNotice = Language.get("WantedPets_Added_Success", alter: "تمت إضافة الطلب بنجاح")
@@ -836,7 +850,7 @@ public struct WaitingCustomersView: View {
 
             Button {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                showAddCustomerSheet = true
+                showAddCustomerRequest = true
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "plus.circle.fill")

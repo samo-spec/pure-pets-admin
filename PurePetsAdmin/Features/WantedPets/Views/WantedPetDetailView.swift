@@ -176,6 +176,7 @@ public struct WantedPetDetailView: View {
             subtitle: item.map { $0.customerName + " • " + $0.requestedPetTitle },
             statusDotColor: item?.status.tintColor,
             isModal: false,
+            customTopSpacing: 0,
             onBack: {
                 handleDismiss()
             }

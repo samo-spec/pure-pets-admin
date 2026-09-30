@@ -15,7 +15,7 @@ public struct WantedPetsHomeView: View {
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isSearchFocused: Bool
 
-    @State private var showAddSheet = false
+    @State private var showAddRequest = false
     @State private var selectedPetGroup: WantedPetCategoryGroup?
     @State private var selectedItemForDetail: CustomerWantedPet?
     @State private var inFlightItemIDs: Set<String> = []
@@ -43,6 +43,7 @@ public struct WantedPetsHomeView: View {
             title: Language.get("WantedPets_Title", alter: "قائمة الطلبات"),
             subtitle: nil,
             isModal: false,
+            customTopSpacing: 0,
             onBack: {
                 handleBack()
             }
@@ -50,7 +51,7 @@ public struct WantedPetsHomeView: View {
             if canManageRequests {
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    showAddSheet = true
+                    showAddRequest = true
                 } label: {
                     ZStack {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -163,15 +164,15 @@ public struct WantedPetsHomeView: View {
             }
             .navigationBarHidden(true)
             .toolbar(.hidden, for: .navigationBar)
-            .enableSwipeToPop {
-                handleBack()
-            }
-            .sheet(isPresented: $showAddSheet) {
+            .modifier(WantedPetsRootSwipeNavigation(
+                isRootVisible: !showAddRequest && selectedPetGroup == nil && selectedItemForDetail == nil,
+                needsFallback: true,
+                onBack: handleBack
+            ))
+            .navigationDestination(isPresented: $showAddRequest) {
                 AddWantedPetSheet { _ in
                     actionFeedbackMessage = Language.get("WantedPets_Added_Success", alter: "تم حفظ الطلب بنجاح")
                 }
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
             }
             .navigationDestination(item: $selectedPetGroup) { group in
                 WaitingCustomersView(petTitle: group.displayName,
@@ -1204,6 +1205,50 @@ public struct WantedPetsHomeView: View {
             return
         }
         UIApplication.shared.open(url)
+    }
+}
+
+/// A queue screen owns its gesture only while it is the visible destination.
+/// Removing the bridge while pushing lets the child own its pending-write guard;
+/// recreating it on return restores the root's native configuration.
+struct WantedPetsRootSwipeNavigation: ViewModifier {
+    let isRootVisible: Bool
+    let needsFallback: Bool
+    let onBack: () -> Void
+
+    @Environment(\.layoutDirection) private var layoutDirection
+    @State private var isPopping = false
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                if isRootVisible {
+                    PPSwipeToPopUIKitBridge(
+                        isEnabled: true,
+                        isRTL: layoutDirection == .rightToLeft,
+                        onCustomPop: onBack,
+                        onNavigationStatusChanged: { _ in }
+                    )
+                }
+            }
+            .overlay(alignment: .leading) {
+                // A UIKit-hosted root needs its outer-host back callback. A
+                // destination in the SwiftUI stack uses native interactive pop.
+                if isRootVisible && needsFallback {
+                    PPSwipeToPopFallbackEdgeStrip(
+                        isRTL: layoutDirection == .rightToLeft,
+                        onPop: {
+                            guard !isPopping else { return }
+                            isPopping = true
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            onBack()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                                isPopping = false
+                            }
+                        }
+                    )
+                }
+            }
     }
 }
 

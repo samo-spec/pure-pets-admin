@@ -3061,6 +3061,15 @@
 "POS_RemoveOne" = "إزالة واحدة";
 "POS_AddOne" = "إضافة واحدة";
 "POS_RemoveFromCart" = "إزالة من السلة";
+"POS_VariantPicker_OptionsSummaryFormat" = "%d خيارات";
+"POS_VariantPicker_InCartFormat" = "%d في السلة";
+"POS_VariantPicker_ProductCode" = "رمز المنتج";
+"POS_VariantPicker_ChooseUnit" = "اختر الوحدة";
+"POS_VariantPicker_EmptyTitle" = "لا توجد خيارات متاحة";
+"POS_VariantPicker_EmptyMessage" = "أغلق النافذة وحدّث الكتالوج للمحاولة مجدداً.";
+"POS_VariantPicker_RemoveFormat" = "إزالة %@ من السلة";
+"POS_VariantPicker_DecreaseFormat" = "تقليل كمية %@";
+"POS_VariantPicker_IncreaseFormat" = "زيادة كمية %@";
 
 /* ===================== Dashboard Features Section ===================== */
 "AdminDashboard_Section_Features" = "الميزات";
@@ -3877,6 +3886,8 @@
 
 /* Command Center workplace header */
 "AdminCommandCenter_Header_WorkingBranch" = "فرع العمل";
+"AdminCommandCenter_Header_Admin" = "الإدارة";
+"AdminCommandCenter_Header_BranchScope" = "فرع العمل";
 "AdminCommandCenter_Header_Switch" = "تبديل";
 "AdminCommandCenter_Header_FixedBranchHint" = "لا يتوفر فرع آخر للتبديل إليه.";
 "AdminCommandCenter_Header_Language_Format" = "التبديل إلى %@";
@@ -10564,6 +10575,22 @@
 "WantedPets_Customer_Section" = "بيانات العميل";
 "WantedPets_Capture_Title" = "نحفظ رغبة العميل حتى يجد رفيقه";
 "WantedPets_Capture_Subtitle" = "حدّد من نُبلغ، وما الحيوان الذي نبحث عنه.";
+"WantedPets_Capture_Brief_Title" = "رفيق يستحق الانتظار";
+"WantedPets_Capture_Brief_Hint" = "نسجّل رغبة العميل لنعود إليه عند توفر ما يناسبه.";
+"WantedPets_Capture_Customer" = "لمن نبحث؟";
+"WantedPets_Capture_Animal" = "عمّ نبحث؟";
+"WantedPets_Capture_Customer_Empty" = "أضف العميل";
+"WantedPets_Capture_Animal_Empty" = "اختر الحيوان";
+"WantedPets_Capture_Ready" = "الطلب مكتمل";
+"WantedPets_Capture_Preferences" = "تخصيص الطلب";
+"WantedPets_Capture_Preferences_Hint" = "اختياري · الجنس واللون والميزانية والملاحظات";
+"WantedPets_Capture_Directory" = "من دليل العملاء";
+"WantedPets_Color_White" = "أبيض";
+"WantedPets_Color_Golden" = "ذهبي";
+"WantedPets_Color_Grey" = "رمادي";
+"WantedPets_Color_Black" = "أسود";
+"WantedPets_Color_Brown" = "بني";
+"WantedPets_Color_Multi" = "ملون";
 "WantedPets_Directory_Action" = "اختيار عميل من الدليل";
 "WantedPets_Name_Placeholder" = "اسم العميل الكامل";
 "WantedPets_Color_Placeholder" = "أو اكتب لوناً محدداً";
@@ -10610,6 +10637,13 @@
 "WantedPets_Source_Facebook" = "فيسبوك";
 "WantedPets_Source_ExistingCustomer" = "عميل سابق";
 "WantedPets_Source_Other" = "أخرى";
+"WantedPet_Source_WhatsApp" = "واتساب";
+"WantedPet_Source_Phone" = "مكالمة هاتفية";
+"WantedPet_Source_InStore" = "زيارة المتجر";
+"WantedPet_Source_Instagram" = "إنستغرام";
+"WantedPet_Source_Facebook" = "فيسبوك";
+"WantedPet_Source_ExistingCustomer" = "عميل حالي";
+"WantedPet_Source_Other" = "أخرى";
 "WantedPets_Pet_Section" = "الحيوان المطلوب";
 "WantedPets_Select_MainKind" = "اختر الفئة الأساسية (مثل طيور، قطط)";
 "WantedPets_Select_SubKind" = "اختر النوع / السلالة (اختياري)";
@@ -10620,6 +10654,10 @@
 "WantedPets_Sex_Male" = "ذكر";
 "WantedPets_Sex_Female" = "أنثى";
 "WantedPets_Sex_Pair" = "زوج";
+"WantedPet_Sex_Any" = "أي جنس";
+"WantedPet_Sex_Male" = "ذكر";
+"WantedPet_Sex_Female" = "أنثى";
+"WantedPet_Sex_Pair" = "زوج";
 "WantedPets_Color_Preference" = "اللون المفضل";
 "WantedPets_Budget_Min" = "أدنى ميزانية (ر.ق)";
 "WantedPets_Budget_Max" = "أقصى ميزانية (ر.ق)";

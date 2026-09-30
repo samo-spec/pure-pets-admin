@@ -76,11 +76,22 @@ import SwiftUI
 
         let subId: Int? = subkindId > 0 ? subkindId : nil
         let host = UIHostingController(
-            rootView: WaitingCustomersView(
-                petTitle: petTitle,
-                mainKindId: mainKindId,
-                subkindId: subId
-            )
+            rootView: NavigationStack {
+                WaitingCustomersView(
+                    petTitle: petTitle,
+                    mainKindId: mainKindId,
+                    subkindId: subId,
+                    onDismiss: { [weak self] in
+                        guard let self else { return }
+                        if let nav = self.navigationController, nav.viewControllers.first != self {
+                            nav.popViewController(animated: true)
+                        } else {
+                            self.dismiss(animated: true)
+                        }
+                    }
+                )
+            }
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         )
         host.view.backgroundColor = .clear
         addChild(host)

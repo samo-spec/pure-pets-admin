@@ -294,52 +294,74 @@
                 withSpeed:(float)animationSpeed
                completion:(void (^)(BOOL success))completion
 {
-    [Styling fetchLottieJSONFromFirebasePath:[NSString stringWithFormat:@"LottieAnimations/%@.json", fileName]
+    NSString *cleanName = [fileName hasSuffix:@".json"] ? [fileName stringByDeletingPathExtension] : fileName;
+    NSString *primaryPath = [cleanName containsString:@"/"] ? [NSString stringWithFormat:@"%@.json", cleanName] : [NSString stringWithFormat:@"LottieAnimations/%@.json", cleanName];
+
+    void (^applyLottieJSON)(NSDictionary *) = ^(NSDictionary *dict) {
+        LOTComposition *composition = [LOTComposition animationFromJSON:dict];
+        if (!composition) {
+            NSLog(@"❌ Lottie: Failed to build LOTComposition for %@", cleanName);
+            if (completion) completion(NO);
+            return;
+        }
+
+        [lot setSceneModel:composition];
+        lot.animationSpeed = animationSpeed;
+        lot.loopAnimation  = YES;
+        lot.hidden         = NO;
+
+        lot.alpha = 0.0;
+        lot.transform = CGAffineTransformMakeScale(0.96, 0.96);
+
+        [lot play];
+
+        [UIView animateWithDuration:0.35
+                              delay:0
+             usingSpringWithDamping:0.90
+              initialSpringVelocity:0.20
+                            options:UIViewAnimationOptionCurveEaseOut
+                         animations:^{
+                             lot.alpha = 1.0;
+                             lot.transform = CGAffineTransformIdentity;
+                         }
+                         completion:nil];
+
+        if (completion) completion(YES);
+    };
+
+    [Styling fetchLottieJSONFromFirebasePath:primaryPath
                                   completion:^(NSDictionary * _Nonnull jsonDict, NSError * _Nonnull error) {
+        if (!error && jsonDict) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                applyLottieJSON(jsonDict);
+            });
+            return;
+        }
+
+        if (![cleanName containsString:@"/"]) {
+            NSString *rootPath = [NSString stringWithFormat:@"%@.json", cleanName];
+            [Styling fetchLottieJSONFromFirebasePath:rootPath
+                                          completion:^(NSDictionary * _Nonnull rootDict, NSError * _Nonnull rootErr) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (!rootErr && rootDict) {
+                        applyLottieJSON(rootDict);
+                    } else {
+                        NSLog(@"❌ Lottie: Failed to fetch JSON from both %@ and %@: %@", primaryPath, rootPath, (rootErr ?: error).localizedDescription);
+                        if (completion) completion(NO);
+                    }
+                });
+            }];
+            return;
+        }
+
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (error) {
-                NSLog(@"❌ Lottie: Failed to fetch JSON: %@", error.localizedDescription);
-                if (completion) completion(NO);
-                return;
-            }
-
-            LOTComposition *composition = [LOTComposition animationFromJSON:jsonDict];
-            if (!composition) {
-                NSLog(@"❌ Lottie: Failed to build LOTComposition");
-                if (completion) completion(NO);
-                return;
-            }
-
-            // Apply composition
-            [lot setSceneModel:composition];
-            lot.animationSpeed = animationSpeed;
-            lot.loopAnimation  = YES;
-            lot.hidden         = NO;
-
-            // Prepare for a smooth reveal
-            lot.alpha = 0.0;
-            lot.transform = CGAffineTransformMakeScale(0.96, 0.96);
-
-            // Start playing immediately
-            [lot play];
-
-            // Fade + gentle pop-in
-            [UIView animateWithDuration:0.35
-                                  delay:0
-                 usingSpringWithDamping:0.90
-                  initialSpringVelocity:0.20
-                                options:UIViewAnimationOptionCurveEaseOut
-                             animations:^{
-                                 lot.alpha = 1.0;
-                                 lot.transform = CGAffineTransformIdentity;
-                             }
-                             completion:nil];
-
-            if (completion) completion(YES);
+            NSLog(@"❌ Lottie: Failed to fetch JSON: %@", error.localizedDescription);
+            if (completion) completion(NO);
         });
     }];
-
 }
+
+
 
 + (void)fetchLottieJSONFromFirebasePath:(NSString *)storagePath
                              completion:(void (^)(NSDictionary *jsonDict, NSError *error))completion {

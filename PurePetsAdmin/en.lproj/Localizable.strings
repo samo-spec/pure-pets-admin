@@ -2849,6 +2849,15 @@
 "POS_RemoveOne" = "Remove one";
 "POS_AddOne" = "Add one";
 "POS_RemoveFromCart" = "Remove from cart";
+"POS_VariantPicker_OptionsSummaryFormat" = "%d options";
+"POS_VariantPicker_InCartFormat" = "%d in cart";
+"POS_VariantPicker_ProductCode" = "Product code";
+"POS_VariantPicker_ChooseUnit" = "Choose unit";
+"POS_VariantPicker_EmptyTitle" = "No options available";
+"POS_VariantPicker_EmptyMessage" = "Close and refresh the catalog to try again.";
+"POS_VariantPicker_RemoveFormat" = "Remove %@ from cart";
+"POS_VariantPicker_DecreaseFormat" = "Decrease %@ quantity";
+"POS_VariantPicker_IncreaseFormat" = "Increase %@ quantity";
 
 /* ===================== Dashboard Features Section ===================== */
 "AdminDashboard_Section_Features" = "Features";
@@ -3826,6 +3835,8 @@
 
 /* Command Center workplace header */
 "AdminCommandCenter_Header_WorkingBranch" = "Working branch";
+"AdminCommandCenter_Header_Admin" = "ADMIN";
+"AdminCommandCenter_Header_BranchScope" = "Working branch";
 "AdminCommandCenter_Header_Switch" = "Switch";
 "AdminCommandCenter_Header_FixedBranchHint" = "No other branch is available to switch to.";
 "AdminCommandCenter_Header_Language_Format" = "Switch to %@";
@@ -10496,6 +10507,22 @@
 "WantedPets_Customer_Section" = "Customer Information";
 "WantedPets_Capture_Title" = "Their next companion starts here";
 "WantedPets_Capture_Subtitle" = "Choose who to contact and which pet to watch for.";
+"WantedPets_Capture_Brief_Title" = "A companion worth waiting for";
+"WantedPets_Capture_Brief_Hint" = "Keep the customer's wish ready for the right match.";
+"WantedPets_Capture_Customer" = "Who is it for?";
+"WantedPets_Capture_Animal" = "Who are we looking for?";
+"WantedPets_Capture_Customer_Empty" = "Add a customer";
+"WantedPets_Capture_Animal_Empty" = "Choose a pet";
+"WantedPets_Capture_Ready" = "Request complete";
+"WantedPets_Capture_Preferences" = "Refine the request";
+"WantedPets_Capture_Preferences_Hint" = "Optional · sex, color, budget and notes";
+"WantedPets_Capture_Directory" = "From customer directory";
+"WantedPets_Color_White" = "White";
+"WantedPets_Color_Golden" = "Golden";
+"WantedPets_Color_Grey" = "Grey";
+"WantedPets_Color_Black" = "Black";
+"WantedPets_Color_Brown" = "Brown";
+"WantedPets_Color_Multi" = "Multi";
 "WantedPets_Directory_Action" = "Choose from customer directory";
 "WantedPets_Name_Placeholder" = "Full customer name";
 "WantedPets_Color_Placeholder" = "Or enter a specific color";
@@ -10542,16 +10569,27 @@
 "WantedPets_Source_Facebook" = "Facebook";
 "WantedPets_Source_ExistingCustomer" = "Existing Customer";
 "WantedPets_Source_Other" = "Other";
+"WantedPet_Source_WhatsApp" = "WhatsApp";
+"WantedPet_Source_Phone" = "Phone call";
+"WantedPet_Source_InStore" = "Store visit";
+"WantedPet_Source_Instagram" = "Instagram";
+"WantedPet_Source_Facebook" = "Facebook";
+"WantedPet_Source_ExistingCustomer" = "Existing customer";
+"WantedPet_Source_Other" = "Other";
 "WantedPets_Pet_Section" = "Requested Pet";
 "WantedPets_Select_MainKind" = "Select Main Category";
-"WantedPets_Select_SubKind" = "Select Subkind / Breed (Optional)";
-"WantedPets_Any_SubKind" = "Any Subkind / Breed";
+"WantedPets_Select_SubKind" = "Type or breed (optional)";
+"WantedPets_Any_SubKind" = "Any type in this category";
 "WantedPets_Preferences_Section" = "Preferences & Specs (Optional)";
 "WantedPets_Sex_Preference" = "Sex Preference";
 "WantedPets_Sex_Any" = "Any";
 "WantedPets_Sex_Male" = "Male";
 "WantedPets_Sex_Female" = "Female";
 "WantedPets_Sex_Pair" = "Pair";
+"WantedPet_Sex_Any" = "Any sex";
+"WantedPet_Sex_Male" = "Male";
+"WantedPet_Sex_Female" = "Female";
+"WantedPet_Sex_Pair" = "Pair";
 "WantedPets_Color_Preference" = "Preferred Color";
 "WantedPets_Budget_Min" = "Min Budget (QAR)";
 "WantedPets_Budget_Max" = "Max Budget (QAR)";
