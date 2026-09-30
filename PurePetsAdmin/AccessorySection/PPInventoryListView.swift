@@ -2250,6 +2250,11 @@ final class PPInventoryListViewModel: ObservableObject {
 
 // MARK: - Reimagined Flagship Inventory Screen
 
+private enum PPInventoryHeroStorageKeys {
+    static let isCollapsed = "pp.admin.inventory.hero.isCollapsed"
+    static let hasAutoCollapsedOnce = "pp.admin.inventory.hero.hasAutoCollapsedOnce"
+}
+
 @available(iOS 16.0, *)
 @MainActor
 struct PPInventoryListView: View {
@@ -2263,6 +2268,13 @@ struct PPInventoryListView: View {
     private let onPushViewController: (UIViewController) -> Void
     private let onDismiss: (() -> Void)?
     private let showsCatalogSwitcher: Bool
+
+    @State private var isHeroCollapsed: Bool = {
+        if UserDefaults.standard.bool(forKey: PPInventoryHeroStorageKeys.hasAutoCollapsedOnce) {
+            return UserDefaults.standard.bool(forKey: PPInventoryHeroStorageKeys.isCollapsed)
+        }
+        return false
+    }()
 
     @FocusState private var isSearchFocused: Bool
     @State private var keyboardHeight: CGFloat = 0
@@ -2427,27 +2439,36 @@ struct PPInventoryListView: View {
                     }
 
                     ScrollView(.vertical, showsIndicators: false) {
-                        LazyVStack(spacing: AdminSpacing.base) {
-                            inventoryHero
-                                .inventoryEntrance(step: 2, hasAppeared: hasAppeared, reduceMotion: reduceMotion)
-
-                            if viewModel.isLoading && viewModel.allItems.isEmpty {
-                                loadingSkeletonView
-                                    .accessibilityHidden(true)
-                            } else if viewModel.allItems.isEmpty && viewModel.errorMessage != nil {
-                                inventoryUnavailableState
-                            } else if viewModel.allItems.isEmpty {
-                                flagshipCatalogEmptyStateView(isRegular: isRegular)
-                            } else {
-                                if viewModel.filteredItems.isEmpty {
-                                    filterEmptyStateCard
-                                        // An empty result is a *replacement* for the
-                                        // list, so it crossfades in place rather than
-                                        // sliding, which would read as navigation.
-                                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
+                        LazyVStack(spacing: AdminSpacing.base, pinnedViews: [.sectionHeaders]) {
+                            Section {
+                                if viewModel.isLoading && viewModel.allItems.isEmpty {
+                                    loadingSkeletonView
+                                        .accessibilityHidden(true)
+                                } else if viewModel.allItems.isEmpty && viewModel.errorMessage != nil {
+                                    inventoryUnavailableState
+                                } else if viewModel.allItems.isEmpty {
+                                    flagshipCatalogEmptyStateView(isRegular: isRegular)
                                 } else {
-                                    itemsListSection
+                                    if viewModel.filteredItems.isEmpty {
+                                        filterEmptyStateCard
+                                            // An empty result is a *replacement* for the
+                                            // list, so it crossfades in place rather than
+                                            // sliding, which would read as navigation.
+                                            .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
+                                    } else {
+                                        itemsListSection
+                                    }
                                 }
+                            } header: {
+                                inventoryHero
+                                    .padding(.top, 4)
+                                    .padding(.bottom, AdminSpacing.xs)
+                                    .background(
+                                        AdminSurface.background
+                                            .padding(.horizontal, -AdminSpacing.screenMargin * 2)
+                                            .padding(.top, -10)
+                                    )
+                                    .inventoryEntrance(step: 2, hasAppeared: hasAppeared, reduceMotion: reduceMotion)
                             }
                         }
                         // One coherent transition per filter change. Keyed to the
@@ -2458,7 +2479,7 @@ struct PPInventoryListView: View {
                             value: filterGeneration
                         )
                         .padding(.horizontal, AdminSpacing.screenMargin)
-                        .padding(.top, 10)
+                        .padding(.top, 4)
                         .padding(.bottom, 115)
                         .frame(maxWidth: isRegular ? 980 : .infinity)
                         .frame(maxWidth: .infinity)
@@ -2619,6 +2640,7 @@ struct PPInventoryListView: View {
         .onAppear {
             viewModel.startListening()
             startEntranceChoreography()
+            handleInitialAutoCollapseIfNeeded()
         }
         .onDisappear {
             viewModel.stopListening()
@@ -2667,6 +2689,27 @@ struct PPInventoryListView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + settleAfter) {
             initialRevealComplete = true
         }
+    }
+
+    private func handleInitialAutoCollapseIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: PPInventoryHeroStorageKeys.hasAutoCollapsedOnce) else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            guard !UserDefaults.standard.bool(forKey: PPInventoryHeroStorageKeys.hasAutoCollapsedOnce) else { return }
+            UserDefaults.standard.set(true, forKey: PPInventoryHeroStorageKeys.hasAutoCollapsedOnce)
+            withAnimation(AdminAnimation.motion(.spring(response: 0.45, dampingFraction: 0.8), reduceMotion: reduceMotion)) {
+                isHeroCollapsed = true
+            }
+            UserDefaults.standard.set(true, forKey: PPInventoryHeroStorageKeys.isCollapsed)
+        }
+    }
+
+    private func toggleHeroCollapse() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        UserDefaults.standard.set(true, forKey: PPInventoryHeroStorageKeys.hasAutoCollapsedOnce)
+        withAnimation(AdminAnimation.motion(.spring(response: 0.38, dampingFraction: 0.82), reduceMotion: reduceMotion)) {
+            isHeroCollapsed.toggle()
+        }
+        UserDefaults.standard.set(isHeroCollapsed, forKey: PPInventoryHeroStorageKeys.isCollapsed)
     }
 
     private func confirmDelete(item: PetAccessory) {
@@ -2902,9 +2945,10 @@ struct PPInventoryListView: View {
         let valuation = viewModel.totalValuation
 
         return VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .center, spacing: AdminSpacing.md) {
+            HStack(alignment: .center, spacing: AdminSpacing.sm) {
                 PPAdminBranchSwitcherBar(style: .embeddedHero, horizontalPadding: 0)
                     .frame(maxWidth: .infinity)
+                heroCollapseToggleButton
                 heroRefreshButton
             }
             .padding(.horizontal, AdminSpacing.base)
@@ -2917,29 +2961,31 @@ struct PPInventoryListView: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: AdminSpacing.base) {
-                if dynamicTypeSize.isAccessibilitySize {
-                    VStack(alignment: .leading, spacing: AdminSpacing.base) {
-                        heroValuation(valuation, total: total, unpriced: unpriced)
-                        heroAvailability(available: available, total: total)
-                    }
-                } else {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(alignment: .top, spacing: AdminSpacing.lg) {
-                            heroValuation(valuation, total: total, unpriced: unpriced)
-                                .fixedSize(horizontal: true, vertical: false)
-                            Spacer(minLength: AdminSpacing.sm)
-                            heroAvailability(available: available, total: total)
-                                .fixedSize(horizontal: true, vertical: false)
-                        }
+                if !isHeroCollapsed {
+                    if dynamicTypeSize.isAccessibilitySize {
                         VStack(alignment: .leading, spacing: AdminSpacing.base) {
                             heroValuation(valuation, total: total, unpriced: unpriced)
                             heroAvailability(available: available, total: total)
+                        }
+                    } else {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(alignment: .top, spacing: AdminSpacing.lg) {
+                                heroValuation(valuation, total: total, unpriced: unpriced)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                Spacer(minLength: AdminSpacing.sm)
+                                heroAvailability(available: available, total: total)
+                                    .fixedSize(horizontal: true, vertical: false)
+                            }
+                            VStack(alignment: .leading, spacing: AdminSpacing.base) {
+                                heroValuation(valuation, total: total, unpriced: unpriced)
+                                heroAvailability(available: available, total: total)
+                            }
                         }
                     }
                 }
 
                 inventoryHealthBand(available: available, low: low, out: out)
-                    .padding(.top, AdminSpacing.xs)
+                    .padding(.top, isHeroCollapsed ? 0 : AdminSpacing.xs)
 
                 // One continuous ledger; selected filters have an underline as
                 // well as a tint, so selection never depends on color alone.
@@ -2982,56 +3028,58 @@ struct PPInventoryListView: View {
                 }
                 .disabled(!heroHasMetrics || total == 0)
 
-                LazyVGrid(
-                    columns: Array(
-                        repeating: GridItem(.flexible(), spacing: AdminSpacing.sm),
-                        count: dynamicTypeSize.isAccessibilitySize ? 1 : 3
-                    ),
-                    spacing: AdminSpacing.sm
-                ) {
-                    heroCatalogFilter(.all, count: total)
-                    heroCatalogFilter(.conditionNew, count: newCount)
-                    heroCatalogFilter(.conditionUsed, count: usedCount)
-                }
-                .disabled(!heroHasMetrics || total == 0)
-
-                if heroHasMetrics && low > 0 {
-                    Text(Language.get(
-                        "InventoryHero_LowIncluded",
-                        alter: "الأصناف منخفضة المخزون ضمن المتوفر."
-                    ))
-                    .font(AdminType.caption1)
-                    .foregroundStyle(AdminCommandInk.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-
-                if heroHasMetrics && unpriced > 0 {
-                    Label {
-                        Text(verbatim: String(
-                            format: Language.get(
-                                "Inventory_Unpriced_Items_Format",
-                                alter: "لم يُحدَّد سعر البيع لعدد %@ من الأصناف. لا تشملها قيمة المخزون."
-                            ),
-                            unpriced.englishDigits
-                        ).normalizedEnglishDigits)
-                        .foregroundStyle(AdminCommandInk.secondary)
-                    } icon: {
-                        Image(systemName: "exclamationmark.triangle")
-                            .foregroundStyle(Color(uiColor: .ppWarning))
+                if !isHeroCollapsed {
+                    LazyVGrid(
+                        columns: Array(
+                            repeating: GridItem(.flexible(), spacing: AdminSpacing.sm),
+                            count: dynamicTypeSize.isAccessibilitySize ? 1 : 3
+                        ),
+                        spacing: AdminSpacing.sm
+                    ) {
+                        heroCatalogFilter(.all, count: total)
+                        heroCatalogFilter(.conditionNew, count: newCount)
+                        heroCatalogFilter(.conditionUsed, count: usedCount)
                     }
-                    .font(AdminType.caption1)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
+                    .disabled(!heroHasMetrics || total == 0)
 
-                if heroHasMetrics {
-                    Text(verbatim: String(
-                        format: Language.get("Inventory_Showing_Count", alter: "%@ معروض"),
-                        viewModel.filteredItems.count.englishDigits
-                    ).normalizedEnglishDigits)
-                    .font(AdminType.caption1)
-                    .foregroundStyle(AdminCommandInk.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityIdentifier("inventory.hero.visible-count")
+                    if heroHasMetrics && low > 0 {
+                        Text(Language.get(
+                            "InventoryHero_LowIncluded",
+                            alter: "الأصناف منخفضة المخزون ضمن المتوفر."
+                        ))
+                        .font(AdminType.caption1)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    if heroHasMetrics && unpriced > 0 {
+                        Label {
+                            Text(verbatim: String(
+                                format: Language.get(
+                                    "Inventory_Unpriced_Items_Format",
+                                    alter: "لم يُحدَّد سعر البيع لعدد %@ من الأصناف. لا تشملها قيمة المخزون."
+                                ),
+                                unpriced.englishDigits
+                            ).normalizedEnglishDigits)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundStyle(Color(uiColor: .ppWarning))
+                        }
+                        .font(AdminType.caption1)
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    if heroHasMetrics {
+                        Text(verbatim: String(
+                            format: Language.get("Inventory_Showing_Count", alter: "%@ معروض"),
+                            viewModel.filteredItems.count.englishDigits
+                        ).normalizedEnglishDigits)
+                        .font(AdminType.caption1)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityIdentifier("inventory.hero.visible-count")
+                    }
                 }
             }
             .padding(AdminSpacing.base)
@@ -3060,6 +3108,28 @@ struct PPInventoryListView: View {
         )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inventory.hero")
+    }
+
+    private var heroCollapseToggleButton: some View {
+        Button {
+            toggleHeroCollapse()
+        } label: {
+            Image(systemName: isHeroCollapsed ? "chevron.down" : "chevron.up")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(AdminSurface.primary)
+                .frame(width: AdminTouchTarget.comfortable, height: AdminTouchTarget.comfortable)
+                .background(
+                    Color(uiColor: UIColor { traits in traits.userInterfaceStyle == .dark ? UIColor.ppElevatedSurface : .white }),
+                    in: Circle()
+                )
+                .contentShape(Circle())
+        }
+        .buttonStyle(CatalogPressStyle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(isHeroCollapsed
+            ? Language.get("InventoryHero_Expand", alter: "توسيع بطاقة المخزون")
+            : Language.get("InventoryHero_Collapse", alter: "طي بطاقة المخزون"))
+        .accessibilityIdentifier("inventory.hero.collapse-toggle")
     }
 
     private var heroRefreshButton: some View {

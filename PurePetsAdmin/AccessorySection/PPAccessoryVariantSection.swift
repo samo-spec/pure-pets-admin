@@ -4353,7 +4353,7 @@ struct PPAccessoryVariantStudioSheet: View {
                 } label: {
                     Label(isHexCopied ? Language.get("Variant_Hex_Copied", alter: "تم النسخ") : color.hex,
                           systemImage: isHexCopied ? "checkmark" : "doc.on.doc")
-                        .font(AdminType.footnote.monospaced())
+                        .font(AdminType.footnoteBold)
                         .foregroundStyle(AdminCommandInk.secondary)
                         .frame(minHeight: 44)
                         .environment(\.layoutDirection, .leftToRight)
@@ -4455,7 +4455,7 @@ struct PPAccessoryVariantStudioSheet: View {
                 sectionHeading(Language.get("Variant_Studio_Photos_Heading", alter: "صور المتغير"), symbol: "photo.on.rectangle.angled")
                 if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
                 Text("\(retainedRemoteURLs.count + stagedImages.count) / \(PPAccessoryVariantMediaService.maxImagesPerVariant)")
-                    .font(AdminType.captionBold.monospacedDigit()).foregroundStyle(AdminCommandInk.secondary)
+                    .font(AdminType.captionBold).foregroundStyle(AdminCommandInk.secondary)
                     .environment(\.layoutDirection, .leftToRight)
             }
             Text(Language.get("Variant_Studio_PhotoHint", alter: "الصورة الرئيسية تظهر أولاً. اضغط على النجمة لتغييرها."))
@@ -4581,7 +4581,7 @@ struct PPAccessoryVariantStudioSheet: View {
                 HStack(spacing: 8) {
                     ForEach([1, 5, 10, 25, 50], id: \.self) { delta in
                         Button { changeQuantity(by: delta) } label: {
-                            Text(verbatim: "+\(delta)").font(.system(.subheadline, design: .rounded, weight: .semibold))
+                            Text(verbatim: "+\(delta)").font(AdminType.subheadlineBold)
                                 .frame(minWidth: 44, minHeight: 44)
                                 .padding(.horizontal, 4)
                                 .background(AdminSurface.primaryText.opacity(0.05), in: Capsule())
@@ -4600,8 +4600,8 @@ struct PPAccessoryVariantStudioSheet: View {
     private var quantityReadout: some View {
         VStack(spacing: 0) {
             Text(quantity.englishDigits)
-                .font(.system(.largeTitle, design: .rounded, weight: .semibold))
-                .monospacedDigit().contentTransition(.numericText())
+                .font(AdminType.largeTitle)
+                .contentTransition(.numericText())
                 .foregroundStyle(AdminSurface.primaryText)
             Text(Language.get("Piece", alter: "حبة"))
                 .font(AdminType.footnote).foregroundStyle(AdminCommandInk.secondary)
@@ -4674,15 +4674,22 @@ struct PPAccessoryVariantStudioSheet: View {
                     .font(.system(size: 11, weight: .semibold)).accessibilityHidden(true)
             }.foregroundStyle(focusedField == field ? AdminSurface.primary : AdminCommandInk.secondary)
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                TextField("0.00", text: text)
-                    .keyboardType(.decimalPad)
-                    .focused($focusedField, equals: field)
-                    .font(.system(prominent ? .largeTitle : .title2, design: .rounded, weight: .semibold))
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
-                    .environment(\.layoutDirection, .leftToRight)
-                    .frame(maxWidth: .infinity, minHeight: 48)
-                    .accessibilityLabel(title)
+                let valueFont = prominent ? AdminType.largeTitle : AdminType.title2
+                TextField(
+                    title,
+                    text: text,
+                    prompt: Text("0.00")
+                        .font(valueFont)
+                        .foregroundColor(AdminCommandInk.tertiary)
+                )
+                .keyboardType(.decimalPad)
+                .focused($focusedField, equals: field)
+                .font(valueFont)
+                .foregroundStyle(AdminSurface.primaryText)
+                .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                .environment(\.layoutDirection, .leftToRight)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .accessibilityLabel(title)
                 Text(Language.get("QAR", alter: "ر.ق"))
                     .font(AdminType.footnoteBold).foregroundStyle(prominent ? AdminSurface.primary : AdminCommandInk.secondary)
                     .padding(.horizontal, 10).padding(.vertical, 6)
@@ -4745,14 +4752,20 @@ struct PPAccessoryVariantStudioSheet: View {
                 .font(AdminType.footnoteBold)
                 .foregroundStyle(focusedField == field ? AdminSurface.primary : AdminCommandInk.secondary)
             VStack(spacing: 0) {
-                TextField(title, text: text)
-                    .font(.system(.body, design: .monospaced, weight: .medium))
-                    .englishAlphanumericInput(text: text)
-                    .focused($focusedField, equals: field)
-                    .multilineTextAlignment(.leading)
-                    .environment(\.layoutDirection, .leftToRight)
-                    .padding(.horizontal, 16).frame(minHeight: 52)
-                    .accessibilityLabel(title)
+                TextField(
+                    title,
+                    text: text,
+                    prompt: Text(title)
+                        .font(AdminType.body)
+                        .foregroundColor(AdminCommandInk.tertiary)
+                )
+                .font(AdminType.bodyBold)
+                .englishAlphanumericInput(text: text)
+                .focused($focusedField, equals: field)
+                .multilineTextAlignment(.leading)
+                .environment(\.layoutDirection, .leftToRight)
+                .padding(.horizontal, 16).frame(minHeight: 52)
+                .accessibilityLabel(title)
                 if !text.wrappedValue.isEmpty {
                     studioRule
                     HStack {
@@ -5375,23 +5388,29 @@ struct PPAccessoryVariantColorEditorSheet: View {
     private var hexInputRow: some View {
         HStack {
             Text(Language.get("Variant_Hex", alter: "قيمة اللون"))
-                .font(AdminType.caption2Bold)
+                .font(AdminType.footnoteBold)
                 .foregroundStyle(AdminCommandInk.secondary)
 
             Spacer()
 
             HStack(spacing: 6) {
                 Text("#")
-                    .font(AdminType.caption2Bold.monospaced())
+                    .font(AdminType.footnoteBold)
                     .foregroundStyle(AdminCommandInk.tertiary)
 
-                TextField("RRGGBB", text: hexDigitsBinding)
-                    .font(AdminType.caption1.monospaced())
-                    .textInputAutocapitalization(.characters)
-                    .autocorrectionDisabled()
-                    .frame(width: 76)
-                    .multilineTextAlignment(.leading)
-                    .environment(\.layoutDirection, .leftToRight)
+                TextField(
+                    "RRGGBB",
+                    text: hexDigitsBinding,
+                    prompt: Text("RRGGBB")
+                        .font(AdminType.footnote)
+                        .foregroundColor(AdminCommandInk.tertiary)
+                )
+                .font(AdminType.footnoteBold)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .frame(width: 76)
+                .multilineTextAlignment(.leading)
+                .environment(\.layoutDirection, .leftToRight)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
@@ -5414,19 +5433,25 @@ struct PPAccessoryVariantColorEditorSheet: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
                 Text(Language.get("Variant_NameAr", alter: "الاسم بالعربية"))
-                    .font(AdminType.caption2Bold)
+                    .font(AdminType.footnoteBold)
                     .foregroundStyle(AdminCommandInk.secondary)
                 Spacer()
                 Text("\(nameAr.count)/300")
-                    .font(AdminType.caption2.monospaced())
+                    .font(AdminType.caption1)
                     .foregroundStyle(nameAr.count > 300 ? AdminSurface.crimson : AdminCommandInk.tertiary)
             }
 
             HStack {
-                TextField(Language.get("Variant_NameAr", alter: "الاسم بالعربية"), text: $nameAr)
-                    .font(AdminType.callout)
-                    .multilineTextAlignment(Language.isRTL() ? .leading : .trailing)
-                    .onChange(of: nameAr) { _ in isCustom = true }
+                TextField(
+                    Language.get("Variant_NameAr", alter: "الاسم بالعربية"),
+                    text: $nameAr,
+                    prompt: Text(Language.get("Variant_NameAr", alter: "الاسم بالعربية"))
+                        .font(AdminType.callout)
+                        .foregroundColor(AdminCommandInk.tertiary)
+                )
+                .font(AdminType.calloutBold)
+                .multilineTextAlignment(Language.isRTL() ? .leading : .trailing)
+                .onChange(of: nameAr) { _ in isCustom = true }
 
                 if !nameAr.isEmpty {
                     Button {
@@ -5448,20 +5473,26 @@ struct PPAccessoryVariantColorEditorSheet: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
                 Text(Language.get("Variant_NameEn", alter: "الاسم بالإنجليزية"))
-                    .font(AdminType.caption2Bold)
+                    .font(AdminType.footnoteBold)
                     .foregroundStyle(AdminCommandInk.secondary)
                 Spacer()
                 Text("\(nameEn.count)/300")
-                    .font(AdminType.caption2.monospaced())
+                    .font(AdminType.caption1)
                     .foregroundStyle(nameEn.count > 300 ? AdminSurface.crimson : AdminCommandInk.tertiary)
             }
 
             HStack {
-                TextField(Language.get("Variant_NameEn", alter: "الاسم بالإنجليزية"), text: $nameEn)
-                    .font(AdminType.callout)
-                    .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
-                    .environment(\.layoutDirection, .leftToRight)
-                    .onChange(of: nameEn) { _ in isCustom = true }
+                TextField(
+                    Language.get("Variant_NameEn", alter: "الاسم بالإنجليزية"),
+                    text: $nameEn,
+                    prompt: Text(Language.get("Variant_NameEn", alter: "الاسم بالإنجليزية"))
+                        .font(AdminType.callout)
+                        .foregroundColor(AdminCommandInk.tertiary)
+                )
+                .font(AdminType.calloutBold)
+                .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                .environment(\.layoutDirection, .leftToRight)
+                .onChange(of: nameEn) { _ in isCustom = true }
 
                 if !nameEn.isEmpty {
                     Button {

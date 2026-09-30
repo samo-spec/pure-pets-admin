@@ -411,6 +411,7 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
 #pragma mark - UsersListVC
 
 @interface UsersListVC () <UITableViewDelegate, UITableViewDataSource, PPSDelegate, UserCellDelegate>
+@property (nonatomic, assign) BOOL posCustomerAttachmentMode;
 @property (nonatomic, strong) id<FIRListenerRegistration> usersReg;
 @property (nonatomic, strong) PPUsersSummaryHeaderView *summaryHeader;
 @property (nonatomic, strong) UIView *stickyHeaderView;
@@ -463,6 +464,12 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
         _viewForMode = mode;
     }
     return self;
+}
+
++ (instancetype)posCustomerAttachmentPicker {
+    UsersListVC *picker = [[self alloc] initWithViewFor:ViewForPicker];
+    picker.posCustomerAttachmentMode = YES;
+    return picker;
 }
 
 - (void)viewDidLoad {
@@ -559,6 +566,10 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
 
 - (BOOL)pp_hasUserDirectoryAccess {
     PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    if (self.posCustomerAttachmentMode) {
+        return [staff isActive] && [staff hasPermission:kStaffPermPosSell] &&
+            [staff hasAnyPermission:@[kStaffPermUsersView, kStaffPermUsersManage]];
+    }
     return [staff hasAnyPermission:@[
         kStaffPermUsersView,
         kStaffPermUsersManage,
@@ -573,7 +584,7 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
 }
 
 - (BOOL)pp_isCustomerAccountMode {
-    return self.viewForMode == ViewForEditAccount;
+    return self.posCustomerAttachmentMode || self.viewForMode == ViewForEditAccount;
 }
 
 - (NSArray<UserModel *> *)pp_usersForCurrentMode:(NSArray<UserModel *> *)users {
@@ -581,6 +592,12 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
 
     NSPredicate *customersOnly = [NSPredicate predicateWithBlock:^BOOL(UserModel *user, NSDictionary *bindings) {
         NSString *accountType = [[user.accountType ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] lowercaseString];
+        if (self.posCustomerAttachmentMode) {
+            NSString *status = PPUsersResolvedAccountStatus(user);
+            return user.uid.length > 0 && !user.isBlocked && !user.isAdmin && !user.isSuperAdmin &&
+                (accountType.length == 0 || [accountType isEqualToString:@"user"]) &&
+                [status isEqualToString:@"active"];
+        }
         return ![accountType isEqualToString:@"staff"];
     }];
     return [(users ?: @[]) filteredArrayUsingPredicate:customersOnly];
@@ -637,6 +654,10 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
 }
 
 - (void)didTapBackButton {
+    if (self.posCustomerAttachmentMode && self.onCustomerAttachmentCancelled) {
+        self.onCustomerAttachmentCancelled();
+        return;
+    }
     UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
     [gen impactOccurred];
     if (self.navigationController && self.navigationController.viewControllers.count > 1) {
@@ -972,6 +993,7 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
 }
 
 - (NSString *)pp_screenTitleText {
+    if (self.posCustomerAttachmentMode) return kLang(@"POS_Customer_AttachUser_Title");
     if (self.viewForMode == ViewForPicker) return kLang(@"Staff_Select_Existing_User");
     if (self.viewForMode == ViewForEditAccount) return kLang(@"MissionControl_Customers_Title");
     if (self.viewForMode == ViewForEditRoleAndPermissions) return kLang(@"EditUsersRolePerms_List_Title");
@@ -980,6 +1002,7 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
 }
 
 - (NSString *)pp_screenSubtitleText {
+    if (self.posCustomerAttachmentMode) return kLang(@"POS_Customer_AttachUser_Description");
     if (self.viewForMode == ViewForEditAccount) return kLang(@"MissionControl_Customers_Briefing");
     if (self.viewForMode == ViewForEditRoleAndPermissions) return kLang(@"EditUsersRolePerms_List_Subtitle");
     return kLang(@"AdminDashboard_Section_Users_Description");
@@ -1034,6 +1057,7 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
 
 - (void)pp_updateHeaderButtons {
     BOOL canAdd = self.viewForMode == ViewForDefault || self.viewForMode == ViewForAdminToggle || [self pp_isCustomerAccountMode];
+    if (self.posCustomerAttachmentMode) canAdd = NO;
     self.addUserButton.hidden = !canAdd || self.isLoadingUsers;
     if (self.isLoadingUsers) {
         [self.headerLoadingSpinner startAnimating];
@@ -1273,9 +1297,20 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     UserModel *u = self.filteredUsers[indexPath.row];
+    if (self.posCustomerAttachmentMode &&
+        (![self pp_hasUserDirectoryAccess] || ![[self pp_usersForCurrentMode:@[u]] containsObject:u])) {
+        [PPToast toast:kLang(@"StatusNoAccess")];
+        return;
+    }
     
     if (self.viewForMode == ViewForPicker) {
         void (^pickBlock)(UserModel *) = [self.onUserPicked copy];
+        if (self.posCustomerAttachmentMode) {
+            // SwiftUI owns dismissal and presents confirmation only after it ends.
+            self.onUserPicked = nil;
+            if (pickBlock) pickBlock(u);
+            return;
+        }
         BOOL isPresented = (self.presentingViewController || self.navigationController.presentingViewController);
         void (^finishPick)(void) = ^{
             if ([self respondsToSelector:@selector(rowDescriptor)] && self.rowDescriptor) {
@@ -1309,6 +1344,7 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
 }
 
 - (void)didTapAddUser {
+    if (self.posCustomerAttachmentMode) return;
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:kLang(@"AddUser") message:kLang(@"Enter_Email_Password") preferredStyle:UIAlertControllerStyleAlert];
     
     [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
@@ -1352,6 +1388,7 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
 #pragma mark - Swipe Actions
 
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (self.posCustomerAttachmentMode) return nil;
     PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
     if (![staff hasPermission:kStaffPermUsersManage]) return nil;
 

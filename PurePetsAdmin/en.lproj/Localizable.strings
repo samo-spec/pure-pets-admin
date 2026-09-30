@@ -4869,7 +4869,7 @@
 "POS_Scanner_Title" = "Scan Product Code";
 "POS_Scanner_Guidance" = "Place the entire QR code or barcode inside the frame";
 "POS_Scanner_PermissionTitle" = "Use the camera to scan";
-"POS_Scanner_PermissionSubtitle" = "The camera reads only the product code, then searches for it in the current catalog.";
+"POS_Scanner_PermissionSubtitle" = "The camera reads the product code and returns it to the screen that opened the scanner. No photos are saved while scanning.";
 "POS_Scanner_Allow" = "Allow Camera";
 "POS_Scanner_Requesting" = "Waiting for camera permission…";
 "POS_Scanner_DeniedTitle" = "Camera access is off";
@@ -4879,6 +4879,21 @@
 "POS_Scanner_UnavailableSubtitle" = "A compatible camera or code reader could not be started on this device.";
 "POS_Scanner_Retry" = "Check Camera Again";
 "POS_Scanner_Detected_Format" = "Captured code %@";
+"POS_Scanner_AimTitle" = "Bring the code into view";
+"POS_Scanner_AimSubtitle" = "Place the barcode or QR code inside the frame and hold the product steady. Capture is automatic.";
+"POS_Scanner_Starting" = "Starting camera…";
+"POS_Scanner_Reading" = "Ready to read a code";
+"POS_Scanner_Interrupted" = "Camera paused";
+"POS_Scanner_InterruptedSubtitle" = "Scanning resumes when the camera is available. You can also enter the code manually.";
+"POS_Scanner_Light" = "Light";
+"POS_Scanner_LightOn" = "On";
+"POS_Scanner_LightOff" = "Off";
+"POS_Scanner_LightUnavailable" = "Currently unavailable";
+"POS_Scanner_Manual" = "Enter code";
+"POS_Scanner_ManualSubtitle" = "Type the code on the product label or paste it here. It is used exactly as entered.";
+"POS_Scanner_CodeLabel" = "Product code";
+"POS_Scanner_CodePlaceholder" = "Barcode or QR value";
+"POS_Scanner_UseCode" = "Use code";
 
 /* ===================== POS Customer Directory ===================== */
 "POS_Customer_Title" = "Customer Directory";
@@ -5318,6 +5333,8 @@
 "InventoryHero_DataUnavailable" = "Data unavailable";
 "InventoryHero_Unavailable_Title" = "Inventory could not load";
 "InventoryHero_Unavailable_Detail" = "We could not confirm the catalog data. Try again using the refresh button above.";
+"InventoryHero_Collapse" = "Collapse inventory card";
+"InventoryHero_Expand" = "Expand inventory card";
 "DoubleTapToDeselect" = "Double-tap to clear this filter";
 "DoubleTapToFilter" = "Double-tap to filter the list";
 "Inventory_Valuation_Format" = "Total inventory valuation: %.2f QAR";
@@ -10745,3 +10762,39 @@
 "Variant_Studio_InvalidPrice" = "Enter a price greater than zero, with up to two decimal places.";
 
 "Piece" = "unit";
+
+// Customer directory: verified account attachment and contact cells
+"POS_Customer_AttachUser_Title" = "Add from users";
+"POS_Customer_AttachUser_Description" = "Choose an app user to add to the customer directory.";
+"POS_Customer_AttachUser_Confirmation" = "We’ll add the account’s contact details. If its phone is already in the directory, we’ll link that customer and keep their details.";
+"POS_Customer_AttachUser_Submit" = "Add to customer directory";
+"POS_Customer_AttachUser_Pending" = "Verifying and adding…";
+"POS_Customer_AttachUser_Success" = "User added to the directory. You can select them now.";
+"POS_Customer_AttachUser_AlreadyAdded" = "This user is already in the directory. You can select them now.";
+"POS_Customer_AttachUser_NoAccess" = "You need sales and user-directory access to add an account.";
+"POS_Customer_AttachUser_NotFound" = "This account could not be found. Return to the users list and select it again.";
+"POS_Customer_AttachUser_Unavailable" = "This account cannot be linked. It may be inactive, linked to another customer, or outside your branch access.";
+"POS_Customer_AttachUser_InvalidContact" = "Couldn’t add this account. Check that its contact details include a valid phone number, then retry.";
+"POS_Customer_AttachUser_Failed" = "Couldn’t add this user. Check your connection and retry; retrying won’t create a duplicate customer.";
+"POS_Customer_AttachUser_ChangeUser" = "Change Account";
+"POS_Customer_AttachUser_NoPhoneOnAccount" = "No phone number registered on this account";
+"POS_Customer_AttachUser_EnterPhone" = "Phone number (required for linking)";
+"POS_Customer_AttachUser_EnterPhoneHint" = "This account does not have a registered phone number. Please enter a phone number to link it to the customer directory.";
+"POS_Customer_AttachUser_EnterPhonePlaceholder" = "Enter customer phone number (e.g. 70000000)";
+"POS_Customer_AppUserBadge" = "Linked app account";
+"POS_Customer_EditNamed" = "Edit %@";
+"POS_Customer_InactiveContact" = "This customer is unavailable";
+
+/* POS transaction header */
+"POS_Header_Reservations" = "Reservations";
+"POS_Header_AddCustomer" = "Add customer";
+"POS_Header_Scan" = "Scan";
+"POS_Header_SearchPrompt" = "Product name or code";
+"POS_Header_AllProducts" = "All products";
+"POS_Header_Branch" = "Branch";
+"POS_Header_BranchHint" = "Opens branch selection";
+
+/* POS approved header copy */
+"POS_Header_Title" = "Quick sale";
+"POS_Header_SaleType" = "Sale type";
+"POS_Header_BranchCatalog" = "Branch catalog";

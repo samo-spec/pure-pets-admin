@@ -224,6 +224,12 @@ public struct AddWantedPetSheet: View {
                 ? AnyLayout(VStackLayout(alignment: .leading, spacing: AdminSpacing.sm))
                 : AnyLayout(HStackLayout(alignment: .center, spacing: AdminSpacing.md))
 
+            let baseLottieWidth: CGFloat = 118
+            let baseLottieHeight: CGFloat = 102
+            // Increase Lottie size a little from top with bottom anchor preserved
+            let lottieWidth: CGFloat = 140
+            let lottieHeight: CGFloat = 122
+
             headerLayout {
                 VStack(alignment: .leading, spacing: AdminSpacing.xs) {
                     Text(Language.get("WantedPets_Capture_Brief_Title", alter: "رفيق يستحق الانتظار"))
@@ -244,7 +250,9 @@ public struct AddWantedPetSheet: View {
                     speed: 1.0,
                     contentMode: .scaleAspectFit
                 )
-                .frame(width: 118, height: 102)
+                .frame(width: lottieWidth, height: lottieHeight)
+                .offset(y: -((lottieHeight - baseLottieHeight) / 2.0))
+                .frame(width: lottieWidth, height: baseLottieHeight)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
             }

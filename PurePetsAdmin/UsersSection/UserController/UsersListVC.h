@@ -20,8 +20,12 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy) NSString *currentQuery;
 @property (nonatomic, copy, nullable) NSString *searchPlaceholderText;
 @property (nonatomic, copy, nullable) void (^onUserPicked)(UserModel *user);
+@property (nonatomic, copy, nullable) void (^onCustomerAttachmentCancelled)(void);
 
 - (instancetype)initWithViewFor:(ViewFor)mode; // convenience
+
+/// Select an existing active customer account without exposing account edits.
++ (instancetype)posCustomerAttachmentPicker NS_SWIFT_NAME(makePOSCustomerAttachmentPicker());
 
 /// UI
 @property (nonatomic, strong) XLFormSectionDescriptor *usersSection;

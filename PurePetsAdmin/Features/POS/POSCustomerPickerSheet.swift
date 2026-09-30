@@ -24,6 +24,7 @@ struct POSCustomerRecord: Identifiable, Hashable, Sendable {
     let status: String
     let createdAt: String?
     let note: String?
+    let isLinkedAppUser: Bool
 
     init(
         id: String,
@@ -35,7 +36,8 @@ struct POSCustomerRecord: Identifiable, Hashable, Sendable {
         branchId: String = "",
         status: String = "active",
         createdAt: String? = nil,
-        note: String? = nil
+        note: String? = nil,
+        isLinkedAppUser: Bool = false
     ) {
         self.id = id
         self.source = source
@@ -47,6 +49,7 @@ struct POSCustomerRecord: Identifiable, Hashable, Sendable {
         self.status = status
         self.createdAt = createdAt
         self.note = note
+        self.isLinkedAppUser = isLinkedAppUser
     }
 
     var initials: String {
@@ -70,9 +73,17 @@ struct POSCustomerRecord: Identifiable, Hashable, Sendable {
             Color(red: 0.55, green: 0.20, blue: 0.75), // Amethyst
             Color(red: 0.18, green: 0.68, blue: 0.70)  // Teal
         ]
-        let hash = abs(name.hashValue)
-        return colors[hash % colors.count]
+        // Stable across launches, including names whose Swift hash is Int.min.
+        let index = name.utf8.reduce(0) { ($0 + Int($1)) % colors.count }
+        return colors[index]
     }
+}
+
+/// Display snapshot only. The callable resolves contact data from this exact UID.
+fileprivate struct POSCustomerAppAccount: Identifiable {
+    let id: String
+    let name: String
+    let phone: String
 }
 
 // MARK: - Picker Mode
@@ -159,6 +170,9 @@ final class POSCustomerPickerViewModel: ObservableObject {
     @Published var isSubmitting: Bool = false
     @Published var errorMessage: String? = nil
     @Published var successFeedbackMessage: String? = nil
+    @Published fileprivate var attachmentCandidate: POSCustomerAppAccount? = nil
+    @Published var isAttachingUser = false
+    @Published var attachmentError: String? = nil
 
     // Create Form Fields
     @Published var newName: String = ""
@@ -181,6 +195,7 @@ final class POSCustomerPickerViewModel: ObservableObject {
     @Published var copiedPhoneId: String? = nil
 
     private var searchTask: Task<Void, Never>? = nil
+    private var directoryGeneration = 0
     private static let recentsStorageKey = "purepets_pos_recent_customers_v1"
 
     init() {
@@ -216,6 +231,8 @@ final class POSCustomerPickerViewModel: ObservableObject {
 
     func handleSearchQueryChanged(_ query: String) {
         searchTask?.cancel()
+        directoryGeneration += 1
+        let generation = directoryGeneration
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             loadInitialDirectory()
@@ -225,11 +242,11 @@ final class POSCustomerPickerViewModel: ObservableObject {
         searchTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 220_000_000)
             guard !Task.isCancelled else { return }
-            await self?.executeSearch(term: trimmed)
+            await self?.executeSearch(term: trimmed, generation: generation)
         }
     }
 
-    private func executeSearch(term: String) async {
+    private func executeSearch(term: String, generation: Int) async {
         isLoading = true
         errorMessage = nil
         do {
@@ -241,6 +258,7 @@ final class POSCustomerPickerViewModel: ObservableObject {
                 "pageSize": 25
             ]
             let result = try await callable.call(payload)
+            guard !Task.isCancelled, generation == directoryGeneration else { return }
             guard let data = result.data as? [String: Any],
                   let items = data["customers"] as? [[String: Any]] else {
                 isLoading = false
@@ -254,7 +272,7 @@ final class POSCustomerPickerViewModel: ObservableObject {
             }
             isLoading = false
         } catch {
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, generation == directoryGeneration else { return }
             isLoading = false
             errorMessage = error.localizedDescription
         }
@@ -262,6 +280,8 @@ final class POSCustomerPickerViewModel: ObservableObject {
 
     func loadInitialDirectory() {
         guard searchText.isEmpty else { return }
+        directoryGeneration += 1
+        let generation = directoryGeneration
         isLoading = true
         errorMessage = nil
         Task { [weak self] in
@@ -273,25 +293,110 @@ final class POSCustomerPickerViewModel: ObservableObject {
                     "term": "",
                     "pageSize": 25
                 ])
+                guard let self, generation == self.directoryGeneration else { return }
                 guard let data = result.data as? [String: Any],
                       let items = data["customers"] as? [[String: Any]] else {
-                    self?.isLoading = false
-                    self?.errorMessage = Language.get("POS_Customer_DirectoryLoadFailed", alter: "تعذر تحميل دليل العملاء. تحقق من الاتصال وحاول مرة أخرى.")
+                    self.isLoading = false
+                    self.errorMessage = Language.get("POS_Customer_DirectoryLoadFailed", alter: "تعذر تحميل دليل العملاء. تحقق من الاتصال وحاول مرة أخرى.")
                     return
                 }
-                if let self {
-                    let parsed = items.compactMap { self.parseCustomer($0) }
-                    self.searchResults = parsed
-                    if self.highlightedCustomer == nil {
-                        self.highlightedCustomer = parsed.first ?? self.recentCustomers.first
-                    }
+                let parsed = items.compactMap { self.parseCustomer($0) }
+                self.searchResults = parsed
+                if self.highlightedCustomer == nil {
+                    self.highlightedCustomer = parsed.first ?? self.recentCustomers.first
                 }
-                self?.isLoading = false
+                self.isLoading = false
             } catch {
-                self?.isLoading = false
-                self?.errorMessage = Language.get("POS_Customer_DirectoryLoadFailed", alter: "تعذر تحميل دليل العملاء. تحقق من الاتصال وحاول مرة أخرى.")
+                guard let self, generation == self.directoryGeneration else { return }
+                self.isLoading = false
+                self.errorMessage = Language.get("POS_Customer_DirectoryLoadFailed", alter: "تعذر تحميل دليل العملاء. تحقق من الاتصال وحاول مرة أخرى.")
             }
         }
+    }
+
+    // MARK: - Verified account attachment
+
+    var canAttachAppUser: Bool {
+        guard let staff = PPStaffAuth.shared().cachedCurrentStaff, staff.isActive() else { return false }
+        return staff.hasPermission(kStaffPermPosSell) &&
+            staff.hasAnyPermission([kStaffPermUsersView, kStaffPermUsersManage])
+    }
+
+    fileprivate func prepareAttachment(_ account: POSCustomerAppAccount) {
+        attachmentError = nil
+        attachmentCandidate = account
+    }
+
+    func attachSelectedAccount(overridePhone: String? = nil) {
+        guard !isAttachingUser, let account = attachmentCandidate else { return }
+        guard canAttachAppUser else {
+            attachmentError = Language.get("POS_Customer_AttachUser_NoAccess", alter: nil)
+            return
+        }
+        let uid = account.id
+        var payload: [String: Any] = ["userUid": uid]
+        let cleanPhone = (overridePhone ?? account.phone).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !cleanPhone.isEmpty {
+            payload["phone"] = cleanPhone
+        }
+        isAttachingUser = true
+        attachmentError = nil
+        Task { [weak self] in
+            guard let self else { return }
+            defer { self.isAttachingUser = false }
+            do {
+                let callable = Functions.functions().httpsCallable("posCustomerCommand")
+                callable.timeoutInterval = 25
+                let result = try await callable.call([
+                    "action": "attachUser", "payload": payload
+                ])
+                guard let data = result.data as? [String: Any], data["ok"] as? Bool == true,
+                      let raw = data["customer"] as? [String: Any],
+                      let customer = self.parseCustomer(raw), customer.isLinkedAppUser else {
+                    self.attachmentError = Language.get("POS_Customer_AttachUser_Failed", alter: nil)
+                    return
+                }
+                // Invalidate older searches before merging the authoritative result.
+                self.searchTask?.cancel()
+                self.directoryGeneration += 1
+                self.isLoading = false
+                self.searchText = customer.phone
+                self.searchResults.removeAll { $0.id == customer.id }
+                self.searchResults.insert(customer, at: 0)
+                self.rememberCustomer(customer)
+                self.highlightedCustomer = customer
+                self.attachmentCandidate = nil
+                self.successFeedbackMessage = Language.get(
+                    data["alreadyAttached"] as? Bool == true
+                        ? "POS_Customer_AttachUser_AlreadyAdded" : "POS_Customer_AttachUser_Success", alter: nil
+                )
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            } catch {
+                self.attachmentError = self.attachmentFailureMessage(error)
+            }
+        }
+    }
+
+    private func attachmentFailureMessage(_ error: Error) -> String {
+        let functionError = error as NSError
+        guard functionError.domain == FunctionsErrorDomain else {
+            return Language.get("POS_Customer_AttachUser_Failed", alter: nil)
+        }
+        let code = functionError.code
+        let key: String
+        switch code {
+        case FunctionsErrorCode.permissionDenied.rawValue, FunctionsErrorCode.unauthenticated.rawValue:
+            key = "POS_Customer_AttachUser_NoAccess"
+        case FunctionsErrorCode.notFound.rawValue:
+            key = "POS_Customer_AttachUser_NotFound"
+        case FunctionsErrorCode.failedPrecondition.rawValue, FunctionsErrorCode.alreadyExists.rawValue:
+            key = "POS_Customer_AttachUser_Unavailable"
+        case FunctionsErrorCode.invalidArgument.rawValue:
+            key = "POS_Customer_AttachUser_InvalidContact"
+        default:
+            key = "POS_Customer_AttachUser_Failed"
+        }
+        return Language.get(key, alter: nil)
     }
 
     // MARK: - Duplicate Phone Checking
@@ -519,7 +624,8 @@ final class POSCustomerPickerViewModel: ObservableObject {
                 "email": c.email,
                 "branchId": c.branchId,
                 "status": c.status,
-                "note": c.note ?? ""
+                "note": c.note ?? "",
+                "isLinkedAppUser": c.isLinkedAppUser ? "1" : "0"
             ]
         }
         UserDefaults.standard.set(serialized, forKey: Self.recentsStorageKey)
@@ -542,7 +648,8 @@ final class POSCustomerPickerViewModel: ObservableObject {
                 branchId: d["branchId"] ?? "",
                 status: d["status"] ?? "active",
                 createdAt: nil,
-                note: d["note"]
+                note: d["note"],
+                isLinkedAppUser: d["isLinkedAppUser"] == "1"
             )
         }
     }
@@ -611,7 +718,8 @@ final class POSCustomerPickerViewModel: ObservableObject {
             branchId: (dict["branchId"] as? String) ?? "",
             status: (dict["status"] as? String) ?? "active",
             createdAt: dict["createdAt"] as? String,
-            note: dict["note"] as? String
+            note: dict["note"] as? String,
+            isLinkedAppUser: dict["isLinkedAppUser"] as? Bool ?? false
         )
     }
 
@@ -626,6 +734,165 @@ final class POSCustomerPickerViewModel: ObservableObject {
 
 // MARK: - Root Entry Sheet
 
+/// A contact has one selection target and an independent editing target.
+/// Technical identifiers read LTR while their physical alignment follows Arabic.
+private struct POSCustomerIdentityCell: View {
+    let customer: POSCustomerRecord
+    let branchName: String
+    let isSelected: Bool
+    let selectionHint: String
+    let onSelect: () -> Void
+    let onEdit: (() -> Void)?
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    private var note: String { (customer.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var isUnavailable: Bool {
+        ["blocked", "banned", "disabled", "deactivated", "deleted", "suspended", "archived", "inactive"]
+            .contains(customer.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
+
+    var body: some View {
+        Group {
+            if typeSize.isAccessibilitySize {
+                VStack(spacing: 0) {
+                    selectionButton
+                    if onEdit != nil {
+                        Divider().padding(.horizontal, 16)
+                        editButton
+                    }
+                }
+            } else {
+                HStack(spacing: 0) {
+                    selectionButton
+                    if onEdit != nil {
+                        Rectangle().fill(AdminSurface.hairline).frame(width: 1, height: 28)
+                            .accessibilityHidden(true)
+                        editButton.padding(.horizontal, 6)
+                    }
+                }
+            }
+        }
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(isSelected ? AdminSurface.primary :
+                    (contrast == .increased ? AdminSurface.secondaryText : AdminSurface.hairline),
+                    lineWidth: isSelected ? 1.5 : 1)
+                .allowsHitTesting(false)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var selectionButton: some View {
+        Button(action: onSelect) {
+            HStack(alignment: .top, spacing: 11) {
+                if !typeSize.isAccessibilitySize {
+                    Text(customer.initials)
+                        .font(PPBrandFont.bold(15, relativeTo: .caption))
+                        .foregroundColor(AdminSurface.primary)
+                        .frame(width: 32, height: 32)
+                        .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                        .accessibilityHidden(true)
+                }
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(customer.name)
+                            .font(PPBrandFont.bold(20, relativeTo: .headline))
+                            .foregroundColor(AdminSurface.primaryText)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Image(systemName: isSelected ? "checkmark.circle.fill" : "chevron.forward")
+                            .font(.system(size: isSelected ? 17 : 11, weight: .semibold))
+                            .foregroundColor(isSelected ? AdminSurface.primary : AdminSurface.secondaryText)
+                            .accessibilityHidden(true)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        if !customer.phone.isEmpty { contactLine(customer.phone, icon: "phone", isEmail: false) }
+                        if !customer.email.isEmpty { contactLine(customer.email, icon: "envelope", isEmail: true) }
+                    }
+                    if customer.isLinkedAppUser {
+                        metadataLine(Language.get("POS_Customer_AppUserBadge", alter: nil), icon: "person.crop.circle")
+                    }
+                    if isUnavailable { metadataLine(Language.get("POS_Customer_InactiveContact", alter: nil), icon: "lock") }
+                    if !branchName.isEmpty { metadataLine(branchName, icon: "mappin") }
+                    if !note.isEmpty {
+                        Text(note)
+                            .font(PPBrandFont.regular(13, relativeTo: .footnote))
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(POSCustomerContactPressStyle())
+        .disabled(isUnavailable)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(customer.name)
+        .accessibilityValue([customer.phone, customer.email, branchName, note,
+            customer.isLinkedAppUser ? Language.get("POS_Customer_AppUserBadge", alter: nil) : "",
+            isUnavailable ? Language.get("POS_Customer_InactiveContact", alter: nil) : ""]
+            .filter { !$0.isEmpty }.joined(separator: ", "))
+        .accessibilityHint(selectionHint)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+    private func contactLine(_ value: String, icon: String, isEmail: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            if !Language.isRTL() { Image(systemName: icon).font(.system(size: 10, weight: .medium)) }
+            Text(value)
+                .font(isEmail ? PPBrandFont.medium(13.5, relativeTo: .footnote) : PPBrandFont.bold(15, relativeTo: .subheadline))
+                .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                .fixedSize(horizontal: false, vertical: true)
+            if Language.isRTL() { Image(systemName: icon).font(.system(size: 10, weight: .medium)) }
+        }
+        .frame(maxWidth: .infinity, alignment: Language.isRTL() ? .trailing : .leading)
+        .environment(\.layoutDirection, .leftToRight)
+        .foregroundColor(AdminSurface.secondaryText)
+    }
+
+    private func metadataLine(_ value: String, icon: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Image(systemName: icon).font(.system(size: 10, weight: .medium))
+            Text(value).font(PPBrandFont.medium(13, relativeTo: .footnote))
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundColor(AdminSurface.secondaryText)
+    }
+
+    private var editButton: some View {
+        Button { onEdit?() } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "pencil.line").font(.system(size: 16, weight: .medium))
+                if typeSize.isAccessibilitySize {
+                    Text(Language.get("POS_Customer_EditButton", alter: nil))
+                        .font(PPBrandFont.bold(16, relativeTo: .callout))
+                }
+            }
+            .foregroundColor(AdminSurface.primary)
+            .frame(minWidth: 44, maxWidth: typeSize.isAccessibilitySize ? .infinity : nil, minHeight: 44)
+            .padding(.vertical, typeSize.isAccessibilitySize ? 4 : 0)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(POSCustomerContactPressStyle())
+        .disabled(isUnavailable)
+        .accessibilityLabel(String(format: Language.get("POS_Customer_EditNamed", alter: nil), customer.name))
+    }
+}
+
+private struct POSCustomerContactPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.opacity(configuration.isPressed ? 0.65 : 1)
+    }
+}
+
 struct POSCustomerPickerSheet: View {
     let currentSelected: POSCustomerRecord?
     let canCreateCustomer: Bool
@@ -634,6 +901,8 @@ struct POSCustomerPickerSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = POSCustomerPickerViewModel()
+    @State private var isAccountPickerPresented = false
+    @State private var pendingAccount: POSCustomerAppAccount?
 
     init(
         currentSelected: POSCustomerRecord?,
@@ -660,6 +929,8 @@ struct POSCustomerPickerSheet: View {
                         currentSelected: currentSelected,
                         canCreateCustomer: canCreateCustomer,
                         purpose: purpose,
+                        canAttachAppUser: canCreateCustomer && viewModel.canAttachAppUser,
+                        onAttachAppUser: showAccountPicker,
                         onSelect: onSelect,
                         dismiss: { dismiss() }
                     )
@@ -669,6 +940,8 @@ struct POSCustomerPickerSheet: View {
                         currentSelected: currentSelected,
                         canCreateCustomer: canCreateCustomer,
                         purpose: purpose,
+                        canAttachAppUser: canCreateCustomer && viewModel.canAttachAppUser,
+                        onAttachAppUser: showAccountPicker,
                         onSelect: onSelect,
                         dismiss: { dismiss() }
                     )
@@ -676,6 +949,280 @@ struct POSCustomerPickerSheet: View {
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .sheet(isPresented: $isAccountPickerPresented, onDismiss: {
+            if let account = pendingAccount {
+                pendingAccount = nil
+                viewModel.prepareAttachment(account)
+            }
+        }) {
+            POSCustomerAppAccountPicker(onPick: { account in
+                pendingAccount = account
+                isAccountPickerPresented = false
+            }, onCancel: {
+                pendingAccount = nil
+                isAccountPickerPresented = false
+            })
+        }
+        .sheet(item: $viewModel.attachmentCandidate) { account in
+            POSCustomerAccountAttachmentSheet(viewModel: viewModel, account: account)
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
+    }
+
+    private func showAccountPicker() {
+        guard canCreateCustomer, viewModel.canAttachAppUser, !isAccountPickerPresented,
+              viewModel.attachmentCandidate == nil else { return }
+        pendingAccount = nil
+        isAccountPickerPresented = true
+    }
+}
+
+// MARK: - Existing-account bridge and confirmation
+
+private struct POSCustomerAppAccountPicker: UIViewControllerRepresentable {
+    let onPick: (POSCustomerAppAccount) -> Void
+    let onCancel: () -> Void
+
+    func makeUIViewController(context: Context) -> UINavigationController {
+        let picker = UsersListVC.makePOSCustomerAttachmentPicker()
+        picker.onCustomerAttachmentCancelled = onCancel
+        picker.onUserPicked = { user in
+            let name = (user.displayName ?? user.userName).trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            onPick(POSCustomerAppAccount(
+                id: user.uid,
+                name: name.isEmpty ? Language.get("POS_Customer_DefaultName", alter: nil) : name,
+                phone: user.mobileNo ?? ""
+            ))
+        }
+        let navigation = UINavigationController(rootViewController: picker)
+        navigation.setNavigationBarHidden(true, animated: false)
+        navigation.view.semanticContentAttribute = Language.semanticAttributeForCurrentLanguage()
+        return navigation
+    }
+
+    func updateUIViewController(_ controller: UINavigationController, context: Context) {}
+
+    static func dismantleUIViewController(_ controller: UINavigationController, coordinator: ()) {
+        (controller.viewControllers.first as? UsersListVC)?.onUserPicked = nil
+        (controller.viewControllers.first as? UsersListVC)?.onCustomerAttachmentCancelled = nil
+    }
+}
+
+private struct POSCustomerAttachUserButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 9) {
+                Image(systemName: "person.crop.circle.badge.plus")
+                    .font(.system(size: 17, weight: .medium))
+                    .accessibilityHidden(true)
+                Text(Language.get("POS_Customer_AttachUser_Title", alter: nil))
+                    .font(PPBrandFont.bold(15, relativeTo: .callout))
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.forward")
+                    .font(.system(size: 11, weight: .semibold))
+                    .accessibilityHidden(true)
+            }
+            .foregroundColor(AdminSurface.primary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .contentShape(Rectangle())
+            .background(AdminSurface.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(POSCustomerContactPressStyle())
+        .accessibilityHint(Language.get("POS_Customer_AttachUser_Description", alter: nil))
+    }
+}
+
+private struct POSCustomerAccountAttachmentSheet: View {
+    @ObservedObject var viewModel: POSCustomerPickerViewModel
+    let account: POSCustomerAppAccount
+    @State private var currentAccount: POSCustomerAppAccount
+    @State private var phoneInput: String
+    @State private var isReselectingAccount = false
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    init(viewModel: POSCustomerPickerViewModel, account: POSCustomerAppAccount) {
+        self.viewModel = viewModel
+        self.account = account
+        _currentAccount = State(initialValue: account)
+        _phoneInput = State(initialValue: account.phone)
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                // Breathing area above title and dismiss button
+                HStack(alignment: .top) {
+                    Text(Language.get("POS_Customer_AttachUser_Title", alter: nil))
+                        .font(PPBrandFont.bold(23, relativeTo: .title2))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
+                    Spacer(minLength: 8)
+                    Button { viewModel.attachmentCandidate = nil } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .frame(width: 44, height: 44)
+                            .background(AdminSurface.control, in: Circle())
+                    }
+                    .buttonStyle(POSCustomerContactPressStyle())
+                    .accessibilityLabel(Language.get("Close", alter: nil))
+                    .disabled(viewModel.isAttachingUser)
+                }
+                .padding(.top, 16)
+
+                // Candidate card with Reselect User button directly inside
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .center, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(currentAccount.name)
+                                .font(PPBrandFont.bold(21, relativeTo: .title3))
+                                .foregroundColor(AdminSurface.primaryText)
+                            if !currentAccount.phone.isEmpty {
+                                Text(currentAccount.phone)
+                                    .font(PPBrandFont.bold(15, relativeTo: .body))
+                                    .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                                    .environment(\.layoutDirection, .leftToRight)
+                                    .foregroundColor(AdminSurface.secondaryText)
+                            } else {
+                                Label(
+                                    Language.get("POS_Customer_AttachUser_NoPhoneOnAccount", alter: "لا يوجد رقم هاتف مسجل في هذا الحساب"),
+                                    systemImage: "exclamationmark.triangle"
+                                )
+                                .font(PPBrandFont.medium(13, relativeTo: .caption))
+                                .foregroundColor(AdminSurface.crimson)
+                            }
+                        }
+                        Spacer(minLength: 8)
+
+                        // Direct reselect button
+                        Button {
+                            isReselectingAccount = true
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                    .font(.system(size: 12, weight: .bold))
+                                Text(Language.get("POS_Customer_AttachUser_ChangeUser", alter: "تغيير الحساب"))
+                                    .font(PPBrandFont.bold(13, relativeTo: .caption))
+                            }
+                            .foregroundColor(AdminSurface.primary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(AdminSurface.primary.opacity(0.08), in: Capsule())
+                        }
+                        .buttonStyle(POSCustomerContactPressStyle())
+                        .disabled(viewModel.isAttachingUser)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16))
+
+                // Inline phone input if account has no phone registered
+                if currentAccount.phone.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(Language.get("POS_Customer_AttachUser_EnterPhone", alter: "رقم الهاتف (مطلوب لربط الحساب)"))
+                            .font(PPBrandFont.bold(15, relativeTo: .subheadline))
+                            .foregroundColor(AdminSurface.primaryText)
+
+                        HStack(spacing: 8) {
+                            Image(systemName: "phone.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(AdminSurface.secondaryText)
+
+                            TextField(
+                                Language.get("POS_Customer_AttachUser_EnterPhonePlaceholder", alter: "أدخل رقم هاتف العميل (مثال: 70000000)"),
+                                text: $phoneInput
+                            )
+                            .font(PPBrandFont.regular(15, relativeTo: .body))
+                            .keyboardType(.phonePad)
+                            .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                            .environment(\.layoutDirection, .leftToRight)
+                        }
+                        .padding(14)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(
+                                    phoneInput.trimmingCharacters(in: .whitespacesAndNewlines).count >= 6
+                                        ? AdminSurface.primary.opacity(0.35)
+                                        : AdminSurface.control,
+                                    lineWidth: 1
+                                )
+                        )
+
+                        Text(Language.get("POS_Customer_AttachUser_EnterPhoneHint", alter: "هذا الحساب لا يتضمن رقم هاتف مسجل. يرجى إدخال رقم الهاتف لربطه بدليل العملاء."))
+                            .font(PPBrandFont.regular(13, relativeTo: .caption))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                }
+
+                Text(Language.get("POS_Customer_AttachUser_Confirmation", alter: nil))
+                    .font(PPBrandFont.regular(16, relativeTo: .body))
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let error = viewModel.attachmentError ?? (viewModel.canAttachAppUser ? nil : Language.get("POS_Customer_AttachUser_NoAccess", alter: nil)) {
+                    Label(error, systemImage: "exclamationmark.circle")
+                        .font(PPBrandFont.medium(15, relativeTo: .callout))
+                        .foregroundColor(AdminSurface.danger)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityElement(children: .combine)
+                }
+
+                let cleanInput = phoneInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                let isPhoneValid = !currentAccount.phone.isEmpty || cleanInput.count >= 6
+                let canSubmit = !viewModel.isAttachingUser && viewModel.canAttachAppUser && isPhoneValid
+
+                Button {
+                    let effectivePhone = currentAccount.phone.isEmpty ? cleanInput : currentAccount.phone
+                    viewModel.attachSelectedAccount(overridePhone: effectivePhone)
+                } label: {
+                    HStack(spacing: 10) {
+                        if viewModel.isAttachingUser {
+                            ProgressView().tint(.white).accessibilityHidden(true)
+                        } else {
+                            Image(systemName: "person.badge.plus").accessibilityHidden(true)
+                        }
+                        Text(Language.get(viewModel.isAttachingUser
+                            ? "POS_Customer_AttachUser_Pending" : "POS_Customer_AttachUser_Submit", alter: nil))
+                            .font(PPBrandFont.bold(18, relativeTo: .headline))
+                            .multilineTextAlignment(.center)
+                    }
+                    .foregroundColor(.white)
+                    .padding(14)
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 15))
+                }
+                .buttonStyle(POSCustomerContactPressStyle())
+                .disabled(!canSubmit)
+                .opacity(canSubmit ? 1 : 0.55)
+            }
+            .padding(20)
+        }
+        .background(AdminSurface.background.ignoresSafeArea())
+        .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.medium, .large])
+        .presentationDragIndicator(.visible)
+        .interactiveDismissDisabled(viewModel.isAttachingUser)
+        .sheet(isPresented: $isReselectingAccount) {
+            POSCustomerAppAccountPicker(onPick: { newAccount in
+                currentAccount = newAccount
+                phoneInput = newAccount.phone
+                viewModel.prepareAttachment(newAccount)
+                isReselectingAccount = false
+            }, onCancel: {
+                isReselectingAccount = false
+            })
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
     }
 }
 
@@ -688,6 +1235,8 @@ private struct iPhoneCustomerSensoryDeck: View {
     let currentSelected: POSCustomerRecord?
     let canCreateCustomer: Bool
     let purpose: POSCustomerPickerPurpose
+    let canAttachAppUser: Bool
+    let onAttachAppUser: () -> Void
     let onSelect: (POSCustomerRecord) -> Void
     let dismiss: () -> Void
 
@@ -910,6 +1459,10 @@ private struct iPhoneCustomerSensoryDeck: View {
                         .stroke(isSearchFocused ? AdminSurface.primary : AdminSurface.hairline, lineWidth: isSearchFocused ? 1.5 : 1)
                 )
 
+                if canAttachAppUser {
+                    POSCustomerAttachUserButton(action: onAttachAppUser)
+                }
+
                 // Recent Walk-Ins Shelf
                 if viewModel.searchText.isEmpty && !viewModel.recentCustomers.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
@@ -973,9 +1526,8 @@ private struct iPhoneCustomerSensoryDeck: View {
                         .foregroundColor(AdminSurface.primaryText)
                         .lineLimit(1)
                     Text(customer.phone)
-                        .font(.system(size: 10))
+                        .font(PPBrandFont.medium(11, relativeTo: .caption2))
                         .foregroundColor(AdminSurface.secondaryText)
-                        .monospacedDigit()
                 }
             }
             .padding(.horizontal, 10)
@@ -989,141 +1541,18 @@ private struct iPhoneCustomerSensoryDeck: View {
     // MARK: - iPhone Customer Card with Edit Button
 
     private func iPhoneCustomerResultCard(customer: POSCustomerRecord) -> some View {
-        let isSelected = currentSelected?.id == customer.id
-
-        return HStack(spacing: 10) {
-            // Main Tap Area: Selects customer and dismisses
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        POSCustomerIdentityCell(
+            customer: customer,
+            branchName: viewModel.branchDisplayName(for: customer.branchId),
+            isSelected: currentSelected?.id == customer.id,
+            selectionHint: purpose.selectTitle,
+            onSelect: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 viewModel.rememberCustomer(customer)
                 onSelect(customer)
                 dismiss()
-            } label: {
-                HStack(spacing: 12) {
-                    // Avatar Squircle
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(customer.avatarColor.opacity(0.15))
-                            .frame(width: 48, height: 48)
-                        Text(customer.initials)
-                            .font(Font.custom("Beiruti-Bold", size: 17, relativeTo: .headline))
-                            .foregroundColor(customer.avatarColor)
-                    }
-
-                    // Information Stack
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 6) {
-                            Text(customer.name)
-                                .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .body))
-                                .foregroundColor(AdminSurface.primaryText)
-                                .lineLimit(1)
-
-                            if isSelected {
-                                Text(Language.get("POS_Customer_SelectedBadge", alter: "المحدد حالياً"))
-                                    .font(.system(size: 9.5, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color.green, in: Capsule())
-                            }
-                        }
-
-                        HStack(spacing: 8) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "phone.fill")
-                                    .font(.system(size: 9))
-                                Text(customer.phone)
-                                    .font(.system(size: 12, weight: .medium))
-                                    .monospacedDigit()
-                            }
-                            .foregroundColor(AdminSurface.secondaryText)
-
-                            if !customer.email.isEmpty {
-                                Text("•")
-                                    .foregroundColor(AdminSurface.hairline)
-                                Text(customer.email)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(AdminSurface.secondaryText)
-                                    .lineLimit(1)
-                            }
-                        }
-
-                        // Branch & Notes Pill row
-                        HStack(spacing: 6) {
-                            if !customer.branchId.isEmpty {
-                                let branchTitle = viewModel.branchDisplayName(for: customer.branchId)
-                                if !branchTitle.isEmpty {
-                                    HStack(spacing: 3) {
-                                        Image(systemName: "mappin.circle.fill")
-                                            .font(.system(size: 9))
-                                        Text(branchTitle)
-                                            .font(Font.custom("Beiruti-Medium", size: 11, relativeTo: .caption2))
-                                    }
-                                    .foregroundColor(AdminSurface.primary)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(AdminSurface.primary.opacity(0.08), in: Capsule())
-                                }
-                            }
-
-                            if let note = customer.note, !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                HStack(spacing: 3) {
-                                    Image(systemName: "note.text")
-                                        .font(.system(size: 9))
-                                    Text(note)
-                                        .font(Font.custom("Beiruti-Regular", size: 10.5, relativeTo: .caption2))
-                                        .lineLimit(1)
-                                }
-                                .foregroundColor(.secondary)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(AdminSurface.control, in: Capsule())
-                            }
-                        }
-                    }
-
-                    Spacer(minLength: 4)
-                }
-            }
-            .buttonStyle(PlainButtonStyle())
-
-            if canCreateCustomer {
-                // Editing and creation share the server's pos.sell permission.
-                Button {
-                    viewModel.startEditing(customer: customer)
-                } label: {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(AdminSurface.primary.opacity(0.10))
-                            .frame(width: 38, height: 38)
-                        Image(systemName: "pencil")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(AdminSurface.primary)
-                    }
-                }
-                .buttonStyle(PlainButtonStyle())
-                .accessibilityLabel(Language.get("POS_Customer_EditButton", alter: "تعديل"))
-            }
-
-            // Select Chevron Indicator
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                viewModel.rememberCustomer(customer)
-                onSelect(customer)
-                dismiss()
-            } label: {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "chevron.backward")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(isSelected ? .green : AdminSurface.secondaryText.opacity(0.6))
-                    .frame(width: 24, height: 38)
-            }
-            .buttonStyle(PlainButtonStyle())
-        }
-        .padding(12)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(isSelected ? Color.green : AdminSurface.hairline, lineWidth: isSelected ? 1.5 : 1)
+            },
+            onEdit: canCreateCustomer ? { viewModel.startEditing(customer: customer) } : nil
         )
     }
 
@@ -1248,15 +1677,14 @@ private struct iPhoneCustomerSensoryDeck: View {
 
                         HStack(spacing: 8) {
                             Text("🇶🇦 +974")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
                                 .foregroundColor(AdminSurface.secondaryText)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 10)
                                 .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                             TextField(Language.get("POS_Customer_PhonePlaceholder", alter: "5512 3456"), text: $viewModel.newPhone)
-                                .font(.system(size: 15, weight: .semibold))
-                                .monospacedDigit()
+                                .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .body))
                                 .keyboardType(.phonePad)
                                 .onChange(of: viewModel.newPhone, perform: { newValue in
                                     viewModel.checkDuplicatePhone(newValue)
@@ -1461,8 +1889,7 @@ private struct POSCustomerEditSheet: View {
                                         .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption2))
                                         .foregroundColor(AdminSurface.secondaryText)
                                     Text(customer.phone)
-                                        .font(.system(size: 14, weight: .bold))
-                                        .monospacedDigit()
+                                        .font(PPBrandFont.bold(14, relativeTo: .callout))
                                         .foregroundColor(AdminSurface.primaryText)
                                 }
 
@@ -1643,6 +2070,8 @@ private struct iPadCustomerSpatialCockpit: View {
     let currentSelected: POSCustomerRecord?
     let canCreateCustomer: Bool
     let purpose: POSCustomerPickerPurpose
+    let canAttachAppUser: Bool
+    let onAttachAppUser: () -> Void
     let onSelect: (POSCustomerRecord) -> Void
     let dismiss: () -> Void
 
@@ -1787,6 +2216,9 @@ private struct iPadCustomerSpatialCockpit: View {
 
     private var iPadLeftDirectoryColumn: some View {
         VStack(spacing: 12) {
+            if canAttachAppUser && viewModel.activeTab == .search {
+                POSCustomerAttachUserButton(action: onAttachAppUser)
+            }
             // Mode Switcher Tabs
             HStack(spacing: 4) {
                 ForEach(canCreateCustomer ? POSCustomerPickerTab.allCases : [.search]) { tab in
@@ -1972,8 +2404,7 @@ private struct iPadCustomerSpatialCockpit: View {
                             HStack(spacing: 3) {
                                 Image(systemName: "phone.fill").font(.system(size: 8.5))
                                 Text(customer.phone)
-                                    .font(.system(size: 11.5, weight: .medium))
-                                    .monospacedDigit()
+                                    .font(PPBrandFont.medium(12, relativeTo: .caption2))
                             }
                             .foregroundColor(AdminSurface.secondaryText)
 
@@ -2231,8 +2662,7 @@ private struct iPadCustomerSpatialCockpit: View {
                     .foregroundColor(AdminSurface.secondaryText)
                 if isMonospaced {
                     Text(value)
-                        .font(.system(size: 13.5, weight: .semibold))
-                        .monospacedDigit()
+                        .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .caption))
                         .foregroundColor(AdminSurface.primaryText)
                 } else {
                     Text(value)
@@ -2307,8 +2737,7 @@ private struct iPadCustomerSpatialCockpit: View {
                             .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
                             .foregroundColor(AdminSurface.secondaryText)
                         Text(viewModel.editingCustomer?.phone ?? "")
-                            .font(.system(size: 13, weight: .bold))
-                            .monospacedDigit()
+                            .font(PPBrandFont.bold(14, relativeTo: .callout))
                             .foregroundColor(AdminSurface.primaryText)
                         Spacer()
                     }
@@ -2540,15 +2969,14 @@ private struct iPadCustomerSpatialCockpit: View {
                                 .foregroundColor(AdminSurface.primaryText)
                             HStack(spacing: 6) {
                                 Text("🇶🇦 +974")
-                                    .font(.system(size: 12, weight: .bold))
+                                    .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
                                     .foregroundColor(AdminSurface.secondaryText)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 8)
                                     .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
                                 TextField("5512 3456", text: $viewModel.newPhone)
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .monospacedDigit()
+                                    .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .body))
                                     .keyboardType(.phonePad)
                                     .onChange(of: viewModel.newPhone, perform: { newValue in
                                         viewModel.checkDuplicatePhone(newValue)

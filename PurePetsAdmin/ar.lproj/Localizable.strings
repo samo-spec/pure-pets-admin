@@ -4928,7 +4928,7 @@
 "POS_Scanner_Title" = "مسح رمز المنتج";
 "POS_Scanner_Guidance" = "ضع رمز QR أو الباركود بالكامل داخل الإطار";
 "POS_Scanner_PermissionTitle" = "استخدم الكاميرا لمسح الرمز";
-"POS_Scanner_PermissionSubtitle" = "تُستخدم الكاميرا لقراءة رمز المنتج فقط، ثم يُبحث عنه في الكتالوج الحالي.";
+"POS_Scanner_PermissionSubtitle" = "تقرأ الكاميرا رمز المنتج وتعيده إلى الشاشة التي فتحت الماسح. لا تُحفظ صور أثناء المسح.";
 "POS_Scanner_Allow" = "السماح بالكاميرا";
 "POS_Scanner_Requesting" = "بانتظار إذن الكاميرا…";
 "POS_Scanner_DeniedTitle" = "الوصول إلى الكاميرا متوقف";
@@ -4938,6 +4938,21 @@
 "POS_Scanner_UnavailableSubtitle" = "تعذر تشغيل كاميرا أو قارئ رموز متوافق على هذا الجهاز.";
 "POS_Scanner_Retry" = "إعادة فحص الكاميرا";
 "POS_Scanner_Detected_Format" = "تم التقاط الرمز %@";
+"POS_Scanner_AimTitle" = "وجّه الرمز إلى الإطار";
+"POS_Scanner_AimSubtitle" = "قرّب الباركود أو رمز QR وثبّت المنتج لحظة. يُلتقط الرمز تلقائياً.";
+"POS_Scanner_Starting" = "جارٍ تشغيل الكاميرا…";
+"POS_Scanner_Reading" = "جاهز لقراءة الرمز";
+"POS_Scanner_Interrupted" = "الكاميرا متوقفة مؤقتاً";
+"POS_Scanner_InterruptedSubtitle" = "يُستأنف المسح عند توفر الكاميرا. يمكنك أيضاً إدخال الرمز يدوياً.";
+"POS_Scanner_Light" = "الإضاءة";
+"POS_Scanner_LightOn" = "مفعّلة";
+"POS_Scanner_LightOff" = "متوقفة";
+"POS_Scanner_LightUnavailable" = "غير متاحة حالياً";
+"POS_Scanner_Manual" = "أدخل الرمز";
+"POS_Scanner_ManualSubtitle" = "اكتب الرمز على ملصق المنتج أو الصقه هنا. يُستخدم كما أدخلته.";
+"POS_Scanner_CodeLabel" = "رمز المنتج";
+"POS_Scanner_CodePlaceholder" = "الباركود أو محتوى رمز QR";
+"POS_Scanner_UseCode" = "استخدام الرمز";
 
 /* ===================== POS Customer Directory ===================== */
 "POS_Customer_Title" = "دليل وربط العملاء";
@@ -5377,6 +5392,8 @@
 "InventoryHero_DataUnavailable" = "لا تتوفر بيانات";
 "InventoryHero_Unavailable_Title" = "تعذّر تحميل المخزون";
 "InventoryHero_Unavailable_Detail" = "لم نتمكن من تأكيد بيانات الكتالوج. أعد المحاولة باستخدام زر التحديث أعلاه.";
+"InventoryHero_Collapse" = "طي بطاقة المخزون";
+"InventoryHero_Expand" = "توسيع بطاقة المخزون";
 "DoubleTapToDeselect" = "اضغط مرتين لإلغاء التصفية";
 "DoubleTapToFilter" = "اضغط مرتين لتصفية القائمة";
 "Inventory_Valuation_Format" = "القيمة الإجمالية للمخزون: %.2f ر.ق";
@@ -10814,3 +10831,39 @@
 
 "Piece" = "حبة";
 "CatalogIntake_GeneratePPBarcode" = "توليد باركود PP";
+
+// Customer directory: verified account attachment and contact cells
+"POS_Customer_AttachUser_Title" = "إضافة من المستخدمين";
+"POS_Customer_AttachUser_Description" = "اختر مستخدماً لإضافته إلى دليل العملاء.";
+"POS_Customer_AttachUser_Confirmation" = "سنضيف بيانات التواصل من الحساب. إذا كان رقم الهاتف موجوداً في الدليل، سنربط العميل الحالي ونحتفظ ببياناته.";
+"POS_Customer_AttachUser_Submit" = "إضافة إلى دليل العملاء";
+"POS_Customer_AttachUser_Pending" = "جارٍ التحقق والإضافة…";
+"POS_Customer_AttachUser_Success" = "أُضيف المستخدم إلى دليل العملاء. يمكنك اختياره الآن.";
+"POS_Customer_AttachUser_AlreadyAdded" = "هذا المستخدم موجود في الدليل. يمكنك اختياره الآن.";
+"POS_Customer_AttachUser_NoAccess" = "تحتاج إلى صلاحية البيع والوصول إلى المستخدمين لإضافة حساب إلى الدليل.";
+"POS_Customer_AttachUser_NotFound" = "تعذر العثور على الحساب. ارجع إلى قائمة المستخدمين واختره مجدداً.";
+"POS_Customer_AttachUser_Unavailable" = "تعذر ربط هذا الحساب. قد يكون غير نشط أو مرتبطاً بعميل آخر أو خارج نطاق فروعك.";
+"POS_Customer_AttachUser_InvalidContact" = "تعذرت إضافة الحساب. تأكد من أن بيانات التواصل تتضمن رقم هاتف صحيحاً، ثم حاول مجدداً.";
+"POS_Customer_AttachUser_Failed" = "تعذرت الإضافة. تحقق من الاتصال وحاول مجدداً؛ إعادة المحاولة لن تنشئ عميلاً مكرراً.";
+"POS_Customer_AttachUser_ChangeUser" = "تغيير الحساب";
+"POS_Customer_AttachUser_NoPhoneOnAccount" = "لا يوجد رقم هاتف مسجل في هذا الحساب";
+"POS_Customer_AttachUser_EnterPhone" = "رقم الهاتف (مطلوب لربط الحساب)";
+"POS_Customer_AttachUser_EnterPhoneHint" = "هذا الحساب لا يتضمن رقم هاتف مسجل. يرجى إدخال رقم الهاتف لربطه بدليل العملاء.";
+"POS_Customer_AttachUser_EnterPhonePlaceholder" = "أدخل رقم هاتف العميل (مثال: 70000000)";
+"POS_Customer_AppUserBadge" = "مرتبط بحساب مستخدم";
+"POS_Customer_EditNamed" = "تعديل بيانات %@";
+"POS_Customer_InactiveContact" = "هذا العميل غير متاح للاختيار";
+
+/* POS transaction header */
+"POS_Header_Reservations" = "الحجوزات";
+"POS_Header_AddCustomer" = "إضافة عميل";
+"POS_Header_Scan" = "مسح";
+"POS_Header_SearchPrompt" = "اسم المنتج أو الرمز";
+"POS_Header_AllProducts" = "كل المنتجات";
+"POS_Header_Branch" = "الفرع";
+"POS_Header_BranchHint" = "يفتح اختيار الفرع";
+
+/* POS approved header copy */
+"POS_Header_Title" = "بيع سريع";
+"POS_Header_SaleType" = "نوع البيع";
+"POS_Header_BranchCatalog" = "منتجات الفرع";

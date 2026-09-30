@@ -1175,12 +1175,32 @@ enum POSBarcodeScannerPhase: Equatable {
     case unavailable
 }
 
+struct POSBarcodeCameraState: Equatable, Sendable {
+    enum Status: Equatable, Sendable {
+        case starting, reading, interrupted, unavailable
+    }
+
+    var status: Status = .starting
+    var isTorchAvailable = false
+    var isTorchOn = false
+}
+
 struct POSBarcodeScannerScreen: View {
     let onResult: (String) -> Void
     let onCancel: () -> Void
 
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var phase: POSBarcodeScannerPhase
+    @State private var cameraState = POSBarcodeCameraState()
+    @State private var apertureFrame = CGRect.zero
+    @State private var cameraFrame = CGRect.zero
+    @State private var torchRequested = false
+    @State private var showingManualEntry = false
+    @State private var isVisible = false
+    @State private var hasFinished = false
+
+    private let ink = Color(red: 0.055, green: 0.065, blue: 0.08)
 
     init(onResult: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
         self.onResult = onResult
@@ -1190,109 +1210,270 @@ struct POSBarcodeScannerScreen: View {
 
     var body: some View {
         ZStack {
+            ink.ignoresSafeArea()
             if phase == .ready {
                 POSBarcodeCameraView(
-                    onResult: onResult,
-                    onFailure: { phase = .unavailable }
+                    onResult: { code in
+                        guard !showingManualEntry, scenePhase == .active else { return }
+                        finish(code)
+                    },
+                    onFailure: {
+                        guard isVisible, scenePhase == .active, !hasFinished else { return }
+                        torchRequested = false
+                        phase = .unavailable
+                    },
+                    scanRegion: BarcodeScanGeometry.normalizedAperture(apertureFrame, in: cameraFrame),
+                    isActive: isVisible && scenePhase == .active && !showingManualEntry && !hasFinished,
+                    isTorchRequested: torchRequested,
+                    onStateChange: { state in
+                        guard isVisible, !hasFinished else { return }
+                        cameraState = state
+                        if state.status == .interrupted || !state.isTorchAvailable { torchRequested = false }
+                    }
                 )
+                .background {
+                    GeometryReader { geometry in
+                        Color.clear.preference(key: BarcodeCameraPreferenceKey.self, value: geometry.frame(in: .global))
+                    }
+                }
                 .ignoresSafeArea()
-                Color.black.opacity(0.24).ignoresSafeArea().allowsHitTesting(false)
-                scannerChrome
-            } else {
-                AdminSurface.background.ignoresSafeArea()
-                scannerStateContent
+                .accessibilityHidden(true)
+
+                GeometryReader { geometry in
+                    let origin = geometry.frame(in: .global).origin
+                    BarcodeApertureMask(aperture: apertureFrame.offsetBy(dx: -origin.x, dy: -origin.y))
+                        .fill(Color.black.opacity(0.56), style: FillStyle(eoFill: true))
+                }
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+
+            GeometryReader { geometry in
+                VStack(spacing: 0) {
+                    scannerHeader
+                    if phase == .ready {
+                        if geometry.size.height < 440 {
+                            HStack(spacing: 24) {
+                                aimingStage
+                                instructionShelf
+                                    .frame(width: min(320, geometry.size.width * 0.42))
+                            }
+                            .padding(.horizontal, 24)
+                        } else {
+                            aimingStage
+                                .padding(.horizontal, 24)
+                            instructionShelf
+                                .frame(maxHeight: geometry.size.height * (dynamicTypeSize.isAccessibilitySize ? 0.48 : 0.36))
+                                .padding(.horizontal, 24)
+                        }
+                    } else {
+                        scannerStateContent
+                    }
+                }
+                .padding(.bottom, 16)
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .onAppear { refreshAuthorization() }
-        .onChange(of: scenePhase) { value in
-            if value == .active { refreshAuthorization() }
+        .preferredColorScheme(.dark)
+        .onPreferenceChange(BarcodeAperturePreferenceKey.self) { apertureFrame = $0 }
+        .onPreferenceChange(BarcodeCameraPreferenceKey.self) { cameraFrame = $0 }
+        .onAppear {
+            isVisible = true
+            refreshAuthorization()
+        }
+        .onDisappear {
+            isVisible = false
+            torchRequested = false
+        }
+        .onChange(of: scenePhase) { _, value in
+            if value == .active {
+                refreshAuthorization()
+            } else {
+                torchRequested = false
+            }
+        }
+        .onChange(of: showingManualEntry) { _, _ in torchRequested = false }
+        .onChange(of: cameraState.status) { old, new in
+            guard old != new, isVisible, !showingManualEntry, !hasFinished else { return }
+            UIAccessibility.post(notification: .announcement, argument: cameraStatusTitle)
+        }
+        .sheet(isPresented: $showingManualEntry) {
+            BarcodeManualEntrySheet(
+                onSubmit: { code in
+                    showingManualEntry = false
+                    finish(code)
+                },
+                onCancel: { showingManualEntry = false }
+            )
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
     }
 
-    private var scannerChrome: some View {
-        VStack(spacing: 0) {
-            scannerHeader(dark: true)
-            Spacer()
+    private var scannerHeader: some View {
+        HStack(alignment: .top, spacing: 14) {
+            Button(action: cancel) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 48, height: 48)
+                    .background(ink, in: Circle())
+                    .overlay(Circle().strokeBorder(Color.white.opacity(0.22), lineWidth: 1))
+            }
+            .accessibilityLabel(Language.get("POS_Close", alter: nil))
 
-            RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
-                .stroke(Color.white.opacity(0.92), lineWidth: 3)
-                .frame(maxWidth: 310, minHeight: 190, maxHeight: 220)
-                .overlay(
-                    RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
-                        .stroke(AdminSurface.primary.opacity(0.9), lineWidth: 1)
-                        .padding(8)
-                )
-                .accessibilityHidden(true)
-
-            Text(Language.get("POS_Scanner_Guidance", alter: "ضع رمز QR أو الباركود بالكامل داخل الإطار"))
-                .font(AdminType.calloutBold)
-                .foregroundColor(.white)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, AdminSpacing.base)
-                .padding(.vertical, AdminSpacing.md)
-                .background(Color.black.opacity(0.62), in: Capsule())
-                .padding(.top, AdminSpacing.lg)
-                .padding(.horizontal, AdminSpacing.screenMargin)
-
-            Spacer()
+            VStack(alignment: .leading, spacing: 4) {
+                Text(Language.get("POS_Scanner_Title", alter: nil))
+                    .font(PPBrandFont.bold(25, relativeTo: .title2))
+                    .foregroundStyle(.white)
+                    .accessibilityAddTraits(.isHeader)
+                if phase == .ready {
+                    HStack(spacing: 7) {
+                        if cameraState.status == .starting {
+                            ProgressView().tint(.white).accessibilityHidden(true)
+                        } else {
+                            Image(systemName: cameraState.status == .reading ? "viewfinder" : "pause.circle")
+                                .font(.system(size: 12, weight: .semibold))
+                                .accessibilityHidden(true)
+                        }
+                        Text(cameraStatusTitle)
+                            .font(PPBrandFont.medium(16, relativeTo: .subheadline))
+                    }
+                    .foregroundStyle(Color.white.opacity(0.85))
+                    .accessibilityElement(children: .combine)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(.horizontal, 24)
+        .padding(.top, 12)
+        .padding(.bottom, 16)
+        .background(ink)
+    }
+
+    private var aimingStage: some View {
+        GeometryReader { geometry in
+            let width = max(24, min(geometry.size.width - 12, 520))
+            let height = max(24, min(width * 0.65, max(24, geometry.size.height - 32), 300))
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
+                .overlay {
+                    BarcodeApertureCorners()
+                        .stroke(Color.white, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                }
+                .frame(width: max(24, width), height: height)
+                .background {
+                    GeometryReader { aperture in
+                        Color.clear.preference(key: BarcodeAperturePreferenceKey.self, value: aperture.frame(in: .global))
+                    }
+                }
+                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                .accessibilityHidden(true)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private var instructionShelf: some View {
+        ViewThatFits(in: .vertical) {
+            instructionContent
+            ScrollView { instructionContent }
+                .scrollIndicators(.hidden)
+        }
+    }
+
+    private var instructionContent: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(Language.get("POS_Scanner_AimTitle", alter: nil))
+                    .font(PPBrandFont.bold(28, relativeTo: .title2))
+                    .foregroundStyle(.white)
+                Text(Language.get(cameraState.status == .interrupted ? "POS_Scanner_InterruptedSubtitle" : "POS_Scanner_AimSubtitle", alter: nil))
+                    .font(PPBrandFont.regular(19, relativeTo: .body))
+                    .foregroundStyle(Color.white.opacity(0.8))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .combine)
+
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: 10) { scannerTools }
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) { scannerTools }
+                    VStack(spacing: 10) { scannerTools }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
+        .background(ink, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     @ViewBuilder
-    private var scannerStateContent: some View {
-        VStack(spacing: AdminSpacing.lg) {
-            scannerHeader(dark: false)
-            Spacer()
+    private var scannerTools: some View {
+        Button { torchRequested.toggle() } label: {
+            Label(Language.get("POS_Scanner_Light", alter: nil), systemImage: cameraState.isTorchOn ? "flashlight.on.fill" : "flashlight.off.fill")
+                .font(PPBrandFont.medium(19, relativeTo: .body))
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .foregroundStyle(cameraState.isTorchAvailable ? Color.white : Color.white.opacity(0.5))
+                .background(cameraState.isTorchOn ? AdminSurface.primary : Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
+        }
+        .disabled(!cameraState.isTorchAvailable || cameraState.status != .reading)
+        .accessibilityValue(Language.get(cameraState.isTorchAvailable ? (cameraState.isTorchOn ? "POS_Scanner_LightOn" : "POS_Scanner_LightOff") : "POS_Scanner_LightUnavailable", alter: nil))
 
-            ZStack {
-                Circle()
-                    .fill(AdminSurface.primarySoft)
-                    .frame(width: 104, height: 104)
-                Image(systemName: scannerStateIcon)
-                    .font(.system(size: 42, weight: .light))
-                    .foregroundColor(AdminSurface.primary)
-            }
-
-            VStack(spacing: AdminSpacing.sm) {
-                Text(scannerStateTitle)
-                    .font(AdminType.title2)
-                    .foregroundColor(AdminSurface.primaryText)
-                    .multilineTextAlignment(.center)
-                Text(scannerStateSubtitle)
-                    .font(AdminType.body)
-                    .foregroundColor(AdminSurface.secondaryText)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.horizontal, AdminSpacing.xl)
-
-            scannerStateAction
-                .padding(.horizontal, AdminSpacing.screenMargin)
-
-            Spacer()
-            Spacer()
+        Button { showingManualEntry = true } label: {
+            Label(Language.get("POS_Scanner_Manual", alter: nil), systemImage: "keyboard")
+                .font(PPBrandFont.medium(19, relativeTo: .body))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
         }
     }
 
-    private func scannerHeader(dark: Bool) -> some View {
-        HStack(spacing: AdminSpacing.sm) {
-            Button { onCancel() } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(dark ? .white : AdminSurface.primary)
-                    .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
-                    .background(dark ? Color.black.opacity(0.55) : AdminSurface.control, in: Circle())
+    private var scannerStateContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                Image(systemName: scannerStateIcon)
+                    .font(.system(size: 42, weight: .light))
+                    .foregroundStyle(.white)
+                    .frame(width: 80, height: 80, alignment: .leading)
+                    .accessibilityHidden(true)
+                Text(scannerStateTitle)
+                    .font(PPBrandFont.bold(32, relativeTo: .title))
+                    .foregroundStyle(.white)
+                    .accessibilityAddTraits(.isHeader)
+                Text(scannerStateSubtitle)
+                    .font(PPBrandFont.regular(21, relativeTo: .body))
+                    .foregroundStyle(Color.white.opacity(0.8))
+                    .fixedSize(horizontal: false, vertical: true)
+                scannerStateAction
+                Button { showingManualEntry = true } label: {
+                    Label(Language.get("POS_Scanner_Manual", alter: nil), systemImage: "keyboard")
+                        .font(PPBrandFont.medium(21, relativeTo: .body))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
+                }
             }
-            .accessibilityLabel(Language.get("POS_Close", alter: "إغلاق"))
-
-            Text(Language.get("POS_Scanner_Title", alter: "مسح رمز المنتج"))
-                .font(AdminType.headline)
-                .foregroundColor(dark ? .white : AdminSurface.primaryText)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: 520, alignment: .leading)
+            .padding(.horizontal, 28)
+            .padding(.vertical, 28)
+            .frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.top, AdminSpacing.sm)
+    }
+
+    private var cameraStatusTitle: String {
+        switch cameraState.status {
+        case .starting: return Language.get("POS_Scanner_Starting", alter: nil)
+        case .reading: return Language.get("POS_Scanner_Reading", alter: nil)
+        case .interrupted: return Language.get("POS_Scanner_Interrupted", alter: nil)
+        case .unavailable: return Language.get("POS_Scanner_UnavailableTitle", alter: nil)
+        }
     }
 
     @ViewBuilder
@@ -1304,10 +1485,10 @@ struct POSBarcodeScannerScreen: View {
             }
         case .requesting:
             HStack(spacing: AdminSpacing.sm) {
-                ProgressView().tint(AdminSurface.primary)
+                ProgressView().tint(.white)
                 Text(Language.get("POS_Scanner_Requesting", alter: "بانتظار إذن الكاميرا…"))
-                    .font(AdminType.calloutBold)
-                    .foregroundColor(AdminSurface.secondaryText)
+                    .font(PPBrandFont.medium(19, relativeTo: .body))
+                    .foregroundStyle(Color.white.opacity(0.8))
             }
             .frame(minHeight: 52)
         case .denied:
@@ -1327,9 +1508,10 @@ struct POSBarcodeScannerScreen: View {
     private func scannerActionButton(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(title, systemImage: icon)
-                .font(AdminType.headline)
+                .font(PPBrandFont.bold(21, relativeTo: .headline))
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity, minHeight: 52)
+                .padding(.vertical, 10)
                 .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous))
         }
     }
@@ -1359,7 +1541,7 @@ struct POSBarcodeScannerScreen: View {
     private var scannerStateSubtitle: String {
         switch phase {
         case .permissionRequired, .requesting:
-            return Language.get("POS_Scanner_PermissionSubtitle", alter: "تُستخدم الكاميرا لقراءة رمز المنتج فقط، ثم يُبحث عنه في الكتالوج الحالي.")
+            return Language.get("POS_Scanner_PermissionSubtitle", alter: nil)
         case .denied:
             return Language.get("POS_Scanner_DeniedSubtitle", alter: "فعّل الكاميرا للتطبيق من الإعدادات، ثم عُد للمسح.")
         case .unavailable:
@@ -1373,13 +1555,34 @@ struct POSBarcodeScannerScreen: View {
         phase = .requesting
         AVCaptureDevice.requestAccess(for: .video) { granted in
             DispatchQueue.main.async {
+                guard isVisible, !hasFinished else { return }
                 phase = granted ? .ready : .denied
             }
         }
     }
 
     private func refreshAuthorization() {
-        phase = Self.phaseForCurrentAuthorization()
+        guard !hasFinished, phase != .requesting else { return }
+        let authorization = Self.phaseForCurrentAuthorization()
+        if authorization != phase {
+            cameraState = POSBarcodeCameraState()
+            phase = authorization
+        }
+    }
+
+    private func finish(_ code: String) {
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isVisible, !hasFinished, !trimmed.isEmpty else { return }
+        hasFinished = true
+        torchRequested = false
+        onResult(trimmed)
+    }
+
+    private func cancel() {
+        guard !hasFinished else { return }
+        hasFinished = true
+        torchRequested = false
+        onCancel()
     }
 
     private static func phaseForCurrentAuthorization() -> POSBarcodeScannerPhase {
@@ -1392,9 +1595,151 @@ struct POSBarcodeScannerScreen: View {
     }
 }
 
+private struct BarcodeAperturePreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect { .zero }
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
+}
+
+private struct BarcodeCameraPreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect { .zero }
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
+}
+
+/// Both frames share SwiftUI's global coordinate space. Normalization avoids
+/// assuming that a pushed controller and an inset sheet share a window origin.
+private enum BarcodeScanGeometry {
+    static func normalizedAperture(_ aperture: CGRect, in preview: CGRect) -> CGRect {
+        guard aperture.width > 0, aperture.height > 0, preview.width > 0, preview.height > 0,
+              [aperture.minX, aperture.minY, aperture.width, aperture.height,
+               preview.minX, preview.minY, preview.width, preview.height].allSatisfy(\.isFinite) else { return .zero }
+        let visible = aperture.intersection(preview)
+        guard !visible.isNull, visible.width > 0, visible.height > 0 else { return .zero }
+        return CGRect(x: (visible.minX - preview.minX) / preview.width,
+                      y: (visible.minY - preview.minY) / preview.height,
+                      width: visible.width / preview.width,
+                      height: visible.height / preview.height)
+    }
+}
+
+private struct BarcodeApertureMask: Shape {
+    var aperture: CGRect
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path(rect)
+        if aperture.width > 0, aperture.height > 0 {
+            path.addRoundedRect(in: aperture, cornerSize: CGSize(width: 22, height: 22))
+        }
+        return path
+    }
+}
+
+private struct BarcodeApertureCorners: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let arm = min(32, rect.width / 4, rect.height / 3)
+        let radius = min(18, arm / 2)
+        for (x, y, dx, dy) in [(rect.minX, rect.minY, CGFloat(1), CGFloat(1)),
+                               (rect.maxX, rect.minY, CGFloat(-1), CGFloat(1)),
+                               (rect.minX, rect.maxY, CGFloat(1), CGFloat(-1)),
+                               (rect.maxX, rect.maxY, CGFloat(-1), CGFloat(-1))] {
+            path.move(to: CGPoint(x: x, y: y + dy * arm))
+            path.addLine(to: CGPoint(x: x, y: y + dy * radius))
+            path.addQuadCurve(to: CGPoint(x: x + dx * radius, y: y), control: CGPoint(x: x, y: y))
+            path.addLine(to: CGPoint(x: x + dx * arm, y: y))
+        }
+        return path
+    }
+}
+
+private struct BarcodeManualEntrySheet: View {
+    let onSubmit: (String) -> Void
+    let onCancel: () -> Void
+    @State private var code = ""
+    @FocusState private var isCodeFocused: Bool
+
+    private var trimmedCode: String { code.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 12) {
+                Text(Language.get("POS_Scanner_Manual", alter: nil))
+                    .font(PPBrandFont.bold(28, relativeTo: .title2))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityAddTraits(.isHeader)
+                Button(action: onCancel) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .frame(width: 48, height: 48)
+                        .background(AdminSurface.control, in: Circle())
+                }
+                .accessibilityLabel(Language.get("POS_Close", alter: nil))
+            }
+            .padding(24)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(Language.get("POS_Scanner_ManualSubtitle", alter: nil))
+                        .font(PPBrandFont.regular(21, relativeTo: .body))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(Language.get("POS_Scanner_CodeLabel", alter: nil))
+                        .font(PPBrandFont.medium(17, relativeTo: .subheadline))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    TextField(Language.get("POS_Scanner_CodePlaceholder", alter: nil), text: $code)
+                        .font(PPBrandFont.medium(25, relativeTo: .title2))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .keyboardType(.asciiCapable)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .multilineTextAlignment(code.isEmpty && Language.isRTL() ? .trailing : .leading)
+                        .environment(\.layoutDirection, .leftToRight)
+                        .padding(18)
+                        .frame(minHeight: 56)
+                        .background(AdminSurface.fieldBackground, in: RoundedRectangle(cornerRadius: 18))
+                        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(AdminSurface.hairline, lineWidth: 1))
+                        .focused($isCodeFocused)
+                        .submitLabel(.go)
+                        .onSubmit(submit)
+                        .accessibilityLabel(Language.get("POS_Scanner_CodeLabel", alter: nil))
+
+                    Button(action: submit) {
+                        Label(Language.get("POS_Scanner_UseCode", alter: nil), systemImage: "checkmark")
+                            .font(PPBrandFont.bold(22, relativeTo: .headline))
+                            .foregroundStyle(trimmedCode.isEmpty ? AdminSurface.secondaryText : .white)
+                            .frame(maxWidth: .infinity, minHeight: 52)
+                            .padding(.vertical, 10)
+                            .background(trimmedCode.isEmpty ? AdminSurface.control : AdminSurface.primary, in: RoundedRectangle(cornerRadius: 18))
+                    }
+                    .disabled(trimmedCode.isEmpty)
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
+            }
+            .scrollDismissesKeyboard(.interactively)
+        }
+        .background(AdminSurface.background.ignoresSafeArea())
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .onAppear { isCodeFocused = true }
+    }
+
+    private func submit() {
+        guard !trimmedCode.isEmpty else { return }
+        isCodeFocused = false
+        onSubmit(trimmedCode)
+    }
+}
+
 struct POSBarcodeCameraView: UIViewControllerRepresentable {
     let onResult: (String) -> Void
     let onFailure: () -> Void
+    /// Visible aperture normalized to preview bounds. Nil preserves full-frame legacy scanning.
+    var scanRegion: CGRect? = nil
+    var isActive = true
+    var isTorchRequested = false
+    var onStateChange: (POSBarcodeCameraState) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator(onResult: onResult) }
 
@@ -1402,16 +1747,38 @@ struct POSBarcodeCameraView: UIViewControllerRepresentable {
         let controller = ScannerViewController()
         controller.metadataDelegate = context.coordinator
         controller.onFailure = onFailure
+        controller.onStateChange = onStateChange
+        controller.scanRegion = scanRegion
+        controller.setCaptureActive(isActive)
+        controller.setTorchRequested(isTorchRequested)
+        context.coordinator.isAcceptingResults = isActive
         return controller
     }
 
     func updateUIViewController(_ uiViewController: ScannerViewController, context: Context) {
         context.coordinator.onResult = onResult
+        context.coordinator.isAcceptingResults = isActive
         uiViewController.onFailure = onFailure
+        uiViewController.onStateChange = onStateChange
+        uiViewController.scanRegion = scanRegion
+        uiViewController.setCaptureActive(isActive)
+        uiViewController.setTorchRequested(isTorchRequested)
+    }
+
+    static func dismantleUIViewController(_ controller: ScannerViewController, coordinator: Coordinator) {
+        coordinator.isAcceptingResults = false
+        controller.shutdown()
     }
 
     final class Coordinator: NSObject, AVCaptureMetadataOutputObjectsDelegate {
         var onResult: (String) -> Void
+        var isAcceptingResults = false {
+            didSet {
+                // A callback rejected during a pause must not exhaust the resumed
+                // attempt. The screen's hasFinished gate owns final completion.
+                if isAcceptingResults && !oldValue { didEmitResult = false }
+            }
+        }
         private var didEmitResult = false
 
         init(onResult: @escaping (String) -> Void) {
@@ -1419,10 +1786,9 @@ struct POSBarcodeCameraView: UIViewControllerRepresentable {
         }
 
         func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
-            guard !didEmitResult,
-                  let readable = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
-                  let value = readable.stringValue,
-                  !value.isEmpty else { return }
+            guard isAcceptingResults, !didEmitResult,
+                  let value = metadataObjects.compactMap({ ($0 as? AVMetadataMachineReadableCodeObject)?.stringValue })
+                    .first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else { return }
             didEmitResult = true
             AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
             onResult(value)
@@ -1430,102 +1796,398 @@ struct POSBarcodeCameraView: UIViewControllerRepresentable {
     }
 }
 
+/// All mutable capture/device state below is confined to one serial queue. Only
+/// the preview layer and main-queue metadata delegate read the session externally.
 private final class ScannerCaptureSessionDriver: @unchecked Sendable {
+    enum Event: Sendable {
+        case configured, starting, reading, interrupted, failed
+        case torch(available: Bool, isOn: Bool)
+    }
+
     let session = AVCaptureSession()
     private let queue = DispatchQueue(label: "com.purepets.admin.pos.scanner", qos: .userInitiated)
+    private weak var metadataDelegate: AVCaptureMetadataOutputObjectsDelegate?
+    private let onEvent: @MainActor @Sendable (Event) -> Void
+    private var device: AVCaptureDevice?
+    private var output: AVCaptureMetadataOutput?
+    private var torchObservations: [NSKeyValueObservation] = []
+    private var regionOfInterest = CGRect(x: 0, y: 0, width: 1, height: 1)
+    private var configured = false
+    private var configurationFailed = false
+    private var wantsRunning = false
+    private var wantsTorch = false
+    private var interrupted = false
+    private var disposed = false
 
-    func start() {
-        queue.async { [weak self] in
-            guard let self, !session.isRunning else { return }
-            session.startRunning()
+    init(delegate: AVCaptureMetadataOutputObjectsDelegate?, onEvent: @escaping @MainActor @Sendable (Event) -> Void) {
+        metadataDelegate = delegate
+        self.onEvent = onEvent
+    }
+
+    func configure() {
+        queue.async { [self] in
+            guard !disposed, !configured else { return }
+            guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized,
+                  let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+                    ?? AVCaptureDevice.default(for: .video),
+                  let input = try? AVCaptureDeviceInput(device: camera) else {
+                failConfiguration()
+                return
+            }
+
+            session.beginConfiguration()
+            if session.canSetSessionPreset(.hd1280x720) { session.sessionPreset = .hd1280x720 }
+            let metadata = AVCaptureMetadataOutput()
+            guard session.canAddInput(input) else {
+                session.commitConfiguration()
+                failConfiguration()
+                return
+            }
+            session.addInput(input)
+            guard session.canAddOutput(metadata) else {
+                session.removeInput(input)
+                session.commitConfiguration()
+                failConfiguration()
+                return
+            }
+            session.addOutput(metadata)
+            let supported: [AVMetadataObject.ObjectType] = [.qr, .ean8, .ean13, .pdf417, .code128]
+            let available = Set(metadata.availableMetadataObjectTypes)
+            let enabled = supported.filter { available.contains($0) }
+            guard !enabled.isEmpty else {
+                session.removeOutput(metadata)
+                session.removeInput(input)
+                session.commitConfiguration()
+                failConfiguration()
+                return
+            }
+            metadata.setMetadataObjectsDelegate(metadataDelegate, queue: .main)
+            metadata.metadataObjectTypes = enabled
+            metadata.rectOfInterest = regionOfInterest
+            session.commitConfiguration()
+
+            device = camera
+            output = metadata
+            configured = true
+            torchObservations = [
+                camera.observe(\.isTorchAvailable, options: [.new]) { [weak self] _, _ in self?.refreshTorchState() },
+                camera.observe(\.isTorchActive, options: [.new]) { [weak self] _, _ in self?.refreshTorchState() }
+            ]
+            emit(.configured)
+            reconcileRunning()
         }
     }
 
-    func stop() {
-        queue.async { [weak self] in
-            guard let self, session.isRunning else { return }
-            session.stopRunning()
+    func setRunning(_ running: Bool) {
+        queue.async { [self] in
+            guard !disposed else { return }
+            wantsRunning = running
+            if !running { wantsTorch = false }
+            reconcileRunning()
         }
+    }
+
+    func setTorchRequested(_ requested: Bool) {
+        queue.async { [self] in
+            guard !disposed, wantsTorch != requested else { return }
+            wantsTorch = requested
+            applyTorch()
+        }
+    }
+
+    func updateRegionOfInterest(_ region: CGRect) {
+        queue.async { [self] in
+            guard !disposed, regionOfInterest != region else { return }
+            regionOfInterest = region
+            output?.rectOfInterest = region
+        }
+    }
+
+    func setInterrupted(_ value: Bool) {
+        queue.async { [self] in
+            guard !disposed else { return }
+            interrupted = value
+            if value {
+                wantsTorch = false
+                applyTorch()
+                emit(.interrupted)
+            } else {
+                reconcileRunning()
+            }
+        }
+    }
+
+    func handleRuntimeError(mediaServicesWereReset: Bool) {
+        queue.async { [self] in
+            guard !disposed, wantsRunning else { return }
+            wantsTorch = false
+            applyTorch()
+            if mediaServicesWereReset, configured, !interrupted {
+                reconcileRunning()
+            } else {
+                emit(.failed)
+            }
+        }
+    }
+
+    func shutdown() {
+        // Retain the driver until the queued teardown has actually released hardware.
+        queue.async { [self] in
+            guard !disposed else { return }
+            wantsRunning = false
+            wantsTorch = false
+            applyTorch()
+            if session.isRunning { session.stopRunning() }
+            output?.setMetadataObjectsDelegate(nil, queue: nil)
+            torchObservations.removeAll()
+            disposed = true
+        }
+    }
+
+    private func reconcileRunning() {
+        guard !disposed else { return }
+        // Setup can fail before SwiftUI's onAppear enables the first attempt.
+        // Re-report it then, rather than leaving an inert starting screen.
+        if configurationFailed {
+            if wantsRunning { emit(.failed) }
+            return
+        }
+        guard configured else { return }
+        guard wantsRunning else {
+            applyTorch()
+            if session.isRunning { session.stopRunning() }
+            return
+        }
+        guard !interrupted, !session.isInterrupted else {
+            emit(.interrupted)
+            return
+        }
+        if !session.isRunning {
+            emit(.starting)
+            session.startRunning()
+        }
+        guard session.isRunning else {
+            emit(session.isInterrupted ? .interrupted : .failed)
+            return
+        }
+        applyTorch()
+        emit(.reading)
+    }
+
+    private func failConfiguration() {
+        configurationFailed = true
+        emit(.failed)
+    }
+
+    private func applyTorch() {
+        guard let device else { return }
+        let turnOn = wantsTorch && wantsRunning && session.isRunning && !interrupted && device.isTorchAvailable
+        guard device.hasTorch else {
+            emit(.torch(available: false, isOn: false))
+            return
+        }
+        do {
+            try device.lockForConfiguration()
+            defer { device.unlockForConfiguration() }
+            if turnOn, device.isTorchModeSupported(.on) {
+                try device.setTorchModeOn(level: min(0.6, AVCaptureDevice.maxAvailableTorchLevel))
+            } else if device.isTorchModeSupported(.off) {
+                device.torchMode = .off
+            }
+        } catch {
+            wantsTorch = false
+            emit(.torch(available: false, isOn: device.isTorchActive))
+            return
+        }
+        publishTorchState()
+    }
+
+    private func refreshTorchState() {
+        queue.async { [weak self] in
+            guard let self, !disposed else { return }
+            publishTorchState()
+        }
+    }
+
+    private func publishTorchState() {
+        emit(.torch(available: device?.isTorchAvailable == true && wantsRunning && session.isRunning,
+                    isOn: device?.isTorchActive == true))
+    }
+
+    private func emit(_ event: Event) {
+        let callback = onEvent
+        DispatchQueue.main.async { callback(event) }
     }
 }
 
+/// Notification token disposal stays independent of the controller's actor lifetime.
+private final class ScannerNotificationBag {
+    var tokens: [NSObjectProtocol] = []
+    deinit { tokens.forEach(NotificationCenter.default.removeObserver) }
+}
+
 final class ScannerViewController: UIViewController {
-    private let captureDriver = ScannerCaptureSessionDriver()
-    private var captureSession: AVCaptureSession { captureDriver.session }
+    private lazy var captureDriver = ScannerCaptureSessionDriver(delegate: metadataDelegate) { [weak self] event in
+        self?.handleCaptureEvent(event)
+    }
+    private let notifications = ScannerNotificationBag()
     private var previewLayer: AVCaptureVideoPreviewLayer?
-    private var isConfigured = false
+    private var state = POSBarcodeCameraState()
+    private var captureRequested = true
+    private var torchRequested = false
+    private var isVisible = false
+    private var isDisposed = false
+    private var lastRunningRequest: Bool?
 
     weak var metadataDelegate: AVCaptureMetadataOutputObjectsDelegate?
     var onFailure: (() -> Void)?
+    var onStateChange: ((POSBarcodeCameraState) -> Void)?
+    var scanRegion: CGRect? { didSet { if isViewLoaded { updatePreviewGeometry() } } }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-        configureCapture()
+        let layer = AVCaptureVideoPreviewLayer(session: captureDriver.session)
+        layer.videoGravity = .resizeAspectFill
+        view.layer.insertSublayer(layer, at: 0)
+        previewLayer = layer
+        installObservers()
+        updatePreviewGeometry()
+        captureDriver.configure()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        previewLayer?.frame = view.bounds
+        updatePreviewGeometry()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        startSessionIfPossible()
+        isVisible = true
+        reconcileCapture()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        captureDriver.stop()
+        isVisible = false
+        torchRequested = false
+        reconcileCapture()
     }
 
-    private func configureCapture() {
-        guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized,
-              let device = AVCaptureDevice.default(for: .video),
-              let input = try? AVCaptureDeviceInput(device: device),
-              captureSession.canAddInput(input) else {
-            failConfiguration()
-            return
-        }
+    func setCaptureActive(_ active: Bool) {
+        captureRequested = active
+        if isViewLoaded { reconcileCapture() }
+    }
 
-        let output = AVCaptureMetadataOutput()
-        guard captureSession.canAddOutput(output) else {
-            failConfiguration()
-            return
-        }
+    func setTorchRequested(_ requested: Bool) {
+        guard torchRequested != requested else { return }
+        torchRequested = requested
+        if isViewLoaded { captureDriver.setTorchRequested(requested) }
+    }
 
-        captureSession.beginConfiguration()
-        captureSession.addInput(input)
-        captureSession.addOutput(output)
-        captureSession.commitConfiguration()
+    func shutdown() {
+        guard !isDisposed else { return }
+        isDisposed = true
+        isVisible = false
+        onFailure = nil
+        onStateChange = nil
+        captureDriver.shutdown()
+        notifications.tokens.forEach(NotificationCenter.default.removeObserver)
+        notifications.tokens.removeAll()
+    }
 
-        output.setMetadataObjectsDelegate(metadataDelegate, queue: .main)
-        let supported: [AVMetadataObject.ObjectType] = [.qr, .ean8, .ean13, .pdf417, .code128]
-        let available = Set(output.availableMetadataObjectTypes)
-        let enabled = supported.filter { available.contains($0) }
-        guard !enabled.isEmpty else {
-            failConfiguration()
-            return
-        }
-        output.metadataObjectTypes = enabled
+    private func reconcileCapture() {
+        let shouldRun = captureRequested && isVisible && !isDisposed && UIApplication.shared.applicationState == .active
+        guard lastRunningRequest != shouldRun else { return }
+        lastRunningRequest = shouldRun
+        captureDriver.setRunning(shouldRun)
+    }
 
-        let layer = AVCaptureVideoPreviewLayer(session: captureSession)
-        layer.videoGravity = .resizeAspectFill
+    private func updatePreviewGeometry() {
+        guard let layer = previewLayer, !isDisposed else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         layer.frame = view.bounds
-        view.layer.addSublayer(layer)
-        previewLayer = layer
-        isConfigured = true
-        startSessionIfPossible()
-    }
-
-    private func startSessionIfPossible() {
-        guard isConfigured else { return }
-        captureDriver.start()
-    }
-
-    private func failConfiguration() {
-        DispatchQueue.main.async { [weak self] in
-            self?.onFailure?()
+        if let connection = layer.connection,
+           let orientation = view.window?.windowScene?.interfaceOrientation {
+            let angle: CGFloat
+            switch orientation {
+            case .portrait: angle = 90
+            case .portraitUpsideDown: angle = 270
+            case .landscapeLeft: angle = 180
+            case .landscapeRight: angle = 0
+            default: angle = 90
+            }
+            if connection.isVideoRotationAngleSupported(angle) { connection.videoRotationAngle = angle }
         }
+        CATransaction.commit()
+
+        let unit = CGRect(x: 0, y: 0, width: 1, height: 1)
+        if let scanRegion {
+            let localRegion = CGRect(x: view.bounds.minX + scanRegion.minX * view.bounds.width,
+                                     y: view.bounds.minY + scanRegion.minY * view.bounds.height,
+                                     width: scanRegion.width * view.bounds.width,
+                                     height: scanRegion.height * view.bounds.height)
+            let visible = localRegion.intersection(view.bounds)
+            guard !visible.isNull, visible.width > 0, visible.height > 0 else {
+                captureDriver.updateRegionOfInterest(.zero)
+                return
+            }
+            let region = layer.metadataOutputRectConverted(fromLayerRect: visible).intersection(unit)
+            captureDriver.updateRegionOfInterest(region.isNull ? .zero : region)
+        } else {
+            captureDriver.updateRegionOfInterest(unit)
+        }
+    }
+
+    private func handleCaptureEvent(_ event: ScannerCaptureSessionDriver.Event) {
+        guard !isDisposed else { return }
+        switch event {
+        case .configured:
+            updatePreviewGeometry()
+            captureDriver.setTorchRequested(torchRequested)
+            return
+        case .starting: state.status = .starting
+        case .reading:
+            updatePreviewGeometry()
+            state.status = .reading
+        case .interrupted:
+            state.status = .interrupted
+            torchRequested = false
+        case .failed:
+            state.status = .unavailable
+            onStateChange?(state)
+            onFailure?()
+            return
+        case .torch(let available, let isOn):
+            state.isTorchAvailable = available
+            state.isTorchOn = isOn
+        }
+        if isVisible, captureRequested { onStateChange?(state) }
+    }
+
+    private func installObservers() {
+        let center = NotificationCenter.default
+        let session = captureDriver.session
+        notifications.tokens.append(center.addObserver(forName: AVCaptureSession.wasInterruptedNotification, object: session, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.captureDriver.setInterrupted(true) }
+        })
+        notifications.tokens.append(center.addObserver(forName: AVCaptureSession.interruptionEndedNotification, object: session, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.captureDriver.setInterrupted(false) }
+        })
+        notifications.tokens.append(center.addObserver(forName: AVCaptureSession.runtimeErrorNotification, object: session, queue: .main) { [weak self] notification in
+            let reset = (notification.userInfo?[AVCaptureSessionErrorKey] as? AVError)?.code == .mediaServicesWereReset
+            MainActor.assumeIsolated { self?.captureDriver.handleRuntimeError(mediaServicesWereReset: reset) }
+        })
+        notifications.tokens.append(center.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.lastRunningRequest = false
+                self?.torchRequested = false
+                self?.captureDriver.setRunning(false)
+            }
+        })
+        notifications.tokens.append(center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reconcileCapture() }
+        })
     }
 }

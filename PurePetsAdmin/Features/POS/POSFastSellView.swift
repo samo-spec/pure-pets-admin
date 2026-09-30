@@ -2826,12 +2826,91 @@ private struct POSFlyArc: ViewModifier, Animatable {
 
 // MARK: - POS FastSell View
 
+// Outline glyphs used by the approved POS header. Their 24-point geometry keeps
+// optical weight consistent across the compact field and navigation sizes.
+private struct POSHeaderIcon: View {
+    enum Kind { case back, down, plus, reservation, search, scan, filter }
+    let kind: Kind
+    let size: CGFloat
+    let mirrored: Bool
+
+    init(_ kind: Kind, size: CGFloat, mirrored: Bool = false) {
+        self.kind = kind
+        self.size = size
+        self.mirrored = mirrored
+    }
+
+    var body: some View {
+        Glyph(kind: kind)
+            .stroke(style: StrokeStyle(lineWidth: size * 1.8 / 24, lineCap: .round, lineJoin: .round))
+            .frame(width: size, height: size)
+            .scaleEffect(x: mirrored ? -1 : 1, y: 1)
+            .accessibilityHidden(true)
+    }
+
+    private struct Glyph: Shape {
+        let kind: Kind
+
+        func path(in rect: CGRect) -> Path {
+            var path = Path()
+            func line(_ coordinates: [(CGFloat, CGFloat)]) {
+                guard let first = coordinates.first else { return }
+                path.move(to: CGPoint(x: first.0, y: first.1))
+                for point in coordinates.dropFirst() {
+                    path.addLine(to: CGPoint(x: point.0, y: point.1))
+                }
+            }
+            switch kind {
+            case .back:
+                line([(15, 18), (9, 12), (15, 6)])
+            case .down:
+                line([(6, 9), (12, 15), (18, 9)])
+            case .plus:
+                line([(12, 5), (12, 19)])
+                line([(5, 12), (19, 12)])
+            case .reservation:
+                path.move(to: CGPoint(x: 19, y: 21))
+                path.addLine(to: CGPoint(x: 12, y: 17))
+                path.addLine(to: CGPoint(x: 5, y: 21))
+                path.addLine(to: CGPoint(x: 5, y: 5))
+                path.addQuadCurve(to: CGPoint(x: 7, y: 3), control: CGPoint(x: 5, y: 3))
+                path.addLine(to: CGPoint(x: 17, y: 3))
+                path.addQuadCurve(to: CGPoint(x: 19, y: 5), control: CGPoint(x: 19, y: 3))
+                path.closeSubpath()
+                line([(9, 10), (11, 12), (15, 8)])
+            case .search:
+                path.addEllipse(in: CGRect(x: 3, y: 3, width: 16, height: 16))
+                line([(21, 21), (16.65, 16.65)])
+            case .scan:
+                line([(4, 7), (4, 4), (7, 4)])
+                line([(17, 4), (20, 4), (20, 7)])
+                line([(20, 17), (20, 20), (17, 20)])
+                line([(7, 20), (4, 20), (4, 17)])
+                line([(8, 8), (8, 16)])
+                line([(12, 8), (12, 16)])
+                line([(16, 8), (16, 16)])
+            case .filter:
+                line([(21, 4), (14, 4)]); line([(10, 4), (3, 4)])
+                line([(21, 12), (12, 12)]); line([(8, 12), (3, 12)])
+                line([(21, 20), (16, 20)]); line([(12, 20), (3, 20)])
+                line([(14, 2), (14, 6)]); line([(8, 10), (8, 14)]); line([(16, 18), (16, 22)])
+            }
+            return path.applying(CGAffineTransform(scaleX: rect.width / 24, y: rect.height / 24))
+        }
+    }
+}
+
 struct AdminPOSFastSellView: View {
     let session: AdminSession
     var onDismiss: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .title2) private var commandEnglishTitleSize: CGFloat = 24
+    @ScaledMetric(relativeTo: .body) private var commandEnglishSearchSize: CGFloat = 14
+    @ScaledMetric(relativeTo: .caption) private var commandEnglishBranchSize: CGFloat = 12
+    @ScaledMetric(relativeTo: .subheadline) private var commandEnglishFilterSize: CGFloat = 13
     @FocusState private var isSearchFocused: Bool
     @StateObject private var viewModel = POSFastSellViewModel()
     @StateObject private var unitPicker = POSUnitPickerState()
@@ -2896,15 +2975,24 @@ struct AdminPOSFastSellView: View {
                     dismissKeyboard()
                 }
 
-            VStack(spacing: 0) {
-                commandDeck
+            GeometryReader { geometry in
+                // The UIKit POS host intentionally extends its SwiftUI root
+                // under the status bar. Add only the clearance missing here.
+                let topClearance = max(0, PPStatusBarHelper.statusBarHeight - geometry.frame(in: .global).minY)
+                VStack(spacing: 0) {
+                    commandDeck(availableWidth: geometry.size.width, availableHeight: geometry.size.height - topClearance)
 
-                // `catalogGrid` owns its own empty presentation, and
-                // `commandStatusView` owns the loading/error banners, so the
-                // catalog has exactly one empty-state source of truth here.
-                catalogGrid
+                    // `catalogGrid` owns its own empty presentation, and
+                    // `commandStatusView` owns the loading/error banners, so the
+                    // catalog has exactly one empty-state source of truth here.
+                    catalogGrid
 
-                Spacer(minLength: 0)
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, topClearance)
+                .background(alignment: .top) {
+                    commandSearchBackground.frame(height: topClearance)
+                }
             }
 
             POSApexFlightDeck(
@@ -3215,32 +3303,250 @@ struct AdminPOSFastSellView: View {
 
     // MARK: - Command Deck
 
-    private var commandDeck: some View {
-        VStack(spacing: AdminSpacing.sm) {
+    private var usesExpandedHeaderLayout: Bool {
+        dynamicTypeSize >= .xxxLarge
+    }
+
+    // Neutral rules and search fill from the approved POS study; the shared
+    // surface border is rose-tinted and is deliberately not used in this header.
+    private var commandSeparator: Color {
+        colorScheme == .dark
+            ? Color(red: 65 / 255, green: 66 / 255, blue: 73 / 255)
+            : Color(red: 228 / 255, green: 229 / 255, blue: 233 / 255)
+    }
+
+    private var commandSearchBackground: Color {
+        colorScheme == .dark
+            ? Color(red: 24 / 255, green: 26 / 255, blue: 29 / 255)
+            : Color(red: 246 / 255, green: 247 / 255, blue: 249 / 255)
+    }
+
+    private var commandPaper: Color {
+        colorScheme == .dark ? Color(red: 32 / 255, green: 34 / 255, blue: 38 / 255) : .white
+    }
+
+    private var commandInk: Color {
+        colorScheme == .dark
+            ? Color(red: 243 / 255, green: 242 / 255, blue: 244 / 255)
+            : Color(red: 39 / 255, green: 39 / 255, blue: 45 / 255)
+    }
+
+    private var commandMuted: Color {
+        colorScheme == .dark
+            ? Color(red: 176 / 255, green: 175 / 255, blue: 185 / 255)
+            : Color(red: 104 / 255, green: 104 / 255, blue: 112 / 255)
+    }
+
+    private var commandAccent: Color {
+        colorScheme == .dark
+            ? Color(red: 255 / 255, green: 128 / 255, blue: 166 / 255)
+            : Color(red: 191 / 255, green: 32 / 255, blue: 83 / 255)
+    }
+
+    private var commandFieldLabelFont: Font {
+        PPBrandFont.regular(14, relativeTo: .caption)
+    }
+
+    private var commandFieldValueFont: Font {
+        PPBrandFont.medium(17, relativeTo: .body)
+    }
+
+    private var commandRule: some View {
+        Rectangle().fill(commandSeparator).frame(height: AdminStroke.thin)
+            .accessibilityHidden(true)
+    }
+
+    private func commandDeck(availableWidth: CGFloat, availableHeight: CGFloat) -> some View {
+        Group {
+            if usesExpandedHeaderLayout {
+                // Preserve catalog space while allowing every command to remain
+                // reachable with accessibility text or long customer/branch names.
+                ScrollView(.vertical, showsIndicators: true) {
+                    commandDeckContent(availableWidth: availableWidth)
+                }
+                .frame(height: min(360, availableHeight * 0.48))
+            } else {
+                commandDeckContent(availableWidth: availableWidth)
+            }
+        }
+        .background(commandPaper)
+        .disabled(viewModel.isCheckoutBusy)
+    }
+
+    private func commandDeckContent(availableWidth: CGFloat) -> some View {
+        VStack(spacing: 0) {
             commandHeaderView
-            VStack(spacing: AdminSpacing.sm) {
+            VStack(spacing: 0) {
                 if isBranchPickerVisible {
                     PPAdminBranchSwitcherBar(style: .compact, horizontalPadding: 0)
-                        .transition(.asymmetric(
-                            insertion: .opacity.combined(with: .move(edge: .top)),
-                            removal: .opacity.combined(with: .move(edge: .top))
-                        ))
+                        .padding(.bottom, AdminSpacing.sm)
+                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
                 }
-                customerBarView
+                transactionContextView(availableWidth: availableWidth - 32)
+                    .padding(.bottom, 16)
                 omniSearchAndFilterBar
                 commandStatusView
             }
-            .padding(.horizontal, AdminSpacing.screenMargin)
+            .padding(.horizontal, 16)
         }
-        .padding(.top, 0)
-        .padding(.bottom, AdminSpacing.md)
-        .background(AdminSurface.background)
-        .overlay(
-            Rectangle()
-                .fill(AdminSurface.hairline)
-                .frame(height: AdminStroke.hairline),
-            alignment: .bottom
-        )
+    }
+
+    private var commandHeaderView: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+            HStack(alignment: .center, spacing: 5) {
+                backButton
+                branchContextButton
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if !usesExpandedHeaderLayout {
+                    reservationsButton
+                }
+            }
+            if usesExpandedHeaderLayout {
+                reservationsButton
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(.bottom, 13)
+        .padding(.horizontal, 16)
+    }
+
+    private var backButton: some View {
+        Button {
+            dismissKeyboard()
+            // A committed sale must reach its receipt/recovery state before leaving.
+            guard !viewModel.isCheckoutBusy else {
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                return
+            }
+            if let onDismiss {
+                onDismiss()
+            } else {
+                dismiss()
+            }
+        } label: {
+            POSHeaderIcon(.back, size: 20, mirrored: Language.isRTL())
+                .foregroundStyle(commandInk)
+                .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(POSVariantPressStyle())
+        .accessibilityLabel(Language.get("Back", alter: nil))
+        .accessibilityIdentifier("admin.pos.header.back")
+    }
+
+    private var branchContextButton: some View {
+        Button {
+            dismissKeyboard()
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(reduceMotion ? nil : AdminAnimation.disclosure) {
+                isBranchPickerVisible.toggle()
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(Language.get("POS_Header_Title", alter: nil))
+                    .font(Language.isRTL() ? PPBrandFont.bold(29, relativeTo: .title2) : .system(size: commandEnglishTitleSize, weight: .bold))
+                    .tracking(Language.isRTL() ? 0 : -0.7)
+                    .foregroundStyle(commandInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 5) {
+                    if branchStore.activeBranch != nil {
+                        Circle()
+                            .fill(colorScheme == .dark
+                                  ? Color(red: 128 / 255, green: 215 / 255, blue: 174 / 255)
+                                  : Color(red: 38 / 255, green: 118 / 255, blue: 84 / 255))
+                            .frame(width: 5, height: 5)
+                            .accessibilityHidden(true)
+                    }
+                    Text(branchDisplayName)
+                        .font(Language.isRTL() ? PPBrandFont.regular(15, relativeTo: .caption) : .system(size: commandEnglishBranchSize))
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !branchDisplayCode.isEmpty {
+                        Text(verbatim: branchDisplayCode.normalizedEnglishDigits)
+                            .font(.system(size: Language.isRTL() ? commandEnglishBranchSize : commandEnglishBranchSize * 0.8))
+                            .environment(\.layoutDirection, .leftToRight)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    POSHeaderIcon(.down, size: 12)
+                        .rotationEffect(.degrees(isBranchPickerVisible ? 180 : 0))
+                }
+                .foregroundStyle(commandMuted)
+            }
+            .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(POSVariantPressStyle())
+        .accessibilityLabel("\(Language.get("POS_Header_Title", alter: nil)), \(Language.get("POS_Header_Branch", alter: nil))")
+        .accessibilityValue(branchDisplayCode.isEmpty ? branchDisplayName : "\(branchDisplayName), \(branchDisplayCode)")
+        .accessibilityHint(Language.get("POS_Header_BranchHint", alter: nil))
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityIdentifier("admin.pos.header.branch")
+    }
+
+    private var branchDisplayName: String {
+        let name = branchStore.currentBranchDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? Language.get("BranchContext_SelectBranch_Prompt", alter: nil) : name
+    }
+
+    private var branchDisplayCode: String {
+        branchStore.activeBranch?.code.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private var reservationsButton: some View {
+        Button {
+            dismissKeyboard()
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            showsReservedLivePets = true
+        } label: {
+            VStack(spacing: 4) {
+                POSHeaderIcon(.reservation, size: 20)
+                Text(Language.get("POS_Header_Reservations", alter: nil))
+                    .font(commandFieldLabelFont)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .foregroundStyle(commandAccent)
+            .frame(minWidth: 54, minHeight: AdminTouchTarget.minimum)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(POSVariantPressStyle())
+        .accessibilityLabel(Language.get("POS_ReservedLivePets_Button", alter: nil))
+        .accessibilityIdentifier("admin.pos.header.reservations")
+    }
+
+    // MARK: - Transaction Context
+
+    private func transactionContextView(availableWidth: CGFloat) -> some View {
+        Group {
+            if usesExpandedHeaderLayout {
+                VStack(alignment: .leading, spacing: 0) {
+                    customerBarView
+                    commandRule
+                    sellTypeMenuButton
+                }
+            } else {
+                HStack(spacing: 0) {
+                    customerBarView
+                        .padding(.trailing, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    sellTypeMenuButton
+                        .padding(.leading, 12)
+                        .frame(width: max(83, availableWidth / 2.55), alignment: .leading)
+                }
+                .overlay(alignment: .leading) {
+                    // Full-height divider, matching the 1.55:1 field ratio.
+                    HStack(spacing: 0) {
+                        Color.clear
+                            .frame(width: max(0, availableWidth - max(83, availableWidth / 2.55)))
+                        Rectangle().fill(commandSeparator).frame(width: AdminStroke.thin)
+                        Spacer(minLength: 0)
+                    }
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                }
+            }
+        }
+        .overlay(commandRule, alignment: .top)
+        .overlay(commandRule, alignment: .bottom)
     }
 
     private var sellTypeMenuButton: some View {
@@ -3260,350 +3566,95 @@ struct AdminPOSFastSellView: View {
                 .disabled(channel == .wholesale && !viewModel.canSellWholesale)
             }
         } label: {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(AdminSurface.surface)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
-                    )
-
-                HStack(spacing: 6) {
-                    Image(systemName: viewModel.salesChannel.symbol)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color(uiColor: .ppPrimary))
-
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(Language.get("POS_SalesChannel_Title", alter: "نوع البيع"))
-                            .font(AdminType.caption2)
-                            .foregroundStyle(AdminSurface.secondaryText)
-                            .lineLimit(1)
-
-                        Text(viewModel.salesChannel.title)
-                            .font(AdminType.captionBold)
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .lineLimit(1)
-                    }
-
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(AdminSurface.secondaryText)
+            HStack(spacing: AdminSpacing.sm) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(Language.get("POS_Header_SaleType", alter: nil))
+                        .font(commandFieldLabelFont)
+                        .foregroundStyle(commandMuted)
+                    Text(viewModel.salesChannel.title)
+                        .font(commandFieldValueFont)
+                        .foregroundStyle(commandInk)
                 }
-                .padding(.horizontal, 10)
+                .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 5)
+                POSHeaderIcon(.down, size: 14)
+                    .foregroundStyle(commandInk)
             }
-            .frame(height: 44)
-            .fixedSize(horizontal: true, vertical: false)
-            .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
-            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.vertical, 10)
+            .frame(minWidth: AdminTouchTarget.minimum, minHeight: AdminTouchTarget.minimum, alignment: .leading)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(Language.get("POS_SalesChannel_Title", alter: "نوع البيع")): \(viewModel.salesChannel.title)")
-        .accessibilityHint(Language.get("POS_SalesChannel_Hint", alter: "انقر لاختيار نوع البيع بين قطاعي وجملة."))
+        .buttonStyle(POSVariantPressStyle())
+        .accessibilityLabel(Language.get("POS_Header_SaleType", alter: nil))
+        .accessibilityValue(viewModel.salesChannel.title)
+        .accessibilityHint(Language.get("POS_SalesChannel_Hint", alter: nil))
+        .accessibilityIdentifier("admin.pos.header.saleType")
     }
-
-    private var salesChannelSegmentedControl: some View {
-        HStack(spacing: 0) {
-            ForEach(POSSalesChannel.allCases) { channel in
-                let isSelected = viewModel.salesChannel == channel
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    viewModel.requestSalesChannelChange(channel)
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: channel.symbol)
-                            .font(.system(size: 13, weight: .semibold))
-                        Text(channel.title)
-                            .font(AdminType.subheadlineBold)
-                    }
-                    .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminCommandInk.secondary)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 38)
-                    .background(
-                        isSelected ? AdminSurface.surface : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    )
-                    .shadow(color: isSelected ? Color.black.opacity(0.06) : Color.clear, radius: 4, x: 0, y: 1)
-                }
-                .buttonStyle(.plain)
-                .disabled(channel == .wholesale && !viewModel.canSellWholesale)
-                .opacity((channel == .wholesale && !viewModel.canSellWholesale) ? 0.45 : 1.0)
-            }
-        }
-        .padding(4)
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-
-    private var commandHeaderView: some View {
-        AdminSovereignNavigationBar(
-            title: Language.get("POS_Title", alter: "بيع سريع"),
-            subtitle: headerBranchSubtitle,
-            statusDotColor: Color(uiColor: .ppSuccess),
-            isModal: false,
-            customTopSpacing: PPStatusBarHelper.statusBarHeight,
-            onBack: {
-                dismissKeyboard()
-                // Leaving mid-checkout tears down the view model, which loses
-                // the receipt, the change due and the operator's only record of
-                // a sale that may already have committed. Consistent with
-                // `handleCatalogTap`, the screen stays put until the
-                // transaction reaches a terminal state.
-                guard !viewModel.isCheckoutBusy else {
-                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                    return
-                }
-                if let onDismiss {
-                    onDismiss()
-                } else {
-                    dismiss()
-                }
-            },
-            onSubtitleTap: {
-                dismissKeyboard()
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                    isBranchPickerVisible.toggle()
-                }
-            },
-            isSubtitleActionActive: isBranchPickerVisible
-        ) {
-            HStack(spacing: 8) {
-                // Reservation button
-                Button {
-                    dismissKeyboard()
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    showsReservedLivePets = true
-                } label: {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(showsReservedLivePets ? Color(uiColor: .ppPrimary).opacity(0.12) : AdminSurface.surface)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .strokeBorder(
-                                        showsReservedLivePets
-                                            ? Color(uiColor: .ppPrimary).opacity(0.4)
-                                            : Color(uiColor: .ppSurfaceBorder).opacity(0.8),
-                                        lineWidth: 0.8
-                                    )
-                            )
-                        Image("reservedFilled")
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 20, height: 20)
-                            .foregroundStyle(Color(uiColor: .ppPrimary))
-                    }
-                    .frame(width: 44, height: 44)
-                    .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Language.get("POS_ReservedLivePets_Button", alter: "الحيوانات المحجوزة"))
-
-                // Sell Type Menu Button (replaces segmented control below navbar)
-                sellTypeMenuButton
-            }
-        }
-    }
-
-    private var headerBranchSubtitle: String {
-        let branchName = branchStore.currentBranchDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let branchCode = branchStore.activeBranch?.code.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let codeBadge = branchCode.isEmpty ? "" : " (\(branchCode))"
-        let workspace = Language.get("CommandCenter_Operations_Workspace", alter: "مساحة العمليات")
-
-        if !branchName.isEmpty {
-            return "\(branchName)\(codeBadge) • \(workspace)"
-        } else {
-            return "\(workspace) • \(Language.get("BranchContext_SelectBranch_Prompt", alter: "يرجى تحديد الفرع"))"
-        }
-    }
-
-    // MARK: - Customer Context
 
     private var customerBarView: some View {
-        HStack(spacing: AdminSpacing.sm) {
+        HStack(spacing: 0) {
             Button {
                 dismissKeyboard()
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 showsCustomerPicker = true
             } label: {
                 HStack(spacing: AdminSpacing.sm) {
-                    if let customer = viewModel.selectedCustomer {
-                        ZStack {
-                            Circle()
-                                .fill(customer.avatarColor.opacity(0.16))
-                                .frame(width: 38, height: 38)
-                            Text(customer.initials)
-                                .font(AdminType.captionBold)
-                                .foregroundColor(customer.avatarColor)
-                        }
-
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(Language.get("POS_Customer_BoundLabel", alter: "عميل السلة"))
-                                .font(AdminType.caption2)
-                                .foregroundColor(AdminSurface.secondaryText)
-                            Text(customer.name)
-                                .font(AdminType.subheadlineBold)
-                                .foregroundColor(AdminSurface.primaryText)
-                                .lineLimit(1)
-                            Text(customer.phone)
-                                .font(.system(.caption2, design: .monospaced).weight(.medium))
-                                .foregroundColor(AdminSurface.secondaryText)
-                                .lineLimit(1)
-                                .environment(\.layoutDirection, .leftToRight)
-                        }
-                    } else {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
-                                .fill(AdminSurface.primarySoft)
-                                .frame(width: 38, height: 38)
-                            Image(systemName: "person.crop.circle.badge.plus")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundColor(AdminSurface.primary)
-                        }
-
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(Language.get("POS_Customer_SelectOrAdd", alter: "تحديد أو إضافة عميل للسلة"))
-                                .font(AdminType.subheadlineBold)
-                                .foregroundColor(AdminSurface.primaryText)
-                                .lineLimit(2)
-                            Text(Language.get("POS_Customer_SelectHint", alter: "يفتح دليل العملاء لإرفاق عميل بهذه السلة"))
-                                .font(AdminType.caption2)
-                                .foregroundColor(AdminSurface.secondaryText)
-                                .lineLimit(1)
-                        }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(Language.get("POS_Customer_BoundLabel", alter: nil))
+                            .font(commandFieldLabelFont)
+                            .foregroundStyle(commandMuted)
+                        Text(viewModel.selectedCustomer?.name ?? Language.get("POS_Header_AddCustomer", alter: nil))
+                            .font(commandFieldValueFont)
+                            .foregroundStyle(viewModel.selectedCustomer == nil ? commandAccent : commandInk)
+                            .lineLimit(usesExpandedHeaderLayout ? nil : 2)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-
                     Spacer(minLength: AdminSpacing.xs)
-
-                    Image(systemName: "chevron.forward")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(AdminSurface.secondaryText)
+                    POSHeaderIcon(viewModel.selectedCustomer == nil ? .plus : .down, size: 14)
+                        .foregroundStyle(commandInk)
                 }
-                .padding(.horizontal, AdminSpacing.md)
-                .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
-                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                        .stroke(
-                            viewModel.selectedCustomer == nil ? AdminSurface.hairline : AdminSurface.primary.opacity(0.34),
-                            lineWidth: viewModel.selectedCustomer == nil ? AdminStroke.thin : AdminStroke.medium
-                        )
-                )
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum, alignment: .leading)
+                .contentShape(Rectangle())
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(POSVariantPressStyle())
             .accessibilityLabel(customerAccessibilityLabel)
-            .accessibilityHint(Language.get("POS_Customer_SelectHint", alter: "يفتح دليل العملاء لإرفاق عميل بهذه السلة"))
+            .accessibilityHint(Language.get("POS_Customer_SelectHint", alter: nil))
+            .accessibilityIdentifier("admin.pos.header.customer")
 
             if viewModel.selectedCustomer != nil {
                 Button {
                     dismissKeyboard()
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    if reduceMotion {
+                    withAnimation(reduceMotion ? nil : AdminAnimation.fast) {
                         viewModel.clearSelectedCustomer()
-                    } else {
-                        withAnimation(AdminAnimation.fast) {
-                            viewModel.clearSelectedCustomer()
-                        }
                     }
                 } label: {
-                    Image(systemName: "person.crop.circle.badge.xmark")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .frame(width: AdminTouchTarget.minimum, height: 54)
-                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                                .stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin)
-                        )
+                    Image(systemName: "xmark")
+                        .font(.system(.caption, design: .default).weight(.semibold))
+                        .foregroundStyle(commandMuted)
+                        .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                        .contentShape(Rectangle())
                 }
-                .accessibilityLabel(Language.get("POS_Customer_Remove", alter: "إزالة العميل"))
-                .accessibilityHint(Language.get("POS_Customer_RemoveHint", alter: "يزيل العميل من السلة دون حذف ملفه"))
+                .buttonStyle(POSVariantPressStyle())
+                .accessibilityLabel(Language.get("POS_Customer_Remove", alter: nil))
+                .accessibilityHint(Language.get("POS_Customer_RemoveHint", alter: nil))
+                .accessibilityIdentifier("admin.pos.header.removeCustomer")
             }
         }
     }
 
     private var customerAccessibilityLabel: String {
         guard let customer = viewModel.selectedCustomer else {
-            return Language.get("POS_Customer_SelectOrAdd", alter: "تحديد أو إضافة عميل للسلة")
+            return Language.get("POS_Customer_SelectOrAdd", alter: nil)
         }
-        return "\(Language.get("POS_Customer_Change", alter: "تغيير العميل")): \(customer.name), \(customer.phone)"
+        return "\(Language.get("POS_Customer_Change", alter: nil)): \(customer.name), \(customer.phone)"
     }
 
     // MARK: - Catalog Command
 
     private var omniSearchAndFilterBar: some View {
-        HStack(spacing: AdminSpacing.sm) {
-            HStack(spacing: AdminSpacing.sm) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(isSearchFocused ? AdminSurface.primary : AdminSurface.secondaryText)
-
-                TextField(
-                    searchPrompt,
-                    text: $viewModel.catalogSearchText
-                )
-                .font(AdminType.body)
-                .multilineTextAlignment(.leading)
-                .foregroundColor(AdminSurface.primaryText)
-                .focused($isSearchFocused)
-                .submitLabel(.search)
-                .onSubmit { dismissKeyboard() }
-                .autocapitalization(.none)
-                .disableAutocorrection(true)
-
-                if !viewModel.catalogSearchText.isEmpty {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        viewModel.catalogSearchText = ""
-                        lastScannedCode = nil
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 17))
-                            .foregroundColor(AdminSurface.secondaryText)
-                            .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
-                    }
-                    .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
-                    .accessibilityLabel(Language.get("POS_Search_Clear", alter: "مسح البحث"))
-                }
-            }
-            .padding(.leading, AdminSpacing.md)
-            .padding(.trailing, viewModel.catalogSearchText.isEmpty ? AdminSpacing.md : 0)
-            .frame(maxWidth: .infinity, minHeight: 54)
-            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                    .stroke(
-                        isSearchFocused ? AdminSurface.primary : AdminSurface.hairline,
-                        lineWidth: isSearchFocused ? AdminStroke.medium : AdminStroke.thin
-                    )
-            )
-            .shadow(
-                color: isSearchFocused ? AdminSurface.primary.opacity(0.12) : .clear,
-                radius: 10,
-                y: 3
-            )
-
-            Button {
-                dismissKeyboard()
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                isShowingScanner = true
-            } label: {
-                Image(systemName: "barcode.viewfinder")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(AdminSurface.primary)
-                    .frame(width: 52, height: 54)
-                    .background(AdminSurface.primarySoft, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                            .stroke(AdminSurface.primary.opacity(0.24), lineWidth: AdminStroke.thin)
-                    )
-            }
-            .accessibilityLabel(Language.get("POS_Scan_Barcode", alter: "مسح رمز المنتج"))
-            .accessibilityHint(Language.get("POS_Scan_Barcode_Hint", alter: "يفتح الكاميرا للبحث برمز المنتج"))
-
-            filterTriggerButton
-        }
-        .animation(reduceMotion ? nil : AdminAnimation.fast, value: viewModel.catalogSearchText.isEmpty)
+        searchAndScanView
         .onChange(of: viewModel.catalogSearchText) { value in
             if let lastScannedCode, value != lastScannedCode {
                 self.lastScannedCode = nil
@@ -3611,18 +3662,114 @@ struct AdminPOSFastSellView: View {
         }
     }
 
+    private var searchAndScanView: some View {
+        Group {
+            if usesExpandedHeaderLayout {
+                VStack(spacing: 0) {
+                    catalogSearchField
+                    commandRule
+                    HStack(spacing: 0) {
+                        filterTriggerButton
+                            .frame(maxWidth: .infinity)
+                        searchControlDivider
+                        scanButton
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+            } else {
+                HStack(spacing: 0) {
+                    catalogSearchField
+                        .layoutPriority(1)
+                    searchControlDivider
+                    filterTriggerButton
+                    searchControlDivider
+                    scanButton
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .background(commandSearchBackground, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                .strokeBorder(isSearchFocused ? commandAccent : commandSeparator, lineWidth: AdminStroke.thin)
+        )
+    }
+
+    private var catalogSearchField: some View {
+        HStack(spacing: 8) {
+            POSHeaderIcon(.search, size: 18)
+                .foregroundStyle(commandMuted)
+            TextField(searchPrompt, text: $viewModel.catalogSearchText,
+                      prompt: Text(searchPrompt)
+                        .foregroundColor(commandMuted)
+                        .multilineTextAlignment(.leading) as! Text)
+                .font(Language.isRTL() ? PPBrandFont.regular(18, relativeTo: .body) : .system(size: commandEnglishSearchSize))
+                .multilineTextAlignment(.leading)
+                .foregroundStyle(commandInk)
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+                .focused($isSearchFocused)
+                .submitLabel(.search)
+                .onSubmit { dismissKeyboard() }
+                .autocapitalization(.none)
+                .disableAutocorrection(true)
+                .frame(minHeight: AdminTouchTarget.minimum)
+                .accessibilityLabel(Language.get("POS_Header_SearchPrompt", alter: nil))
+                .accessibilityIdentifier("admin.pos.header.search")
+            if !viewModel.catalogSearchText.isEmpty {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    viewModel.catalogSearchText = ""
+                    lastScannedCode = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(.body, design: .default))
+                        .foregroundStyle(commandMuted)
+                        .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(POSVariantPressStyle())
+                .accessibilityLabel(Language.get("POS_Search_Clear", alter: nil))
+            }
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, viewModel.catalogSearchText.isEmpty ? 12 : 0)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, minHeight: 56)
+    }
+
+    private var searchControlDivider: some View {
+        Rectangle()
+            .fill(commandSeparator)
+            .frame(width: AdminStroke.thin, height: 40)
+            .padding(.vertical, 8)
+            .accessibilityHidden(true)
+    }
+
+    private var scanButton: some View {
+        Button {
+            dismissKeyboard()
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            isShowingScanner = true
+        } label: {
+            POSHeaderIcon(.scan, size: 22)
+            .foregroundStyle(commandAccent)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .frame(minWidth: 48, maxWidth: usesExpandedHeaderLayout ? .infinity : nil, minHeight: 56)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(POSVariantPressStyle())
+        .accessibilityLabel(Language.get("POS_Scan_Barcode", alter: nil))
+        .accessibilityHint(Language.get("POS_Scan_Barcode_Hint", alter: nil))
+        .accessibilityIdentifier("admin.pos.header.scan")
+    }
+
     private var searchPrompt: String {
         if viewModel.catalogFilter == .all {
-            return Language.get("POS_Search_All_Prompt", alter: "ابحث بالاسم أو المعرف في كل المنتجات...")
+            return Language.get("POS_Header_SearchPrompt", alter: nil)
         }
-        let category = Language.get(
-            viewModel.catalogFilter.titleKey,
-            alter: viewModel.catalogFilter.fallbackTitle
-        )
-        return String(
-            format: Language.get("POS_Search_Category_Format", alter: "ابحث في %@..."),
-            category
-        )
+        let category = Language.get(viewModel.catalogFilter.titleKey, alter: viewModel.catalogFilter.fallbackTitle)
+        return String(format: Language.get("POS_Search_Category_Format", alter: nil), category)
     }
 
     private var filterTriggerButton: some View {
@@ -3631,40 +3778,26 @@ struct AdminPOSFastSellView: View {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             showsCategoryLens = true
         } label: {
-            VStack(spacing: 2) {
-                Image(systemName: viewModel.catalogFilter.symbol)
-                    .font(.system(size: 15, weight: .bold))
-                Text(Language.get(viewModel.catalogFilter.titleKey, alter: viewModel.catalogFilter.fallbackTitle))
-                    .font(AdminType.caption2Bold)
+            HStack(spacing: 7) {
+                POSHeaderIcon(.filter, size: 15)
+                Text(viewModel.catalogFilter == .all
+                     ? Language.get("POS_Header_AllProducts", alter: nil)
+                     : Language.get(viewModel.catalogFilter.titleKey, alter: viewModel.catalogFilter.fallbackTitle))
+                    .font(Language.isRTL() ? PPBrandFont.medium(15, relativeTo: .subheadline) : .system(size: commandEnglishFilterSize, weight: .medium))
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
+                POSHeaderIcon(.down, size: 12)
             }
-            .foregroundColor(
-                viewModel.catalogFilter == .all
-                    ? AdminSurface.primaryText
-                    : viewModel.catalogFilter.accentColor
-            )
-            .frame(minWidth: 66, minHeight: 54)
-            .padding(.horizontal, AdminSpacing.xs)
-            .background(
-                viewModel.catalogFilter == .all
-                    ? AdminSurface.control
-                    : viewModel.catalogFilter.accentColor.opacity(0.13),
-                in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                    .stroke(
-                        viewModel.catalogFilter == .all
-                            ? AdminSurface.hairline
-                            : viewModel.catalogFilter.accentColor.opacity(0.34),
-                        lineWidth: AdminStroke.thin
-                    )
-            )
+            .foregroundStyle(commandInk)
+            .padding(.horizontal, 10)
+            .frame(minWidth: AdminTouchTarget.minimum, minHeight: 56)
+            .contentShape(Rectangle())
         }
-        .accessibilityLabel(Language.get("POS_FilterButton", alter: "تصفية المنتجات"))
+        .buttonStyle(POSVariantPressStyle())
+        .accessibilityLabel(Language.get("POS_FilterButton", alter: nil))
         .accessibilityValue(Language.get(viewModel.catalogFilter.titleKey, alter: viewModel.catalogFilter.fallbackTitle))
-        .accessibilityHint(Language.get("POS_CategoryLens_Hint", alter: "يفتح فئات الكتالوج المتاحة"))
+        .accessibilityHint(Language.get("POS_CategoryLens_Hint", alter: nil))
+        .accessibilityIdentifier("admin.pos.header.filter")
     }
 
     @ViewBuilder
