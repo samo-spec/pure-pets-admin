@@ -437,6 +437,11 @@ struct PPInventoryFamilyRow: View {
                         .padding(.horizontal, AdminSpacing.base)
                         .padding(.vertical, AdminSpacing.md)
                     }
+                    .onAppear {
+                        if isExpanded {
+                            proxy.scrollTo(heroMember.accessoryID, anchor: .center)
+                        }
+                    }
                     .onChange(of: heroMember.accessoryID) { productId in
                         guard isExpanded else { return }
                         withAnimation(AdminAnimation.motion(AdminAnimation.fast, reduceMotion: reduceMotion)) {

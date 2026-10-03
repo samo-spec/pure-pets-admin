@@ -14,6 +14,7 @@
 
 import SwiftUI
 import UIKit
+import AVFoundation
 
 // MARK: - Active Matrix Sheet Enum
 
@@ -1804,6 +1805,22 @@ struct PPAccessoryCreateCombinationSheet: View {
     @State private var quantity = 0
     @State private var stagedImages: [UIImage] = []
     @State private var isPresentingPhotoPicker = false
+    @State private var showPhotoSourceDialog = false
+    @State private var showCameraPicker = false
+    @State private var showCameraAccessAlert = false
+    @State private var cameraAlertMessage = ""
+
+    private func requestCamera() {
+        PPCameraPermissionHelper.requestCameraAccess(
+            onAuthorized: {
+                showCameraPicker = true
+            },
+            onDenied: { msg in
+                cameraAlertMessage = msg
+                showCameraAccessAlert = true
+            }
+        )
+    }
     @State private var isSubmitting = false
     @State private var showSkuCopiedToast = false
     @State private var showBarcodeCopiedToast = false
@@ -1909,6 +1926,42 @@ struct PPAccessoryCreateCombinationSheet: View {
                             .foregroundStyle(AdminSurface.secondaryText)
                     }
                 }
+            }
+            .confirmationDialog(
+                Language.get("Inventory_PhotoSource_Title", alter: "إضافة صور"),
+                isPresented: $showPhotoSourceDialog,
+                titleVisibility: .visible
+            ) {
+                Button(Language.get("Inventory_PhotoSource_Camera", alter: "التقاط بالكاميرا")) {
+                    requestCamera()
+                }
+                Button(Language.get("Inventory_PhotoSource_Library", alter: "اختيار من مكتبة الصور")) {
+                    isPresentingPhotoPicker = true
+                }
+                Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+            } message: {
+                Text(Language.get("Inventory_PhotoSource_Message", alter: "اختر التقاط صورة جديدة بالكاميرا أو اختيار صور من المكتبة."))
+            }
+            .fullScreenCover(isPresented: $showCameraPicker) {
+                PPLivePetCameraPicker { image in
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                        if stagedImages.count < 6 {
+                            stagedImages.append(image)
+                        }
+                    }
+                }
+            }
+            .alert(
+                Language.get("Inventory_CameraPermission_Title", alter: "السماح باستخدام الكاميرا"),
+                isPresented: $showCameraAccessAlert
+            ) {
+                Button(Language.get("LivePetIntake_OpenSettings", alter: "فتح الإعدادات")) {
+                    guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
+                    UIApplication.shared.open(settingsURL)
+                }
+                Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+            } message: {
+                Text(cameraAlertMessage.isEmpty ? Language.get("Inventory_CameraPermission_Message", alter: "يحتاج التطبيق إذن الوصول للكاميرا لالتقاط الصور. يمكنك تفعيل الإذن من إعدادات الجهاز.") : cameraAlertMessage)
             }
             .sheet(isPresented: $isPresentingPhotoPicker) {
                 let remaining = max(1, 6 - stagedImages.count)
@@ -2526,7 +2579,7 @@ struct PPAccessoryCreateCombinationSheet: View {
                 // Add Photo Button
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    isPresentingPhotoPicker = true
+                    showPhotoSourceDialog = true
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "plus")
@@ -2578,7 +2631,7 @@ struct PPAccessoryCreateCombinationSheet: View {
                 // Empty Media Strip / Add Prompt
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    isPresentingPhotoPicker = true
+                    showPhotoSourceDialog = true
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: "photo.badge.plus")

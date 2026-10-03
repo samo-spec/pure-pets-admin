@@ -44,6 +44,12 @@ extern PPStaffStatus const PPStaffStatusDisabled;
 @property (nonatomic, copy, readonly, nullable) NSString *defaultBranchID;
 @property (nonatomic, copy, readonly, nullable) NSDictionary<NSString *, NSArray<NSString *> *> *branchPermissions;
 
+/// Read-only server provenance used to plan bounded queries. These values do
+/// not replace hasPermission:, authorize writes, or validate a V2 projection.
+@property (nonatomic, copy, readonly, nullable) NSString *authorizationMode;
+@property (nonatomic, copy, readonly) NSArray<NSString *> *authorizationGlobalPermissions;
+@property (nonatomic, copy, readonly) NSArray<NSString *> *explicitPermissions;
+
 - (instancetype)initWithDictionary:(NSDictionary *)dict uid:(NSString *)uid;
 - (BOOL)isActive;
 - (BOOL)isAdmin;

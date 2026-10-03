@@ -20,6 +20,7 @@ static NSString *PPAccountingNormalizePeriod(NSString *filter) {
 
 static NSString * const PPAccountingOrderScopeErrorDomain = @"PPAccountingOrderScope";
 static NSString * const PPAccountingPartialReadMarkerKey = @"PPAccountingPartialRead";
+static NSUInteger const PPAccountingScopeChunkLimit = 30;
 
 static NSString *PPAccountingSelectedBranchID(void) {
     NSString *branchID = [PPBranchContextManager sharedManager].currentBranchID ?: @"";
@@ -100,6 +101,18 @@ static NSError *PPAccountingPartialReadError(NSError *underlyingError,
     return [NSError errorWithDomain:PPAccountingOrderScopeErrorDomain code:413 userInfo:userInfo];
 }
 
+static NSArray<NSString *> *PPAccountingCanonicalScopeIDs(PPStaffDoc *staff, NSString *key) {
+    id value = [staff.scope isKindOfClass:NSDictionary.class] ? staff.scope[key] : nil;
+    if (![value isKindOfClass:NSArray.class]) return @[];
+    NSMutableOrderedSet<NSString *> *ids = [NSMutableOrderedSet orderedSet];
+    for (id entry in (NSArray *)value) {
+        if (![entry isKindOfClass:NSString.class]) continue;
+        NSString *trimmed = [(NSString *)entry stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (trimmed.length) [ids addObject:trimmed];
+    }
+    return [ids.array sortedArrayUsingSelector:@selector(compare:)];
+}
+
 static BOOL PPAccountingStaffSessionIsCurrent(PPStaffDoc *staff) {
     PPStaffDoc *current = [PPStaffAuth shared].cachedCurrentStaff;
     NSString *authUID = [FIRAuth auth].currentUser.uid;
@@ -114,14 +127,25 @@ static BOOL PPAccountingStaffHasReadableOrderScope(PPStaffDoc *staff) {
     if (branchID.length > 0) {
         return [staff hasAccessToBranch:branchID];
     }
-    return [staff hasAnyPermission:@[kStaffPermPaymentsView, kStaffPermPaymentsManage]];
+    return (PPAccountingCanonicalScopeIDs(staff, @"branchIds").count > 0 ||
+            PPAccountingCanonicalScopeIDs(staff, @"regionIds").count > 0 ||
+            [staff hasAnyPermission:@[kStaffPermPaymentsView, kStaffPermPaymentsManage]]);
 }
 
 static BOOL PPAccountingStaffCanReachOrder(PPStaffDoc *staff, NSDictionary *data) {
     if (!PPAccountingStaffSessionIsCurrent(staff) || ![data isKindOfClass:NSDictionary.class]) return NO;
     if (staff.isAdmin || staff.hasGlobalScope) return YES;
     NSString *selectedBranchID = PPAccountingSelectedBranchID();
-    if (selectedBranchID.length == 0) return YES;
+    if (selectedBranchID.length == 0) {
+        NSString *branchID = [data[@"branchId"] isKindOfClass:NSString.class]
+            ? [(NSString *)data[@"branchId"] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
+            : @"";
+        NSString *regionID = [data[@"regionId"] isKindOfClass:NSString.class]
+            ? [(NSString *)data[@"regionId"] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
+            : @"";
+        return ((branchID.length > 0 && [PPAccountingCanonicalScopeIDs(staff, @"branchIds") containsObject:branchID]) ||
+                (regionID.length > 0 && [PPAccountingCanonicalScopeIDs(staff, @"regionIds") containsObject:regionID]));
+    }
     NSString *branchID = [data[@"branchId"] isKindOfClass:NSString.class]
         ? [(NSString *)data[@"branchId"] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
         : @"";

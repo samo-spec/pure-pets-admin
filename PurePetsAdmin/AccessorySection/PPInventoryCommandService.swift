@@ -316,6 +316,161 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
     /// Raised when the backend rejected one or more payload fields outright.
     @objc public static let unsupportedFieldsErrorCode = 422
 
+    // MARK: - Inventory failure presentation and retry classification
+
+    /// A rejection of this attempt does not prove that an earlier timed-out
+    /// attempt failed. Callers must retain recovery when it may have committed.
+    @nonobjc public static func isDefinitiveSaveRejection(_ error: Error) -> Bool {
+        let chain = inventoryErrorChain(error)
+        if chain.contains(where: { $0.domain == errorDomain && $0.code == unsupportedFieldsErrorCode }) {
+            return true
+        }
+        guard let callable = chain.first(where: isCallableError) else { return false }
+        return [FunctionsErrorCode.invalidArgument.rawValue,
+                FunctionsErrorCode.permissionDenied.rawValue,
+                FunctionsErrorCode.unauthenticated.rawValue,
+                FunctionsErrorCode.failedPrecondition.rawValue,
+                FunctionsErrorCode.notFound.rawValue].contains(callable.code)
+    }
+
+    /// Keep diagnostics out of operator copy. These messages describe the cause
+    /// and next action without claiming an ambiguous save never reached the server.
+    @nonobjc public static func userFacingErrorMessage(for error: Error) -> String {
+        let chain = inventoryErrorChain(error)
+        let domainCode = chain.lazy.compactMap { item -> String? in
+            let details = inventoryErrorDetails(item)
+            return (details["domainCode"] as? String) ?? (item.userInfo["domainCode"] as? String)
+        }.first ?? ""
+        switch domainCode {
+        case "INVENTORY_UNKNOWN_FIELDS", "INVENTORY_CONTRACT_VERSION_UNSUPPORTED":
+            return Language.get("Inventory_Error_UpdateRequired", alter: "بيانات الحفظ غير متوافقة مع إصدار الخدمة. حدّث التطبيق ثم أعد المحاولة. إذا استمرت المشكلة، تواصل مع الدعم مع إبقاء الحفظ المعلّق محفوظاً.")
+        case "BRANCH_ID_REQUIRED":
+            return Language.get("Inventory_SpecificBranchRequired", alter: "اختر فرعاً محدداً قبل إنشاء مخزون أولي لهذا الصنف.")
+        case "BRANCH_INACTIVE", "INVENTORY_UNIT_BRANCH_MISMATCH":
+            return Language.get("Inventory_Error_BranchUnavailable", alter: "الفرع المختار غير متاح لهذه العملية. اختر فرعاً نشطاً تملك صلاحية الوصول إليه، أو اطلب من المسؤول مراجعة الفرع وصلاحياتك.")
+        case "STALE_REVISION":
+            return Language.get("Inventory_CatalogChangedReopen", alter: "تغير الصنف أثناء التحرير. أغلق المحرر وأعد فتح الصنف لمراجعة أحدث البيانات قبل الحفظ.")
+        case "INVENTORY_COMMAND_CONFLICT":
+            return Language.get("Inventory_Error_CommandConflict", alter: "يرتبط سجل الحفظ بعملية أخرى. لا تنشئ نسخة جديدة من الصنف. راجع نتيجة العملية في المخزون، ثم تواصل مع الدعم لاستعادة الحفظ المعلّق.")
+        case "INVENTORY_LOT_MIGRATION_REQUIRED", "TRACKED_INVENTORY_OPERATION_REQUIRED", "INVALID_TRACKING_POLICY":
+            return Language.get("Inventory_Error_TrackingOperation", alter: "يتطلب نوع التتبع عملية مخزون مخصصة. افتح سجل الصنف واستخدم استلام الدفعات أو إدارة الحيوانات الفردية حسب نوعه. اطلب مساعدة مسؤول المخزون إذا لم تتوفر العملية.")
+        case "VARIANT_VISIBILITY_REQUIRES_FAMILY_COMMAND":
+            return Language.get("Inventory_Error_VariantVisibility", alter: "عرض هذا الصنف مرتبط بمجموعة المتغيرات. افتح محرر المتغيرات وحدد المتغير المعروض أو الافتراضي، ثم احفظ المجموعة.")
+        case "INVENTORY_DELETE_BLOCKED_BY_STOCK":
+            return Language.get("Inventory_Error_RemainingStock", alter: "لا يمكن أرشفة الصنف لوجود مخزون متبقٍ. راجع كميات الفروع والحجوزات وأكمل عملية المخزون المناسبة قبل الأرشفة.")
+        case "LIVE_PET_UNIT_MEDIA_STALE":
+            return Language.get("LivePetIntake_UnitPhotoStagedConflict", alter: "تعارضت الصورة المجهزة مع ملف موجود. اختر الصورة مجدداً وحاول مرة أخرى.")
+        default:
+            break
+        }
+        if chain.contains(where: { $0.domain == errorDomain && $0.code == unsupportedFieldsErrorCode }) {
+            return Language.get("Inventory_Error_UpdateRequired", alter: "بيانات الحفظ غير متوافقة مع إصدار الخدمة. حدّث التطبيق ثم أعد المحاولة. إذا استمرت المشكلة، تواصل مع الدعم مع إبقاء الحفظ المعلّق محفوظاً.")
+        }
+        if let serviceError = chain.first(where: { isCallableError($0) || $0.domain == "FIRFirestoreErrorDomain" }) {
+            switch serviceError.code {
+            case FunctionsErrorCode.unauthenticated.rawValue:
+                return Language.get("Inventory_Error_SessionExpired", alter: "تعذر التحقق من جلسة الحساب. أعد تسجيل الدخول بالحساب نفسه ثم افتح المحرر لاستعادة أي حفظ معلّق.")
+            case FunctionsErrorCode.permissionDenied.rawValue:
+                return Language.get("Inventory_Error_PermissionDenied", alter: "حسابك لا يملك صلاحية هذه العملية أو الفرع المختار. اطلب من المسؤول مراجعة صلاحية إدارة الأصناف ونطاق الفروع، ثم أعد المحاولة.")
+            case FunctionsErrorCode.invalidArgument.rawValue, FunctionsErrorCode.outOfRange.rawValue:
+                if isCallableError(serviceError), let guidance = legacyValidationGuidance(serviceError) {
+                    return guidance
+                }
+                return Language.get("Inventory_Error_InvalidInput", alter: "رفضت الخدمة إحدى قيم الصنف. راجع الاسم والتصنيف والفرع، والأسعار غير السالبة بمنزلتين عشريتين، والكميات الصحيحة. صحح الحقول المشار إليها ثم احفظ. إذا استمرت المشكلة، تواصل مع الدعم.")
+            case FunctionsErrorCode.failedPrecondition.rawValue:
+                return Language.get("Inventory_Error_Precondition", alter: "حالة الصنف أو الفرع لا تسمح بهذه العملية حالياً. راجع أحدث بيانات الصنف وحالة الفرع. إذا ظهر حفظ معلّق، احتفظ به واطلب من مسؤول المخزون مراجعة النتيجة قبل بدء حفظ جديد.")
+            case FunctionsErrorCode.notFound.rawValue:
+                return Language.get("Inventory_Error_NotFound", alter: "تعذر العثور على الصنف أو الفرع المطلوب. حدّث قائمة المخزون وتحقق من وجودهما. احتفظ بأي حفظ معلّق وتواصل مع المسؤول إذا بقيت المشكلة.")
+            case FunctionsErrorCode.alreadyExists.rawValue:
+                return Language.get("Inventory_Error_AlreadyExists", alter: "يوجد سجل أو عملية بهذه الهوية بالفعل. راجع الصنف الموجود والباركود ورمز الصنف قبل المحاولة. إذا ظهر حفظ معلّق، احتفظ به وتواصل مع الدعم لتأكيد النتيجة.")
+            case FunctionsErrorCode.resourceExhausted.rawValue:
+                return Language.get("Inventory_Error_Busy", alter: "الخدمة مشغولة حالياً. انتظر قليلاً ثم أعد المحاولة. إذا ظهر حفظ معلّق، استخدم استعادة الحفظ المعلّق لإكمال العملية نفسها.")
+            case FunctionsErrorCode.deadlineExceeded.rawValue, FunctionsErrorCode.unavailable.rawValue,
+                 FunctionsErrorCode.cancelled.rawValue, FunctionsErrorCode.aborted.rawValue:
+                return Language.get("Inventory_Error_Connection", alter: "انقطع الاتصال أو انتهت مهلة العملية. تحقق من الإنترنت ثم أعد المحاولة. إذا ظهر حفظ معلّق، استخدم استعادة الحفظ المعلّق دون تغيير البيانات أو إنشاء صنف آخر.")
+            default:
+                break
+            }
+        }
+        if chain.contains(where: { $0.domain == NSURLErrorDomain }) {
+            return Language.get("Inventory_Error_Connection", alter: "انقطع الاتصال أو انتهت مهلة العملية. تحقق من الإنترنت ثم أعد المحاولة. إذا ظهر حفظ معلّق، استخدم استعادة الحفظ المعلّق دون تغيير البيانات أو إنشاء صنف آخر.")
+        }
+        // Errors created by this facade already contain app-localized guidance;
+        // never trust arbitrary SDK/server descriptions through this exception.
+        if let local = chain.first(where: { $0.domain == errorDomain && [400, 404, 409].contains($0.code) }),
+           let message = local.userInfo[NSLocalizedDescriptionKey] as? String, !message.isEmpty {
+            return message
+        }
+        return Language.get("Inventory_Error_Unknown", alter: "تعذر إكمال العملية أو تأكيد نتيجتها. أعد المحاولة من المحرر نفسه لاستعادة أي حفظ معلّق. إذا استمرت المشكلة، احتفظ بالبيانات وتواصل مع الدعم قبل إنشاء صنف آخر.")
+    }
+
+    @nonobjc private static func inventoryErrorChain(_ error: Error) -> [NSError] {
+        var chain: [NSError] = []
+        var next: NSError? = error as NSError
+        while let current = next, chain.count < 8 {
+            guard !chain.contains(where: { $0 === current }) else { break }
+            chain.append(current)
+            next = current.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        return chain
+    }
+
+    @nonobjc private static func isCallableError(_ error: NSError) -> Bool {
+        error.domain == FunctionsErrorDomain || error.domain == "com.firebase.functions"
+    }
+
+    @nonobjc private static func inventoryErrorDetails(_ error: NSError) -> [String: Any] {
+        (error.userInfo["details"] as? [String: Any])
+            ?? (error.userInfo["FIRFunctionsErrorDetailsKey"] as? [String: Any])
+            ?? [:]
+    }
+
+    /// Older validation errors do not carry a domainCode. Match only the
+    /// documented field prefix from Infra, never display the server sentence.
+    /// This affects copy only; retry/permission classification stays code-based.
+    @nonobjc private static func legacyValidationGuidance(_ error: NSError) -> String? {
+        let message = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        let field = String(message.prefix { $0.isLetter || $0.isNumber || $0 == "_" })
+        switch field {
+        case "name", "nameEn":
+            return Language.get("Inventory_Error_Name", alter: "راجع خطوة الهوية: أدخل اسم الصنف، واجعل الاسم العربي والإنجليزي لا يزيد كل منهما على 90 حرفاً، ثم احفظ.")
+        case "desc", "descEn":
+            return Language.get("Inventory_Error_Description", alter: "راجع وصف الصنف في خطوة الهوية. اختصر الوصف العربي والإنجليزي إلى 4000 حرف لكل منهما، ثم احفظ.")
+        case "sku":
+            return Language.get("Inventory_Error_SKU", alter: "راجع رمز الصنف في خطوة الهوية. استخدم رمزاً لا يزيد على 40 حرفاً أو امسح الحقل الاختياري، ثم احفظ.")
+        case "barcode":
+            return Language.get("Inventory_Error_Barcode", alter: "راجع الباركود في خطوة الهوية. استخدم باركوداً لا يزيد على 80 حرفاً أو امسح الحقل الاختياري، ثم احفظ.")
+        case "price", "sellPrice", "finalPrice", "standardSellingPrice", "wholesalePrice":
+            return Language.get("CatalogIntake_ValidationPrice", alter: "أدخل سعراً صالحاً لا يتجاوز 999999999.99 وبحد أقصى منزلتين عشريتين.")
+        case "costPrice", "buyPrice":
+            return Language.get("CatalogIntake_ValidationCost", alter: "أدخل تكلفة استلام صالحة وبحد أقصى منزلتين عشريتين.")
+        case "discountPercent":
+            return Language.get("CatalogIntake_ValidationDiscountPercent", alter: "أدخل نسبة خصم بين 0 و100 وبحد أقصى منزلتين عشريتين.")
+        case "discountAmount":
+            return Language.get("CatalogIntake_ValidationDiscountAmount", alter: "أدخل مبلغ خصم صالحاً وبحد أقصى منزلتين عشريتين.")
+        case "quantity", "reorderLevel":
+            return Language.get("Inventory_Error_Quantity", alter: "راجع الكمية وحد إعادة الطلب في خطوة السعر والمخزون. أدخل أعداداً صحيحة غير سالبة ثم احفظ.")
+        case "weight", "weightUnit":
+            return Language.get("CatalogIntake_ValidationWeight", alter: "أدخل وزناً أو حجماً صالحاً وبحد أقصى ثلاث منازل عشرية.")
+        case "petMainCategoryID", "petSubCategoryID", "petMainCategoryIDs", "petSubCategoryIDs", "accessoryCategoryID", "AccessoryCategoryID":
+            return Language.get("Inventory_Error_Category", alter: "تعذر اعتماد تصنيف الصنف. في خطوة المواصفات، أعد اختيار الفئة الرئيسية والفرعية وتصنيف الإكسسوار من القوائم المتاحة، ثم احفظ.")
+        case "branchID", "branchId", "storeID", "requestedBranchId":
+            return Language.get("Inventory_SpecificBranchRequired", alter: "اختر فرعاً محدداً قبل إنشاء مخزون أولي لهذا الصنف.")
+        case "quantityGroup", "quantityGroups", "baseUnit", "retailPriceMinor", "wholesalePriceMinor", "unitsPerGroup", "commerce", "sellingModes":
+            return Language.get("Inventory_Error_SellingUnits", alter: "راجع وحدات البيع في خطوة السعر والمخزون: الاسم، وعدد القطع الصحيح، وسعر كل قناة مفعّلة. حدد وحدة افتراضية واحدة لكل قناة وأزل الباركود المكرر، ثم احفظ.")
+        case "imageURLsArray", "imageMeta":
+            return Language.get("Inventory_Error_Images", alter: "تعذر اعتماد صور الصنف. احتفظ باثنتي عشرة صورة كحد أقصى، وأعد اختيار الصورة التي فشل رفعها، ثم احفظ.")
+        default:
+            if message.hasPrefix("At least one quantity group is required.")
+                || message.hasPrefix("Duplicate quantityGroup id:")
+                || message.hasPrefix("Duplicate barcode across quantity groups:")
+                || message.hasPrefix("Only one active quantity group may be defaultFor") {
+                return Language.get("Inventory_Error_SellingUnits", alter: "راجع وحدات البيع في خطوة السعر والمخزون: الاسم، وعدد القطع الصحيح، وسعر كل قناة مفعّلة. حدد وحدة افتراضية واحدة لكل قناة وأزل الباركود المكرر، ثم احفظ.")
+            }
+            return nil
+        }
+    }
+
     /// Recognizes optimistic concurrency stale revision conflicts from the backend.
     /// Returns (expected, current) revision if the error is a STALE_REVISION conflict.
     @nonobjc public static func staleRevision(from error: Error) -> (expected: Int, current: Int)? {
@@ -386,19 +541,7 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty } ?? []
 
-        let message: String
-        if fields.isEmpty {
-            message = Language.get(
-                "Inventory_UnsupportedFields_Generic",
-                alter: "رفض الخادم بعض الحقول. لم يتم الحفظ. حدّث التطبيق وحاول مرة أخرى."
-            )
-        } else {
-            let template = Language.get(
-                "Inventory_UnsupportedFields_Named",
-                alter: "رفض الخادم هذه الحقول ولم يتم الحفظ: %@. حدّث التطبيق."
-            )
-            message = String(format: template, fields.joined(separator: ", "))
-        }
+        let message = userFacingErrorMessage(for: error)
 
         return NSError(
             domain: PPInventoryCommandService.errorDomain,
@@ -661,7 +804,7 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
             return
         }
 
-        firestore.collection("petAccessories").document(normalizedProductId).getDocument { snapshot, error in
+        firestore.collection("petAccessories").document(normalizedProductId).getDocument(source: .server) { snapshot, error in
             if let error {
                 completion(nil, error)
                 return
@@ -679,7 +822,8 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
                 return
             }
             let revision = (data["revision"] as? NSNumber)?.intValue ?? (data["revision"] as? Int) ?? 0
-            guard revision >= minimumRevision else {
+            guard !snapshot.metadata.isFromCache, !snapshot.metadata.hasPendingWrites,
+                  revision >= minimumRevision else {
                 let error = NSError(
                     domain: "pp.inventory.command",
                     code: 409,

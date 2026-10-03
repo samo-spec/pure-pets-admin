@@ -1223,7 +1223,7 @@ struct POSBarcodeScannerScreen: View {
                         torchRequested = false
                         phase = .unavailable
                     },
-                    scanRegion: BarcodeScanGeometry.normalizedAperture(apertureFrame, in: cameraFrame),
+                    scanRegion: nil,
                     isActive: isVisible && applicationIsActive && !showingManualEntry && !hasFinished,
                     isTorchRequested: torchRequested,
                     onStateChange: { state in
@@ -1280,6 +1280,7 @@ struct POSBarcodeScannerScreen: View {
         .onPreferenceChange(BarcodeAperturePreferenceKey.self) { apertureFrame = $0 }
         .onPreferenceChange(BarcodeCameraPreferenceKey.self) { cameraFrame = $0 }
         .onAppear {
+            hasFinished = false
             isVisible = true
             applicationIsActive = UIApplication.shared.applicationState == .active
             refreshAuthorization()
@@ -1802,8 +1803,8 @@ struct POSBarcodeCameraView: UIViewControllerRepresentable {
 /// All mutable capture/device state below is confined to one serial queue. Only
 /// the preview layer and main-queue metadata delegate read the session externally.
 private final class ScannerCaptureSessionDriver: @unchecked Sendable {
-    enum Event: Sendable {
-        case configured, starting, reading, interrupted, failed
+    enum Event: @unchecked Sendable {
+        case configured(AVCaptureDevice), starting, reading, interrupted, failed
         case torch(available: Bool, isOn: Bool)
     }
 
@@ -1821,6 +1822,10 @@ private final class ScannerCaptureSessionDriver: @unchecked Sendable {
     private var wantsTorch = false
     private var interrupted = false
     private var disposed = false
+
+    var activeDevice: AVCaptureDevice? {
+        device
+    }
 
     init(delegate: AVCaptureMetadataOutputObjectsDelegate?, onEvent: @escaping @MainActor @Sendable (Event) -> Void) {
         metadataDelegate = delegate
@@ -1878,7 +1883,7 @@ private final class ScannerCaptureSessionDriver: @unchecked Sendable {
                 camera.observe(\.isTorchAvailable, options: [.new]) { [weak self] _, _ in self?.refreshTorchState() },
                 camera.observe(\.isTorchActive, options: [.new]) { [weak self] _, _ in self?.refreshTorchState() }
             ]
-            emit(.configured)
+            emit(.configured(camera))
             reconcileRunning()
         }
     }
@@ -2037,6 +2042,13 @@ final class ScannerViewController: UIViewController {
     }
     private let notifications = ScannerNotificationBag()
     private var previewLayer: AVCaptureVideoPreviewLayer?
+    private var rotationObservation: NSKeyValueObservation?
+    private var _rotationCoordinator: Any?
+    @available(iOS 17.0, *)
+    private var rotationCoordinator: AVCaptureDevice.RotationCoordinator? {
+        get { _rotationCoordinator as? AVCaptureDevice.RotationCoordinator }
+        set { _rotationCoordinator = newValue }
+    }
     private var state = POSBarcodeCameraState()
     private var captureRequested = true
     private var torchRequested = false
@@ -2071,6 +2083,7 @@ final class ScannerViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         isVisible = true
+        setupRotationCoordinatorIfNeeded()
         updatePreviewGeometry()
         reconcileCapture()
     }
@@ -2078,6 +2091,7 @@ final class ScannerViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         isVisible = true
+        setupRotationCoordinatorIfNeeded()
         updatePreviewGeometry()
         reconcileCapture()
     }
@@ -2087,6 +2101,15 @@ final class ScannerViewController: UIViewController {
         isVisible = false
         torchRequested = false
         reconcileCapture()
+    }
+
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        coordinator.animate(alongsideTransition: { [weak self] _ in
+            self?.updatePreviewGeometry()
+        }, completion: { [weak self] _ in
+            self?.updatePreviewGeometry()
+        })
     }
 
     func setCaptureActive(_ active: Bool) {
@@ -2103,12 +2126,47 @@ final class ScannerViewController: UIViewController {
     func shutdown() {
         guard !isDisposed else { return }
         isDisposed = true
+        rotationObservation?.invalidate()
+        rotationObservation = nil
+        _rotationCoordinator = nil
         cancelStartupTimeout()
         onFailure = nil
         onStateChange = nil
         captureDriver.shutdown()
         notifications.tokens.forEach(NotificationCenter.default.removeObserver)
         notifications.tokens.removeAll()
+    }
+
+    private func setupRotationCoordinator(for device: AVCaptureDevice? = nil) {
+        guard !isDisposed, let layer = previewLayer else { return }
+        let targetDevice = device
+            ?? captureDriver.activeDevice
+            ?? (captureDriver.session.inputs.compactMap { $0 as? AVCaptureDeviceInput }).first?.device
+        guard let targetDevice else { return }
+
+        if #available(iOS 17.0, *) {
+            if let existing = rotationCoordinator, existing.device == targetDevice {
+                return
+            }
+            rotationObservation?.invalidate()
+            rotationObservation = nil
+
+            let coordinator = AVCaptureDevice.RotationCoordinator(device: targetDevice, previewLayer: layer)
+            rotationCoordinator = coordinator
+            rotationObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: [.initial, .new]) { [weak self] coord, _ in
+                DispatchQueue.main.async {
+                    self?.updatePreviewGeometry()
+                }
+            }
+        }
+    }
+
+    private func setupRotationCoordinatorIfNeeded() {
+        if #available(iOS 17.0, *) {
+            if rotationCoordinator == nil {
+                setupRotationCoordinator()
+            }
+        }
     }
 
     private func reconcileCapture() {
@@ -2148,10 +2206,18 @@ final class ScannerViewController: UIViewController {
         CATransaction.setDisableActions(true)
         layer.frame = view.bounds
         if let connection = layer.connection {
-            if #available(iOS 17.0, *), connection.isVideoRotationAngleSupported(90) {
-                connection.videoRotationAngle = 90
+            if #available(iOS 17.0, *) {
+                let targetAngle: CGFloat
+                if let coordinator = rotationCoordinator, connection.isVideoRotationAngleSupported(coordinator.videoRotationAngleForHorizonLevelPreview) {
+                    targetAngle = coordinator.videoRotationAngleForHorizonLevelPreview
+                } else {
+                    targetAngle = fallbackRotationAngle()
+                }
+                if connection.isVideoRotationAngleSupported(targetAngle) {
+                    connection.videoRotationAngle = targetAngle
+                }
             } else if connection.isVideoOrientationSupported {
-                connection.videoOrientation = .portrait
+                connection.videoOrientation = fallbackVideoOrientation()
             }
         }
         CATransaction.commit()
@@ -2174,10 +2240,49 @@ final class ScannerViewController: UIViewController {
         }
     }
 
+    private var currentInterfaceOrientation: UIInterfaceOrientation {
+        if let windowScene = view.window?.windowScene {
+            return windowScene.interfaceOrientation
+        }
+        if let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive }) {
+            return windowScene.interfaceOrientation
+        }
+        return .portrait
+    }
+
+    private func fallbackRotationAngle() -> CGFloat {
+        switch currentInterfaceOrientation {
+        case .landscapeLeft:
+            return 180
+        case .landscapeRight:
+            return 0
+        case .portraitUpsideDown:
+            return 270
+        default:
+            return 90
+        }
+    }
+
+    private func fallbackVideoOrientation() -> AVCaptureVideoOrientation {
+        switch currentInterfaceOrientation {
+        case .landscapeLeft:
+            return .landscapeLeft
+        case .landscapeRight:
+            return .landscapeRight
+        case .portraitUpsideDown:
+            return .portraitUpsideDown
+        default:
+            return .portrait
+        }
+    }
+
     private func handleCaptureEvent(_ event: ScannerCaptureSessionDriver.Event) {
         guard !isDisposed else { return }
         switch event {
-        case .configured:
+        case .configured(let device):
+            setupRotationCoordinator(for: device)
             updatePreviewGeometry()
             captureDriver.setTorchRequested(torchRequested)
             return
@@ -2230,6 +2335,9 @@ final class ScannerViewController: UIViewController {
         })
         notifications.tokens.append(center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.reconcileCapture() }
+        })
+        notifications.tokens.append(center.addObserver(forName: UIDevice.orientationDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updatePreviewGeometry() }
         })
     }
 }

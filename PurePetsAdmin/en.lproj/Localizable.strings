@@ -2219,6 +2219,7 @@
 "Fulfillment_Admin_Override_Submit" = "Commit Status Override";
 "Fulfillment_View_Parent_Order" = "Open in Payments";
 "Fulfillment_Quick_Accept" = "Accept Order";
+"Fulfillment_Quick_Audit_Note" = "Staff action from the Admin app: %@";
 "Fulfillment_Quick_Prepare" = "Start Preparing";
 "Fulfillment_Quick_Ready" = "Ready for Pickup";
 "Fulfillment_Quick_Request_Delivery" = "Request Delivery";
@@ -5505,10 +5506,10 @@
 "CatalogIntake_SubmitHint" = "Validates the data, then saves through the established Admin path";
 "CatalogIntake_ContinueHint" = "Validates this step, then continues";
 "CatalogIntake_SubmittingSub" = "Photos may upload first, then the catalog record is saved. Do not close the app.";
-"CatalogIntake_ValidationName" = "Enter the item name first.";
-"CatalogIntake_ValidationCategory" = "Select the item's main category.";
+"CatalogIntake_ValidationName" = "In Identity, enter the item name, then continue saving.";
+"CatalogIntake_ValidationCategory" = "In Specifications, select the appropriate main category or All categories.";
 "CatalogIntake_ValidationWeight" = "Enter a valid weight or volume with no more than three decimal places.";
-"CatalogIntake_ValidationPrice" = "Enter a price greater than zero, up to 999999999.99, with at most two decimal places.";
+"CatalogIntake_ValidationPrice" = "In Pricing, enter a price greater than zero and no more than QAR 999,999,999.99, with up to two decimal places (for example, 25.50).";
 "CatalogIntake_ValidationDiscountPercent" = "Enter a discount from 0 to 100 with no more than two decimal places.";
 "CatalogIntake_ValidationDiscountAmount" = "Enter a valid fixed discount with no more than two decimal places.";
 "CatalogIntake_ValidationStore" = "Select the item's owning branch.";
@@ -8320,11 +8321,11 @@
 "LivePet_Action_RefundMerchandise" = "Refund Products & Accessories";
 
 /* ===================== Authoritative Inventory Commands ===================== */
-"Inventory_InvalidCommandResponse" = "The inventory service response could not be verified.";
+"Inventory_InvalidCommandResponse" = "A valid save confirmation did not arrive. Check your connection and tap Recover pending save. If this persists, give support the operation reference.";
 "Inventory_InvalidAdjustmentResponse" = "The stock adjustment result could not be verified.";
 "Inventory_InvalidDeleteResponse" = "The item archive result could not be verified.";
 "Inventory_InvalidTransferResponse" = "The inventory transfer result could not be verified.";
-"Inventory_SpecificBranchRequired" = "Select a specific branch before creating opening stock for this item.";
+"Inventory_SpecificBranchRequired" = "In Availability, select a specific branch you can access before adding an opening quantity, or set the quantity to zero.";
 "Inventory_MissingProductIdentifier" = "The save could not be confirmed because the product identifier is invalid.";
 "Inventory_ReadbackMissing" = "The server accepted the operation, but the item was not found during final verification. Retry without changing the data.";
 "Inventory_ReadbackPending" = "The server accepted the operation, but the confirmed revision is not visible yet. Retry without changing the data.";
@@ -8332,7 +8333,7 @@
 "Inventory_AdjustmentPending" = "Adjustment pending";
 "Inventory_AdjustmentPendingDetail" = "Wait for the current adjustment to be confirmed before submitting another change for this item.";
 "Inventory_NegativeStockRejected" = "Available stock cannot become negative.";
-"CatalogIntake_ValidationCost" = "Enter a valid acquisition cost with no more than two decimal places.";
+"CatalogIntake_ValidationCost" = "In Pricing, enter an acquisition cost from zero to QAR 999,999,999.99 with up to two decimal places.";
 "CatalogIntake_ValidationNameWordCount" = "Product name must not exceed 4 words.";
 "CatalogIntake_ValidationNameWordCountEn" = "English name must not exceed 4 words.";
 "Words" = "Words";
@@ -10395,13 +10396,13 @@
 
 "Inventory_CatalogChangedReopen" = "This item changed while you were editing. Close the editor and reopen the item to review the latest data before saving.";
 
-"Inventory_CommerceLoadFailed" = "Could not load selling units. Tap Save to retry loading before saving.";
+"Inventory_CommerceLoadFailed" = "Selling units could not be loaded, so saving is paused to protect existing prices. Reload selling units using the action button, then save.";
 
 "Inventory_CommerceLoading" = "Loading selling units. Wait before saving.";
 
 /* Retain unconfirmed inventory saves and their media. */
-"Inventory_SaveRecoveryRequired" = "This save may already be complete. Resume the pending save to confirm its result before discarding changes.";
-"Inventory_SaveRecoveryUnavailable" = "The pending save could not be recovered. Its record has been preserved. Contact support before starting another save.";
+"Inventory_SaveRecoveryRequired" = "The save may have completed, but its confirmation did not arrive. Tap Recover pending save to verify the same operation before editing.";
+"Inventory_SaveRecoveryUnavailable" = "The pending save record could not be read. Return to inventory and look for the item, then contact support to verify the operation before creating another copy. The record has been kept.";
 "Inventory_PendingSaveNotice_Title" = "Save awaiting confirmation";
 
 /* POS Multi-Unit Selling */
@@ -10800,3 +10801,139 @@
 "POS_Header_Title" = "Quick sale";
 "POS_Header_SaleType" = "Sale type";
 "POS_Header_BranchCatalog" = "Branch catalog";
+
+
+/* POS payment tray — amount, collection and deliberate completion */
+"POS_Checkout_AmountDue" = "Amount due";
+"POS_Checkout_ItemCount" = "Items: %ld";
+"POS_Checkout_ReviewCart" = "Review cart";
+"POS_Checkout_HideCart" = "Hide details";
+"POS_Checkout_Expanded" = "Cart details expanded";
+"POS_Checkout_Collapsed" = "Cart summary";
+"POS_Checkout_DiscountValue" = "Discount · %@";
+"POS_Checkout_OtherMethods" = "Other";
+"POS_Checkout_OtherMethodsLabel" = "Other payment methods";
+"POS_Checkout_CardHint" = "Confirm payment succeeded on the card terminal before completing the sale.";
+"POS_Checkout_CashReceived" = "Cash received";
+"POS_Checkout_Shortfall" = "Still to collect";
+"POS_Checkout_Change" = "Change to return";
+"POS_Checkout_ShortfallHint" = "Update the received amount after collecting the balance, or choose another payment method.";
+"POS_Checkout_NeedsAttention" = "Review payment details";
+"POS_ExactCash" = "Exact amount";
+"POS_CompleteSale" = "Complete sale";
+"POS_ConfirmSaleTitle" = "Confirm sale";
+"POS_ConfirmSaleAmount_FMT" = "Complete this sale for %@?";
+"POS_Payment_ShowInSummary" = "Show in summary";
+"POS_Payment_Lot" = "Lot";
+
+/* Existing POS payment controls: explicit bilingual coverage */
+"POS_CartTotalRequiredFormat" = "Amount due: %@";
+"POS_ClearCart" = "Clear cart";
+"POS_DecreaseQty" = "Decrease quantity";
+"POS_Each" = "each";
+"POS_IncreaseQty" = "Increase quantity";
+"POS_SelectItemsPrompt" = "Choose items from the catalog to begin";
+"POS_SelectUnits" = "Select animals";
+
+/* Compact POS payment tray */
+"POS_Checkout_ExpandTray" = "Payment details";
+"POS_Checkout_CollapseTray" = "Collapse details";
+"POS_Checkout_TrayExpanded" = "Payment tray expanded";
+"POS_Checkout_TrayCollapsed" = "Payment tray collapsed";
+"POS_Checkout_ReceivedCompact" = "Received %@";
+"POS_Checkout_ShortfallCompact" = "Still due %@";
+"POS_Checkout_ChangeCompact" = "Change %@";
+"POS_Checkout_EditCashHint" = "Edit the cash received from the customer";
+"POS_Checkout_ConfirmPaymentCompact" = "Confirm payment received";
+
+"Inventory_PendingProduct_Format" = "Item: %@";
+
+"Inventory_PendingSaveSteps" = "Check your connection, then tap Recover pending save. Editing stays locked to prevent a duplicate item. If the alert persists, return to inventory, look for the item, and give support the operation reference.";
+
+"Inventory_RecoveryReference_Format" = "Operation reference: %@";
+
+"Inventory_ReturnKeepingPendingSave" = "Return to inventory and keep this save";
+
+"Inventory_ReloadCommerce" = "Reload selling units";
+
+"Inventory_ImageUploadRecovery" = "The images could not be uploaded. Check your connection and retry. If this happens again, select the image again or choose a smaller image, then save.";
+
+"Inventory_NameLengthGuidance" = "In Identity, shorten the Arabic and English item names to no more than 90 characters each, then save.";
+
+"Variant_Studio_CombinationGuidance" = "This combination is already in use. Change one of the options, or close this editor and open the existing variant to edit it.";
+
+"Variant_Studio_ColorGuidance" = "This colour is already in use. Choose another colour using Change colour, or close this editor and open the existing colour to edit it.";
+
+"Variant_Studio_BarcodeGuidance" = "This barcode belongs to another variant. Enter a different barcode or tap Generate PP Barcode, then save.";
+
+"Variant_Studio_SKUGuidance" = "This SKU belongs to another variant. Enter a different SKU or tap Generate SKU, then save.";
+
+"Variant_Studio_RetailGuidance" = "Enter a selling price greater than zero and up to QAR 999,999,999.99, with up to two decimal places, then save.";
+
+"Variant_Studio_CostGuidance" = "Enter a cost from zero to QAR 999,999,999.99 with up to two decimal places, or leave the optional cost field empty, then save.";
+
+"Variant_Studio_WholesaleGuidance" = "Enter a wholesale price greater than zero and up to QAR 999,999,999.99 with up to two decimal places, or turn off Separate wholesale price, then save.";
+
+"Variant_Studio_SavingGuidance" = "Saving this variant and confirming the result. Wait before making further changes.";
+
+"Variant_Studio_ReviewField" = "Go to the required field";
+
+"Variant_Save_PermissionGuidance" = "You do not have permission to save this product’s options. Ask an administrator for permission to create or manage inventory within your allowed branches, then reopen the product.";
+
+/* Home point of sale */
+"AdminPOS_Home_Title" = "Point of sale";
+"AdminPOS_Home_StartSale" = "Start a sale";
+"AdminPOS_Home_SaleDetail" = "Scan items, review the cart, and take payment.";
+"AdminPOS_Home_Browse" = "Open point of sale";
+"AdminPOS_Home_BrowseDetail" = "Review the catalog with your current access.";
+"AdminPOS_Home_QuickScan" = "Quick scan";
+"AdminPOS_Home_Receipts" = "Invoices & receipts";
+"AdminPOS_Home_ReceiptsDetail" = "Review sales, payments, and returns.";
+"AdminPOS_Home_Expense" = "Add an expense";
+"AdminPOS_Home_ExpenseDetail" = "Record a store payment or petty cash.";
+"AdminPOS_Home_Wanted" = "Wanted pets";
+"AdminPOS_Home_WantedDetail" = "Find the right pet for a waiting customer.";
+"AdminPOS_Home_Shift" = "Today at this branch";
+"AdminPOS_Home_Details" = "Sales details";
+"AdminPOS_Home_HideDetails" = "Hide sales details";
+"AdminPOS_Home_Loading" = "Updating today’s sales…";
+"AdminPOS_Home_Error" = "Sales could not be refreshed. Try again.";
+"AdminPOS_Home_Retained" = "Showing the last available figures.";
+"AdminPOS_Home_Empty" = "No sales recorded today.";
+"AdminPOS_Home_BranchMissing" = "Choose a branch to see today’s sales.";
+"AdminPOS_Home_Updated" = "Last updated";
+"AdminPOS_Home_Ready" = "Ready to sell";
+"AdminPOS_Home_ViewOnly" = "View-only access";
+"AdminPOS_Home_Restricted" = "Access is checked when you open the register.";
+"AdminPOS_Home_ExpandValue" = "Expanded";
+"AdminPOS_Home_CollapseValue" = "Collapsed";
+"AdminPOS_Home_StartHint" = "Opens the sales register.";
+"AdminPOS_Home_Refresh" = "Refresh sales";
+
+/* Inventory Photo Picker */
+"Inventory_PhotoSource_Title" = "Add Photos";
+"Inventory_PhotoSource_Message" = "Choose whether to take a new photo with the camera or select from the photo library.";
+"Inventory_PhotoSource_Camera" = "Take Photo with Camera";
+"Inventory_PhotoSource_Library" = "Choose from Photo Library";
+"Inventory_CameraPermission_Title" = "Allow Camera Access";
+"Inventory_CameraPermission_Message" = "Enable camera access in Settings to take photos, or choose an image from the library.";
+"Inventory_Camera_Unavailable" = "The camera is unavailable on this device. Choose an image from the library.";
+
+/* Fulfillment visibility and parent-order recovery */
+"Fulfillment_Connecting" = "Connecting";
+"Fulfillment_Partial" = "Partial results";
+"Fulfillment_ReadFailed" = "Unable to load orders";
+"Fulfillment_ReadFailed_Subtitle" = "The orders could not be verified. Retry before treating this queue as empty.";
+"Fulfillment_CachedEmpty_Title" = "No live results verified yet";
+"Fulfillment_CachedEmpty_Subtitle" = "Only cached data is available. Reconnect or retry to check current orders.";
+"Fulfillment_Recovery_Title" = "Orders needing review";
+"Fulfillment_Recovery_Subtitle" = "Review parent orders whose fulfillment records could not be confirmed. Recovery stays in the order details.";
+"Fulfillment_Recovery_Checking" = "Checking recent order links…";
+"Fulfillment_Recovery_Missing" = "Linked fulfillment record is missing";
+"Fulfillment_Recovery_Invalid" = "Fulfillment links need review";
+"Fulfillment_Recovery_Review" = "Review order";
+"Fulfillment_Recovery_ReviewHint" = "Opens the parent order and its available recovery actions.";
+"Fulfillment_Recovery_CheckFailed" = "Some order links could not be verified";
+"Fulfillment_Recovery_Limited" = "A limited set of recent orders was checked. Open Orders to review other records.";
+"Fulfillment_Recovery_AllOrders" = "Open orders";
+"Fulfillment_ClearFilters" = "Clear search and filters";

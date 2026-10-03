@@ -86,13 +86,17 @@ final class InventoryViewModel: ObservableObject {
                 return stock <= 3 || $0.noStock
             }
         }
-        if !searchText.isEmpty {
-            let q = searchText.lowercased()
-            result = result.filter {
-                $0.name.lowercased().contains(q) ||
-                ($0.accessoryCategoryID ?? "").lowercased().contains(q) ||
-                ($0.sku ?? "").lowercased().contains(q) ||
-                ($0.barcode ?? "").lowercased().contains(q)
+        let trimmedQuery = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedQuery.isEmpty {
+            let normQ = PPInventorySearchEngine.normalize(trimmedQuery)
+            result = result.filter { item in
+                let normName = PPInventorySearchEngine.normalize(item.name)
+                let normNameEn = PPInventorySearchEngine.normalize(item.nameEn ?? "")
+                let normCat = PPInventorySearchEngine.normalize(item.accessoryCategoryID ?? "")
+                let normSku = PPInventorySearchEngine.normalize(item.sku ?? "")
+                let normBarcode = PPInventorySearchEngine.normalize(item.barcode ?? "")
+                let normDocID = PPInventorySearchEngine.normalize(item.accessoryID)
+                return normName.contains(normQ) || normNameEn.contains(normQ) || normCat.contains(normQ) || normSku.contains(normQ) || normBarcode.contains(normQ) || normDocID.contains(normQ)
             }
         }
         result.sort { a, b in

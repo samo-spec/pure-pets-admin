@@ -11,6 +11,7 @@ def method(start, end):
     return source[source.index(start):source.index(end, source.index(start))]
 
 methods = [
+    method("    func leavePendingStandardSave()", "    private var preventsExplicitDismissal:"),
     method("    func discardPendingStandardSave()", "    private func commitSavedAccessory("),
     method("    func discardChangesAndDismiss()", "    private func cleanupPendingPickedUploads()"),
     method("    func removeExistingImage(at", "    func livePetUnitPhoto(for"),
@@ -74,6 +75,11 @@ let unsaved = Editor(); unsaved.hasPendingStandardSave = false; unsaved.standard
 unsaved.discardChangesAndDismiss()
 precondition(unsaved.dismissals == 1 && unsaved.cleanupCalls == 1,
  "Ordinary unsaved cancellation remains available")
+let leave = Editor(); leave.leavePendingStandardSave()
+precondition(leave.dismissals == 1 && leave.clears == 0 && leave.cleanupCalls == 0 && leave.hasPendingStandardSave,
+ "Returning to inventory must keep the command and possibly committed media")
+let sending = Editor(); sending.isSubmitting = true; sending.leavePendingStandardSave()
+precondition(sending.dismissals == 0, "Leaving during send is not allowed")
 print("CATALOG_PENDING_SAVE_TEST: PASS (discard, back, media, unreadable recovery, stable retry, duplicate tap, ordinary cancellation)")
 '''
 with tempfile.TemporaryDirectory(prefix="pp-pending-save-") as temporary:

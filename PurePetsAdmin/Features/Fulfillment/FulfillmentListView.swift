@@ -345,19 +345,30 @@ struct FulfillmentRecordSnapshot: Identifiable, Sendable {
         return "\(days) \(Language.get("Time_Days_Ago", alter: "ي"))"
     }
 
-    var nextQuickAction: (title: String, targetStatus: String, symbol: String)? {
+    var nextQuickAction: (title: String, targetStatus: String, providerAction: String, symbol: String)? {
+        guard PPFulfillmentService.shared().canAdminOverride() else { return nil }
+        // Display aliases and incomplete ownership must never authorize a command.
+        let isOfficial = PPFulfillmentService.isOfficialPlatformFulfillment(rawRecord)
+        guard isOfficial || (ownerType == "partner" && !ownerID.isEmpty) else { return nil }
+        let action: (title: String, targetStatus: String, providerAction: String, symbol: String)
         switch status {
-        case "new_request", "pending":
-            return (Language.get("Fulfillment_Quick_Accept", alter: "قبول الطلب"), "accepted", "checkmark.circle.fill")
+        case "new_request":
+            action = (Language.get("Fulfillment_Quick_Accept", alter: "قبول الطلب"), "accepted", "accept", "checkmark.circle.fill")
         case "accepted":
-            return (Language.get("Fulfillment_Quick_Prepare", alter: "بدء التجهيز"), "preparing", "gearshape.fill")
-        case "preparing", "processing":
-            return (Language.get("Fulfillment_Quick_Ready", alter: "جاهز للشحن"), "ready_for_pickup", "shippingbox.fill")
+            action = (Language.get("Fulfillment_Quick_Prepare", alter: "بدء التجهيز"), "preparing", "start_preparing", "gearshape.fill")
+        case "preparing":
+            action = (Language.get("Fulfillment_Quick_Ready", alter: "جاهز للشحن"), "ready_for_pickup", "mark_ready", "shippingbox.fill")
         case "ready_for_pickup":
-            return (Language.get("Fulfillment_Quick_Request_Delivery", alter: "طلب مندوب"), "delivery_requested", "paperplane.fill")
+            action = (Language.get("Fulfillment_Quick_Request_Delivery", alter: "طلب مندوب"), "delivery_requested", "request_delivery", "paperplane.fill")
         default:
             return nil
         }
+        if isOfficial {
+            guard PPFulfillmentService.availableOfficialActions(forStatus: status).contains(action.providerAction) else { return nil }
+        } else {
+            guard PPFulfillmentService.allowedOverrideTargets(forStatus: status).contains(action.targetStatus) else { return nil }
+        }
+        return action
     }
 }
 
@@ -440,13 +451,33 @@ enum FulfillmentOverrideCommitResult: Sendable {
     }
 }
 
+struct FulfillmentRecoveryOrderSnapshot: Identifiable, Sendable {
+    let id: String
+    let orderNumber: String
+    let reason: String
+
+    init?(dictionary: NSDictionary) {
+        guard let id = dictionary["orderID"] as? String, !id.isEmpty else { return nil }
+        self.id = id
+        let number = dictionary["orderNumber"] as? String ?? ""
+        self.orderNumber = number.isEmpty ? id : number
+        self.reason = dictionary["reason"] as? String ?? "invalid_link"
+    }
+}
+
 // MARK: - Fulfillment List ViewModel
 
 @MainActor
 final class FulfillmentListViewModel: ObservableObject {
     @Published private(set) var records: [FulfillmentRecordSnapshot] = []
     @Published private(set) var isLoading: Bool = false
-    @Published private(set) var isFromCache: Bool = false
+    @Published private(set) var isFromCache: Bool = true
+    @Published private(set) var isPartialRead = false
+    @Published private(set) var queueReadFailed = false
+    @Published private(set) var recoveryOrders: [FulfillmentRecoveryOrderSnapshot] = []
+    @Published private(set) var isCheckingRecovery = false
+    @Published private(set) var recoveryError: String?
+    @Published private(set) var recoveryCheckLimited = false
     @Published var errorMessage: String?
     @Published var selectedStage: FulfillmentStage = .all
     @Published var searchText: String = ""
@@ -456,7 +487,28 @@ final class FulfillmentListViewModel: ObservableObject {
     @Published var isSubmittingAction: Bool = false
     @Published var actionSuccessToast: String?
 
-    private var listener: AnyObject?
+    private var listener: (any ListenerRegistration)?
+    private var listenerGeneration = UUID()
+    private var refreshCompletion: CheckedContinuation<Void, Never>?
+
+    var hasActiveFilters: Bool {
+        selectedStage != .all || onlySLAUrgent || selectedMode != "all" ||
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var queueStatusTitle: String {
+        if isLoading { return Language.get("Fulfillment_Connecting", alter: nil) }
+        if queueReadFailed { return Language.get("Fulfillment_ReadFailed", alter: nil) }
+        if isPartialRead { return Language.get("Fulfillment_Partial", alter: nil) }
+        return Language.get(isFromCache ? "Fulfillment_Cached_Pulse" : "Fulfillment_Live_Pulse", alter: nil)
+    }
+
+    func clearFilters() {
+        selectedStage = .all
+        onlySLAUrgent = false
+        selectedMode = "all"
+        searchText = ""
+    }
 
     var filteredRecords: [FulfillmentRecordSnapshot] {
         var result = records
@@ -541,32 +593,115 @@ final class FulfillmentListViewModel: ObservableObject {
         )
     }
 
+    static func userFriendlyErrorMessage(_ error: Error) -> String {
+        let ns = error as NSError
+        // Service errors already carry the localized message for the failed
+        // operation. Keep write denial distinct from queue read permissions.
+        if ns.domain == "PPFulfillmentService" {
+            return ns.localizedDescription
+        }
+        if ns.domain == "FIRFirestoreErrorDomain" && ns.code == 7 {
+            return Language.get("PPOrder_Error_NoReadPermission", alter: "ليست لديك صلاحية لعرض سجلات الطلبات ضمن النطاق.")
+        }
+        if ns.domain == "FIRFunctionsErrorDomain" && (ns.code == 7 || ns.localizedDescription.lowercased().contains("permission")) {
+            return Language.get("Fulfillment_OverridePermissionDenied", alter: "ليست لديك صلاحية إدارة المدفوعات اللازمة لتنفيذ هذا الإجراء.")
+        }
+        if ns.code == 410 {
+            return Language.get("PPOrder_Error_NoReadPermission", alter: "ليست لديك صلاحية لعرض سجلات الطلبات ضمن النطاق.")
+        }
+        if ns.code == 411 {
+            return Language.get("PPOrder_Error_MissingReadScope", alter: "لا يحتوي حساب الموظف على نطاق فرع أو منطقة معتمد لسجلات الطلبات.")
+        }
+        if ns.localizedDescription == "Missing or insufficient permissions." {
+            return Language.get("PPOrder_Error_NoReadPermission", alter: "ليست لديك صلاحية لعرض سجلات الطلبات ضمن النطاق.")
+        }
+        return error.localizedDescription
+    }
+
     func startListening() {
         guard listener == nil else { return }
         isLoading = true
+        isPartialRead = false
+        queueReadFailed = false
+        isFromCache = true
         errorMessage = nil
+        let generation = UUID()
+        listenerGeneration = generation
 
         listener = PPFulfillmentService.shared().observeFulfillments { [weak self] rawRecords, fromCache, error in
             Task { @MainActor in
-                guard let self = self else { return }
+                guard let self = self, self.listenerGeneration == generation else { return }
                 self.isLoading = false
                 self.isFromCache = fromCache
 
                 if let error = error {
-                    self.errorMessage = error.localizedDescription
-                    return
+                    self.isPartialRead = PPFulfillmentService.isPartialReadError(error)
+                    self.queueReadFailed = !self.isPartialRead
+                    // Partial callbacks contain only successful authorized shards. Never
+                    // retain records from a failed/revoked shard or a previous session.
+                    self.records = self.isPartialRead
+                        ? (rawRecords ?? []).map { FulfillmentRecordSnapshot(record: $0) }
+                        : []
+                    self.errorMessage = Self.userFriendlyErrorMessage(error)
+                } else {
+                    self.isPartialRead = false
+                    self.queueReadFailed = false
+                    self.errorMessage = nil
+                    self.records = (rawRecords ?? []).map { FulfillmentRecordSnapshot(record: $0) }
                 }
+                self.finishRefresh()
+            }
+        }
+        checkRecoveryOrders(generation: generation)
+    }
 
-                self.records = (rawRecords ?? []).map { FulfillmentRecordSnapshot(record: $0) }
+    private func checkRecoveryOrders(generation: UUID) {
+        recoveryOrders = []
+        recoveryError = nil
+        recoveryCheckLimited = false
+        guard PPPaymentManagementService.shared().currentAdminCanViewPayments() else {
+            isCheckingRecovery = false
+            return
+        }
+        isCheckingRecovery = true
+        PPFulfillmentService.shared().fetchRecoveryOrders { [weak self] rows, limited, error in
+            let snapshots = (rows ?? []).compactMap { FulfillmentRecoveryOrderSnapshot(dictionary: $0 as NSDictionary) }
+            Task { @MainActor in
+                guard let self, self.listenerGeneration == generation else { return }
+                self.isCheckingRecovery = false
+                self.recoveryCheckLimited = limited
+                self.recoveryOrders = snapshots
+                self.recoveryError = error.map(Self.userFriendlyErrorMessage)
             }
         }
     }
 
-    func stopListening() {
-        if let reg = listener as? NSObjectProtocol {
-            NotificationCenter.default.removeObserver(reg)
+    func refresh() async {
+        stopListening()
+        await withCheckedContinuation { continuation in
+            refreshCompletion = continuation
+            startListening()
         }
+    }
+
+    private func finishRefresh() {
+        let completion = refreshCompletion
+        refreshCompletion = nil
+        completion?.resume()
+    }
+
+    func stopListening() {
+        listenerGeneration = UUID()
+        listener?.remove()
         listener = nil
+        isLoading = false
+        isCheckingRecovery = false
+        finishRefresh()
+    }
+
+    func reload() {
+        stopListening()
+        startListening()
     }
 
     func count(for stage: FulfillmentStage) -> Int {
@@ -577,19 +712,23 @@ final class FulfillmentListViewModel: ObservableObject {
     // MARK: - Actions
 
     func quickAdvance(record: FulfillmentRecordSnapshot, targetStatus: String) {
-        guard !isSubmittingAction else { return }
+        guard !isSubmittingAction,
+              let action = record.nextQuickAction,
+              action.targetStatus == targetStatus else { return }
         isSubmittingAction = true
+        errorMessage = nil
+        actionSuccessToast = nil
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
-        let cmdID = "cmd_\(UUID().uuidString.prefix(8))"
-        let note = "Staff quick advance to \(targetStatus) from Admin Console"
+        let cmdID = "cmd_\(UUID().uuidString)"
+        let note = String(format: Language.get("Fulfillment_Quick_Audit_Note", alter: "إجراء موظف من تطبيق الإدارة: %@"), action.title)
 
-        if record.isPlatformOwned {
+        if PPFulfillmentService.isOfficialPlatformFulfillment(record.rawRecord) {
             // Official platform transition
             PPFulfillmentService.shared().transitionOfficialFulfillment(
                 record.rawRecord,
                 expectedStatus: record.status,
-                action: targetStatus,
+                action: action.providerAction,
                 note: note,
                 commandID: cmdID
             ) { [weak self] _, error in
@@ -597,7 +736,7 @@ final class FulfillmentListViewModel: ObservableObject {
                     guard let self = self else { return }
                     self.isSubmittingAction = false
                     if let error = error {
-                        self.errorMessage = error.localizedDescription
+                        self.errorMessage = Self.userFriendlyErrorMessage(error)
                     } else {
                         self.actionSuccessToast = Language.get("Fulfillment_Transition_Success", alter: "تم تحديث حالة الطلب بنجاح")
                         UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -619,7 +758,7 @@ final class FulfillmentListViewModel: ObservableObject {
                     guard let self = self else { return }
                     self.isSubmittingAction = false
                     if let error = error {
-                        self.errorMessage = error.localizedDescription
+                        self.errorMessage = Self.userFriendlyErrorMessage(error)
                     } else {
                         self.actionSuccessToast = Language.get("Fulfillment_Transition_Success", alter: "تم تحديث حالة الطلب بنجاح")
                         UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -677,6 +816,7 @@ struct AdminFulfillmentListView: View {
     @State private var showingFiltersSheet: Bool = false
     @State private var activeSearch: Bool = false
     @State private var parentPaymentOrderIDToOpen: String?
+    @State private var showingParentOrders = false
 
     init(session: AdminSession, onDismiss: (() -> Void)? = nil) {
         self.session = session
@@ -695,6 +835,7 @@ struct AdminFulfillmentListView: View {
                         executiveHolographicCockpit
                         omniSearchBarAndQuickScope
                         spatialStagePipelineRail
+                        recoverySection
                         recordsFeedSection
                     }
                     .padding(.horizontal, AdminSpacing.screenMargin)
@@ -702,9 +843,7 @@ struct AdminFulfillmentListView: View {
                     .padding(.bottom, 48)
                 }
                 .refreshable {
-                    viewModel.stopListening()
-                    viewModel.startListening()
-                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    await viewModel.refresh()
                 }
             }
 
@@ -790,11 +929,15 @@ struct AdminFulfillmentListView: View {
         .sheet(item: Binding<IdentifiableString?>(
             get: { parentPaymentOrderIDToOpen.map { IdentifiableString(id: $0) } },
             set: { parentPaymentOrderIDToOpen = $0?.id }
-        )) { orderID in
+        ), onDismiss: { viewModel.reload() }) { orderID in
             AdminPaymentDetailView(orderID: orderID.id, session: session) {
                 parentPaymentOrderIDToOpen = nil
             }
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
+        .sheet(isPresented: $showingParentOrders, onDismiss: { viewModel.reload() }) {
+            AdminPaymentListView(session: session)
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .onAppear { viewModel.startListening() }
         .onDisappear { viewModel.stopListening() }
@@ -888,10 +1031,10 @@ struct AdminFulfillmentListView: View {
         VStack(spacing: 0) {
             AdminSovereignNavigationBar(
                 title: Language.get("Fulfillment_Title", alter: "طلبات التنفيذ"),
-                subtitle: viewModel.isFromCache
-                    ? Language.get("Fulfillment_Cached_Pulse", alter: "مخزن مؤقتاً")
-                    : Language.get("Fulfillment_Live_Pulse", alter: "مباشر"),
-                statusDotColor: viewModel.isFromCache ? FulfillmentTokens.amber : FulfillmentTokens.emerald,
+                subtitle: viewModel.queueStatusTitle,
+                statusDotColor: viewModel.queueReadFailed ? FulfillmentTokens.crimson :
+                    (viewModel.isFromCache || viewModel.isPartialRead || viewModel.isLoading
+                        ? FulfillmentTokens.amber : FulfillmentTokens.emerald),
                 onBack: {
                     if let onDismiss {
                         onDismiss()
@@ -930,8 +1073,7 @@ struct AdminFulfillmentListView: View {
                     // Refresh Button
                     Button {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        viewModel.stopListening()
-                        viewModel.startListening()
+                        viewModel.reload()
                     } label: {
                         if viewModel.isLoading {
                             ProgressView()
@@ -954,7 +1096,7 @@ struct AdminFulfillmentListView: View {
             }
 
             if let error = viewModel.errorMessage {
-                AdminErrorBanner(message: error, retry: { viewModel.startListening() })
+                AdminErrorBanner(message: error, retry: { viewModel.reload() })
                     .padding(.horizontal, AdminSpacing.screenMargin)
                     .padding(.top, 6)
             }
@@ -1159,6 +1301,79 @@ struct AdminFulfillmentListView: View {
         }
     }
 
+    // Missing children are parent-order exceptions, not synthetic fulfillments.
+    // Opening the existing detail retains its server-verified initialization flow.
+    @ViewBuilder
+    private var recoverySection: some View {
+        if viewModel.isCheckingRecovery {
+            HStack(spacing: 10) {
+                ProgressView()
+                Text(Language.get("Fulfillment_Recovery_Checking", alter: nil))
+                    .font(AdminType.caption)
+                    .foregroundStyle(FulfillmentTokens.inkSecondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else if !viewModel.recoveryOrders.isEmpty || viewModel.recoveryError != nil || viewModel.recoveryCheckLimited {
+            VStack(alignment: .leading, spacing: 14) {
+                Label(Language.get("Fulfillment_Recovery_Title", alter: nil), systemImage: "exclamationmark.folder")
+                    .font(AdminType.headline)
+                    .foregroundStyle(FulfillmentTokens.inkPrimary)
+                    .accessibilityAddTraits(.isHeader)
+                Text(Language.get("Fulfillment_Recovery_Subtitle", alter: nil))
+                    .font(AdminType.subheadline)
+                    .foregroundStyle(FulfillmentTokens.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                ForEach(viewModel.recoveryOrders) { order in
+                    Button {
+                        parentPaymentOrderIDToOpen = order.id
+                    } label: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(order.orderNumber)
+                                .font(AdminType.subheadlineBold)
+                                .environment(\.layoutDirection, .leftToRight)
+                            Text(Language.get(order.reason == "missing_children"
+                                ? "Fulfillment_Recovery_Missing" : "Fulfillment_Recovery_Invalid", alter: nil))
+                                .font(AdminType.caption)
+                            Label(Language.get("Fulfillment_Recovery_Review", alter: nil), systemImage: "chevron.forward")
+                                .font(AdminType.subheadlineBold)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                        .foregroundStyle(FulfillmentTokens.inkPrimary)
+                        .background(FulfillmentTokens.surface, in: RoundedRectangle(cornerRadius: 14))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint(Language.get("Fulfillment_Recovery_ReviewHint", alter: nil))
+                }
+                if let error = viewModel.recoveryError {
+                    Text(Language.get("Fulfillment_Recovery_CheckFailed", alter: nil))
+                        .font(AdminType.subheadlineBold)
+                    Text(error)
+                        .font(AdminType.caption)
+                        .foregroundStyle(FulfillmentTokens.inkSecondary)
+                    Button(Language.get("Retry", alter: nil)) { viewModel.reload() }
+                        .frame(minHeight: 44)
+                }
+                if viewModel.recoveryCheckLimited {
+                    Text(Language.get("Fulfillment_Recovery_Limited", alter: nil))
+                        .font(AdminType.caption)
+                        .foregroundStyle(FulfillmentTokens.inkSecondary)
+                }
+                Button(Language.get("Fulfillment_Recovery_AllOrders", alter: nil)) {
+                    showingParentOrders = true
+                }
+                .font(AdminType.subheadlineBold)
+                .frame(minHeight: 44)
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(FulfillmentTokens.amberSoft, in: RoundedRectangle(cornerRadius: 20))
+            .multilineTextAlignment(.leading)
+        }
+    }
+
     // MARK: - 5. Records Feed Section
 
     @ViewBuilder
@@ -1169,14 +1384,31 @@ struct AdminFulfillmentListView: View {
                     ShimmerCardPlaceholder()
                 }
             }
-        } else if viewModel.filteredRecords.isEmpty {
+        } else if viewModel.records.isEmpty && (viewModel.queueReadFailed || viewModel.isPartialRead) {
+            AdminEmptyStateView(
+                symbol: "exclamationmark.arrow.triangle.2.circlepath",
+                title: Language.get("Fulfillment_ReadFailed", alter: nil),
+                subtitle: Language.get("Fulfillment_ReadFailed_Subtitle", alter: nil)
+            )
+        } else if viewModel.records.isEmpty && viewModel.isFromCache {
+            AdminEmptyStateView(
+                symbol: "wifi.slash",
+                title: Language.get("Fulfillment_CachedEmpty_Title", alter: nil),
+                subtitle: Language.get("Fulfillment_CachedEmpty_Subtitle", alter: nil)
+            )
+        } else if viewModel.filteredRecords.isEmpty && viewModel.recoveryOrders.isEmpty &&
+                    !viewModel.isCheckingRecovery && viewModel.recoveryError == nil {
             AdminEmptyStateView(
                 symbol: "shippingbox.fill",
                 title: Language.get("Fulfillment_No_Orders", alter: "لا توجد طلبات في هذا النطاق"),
                 subtitle: Language.get("Fulfillment_No_Orders_Sub", alter: "يمكنك تغيير مرحلة المعالجة أو مسح خيارات البحث")
             )
             .padding(.top, 40)
-        } else {
+            if viewModel.hasActiveFilters {
+                Button(Language.get("Fulfillment_ClearFilters", alter: nil)) { viewModel.clearFilters() }
+                    .frame(minHeight: 44)
+            }
+        } else if !viewModel.filteredRecords.isEmpty {
             VStack(spacing: 14) {
                 // Header result indicator
                 HStack {
@@ -1524,7 +1756,8 @@ struct FulfillmentDossierView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var events: [FulfillmentEventSnapshot] = []
     @State private var isLoadingEvents: Bool = true
-    @State private var eventsListener: AnyObject?
+    @State private var eventsListener: (any ListenerRegistration)?
+    @State private var eventsListenerGeneration = UUID()
     @State private var recordForOverridePush: FulfillmentRecordSnapshot?
 
     private var statusBarHeight: CGFloat {
@@ -2144,9 +2377,13 @@ struct FulfillmentDossierView: View {
 
     // Event listener logic
     private func startListeningEvents() {
+        guard eventsListener == nil else { return }
+        let generation = UUID()
+        eventsListenerGeneration = generation
         isLoadingEvents = true
         eventsListener = PPFulfillmentService.shared().observeFulfillmentEvents(record.id) { rawEvents, _ in
             Task { @MainActor in
+                guard eventsListenerGeneration == generation else { return }
                 self.isLoadingEvents = false
                 var list: [FulfillmentEventSnapshot] = []
                 for (idx, dict) in (rawEvents ?? []).enumerated() {
@@ -2160,9 +2397,8 @@ struct FulfillmentDossierView: View {
     }
 
     private func stopListeningEvents() {
-        if let reg = eventsListener as? NSObjectProtocol {
-            NotificationCenter.default.removeObserver(reg)
-        }
+        eventsListenerGeneration = UUID()
+        eventsListener?.remove()
         eventsListener = nil
     }
 }

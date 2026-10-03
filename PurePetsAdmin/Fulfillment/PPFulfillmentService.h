@@ -41,6 +41,14 @@ NS_ASSUME_NONNULL_BEGIN
 - (id<FIRListenerRegistration>)observeFulfillmentsWithCompletion:(void(^)(NSArray<PPFulfillmentRecord *> *records, BOOL isFromCache, NSError * _Nullable error))completion
     NS_SWIFT_NAME(observeFulfillments(completion:));
 
+/// Server-only, bounded diagnostic read of recent authorized parent orders.
+/// Rows contain orderID, orderNumber, and reason (missing_children/invalid_link).
+/// These are parent warnings, never synthetic fulfillment records. At most 20
+/// parents and 20 declared children per parent are inspected. `limited` means
+/// the scope/read budget could not establish exhaustive coverage.
+- (void)fetchRecoveryOrdersWithCompletion:(void(^)(NSArray<NSDictionary *> *orders, BOOL limited, NSError * _Nullable error))completion
+    NS_SWIFT_NAME(fetchRecoveryOrders(completion:));
+
 - (id<FIRListenerRegistration>)observeFulfillment:(NSString *)fulfillmentID
                                        completion:(void(^)(PPFulfillmentRecord * _Nullable record, BOOL isFromCache, BOOL hasPendingWrites, NSError * _Nullable error))completion
     NS_SWIFT_NAME(observeFulfillment(_:completion:));

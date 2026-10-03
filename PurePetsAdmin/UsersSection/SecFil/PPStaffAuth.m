@@ -88,9 +88,17 @@ static NSArray<NSString *> *PPStaffCanonicalPermissionKeys(id value) {
         // empty, or unknown permissions fail closed; role labels never create
         // client-only access.
         NSArray<NSString *> *explicitPermissions = PPStaffCanonicalPermissionKeys(root[@"permissions"]);
+        _explicitPermissions = explicitPermissions;
         _permissions = explicitPermissions.count > 0
             ? explicitPermissions
             : (normalizedRole ? [PPStaffAuth defaultPermissionsForStaffRole:normalizedRole] : @[]);
+        // Preserve absence separately from an unknown/malformed mode. Query
+        // planning must not normalize invalid modes into legacy compatibility.
+        id authorizationMode = root[@"authorizationMode"];
+        _authorizationMode = authorizationMode == nil ? nil :
+            ([authorizationMode isKindOfClass:NSString.class] ? [authorizationMode copy] : @"");
+        NSDictionary *authorization = PPStaffSafeDictionary(root[@"authorization"]);
+        _authorizationGlobalPermissions = PPStaffCanonicalPermissionKeys(authorization[@"globalPermissions"]);
         _scope = PPStaffSafeDictionary(root[@"scope"]);
         NSNumber *revision = [root[@"revision"] isKindOfClass:NSNumber.class] ? root[@"revision"] : @0;
         _revision = MAX(0, revision.integerValue);

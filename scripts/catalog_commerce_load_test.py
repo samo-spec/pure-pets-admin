@@ -19,6 +19,7 @@ struct PPQuantityGroupDraft {
 }
 enum Language { static func get(_ key: String, alter: String) -> String { key } }
 enum PPInventoryDecimalText { static func editable(_ value: NSNumber) -> String { value.stringValue } }
+enum PPInventoryCommandService { static func userFacingErrorMessage(for error: Error) -> String { "actionable failure" } }
 struct DispatchQueue { static let main = DispatchQueue(); func async(execute: () -> Void) { execute() } }
 struct Reply { let data: Any }
 final class Functions {
@@ -31,6 +32,7 @@ final class Editor {
  var editingAccessory: Accessory? = Accessory(); var isIndividualLivePet = false
  var wholesaleEnabled = false; var wholesalePriceText = ""; var isLoadingCommerce = false
  var commerceLoadError: String?; var errorMessage: String?; var fabricatedDefaults = 0
+ var hasPendingStandardSave = false
  var pricingRevision = 1; var commerceBaseUnitID = "piece"; var commerceBaseUnitNameAr = ""; var commerceBaseUnitNameEn = ""
  var quantityGroups: [PPQuantityGroupDraft] = []
  func ensureDefaultSingleGroup() { fabricatedDefaults += 1 }
@@ -57,6 +59,9 @@ let editor = Editor(); editor.commerceLoadError = "previous failure"
 Functions.shared.result = Reply(data: valid); editor.loadCommerceIfAvailable()
 precondition(editor.commerceLoadError == nil && editor.quantityGroups.first?.id == "single")
 precondition(editor.quantityGroups.first?.retailPriceText == "19.99" && editor.pricingRevision == 2)
+let pending = Editor(); pending.hasPendingStandardSave = true; pending.errorMessage = "Recover the retained save"
+pending.loadCommerceIfAvailable()
+precondition(pending.errorMessage == "Recover the retained save", "Background reads must not hide the pending save cause")
 print("CATALOG_COMMERCE_LOAD_TEST: PASS (denied/timeout/offline, malformed responses, retry and legacy-shaped valid response)")
 '''
 with tempfile.TemporaryDirectory(prefix="pp-commerce-load-") as temp:

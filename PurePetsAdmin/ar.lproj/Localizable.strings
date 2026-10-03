@@ -2165,6 +2165,7 @@
 "Fulfillment_Admin_Override_Submit" = "تأكيد وتطبيق التعديل";
 "Fulfillment_View_Parent_Order" = "فتح الطلب في المدفوعات";
 "Fulfillment_Quick_Accept" = "قبول الطلب";
+"Fulfillment_Quick_Audit_Note" = "إجراء موظف من تطبيق الإدارة: %@";
 "Fulfillment_Quick_Prepare" = "بدء التجهيز";
 "Fulfillment_Quick_Ready" = "جاهز للشحن";
 "Fulfillment_Quick_Request_Delivery" = "طلب مندوب توصيل";
@@ -5580,10 +5581,10 @@
 "CatalogIntake_SubmitHint" = "يتحقق من البيانات ثم يحفظ عبر مسار الإدارة المعتمد";
 "CatalogIntake_ContinueHint" = "يتحقق من هذه الخطوة ثم ينتقل إلى التالية";
 "CatalogIntake_SubmittingSub" = "قد تُرفع الصور أولاً ثم يُحفظ سجل الكتالوج. لا تغلق التطبيق.";
-"CatalogIntake_ValidationName" = "أدخل اسم الصنف أولاً.";
-"CatalogIntake_ValidationCategory" = "اختر الفئة الرئيسية للصنف.";
+"CatalogIntake_ValidationName" = "في خطوة الهوية، أدخل اسم الصنف ثم تابع الحفظ.";
+"CatalogIntake_ValidationCategory" = "في خطوة المواصفات، اختر الفئة الرئيسية المناسبة للصنف أو خيار كل الفئات.";
 "CatalogIntake_ValidationWeight" = "أدخل وزناً أو حجماً صالحاً وبحد أقصى ثلاث منازل عشرية.";
-"CatalogIntake_ValidationPrice" = "أدخل سعراً أكبر من صفر ولا يتجاوز 999999999.99 وبحد أقصى منزلتين عشريتين.";
+"CatalogIntake_ValidationPrice" = "في خطوة التسعير، أدخل سعراً أكبر من صفر ولا يتجاوز 999,999,999.99 ر.ق، بمنزلتين عشريتين كحد أقصى (مثال: 25.50).";
 "CatalogIntake_ValidationDiscountPercent" = "أدخل نسبة خصم بين 0 و100 وبحد أقصى منزلتين عشريتين.";
 "CatalogIntake_ValidationDiscountAmount" = "أدخل مبلغ خصم صالحاً وبحد أقصى منزلتين عشريتين.";
 "CatalogIntake_ValidationStore" = "اختر الفرع المالك للصنف.";
@@ -8382,11 +8383,11 @@
 "LivePet_Action_RefundMerchandise" = "استرداد المنتجات والأكسسوارات";
 
 /* ===================== Authoritative Inventory Commands ===================== */
-"Inventory_InvalidCommandResponse" = "تعذر التحقق من استجابة خدمة المخزون.";
+"Inventory_InvalidCommandResponse" = "لم تصل استجابة صالحة لتأكيد الحفظ. تحقق من الاتصال واضغط «استعادة الحفظ المعلّق». إذا استمرت المشكلة، تواصل مع الدعم بمرجع العملية.";
 "Inventory_InvalidAdjustmentResponse" = "تعذر التحقق من نتيجة تعديل المخزون.";
 "Inventory_InvalidDeleteResponse" = "تعذر التحقق من نتيجة أرشفة الصنف.";
 "Inventory_InvalidTransferResponse" = "تعذر التحقق من نتيجة نقل المخزون.";
-"Inventory_SpecificBranchRequired" = "اختر فرعاً محدداً قبل إنشاء مخزون أولي لهذا الصنف.";
+"Inventory_SpecificBranchRequired" = "في خطوة الإتاحة، اختر فرعاً محدداً تملك صلاحية الوصول إليه قبل إضافة كمية افتتاحية، أو غيّر الكمية إلى صفر.";
 "Inventory_MissingProductIdentifier" = "تعذر تأكيد الحفظ لأن معرّف الصنف غير صالح.";
 "Inventory_ReadbackMissing" = "اعتمد الخادم العملية، لكن تعذر العثور على الصنف عند التحقق النهائي. أعد المحاولة دون تغيير البيانات.";
 "Inventory_ReadbackPending" = "اعتمد الخادم العملية، لكن النسخة المؤكدة لم تصل بعد. أعد المحاولة دون تعديل البيانات.";
@@ -8394,7 +8395,7 @@
 "Inventory_AdjustmentPending" = "التعديل قيد التأكيد";
 "Inventory_AdjustmentPendingDetail" = "انتظر تأكيد التعديل الحالي قبل إرسال تعديل آخر للصنف نفسه.";
 "Inventory_NegativeStockRejected" = "لا يمكن أن يصبح الرصيد المتاح أقل من صفر.";
-"CatalogIntake_ValidationCost" = "أدخل تكلفة استلام صالحة وبحد أقصى منزلتين عشريتين.";
+"CatalogIntake_ValidationCost" = "في خطوة التسعير، أدخل تكلفة استلام من صفر حتى 999,999,999.99 ر.ق وبمنزلتين عشريتين كحد أقصى.";
 "CatalogIntake_ValidationNameWordCount" = "يجب ألا يتجاوز اسم المنتج 4 كلمات.";
 "CatalogIntake_ValidationNameWordCountEn" = "يجب ألا يتجاوز الاسم بالإنجليزية 4 كلمات.";
 "Words" = "كلمات";
@@ -10463,13 +10464,13 @@
 
 "Inventory_CatalogChangedReopen" = "تغير الصنف أثناء التحرير. أغلق المحرر وأعد فتح الصنف لمراجعة أحدث البيانات قبل الحفظ.";
 
-"Inventory_CommerceLoadFailed" = "تعذر تحميل وحدات البيع. اضغط حفظ لإعادة التحميل قبل الحفظ.";
+"Inventory_CommerceLoadFailed" = "تعذر تحميل وحدات البيع، لذلك يتوقف الحفظ لحماية التسعير الحالي. أعد تحميل وحدات البيع من زر الإجراء ثم احفظ.";
 
 "Inventory_CommerceLoading" = "جارٍ تحميل وحدات البيع. انتظر قبل الحفظ.";
 
 /* Retain unconfirmed inventory saves and their media. */
-"Inventory_SaveRecoveryRequired" = "قد تكون عملية الحفظ اكتملت بالفعل. استعد الحفظ المعلّق لتأكيد النتيجة قبل تجاهل التعديلات.";
-"Inventory_SaveRecoveryUnavailable" = "تعذر استعادة الحفظ المعلّق. تم الاحتفاظ بسجله. تواصل مع الدعم قبل بدء عملية حفظ أخرى.";
+"Inventory_SaveRecoveryRequired" = "قد يكون الحفظ اكتمل لكن لم يصل تأكيده. اضغط «استعادة الحفظ المعلّق» للتحقق من نفس العملية قبل تعديل البيانات.";
+"Inventory_SaveRecoveryUnavailable" = "تعذر قراءة سجل الحفظ المعلّق. ارجع إلى المخزون وابحث عن الصنف، ثم تواصل مع الدعم للتحقق من العملية قبل إنشاء نسخة أخرى. تم الاحتفاظ بالسجل.";
 "Inventory_PendingSaveNotice_Title" = "حفظ بانتظار التأكيد";
 
 /* POS Multi-Unit Selling */
@@ -10869,3 +10870,139 @@
 "POS_Header_Title" = "بيع سريع";
 "POS_Header_SaleType" = "نوع البيع";
 "POS_Header_BranchCatalog" = "منتجات الفرع";
+
+
+/* POS payment tray — amount, collection and deliberate completion */
+"POS_Checkout_AmountDue" = "المبلغ المطلوب";
+"POS_Checkout_ItemCount" = "عدد القطع: %ld";
+"POS_Checkout_ReviewCart" = "مراجعة السلة";
+"POS_Checkout_HideCart" = "إخفاء التفاصيل";
+"POS_Checkout_Expanded" = "تفاصيل السلة ظاهرة";
+"POS_Checkout_Collapsed" = "ملخص السلة";
+"POS_Checkout_DiscountValue" = "خصم · %@";
+"POS_Checkout_OtherMethods" = "أخرى";
+"POS_Checkout_OtherMethodsLabel" = "طرق دفع أخرى";
+"POS_Checkout_CardHint" = "تأكد من نجاح الدفع على جهاز البطاقة قبل إتمام البيع.";
+"POS_Checkout_CashReceived" = "المبلغ المستلم";
+"POS_Checkout_Shortfall" = "المبلغ المتبقي";
+"POS_Checkout_Change" = "الباقي للعميل";
+"POS_Checkout_ShortfallHint" = "عدّل المبلغ المستلم بعد تحصيل المتبقي، أو اختر طريقة دفع أخرى.";
+"POS_Checkout_NeedsAttention" = "راجع تفاصيل الدفع";
+"POS_ExactCash" = "المبلغ بالضبط";
+"POS_CompleteSale" = "إتمام البيع";
+"POS_ConfirmSaleTitle" = "تأكيد البيع";
+"POS_ConfirmSaleAmount_FMT" = "إتمام البيع بمبلغ %@؟";
+"POS_Payment_ShowInSummary" = "إظهار في الملخص";
+"POS_Payment_Lot" = "التشغيلة";
+
+/* Existing POS payment controls: explicit bilingual coverage */
+"POS_CartTotalRequiredFormat" = "المبلغ المطلوب: %@";
+"POS_ClearCart" = "إفراغ السلة";
+"POS_DecreaseQty" = "إنقاص الكمية";
+"POS_Each" = "للقطعة";
+"POS_IncreaseQty" = "زيادة الكمية";
+"POS_SelectItemsPrompt" = "اختر منتجات من الكتالوج للبدء";
+"POS_SelectUnits" = "اختيار الحيوانات";
+
+/* Compact POS payment tray */
+"POS_Checkout_ExpandTray" = "تفاصيل الدفع";
+"POS_Checkout_CollapseTray" = "طي التفاصيل";
+"POS_Checkout_TrayExpanded" = "لوحة الدفع موسّعة";
+"POS_Checkout_TrayCollapsed" = "لوحة الدفع مطوية";
+"POS_Checkout_ReceivedCompact" = "المستلم %@";
+"POS_Checkout_ShortfallCompact" = "المتبقي %@";
+"POS_Checkout_ChangeCompact" = "الباقي %@";
+"POS_Checkout_EditCashHint" = "تعديل المبلغ المستلم من العميل";
+"POS_Checkout_ConfirmPaymentCompact" = "تأكد من استلام المبلغ";
+
+"Inventory_PendingProduct_Format" = "الصنف: %@";
+
+"Inventory_PendingSaveSteps" = "تحقق من الاتصال ثم اضغط «استعادة الحفظ المعلّق». تبقى البيانات مقفلة لمنع تكرار الصنف. إذا استمر التنبيه، ارجع إلى المخزون وابحث عن الصنف وتواصل مع الدعم بمرجع العملية.";
+
+"Inventory_RecoveryReference_Format" = "مرجع العملية: %@";
+
+"Inventory_ReturnKeepingPendingSave" = "العودة إلى المخزون مع الاحتفاظ بالعملية";
+
+"Inventory_ReloadCommerce" = "إعادة تحميل وحدات البيع";
+
+"Inventory_ImageUploadRecovery" = "تعذر رفع الصور. تحقق من الاتصال وأعد المحاولة. إذا تكرر الخطأ، أعد اختيار الصورة أو اختر صورة أصغر ثم احفظ.";
+
+"Inventory_NameLengthGuidance" = "في خطوة الهوية، اختصر اسم الصنف بالعربية والإنجليزية إلى 90 حرفاً لكل اسم ثم احفظ.";
+
+"Variant_Studio_CombinationGuidance" = "هذه التوليفة مستخدمة بالفعل. غيّر أحد الخيارات، أو أغلق هذا المحرر وافتح المتغير الموجود لتعديله.";
+
+"Variant_Studio_ColorGuidance" = "هذا اللون مستخدم بالفعل. اختر لونًا آخر من تغيير اللون، أو أغلق هذا المحرر وافتح اللون الموجود لتعديله.";
+
+"Variant_Studio_BarcodeGuidance" = "الباركود مستخدم لمتغير آخر. أدخل باركودًا مختلفًا أو اضغط توليد باركود PP، ثم احفظ.";
+
+"Variant_Studio_SKUGuidance" = "رمز المنتج مستخدم لمتغير آخر. أدخل رمزًا مختلفًا أو اضغط توليد SKU، ثم احفظ.";
+
+"Variant_Studio_RetailGuidance" = "أدخل سعر البيع أكبر من صفر وحتى 999,999,999.99 ر.ق، بمنزلتين عشريتين كحد أقصى، ثم احفظ.";
+
+"Variant_Studio_CostGuidance" = "أدخل تكلفة من صفر حتى 999,999,999.99 ر.ق، بمنزلتين عشريتين كحد أقصى، أو اترك حقل التكلفة الاختياري فارغًا، ثم احفظ.";
+
+"Variant_Studio_WholesaleGuidance" = "أدخل سعر الجملة أكبر من صفر وحتى 999,999,999.99 ر.ق، بمنزلتين عشريتين كحد أقصى، أو أوقف سعر جملة مستقل، ثم احفظ.";
+
+"Variant_Studio_SavingGuidance" = "جارٍ حفظ هذا المتغير وتأكيد النتيجة. انتظر قبل إجراء تعديلات أخرى.";
+
+"Variant_Studio_ReviewField" = "انتقل إلى الحقل المطلوب";
+
+"Variant_Save_PermissionGuidance" = "لا تملك صلاحية حفظ خيارات هذا المنتج. اطلب من مسؤول النظام صلاحية إضافة أو إدارة الأصناف ضمن نطاق الفروع المسموح لك، ثم أعد فتح المنتج.";
+
+/* Home point of sale */
+"AdminPOS_Home_Title" = "نقطة البيع";
+"AdminPOS_Home_StartSale" = "ابدأ عملية بيع";
+"AdminPOS_Home_SaleDetail" = "امسح المنتجات، راجع السلة، وأكمل الدفع.";
+"AdminPOS_Home_Browse" = "افتح نقطة البيع";
+"AdminPOS_Home_BrowseDetail" = "تصفّح الكتالوج حسب صلاحياتك الحالية.";
+"AdminPOS_Home_QuickScan" = "مسح سريع";
+"AdminPOS_Home_Receipts" = "الفواتير والإيصالات";
+"AdminPOS_Home_ReceiptsDetail" = "راجع المبيعات والمدفوعات والمرتجعات.";
+"AdminPOS_Home_Expense" = "سجّل مصروفًا";
+"AdminPOS_Home_ExpenseDetail" = "سجّل دفعة للمتجر أو مصروفًا نثريًا.";
+"AdminPOS_Home_Wanted" = "طلبات الحيوانات";
+"AdminPOS_Home_WantedDetail" = "اعثر على الحيوان المناسب لعميل ينتظر.";
+"AdminPOS_Home_Shift" = "اليوم في هذا الفرع";
+"AdminPOS_Home_Details" = "تفاصيل المبيعات";
+"AdminPOS_Home_HideDetails" = "إخفاء تفاصيل المبيعات";
+"AdminPOS_Home_Loading" = "جارٍ تحديث مبيعات اليوم…";
+"AdminPOS_Home_Error" = "تعذّر تحديث المبيعات. أعد المحاولة.";
+"AdminPOS_Home_Retained" = "تظهر آخر الأرقام المتاحة.";
+"AdminPOS_Home_Empty" = "لم تُسجَّل مبيعات اليوم.";
+"AdminPOS_Home_BranchMissing" = "اختر فرعًا لعرض مبيعات اليوم.";
+"AdminPOS_Home_Updated" = "آخر تحديث";
+"AdminPOS_Home_Ready" = "جاهز للبيع";
+"AdminPOS_Home_ViewOnly" = "صلاحية عرض فقط";
+"AdminPOS_Home_Restricted" = "تُراجَع صلاحياتك عند فتح نقطة البيع.";
+"AdminPOS_Home_ExpandValue" = "موسّع";
+"AdminPOS_Home_CollapseValue" = "مطوي";
+"AdminPOS_Home_StartHint" = "يفتح شاشة نقطة البيع.";
+"AdminPOS_Home_Refresh" = "تحديث المبيعات";
+
+/* Inventory Photo Picker */
+"Inventory_PhotoSource_Title" = "إضافة صور";
+"Inventory_PhotoSource_Message" = "اختر التقاط صورة جديدة بالكاميرا أو اختيار صور من المكتبة.";
+"Inventory_PhotoSource_Camera" = "التقاط بالكاميرا";
+"Inventory_PhotoSource_Library" = "اختيار من مكتبة الصور";
+"Inventory_CameraPermission_Title" = "السماح باستخدام الكاميرا";
+"Inventory_CameraPermission_Message" = "يحتاج التطبيق إذن الوصول للكاميرا لالتقاط الصور. يمكنك تفعيل الإذن من إعدادات الجهاز.";
+"Inventory_Camera_Unavailable" = "الكاميرا غير متاحة على هذا الجهاز. اختر صورة من المكتبة.";
+
+/* Fulfillment visibility and parent-order recovery */
+"Fulfillment_Connecting" = "جارٍ الاتصال";
+"Fulfillment_Partial" = "نتائج جزئية";
+"Fulfillment_ReadFailed" = "تعذر تحميل الطلبات";
+"Fulfillment_ReadFailed_Subtitle" = "تعذر التحقق من الطلبات. أعد المحاولة قبل اعتبار القائمة فارغة.";
+"Fulfillment_CachedEmpty_Title" = "لم يتم التحقق من النتائج المباشرة بعد";
+"Fulfillment_CachedEmpty_Subtitle" = "البيانات المحفوظة فقط متاحة. اتصل بالإنترنت أو أعد المحاولة للتحقق من الطلبات الحالية.";
+"Fulfillment_Recovery_Title" = "طلبات تحتاج إلى مراجعة";
+"Fulfillment_Recovery_Subtitle" = "راجع الطلبات التي تعذر تأكيد سجلات تنفيذها. تتم معالجة السجل من تفاصيل الطلب.";
+"Fulfillment_Recovery_Checking" = "جارٍ التحقق من سجلات الطلبات الأخيرة…";
+"Fulfillment_Recovery_Missing" = "سجل التنفيذ المرتبط غير موجود";
+"Fulfillment_Recovery_Invalid" = "روابط التنفيذ تحتاج إلى مراجعة";
+"Fulfillment_Recovery_Review" = "مراجعة الطلب";
+"Fulfillment_Recovery_ReviewHint" = "يفتح الطلب الأصلي وإجراءات المعالجة المتاحة له.";
+"Fulfillment_Recovery_CheckFailed" = "تعذر التحقق من بعض روابط الطلبات";
+"Fulfillment_Recovery_Limited" = "تم فحص عدد محدود من الطلبات الأخيرة. افتح الطلبات لمراجعة السجلات الأخرى.";
+"Fulfillment_Recovery_AllOrders" = "فتح الطلبات";
+"Fulfillment_ClearFilters" = "مسح البحث والفلاتر";

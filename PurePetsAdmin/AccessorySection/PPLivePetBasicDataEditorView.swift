@@ -8,6 +8,7 @@
 
 import SwiftUI
 import PhotosUI
+import AVFoundation
 import FirebaseFirestore
 import FirebaseAuth
 import FirebaseStorage
@@ -66,6 +67,10 @@ public struct PPLivePetBasicDataEditorView: View {
     @State private var localImages: [LocalSpecimenImage] = []
     @State private var primaryImageIdentifier: String = "" // URL or UUID string
     @State private var showImagePicker: Bool = false
+    @State private var showPhotoSourceDialog: Bool = false
+    @State private var showCameraPicker: Bool = false
+    @State private var showCameraAccessAlert: Bool = false
+    @State private var cameraAlertMessage: String = ""
     @State private var activeImageIndex: Int = 0
 
     // MARK: - State: Bilingual Identity
@@ -245,6 +250,38 @@ public struct PPLivePetBasicDataEditorView: View {
                         }
                     }
                 }
+            }
+            .confirmationDialog(
+                Language.get("Inventory_PhotoSource_Title", alter: "إضافة صور"),
+                isPresented: $showPhotoSourceDialog,
+                titleVisibility: .visible
+            ) {
+                Button(Language.get("Inventory_PhotoSource_Camera", alter: "التقاط بالكاميرا")) {
+                    requestCamera()
+                }
+                Button(Language.get("Inventory_PhotoSource_Library", alter: "اختيار من مكتبة الصور")) {
+                    showImagePicker = true
+                }
+                Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+            } message: {
+                Text(Language.get("Inventory_PhotoSource_Message", alter: "اختر التقاط صورة جديدة بالكاميرا أو اختيار صور من المكتبة."))
+            }
+            .fullScreenCover(isPresented: $showCameraPicker) {
+                PPLivePetCameraPicker { image in
+                    addCapturedImage(image)
+                }
+            }
+            .alert(
+                Language.get("Inventory_CameraPermission_Title", alter: "السماح باستخدام الكاميرا"),
+                isPresented: $showCameraAccessAlert
+            ) {
+                Button(Language.get("LivePetIntake_OpenSettings", alter: "فتح الإعدادات")) {
+                    guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
+                    UIApplication.shared.open(settingsURL)
+                }
+                Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+            } message: {
+                Text(cameraAlertMessage.isEmpty ? Language.get("Inventory_CameraPermission_Message", alter: "يحتاج التطبيق إذن الوصول للكاميرا لالتقاط الصور. يمكنك تفعيل الإذن من إعدادات الجهاز.") : cameraAlertMessage)
             }
             .sheet(isPresented: $showBreedPickerSheet) {
                 PPLivePetBreedPickerSheet(
@@ -501,7 +538,7 @@ public struct PPLivePetBasicDataEditorView: View {
                 .frame(height: 240)
                 .background(AdminSurface.control)
                 .onTapGesture {
-                    showImagePicker = true
+                    showPhotoSourceDialog = true
                 }
             }
 
@@ -541,7 +578,7 @@ public struct PPLivePetBasicDataEditorView: View {
                 // Add New Image Slot
                 Button {
                     impactFeedback.impactOccurred()
-                    showImagePicker = true
+                    showPhotoSourceDialog = true
                 } label: {
                     VStack(spacing: 4) {
                         Image(systemName: "plus")
@@ -667,6 +704,26 @@ public struct PPLivePetBasicDataEditorView: View {
             },
             cancelBlock: nil
         )
+    }
+
+    private func requestCamera() {
+        PPCameraPermissionHelper.requestCameraAccess(
+            onAuthorized: {
+                showCameraPicker = true
+            },
+            onDenied: { msg in
+                cameraAlertMessage = msg
+                showCameraAccessAlert = true
+            }
+        )
+    }
+
+    private func addCapturedImage(_ img: UIImage) {
+        let local = LocalSpecimenImage(image: img)
+        localImages.append(local)
+        if primaryImageIdentifier.isEmpty {
+            primaryImageIdentifier = local.id.uuidString
+        }
     }
 
     // MARK: - 2. Bilingual Identity Matrix (Zero-Flicker Focus & Exact Alignment)

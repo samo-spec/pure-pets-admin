@@ -1,5 +1,6 @@
 #import "PPFulfillmentService.h"
 #import "PPStaffAuth.h"
+#import "PPFirebaseCompat.h"
 @import FirebaseAuth;
 @import FirebaseFirestore;
 @import FirebaseFunctions;
@@ -8,6 +9,8 @@ static NSString * const PPFulfillmentServiceErrorDomain = @"PPFulfillmentService
 static NSString * const PPFulfillmentPartialReadMarkerKey = @"PPFulfillmentPartialRead";
 static NSString * const PPFulfillmentOfficialOwnerID = @"PUIDPOFFICILAL20262214";
 static NSUInteger const PPFulfillmentScopeChunkLimit = 30;
+static NSUInteger const PPFulfillmentRecoveryParentLimit = 20;
+static NSUInteger const PPFulfillmentRecoveryChildLimit = 20;
 
 @interface PPFulfillmentCompositeRegistration : NSObject <FIRListenerRegistration>
 @property (atomic, assign, getter=isActive) BOOL active;
@@ -61,6 +64,17 @@ static NSError *PPFulfillmentReadError(NSInteger code, NSString *localizationKey
     return [NSError errorWithDomain:PPFulfillmentServiceErrorDomain
                                code:code
                            userInfo:@{NSLocalizedDescriptionKey: kLang(localizationKey)}];
+}
+
+static NSError *PPFulfillmentActionFailure(NSError *error) {
+    if (![error.domain isEqualToString:FIRFunctionsErrorDomain] ||
+        error.code != FIRFunctionsErrorCodePermissionDenied) return error;
+    // Action denial must not masquerade as loss of queue read access. Preserve
+    // the callable error for domain-aware recovery and diagnostics.
+    return [NSError errorWithDomain:PPFulfillmentServiceErrorDomain
+                               code:417
+                           userInfo:@{NSLocalizedDescriptionKey: kLang(@"Fulfillment_OverridePermissionDenied"),
+                                      NSUnderlyingErrorKey: error}];
 }
 
 /// A missing document is a recoverable *read* outcome only when the Firestore
@@ -125,10 +139,40 @@ static BOOL PPFulfillmentCanRead(PPStaffDoc *staff) {
     return staff.isActive && [staff hasAnyPermission:@[kStaffPermPaymentsView, kStaffPermPaymentsManage, kStaffPermProvidersView]];
 }
 
-static BOOL PPFulfillmentHasReadableScope(PPStaffDoc *staff) {
+static BOOL PPFulfillmentCanReadUnassignedPlatform(PPStaffDoc *staff) {
+    if (!PPFulfillmentCanRead(staff)) return NO;
+    if (staff.isAdmin) return YES;
+    NSString *mode = staff.authorizationMode;
+    NSArray<NSString *> *globalPermissions = nil;
+    if ([mode isEqualToString:@"enforced"]) {
+        // A branch-only V2 grant does not authorize the unassigned queue. These
+        // parsed values only select queries; Rules validate projection freshness.
+        globalPermissions = staff.authorizationGlobalPermissions;
+    } else if (mode == nil || [@[@"legacy", @"shadow", @"prepared"] containsObject:mode]) {
+        globalPermissions = staff.explicitPermissions;
+    } else {
+        return NO; // Unknown or malformed modes never become legacy access.
+    }
+    for (NSString *permission in @[kStaffPermPaymentsView, kStaffPermPaymentsManage, kStaffPermProvidersView]) {
+        if ([globalPermissions containsObject:permission]) return YES;
+    }
+    return NO;
+}
+
+static BOOL PPFulfillmentHasParentReadScope(PPStaffDoc *staff) {
     return (staff.isActive && (staff.isAdmin || staff.hasGlobalScope ||
             PPFulfillmentCanonicalScopeIDs(staff, @"branchIds").count > 0 ||
             PPFulfillmentCanonicalScopeIDs(staff, @"regionIds").count > 0));
+}
+
+static BOOL PPFulfillmentHasReadableScope(PPStaffDoc *staff) {
+    // Rules permit module readers to query explicitly unassigned platform
+    // fulfillments. This exception never applies to the parent Orders query.
+    return PPFulfillmentHasParentReadScope(staff) || PPFulfillmentCanReadUnassignedPlatform(staff);
+}
+
+static BOOL PPFulfillmentCanReadParents(PPStaffDoc *staff) {
+    return staff.isActive && [staff hasAnyPermission:@[kStaffPermPaymentsView, kStaffPermPaymentsManage]];
 }
 
 static BOOL PPFulfillmentStaffSessionIsCurrent(PPStaffDoc *staff) {
@@ -150,12 +194,27 @@ static BOOL PPFulfillmentStaffCanReachData(PPStaffDoc *staff, NSDictionary *data
     if (!PPFulfillmentStaffSessionIsCurrent(staff) || ![data isKindOfClass:NSDictionary.class]) return NO;
     if (staff.isAdmin || staff.hasGlobalScope) return YES;
 
-    // Match Firestore Rules' exact-document compatibility precedence. Collection
-    // queries remain canonical branchId/regionId-only in PPFulfillmentScopedQueries.
+    // Match Firestore Rules' exact-document compatibility precedence. Assigned
+    // collection queries remain canonical branchId/regionId-only.
     NSString *branchID = PPFulfillmentExactResourceScopeID(data, @[@"BranchID", @"branchId", @"branchID", @"branch_id"]);
     NSString *regionID = PPFulfillmentExactResourceScopeID(data, @[@"regionId", @"regionID", @"RegionID"]);
-    return ((branchID.length > 0 && [PPFulfillmentCanonicalScopeIDs(staff, @"branchIds") containsObject:branchID]) ||
-            (regionID.length > 0 && [PPFulfillmentCanonicalScopeIDs(staff, @"regionIds") containsObject:regionID]));
+    if (branchID.length > 0 && [PPFulfillmentCanonicalScopeIDs(staff, @"branchIds") containsObject:branchID]) {
+        return YES;
+    }
+    if (regionID.length > 0 && [PPFulfillmentCanonicalScopeIDs(staff, @"regionIds") containsObject:regionID]) {
+        return YES;
+    }
+    // Rules test the canonical branchId for this exception, independently of
+    // region and legacy BranchID. The server still enforces current IAM grants.
+    id canonicalBranchID = data[@"branchId"];
+    BOOL unassignedBranch = canonicalBranchID == nil || canonicalBranchID == NSNull.null ||
+        ([canonicalBranchID isKindOfClass:NSString.class] && [canonicalBranchID length] == 0);
+    if (unassignedBranch &&
+        [PPSafeString(data[@"ownerType"]) isEqualToString:@"platform"] &&
+        PPFulfillmentCanReadUnassignedPlatform(staff)) {
+        return YES;
+    }
+    return NO;
 }
 
 static FIRQuery *PPFulfillmentOrderedQuery(FIRQuery *query, NSInteger limit) {
@@ -178,6 +237,15 @@ static NSArray<FIRQuery *> *PPFulfillmentScopedQueries(FIRFirestore *db, PPStaff
         for (NSUInteger offset = 0; offset < ids.count; offset += PPFulfillmentScopeChunkLimit) {
             NSRange range = NSMakeRange(offset, MIN(PPFulfillmentScopeChunkLimit, ids.count - offset));
             FIRQuery *query = [collection queryWhereField:field in:[ids subarrayWithRange:range]];
+            [queries addObject:PPFulfillmentOrderedQuery(query, limit)];
+        }
+    }
+    // Missing branchId fields cannot be enumerated by equality queries; exact
+    // document reads retain Rules' legacy-missing-field compatibility above.
+    if (PPFulfillmentCanReadUnassignedPlatform(staff)) {
+        for (id branchValue in @[NSNull.null, @""]) {
+            FIRQuery *query = [[collection queryWhereField:@"ownerType" isEqualTo:@"platform"]
+                              queryWhereField:@"branchId" isEqualTo:branchValue];
             [queries addObject:PPFulfillmentOrderedQuery(query, limit)];
         }
     }
@@ -354,7 +422,13 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
             BOOL isFromCache = NO;
             @synchronized (composite) {
                 [composite.settledQueries addObject:@(index)];
-                if (error) composite.errorsByQuery[@(index)] = error;
+                if (error) {
+                    composite.errorsByQuery[@(index)] = error;
+                    // A revoked/failed shard must not keep contributing cached
+                    // documents from its last successful snapshot.
+                    [composite.documentsByQuery removeObjectForKey:@(index)];
+                    [composite.cacheStateByQuery removeObjectForKey:@(index)];
+                }
                 else {
                     composite.documentsByQuery[@(index)] = snapshot.documents ?: @[];
                     composite.cacheStateByQuery[@(index)] = @(snapshot.metadata.isFromCache);
@@ -364,13 +438,10 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
                 groups = composite.documentsByQuery.allValues.copy;
                 firstError = composite.errorsByQuery.allValues.firstObject;
                 successfulQueryCount = composite.documentsByQuery.count;
-                isFromCache = firstError == nil && composite.cacheStateByQuery.count == composite.queryCount;
-                if (isFromCache) {
-                    for (NSNumber *cacheState in composite.cacheStateByQuery.allValues) {
-                        if (!cacheState.boolValue) {
-                            isFromCache = NO;
-                            break;
-                        }
+                for (NSNumber *cacheState in composite.cacheStateByQuery.allValues) {
+                    if (cacheState.boolValue) {
+                        isFromCache = YES;
+                        break;
                     }
                 }
             }
@@ -392,6 +463,178 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
         [composite addRegistration:registration];
     }];
     return composite;
+}
+
+- (void)fetchRecoveryOrdersWithCompletion:(void(^)(NSArray<NSDictionary *> *, BOOL, NSError *))completion {
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    if (!PPFulfillmentStaffSessionIsCurrent(staff)) {
+        if (completion) completion(@[], NO, PPFulfillmentReadError(412, @"PPOrder_Error_SessionChanged"));
+        return;
+    }
+    if (!PPFulfillmentCanReadParents(staff) || !PPFulfillmentHasParentReadScope(staff)) {
+        if (completion) completion(@[], NO, PPFulfillmentReadError(411, @"PPOrder_Error_MissingReadScope"));
+        return;
+    }
+
+    FIRFirestore *db = [FIRFirestore firestore];
+    FIRCollectionReference *parents = [db collectionWithPath:@"Orders"];
+    NSMutableArray<FIRQuery *> *queries = [NSMutableArray array];
+    if (staff.isAdmin || staff.hasGlobalScope) {
+        [queries addObject:parents];
+    } else {
+        // Orders has no unassigned-platform exception. Reuse its canonical
+        // branch/region query shape and let Rules enforce current IAM scope.
+        for (NSString *field in @[@"branchId", @"regionId"]) {
+            NSArray<NSString *> *ids = PPFulfillmentCanonicalScopeIDs(staff,
+                [field isEqualToString:@"branchId"] ? @"branchIds" : @"regionIds");
+            for (NSUInteger offset = 0; offset < ids.count; offset += PPFulfillmentScopeChunkLimit) {
+                NSRange range = NSMakeRange(offset, MIN(PPFulfillmentScopeChunkLimit, ids.count - offset));
+                [queries addObject:[parents queryWhereField:field in:[ids subarrayWithRange:range]]];
+            }
+        }
+    }
+    if (queries.count == 0) {
+        if (completion) completion(@[], NO, PPFulfillmentReadError(411, @"PPOrder_Error_MissingReadScope"));
+        return;
+    }
+
+    // Share a total 20-document budget across scope shards, rather than reading
+    // 20 per branch. Reaching any shard cap means coverage is explicitly limited.
+    __block BOOL limited = queries.count > PPFulfillmentRecoveryParentLimit;
+    if (limited) [queries removeObjectsInRange:NSMakeRange(PPFulfillmentRecoveryParentLimit,
+                                                        queries.count - PPFulfillmentRecoveryParentLimit)];
+    NSObject *lock = [NSObject new];
+    NSMutableDictionary<NSNumber *, NSArray<FIRDocumentSnapshot *> *> *documentsByQuery = [NSMutableDictionary dictionary];
+    __block NSError *firstError = nil;
+    __block NSUInteger successfulReads = 0;
+    __block NSUInteger readCount = queries.count;
+    dispatch_group_t parentGroup = dispatch_group_create();
+    [queries enumerateObjectsUsingBlock:^(FIRQuery *baseQuery, NSUInteger index, BOOL *stop) {
+        NSUInteger cap = PPFulfillmentRecoveryParentLimit / queries.count +
+            (index < PPFulfillmentRecoveryParentLimit % queries.count ? 1 : 0);
+        FIRQuery *query = PPFulfillmentOrderedQuery(baseQuery, (NSInteger)cap);
+        dispatch_group_enter(parentGroup);
+        [query getDocumentsWithSource:FIRFirestoreSourceServer completion:^(FIRQuerySnapshot *snapshot, NSError *error) {
+            NSError *readError = error;
+            if (!readError && (!snapshot || snapshot.metadata.isFromCache || snapshot.metadata.hasPendingWrites)) {
+                readError = PPFulfillmentReadError(413, @"PPOrder_Error_PartialRead");
+            }
+            @synchronized (lock) {
+                if (readError) {
+                    if (!firstError) firstError = readError;
+                } else {
+                    documentsByQuery[@(index)] = snapshot.documents ?: @[];
+                    successfulReads += 1;
+                    if (snapshot.documents.count >= cap) limited = YES;
+                }
+            }
+            dispatch_group_leave(parentGroup);
+        }];
+    }];
+    dispatch_group_notify(parentGroup, dispatch_get_main_queue(), ^{
+        if (!PPFulfillmentStaffSessionIsCurrent(staff) || !PPFulfillmentCanReadParents(staff) ||
+            !PPFulfillmentHasParentReadScope(staff)) {
+            if (completion) completion(@[], NO, PPFulfillmentReadError(412, @"PPOrder_Error_SessionChanged"));
+            return;
+        }
+        NSArray<FIRDocumentSnapshot *> *parentDocuments = PPFulfillmentMergeDocuments(documentsByQuery.allValues,
+                                                                                     PPFulfillmentRecoveryParentLimit);
+        NSMutableDictionary<NSString *, NSDictionary *> *warningsByID = [NSMutableDictionary dictionary];
+        dispatch_group_t childGroup = dispatch_group_create();
+        FIRCollectionReference *children = [db collectionWithPath:@"FulfillmentOrders"];
+        for (FIRDocumentSnapshot *parent in parentDocuments) {
+            NSDictionary *data = parent.data;
+            id version = data[@"fulfillmentVersion"];
+            if (![version respondsToSelector:@selector(integerValue)] || [version integerValue] != 1) continue;
+            NSString *orderNumber = PPSafeString(data[@"orderNumber"]);
+            if (!orderNumber.length) orderNumber = PPSafeString(data[@"displayOrderNumber"]);
+            NSDictionary *(^warning)(NSString *) = ^NSDictionary *(NSString *reason) {
+                return @{@"orderID": parent.documentID, @"orderNumber": orderNumber ?: @"", @"reason": reason};
+            };
+            id rawIDs = data[@"fulfillmentOrderIDs"];
+            if (![rawIDs isKindOfClass:NSArray.class] || [(NSArray *)rawIDs count] == 0) {
+                warningsByID[parent.documentID] = warning(@"invalid_link");
+                continue;
+            }
+            if ([(NSArray *)rawIDs count] > PPFulfillmentRecoveryChildLimit) {
+                limited = YES;
+                continue; // Never claim absence from only part of a declared set.
+            }
+            NSMutableOrderedSet<NSString *> *exactIDs = [NSMutableOrderedSet orderedSet];
+            BOOL invalidLink = NO;
+            for (id value in (NSArray *)rawIDs) {
+                if (![value isKindOfClass:NSString.class]) { invalidLink = YES; break; }
+                NSString *identifier = value;
+                NSString *trimmed = [identifier stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+                if (!identifier.length || ![identifier isEqualToString:trimmed] ||
+                    [identifier containsString:@"/"] || [identifier isEqualToString:@"."] || [identifier isEqualToString:@".."] ||
+                    [identifier lengthOfBytesUsingEncoding:NSUTF8StringEncoding] > 1500) {
+                    invalidLink = YES;
+                    break;
+                }
+                [exactIDs addObject:identifier];
+            }
+            if (invalidLink || exactIDs.count == 0) {
+                warningsByID[parent.documentID] = warning(@"invalid_link");
+                continue;
+            }
+
+            dispatch_group_t declaredChildren = dispatch_group_create();
+            __block BOOL hasMissingChild = NO;
+            __block BOOL hasInvalidLink = NO;
+            __block BOOL hasReadFailure = NO;
+            readCount += exactIDs.count;
+            dispatch_group_enter(childGroup);
+            for (NSString *identifier in exactIDs.array) {
+                dispatch_group_enter(declaredChildren);
+                [[children documentWithPath:identifier] getDocumentWithSource:FIRFirestoreSourceServer completion:^(FIRDocumentSnapshot *child, NSError *error) {
+                    NSError *readError = error;
+                    if (!readError && (!child || child.metadata.isFromCache || child.metadata.hasPendingWrites)) {
+                        readError = PPFulfillmentReadError(413, @"PPOrder_Error_PartialRead");
+                    }
+                    if (!readError && child.exists && !PPFulfillmentStaffCanReachData(staff, child.data)) {
+                        readError = PPFulfillmentReadError(411, @"PPOrder_Error_MissingReadScope");
+                    }
+                    @synchronized (lock) {
+                        if (readError) {
+                            hasReadFailure = YES;
+                            if (!firstError) firstError = readError;
+                        } else {
+                            successfulReads += 1;
+                            if (!child.exists) hasMissingChild = YES;
+                            else if (![PPSafeString(child.data[@"parentOrderId"]) isEqualToString:parent.documentID]) {
+                                hasInvalidLink = YES;
+                            }
+                        }
+                    }
+                    dispatch_group_leave(declaredChildren);
+                }];
+            }
+            dispatch_group_notify(declaredChildren, dispatch_get_main_queue(), ^{
+                // A denied/offline child makes this parent's diagnosis unknown,
+                // even when another declared child was definitely absent.
+                if (!hasReadFailure && (hasMissingChild || hasInvalidLink)) {
+                    warningsByID[parent.documentID] = warning(hasInvalidLink ? @"invalid_link" : @"missing_children");
+                }
+                dispatch_group_leave(childGroup);
+            });
+        }
+        dispatch_group_notify(childGroup, dispatch_get_main_queue(), ^{
+            if (!PPFulfillmentStaffSessionIsCurrent(staff) || !PPFulfillmentCanReadParents(staff) ||
+                !PPFulfillmentHasParentReadScope(staff)) {
+                if (completion) completion(@[], NO, PPFulfillmentReadError(412, @"PPOrder_Error_SessionChanged"));
+                return;
+            }
+            NSMutableArray<NSDictionary *> *warnings = [NSMutableArray array];
+            for (FIRDocumentSnapshot *parent in parentDocuments) {
+                NSDictionary *warning = warningsByID[parent.documentID];
+                if (warning) [warnings addObject:warning];
+            }
+            NSError *resultError = firstError && successfulReads > 0
+                ? PPFulfillmentPartialReadError(firstError, successfulReads, readCount) : firstError;
+            if (completion) completion(warnings.copy, limited, resultError);
+        });
+    });
 }
 
 - (id<FIRListenerRegistration>)observeFulfillment:(NSString *)fulfillmentID completion:(void(^)(PPFulfillmentRecord *, BOOL, BOOL, NSError *))completion {
@@ -779,9 +1022,9 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
             return;
         }
         if (readError || !snapshot.exists) {
-            NSError *resolvedError = readError ?: [NSError errorWithDomain:NSCocoaErrorDomain
-                                                                       code:NSFileNoSuchFileError
-                                                                   userInfo:nil];
+            NSError *resolvedError = readError ? (PPFulfillmentOfficialReadFailure(readError) ?: readError) : [NSError errorWithDomain:NSCocoaErrorDomain
+                                                                                                                                   code:NSFileNoSuchFileError
+                                                                                                                               userInfo:nil];
             if (completion) completion(nil, resolvedError);
             return;
         }
@@ -805,8 +1048,12 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
                 if (completion) completion(nil, PPFulfillmentReadError(412, @"PPOrder_Error_SessionChanged"));
                 return;
             }
+            if (error) {
+                if (completion) completion(nil, PPFulfillmentActionFailure(error));
+                return;
+            }
             NSDictionary *dict = [result.data isKindOfClass:NSDictionary.class] ? (NSDictionary *)result.data : nil;
-            if (completion) completion(dict, error);
+            if (completion) completion(dict, nil);
         }];
     }];
 }
@@ -846,7 +1093,8 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
             return;
         }
         if (readError || !snapshot.exists) {
-            if (completion) completion(nil, readError ?: PPFulfillmentReadError(404, @"PaymentMgmt_OfficialFulfillment_NotManageable"));
+            NSError *mapped = readError ? (PPFulfillmentOfficialReadFailure(readError) ?: readError) : PPFulfillmentReadError(404, @"PaymentMgmt_OfficialFulfillment_NotManageable");
+            if (completion) completion(nil, mapped);
             return;
         }
         PPFulfillmentRecord *freshRecord = [[PPFulfillmentRecord alloc] initWithDictionary:snapshot.data documentID:snapshot.documentID];
@@ -864,13 +1112,18 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
             @"action": safeAction,
             @"note": safeNote,
             @"commandId": safeCommandID,
+            @"commandID": safeCommandID,
         } completion:^(FIRHTTPSCallableResult *result, NSError *error) {
             if (!PPFulfillmentStaffSessionIsCurrent(staff)) {
                 if (completion) completion(nil, PPFulfillmentReadError(412, @"PPOrder_Error_SessionChanged"));
                 return;
             }
+            if (error) {
+                if (completion) completion(nil, PPFulfillmentActionFailure(error));
+                return;
+            }
             NSDictionary *dict = [result.data isKindOfClass:NSDictionary.class] ? (NSDictionary *)result.data : nil;
-            if (completion) completion(dict, error);
+            if (completion) completion(dict, nil);
         }];
     }];
 }

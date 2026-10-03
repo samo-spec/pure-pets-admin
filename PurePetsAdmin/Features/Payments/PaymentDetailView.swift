@@ -1633,6 +1633,13 @@ final class PaymentDetailViewModel: ObservableObject {
                 subtitleKey: "PaymentMgmt_OfficialFulfillment_InvalidCommand",
                 subtitleFallback: "حدّث الطلب وأدخل ملاحظة موظف صحيحة قبل المتابعة."
             )
+        case 417:
+            showOfficialFulfillmentFeedback(
+                titleKey: "PaymentMgmt_OfficialFulfillment_ActionFailed_Title",
+                titleFallback: "",
+                subtitleKey: "Fulfillment_OverridePermissionDenied",
+                subtitleFallback: ""
+            )
         default:
             showOfficialFulfillmentFeedback(
                 titleKey: duringAction

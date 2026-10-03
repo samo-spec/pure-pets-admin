@@ -169,6 +169,8 @@ private struct PPLivePetMutationRecovery: Codable {
 private struct PPStandardInventoryRecovery: Codable {
     let requestData: Data
     let oldImageURLs: [String]
+    // Keep the cause across a reopen; legacy records decode without this field.
+    var failureMessage: String? = nil
 }
 
 /// Prepared accessory/food image payload containing scaled pixel dimensions,
@@ -733,12 +735,32 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     
     // Active Modals
     @Published var showImagePicker: Bool = false
+    @Published var showPhotoSourceDialog: Bool = false
+    @Published var showCameraPicker: Bool = false
+    @Published var showCameraAccessAlert: Bool = false
+    @Published var cameraAlertMessage: String = ""
     @Published var showSpeciesPicker: Bool = false
     @Published var showBreedPicker: Bool = false
     @Published var showStorePicker: Bool = false
     @Published var previewImageURL: String? = nil
     @Published var previewUIImage: UIImage? = nil
     @Published var showDiscardConfirmation: Bool = false
+
+    func presentPhotoSource() {
+        showPhotoSourceDialog = true
+    }
+
+    func requestCamera() {
+        PPCameraPermissionHelper.requestCameraAccess(
+            onAuthorized: { [weak self] in
+                self?.showCameraPicker = true
+            },
+            onDenied: { [weak self] message in
+                self?.cameraAlertMessage = message
+                self?.showCameraAccessAlert = true
+            }
+        )
+    }
 
     // Accessory Category Selection
     @Published var selectedAccessoryCategoryID: String? = nil { didSet { updateUnsavedChanges() } }
@@ -803,7 +825,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     private var pendingCatalogSyncSuccessMessage: String? = nil
     private var livePetRecovery: PPLivePetMutationRecovery? = nil
     private var pendingSavedAccessoryDraft: PetAccessory? = nil
-    private let catalogEditRevision: Int?
+    private(set) var catalogEditRevision: Int?
 
     // MARK: - Initializer
 
@@ -1185,7 +1207,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                                 if let docs = cacheSnap?.documents, !docs.isEmpty {
                                     self.processFreshMainKinds(docs: docs)
                                 } else {
-                                    self.kindsErrorMessage = error.localizedDescription
+                                    self.kindsErrorMessage = PPInventoryCommandService.userFacingErrorMessage(for: error)
                                 }
                                 self.finishInitialHydration()
                             }
@@ -1458,6 +1480,22 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     var isEditingLivePet: Bool { isLivePet && editingAccessory != nil }
     var isIndividualLivePet: Bool { isLivePet && liveInventoryMode == .individual }
     var isAwaitingCatalogSync: Bool { pendingCatalogSyncProductID != nil }
+    var pendingStandardSaveName: String? {
+        guard hasPendingStandardSave else { return nil }
+        let payload = pendingStandardRequest?["payload"] as? [String: Any]
+        let preferred = payload?[Language.isRTL() ? "name" : "nameEn"] as? String
+        let fallback = payload?["name"] as? String
+        return [preferred, fallback].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+    }
+    var pendingStandardSaveReference: String? { hasPendingStandardSave ? standardSaveCommandID : nil }
+
+    /// Leaving is safe only when the durable command and its media are retained.
+    /// This lets staff repair their session/access without discarding an uncertain save.
+    func leavePendingStandardSave() {
+        guard hasPendingStandardSave, !isSubmitting, !hasCompletedSave else { return }
+        onDismiss()
+    }
     private var preventsExplicitDismissal: Bool {
         isSubmitting || hasCompletedSave
     }
@@ -1660,7 +1698,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 guard let self = self else { return }
                 self.isLoadingCommerce = false
                 if let error = error {
-                    let message = Language.get("Inventory_CommerceLoadFailed", alter: "تعذر تحميل وحدات البيع. أعد المحاولة قبل الحفظ.") + " " + error.localizedDescription
+                    let message = Language.get("Inventory_CommerceLoadFailed", alter: "تعذر تحميل وحدات البيع. أعد المحاولة قبل الحفظ.") + " " + PPInventoryCommandService.userFacingErrorMessage(for: error)
                     self.commerceLoadError = message
                     self.errorMessage = message
                     return
@@ -1687,7 +1725,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                     return
                 }
                 self.commerceLoadError = nil
-                self.errorMessage = nil
+                if !self.hasPendingStandardSave { self.errorMessage = nil }
 
                 if let rev = commerce["pricingRevision"] as? Int {
                     self.pricingRevision = rev
@@ -1976,7 +2014,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                     if !self.isLivePet {
                         // The revision belongs to the values loaded into this form.
                         // A revision-only refresh cannot safely rebase those values.
-                        if rev != self.catalogEditRevision, !self.hasPendingStandardSave {
+                        if let expected = self.catalogEditRevision, rev > expected, !self.hasPendingStandardSave {
                             self.errorMessage = Language.get("Inventory_CatalogChangedReopen", alter: "تغير الصنف أثناء التحرير. أغلق المحرر وأعد فتح الصنف لمراجعة أحدث البيانات قبل الحفظ.")
                         }
                         return
@@ -1987,6 +2025,63 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                     }
                 }
             }
+        }
+    }
+
+    func rebaseAuthoritativeCatalog(from authoritative: PetAccessory) {
+        let rev = max(1, authoritative.revision)
+        self.catalogEditRevision = max(self.catalogEditRevision ?? 0, rev)
+        self.editingAccessory?.revision = authoritative.revision
+        if let barcode = authoritative.barcode, !barcode.isEmpty {
+            self.barcode = barcode
+            self.editingAccessory?.barcode = barcode
+        }
+        if let sku = authoritative.sku, !sku.isEmpty {
+            self.sku = sku
+            self.editingAccessory?.sku = sku
+        }
+        if authoritative.quantity >= 0 {
+            self.quantity = authoritative.quantity
+            self.editingAccessory?.quantity = authoritative.quantity
+        }
+        if self.errorMessage == Language.get("Inventory_CatalogChangedReopen", alter: "تغير الصنف أثناء التحرير. أغلق المحرر وأعد فتح الصنف لمراجعة أحدث البيانات قبل الحفظ.") {
+            self.errorMessage = nil
+        }
+    }
+
+    func rebaseAuthoritativeRevisionFromServer() async {
+        guard let acc = editingAccessory, !acc.accessoryID.isEmpty else { return }
+        do {
+            let snapshot = try await Firestore.firestore().collection("petAccessories").document(acc.accessoryID).getDocument(source: .server)
+            guard snapshot.exists, let data = snapshot.data() else { return }
+            let rev = (data["revision"] as? NSNumber)?.intValue ?? (data["revision"] as? Int) ?? 0
+            if rev > 0 {
+                self.catalogEditRevision = max(self.catalogEditRevision ?? 0, rev)
+                self.editingAccessory?.revision = rev
+                if let draft = self.pendingSavedAccessoryDraft, draft.accessoryID == acc.accessoryID {
+                    draft.revision = rev
+                }
+                if let barcode = data["barcode"] as? String, !barcode.isEmpty {
+                    self.barcode = barcode
+                    self.editingAccessory?.barcode = barcode
+                }
+                if let sku = data["sku"] as? String, !sku.isEmpty {
+                    self.sku = sku
+                    self.editingAccessory?.sku = sku
+                }
+                if self.errorMessage == Language.get("Inventory_CatalogChangedReopen", alter: "تغير الصنف أثناء التحرير. أغلق المحرر وأعد فتح الصنف لمراجعة أحدث البيانات قبل الحفظ.") {
+                    self.errorMessage = nil
+                }
+            }
+        } catch {
+            // Server fetch failed, preserve local state
+        }
+    }
+
+    func rebaseAuthoritativeRevisionFromServer(completion: (@MainActor @Sendable () -> Void)? = nil) {
+        Task { @MainActor in
+            await rebaseAuthoritativeRevisionFromServer()
+            completion?()
         }
     }
 
@@ -2034,7 +2129,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 DispatchQueue.main.async {
                     PPHUD.showError(
                         Language.get("CommercePricingError", alter: "تنبيه التسعير"),
-                        subtitle: err.localizedDescription
+                        subtitle: PPInventoryCommandService.userFacingErrorMessage(for: err)
                     )
                 }
             } else if let data = result?.data as? [String: Any], let rev = data["pricingRevision"] as? Int {
@@ -3166,6 +3261,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 
     private func updateUnsavedChanges() {
+        // Category/commerce hydration can finish after recovery. It must not
+        // erase the cause attached to the immutable pending command.
+        guard !hasPendingStandardSave else { return }
         guard initialSetupComplete else {
             guard !isPopulatingInitialValues, !isApplyingCategoryHydration else { return }
             hasUnsavedChanges = true
@@ -3192,10 +3290,16 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         }
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedNameEn = nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedName.isEmpty || basePrice <= 0 {
-            return (false, Language.get("Name and price are required.", alter: "يرجى إدخال اسم وسعر المنتج بدقة."))
+        if trimmedName.isEmpty {
+            return (false, Language.get("CatalogIntake_ValidationName", alter: "في خطوة الهوية، أدخل اسم الصنف ثم تابع الحفظ."))
+        }
+        if isLivePet && basePrice <= 0 {
+            return (false, Language.get("LivePet_Validation_UnitPrice", alter: "في خطوة التسعير، أدخل سعر بيع أكبر من صفر لكل حيوان."))
         }
         if !isLivePet {
+            if trimmedName.utf16.count > 90 || trimmedNameEn.utf16.count > 90 {
+                return (false, Language.get("Inventory_NameLengthGuidance", alter: "في خطوة الهوية، اختصر اسم الصنف بالعربية والإنجليزية إلى 90 حرفاً لكل اسم ثم احفظ."))
+            }
             if (PPInventoryDecimalText.minorUnits(priceText) ?? 0) <= 0 {
                 return (false, Language.get("CatalogIntake_ValidationPrice", alter: "أدخل سعراً صالحاً لا يتجاوز 999999999.99 وبحد أقصى منزلتين عشريتين."))
             }
@@ -3724,13 +3828,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             )
         }
 
-        return String(
-            format: Language.get(
-                "CatalogIntake_StorageUploadFailed_Format",
-                alter: "تعذر إكمال رفع الصور (%@). حاول مرة أخرى."
-            ),
-            nsError.localizedDescription
-        )
+        return Language.get("Inventory_ImageUploadRecovery", alter: "تعذر رفع الصور. تحقق من الاتصال وأعد المحاولة. إذا تكرر الخطأ، أعد اختيار الصورة أو اختر صورة أصغر ثم احفظ.")
     }
 
     private func uploadNewImages(
@@ -3911,6 +4009,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         pendingSavedAccessoryDraft = accessory
         pendingStandardCommerce = commercePayload
         pendingStandardOldImageURLs = oldImageURLs
+        if accessory.revision > (catalogEditRevision ?? 0) {
+            catalogEditRevision = max(catalogEditRevision ?? 1, accessory.revision)
+        }
         let request: [String: Any]
         do {
             request = try pendingStandardRequest ?? PPInventoryCommandService.shared.prepareProductSave(
@@ -3926,7 +4027,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             hasPendingStandardSave = true
         } catch {
             isSubmitting = false
-            errorMessage = error.localizedDescription
+            errorMessage = PPInventoryCommandService.userFacingErrorMessage(for: error)
             return
         }
 
@@ -3936,15 +4037,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
                 if let err = error {
                     self.isSubmitting = false
-                    let nsError = err as NSError
-                    let isFunctionsDomain = nsError.domain == FunctionsErrorDomain || nsError.domain == "com.firebase.functions"
-                    let definitiveRejection = isFunctionsDomain && [
-                        FunctionsErrorCode.invalidArgument.rawValue,
-                        FunctionsErrorCode.permissionDenied.rawValue,
-                        FunctionsErrorCode.unauthenticated.rawValue,
-                        FunctionsErrorCode.failedPrecondition.rawValue,
-                        FunctionsErrorCode.notFound.rawValue
-                    ].contains(nsError.code)
+                    let definitiveRejection = PPInventoryCommandService.isDefinitiveSaveRejection(err)
 
                     if PPInventoryCommandService.staleRevision(from: err) != nil {
                         self.clearStandardInventoryRecovery()
@@ -3961,10 +4054,12 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                     } else {
                         self.standardSaveMayHaveCommitted = true
                     }
-                    self.errorMessage = definitiveRejection ? err.localizedDescription : String(
+                    let reason = PPInventoryCommandService.userFacingErrorMessage(for: err)
+                    self.errorMessage = self.hasPendingStandardSave ? String(
                         format: Language.get("Inventory_SaveOutcomeUnknown_Format", alter: "تعذر تأكيد الحفظ. أعد المحاولة لاستعادة نفس العملية دون تكرار الصنف. %@"),
-                        err.localizedDescription
-                    )
+                        reason
+                    ) : reason
+                    self.persistStandardRecoveryFailure()
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
                     return
                 }
@@ -3978,6 +4073,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                         "Inventory_InvalidCommandResponse",
                         alter: "تعذر التحقق من استجابة خدمة المخزون."
                     )
+                    self.persistStandardRecoveryFailure()
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
                     return
                 }
@@ -3996,8 +4092,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                                     "Inventory_CommandAcceptedReadbackPending_Format",
                                     alter: "اعتمد الخادم الحفظ، لكن تعذر تأكيد النسخة النهائية. أعد المحاولة دون تعديل البيانات. التفاصيل: %@"
                                 ),
-                                readbackError.localizedDescription
+                                PPInventoryCommandService.userFacingErrorMessage(for: readbackError)
                             )
+                            self.persistStandardRecoveryFailure()
                             UINotificationFeedbackGenerator().notificationOccurred(.warning)
                             return
                         }
@@ -4049,7 +4146,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                                             "CatalogCategorySyncError",
                                             alter: "تعذر تحديث تصنيف الصنف"
                                         ),
-                                        subtitle: error.localizedDescription
+                                        subtitle: PPInventoryCommandService.userFacingErrorMessage(for: error)
                                     )
                                 }
                             }
@@ -4097,12 +4194,22 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             standardSaveMayHaveCommitted = true
             hasUnsavedChanges = true
             activeStage = .governance
-            errorMessage = String(format: Language.get("Inventory_SaveOutcomeUnknown_Format", alter: "تعذر تأكيد الحفظ. أعد المحاولة لاستعادة نفس العملية دون تكرار الصنف. %@"), "")
+            errorMessage = recovery.failureMessage ?? Language.get("Inventory_SaveRecoveryRequired", alter: "قد تكون عملية الحفظ اكتملت بالفعل. استعد الحفظ المعلّق لتأكيد النتيجة قبل تجاهل التعديلات.")
         } catch {
             // Never discard an unreadable receipt and allow an accidental new
             // creation. Keep the editor blocked and surface the recovery error.
             hasPendingStandardSave = true
-            errorMessage = error.localizedDescription
+            errorMessage = Language.get("Inventory_SaveRecoveryUnavailable", alter: "تعذر قراءة سجل الحفظ المعلّق. ارجع إلى المخزون وابحث عن الصنف، ثم تواصل مع الدعم للتحقق من العملية قبل إنشاء نسخة أخرى.")
+        }
+    }
+
+    private func persistStandardRecoveryFailure() {
+        guard hasPendingStandardSave,
+              let data = UserDefaults.standard.data(forKey: standardInventoryRecoveryKey),
+              var recovery = try? JSONDecoder().decode(PPStandardInventoryRecovery.self, from: data) else { return }
+        recovery.failureMessage = errorMessage
+        if let encoded = try? JSONEncoder().encode(recovery) {
+            UserDefaults.standard.set(encoded, forKey: standardInventoryRecoveryKey)
         }
     }
 
@@ -4173,6 +4280,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         original.showInAppMarket = saved.showInAppMarket
         original.relatedAccessories = saved.relatedAccessories
         original.revision = saved.revision
+        self.catalogEditRevision = max(1, saved.revision)
     }
 
     private func commitConfirmedLivePetForm(retainedURLs: [String]) {
@@ -4257,7 +4365,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                     "LivePetIntake_UnitPhotoUploadFailureFormat",
                     alter: "تعذر إكمال صورة الحيوان. لم يتم إنشاء المخزون. التفاصيل: %@"
                 ),
-                error.localizedDescription
+                localizedImageUploadError(error)
             )
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             return
@@ -4742,7 +4850,8 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 alter: "تعذر إكمال العملية مؤقتاً. احتُفظ بالطلب نفسه لإعادة المحاولة الآمنة. المرجع: %@"
             )
         }
-        return String(format: format, reference)
+        return PPInventoryCommandService.userFacingErrorMessage(for: error)
+            + "\n" + String(format: format, reference)
     }
 
     private func cleanupRemovedImages(oldImageURLs: [String], retainedURLs: [String]) {
@@ -5837,7 +5946,7 @@ private func ppPresentVariantProductEditor(
     } catch {
         PPHUD.showError(
             Language.get("Variant_OpenProduct_Failed", alter: "تعذر فتح سجل هذا اللون"),
-            subtitle: error.localizedDescription
+            subtitle: PPInventoryCommandService.userFacingErrorMessage(for: error)
         )
     }
 }
@@ -5945,6 +6054,38 @@ struct PPAccessoryEditorScreen: View {
             tacticalSaveDock
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .confirmationDialog(
+            Language.get("Inventory_PhotoSource_Title", alter: "إضافة صور"),
+            isPresented: $viewModel.showPhotoSourceDialog,
+            titleVisibility: .visible
+        ) {
+            Button(Language.get("Inventory_PhotoSource_Camera", alter: "التقاط بالكاميرا")) {
+                viewModel.requestCamera()
+            }
+            Button(Language.get("Inventory_PhotoSource_Library", alter: "اختيار من مكتبة الصور")) {
+                viewModel.showImagePicker = true
+            }
+            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+        } message: {
+            Text(Language.get("Inventory_PhotoSource_Message", alter: "اختر التقاط صورة جديدة بالكاميرا أو اختيار صور من المكتبة."))
+        }
+        .fullScreenCover(isPresented: $viewModel.showCameraPicker) {
+            PPLivePetCameraPicker { image in
+                viewModel.addPickedImages([image])
+            }
+        }
+        .alert(
+            Language.get("Inventory_CameraPermission_Title", alter: "السماح باستخدام الكاميرا"),
+            isPresented: $viewModel.showCameraAccessAlert
+        ) {
+            Button(Language.get("LivePetIntake_OpenSettings", alter: "فتح الإعدادات")) {
+                guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(settingsURL)
+            }
+            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+        } message: {
+            Text(viewModel.cameraAlertMessage.isEmpty ? Language.get("Inventory_CameraPermission_Message", alter: "يحتاج التطبيق إذن الوصول للكاميرا لالتقاط الصور. يمكنك تفعيل الإذن من إعدادات الجهاز.") : viewModel.cameraAlertMessage)
+        }
         .sheet(isPresented: $viewModel.showImagePicker) {
             PPImagePickerSheet(maxSelection: 9 - viewModel.totalImageCount) { images in
                 viewModel.addPickedImages(images)
@@ -6498,7 +6639,7 @@ struct PPAccessoryEditorScreen: View {
                         Task { @MainActor in
                             await ppPresentVariantProductEditor(productId: productId) {
                                 Task { @MainActor in
-                                    viewModel.refreshAuthoritativeRevisionIfNeeded()
+                                    await viewModel.rebaseAuthoritativeRevisionFromServer()
                                     guard let accessory = viewModel.editingAccessory else { return }
                                     await variantSectionModel.load(for: accessory)
                                 }
@@ -6510,7 +6651,12 @@ struct PPAccessoryEditorScreen: View {
                         viewModel.editingAccessory?.isVariant = false
                         viewModel.editingAccessory?.isDefaultVariant = false
                         viewModel.editingAccessory?.variantSortOrder = 0
-                        viewModel.refreshAuthoritativeRevisionIfNeeded()
+                        Task { @MainActor in
+                            await viewModel.rebaseAuthoritativeRevisionFromServer()
+                        }
+                    },
+                    onRootAccessoryUpdated: { updated in
+                        viewModel.rebaseAuthoritativeCatalog(from: updated)
                     }
                 )
                     .task(id: viewModel.editingAccessory?.accessoryID) {
@@ -6523,6 +6669,11 @@ struct PPAccessoryEditorScreen: View {
                         if viewModel.existingImageURLs != updatedURLs {
                             viewModel.existingImageURLs = updatedURLs
                             viewModel.editingAccessory?.imageURLsArray = updatedURLs
+                        }
+                    }
+                    .onChange(of: variantSectionModel.rootAccessoryRevision) { _ in
+                        if let updatedRoot = variantSectionModel.rootAccessory {
+                            viewModel.rebaseAuthoritativeCatalog(from: updatedRoot)
                         }
                     }
             }
@@ -6554,7 +6705,7 @@ struct PPAccessoryEditorScreen: View {
                     if viewModel.canAddImages {
                         Button {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            viewModel.showImagePicker = true
+                            viewModel.presentPhotoSource()
                         } label: {
                             VStack(spacing: 6) {
                                 Image(systemName: "camera.badge.ellipsis")
@@ -10322,6 +10473,26 @@ private struct PPLivePetIntakeJourney: View {
                 }
             )
         }
+        .confirmationDialog(
+            tr("Inventory_PhotoSource_Title", "إضافة صور"),
+            isPresented: $viewModel.showPhotoSourceDialog,
+            titleVisibility: .visible
+        ) {
+            Button(tr("Inventory_PhotoSource_Camera", "التقاط بالكاميرا")) {
+                requestCatalogPhotoCamera()
+            }
+            Button(tr("Inventory_PhotoSource_Library", "اختيار من مكتبة الصور")) {
+                viewModel.showImagePicker = true
+            }
+            Button(tr("Cancel", "إلغاء"), role: .cancel) {}
+        } message: {
+            Text(tr("Inventory_PhotoSource_Message", "اختر التقاط صورة جديدة بالكاميرا أو اختيار صور من المكتبة."))
+        }
+        .fullScreenCover(isPresented: $viewModel.showCameraPicker) {
+            PPLivePetCameraPicker { image in
+                viewModel.addPickedImages([image])
+            }
+        }
         .sheet(isPresented: $viewModel.showImagePicker) {
             PPLivePetPhotoPicker(maxSelection: max(0, 9 - viewModel.totalImageCount)) { images, failedCount in
                 viewModel.addPickedImages(images)
@@ -10339,10 +10510,10 @@ private struct PPLivePetIntakeJourney: View {
             isPresented: $showUnitPhotoSource,
             titleVisibility: .visible
         ) {
-            Button(tr("LivePetIntake_UnitPhotoCamera", "التقاط صورة")) {
+            Button(tr("Inventory_PhotoSource_Camera", "التقاط صورة")) {
                 requestUnitPhotoCamera()
             }
-            Button(tr("LivePetIntake_UnitPhotoLibrary", "اختيار من مكتبة الصور")) {
+            Button(tr("Inventory_PhotoSource_Library", "اختيار من مكتبة الصور")) {
                 showUnitPhotoLibrary = true
             }
             Button(tr("Cancel", "إلغاء"), role: .cancel) {}
@@ -10640,6 +10811,35 @@ private struct PPLivePetIntakeJourney: View {
                 DispatchQueue.main.async {
                     if granted {
                         showUnitPhotoCamera = true
+                    } else {
+                        showCameraAccessAlert = true
+                    }
+                }
+            }
+        case .denied, .restricted:
+            showCameraAccessAlert = true
+        @unknown default:
+            showCameraAccessAlert = true
+        }
+    }
+
+    private func requestCatalogPhotoCamera() {
+        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+            stageMessage = tr(
+                "LivePetIntake_UnitPhotoCameraUnavailable",
+                "الكاميرا غير متاحة على هذا الجهاز. اختر صورة من المكتبة."
+            )
+            return
+        }
+
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            viewModel.showCameraPicker = true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    if granted {
+                        viewModel.showCameraPicker = true
                     } else {
                         showCameraAccessAlert = true
                     }
@@ -11098,7 +11298,7 @@ private struct PPLivePetIntakeJourney: View {
                 if viewModel.canAddImages {
                     Button {
                         focusedField = nil
-                        viewModel.showImagePicker = true
+                        viewModel.presentPhotoSource()
                     } label: {
                         Label(tr("LivePetIntake_AddPhotos", "إضافة صور"), systemImage: "photo.badge.plus")
                             .font(AdminType.captionBold)
@@ -11121,6 +11321,29 @@ private struct PPLivePetIntakeJourney: View {
                         }
                         ForEach(Array(viewModel.pickedImages.enumerated()), id: \.offset) { index, image in
                             localMediaThumbnail(image: image, index: index)
+                        }
+                        if viewModel.canAddImages {
+                            Button {
+                                focusedField = nil
+                                viewModel.presentPhotoSource()
+                            } label: {
+                                VStack(spacing: AdminSpacing.xs) {
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 20, weight: .semibold))
+                                        .foregroundStyle(AdminSurface.primary)
+                                    Text(tr("LivePetIntake_AddPhotos", "إضافة صور"))
+                                        .font(AdminType.caption2Bold)
+                                        .foregroundStyle(AdminSurface.primary)
+                                }
+                                .frame(width: 80, height: 80)
+                                .background(AdminSurface.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: AdminRadius.small, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: AdminRadius.small, style: .continuous)
+                                        .strokeBorder(AdminSurface.primary.opacity(0.30), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                                )
+                            }
+                            .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
+                            .accessibilityLabel(tr("LivePetIntake_AddPhotos", "إضافة صور"))
                         }
                     }
                     .padding(.vertical, AdminSpacing.xxs)
@@ -11158,7 +11381,7 @@ private struct PPLivePetIntakeJourney: View {
                     }
             } else {
                 Button {
-                    viewModel.showImagePicker = true
+                    viewModel.presentPhotoSource()
                 } label: {
                     VStack(spacing: AdminSpacing.md) {
                         ZStack {
@@ -15115,6 +15338,60 @@ struct PPLivePetPhotoPicker: UIViewControllerRepresentable {
     }
 }
 
+@MainActor
+enum PPCameraPermissionHelper {
+    static var isCameraAvailable: Bool {
+        UIImagePickerController.isSourceTypeAvailable(.camera)
+    }
+
+    static func requestCameraAccess(
+        onAuthorized: @escaping @MainActor () -> Void,
+        onDenied: @escaping @MainActor (String) -> Void
+    ) {
+        guard isCameraAvailable else {
+            let msg = Language.get(
+                "Inventory_Camera_Unavailable",
+                alter: "الكاميرا غير متاحة على هذا الجهاز. اختر صورة من المكتبة."
+            )
+            onDenied(msg)
+            return
+        }
+
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            onAuthorized()
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    if granted {
+                        onAuthorized()
+                    } else {
+                        let msg = Language.get(
+                            "Inventory_CameraPermission_Message",
+                            alter: "يحتاج التطبيق إذن الوصول للكاميرا لالتقاط الصور. يمكنك تفعيل الإذن من إعدادات الجهاز."
+                        )
+                        onDenied(msg)
+                    }
+                }
+            }
+        case .denied, .restricted:
+            let msg = Language.get(
+                "Inventory_CameraPermission_Message",
+                alter: "يحتاج التطبيق إذن الوصول للكاميرا لالتقاط الصور. يمكنك تفعيل الإذن من إعدادات الجهاز."
+            )
+            onDenied(msg)
+        @unknown default:
+            let msg = Language.get(
+                "Inventory_Camera_Unavailable",
+                alter: "الكاميرا غير متاحة على هذا الجهاز. اختر صورة من المكتبة."
+            )
+            onDenied(msg)
+        }
+    }
+}
+
+typealias PPCameraImagePicker = PPLivePetCameraPicker
+
 struct PPLivePetCameraPicker: UIViewControllerRepresentable {
     let onPicked: (UIImage) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -17785,6 +18062,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                             catalogCompass
                                 .accessibilitySortPriority(3)
                             catalogFeedback
+                                .id("catalog.feedback")
                             catalogStageScene
                                 .disabled(viewModel.hasPendingStandardSave || viewModel.isLoadingCommerce)
                                 .id(viewModel.activeStage)
@@ -17800,6 +18078,10 @@ private struct PPAccessoryFoodIntakeJourney: View {
                         .padding(.bottom, 140)
                     }
                     .scrollDismissesKeyboardCompat()
+                    .onChange(of: viewModel.errorMessage) { message in
+                        guard let message, !message.isEmpty else { return }
+                        proxy.scrollTo("catalog.feedback", anchor: .top)
+                    }
                     .onChange(of: focusedField) { field in
                         scrollToFocusedField(proxy: proxy, targetField: field)
                     }
@@ -17859,6 +18141,38 @@ private struct PPAccessoryFoodIntakeJourney: View {
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .confirmationDialog(
+            tr("Inventory_PhotoSource_Title", "إضافة صور"),
+            isPresented: $viewModel.showPhotoSourceDialog,
+            titleVisibility: .visible
+        ) {
+            Button(tr("Inventory_PhotoSource_Camera", "التقاط بالكاميرا")) {
+                viewModel.requestCamera()
+            }
+            Button(tr("Inventory_PhotoSource_Library", "اختيار من مكتبة الصور")) {
+                viewModel.showImagePicker = true
+            }
+            Button(tr("Cancel", "إلغاء"), role: .cancel) {}
+        } message: {
+            Text(tr("Inventory_PhotoSource_Message", "اختر التقاط صورة جديدة بالكاميرا أو اختيار صور من المكتبة."))
+        }
+        .fullScreenCover(isPresented: $viewModel.showCameraPicker) {
+            PPLivePetCameraPicker { image in
+                viewModel.addPickedImages([image])
+            }
+        }
+        .alert(
+            tr("Inventory_CameraPermission_Title", "السماح باستخدام الكاميرا"),
+            isPresented: $viewModel.showCameraAccessAlert
+        ) {
+            Button(tr("LivePetIntake_OpenSettings", "فتح الإعدادات")) {
+                guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(settingsURL)
+            }
+            Button(tr("Cancel", "إلغاء"), role: .cancel) {}
+        } message: {
+            Text(viewModel.cameraAlertMessage.isEmpty ? tr("Inventory_CameraPermission_Message", "يحتاج التطبيق إذن الوصول للكاميرا لالتقاط الصور. يمكنك تفعيل الإذن من إعدادات الجهاز.") : viewModel.cameraAlertMessage)
+        }
         .sheet(isPresented: $viewModel.showImagePicker) {
             PPLivePetPhotoPicker(maxSelection: max(0, 9 - viewModel.totalImageCount)) { images, failedCount in
                 viewModel.addPickedImages(images)
@@ -18243,6 +18557,11 @@ private struct PPAccessoryFoodIntakeJourney: View {
             .transition(.opacity.combined(with: .scale(scale: 0.96)))
         } else if viewModel.hasPendingStandardSave {
             catalogPendingSaveBanner
+        } else if viewModel.isLoadingCommerce {
+            catalogBanner(
+                message: tr("Inventory_CommerceLoading", "جارٍ تحميل وحدات البيع. انتظر قبل الحفظ."),
+                symbol: "hourglass", color: AdminSurface.primary, dismiss: nil
+            )
         } else if let error = viewModel.errorMessage, !error.isEmpty {
             catalogBanner(
                 message: error,
@@ -18268,7 +18587,10 @@ private struct PPAccessoryFoodIntakeJourney: View {
     }
 
     private var catalogPendingSaveBanner: some View {
-        HStack(alignment: .top, spacing: AdminSpacing.sm) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: AdminSpacing.sm))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: AdminSpacing.sm))
+        return layout {
             Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(Color(uiColor: .ppWarning))
@@ -18280,6 +18602,12 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     .font(AdminType.footnoteBold)
                     .foregroundStyle(AdminSurface.primaryText)
 
+                if let name = viewModel.pendingStandardSaveName {
+                    Text(String(format: tr("Inventory_PendingProduct_Format", "الصنف: %@"), name))
+                        .font(AdminType.footnoteBold)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
                 let detail: String = {
                     if let err = viewModel.errorMessage, !err.isEmpty {
                         return err
@@ -18290,6 +18618,22 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     .font(AdminType.caption)
                     .foregroundStyle(AdminSurface.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
+                Text(tr("Inventory_PendingSaveSteps", "تحقق من الاتصال ثم اضغط «استعادة الحفظ المعلّق». تبقى البيانات مقفلة لمنع تكرار الصنف. إذا استمر التنبيه، ارجع إلى المخزون وابحث عن الصنف وتواصل مع الدعم بمرجع العملية."))
+                    .font(AdminType.footnote)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let reference = viewModel.pendingStandardSaveReference {
+                    Text(String(format: tr("Inventory_RecoveryReference_Format", "مرجع العملية: %@"), reference))
+                        .font(AdminType.caption)
+                        .environment(\.layoutDirection, .leftToRight)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Button(tr("Inventory_ReturnKeepingPendingSave", "العودة إلى المخزون مع الاحتفاظ بالعملية")) {
+                    viewModel.leavePendingStandardSave()
+                }
+                .font(AdminType.footnoteBold)
+                .frame(minHeight: AdminTouchTarget.comfortable)
+                .disabled(viewModel.isSubmitting)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -18383,7 +18727,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                             Task { @MainActor in
                                 await ppPresentVariantProductEditor(productId: productId) {
                                     Task { @MainActor in
-                                        viewModel.refreshAuthoritativeRevisionIfNeeded()
+                                        await viewModel.rebaseAuthoritativeRevisionFromServer()
                                         guard let accessory = viewModel.editingAccessory else { return }
                                         await variantSectionModel.load(for: accessory)
                                     }
@@ -18395,7 +18739,12 @@ private struct PPAccessoryFoodIntakeJourney: View {
                             viewModel.editingAccessory?.isVariant = false
                             viewModel.editingAccessory?.isDefaultVariant = false
                             viewModel.editingAccessory?.variantSortOrder = 0
-                            viewModel.refreshAuthoritativeRevisionIfNeeded()
+                            Task { @MainActor in
+                                await viewModel.rebaseAuthoritativeRevisionFromServer()
+                            }
+                        },
+                        onRootAccessoryUpdated: { updated in
+                            viewModel.rebaseAuthoritativeCatalog(from: updated)
                         }
                     )
                         .task(id: viewModel.editingAccessory?.accessoryID) {
@@ -18408,6 +18757,11 @@ private struct PPAccessoryFoodIntakeJourney: View {
                             if viewModel.existingImageURLs != updatedURLs {
                                 viewModel.existingImageURLs = updatedURLs
                                 viewModel.editingAccessory?.imageURLsArray = updatedURLs
+                            }
+                        }
+                        .onChange(of: variantSectionModel.rootAccessoryRevision) { _ in
+                            if let updatedRoot = variantSectionModel.rootAccessory {
+                                viewModel.rebaseAuthoritativeCatalog(from: updatedRoot)
                             }
                         }
                 }
@@ -18612,7 +18966,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
 
                 if viewModel.canAddImages {
                     Button {
-                        viewModel.showImagePicker = true
+                        viewModel.presentPhotoSource()
                     } label: {
                         Label(tr("CatalogIntake_AddPhotos", "إضافة صور"), systemImage: "photo.badge.plus")
                             .font(AdminType.captionBold)
@@ -18627,7 +18981,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
 
             if viewModel.totalImageCount == 0 {
                 Button {
-                    viewModel.showImagePicker = true
+                    viewModel.presentPhotoSource()
                 } label: {
                     VStack(spacing: AdminSpacing.sm) {
                         Image(systemName: viewModel.isFood ? "fork.knife.circle" : "shippingbox.circle")
@@ -18655,6 +19009,28 @@ private struct PPAccessoryFoodIntakeJourney: View {
                         }
                         ForEach(Array(viewModel.pickedImages.enumerated()), id: \.offset) { index, image in
                             localThumbnail(image: image, index: index)
+                        }
+                        if viewModel.canAddImages {
+                            Button {
+                                viewModel.presentPhotoSource()
+                            } label: {
+                                VStack(spacing: AdminSpacing.xs) {
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 24, weight: .semibold))
+                                        .foregroundStyle(AdminSurface.primary)
+                                    Text(tr("CatalogIntake_AddPhotos", "إضافة صور"))
+                                        .font(AdminType.caption2Bold)
+                                        .foregroundStyle(AdminSurface.primary)
+                                }
+                                .frame(width: 126, height: 126)
+                                .background(AdminSurface.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                                        .strokeBorder(AdminSurface.primary.opacity(0.30), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                                )
+                            }
+                            .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
+                            .accessibilityLabel(tr("CatalogIntake_AddPhotos", "إضافة صور"))
                         }
                     }
                     .padding(.vertical, 2)
@@ -19420,7 +19796,8 @@ private struct PPAccessoryFoodIntakeJourney: View {
 
     private var catalogActionDock: some View {
         VStack(spacing: AdminSpacing.sm) {
-            if let requirement = validationMessage(for: viewModel.activeStage),
+            if !viewModel.hasPendingStandardSave,
+               let requirement = validationMessage(for: viewModel.activeStage),
                viewModel.activeStage != .governance {
                 Label(requirement, systemImage: "circle.dashed")
                     .font(AdminType.caption2Bold)
@@ -19516,6 +19893,9 @@ private struct PPAccessoryFoodIntakeJourney: View {
         if viewModel.hasPendingStandardSave {
             return tr("Inventory_ResumePendingSave", "استعادة الحفظ المعلّق")
         }
+        if viewModel.commerceLoadError != nil {
+            return tr("Inventory_ReloadCommerce", "إعادة تحميل وحدات البيع")
+        }
         if viewModel.activeStage != .governance {
             return tr("CatalogIntake_Continue", "متابعة")
         }
@@ -19528,6 +19908,9 @@ private struct PPAccessoryFoodIntakeJourney: View {
     }
 
     private var primaryActionHint: String {
+        if viewModel.hasPendingStandardSave {
+            return tr("Inventory_SaveRecoveryRequired", "استعد الحفظ المعلّق لتأكيد النتيجة قبل تعديل البيانات.")
+        }
         if viewModel.activeStage == .governance {
             return tr("CatalogIntake_SubmitHint", "يتحقق من البيانات ثم يحفظ الصنف عبر مسار الإدارة الحالي")
         }
@@ -19537,6 +19920,11 @@ private struct PPAccessoryFoodIntakeJourney: View {
     private func performPrimaryAction() {
         focusedField = nil
         if viewModel.hasPendingStandardSave {
+            stageMessage = nil
+            viewModel.saveAccessory()
+            return
+        }
+        if viewModel.commerceLoadError != nil {
             stageMessage = nil
             viewModel.saveAccessory()
             return
@@ -20147,11 +20535,11 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 return tr("CatalogIntake_ValidationName", "أدخل اسم الصنف أولاً.")
             }
             let trimmedNameEn = viewModel.nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmedNameEn.isEmpty && trimmedNameEn.utf16.count > 300 {
-                return tr("CatalogIntake_ValidationNameLengthEn", "يجب ألا يتجاوز الاسم بالإنجليزية 300 حرفاً.")
+            if viewModel.name.trimmingCharacters(in: .whitespacesAndNewlines).utf16.count > 90 || trimmedNameEn.utf16.count > 90 {
+                return tr("Inventory_NameLengthGuidance", "في خطوة الهوية، اختصر اسم الصنف بالعربية والإنجليزية إلى 90 حرفاً لكل اسم ثم احفظ.")
             }
         case .bioVault:
-            if viewModel.selectedMainKind == nil {
+            if viewModel.hasNoCategorySelected {
                 return tr("CatalogIntake_ValidationCategory", "اختر الفئة الرئيسية للصنف.")
             }
             if !viewModel.isFood && !viewModel.isLivePet && (viewModel.selectedAccessoryCategoryID == nil || viewModel.selectedAccessoryCategoryID?.isEmpty == true) {
@@ -20161,12 +20549,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 return tr("CatalogIntake_ValidationWeight", "أدخل وزناً أو حجماً صالحاً وبحد أقصى ثلاث منازل عشرية.")
             }
         case .pricing:
-            let clean = viewModel.priceText
-                .replacingOccurrences(of: ",", with: ".")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            if let value = Double(clean), value.isFinite, value > 0 {
-                // Continue to optional discount validation.
-            } else {
+            if (PPInventoryDecimalText.minorUnits(viewModel.priceText) ?? 0) <= 0 {
                 return tr("CatalogIntake_ValidationPrice", "أدخل سعراً أساسياً صحيحاً أكبر من صفر.")
             }
             if !viewModel.isValidDiscountPercentInput() {
@@ -20289,7 +20672,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
 
     private func showCatalogDiscardAlert() {
         guard !viewModel.hasPendingStandardSave else {
-            viewModel.discardChangesAndDismiss()
+            viewModel.leavePendingStandardSave()
             return
         }
         PPAlertHelper.showConfirmation(

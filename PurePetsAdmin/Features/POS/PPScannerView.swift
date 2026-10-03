@@ -1509,22 +1509,138 @@ private struct PPScannerCameraPreview: UIViewControllerRepresentable {
         if uiViewController.previewLayer.session != session {
             uiViewController.previewLayer.session = session
         }
+        uiViewController.setupRotationCoordinatorIfNeeded()
     }
 }
 
 final class PPScannerPreviewViewController: UIViewController {
     let previewLayer = AVCaptureVideoPreviewLayer()
+    private var rotationObservation: NSKeyValueObservation?
+    private var _rotationCoordinator: Any?
+    @available(iOS 17.0, *)
+    private var rotationCoordinator: AVCaptureDevice.RotationCoordinator? {
+        get { _rotationCoordinator as? AVCaptureDevice.RotationCoordinator }
+        set { _rotationCoordinator = newValue }
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
         previewLayer.videoGravity = .resizeAspectFill
         view.layer.addSublayer(previewLayer)
+        updatePreviewGeometry()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        updatePreviewGeometry()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        setupRotationCoordinatorIfNeeded()
+        updatePreviewGeometry()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        setupRotationCoordinatorIfNeeded()
+        updatePreviewGeometry()
+    }
+
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        coordinator.animate(alongsideTransition: { [weak self] _ in
+            self?.updatePreviewGeometry()
+        }, completion: { [weak self] _ in
+            self?.updatePreviewGeometry()
+        })
+    }
+
+    func setupRotationCoordinatorIfNeeded() {
+        guard let session = previewLayer.session,
+              let input = session.inputs.compactMap({ $0 as? AVCaptureDeviceInput }).first else { return }
+        let device = input.device
+
+        if #available(iOS 17.0, *) {
+            if let existing = rotationCoordinator, existing.device == device {
+                return
+            }
+            rotationObservation?.invalidate()
+            rotationObservation = nil
+
+            let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: previewLayer)
+            rotationCoordinator = coordinator
+            rotationObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: [.initial, .new]) { [weak self] _, _ in
+                DispatchQueue.main.async {
+                    self?.updatePreviewGeometry()
+                }
+            }
+        }
+    }
+
+    private func updatePreviewGeometry() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         previewLayer.frame = view.bounds
+        if let connection = previewLayer.connection {
+            if #available(iOS 17.0, *) {
+                let targetAngle: CGFloat
+                if let coordinator = rotationCoordinator, connection.isVideoRotationAngleSupported(coordinator.videoRotationAngleForHorizonLevelPreview) {
+                    targetAngle = coordinator.videoRotationAngleForHorizonLevelPreview
+                } else {
+                    targetAngle = fallbackRotationAngle()
+                }
+                if connection.isVideoRotationAngleSupported(targetAngle) {
+                    connection.videoRotationAngle = targetAngle
+                }
+            } else if connection.isVideoOrientationSupported {
+                connection.videoOrientation = fallbackVideoOrientation()
+            }
+        }
+        CATransaction.commit()
+    }
+
+    private var currentInterfaceOrientation: UIInterfaceOrientation {
+        if let windowScene = view.window?.windowScene {
+            return windowScene.interfaceOrientation
+        }
+        if let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive }) {
+            return windowScene.interfaceOrientation
+        }
+        return .portrait
+    }
+
+    private func fallbackRotationAngle() -> CGFloat {
+        switch currentInterfaceOrientation {
+        case .landscapeLeft:
+            return 180
+        case .landscapeRight:
+            return 0
+        case .portraitUpsideDown:
+            return 270
+        default:
+            return 90
+        }
+    }
+
+    private func fallbackVideoOrientation() -> AVCaptureVideoOrientation {
+        switch currentInterfaceOrientation {
+        case .landscapeLeft:
+            return .landscapeLeft
+        case .landscapeRight:
+            return .landscapeRight
+        case .portraitUpsideDown:
+            return .portraitUpsideDown
+        default:
+            return .portrait
+        }
+    }
+
+    deinit {
+        rotationObservation?.invalidate()
     }
 }
 

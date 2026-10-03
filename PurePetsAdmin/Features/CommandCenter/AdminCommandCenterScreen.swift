@@ -2893,9 +2893,10 @@ final class CommandPOSShiftTelemetryStore: ObservableObject {
     @Published private(set) var cardSalesTotal: Double = 0.0
     @Published private(set) var refundsCount: Int = 0
     @Published private(set) var lastFetchDate: Date? = nil
+    @Published private(set) var isRefreshing: Bool = false
 
     private(set) var activeBranchID: String = ""
-    private var isFetching: Bool = false
+    private var activeFetchID: UUID?
 
     var averageOrderValue: Double {
         todayReceiptsCount > 0 ? (todaySalesTotal / Double(todayReceiptsCount)) : 0.0
@@ -2978,7 +2979,15 @@ final class CommandPOSShiftTelemetryStore: ObservableObject {
     func updateBranch(branchID: String) {
         let trimmed = branchID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed != activeBranchID || state == .loading else { return }
-        activeBranchID = trimmed
+        if trimmed != activeBranchID {
+            // Invalidate the previous branch before accepting a new request. The service
+            // completion may still arrive, but it no longer owns this readback.
+            activeFetchID = nil
+            isRefreshing = false
+            activeBranchID = trimmed
+            clearTelemetry()
+            state = trimmed.isEmpty ? .ready : .loading
+        }
         fetchShiftTelemetry()
     }
 
@@ -2987,38 +2996,49 @@ final class CommandPOSShiftTelemetryStore: ObservableObject {
         fetchShiftTelemetry()
     }
 
+    private func clearTelemetry() {
+        todayReceiptsCount = 0
+        todaySalesTotal = 0.0
+        cashSalesTotal = 0.0
+        cardSalesTotal = 0.0
+        refundsCount = 0
+        lastFetchDate = nil
+    }
+
     func fetchShiftTelemetry() {
         guard !activeBranchID.isEmpty else {
-            self.state = .ready
-            self.todayReceiptsCount = 0
-            self.todaySalesTotal = 0.0
-            self.cashSalesTotal = 0.0
-            self.cardSalesTotal = 0.0
-            self.refundsCount = 0
+            activeFetchID = nil
+            isRefreshing = false
+            clearTelemetry()
+            state = .ready
             return
         }
 
-        guard !isFetching else { return }
-        isFetching = true
-        if state != .ready && state != .zero {
+        guard activeFetchID == nil else { return }
+        let requestID = UUID()
+        let requestedBranchID = activeBranchID
+        activeFetchID = requestID
+        isRefreshing = true
+        if lastFetchDate == nil {
             state = .loading
         }
 
-        PPPOSService.shared().fetchPOSHistory(branchID: activeBranchID) { [weak self] receipts, error in
+        PPPOSService.shared().fetchPOSHistory(branchID: requestedBranchID) { [weak self] receipts, error in
             Task { @MainActor in
-                guard let self = self else { return }
-                self.isFetching = false
-                self.lastFetchDate = Date()
+                guard let self = self,
+                      self.activeFetchID == requestID,
+                      self.activeBranchID == requestedBranchID else { return }
+                self.activeFetchID = nil
+                self.isRefreshing = false
 
                 if let error = error {
-                    if self.todayReceiptsCount == 0 && self.todaySalesTotal == 0.0 {
-                        self.state = .error(error.localizedDescription)
-                    } else {
-                        self.state = .ready
-                    }
+                    // Retain a successful snapshot without presenting a failed refresh
+                    // as fresh or hiding the recovery action.
+                    self.state = .error(error.localizedDescription)
                     return
                 }
 
+                self.lastFetchDate = Date()
                 guard let receipts = receipts else {
                     self.state = .zero
                     self.todayReceiptsCount = 0
@@ -3075,187 +3095,30 @@ final class CommandPOSShiftTelemetryStore: ObservableObject {
     }
 }
 
-private struct CommandPOSCardPressStyle: ButtonStyle {
-    var scale: CGFloat = 0.982
-    var pressedOpacity: CGFloat = 0.94
+// MARK: - Home POS: one register, one set of operational actions
+
+private enum CommandPOSHomeCopy {
+    static func text(_ suffix: String) -> String {
+        Language.get("AdminPOS_Home_" + suffix, alter: "")
+    }
+}
+
+private struct CommandPOSHomePressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? scale : 1.0)
-            .opacity(configuration.isPressed ? pressedOpacity : 1.0)
-            .animation(configuration.isPressed ? .easeOut(duration: 0.08) : .spring(response: 0.28, dampingFraction: 0.72), value: configuration.isPressed)
-            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(AdminSurface.primaryText.opacity(configuration.isPressed ? 0.055 : 0),
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .opacity(configuration.isPressed ? 0.84 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
-private struct CommandPOSShimmerMask: View {
-    @State private var phase: CGFloat = -1.0
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        GeometryReader { proxy in
-            let width = proxy.size.width
-            LinearGradient(
-                colors: [
-                    Color.white.opacity(0.0),
-                    Color.white.opacity(0.18),
-                    Color.white.opacity(0.0)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .offset(x: phase * width * 1.5)
-        }
-        .onAppear {
-            guard !reduceMotion else { return }
-            withAnimation(.linear(duration: 1.6).repeatForever(autoreverses: false)) {
-                phase = 1.0
-            }
-        }
-    }
-}
-
-/// A quiet handoff from a sale that cannot happen today to the existing
-/// A quiet handoff from a sale that cannot happen today to the existing
-/// customer-request queue. Studio-crafted, compact (48pt), tactile and responsive.
-private struct CommandPOSWantedPetsEntry: View {
-    let onOpen: () -> Void
-
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.layoutDirection) private var layoutDirection
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    private let cornerRadius: CGFloat = 13
-    private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-    }
-
-    var body: some View {
-        let title = Language.get("WantedPets_Title", alter: "قائمة الطلبات")
-        let detail = Language.get("WantedPets_Subtitle", alter: "طلبات العملاء للحيوانات المرتقبة والتواصل الفوري")
-
-        Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            onOpen()
-        } label: {
-            HStack(alignment: .center, spacing: 10) {
-                // Bespoke Paw & Request Beacon Squircle
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.22 : 0.12),
-                                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.10 : 0.04)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .strokeBorder(AdminSurface.primary.opacity(colorScheme == .dark ? 0.35 : 0.20), lineWidth: 0.75)
-                        )
-
-                    Image(systemName: "pawprint.fill")
-                        .font(.system(size: 13.5, weight: .semibold))
-                        .foregroundStyle(AdminSurface.primary)
-
-                    // Subtle ambient beacon dot
-                    Circle()
-                        .fill(Color(red: 1.0, green: 0.72, blue: 0.18))
-                        .frame(width: 5, height: 5)
-                        .offset(x: 7.5, y: -7.5)
-                }
-                .frame(width: 32, height: 32)
-                .accessibilityHidden(true)
-
-                // Compact Title & Subtitle Hierarchy
-                VStack(alignment: .leading, spacing: 0.5) {
-                    HStack(spacing: 6) {
-                        Text(title)
-                            .font(Font.custom("Beiruti-Bold", size: 14))
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .lineLimit(1)
-
-                        // Quiet context pill
-                        Text(Language.get("WantedPets_Badge", alter: "طلبات"))
-                            .font(Font.custom("Beiruti-Bold", size: 10))
-                            .foregroundStyle(AdminSurface.primary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 1.5)
-                            .background(
-                                AdminSurface.primary.opacity(colorScheme == .dark ? 0.18 : 0.08),
-                                in: Capsule()
-                            )
-                    }
-
-                    Text(detail)
-                        .font(Font.custom("Beiruti-Regular", size: 11))
-                        .foregroundStyle(AdminSurface.secondaryText)
-                        .lineLimit(1)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                // Circular Trailing Accessory
-                ZStack {
-                    Circle()
-                        .fill(AdminSurface.control)
-                        .frame(width: 24, height: 24)
-                        .overlay(
-                            Circle()
-                                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
-                        )
-
-                    Image(systemName: layoutDirection == .rightToLeft ? "chevron.left" : "chevron.right")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(AdminSurface.primary)
-                }
-                .accessibilityHidden(true)
-            }
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity)
-            .frame(height: 48)
-            .background {
-                shape.fill(AdminSurface.surface)
-                shape.fill(
-                    LinearGradient(
-                        colors: [
-                            AdminSurface.primary.opacity(colorScheme == .dark ? 0.09 : 0.04),
-                            Color.clear
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-            }
-            .overlay(
-                shape.strokeBorder(
-                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.24 : 0.14),
-                    lineWidth: 0.75
-                )
-            )
-            .contentShape(shape)
-        }
-        .contentShape(shape)
-        .buttonStyle(CommandPOSWantedPetsPressStyle())
-        .hoverEffect(.highlight)
-        .accessibilityLabel(title)
-        .accessibilityValue(detail)
-        .accessibilityHint(Language.get("WantedPets_POS_Entry_Hint", alter: "يفتح قائمة طلبات العملاء للحيوانات"))
-        .accessibilityIdentifier("pos.wantedPets.entry")
-    }
-}
-
-private struct CommandPOSWantedPetsPressStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    func makeBody(configuration: Configuration) -> some View {
-        let animatesScale = !reduceMotion && UIDevice.current.userInterfaceIdiom != .pad
-        return configuration.label
-            .scaleEffect(configuration.isPressed && animatesScale ? 0.985 : 1)
-            .opacity(configuration.isPressed ? 0.86 : 1)
-            .animation(animatesScale ? .spring(response: 0.22, dampingFraction: 0.82) : nil, value: configuration.isPressed)
-            .contentShape(Rectangle())
+private struct CommandPOSSectionWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat { 0 }
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
@@ -3269,685 +3132,483 @@ private struct CommandPOSDeck: View {
     @ObservedObject private var branchStore = BranchContextStore.shared
     @StateObject private var telemetryStore = CommandPOSShiftTelemetryStore()
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    @State private var isRadarPulsing = false
-    @State private var arrowNudge: CGFloat = 0
-    @State private var scannerSweep: CGFloat = 0
+    @Environment(\.colorSchemeContrast) private var contrast
+    @State private var measuredWidth: CGFloat = 0
+    @State private var isTelemetryExpanded: Bool? = nil
+    @State private var showsQuickExpenseSheet = false
 
     private var currentBranchName: String {
         let name = branchStore.currentBranchDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !name.isEmpty ? name : Language.get("Branch_Scope_Active", alter: "الفرع الحالي")
+        return name.isEmpty ? Language.get("Branch_Scope_Active", alter: "") : name
     }
 
+    private var usesColumns: Bool {
+        isRegular && !dynamicTypeSize.isAccessibilitySize &&
+            (measuredWidth > 0 ? measuredWidth : containerWidth) >= 740
+    }
+
+    private var showsDetails: Bool { isTelemetryExpanded ?? isRegular }
+    private var hasBranch: Bool { !telemetryStore.activeBranchID.isEmpty }
+    private var hasFigures: Bool { hasBranch && telemetryStore.lastFetchDate != nil }
+    private var arrow: String { Language.isRTL() ? "arrow.left" : "arrow.right" }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: AdminSectionSpacing.headerToContent(isRegular: isRegular)) {
-            AdminSectionHeader(
-                title: Language.get("AdminPOS_SectionTitle", alter: "منظومة نقاط البيع والكاشير"),
-                subtitle: Language.get("AdminPOS_SectionDetail", alter: "مساحة البيع الفوري السريع وإدارة سجل فواتير المبيعات"),
-                eyebrow: Language.get("AdminPOS_SectionEyebrow", alter: "نظام نقاط البيع"),
-                symbol: "cart.fill",
-                themeColor: Color(red: 0.06, green: 0.78, blue: 0.56),
-                state: .normal,
-                isRegular: isRegular
-            ) {
-                branchBeaconPill
+        VStack(alignment: .leading, spacing: 16) {
+            Text(CommandPOSHomeCopy.text("Title"))
+                .font(AdminType.title2)
+                .foregroundStyle(AdminSurface.primaryText)
+                .accessibilityAddTraits(.isHeader)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 20) {
+                operatorHeader
+                rule
+                if usesColumns {
+                    HStack(alignment: .top, spacing: 24) {
+                        registerActions.frame(maxWidth: .infinity, alignment: .leading)
+                        supportingActions.frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                } else {
+                    registerActions
+                    supportingActions
+                }
+                rule
+                shiftSummary
             }
+            .padding(isRegular ? 24 : 16)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline, lineWidth: contrast == .increased ? 1.5 : 1)
+                    .allowsHitTesting(false)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .multilineTextAlignment(.leading)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .environment(\.locale, Locale(identifier: Language.isRTL() ? "ar" : "en"))
+        .background {
+            GeometryReader { geometry in
+                Color.clear.preference(key: CommandPOSSectionWidthKey.self, value: geometry.size.width)
+            }
+        }
+        .onPreferenceChange(CommandPOSSectionWidthKey.self) { width in
+            if abs(measuredWidth - width) > 0.5 { measuredWidth = width }
+        }
+        .onAppear {
+            telemetryStore.updateBranch(branchID: branchStore.activeBranch?.branchID ?? "")
+        }
+        .onReceive(branchStore.$activeBranch) { branch in
+            telemetryStore.updateBranch(branchID: branch?.branchID ?? "")
+        }
+        .fullScreenCover(isPresented: $showsQuickExpenseSheet) {
+            CommandPOSQuickExpenseSheet(currentBranchName: currentBranchName, onRoute: onRoute)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("home.pos.section")
+    }
+
+    private var operatorHeader: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Label(currentBranchName, systemImage: "building.2")
+                    .font(AdminType.headline)
+                    .foregroundStyle(AdminSurface.primaryText)
+                Label(telemetryStore.activeStaffName, systemImage: "person.crop.circle")
+                    .font(AdminType.subheadline)
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button { telemetryStore.retry() } label: {
+                ZStack {
+                    if telemetryStore.isRefreshing {
+                        ProgressView().tint(AdminSurface.primaryText)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 17, weight: .semibold))
+                    }
+                }
+                .frame(width: 48, height: 48)
+                .foregroundStyle(AdminSurface.primaryText)
+                .background(AdminSurface.control, in: Circle())
+                .contentShape(Circle())
+            }
+            .buttonStyle(CommandPOSHomePressStyle())
+            .disabled(telemetryStore.isRefreshing || !hasBranch)
+            .accessibilityLabel(CommandPOSHomeCopy.text("Refresh"))
+            .accessibilityIdentifier("home.pos.refresh")
+        }
+    }
+
+    private var registerActions: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onRoute("pos")
+            } label: {
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(alignment: .center, spacing: 12) {
+                        if !dynamicTypeSize.isAccessibilitySize {
+                            Image(systemName: "barcode.viewfinder")
+                                .font(.system(size: 27, weight: .medium))
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .frame(width: 52, height: 52)
+                                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .accessibilityHidden(true)
+                        }
+                        Label(accessTitle, systemImage: telemetryStore.canSell ? "checkmark.circle" : "eye")
+                            .font(AdminType.footnoteBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                        Image(systemName: arrow)
+                            .font(.system(size: 19, weight: .semibold))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .accessibilityHidden(true)
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(CommandPOSHomeCopy.text(telemetryStore.canSell ? "StartSale" : "Browse"))
+                            .font(AdminType.title)
+                            .foregroundStyle(AdminSurface.primaryText)
+                        Text(CommandPOSHomeCopy.text(telemetryStore.canSell ? "SaleDetail" : "BrowseDetail"))
+                            .font(AdminType.callout)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(AdminSurface.primary.opacity(colorScheme == .dark ? 0.14 : 0.065),
+                            in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            }
+            .buttonStyle(CommandPOSHomePressStyle())
+            .keyboardShortcut("n", modifiers: .command)
+            .accessibilityLabel(CommandPOSHomeCopy.text(telemetryStore.canSell ? "StartSale" : "Browse"))
+            .accessibilityValue(accessTitle)
+            .accessibilityHint(CommandPOSHomeCopy.text("StartHint"))
+            .accessibilityIdentifier(isRegular ? "admin.command.pos.card" : "home.pos.startSale")
 
             if isRegular {
-                CommandPOSiPadFlightDeck(
-                    telemetryStore: telemetryStore,
-                    currentBranchName: currentBranchName,
-                    arrowNudge: arrowNudge,
-                    scannerSweep: scannerSweep,
-                    reduceMotion: reduceMotion,
-                    isLandscape: isLandscape,
-                    containerWidth: containerWidth,
-                    canOpenWantedPets: canOpenWantedPets,
-                    onRoute: onRoute
-                )
-            } else {
-                CommandPOSiPhoneCockpit(
-                    telemetryStore: telemetryStore,
-                    currentBranchName: currentBranchName,
-                    arrowNudge: arrowNudge,
-                    scannerSweep: scannerSweep,
-                    reduceMotion: reduceMotion,
-                    canOpenWantedPets: canOpenWantedPets,
-                    onRoute: onRoute
-                )
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onRoute("pos")
+                } label: {
+                    Label(CommandPOSHomeCopy.text("QuickScan"), systemImage: "viewfinder")
+                        .font(AdminType.subheadlineBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .frame(minHeight: 44)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(CommandPOSHomePressStyle())
+                .keyboardShortcut("b", modifiers: .command)
+                .accessibilityIdentifier("home.pos.quickScan")
             }
         }
-        .frame(maxWidth: .infinity)
-        .onAppear {
-            if let branchID = branchStore.activeBranch?.branchID {
-                telemetryStore.updateBranch(branchID: branchID)
+    }
+
+    private var accessTitle: String {
+        if telemetryStore.canSell { return CommandPOSHomeCopy.text("Ready") }
+        if telemetryStore.canView { return CommandPOSHomeCopy.text("ViewOnly") }
+        return CommandPOSHomeCopy.text("Restricted")
+    }
+
+    private var supportingActions: some View {
+        VStack(spacing: 0) {
+            CommandPOSHomeAction(title: CommandPOSHomeCopy.text("Receipts"),
+                                 detail: CommandPOSHomeCopy.text("ReceiptsDetail"),
+                                 symbol: "doc.text.magnifyingglass", identifier: "home.pos.receipts",
+                                 showsDetail: isRegular) {
+                onRoute("posHistory")
             }
-        }
-        .onReceive(branchStore.$activeBranch) { newBranch in
-            if let branchID = newBranch?.branchID {
-                telemetryStore.updateBranch(branchID: branchID)
+            .keyboardShortcut("h", modifiers: .command)
+            rule
+            CommandPOSHomeAction(title: CommandPOSHomeCopy.text("Expense"),
+                                 detail: CommandPOSHomeCopy.text("ExpenseDetail"),
+                                 symbol: "plus.circle", identifier: "home.pos.expense",
+                                 showsDetail: isRegular) {
+                showsQuickExpenseSheet = true
+            }
+            .keyboardShortcut("e", modifiers: .command)
+            if canOpenWantedPets {
+                rule
+                CommandPOSHomeAction(title: CommandPOSHomeCopy.text("Wanted"),
+                                     detail: CommandPOSHomeCopy.text("WantedDetail"),
+                                     symbol: "pawprint", identifier: "pos.wantedPets.entry") {
+                    onRoute("wantedPets")
+                }
+                .accessibilityHint(Language.get("WantedPets_POS_Entry_Hint", alter: ""))
             }
         }
         .accessibilityElement(children: .contain)
     }
 
-    private var branchBeaconPill: some View {
-        HStack(spacing: 5) {
-            ZStack {
-                Circle()
-                    .stroke(Color(red: 0.06, green: 0.78, blue: 0.56).opacity(isRadarPulsing && !reduceMotion ? 0.0 : 0.5), lineWidth: 1.5)
-                    .frame(width: 10, height: 10)
-                    .scaleEffect(isRadarPulsing && !reduceMotion ? 1.8 : 0.8)
-
-                Circle()
-                    .fill(Color(red: 0.06, green: 0.78, blue: 0.56))
-                    .frame(width: 5, height: 5)
+    private var shiftSummary: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                    isTelemetryExpanded = !showsDetails
+                }
+            } label: {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .center, spacing: 16) {
+                        shiftHeading.fixedSize(horizontal: true, vertical: true)
+                        Spacer(minLength: 0)
+                        shiftTotal.fixedSize(horizontal: true, vertical: true)
+                        disclosureIcon
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .top) {
+                            shiftHeading
+                            Spacer(minLength: 8)
+                            disclosureIcon
+                        }
+                        shiftTotal
+                    }
+                }
+                .padding(.vertical, 4)
+                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                .contentShape(Rectangle())
             }
-            .frame(width: 10, height: 10)
+            .buttonStyle(CommandPOSHomePressStyle())
+            .accessibilityLabel(CommandPOSHomeCopy.text(showsDetails ? "HideDetails" : "Details"))
+            .accessibilityValue(CommandPOSHomeCopy.text(showsDetails ? "ExpandValue" : "CollapseValue") +
+                                (hasFigures ? ", " + telemetryStore.formattedTodaySales : ""))
+            .accessibilityIdentifier("home.pos.salesDisclosure")
 
-            Image(systemName: "building.2.fill")
-                .font(.system(size: 8.5))
-                .foregroundStyle(Color(red: 0.06, green: 0.78, blue: 0.56))
-
-            Text(currentBranchName)
-                .font(Font.custom("Beiruti-Bold", size: 11))
-                .foregroundStyle(Color(red: 0.06, green: 0.78, blue: 0.56))
-                .lineLimit(1)
+            sourceStatus
+            if showsDetails && hasFigures {
+                CommandPOSHomeFigures(telemetryStore: telemetryStore, usesColumns: usesColumns)
+                    .transition(.opacity)
+            }
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 5)
-        .background(Color(red: 0.06, green: 0.78, blue: 0.56).opacity(colorScheme == .dark ? 0.16 : 0.08), in: Capsule(style: .continuous))
-        .overlay(
-            Capsule(style: .continuous)
-                .strokeBorder(Color(red: 0.06, green: 0.78, blue: 0.56).opacity(0.18), lineWidth: 0.5)
-        )
-        .accessibilityLabel(Language.get("Branch_Scope_Active", alter: "الفرع الحالي") + ": \(currentBranchName)")
+    }
+
+    private var shiftHeading: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(CommandPOSHomeCopy.text("Shift"))
+                .font(AdminType.subheadlineBold)
+                .foregroundStyle(AdminSurface.primaryText)
+            Text(Language.get("AdminPOS_TodaySales_Title", alter: ""))
+                .font(AdminType.caption)
+                .foregroundStyle(AdminSurface.secondaryText)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder private var shiftTotal: some View {
+        if hasFigures {
+            Text(telemetryStore.formattedTodaySales)
+                .font(AdminType.title2)
+                .foregroundStyle(AdminSurface.primaryText)
+                .monospacedDigit()
+                .environment(\.layoutDirection, .leftToRight)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var disclosureIcon: some View {
+        Image(systemName: showsDetails ? "chevron.up" : "chevron.down")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(AdminSurface.secondaryText)
+            .frame(width: 24, height: 24)
+            .accessibilityHidden(true)
+    }
+
+    @ViewBuilder private var sourceStatus: some View {
+        if !hasBranch {
+            statusText(CommandPOSHomeCopy.text("BranchMissing"), symbol: "building.2", isError: false)
+        } else if telemetryStore.isRefreshing {
+            statusText(CommandPOSHomeCopy.text("Loading"), symbol: "arrow.clockwise", isError: false)
+        } else if case .error = telemetryStore.state {
+            statusText(CommandPOSHomeCopy.text("Error"), symbol: "exclamationmark.circle", isError: true)
+            if hasFigures {
+                Text(CommandPOSHomeCopy.text("Retained"))
+                    .font(AdminType.footnote)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Button { telemetryStore.retry() } label: {
+                Label(CommandPOSHomeCopy.text("Refresh"), systemImage: "arrow.clockwise")
+                    .font(AdminType.subheadlineBold)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .frame(minHeight: 44)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(CommandPOSHomePressStyle())
+            .accessibilityIdentifier("home.pos.retry")
+        } else if telemetryStore.state == .zero {
+            statusText(CommandPOSHomeCopy.text("Empty"), symbol: "tray", isError: false)
+        }
+        if let updatedAt = telemetryStore.lastFetchDate {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) {
+                    updatedLabel.fixedSize()
+                    updatedTime(updatedAt).fixedSize()
+                }
+                VStack(alignment: .leading, spacing: 2) { updatedLabel; updatedTime(updatedAt) }
+            }
+            .font(AdminType.caption)
+            .foregroundStyle(AdminSurface.secondaryText)
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private var updatedLabel: some View { Text(CommandPOSHomeCopy.text("Updated")) }
+    private func updatedTime(_ date: Date) -> some View {
+        Text(date, style: .time).monospacedDigit().environment(\.layoutDirection, .leftToRight)
+    }
+
+    private func statusText(_ text: String, symbol: String, isError: Bool) -> some View {
+        Label(text, systemImage: symbol)
+            .font(AdminType.footnote)
+            .foregroundStyle(isError ? AdminSurface.crimson : AdminSurface.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var rule: some View {
+        Rectangle().fill(AdminSurface.hairline).frame(height: 1).accessibilityHidden(true)
     }
 }
 
-// MARK: - iPhone Handheld Tactical Cashier Cockpit (Dedicated Mobile Architecture)
-
-private struct CommandPOSiPhoneCockpit: View {
-    @ObservedObject var telemetryStore: CommandPOSShiftTelemetryStore
-    let currentBranchName: String
-    let arrowNudge: CGFloat
-    let scannerSweep: CGFloat
-    let reduceMotion: Bool
-    let canOpenWantedPets: Bool
-    let onRoute: (String) -> Void
-
-    @State private var showsQuickExpenseSheet: Bool = false
-    @State private var isRadarPulsing: Bool = false
-    @State private var isTelemetryExpanded: Bool = false
-    @Environment(\.colorScheme) private var colorScheme
-
-    private let emerald = Color(red: 0.05, green: 0.72, blue: 0.51)
-    private let sapphire = Color(red: 0.18, green: 0.52, blue: 0.96)
-    private let coral = Color(red: 0.96, green: 0.44, blue: 0.30)
-    private let amber = Color(red: 1.0, green: 0.78, blue: 0.17)
+private struct CommandPOSHomeAction: View {
+    let title: String
+    let detail: String
+    let symbol: String
+    let identifier: String
+    var showsDetail: Bool = true
+    let action: () -> Void
+    @Environment(\.layoutDirection) private var layoutDirection
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Station Crown: Cashier identity, operational state & live sync
-            stationCrown
-                .padding(.horizontal, 14)
-                .padding(.top, 13)
-                .padding(.bottom, 11)
-
-            if isTelemetryExpanded {
-                specularHairline
-
-                // Telemetry Chamber: Gross Sales, KPI Trio, & Tender Spectrum
-                fiscalTelemetryChamber
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .transition(reduceMotion ? .identity : .opacity.combined(with: .move(edge: .top)))
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        } label: {
+            HStack(alignment: dynamicTypeSize.isAccessibilitySize ? .top : .center, spacing: 12) {
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Image(systemName: symbol)
+                        .font(.system(size: 22, weight: .regular))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .frame(width: 32, height: 32)
+                        .accessibilityHidden(true)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(AdminType.headline).foregroundStyle(AdminSurface.primaryText)
+                    if showsDetail {
+                        Text(detail).font(AdminType.subheadline).foregroundStyle(AdminSurface.secondaryText)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Image(systemName: layoutDirection == .rightToLeft ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .accessibilityHidden(true)
+                }
             }
-
-            specularHairline
-
-            // Tactical Action Launchers: Hero Express Sale & Twin Operations Duo
-            actionLaunchersChamber
-                .padding(12)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 16)
+            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+            .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity)
-        .background(cardBackground)
-        .overlay(cardBorder)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .shadow(color: emerald.opacity(colorScheme == .dark ? 0.22 : 0.08), radius: 12, y: 4)
-        .animation(reduceMotion ? .none : .spring(response: 0.35, dampingFraction: 0.82), value: isTelemetryExpanded)
-        .onAppear {
-            guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
-                isRadarPulsing = true
+        .buttonStyle(CommandPOSHomePressStyle())
+        .accessibilityLabel(title)
+        .accessibilityHint(detail)
+        .accessibilityIdentifier(identifier)
+    }
+}
+
+private struct CommandPOSHomeFigures: View {
+    @ObservedObject var telemetryStore: CommandPOSShiftTelemetryStore
+    let usesColumns: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if usesColumns {
+                HStack(alignment: .top, spacing: 32) {
+                    receiptFigures.frame(maxWidth: .infinity)
+                    tenderFigures.frame(maxWidth: .infinity)
+                }
+            } else {
+                receiptFigures
+                tenderFigures
             }
         }
-        .fullScreenCover(isPresented: $showsQuickExpenseSheet) {
-            CommandPOSQuickExpenseSheet(
-                currentBranchName: currentBranchName,
-                onRoute: onRoute
-            )
-        }
+        .padding(16)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .accessibilityElement(children: .contain)
     }
 
-    // MARK: - Subviews
-
-    private var stationCrown: some View {
-        HStack(alignment: .center, spacing: 8) {
-            // Cashier profile pill
-            HStack(spacing: 5) {
-                Image(systemName: "person.badge.shield.checkmark.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(emerald)
-
-                Text(telemetryStore.activeStaffName)
-                    .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.04),
-                in: Capsule(style: .continuous)
-            )
-
-            // Station Operational Status Pill
-            HStack(spacing: 4) {
-                if !telemetryStore.canSell && !telemetryStore.canView {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(coral)
-                    Text(Language.get("AdminPOS_Status_Unauthorized", alter: "غير مصرح بالبيع"))
-                        .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
-                        .foregroundStyle(coral)
-                } else if !telemetryStore.canSell && telemetryStore.canView {
-                    Image(systemName: "eye.fill")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(sapphire)
-                    Text(Language.get("AdminPOS_Status_AuditMode", alter: "وضع التدقيق"))
-                        .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
-                        .foregroundStyle(sapphire)
-                } else if telemetryStore.state == .loading {
-                    Circle()
-                        .fill(amber)
-                        .frame(width: 6, height: 6)
-                    Text(Language.get("AdminPOS_Status_Syncing", alter: "مزامنة..."))
-                        .font(Font.custom("Beiruti-Medium", size: 11, relativeTo: .caption2))
-                        .foregroundStyle(AdminCommandInk.secondary)
-                } else {
-                    Circle()
-                        .fill(emerald)
-                        .frame(width: 6, height: 6)
-                        .scaleEffect(isRadarPulsing && !reduceMotion ? 1.4 : 1.0)
-                    Text(Language.get("AdminPOS_ReadyForCustomers", alter: "جاهز للبيع"))
-                        .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
-                        .foregroundStyle(emerald)
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                (!telemetryStore.canSell && !telemetryStore.canView ? coral : emerald)
-                    .opacity(colorScheme == .dark ? 0.16 : 0.08),
-                in: Capsule(style: .continuous)
-            )
-
-            Spacer(minLength: 2)
-
-            // Sync stamp & refresh button
-            if !telemetryStore.relativeTimeString.isEmpty {
-                Text(telemetryStore.relativeTimeString)
-                    .font(Font.custom("Beiruti-Regular", size: 10.5, relativeTo: .caption2))
-                    .foregroundStyle(AdminCommandInk.secondary)
-                    .lineLimit(1)
-            }
-
-            // Action controls: Refresh & Collapse/Expand
-            HStack(spacing: 6) {
-                Button(action: {
-                    telemetryStore.retry()
-                }) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 10.5, weight: .bold))
-                        .foregroundStyle(emerald)
-                        .rotationEffect(.degrees(telemetryStore.state == .loading && !reduceMotion ? 360 : 0))
-                        .animation(telemetryStore.state == .loading && !reduceMotion ? .linear(duration: 1.0).repeatForever(autoreverses: false) : .default, value: telemetryStore.state)
-                        .frame(width: 26, height: 26)
-                        .background(emerald.opacity(colorScheme == .dark ? 0.16 : 0.08), in: Circle())
-                }
-                .buttonStyle(CommandPOSCardPressStyle(scale: 0.90, pressedOpacity: 0.8))
-                .accessibilityLabel(Language.get("AdminPOS_RefreshTelemetry", alter: "تحديث بيانات نقطة البيع"))
-
-                Button(action: {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    withAnimation(reduceMotion ? .none : .spring(response: 0.35, dampingFraction: 0.82)) {
-                        isTelemetryExpanded.toggle()
-                    }
-                }) {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 10.5, weight: .bold))
-                        .foregroundStyle(emerald)
-                        .rotationEffect(.degrees(isTelemetryExpanded ? 180 : 0))
-                        .animation(reduceMotion ? .none : .spring(response: 0.35, dampingFraction: 0.82), value: isTelemetryExpanded)
-                        .frame(width: 26, height: 26)
-                        .background(emerald.opacity(colorScheme == .dark ? 0.16 : 0.08), in: Circle())
-                }
-                .buttonStyle(CommandPOSCardPressStyle(scale: 0.90, pressedOpacity: 0.8))
-                .accessibilityLabel(isTelemetryExpanded ? Language.get("AdminPOS_CollapseTelemetry", alter: "طي تفاصيل المبيعات") : Language.get("AdminPOS_ExpandTelemetry", alter: "توسيع تفاصيل المبيعات"))
-            }
+    private var receiptFigures: some View {
+        VStack(spacing: 12) {
+            figure("AdminPOS_Metric_Receipts", value: String(telemetryStore.todayReceiptsCount))
+            figure("AdminPOS_Metric_AOV", value: telemetryStore.formattedAverageOrderValue)
+            figure("AdminPOS_Metric_Refunds", value: String(telemetryStore.refundsCount))
         }
     }
 
-    private var fiscalTelemetryChamber: some View {
-        VStack(alignment: .leading, spacing: 11) {
-            // Gross Sales Header
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(Language.get("AdminPOS_TodaySales_Title", alter: "إجمالي مبيعات اليوم"))
-                        .font(Font.custom("Beiruti-Medium", size: 12, relativeTo: .caption))
-                        .foregroundStyle(AdminCommandInk.secondary)
-
-                    if telemetryStore.state == .loading && telemetryStore.todaySalesTotal == 0.0 {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color.primary.opacity(0.08))
-                            .frame(width: 110, height: 26)
-                            .overlay(CommandPOSShimmerMask())
-                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    } else {
-                        Text(telemetryStore.formattedTodaySales)
-                            .font(Font.custom("Beiruti-Bold", size: 22, relativeTo: .title2))
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-                            .commandNumericTransition()
-                    }
-                }
-
-                Spacer(minLength: 6)
-
-                // Shift readiness pill
-                HStack(spacing: 4) {
-                    Image(systemName: telemetryStore.todayReceiptsCount > 0 ? "chart.line.uptrend.xyaxis" : "bolt.fill")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(emerald)
-
-                    Text(telemetryStore.todayReceiptsCount > 0 ? Language.get("AdminPOS_ShiftActive", alter: "وردية نشطة") : Language.get("AdminPOS_ShiftReady", alter: "وردية جاهزة"))
-                        .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
-                        .foregroundStyle(emerald)
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(emerald.opacity(colorScheme == .dark ? 0.16 : 0.08), in: Capsule())
-            }
-
-            // Error notice banner if fetch failed
-            if case .error(let msg) = telemetryStore.state {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.circle.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(coral)
-                    Text(msg)
-                        .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
-                        .foregroundStyle(coral)
-                        .lineLimit(1)
-                    Spacer(minLength: 2)
-                    Button(action: { telemetryStore.retry() }) {
-                        Text(Language.get("Common_Retry", alter: "إعادة المحاولة"))
-                            .font(Font.custom("Beiruti-Bold", size: 10.5, relativeTo: .caption2))
-                            .foregroundStyle(coral)
-                            .underline()
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(coral.opacity(colorScheme == .dark ? 0.15 : 0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            }
-
-            // KPI Grid (Invoices, AOV, Refunds)
-            HStack(spacing: 8) {
-                // KPI 1: Invoices Count
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 3.5) {
-                        Image(systemName: "doc.plaintext.fill")
-                            .font(.system(size: 9))
-                            .foregroundStyle(sapphire)
-                        Text(Language.get("AdminPOS_Metric_Receipts", alter: "الفواتير"))
-                            .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
-                            .foregroundStyle(AdminCommandInk.secondary)
-                    }
-
-                    Text("\(telemetryStore.todayReceiptsCount)")
-                        .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .subheadline))
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .commandNumericTransition()
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 7)
-                .background(Color.primary.opacity(colorScheme == .dark ? 0.05 : 0.025), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                // KPI 2: Average Order Value
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 3.5) {
-                        Image(systemName: "chart.bar.fill")
-                            .font(.system(size: 9))
-                            .foregroundStyle(Color(red: 0.65, green: 0.48, blue: 0.96))
-                        Text(Language.get("AdminPOS_Metric_AOV", alter: "متوسط الفاتورة"))
-                            .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
-                            .foregroundStyle(AdminCommandInk.secondary)
-                    }
-
-                    Text(telemetryStore.todayReceiptsCount > 0 ? telemetryStore.formattedAverageOrderValue : "—")
-                        .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .subheadline))
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                        .commandNumericTransition()
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 7)
-                .background(Color.primary.opacity(colorScheme == .dark ? 0.05 : 0.025), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                // KPI 3: Refunds Status
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 3.5) {
-                        Image(systemName: telemetryStore.refundsCount > 0 ? "arrow.uturn.backward.circle.fill" : "checkmark.shield.fill")
-                            .font(.system(size: 9))
-                            .foregroundStyle(telemetryStore.refundsCount > 0 ? coral : emerald)
-                        Text(Language.get("AdminPOS_Metric_Refunds", alter: "المرتجعات"))
-                            .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
-                            .foregroundStyle(AdminCommandInk.secondary)
-                    }
-
-                    Text(telemetryStore.refundsCount > 0 ? "\(telemetryStore.refundsCount)" : Language.get("AdminPOS_NoRefunds", alter: "لا مرتجع"))
-                        .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .subheadline))
-                        .foregroundStyle(telemetryStore.refundsCount > 0 ? coral : emerald)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 7)
-                .background(Color.primary.opacity(colorScheme == .dark ? 0.05 : 0.025), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
-
-            // Dual-Spectrum Tender Bar (Cash vs Card)
+    private var tenderFigures: some View {
+        VStack(spacing: 12) {
+            figure("AdminPOS_Tender_Cash", value: telemetryStore.formattedCashSales)
+            figure("AdminPOS_Tender_Card", value: telemetryStore.formattedCardSales)
             if telemetryStore.todaySalesTotal > 0 {
-                VStack(spacing: 4) {
-                    GeometryReader { geo in
-                        let w = geo.size.width
-                        let cashW = max(4.0, w * telemetryStore.cashRatio)
-                        let cardW = max(4.0, w - cashW)
-
-                        HStack(spacing: 2) {
-                            RoundedRectangle(cornerRadius: 2.5, style: .continuous)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [emerald, Color(red: 0.03, green: 0.58, blue: 0.40)],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                                .frame(width: cashW)
-
-                            RoundedRectangle(cornerRadius: 2.5, style: .continuous)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [sapphire, Color(red: 0.12, green: 0.40, blue: 0.85)],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                                .frame(width: cardW)
-                        }
-                    }
-                    .frame(height: 5)
-                    .clipShape(Capsule())
-
-                    HStack {
-                        HStack(spacing: 4) {
-                            Circle().fill(emerald).frame(width: 5, height: 5)
-                            Text(Language.get("AdminPOS_Tender_Cash", alter: "نقداً") + ": " + telemetryStore.formattedCashSales)
-                                .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
-                                .foregroundStyle(AdminCommandInk.secondary)
-                        }
-
-                        Spacer()
-
-                        HStack(spacing: 4) {
-                            Circle().fill(sapphire).frame(width: 5, height: 5)
-                            Text(Language.get("AdminPOS_Tender_Card", alter: "شبكة وبطاقة") + ": " + telemetryStore.formattedCardSales)
-                                .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
-                                .foregroundStyle(AdminCommandInk.secondary)
-                        }
+                GeometryReader { geometry in
+                    HStack(spacing: 0) {
+                        AdminSurface.primary.frame(width: geometry.size.width * telemetryStore.cashRatio)
+                        AdminSurface.secondaryText.opacity(0.35)
                     }
                 }
-            } else {
-                HStack(spacing: 4) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 9))
-                        .foregroundStyle(emerald)
-                    Text(Language.get("AdminPOS_AwaitingFirstSale", alter: "بانتظار أول عملية بيع اليوم لبدء تحليل المقبوضات"))
-                        .font(Font.custom("Beiruti-Regular", size: 10.5, relativeTo: .caption2))
-                        .foregroundStyle(AdminCommandInk.secondary)
-                }
-                .padding(.vertical, 1)
+                .frame(height: 5)
+                .clipShape(Capsule())
+                .accessibilityHidden(true)
             }
         }
     }
 
-    private var actionLaunchersChamber: some View {
-        VStack(spacing: 9) {
-            // Hero Express Sale Button
-            Button(action: {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                onRoute("pos")
-            }) {
-                HStack(spacing: 10) {
-                    // Viewfinder icon with laser sweep animation
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 11, style: .continuous)
-                            .fill(Color.white.opacity(0.20))
-                            .frame(width: 36, height: 36)
-
-                        Image(systemName: "barcode.viewfinder")
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundStyle(.white)
-
-                        if !reduceMotion {
-                            Rectangle()
-                                .fill(Color.white.opacity(0.90))
-                                .frame(width: 20, height: 1.5)
-                                .offset(y: (scannerSweep - 0.5) * 16)
-                                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(telemetryStore.canSell ? Language.get("AdminPOS_StartFastCheckout", alter: "ابدأ عملية بيع سريعة") : Language.get("AdminPOS_ViewOnly_Notice", alter: "نقطة البيع (للمعاينة فقط)"))
-                            .font(Font.custom("Beiruti-Bold", size: 16.5, relativeTo: .callout))
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-
-                        Text(Language.get("AdminPOS_TerminalSubtitle_Short", alter: "مسح فوري • إضافة للسلة • دفع مباشر"))
-                            .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
-                            .foregroundStyle(Color.white.opacity(0.86))
-                            .lineLimit(1)
-                    }
-
-                    Spacer()
-
-                    HStack(spacing: 4) {
-                        Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(.white)
-                            .offset(x: (Language.isRTL() ? -1 : 1) * arrowNudge)
-                    }
-                    .frame(width: 28, height: 28)
-                    .background(Color.white.opacity(0.18), in: Circle())
-                }
-                .padding(.horizontal, 14)
-                .frame(maxWidth: .infinity)
-                .frame(height: 58)
-                .background(
-                    RoundedRectangle(cornerRadius: 15, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: telemetryStore.canSell
-                                    ? [emerald, Color(red: 0.03, green: 0.58, blue: 0.40)]
-                                    : [Color.gray, Color.gray.opacity(0.8)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 15, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.28), lineWidth: 0.8)
-                )
-                .shadow(color: (telemetryStore.canSell ? emerald : Color.clear).opacity(colorScheme == .dark ? 0.38 : 0.24), radius: 8, y: 3)
-                .contentShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+    private func figure(_ key: String, value: String) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: 16) {
+                figureLabel(key).fixedSize(horizontal: true, vertical: true)
+                Spacer(minLength: 0)
+                figureValue(value).fixedSize(horizontal: true, vertical: true)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-            .buttonStyle(CommandPOSCardPressStyle())
-            .accessibilityLabel(Language.get("AdminPOS_StartFastCheckout", alter: "ابدأ عملية بيع سريعة"))
-
-            // Twin Secondary Actions Duo (History & Expense)
-            HStack(spacing: 8) {
-                // Secondary 1: Sales Ledger & Receipts
-                Button(action: {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    onRoute("posHistory")
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "doc.text.magnifyingglass")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(sapphire)
-
-                        Text(Language.get("AdminPOS_OpenLedger_Short", alter: "سجل الفواتير"))
-                            .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .lineLimit(1)
-
-                        Spacer(minLength: 2)
-
-                        if telemetryStore.todayReceiptsCount > 0 {
-                            Text("\(telemetryStore.todayReceiptsCount)")
-                                .font(Font.custom("Beiruti-Bold", size: 10, relativeTo: .caption2))
-                                .foregroundStyle(sapphire)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(sapphire.opacity(colorScheme == .dark ? 0.20 : 0.08), in: Capsule())
-                        }
-                    }
-                    .padding(.horizontal, 11)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 38)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color(white: 0.97))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(sapphire.opacity(colorScheme == .dark ? 0.30 : 0.16), lineWidth: 0.8)
-                    )
-                    .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .buttonStyle(CommandPOSCardPressStyle())
-                .accessibilityLabel(Language.get("AdminPOS_OpenLedger_Short", alter: "سجل الفواتير"))
-
-                // Secondary 2: Quick Expense
-                Button(action: {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    showsQuickExpenseSheet = true
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "banknote.fill")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(coral)
-
-                        Text(Language.get("AdminPOS_ExpenseCard_Title", alter: "تسجيل مصروف"))
-                            .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .lineLimit(1)
-
-                        Spacer(minLength: 2)
-
-                        Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(coral)
-                    }
-                    .padding(.horizontal, 11)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 38)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color(white: 0.97))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(coral.opacity(colorScheme == .dark ? 0.30 : 0.16), lineWidth: 0.8)
-                    )
-                    .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .buttonStyle(CommandPOSCardPressStyle())
-                .accessibilityLabel(Language.get("AdminPOS_ExpenseCard_Title", alter: "تسجيل مصروف"))
-            }
-
-            if canOpenWantedPets {
-                CommandPOSWantedPetsEntry {
-                    onRoute("wantedPets")
-                }
+            VStack(alignment: .leading, spacing: 2) {
+                figureLabel(key)
+                figureValue(value)
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Language.get(key, alter: ""))
+        .accessibilityValue(value)
     }
 
-    private var specularHairline: some View {
-        Rectangle()
-            .fill(
-                LinearGradient(
-                    colors: [
-                        emerald.opacity(0.0),
-                        Color.primary.opacity(colorScheme == .dark ? 0.12 : 0.06),
-                        emerald.opacity(0.0)
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
-            .frame(height: 0.75)
+    private func figureLabel(_ key: String) -> some View {
+        Text(Language.get(key, alter: ""))
+            .font(AdminType.subheadline)
+            .foregroundStyle(AdminSurface.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
-    private var cardBackground: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
-
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            emerald.opacity(colorScheme == .dark ? 0.07 : 0.025),
-                            Color.clear
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        }
-        .allowsHitTesting(false)
-    }
-
-    private var cardBorder: some View {
-        RoundedRectangle(cornerRadius: 22, style: .continuous)
-            .strokeBorder(emerald.opacity(colorScheme == .dark ? 0.30 : 0.16), lineWidth: 0.9)
-            .allowsHitTesting(false)
+    private func figureValue(_ value: String) -> some View {
+        Text(value)
+            .font(AdminType.headline)
+            .foregroundStyle(AdminSurface.primaryText)
+            .monospacedDigit()
+            .environment(\.layoutDirection, .leftToRight)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -5592,859 +5253,6 @@ private struct CommandPOSQuickExpenseSheet: View {
 }
 
 // MARK: - Station 2 (iPad): Dedicated Add New Expense Console (Companion Card 2)
-
-private struct CommandPOSQuickExpenseConsoleiPad: View {
-    let action: () -> Void
-
-    @Environment(\.colorScheme) private var colorScheme
-    private let coral = Color(red: 0.96, green: 0.44, blue: 0.30)
-
-    private var headerBar: some View {
-        HStack(spacing: 5) {
-            HStack(spacing: 3.5) {
-                Image(systemName: "minus.circle.fill")
-                    .font(.system(size: 8))
-                    .foregroundStyle(coral)
-                Text(Language.get("AdminPOS_ExpenseCard_Badge", alter: "المصروفات"))
-                    .font(AdminType.caption2Bold)
-                    .foregroundStyle(coral)
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3.5)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(coral.opacity(colorScheme == .dark ? 0.20 : 0.09))
-            )
-
-            Spacer(minLength: 0)
-
-            // Hardware Shortcut Pill
-            Text("⌘E")
-                .font(.system(size: 9.5, weight: .bold, design: .monospaced))
-                .foregroundStyle(coral.opacity(0.85))
-                .padding(.horizontal, 5)
-                .padding(.vertical, 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(coral.opacity(colorScheme == .dark ? 0.16 : 0.08))
-                )
-        }
-    }
-
-    private var centerChamber: some View {
-        HStack(spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                coral.opacity(colorScheme == .dark ? 0.24 : 0.14),
-                                coral.opacity(colorScheme == .dark ? 0.10 : 0.05)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 52, height: 52)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(coral.opacity(0.35), lineWidth: 0.8)
-                    )
-
-                Image(systemName: "banknote.fill")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(coral)
-                    .shadow(color: coral.opacity(colorScheme == .dark ? 0.40 : 0.18), radius: 4, y: 1.5)
-
-                // Floating micro plus badge
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 15, height: 15)
-                    .overlay(
-                        Image(systemName: "plus")
-                            .font(.system(size: 8.5, weight: .black))
-                            .foregroundStyle(coral)
-                    )
-                    .shadow(color: Color.black.opacity(0.16), radius: 1.5, y: 1)
-                    .offset(x: 16, y: -16)
-            }
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(Language.get("AdminPOS_ExpenseCard_Title", alter: "تسجيل مصروف"))
-                    .font(PPBeirutiFont.bold(14.5, relativeTo: .subheadline))
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-
-                Text(Language.get("AdminPOS_ExpenseCard_Subtitle", alter: "صرف عهدة ونثرية"))
-                    .font(PPBeirutiFont.regular(11, relativeTo: .caption))
-                    .foregroundStyle(AdminCommandInk.secondary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
-            }
-        }
-        .frame(height: 72)
-    }
-
-    private var actionButton: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "plus.circle.fill")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(coral)
-
-            Text(Language.get("AdminPOS_ExpenseCard_Action", alter: "إضافة مصروف"))
-                .font(PPBeirutiFont.bold(13.5, relativeTo: .callout))
-                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.92) : AdminSurface.primaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-
-            Spacer(minLength: 2)
-
-            Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
-                .font(.system(size: 10.5, weight: .bold))
-                .foregroundStyle(coral)
-        }
-        .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity)
-        .frame(height: 44)
-        .background(
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .fill(colorScheme == .dark ? Color.white.opacity(0.08) : Color.white)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .strokeBorder(coral.opacity(colorScheme == .dark ? 0.35 : 0.22), lineWidth: 0.8)
-        )
-        .shadow(color: coral.opacity(colorScheme == .dark ? 0.18 : 0.04), radius: 4, y: 1.5)
-    }
-
-    var body: some View {
-        Button(action: {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            action()
-        }) {
-            VStack(alignment: .leading, spacing: 14) {
-                headerBar
-                centerChamber
-                actionButton
-            }
-            .padding(16)
-            .background(
-                ZStack {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(colorScheme == .dark ? Color(white: 0.14) : Color(white: 0.98))
-
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    coral.opacity(colorScheme == .dark ? 0.08 : 0.04),
-                                    coral.opacity(colorScheme == .dark ? 0.02 : 0.01)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(coral.opacity(colorScheme == .dark ? 0.32 : 0.18), lineWidth: 0.8)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        }
-        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .buttonStyle(CommandCardPressStyle(scale: 0.982, cornerRadius: 18))
-        .keyboardShortcut("e", modifiers: .command)
-        .hoverEffect(.lift)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(Language.get("AdminPOS_ExpenseCard_Title", alter: "تسجيل مصروف") + ", " + Language.get("AdminPOS_ExpenseCard_Subtitle", alter: "صرف عهدة ونثرية ومشتريات"))
-        .accessibilityHint(Language.get("AdminPOS_ExpenseCard_Action", alter: "تسجيل عملية صرف فوري") + " (⌘E)")
-    }
-}
-
-
-// MARK: - iPad Countertop Register Command Deck (Dedicated Widescreen Architecture)
-
-private struct CommandPOSiPadFlightDeck: View {
-    @ObservedObject var telemetryStore: CommandPOSShiftTelemetryStore
-    let currentBranchName: String
-    let arrowNudge: CGFloat
-    let scannerSweep: CGFloat
-    let reduceMotion: Bool
-    var isLandscape: Bool = false
-    var containerWidth: CGFloat = 0
-    let canOpenWantedPets: Bool
-    let onRoute: (String) -> Void
-
-    @Environment(\.colorScheme) private var colorScheme
-    @State private var showsQuickExpenseSheet: Bool = false
-
-    private var isLandscapeIPad: Bool {
-        isLandscape && containerWidth >= 950
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            if isLandscapeIPad {
-                // Main Panoramic Countertop Horizon (Landscape: Side-by-Side Widescreen)
-                HStack(alignment: .top, spacing: 16) {
-                    // Wing A: Flagship Fast-Sell Terminal Console (~45% Horizon)
-                    CommandPOSFastSellConsoleiPad(
-                        telemetryStore: telemetryStore,
-                        currentBranchName: currentBranchName,
-                        arrowNudge: arrowNudge,
-                        scannerSweep: scannerSweep,
-                        reduceMotion: reduceMotion,
-                        action: { onRoute("pos") },
-                        quickScanAction: { onRoute("pos") }
-                    )
-                    .frame(maxWidth: .infinity)
-                    .zIndex(10)
-
-                    // Wing B: Dual Countertop Horizon — Sales Ledger (Card 1) + Add Expense (Card 2) (~55% Horizon)
-                    HStack(alignment: .top, spacing: 12) {
-                        // Card 1: Real-time Sales Ledger & Shift Auditor Console
-                        CommandPOSHistoryConsoleiPad(
-                            telemetryStore: telemetryStore,
-                            arrowNudge: arrowNudge,
-                            reduceMotion: reduceMotion,
-                            action: { onRoute("posHistory") }
-                        )
-                        .frame(maxWidth: .infinity)
-
-                        // Card 2: Dedicated Add New Expense Console (Smaller width, matching height)
-                        CommandPOSQuickExpenseConsoleiPad(
-                            action: {
-                                showsQuickExpenseSheet = true
-                            }
-                        )
-                        .frame(width: 175)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-            } else {
-                // Portrait Countertop Horizon (Stacked Wings: Fast-Sell top full width, History + Expense below)
-                VStack(spacing: 14) {
-                    CommandPOSFastSellConsoleiPad(
-                        telemetryStore: telemetryStore,
-                        currentBranchName: currentBranchName,
-                        arrowNudge: arrowNudge,
-                        scannerSweep: scannerSweep,
-                        reduceMotion: reduceMotion,
-                        action: { onRoute("pos") },
-                        quickScanAction: { onRoute("pos") }
-                    )
-                    .frame(maxWidth: .infinity)
-                    .zIndex(10)
-
-                    HStack(alignment: .top, spacing: 12) {
-                        CommandPOSHistoryConsoleiPad(
-                            telemetryStore: telemetryStore,
-                            arrowNudge: arrowNudge,
-                            reduceMotion: reduceMotion,
-                            action: { onRoute("posHistory") }
-                        )
-                        .frame(maxWidth: .infinity)
-
-                        CommandPOSQuickExpenseConsoleiPad(
-                            action: {
-                                showsQuickExpenseSheet = true
-                            }
-                        )
-                        .frame(width: max(220, containerWidth > 0 ? (containerWidth * 0.34) : 220))
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-            }
-
-            if canOpenWantedPets {
-                CommandPOSWantedPetsEntry {
-                    onRoute("wantedPets")
-                }
-                .padding(.top, 14)
-            }
-
-            // Bottom Diagnostics Filament Strip
-            CommandPOSDiagnosticsFilamentiPad(
-                telemetryStore: telemetryStore,
-                currentBranchName: currentBranchName
-            )
-            .padding(.top, 14)
-        }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(colorScheme == .dark ? Color(white: 0.11) : Color.white)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(Color(red: 0.05, green: 0.72, blue: 0.51).opacity(colorScheme == .dark ? 0.32 : 0.16), lineWidth: 0.85)
-        )
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.32 : 0.06), radius: 14, y: 5)
-        .fullScreenCover(isPresented: $showsQuickExpenseSheet) {
-            CommandPOSQuickExpenseSheet(
-                currentBranchName: currentBranchName,
-                onRoute: onRoute
-            )
-        }
-    }
-}
-
-// MARK: - Station 1 (iPad): Countertop POS Terminal Console
-
-private struct CommandPOSFastSellConsoleiPad: View {
-    @ObservedObject var telemetryStore: CommandPOSShiftTelemetryStore
-    let currentBranchName: String
-    let arrowNudge: CGFloat
-    let scannerSweep: CGFloat
-    let reduceMotion: Bool
-    let action: () -> Void
-    let quickScanAction: () -> Void
-
-    @Environment(\.colorScheme) private var colorScheme
-    private let accent = Color(red: 0.05, green: 0.72, blue: 0.51)
-
-    private func handlePrimaryTap() {
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        action()
-    }
-
-    private func handleQuickScanTap() {
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        quickScanAction()
-    }
-
-    var body: some View {
-        Button(action: handlePrimaryTap) {
-            VStack(alignment: .leading, spacing: 14) {
-                // Top Telemetry Horizon
-                HStack(spacing: 6) {
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(telemetryStore.canSell ? accent : Color.orange)
-                            .frame(width: 6.5, height: 6.5)
-                        Text(telemetryStore.canSell ? Language.get("AdminPOS_ActiveTerminal_Badge", alter: "نظام نقطة البيع المباشر") : Language.get("AdminPOS_Status_AuditMode", alter: "وضع التدقيق والمشاهدة"))
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(telemetryStore.canSell ? accent : Color.orange)
-                    }
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .background((telemetryStore.canSell ? accent : Color.orange).opacity(colorScheme == .dark ? 0.20 : 0.08), in: Capsule())
-
-                    HStack(spacing: 3.5) {
-                        Image(systemName: "person.badge.shield.checkmark.fill")
-                            .font(.system(size: 8.5))
-                            .foregroundStyle(AdminCommandInk.secondary)
-                        Text(telemetryStore.activeStaffName)
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .lineLimit(1)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.04), in: Capsule())
-
-                    Spacer()
-                }
-
-                // Center Body: Optical Reticle + Details
-                HStack(alignment: .center, spacing: 14) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        accent.opacity(colorScheme == .dark ? 0.22 : 0.12),
-                                        accent.opacity(colorScheme == .dark ? 0.08 : 0.04)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-
-                        Image(systemName: "barcode.viewfinder")
-                            .font(.system(size: 34, weight: .semibold))
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(accent)
-                            .shadow(color: accent.opacity(colorScheme == .dark ? 0.45 : 0.20), radius: 6, y: 2)
-
-                        if !reduceMotion {
-                            Rectangle()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [.clear, accent.opacity(0.75), .clear],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    )
-                                )
-                                .frame(height: 2.5)
-                                .offset(y: (scannerSweep - 0.5) * 36)
-                                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        }
-                    }
-                    .frame(width: 72, height: 72)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .strokeBorder(accent.opacity(colorScheme == .dark ? 0.35 : 0.18), lineWidth: 1)
-                    )
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(Language.get("AdminPOS_TerminalTitle_iPad", alter: "نقطة البيع السريعة الفورية"))
-                            .font(Font.custom("Beiruti-Bold", size: 19, relativeTo: .title3))
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .lineLimit(1)
-
-                        Text(Language.get("AdminPOS_TerminalSubtitle_Clean", alter: "إتمام عمليات البيع الفوري ومسح الباركود وإصدار الفواتير"))
-                            .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .subheadline))
-                            .foregroundStyle(AdminCommandInk.secondary)
-                            .lineLimit(2)
-                    }
-
-                    Spacer(minLength: 0)
-                }
-
-                // Primary Launch Bar + Quick Scan Action
-                HStack(spacing: 10) {
-                    // Start Session Primary Bar
-                    HStack(spacing: 9) {
-                        Image(systemName: "barcode.viewfinder")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(.white)
-
-                        Text(telemetryStore.canSell ? Language.get("AdminPOS_Launch_Session", alter: "بدء جلسة البيع الفوري السريع") : Language.get("AdminPOS_ViewOnly_Notice", alter: "نقطة البيع (للمعاينة فقط)"))
-                            .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .callout))
-                            .foregroundStyle(.white)
-
-                        Spacer()
-
-                        // Keyboard Shortcut Pill
-                        Text("⌘N")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.88))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(Color.white.opacity(0.20), in: RoundedRectangle(cornerRadius: 5))
-
-                        Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(.white)
-                            .offset(x: (Language.isRTL() ? -1 : 1) * arrowNudge)
-                    }
-                    .padding(.horizontal, 16)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 52)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: telemetryStore.canSell
-                                        ? [accent, Color(red: 0.03, green: 0.58, blue: 0.40)]
-                                        : [Color.gray, Color.gray.opacity(0.8)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.28), lineWidth: 0.8)
-                    )
-                    .shadow(color: accent.opacity(colorScheme == .dark ? 0.40 : 0.22), radius: 7, y: 3)
-
-                    // Quick Scan Action Pill
-                    HStack(spacing: 6) {
-                        Image(systemName: "camera.viewfinder")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(accent)
-
-                        Text("⌘B")
-                            .font(.system(size: 10.5, weight: .bold, design: .monospaced))
-                            .foregroundStyle(accent)
-                    }
-                    .padding(.horizontal, 14)
-                    .frame(height: 52)
-                    .background(accent.opacity(colorScheme == .dark ? 0.16 : 0.08))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(accent.opacity(colorScheme == .dark ? 0.32 : 0.18), lineWidth: 0.75)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(colorScheme == .dark ? Color(white: 0.14) : Color(white: 0.98))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(accent.opacity(colorScheme == .dark ? 0.32 : 0.16), lineWidth: 0.8)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        }
-        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .buttonStyle(CommandCardPressStyle(scale: 0.985, pressedOpacity: 0.95, cornerRadius: 18))
-        .keyboardShortcut("n", modifiers: .command)
-        .background(
-            Button(action: handleQuickScanTap) {
-                EmptyView()
-            }
-            .keyboardShortcut("b", modifiers: .command)
-            .opacity(0)
-        )
-        .hoverEffect(.lift)
-        .accessibilityLabel(Language.get("AdminPOS_TerminalTitle_iPad", alter: "نقطة البيع السريعة الفورية"))
-        .accessibilityHint(Language.get(
-            telemetryStore.canSell ? "AdminPOS_Launch_Session" : "AdminPOS_ViewOnly_Notice",
-            alter: nil
-        ))
-        .accessibilityIdentifier("admin.command.pos.card")
-        .accessibilityElement(children: .contain)
-    }
-}
-
-// MARK: - Station 2 (iPad): Real-time Sales Ledger & Shift Auditor Console
-
-private struct CommandPOSHistoryConsoleiPad: View {
-    @ObservedObject var telemetryStore: CommandPOSShiftTelemetryStore
-    let arrowNudge: CGFloat
-    let reduceMotion: Bool
-    let action: () -> Void
-
-    @Environment(\.colorScheme) private var colorScheme
-    private let accent = Color(red: 0.18, green: 0.52, blue: 0.96)
-
-    private var headerBar: some View {
-        HStack(spacing: 6) {
-            HStack(spacing: 5) {
-                Image(systemName: "doc.text.fill")
-                    .font(.system(size: 8))
-                    .foregroundStyle(accent)
-                Text(Language.get("AdminPOS_HistorySection_Badge", alter: "سجل المبيعات والوردية"))
-                    .font(AdminType.caption2Bold)
-                    .foregroundStyle(accent)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(accent.opacity(colorScheme == .dark ? 0.20 : 0.08), in: Capsule())
-
-            Spacer()
-
-            // Shift status indicator
-            HStack(spacing: 3.5) {
-                Circle()
-                    .fill(telemetryStore.todayReceiptsCount > 0 ? Color(red: 0.05, green: 0.72, blue: 0.51) : accent)
-                    .frame(width: 5.5, height: 5.5)
-                Text(telemetryStore.todayReceiptsCount > 0 ? Language.get("AdminPOS_ShiftActive", alter: "وردية نشطة") : Language.get("AdminPOS_ShiftReady", alter: "وردية جاهزة"))
-                    .font(AdminType.caption2Medium)
-                    .foregroundStyle(AdminCommandInk.secondary)
-            }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.04), in: Capsule(style: .continuous))
-        }
-    }
-
-    private var pulseChamber: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            accent.opacity(colorScheme == .dark ? 0.22 : 0.12),
-                            accent.opacity(colorScheme == .dark ? 0.08 : 0.04)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 34, weight: .semibold))
-                .foregroundStyle(accent)
-                .shadow(color: accent.opacity(colorScheme == .dark ? 0.45 : 0.20), radius: 6, y: 2)
-        }
-        .frame(width: 72, height: 72)
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(accent.opacity(colorScheme == .dark ? 0.35 : 0.18), lineWidth: 1)
-        )
-    }
-
-    private var salesVolumeHeader: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(Language.get("AdminPOS_TodaySales", alter: "مبيعات اليوم"))
-                .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .subheadline))
-                .foregroundStyle(AdminCommandInk.secondary)
-                .lineLimit(1)
-
-            Spacer(minLength: 4)
-
-            if telemetryStore.state == .loading && telemetryStore.todaySalesTotal == 0.0 {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.primary.opacity(0.08))
-                    .frame(width: 80, height: 20)
-                    .overlay(CommandPOSShimmerMask())
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-            } else {
-                Text(telemetryStore.formattedTodaySales)
-                    .font(Font.custom("Beiruti-Bold", size: 18, relativeTo: .title3))
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-                    .commandNumericTransition()
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var spectrumBar: some View {
-        if telemetryStore.todaySalesTotal > 0 {
-            VStack(spacing: 3) {
-                GeometryReader { g in
-                    let total: CGFloat = CGFloat(telemetryStore.todaySalesTotal)
-                    let cash: CGFloat = CGFloat(telemetryStore.cashSalesTotal)
-                    let ratio: CGFloat = total > 0 ? (cash / total) : 0.0
-                    let cashPct: CGFloat = min(max(ratio, 0.0), 1.0)
-                    let cardPct: CGFloat = 1.0 - cashPct
-                    let cashWidth: CGFloat = max(g.size.width * cashPct - 1.0, 4.0)
-                    let cardWidth: CGFloat = max(g.size.width * cardPct - 1.0, 4.0)
-
-                    HStack(spacing: 2) {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Color(red: 0.06, green: 0.78, blue: 0.56))
-                            .frame(width: cashWidth)
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(accent)
-                            .frame(width: cardWidth)
-                    }
-                }
-                .frame(height: 4)
-
-                HStack {
-                    Text(Language.get("AdminPOS_Tender_Cash", alter: "نقداً") + ": " + telemetryStore.formattedCashSales)
-                        .font(Font.custom("Beiruti-Regular", size: 9.5, relativeTo: .caption2))
-                        .foregroundStyle(AdminCommandInk.secondary)
-                    Spacer()
-                    Text(Language.get("AdminPOS_Tender_Card", alter: "شبكة") + ": " + telemetryStore.formattedCardSales)
-                        .font(Font.custom("Beiruti-Regular", size: 9.5, relativeTo: .caption2))
-                        .foregroundStyle(AdminCommandInk.secondary)
-                }
-            }
-            .padding(.vertical, 2)
-        }
-    }
-
-    private var shiftCapabilitiesRow: some View {
-        HStack(spacing: 5) {
-            HStack(spacing: 2.5) {
-                Text("\(telemetryStore.todayReceiptsCount)")
-                    .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
-                    .foregroundStyle(accent)
-                Text(Language.get("AdminPOS_TransactionsCount", alter: "عملية"))
-                    .font(Font.custom("Beiruti-Regular", size: 10.5, relativeTo: .caption2))
-            }
-            Text("•")
-                .font(.system(size: 9))
-            HStack(spacing: 2.5) {
-                Text(telemetryStore.todayReceiptsCount > 0 ? telemetryStore.formattedAverageOrderValue : "—")
-                    .font(Font.custom("Beiruti-Bold", size: 11.5, relativeTo: .caption))
-                    .foregroundStyle(Color(red: 0.65, green: 0.48, blue: 0.96))
-                Text(Language.get("AdminPOS_Metric_AOV_Short", alter: "معدل السلة"))
-                    .font(Font.custom("Beiruti-Regular", size: 10.5, relativeTo: .caption2))
-            }
-            Text("•")
-                .font(.system(size: 9))
-            HStack(spacing: 2.5) {
-                Text("\(telemetryStore.refundsCount)")
-                    .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
-                    .foregroundStyle(telemetryStore.refundsCount > 0 ? Color(red: 0.95, green: 0.40, blue: 0.40) : AdminSurface.primaryText)
-                Text(Language.get("AdminPOS_Feature_Refunds", alter: "المرتجعات"))
-                    .font(Font.custom("Beiruti-Regular", size: 10.5, relativeTo: .caption2))
-            }
-        }
-        .lineLimit(1)
-        .minimumScaleFactor(0.82)
-        .foregroundStyle(AdminCommandInk.secondary)
-        .padding(.top, 1)
-    }
-
-    private var statsColumn: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            salesVolumeHeader
-            spectrumBar
-            shiftCapabilitiesRow
-        }
-    }
-
-    private var actionButton: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "doc.text.magnifyingglass")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.92) : AdminSurface.primaryText)
-
-            Text(Language.get("AdminPOS_Open_History", alter: "فتح سجل الفواتير والإيصالات"))
-                .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .callout))
-                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.92) : AdminSurface.primaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-
-            Spacer(minLength: 4)
-
-            // Keyboard Shortcut Pill
-            Text("⌘H")
-                .font(.system(size: 9.5, weight: .bold, design: .monospaced))
-                .foregroundStyle(AdminCommandInk.secondary)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 2)
-                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 4))
-
-            Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(accent)
-                .offset(x: (Language.isRTL() ? -1 : 1) * arrowNudge)
-        }
-        .padding(.horizontal, 14)
-        .frame(maxWidth: .infinity)
-        .frame(height: 44)
-        .background(
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .fill(colorScheme == .dark ? Color.white.opacity(0.08) : Color.white)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .strokeBorder(accent.opacity(colorScheme == .dark ? 0.32 : 0.20), lineWidth: 0.8)
-        )
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.04), radius: 4, y: 1.5)
-    }
-
-    var body: some View {
-        Button(action: {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            action()
-        }) {
-            VStack(alignment: .leading, spacing: 14) {
-                headerBar
-
-                HStack(alignment: .center, spacing: 14) {
-                    pulseChamber
-                    statsColumn
-                }
-
-                actionButton
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(colorScheme == .dark ? Color(white: 0.14) : Color(white: 0.98))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(accent.opacity(colorScheme == .dark ? 0.32 : 0.16), lineWidth: 0.8)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        }
-        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .buttonStyle(CommandCardPressStyle(scale: 0.985, pressedOpacity: 0.95, cornerRadius: 18))
-        .keyboardShortcut("h", modifiers: .command)
-        .hoverEffect(.lift)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(Language.get("AdminPOS_HistoryTitle_iPad", alter: "سجل فواتير الكاشير واليومية") + ", " + telemetryStore.formattedTodaySales)
-    }
-}
-
-// MARK: - iPad Diagnostics Filament Strip
-
-private struct CommandPOSDiagnosticsFilamentiPad: View {
-    @ObservedObject var telemetryStore: CommandPOSShiftTelemetryStore
-    let currentBranchName: String
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        HStack(spacing: 12) {
-            HStack(spacing: 4.5) {
-                Image(systemName: "cpu")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(Color(red: 0.06, green: 0.78, blue: 0.56))
-                Text(telemetryStore.canSell ? "STATION: ONLINE" : "STATION: AUDIT")
-                    .font(.system(size: 9.5, weight: .bold, design: .monospaced))
-                    .foregroundStyle(AdminCommandInk.secondary)
-            }
-
-            Circle()
-                .fill(Color(uiColor: .ppSurfaceBorder))
-                .frame(width: 3, height: 3)
-
-            HStack(spacing: 4.5) {
-                Image(systemName: "antenna.radiowaves.left.and.right")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(Color(red: 0.06, green: 0.78, blue: 0.56))
-                Text(telemetryStore.state == .loading ? (Language.isRTL() ? "المزامنة: جارِ التحديث..." : "Sync: Updating...") : (telemetryStore.relativeTimeString.isEmpty ? (Language.isRTL() ? "المزامنة: متصل لحظياً" : "Sync: Real-time Cloud") : "\(Language.isRTL() ? "المزامنة" : "Sync"): \(telemetryStore.relativeTimeString)"))
-                    .font(.system(size: 9.5, weight: .medium))
-                    .foregroundStyle(AdminCommandInk.secondary)
-            }
-
-            Circle()
-                .fill(Color(uiColor: .ppSurfaceBorder))
-                .frame(width: 3, height: 3)
-
-            HStack(spacing: 4.5) {
-                Image(systemName: "person.badge.shield.checkmark.fill")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(Color(red: 0.14, green: 0.54, blue: 0.98))
-                Text(telemetryStore.activeStaffName)
-                    .font(AdminType.caption2Bold)
-                    .foregroundStyle(AdminSurface.primaryText)
-            }
-
-            Spacer()
-
-            Button(action: {
-                telemetryStore.retry()
-            }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 9, weight: .bold))
-                    Text(Language.get("Common_Refresh", alter: "تحديث"))
-                        .font(.system(size: 9.5, weight: .medium))
-                }
-                .foregroundStyle(Color(red: 0.06, green: 0.78, blue: 0.56))
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
-                .background(Color(red: 0.06, green: 0.78, blue: 0.56).opacity(colorScheme == .dark ? 0.15 : 0.08), in: Capsule())
-            }
-
-            Circle()
-                .fill(Color(uiColor: .ppSurfaceBorder))
-                .frame(width: 3, height: 3)
-
-            HStack(spacing: 4.5) {
-                Image(systemName: "building.2.fill")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(AdminCommandInk.secondary)
-                Text(currentBranchName)
-                    .font(AdminType.caption2Bold)
-                    .foregroundStyle(AdminSurface.primaryText)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8.5)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(colorScheme == .dark ? Color.white.opacity(0.04) : Color.black.opacity(0.02))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.35 : 0.18), lineWidth: 0.5)
-        )
-    }
-}
 
 // MARK: - Stock Deck Preference Keys
 

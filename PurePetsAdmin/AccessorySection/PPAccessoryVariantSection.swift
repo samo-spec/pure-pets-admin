@@ -22,6 +22,7 @@
 
 import SwiftUI
 import PhotosUI
+import AVFoundation
 
 // MARK: - SwiftUI colour bridge
 
@@ -96,6 +97,8 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
     @Published var draft: PPAccessoryVariantFamily?
     @Published var selectedProductId: String = ""
     @Published private(set) var rootAccessory: PetAccessory?
+    @Published private(set) var rootAccessoryRevision: Int = 0
+    var onRootAccessoryUpdated: ((PetAccessory) -> Void)?
 
     @Published private(set) var isLoading = false
     @Published private(set) var isSaving = false
@@ -171,6 +174,7 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
 
     func load(for accessory: PetAccessory) async {
         rootAccessory = accessory
+        rootAccessoryRevision = max(1, accessory.revision)
         isLoading = true
         failure = nil
         defer { isLoading = false }
@@ -213,6 +217,24 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
             selectedProductId = family.defaultVariantProductId.isEmpty
                 ? (family.variants.first?.productId ?? "")
                 : family.defaultVariantProductId
+        }
+        if let root = rootAccessory, let matched = family.variant(forProductId: root.accessoryID) {
+            if matched.revision > root.revision {
+                root.revision = matched.revision
+            }
+            if !matched.barcode.isEmpty {
+                root.barcode = matched.barcode
+            }
+            if !matched.sku.isEmpty {
+                root.sku = matched.sku
+            }
+            root.quantity = matched.quantity
+            root.isDefaultVariant = matched.isDefault
+            root.variantSortOrder = matched.sortOrder
+            rootAccessoryRevision = max(rootAccessoryRevision, root.revision)
+            onRootAccessoryUpdated?(root)
+        } else if let root = rootAccessory {
+            rootAccessoryRevision = max(rootAccessoryRevision, root.revision)
         }
         // Reset media state from the confirmed server view. Any staged upload is
         // already committed or discarded by this point.
@@ -1184,7 +1206,11 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
             stagedImages[productId] = []
             retainedImageURLs[productId] = confirmed.imageURLsArray ?? []
             originalImageURLs[productId] = confirmed.imageURLsArray ?? []
-            if productId == rootAccessory?.accessoryID { rootAccessory = confirmed }
+            if productId == rootAccessory?.accessoryID {
+                rootAccessory = confirmed
+                rootAccessoryRevision = max(rootAccessoryRevision, confirmed.revision)
+                onRootAccessoryUpdated?(confirmed)
+            }
             // Only orphaned media absent from confirmed state can be removed.
             await PPAccessoryVariantMediaService.shared.deleteOrphans(pending.mediaCommit.orphanedURLs.filter { !(confirmed.imageURLsArray ?? []).contains($0) })
 
@@ -1381,10 +1407,16 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
                     deleteOtherVariants: true
                 )
 
-                rootAccessory?.productFamilyId = nil
-                rootAccessory?.isVariant = false
-                rootAccessory?.isDefaultVariant = false
-                rootAccessory?.variantSortOrder = 0
+                if let reloaded = try? await PPAccessoryVariantService.shared.loadProduct(productId: retainedId) {
+                    rootAccessory = reloaded
+                    rootAccessoryRevision = max(rootAccessoryRevision, reloaded.revision)
+                    onRootAccessoryUpdated?(reloaded)
+                } else {
+                    rootAccessory?.productFamilyId = nil
+                    rootAccessory?.isVariant = false
+                    rootAccessory?.isDefaultVariant = false
+                    rootAccessory?.variantSortOrder = 0
+                }
 
                 if let root = rootAccessory {
                     let standalone = PPAccessoryVariantFamily.legacySingleVariant(from: root)
@@ -1753,6 +1785,7 @@ struct PPAccessoryVariantSection: View {
     /// where SKU, barcode, price, stock and images are edited.
     var onOpenVariantProduct: ((String) -> Void)?
     var onDidRevertToNormal: (() -> Void)? = nil
+    var onRootAccessoryUpdated: ((PetAccessory) -> Void)? = nil
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -1799,6 +1832,28 @@ struct PPAccessoryVariantSection: View {
     @State private var isPresentingColorEditor = false
     @State private var editingProductId: String?
     @State private var mediaPickerTarget: VariantMediaPickerTarget?
+    @State private var pendingCameraVariantID: String?
+    @State private var showVariantPhotoSourceDialog: Bool = false
+    @State private var showVariantCameraPicker: Bool = false
+    @State private var showVariantCameraAccessAlert: Bool = false
+    @State private var variantCameraAlertMessage: String = ""
+
+    private func presentVariantPhotoSource(for productId: String) {
+        pendingCameraVariantID = productId
+        showVariantPhotoSourceDialog = true
+    }
+
+    private func requestVariantCamera() {
+        PPCameraPermissionHelper.requestCameraAccess(
+            onAuthorized: {
+                showVariantCameraPicker = true
+            },
+            onDenied: { msg in
+                variantCameraAlertMessage = msg
+                showVariantCameraAccessAlert = true
+            }
+        )
+    }
     @State private var previewMedia: PPLivePetPreviewMedia?
     @State private var activeStudioMode: VariantStudioMode? = nil
     @State private var copiedHexBanner: String? = nil
@@ -1899,6 +1954,44 @@ struct PPAccessoryVariantSection: View {
                 "Variant_RevertToNormal_Confirm_Desc",
                 alter: "هل أنت متأكد من رغبتك في إلغاء مجموعة المتغيرات؟ سيتم الاحتفاظ بهذا المنتج كصنف عادي مستقل وحذف باقي المتغيرات التابعة له."
             ))
+        }
+        .confirmationDialog(
+            Language.get("Inventory_PhotoSource_Title", alter: "إضافة صور"),
+            isPresented: $showVariantPhotoSourceDialog,
+            titleVisibility: .visible
+        ) {
+            Button(Language.get("Inventory_PhotoSource_Camera", alter: "التقاط بالكاميرا")) {
+                requestVariantCamera()
+            }
+            Button(Language.get("Inventory_PhotoSource_Library", alter: "اختيار من مكتبة الصور")) {
+                if let targetID = pendingCameraVariantID {
+                    mediaPickerTarget = VariantMediaPickerTarget(id: targetID)
+                }
+            }
+            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+        } message: {
+            Text(Language.get("Inventory_PhotoSource_Message", alter: "اختر التقاط صورة جديدة بالكاميرا أو اختيار صور من المكتبة."))
+        }
+        .fullScreenCover(isPresented: $showVariantCameraPicker) {
+            PPLivePetCameraPicker { image in
+                if let targetID = pendingCameraVariantID {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        model.addImages([image], forProductId: targetID)
+                    }
+                }
+            }
+        }
+        .alert(
+            Language.get("Inventory_CameraPermission_Title", alter: "السماح باستخدام الكاميرا"),
+            isPresented: $showVariantCameraAccessAlert
+        ) {
+            Button(Language.get("LivePetIntake_OpenSettings", alter: "فتح الإعدادات")) {
+                guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(settingsURL)
+            }
+            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+        } message: {
+            Text(variantCameraAlertMessage.isEmpty ? Language.get("Inventory_CameraPermission_Message", alter: "يحتاج التطبيق إذن الوصول للكاميرا لالتقاط الصور. يمكنك تفعيل الإذن من إعدادات الجهاز.") : variantCameraAlertMessage)
         }
         .sheet(item: $mediaPickerTarget) { target in
             let remaining = max(
@@ -2020,6 +2113,11 @@ struct PPAccessoryVariantSection: View {
                         }
                     }
                 )
+            }
+        }
+        .onAppear {
+            if let callback = onRootAccessoryUpdated {
+                model.onRootAccessoryUpdated = callback
             }
         }
     }
@@ -3292,7 +3390,7 @@ struct PPAccessoryVariantSection: View {
                     if model.canManageVariants && model.canAddImage(forProductId: variant.productId) {
                         Button {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            mediaPickerTarget = VariantMediaPickerTarget(id: variant.productId)
+                            presentVariantPhotoSource(for: variant.productId)
                         } label: {
                             VStack(spacing: 5) {
                                 ZStack {
@@ -3810,39 +3908,47 @@ struct PPAccessoryVariantSection: View {
     // MARK: - Save Dock
 
     private var saveDock: some View {
-        HStack(spacing: 12) {
-            Button(Language.get("Discard", alter: "تجاهل")) {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                model.discardChanges()
+        VStack(alignment: .leading, spacing: 8) {
+            if !model.canManageVariants {
+                Label(Language.get("Variant_Save_PermissionGuidance", alter: "لا تملك صلاحية حفظ خيارات هذا المنتج. اطلب من مسؤول النظام صلاحية إضافة أو إدارة الأصناف ضمن نطاق الفروع المسموح لك، ثم أعد فتح المنتج."), systemImage: "lock.fill")
+                    .font(AdminType.footnote)
+                    .foregroundStyle(AdminSurface.crimson)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .font(AdminType.calloutBold)
-            .buttonStyle(.bordered)
-            .disabled(model.isEditingLocked)
-
-            Spacer()
-
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                Task { await model.save() }
-            } label: {
-                if model.isSaving {
-                    HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
-                        Text(Language.get("Saving", alter: "جارٍ الحفظ..."))
-                            .font(AdminType.calloutBold)
-                    }
-                } else {
-                    Label(
-                        model.draft?.hasGenericOptions == true
-                            ? Language.get("Options_Save_Changes", alter: "حفظ الخيارات والمتغيرات")
-                            : Language.get("Variant_Save", alter: "حفظ الألوان"),
-                        systemImage: "checkmark.circle.fill"
-                    )
-                    .font(AdminType.calloutBold)
+            HStack(spacing: 12) {
+                Button(Language.get("Discard", alter: "تجاهل")) {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    model.discardChanges()
                 }
+                .font(AdminType.calloutBold)
+                .buttonStyle(.bordered)
+                .disabled(model.isEditingLocked)
+
+                Spacer()
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    Task { await model.save() }
+                } label: {
+                    if model.isSaving {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text(Language.get("Saving", alter: "جارٍ الحفظ..."))
+                                .font(AdminType.calloutBold)
+                        }
+                    } else {
+                        Label(
+                            model.draft?.hasGenericOptions == true
+                                ? Language.get("Options_Save_Changes", alter: "حفظ الخيارات والمتغيرات")
+                                : Language.get("Variant_Save", alter: "حفظ الألوان"),
+                            systemImage: "checkmark.circle.fill"
+                        )
+                        .font(AdminType.calloutBold)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(model.isSaving || !model.canManageVariants || !model.validationMessages.isEmpty)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(model.isSaving || !model.canManageVariants || !model.validationMessages.isEmpty)
         }
         .padding(12)
         .background(
@@ -3967,6 +4073,22 @@ struct PPAccessoryVariantStudioSheet: View {
 
     @State private var isChoosingColorFullStudio = false
     @State private var isPresentingImagePicker = false
+    @State private var showStudioPhotoSourceDialog = false
+    @State private var showStudioCameraPicker = false
+    @State private var showStudioCameraAccessAlert = false
+    @State private var studioCameraAlertMessage = ""
+
+    private func requestStudioCamera() {
+        PPCameraPermissionHelper.requestCameraAccess(
+            onAuthorized: {
+                showStudioCameraPicker = true
+            },
+            onDenied: { msg in
+                studioCameraAlertMessage = msg
+                showStudioCameraAccessAlert = true
+            }
+        )
+    }
     @State private var localFailure: String?
     @State private var localSubmitting = false
     @State private var isHexCopied = false
@@ -4120,31 +4242,62 @@ struct PPAccessoryVariantStudioSheet: View {
         return nil
     }
 
-    private var canSubmit: Bool {
-        guard !isSubmitting, !localSubmitting else { return false }
-        if hasGenericOptions {
-            if combinationConflictMessage != nil { return false }
-        } else {
-            if mode.isEdit {
-                if case .edit(let v) = mode {
-                    if color.identifier != v.color.identifier && usedColorIdentifiers.contains(color.identifier) {
-                        return false
-                    }
-                }
-            } else {
-                if usedColorIdentifiers.contains(color.identifier) { return false }
+    private struct SubmitIssue {
+        let message: String
+        let sectionID: String
+        var field: StudioField? = nil
+    }
+
+    /// The same issue both disables Save and tells the operator how to unblock it.
+    private var submitIssue: SubmitIssue? {
+        if hasGenericOptions, combinationConflictMessage != nil {
+            return SubmitIssue(
+                message: Language.get("Variant_Studio_CombinationGuidance", alter: "هذه التوليفة مستخدمة بالفعل. غيّر أحد الخيارات، أو أغلق هذا المحرر وافتح المتغير الموجود لتعديله."),
+                sectionID: "studio.identity"
+            )
+        }
+        if !hasGenericOptions, usedColorIdentifiers.contains(color.identifier), color.identifier != originalColorID {
+            return SubmitIssue(
+                message: Language.get("Variant_Studio_ColorGuidance", alter: "هذا اللون مستخدم بالفعل. اختر لونًا آخر من تغيير اللون، أو أغلق هذا المحرر وافتح اللون الموجود لتعديله."),
+                sectionID: "studio.identity"
+            )
+        }
+        if barcodeConflictMessage != nil {
+            return SubmitIssue(
+                message: Language.get("Variant_Studio_BarcodeGuidance", alter: "الباركود مستخدم لمتغير آخر. أدخل باركودًا مختلفًا أو اضغط توليد باركود PP، ثم احفظ."),
+                sectionID: "studio.identifiers", field: .barcode
+            )
+        }
+        if skuConflictMessage != nil {
+            return SubmitIssue(
+                message: Language.get("Variant_Studio_SKUGuidance", alter: "رمز المنتج مستخدم لمتغير آخر. أدخل رمزًا مختلفًا أو اضغط توليد SKU، ثم احفظ."),
+                sectionID: "studio.identifiers", field: .sku
+            )
+        }
+        guard let retailPrice, retailPrice.isFinite, retailPrice > 0 else {
+            return SubmitIssue(
+                message: Language.get("Variant_Studio_RetailGuidance", alter: "أدخل سعر البيع أكبر من صفر وحتى 999,999,999.99 ر.ق، بمنزلتين عشريتين كحد أقصى، ثم احفظ."),
+                sectionID: "studio.pricing", field: .retail
+            )
+        }
+        if canViewCosts, !costPriceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, costPrice == nil {
+            return SubmitIssue(
+                message: Language.get("Variant_Studio_CostGuidance", alter: "أدخل تكلفة من صفر حتى 999,999,999.99 ر.ق، بمنزلتين عشريتين كحد أقصى، أو اترك حقل التكلفة الاختياري فارغًا، ثم احفظ."),
+                sectionID: "studio.pricing", field: .cost
+            )
+        }
+        if wholesaleEnabled {
+            guard let wholesalePrice, wholesalePrice.isFinite, wholesalePrice > 0 else {
+                return SubmitIssue(
+                    message: Language.get("Variant_Studio_WholesaleGuidance", alter: "أدخل سعر الجملة أكبر من صفر وحتى 999,999,999.99 ر.ق، بمنزلتين عشريتين كحد أقصى، أو أوقف سعر جملة مستقل، ثم احفظ."),
+                    sectionID: "studio.pricing", field: .wholesale
+                )
             }
         }
-        if barcodeConflictMessage != nil { return false }
-        if skuConflictMessage != nil { return false }
-        guard let retailPrice, retailPrice.isFinite, retailPrice > 0 else { return false }
-        if canViewCosts, !costPriceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           costPrice == nil { return false }
-        if wholesaleEnabled {
-            guard let wholesalePrice, wholesalePrice.isFinite, wholesalePrice > 0 else { return false }
-        }
-        return true
+        return nil
     }
+
+    private var canSubmit: Bool { !busy && submitIssue == nil }
 
     private var busy: Bool { localSubmitting || isSubmitting }
     private var studioMotion: Animation? { AdminAnimation.motion(AdminAnimation.standard, reduceMotion: reduceMotion) }
@@ -4183,11 +4336,11 @@ struct PPAccessoryVariantStudioSheet: View {
                         VStack(alignment: .leading, spacing: 20) {
                             chromaticAtelierCard
                             genericOptionsCard
-                        }.modifier(PPVariantStudioPanel())
+                        }.modifier(PPVariantStudioPanel()).id("studio.identity")
                         photosAtelierCard.modifier(PPVariantStudioPanel())
                         stockQuantityDialCard.modifier(PPVariantStudioPanel())
-                        commercePricingCard.modifier(PPVariantStudioPanel())
-                        identifiersCard.modifier(PPVariantStudioPanel())
+                        commercePricingCard.modifier(PPVariantStudioPanel()).id("studio.pricing")
+                        identifiersCard.modifier(PPVariantStudioPanel()).id("studio.identifiers")
                         if mode.isEdit, let onOpenFullRecord, case .edit(let variant) = mode {
                             deepLinkRecordButton(variant: variant, action: onOpenFullRecord)
                         }
@@ -4205,7 +4358,7 @@ struct PPAccessoryVariantStudioSheet: View {
                     UIAccessibility.post(notification: .announcement, argument: failure)
                 }
                 .background(AdminSurface.background.ignoresSafeArea())
-                .safeAreaInset(edge: .bottom, spacing: 0) { studioSaveDock }
+                .safeAreaInset(edge: .bottom, spacing: 0) { studioSaveDock(proxy: proxy) }
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .principal) {
@@ -4253,6 +4406,42 @@ struct PPAccessoryVariantStudioSheet: View {
                 color = chosen
                 isChoosingColorFullStudio = false
             }
+        }
+        .confirmationDialog(
+            Language.get("Inventory_PhotoSource_Title", alter: "إضافة صور"),
+            isPresented: $showStudioPhotoSourceDialog,
+            titleVisibility: .visible
+        ) {
+            Button(Language.get("Inventory_PhotoSource_Camera", alter: "التقاط بالكاميرا")) {
+                requestStudioCamera()
+            }
+            Button(Language.get("Inventory_PhotoSource_Library", alter: "اختيار من مكتبة الصور")) {
+                isPresentingImagePicker = true
+            }
+            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+        } message: {
+            Text(Language.get("Inventory_PhotoSource_Message", alter: "اختر التقاط صورة جديدة بالكاميرا أو اختيار صور من المكتبة."))
+        }
+        .fullScreenCover(isPresented: $showStudioCameraPicker) {
+            PPLivePetCameraPicker { image in
+                withAnimation(studioMotion) {
+                    if stagedImages.count < remainingImageSlots {
+                        stagedImages.append(image)
+                    }
+                }
+            }
+        }
+        .alert(
+            Language.get("Inventory_CameraPermission_Title", alter: "السماح باستخدام الكاميرا"),
+            isPresented: $showStudioCameraAccessAlert
+        ) {
+            Button(Language.get("LivePetIntake_OpenSettings", alter: "فتح الإعدادات")) {
+                guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(settingsURL)
+            }
+            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+        } message: {
+            Text(studioCameraAlertMessage.isEmpty ? Language.get("Inventory_CameraPermission_Message", alter: "يحتاج التطبيق إذن الوصول للكاميرا لالتقاط الصور. يمكنك تفعيل الإذن من إعدادات الجهاز.") : studioCameraAlertMessage)
         }
         .sheet(isPresented: $isPresentingImagePicker) {
             PPVariantImagePickerSheet(maxSelection: max(1, remainingImageSlots)) { picked in
@@ -4491,7 +4680,7 @@ struct PPAccessoryVariantStudioSheet: View {
                         }
                     }
                     if remainingImageSlots > 0 {
-                        Button { isPresentingImagePicker = true } label: {
+                        Button { showStudioPhotoSourceDialog = true } label: {
                             VStack(spacing: 12) {
                                 Image(systemName: "plus").font(.system(size: 25, weight: .light))
                                 Text(Language.get("Variant_Studio_Photos_Add", alter: "إضافة صور"))
@@ -4807,9 +4996,44 @@ struct PPAccessoryVariantStudioSheet: View {
 
     // MARK: Saving and recovery
 
-    private var studioSaveDock: some View {
+    private func studioSaveDock(proxy: ScrollViewProxy) -> some View {
         VStack(spacing: 0) {
             studioRule
+            if busy {
+                Text(Language.get("Variant_Studio_SavingGuidance", alter: "جارٍ حفظ هذا المتغير وتأكيد النتيجة. انتظر قبل إجراء تعديلات أخرى."))
+                    .font(AdminType.footnote)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 20).padding(.top, 12)
+                    .frame(maxWidth: 720, alignment: .leading)
+            } else if let issue = submitIssue {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label(issue.message, systemImage: "exclamationmark.circle.fill")
+                        .font(AdminType.footnoteBold)
+                        .foregroundStyle(AdminSurface.crimson)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !hasPendingSave {
+                        Button(Language.get("Variant_Studio_ReviewField", alter: "انتقل إلى الحقل المطلوب")) {
+                            focusedField = issue.field
+                            withAnimation(studioMotion) { proxy.scrollTo(issue.sectionID, anchor: .top) }
+                        }
+                        .font(AdminType.footnoteBold)
+                        .foregroundStyle(AdminSurface.primary)
+                        .frame(minHeight: 44)
+                        .buttonStyle(PPVariantStudioPressStyle())
+                    }
+                }
+                .padding(.horizontal, 20).padding(.top, 12)
+                .frame(maxWidth: 720, alignment: .leading)
+                .accessibilityIdentifier("variant.studio.saveIssue")
+            } else if hasPendingSave {
+                Text(Language.get("Variant_Studio_PendingHint", alter: "لم يكتمل تأكيد الحفظ. أعد المحاولة بنفس التعديلات لإكمال العملية بأمان."))
+                    .font(AdminType.footnote)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 20).padding(.top, 12)
+                    .frame(maxWidth: 720, alignment: .leading)
+            }
             Button(action: submit) {
                 HStack(spacing: 10) {
                     if busy { ProgressView().tint(.white) }

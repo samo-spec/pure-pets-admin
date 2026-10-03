@@ -1760,6 +1760,193 @@ final class PPFirestoreListenerToken: @unchecked Sendable {
     deinit { registration.remove() }
 }
 
+// MARK: - Upgraded Inventory Search Engine
+
+enum PPInventorySearchEngine {
+    /// Normalizes Arabic text, English casing, digits, and diacritics for resilient searching.
+    static func normalize(_ text: String) -> String {
+        var s = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !s.isEmpty else { return "" }
+
+        // Normalize Arabic digits (٠-٩) and Eastern Persian digits (۰-۹) to standard Western digits 0-9
+        let arabicNumbers: [Character: Character] = [
+            "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4",
+            "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9",
+            "۰": "0", "۱": "1", "۲": "2", "۳": "3", "۴": "4",
+            "۵": "5", "۶": "6", "۷": "7", "۸": "8", "۹": "9"
+        ]
+        s = String(s.map { arabicNumbers[$0] ?? $0 })
+
+        // Strip Arabic diacritics / tashkeel
+        let diacritics: Set<Character> = [
+            "\u{064B}", "\u{064C}", "\u{064D}", "\u{064E}",
+            "\u{064F}", "\u{0650}", "\u{0651}", "\u{0652}"
+        ]
+        s = String(s.filter { !diacritics.contains($0) })
+
+        // Normalize Arabic letter variations (Alef, Teh Marbuta, Yaa, Tatweel)
+        s = s.replacingOccurrences(of: "أ", with: "ا")
+             .replacingOccurrences(of: "إ", with: "ا")
+             .replacingOccurrences(of: "آ", with: "ا")
+             .replacingOccurrences(of: "ٱ", with: "ا")
+             .replacingOccurrences(of: "ة", with: "ه")
+             .replacingOccurrences(of: "ى", with: "ي")
+             .replacingOccurrences(of: "ـ", with: "")
+
+        return s
+    }
+
+    /// Evaluates how well an individual accessory matches the given query.
+    /// Returns 0 if it does not match. Higher scores indicate stronger/more exact matches.
+    static func matchScore(
+        for item: PetAccessory,
+        rawQuery: String,
+        normQuery: String,
+        tokens: [String],
+        isFamilyTitleOnly: Bool = false
+    ) -> Int {
+        guard !normQuery.isEmpty else { return 0 }
+
+        // 1. Exact Barcode Match (Highest priority)
+        let rawBarcode = (item.barcode ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let normBarcode = normalize(rawBarcode)
+        if !rawBarcode.isEmpty {
+            if rawBarcode == rawQuery || normBarcode == normQuery {
+                return 100_000
+            }
+        }
+
+        // 2. Exact SKU Match
+        let rawSku = (item.sku ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let normSku = normalize(rawSku)
+        if !rawSku.isEmpty {
+            if rawSku.lowercased() == rawQuery.lowercased() || normSku == normQuery {
+                return 90_000
+            }
+        }
+
+        // 3. Exact Document ID Match
+        let rawDocID = item.accessoryID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normDocID = normalize(rawDocID)
+        if !rawDocID.isEmpty {
+            if rawDocID.lowercased() == rawQuery.lowercased() || normDocID == normQuery {
+                return 85_000
+            }
+        }
+
+        // 4. Barcode prefix / substring
+        if !normBarcode.isEmpty {
+            if normBarcode.hasPrefix(normQuery) {
+                return 75_000
+            } else if normBarcode.contains(normQuery) {
+                return 70_000
+            }
+        }
+
+        // 5. SKU prefix / substring
+        if !normSku.isEmpty {
+            if normSku.hasPrefix(normQuery) {
+                return 65_000
+            } else if normSku.contains(normQuery) {
+                return 60_000
+            }
+        }
+
+        // 6. Option Specific Attributes (Color, Size, Weight, Option Values)
+        var optionScore = 0
+        var optionMatched = false
+
+        if !isFamilyTitleOnly {
+            let colorName = normalize(item.pos_variantColorName)
+            let colorId = normalize(item.pos_variantColor?.identifier ?? "")
+            let size = normalize(item.size ?? "")
+            let weight = normalize(item.weightText ?? "")
+            let smartDesc = normalize(item.pos_smartVariantDescription ?? "")
+            let combo = normalize(item.variantCombinationKey ?? "")
+
+            var optionTextParts = [colorName, colorId, size, weight, smartDesc, combo]
+
+            // Selected options snapshot
+            if let snapshot = item.selectedOptionsSnapshot {
+                for opt in snapshot {
+                    if let valName = opt["valueName"] as? String {
+                        optionTextParts.append(normalize(valName))
+                    } else if let valNameDict = opt["valueName"] as? [String: Any] {
+                        for (_, v) in valNameDict {
+                            if let strVal = v as? String { optionTextParts.append(normalize(strVal)) }
+                        }
+                    }
+                    if let optName = opt["optionName"] as? String {
+                        optionTextParts.append(normalize(optName))
+                    }
+                }
+            }
+            if let options = item.selectedOptions {
+                for (k, v) in options {
+                    optionTextParts.append(normalize(k))
+                    optionTextParts.append(normalize("\(v)"))
+                }
+            }
+
+            // Exact option name / code match
+            if (!colorName.isEmpty && colorName == normQuery) ||
+               (!size.isEmpty && size == normQuery) ||
+               (!weight.isEmpty && weight == normQuery) {
+                optionMatched = true
+                optionScore = 55_000
+            } else {
+                let combinedOptions = optionTextParts.filter { !$0.isEmpty }.joined(separator: " ")
+                if !combinedOptions.isEmpty && combinedOptions.contains(normQuery) {
+                    optionMatched = true
+                    optionScore = 45_000
+                }
+            }
+        }
+
+        // 7. Product Name & Title Matching
+        let normName = normalize(item.name)
+        let normNameEn = normalize(item.nameEn ?? "")
+        let normSearchTitle = normalize(item.searchTitle)
+
+        var nameScore = 0
+        if normName == normQuery || normNameEn == normQuery {
+            nameScore = 50_000
+        } else if normName.hasPrefix(normQuery) || normNameEn.hasPrefix(normQuery) {
+            nameScore = 40_000
+        } else if normName.contains(normQuery) || normNameEn.contains(normQuery) || normSearchTitle.contains(normQuery) {
+            nameScore = 30_000
+        } else if tokens.count > 1 {
+            // Multi-word token match across name and titles
+            let combinedTitle = "\(normName) \(normNameEn) \(normSearchTitle)"
+            if tokens.allSatisfy({ combinedTitle.contains($0) }) {
+                nameScore = 25_000
+            }
+        }
+
+        // 8. Description & Store / Branch Matching
+        var metaScore = 0
+        let normDesc = normalize(item.desc)
+        let normDescEn = normalize(item.descEn ?? "")
+        let normStore = normalize(item.storeName ?? "")
+        let normBranch = normalize(item.resolvedBranchName())
+        let normBranchCode = normalize(item.branchCode ?? "")
+
+        if normDesc.contains(normQuery) || normDescEn.contains(normQuery) {
+            metaScore = 15_000
+        } else if normStore.contains(normQuery) || normBranch.contains(normQuery) || normBranchCode.contains(normQuery) {
+            metaScore = 10_000
+        }
+
+        var finalScore = max(optionScore, max(nameScore, metaScore))
+        if finalScore > 0 {
+            if item.isDefaultVariant { finalScore += 50 }
+            if optionMatched { finalScore += 100 }
+        }
+
+        return finalScore
+    }
+}
+
 @MainActor
 final class PPInventoryListViewModel: ObservableObject {
     @Published private(set) var allItems: [PetAccessory] = []
@@ -1770,6 +1957,10 @@ final class PPInventoryListViewModel: ObservableObject {
     /// per-colour cards as before; a product with no family stays a plain row.
     /// Derived from the already-loaded items, so grouping costs no extra reads.
     @Published private(set) var displayGroups: [PPInventoryDisplayGroup] = []
+    /// Family IDs identified by search that should be automatically unfolded.
+    @Published private(set) var searchTargetFamilyIds: Set<String> = []
+    /// Targeted variant option per family that best matched the search query.
+    @Published private(set) var searchTargetProductIds: [String: String] = [:]
     @Published var branches: [PPInventoryBranchOption] = []
     @Published var searchText: String = ""
     @Published fileprivate var activeFilter: InventoryFilter = .all
@@ -1868,6 +2059,8 @@ final class PPInventoryListViewModel: ObservableObject {
         allItems = []
         filteredItems = []
         displayGroups = []
+        searchTargetFamilyIds = []
+        searchTargetProductIds = [:]
         startListening()
     }
 
@@ -1926,52 +2119,181 @@ final class PPInventoryListViewModel: ObservableObject {
         refreshContinuation?.resume()
     }
 
+    private func satisfiesActiveFilter(item: PetAccessory) -> Bool {
+        let stock = effectiveStock(for: item)
+        switch activeFilter {
+        case .all:
+            return true
+        case .inStock:
+            return stock > 0 && !item.noStock
+        case .lowStock:
+            return stock > 0 && stock <= 3 && !item.noStock
+        case .outOfStock:
+            return stock <= 0 || item.noStock
+        case .hasOffer:
+            return (itemDiscountValue(item) > 0) || item.hasOffer
+        case .conditionNew:
+            return item.condition == .new
+        case .conditionUsed:
+            return item.condition == .used
+        }
+    }
+
     func applyFilter() {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        var result = allItems.filter { item in
-            if item.isDeleted || pendingDeletedIDs.contains(item.accessoryID) { return false }
-            let stock = effectiveStock(for: item)
-            switch activeFilter {
-            case .all:
-                break
-            case .inStock:
-                if stock <= 0 || item.noStock { return false }
-            case .lowStock:
-                if stock <= 0 || stock > 3 || item.noStock { return false }
-            case .outOfStock:
-                if stock > 0 && !item.noStock { return false }
-            case .hasOffer:
-                let hasDiscount = (itemDiscountValue(item) > 0) || item.hasOffer
-                if !hasDiscount { return false }
-            case .conditionNew:
-                if item.condition != .new { return false }
-            case .conditionUsed:
-                if item.condition != .used { return false }
-            }
+        let rawQuery = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normQuery = PPInventorySearchEngine.normalize(rawQuery)
+        let tokens = normQuery.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
 
-            guard !query.isEmpty else { return true }
-            let name = item.name.lowercased()
-            let desc = item.desc.lowercased()
-            let searchTitle = item.searchTitle.lowercased()
-            let store = (item.storeName ?? "").lowercased()
-            let branchName = item.resolvedBranchName().lowercased()
-            let branchCode = (item.branchCode ?? "").lowercased()
-            let docID = item.accessoryID.lowercased()
-            let sku = (item.sku ?? "").lowercased()
-            let barcode = (item.barcode ?? "").lowercased()
-            return name.contains(query) || desc.contains(query) || searchTitle.contains(query) || store.contains(query) || branchName.contains(query) || branchCode.contains(query) || docID.contains(query) || sku.contains(query) || barcode.contains(query)
+        let availableItems = allItems.filter {
+            !$0.isDeleted && !pendingDeletedIDs.contains($0.accessoryID)
         }
 
-        result.sort { a, b in
-            let dateA = a.createdAt
-            let dateB = b.createdAt
-            if dateA != dateB {
-                return dateA > dateB
-            }
-            return a.accessoryID > b.accessoryID
+        // When query is empty -> standard browsing view
+        if normQuery.isEmpty {
+            searchTargetFamilyIds = []
+            searchTargetProductIds = [:]
+
+            let result = availableItems.filter { satisfiesActiveFilter(item: $0) }
+                .sorted { a, b in
+                    if a.createdAt != b.createdAt {
+                        return a.createdAt > b.createdAt
+                    }
+                    return a.accessoryID > b.accessoryID
+                }
+
+            filteredItems = result
+            displayGroups = PPInventoryDisplayGroup.grouped(result)
+            return
         }
-        filteredItems = result
-        displayGroups = PPInventoryDisplayGroup.grouped(result)
+
+        // --- Upgraded Search Structure ---
+        // 1. Separate items into families and standalone products
+        var allByFamily: [String: [PetAccessory]] = [:]
+        var standaloneCandidates: [PetAccessory] = []
+
+        for item in availableItems {
+            let familyId = (item.productFamilyId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if familyId.isEmpty {
+                standaloneCandidates.append(item)
+            } else {
+                allByFamily[familyId, default: []].append(item)
+            }
+        }
+
+        // Families with only 1 member are treated as standalone (no options to expand)
+        for (familyId, members) in allByFamily where members.count <= 1 {
+            standaloneCandidates.append(contentsOf: members)
+            allByFamily.removeValue(forKey: familyId)
+        }
+
+        struct ScoredGroup {
+            let group: PPInventoryDisplayGroup
+            let score: Int
+            let targetOptionId: String?
+            let createdAt: Date
+            let sortId: String
+        }
+
+        var scoredGroups: [ScoredGroup] = []
+
+        // 2. Score standalone products (products with no option)
+        for item in standaloneCandidates {
+            guard satisfiesActiveFilter(item: item) else { continue }
+            let score = PPInventorySearchEngine.matchScore(
+                for: item,
+                rawQuery: rawQuery,
+                normQuery: normQuery,
+                tokens: tokens
+            )
+            if score > 0 {
+                scoredGroups.append(ScoredGroup(
+                    group: .single(item),
+                    score: score,
+                    targetOptionId: nil,
+                    createdAt: item.createdAt,
+                    sortId: item.accessoryID
+                ))
+            }
+        }
+
+        // 3. Score variant families (products with variant options)
+        for (familyId, members) in allByFamily {
+            guard members.contains(where: { satisfiesActiveFilter(item: $0) }) else { continue }
+
+            let defaultMember = members.first(where: { $0.isDefaultVariant }) ?? members[0]
+            let familyTitleScore = PPInventorySearchEngine.matchScore(
+                for: defaultMember,
+                rawQuery: rawQuery,
+                normQuery: normQuery,
+                tokens: tokens,
+                isFamilyTitleOnly: true
+            )
+
+            var bestMember: PetAccessory? = nil
+            var bestMemberScore = 0
+            var anyMemberMatched = false
+
+            for member in members {
+                let mScore = PPInventorySearchEngine.matchScore(
+                    for: member,
+                    rawQuery: rawQuery,
+                    normQuery: normQuery,
+                    tokens: tokens
+                )
+                if mScore > 0 {
+                    anyMemberMatched = true
+                }
+                if mScore > bestMemberScore {
+                    bestMemberScore = mScore
+                    bestMember = member
+                }
+            }
+
+            if anyMemberMatched || familyTitleScore > 0 {
+                let targetOption = bestMember ?? defaultMember
+                let familyScore = max(bestMemberScore, familyTitleScore)
+                let sortedMembers = members.sorted { lhs, rhs in
+                    lhs.variantSortOrder == rhs.variantSortOrder
+                        ? lhs.accessoryID < rhs.accessoryID
+                        : lhs.variantSortOrder < rhs.variantSortOrder
+                }
+
+                scoredGroups.append(ScoredGroup(
+                    group: .family(familyId: familyId, members: sortedMembers),
+                    score: familyScore,
+                    targetOptionId: targetOption.accessoryID,
+                    createdAt: defaultMember.createdAt,
+                    sortId: familyId
+                ))
+            }
+        }
+
+        // 4. Sort results by relevance score descending
+        scoredGroups.sort { a, b in
+            if a.score != b.score {
+                return a.score > b.score
+            }
+            if a.createdAt != b.createdAt {
+                return a.createdAt > b.createdAt
+            }
+            return a.sortId > b.sortId
+        }
+
+        // 5. Populate published targets and display groups
+        var targetFamilyIds = Set<String>()
+        var targetProductIds: [String: String] = [:]
+
+        for item in scoredGroups {
+            if case .family(let familyId, _) = item.group, let targetId = item.targetOptionId {
+                targetFamilyIds.insert(familyId)
+                targetProductIds[familyId] = targetId
+            }
+        }
+
+        self.searchTargetFamilyIds = targetFamilyIds
+        self.searchTargetProductIds = targetProductIds
+        self.displayGroups = scoredGroups.map(\.group)
+        self.filteredItems = scoredGroups.flatMap(\.group.members)
     }
 
     private func itemDiscountValue(_ item: PetAccessory) -> Double {
@@ -2655,13 +2977,36 @@ struct PPInventoryListView: View {
             withAnimation(AdminAnimation.motion(AdminAnimation.filterSwap, reduceMotion: reduceMotion)) {
                 viewModel.applyFilter()
                 filterGeneration += 1
+                applySearchExpansionState()
             }
         }
         .onChange(of: viewModel.activeFilter) { _ in
             withAnimation(AdminAnimation.motion(AdminAnimation.filterSwap, reduceMotion: reduceMotion)) {
                 viewModel.applyFilter()
                 filterGeneration += 1
+                applySearchExpansionState()
             }
+        }
+        .onChange(of: viewModel.searchTargetFamilyIds) { _ in
+            applySearchExpansionState()
+        }
+        .onChange(of: viewModel.activeTab) { _ in
+            expandedFamilyIds.removeAll()
+            selectedFamilyProductIds.removeAll()
+        }
+    }
+
+    /// Automatically unfolds matching variant families and selects the target matching option.
+    private func applySearchExpansionState() {
+        let query = viewModel.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !query.isEmpty {
+            expandedFamilyIds = viewModel.searchTargetFamilyIds
+            for (familyId, targetId) in viewModel.searchTargetProductIds {
+                selectedFamilyProductIds[familyId] = targetId
+            }
+        } else {
+            expandedFamilyIds.removeAll()
+            selectedFamilyProductIds.removeAll()
         }
     }
 
@@ -3582,7 +3927,7 @@ struct PPInventoryListView: View {
                                     // well meant two curves drove one gesture and
                                     // fought each other on every tap.
                                     if isOn {
-                                        expandedFamilyIds = [familyId]
+                                        expandedFamilyIds.insert(familyId)
                                         let current = selectedFamilyProductIds[familyId]
                                         if current == nil || !members.contains(where: { $0.accessoryID == current }) {
                                             selectedFamilyProductIds[familyId] = defaultMember.accessoryID
@@ -11484,14 +11829,14 @@ private struct PPLivePetUnitProfileEditorSheet: View {
                 }
             }
             .confirmationDialog(
-                Language.get("LivePet_Profile_Hero_Photo", alter: "صورة الحيوان الحية"),
+                Language.get("Inventory_PhotoSource_Title", alter: "إضافة صور"),
                 isPresented: $showPhotoSourceDialog,
                 titleVisibility: .visible
             ) {
-                Button(Language.get("LivePet_Profile_Camera_Capture", alter: "التقاط بالكاميرا")) {
+                Button(Language.get("Inventory_PhotoSource_Camera", alter: "التقاط بالكاميرا")) {
                     requestCamera()
                 }
-                Button(Language.get("LivePet_Profile_Library_Select", alter: "اختيار من الألبوم")) {
+                Button(Language.get("Inventory_PhotoSource_Library", alter: "اختيار من مكتبة الصور")) {
                     showPhotoLibrary = true
                 }
                 if hasActivePhoto {
@@ -11504,6 +11849,8 @@ private struct PPLivePetUnitProfileEditorSheet: View {
                     }
                 }
                 Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+            } message: {
+                Text(Language.get("Inventory_PhotoSource_Message", alter: "اختر التقاط صورة جديدة بالكاميرا أو اختيار صور من المكتبة."))
             }
             .sheet(isPresented: $showPhotoLibrary) {
                 PPLivePetPhotoPicker(maxSelection: 1) { images, _ in
@@ -11518,7 +11865,7 @@ private struct PPLivePetUnitProfileEditorSheet: View {
                 }
             }
             .alert(
-                Language.get("LivePetIntake_UnitPhotoCameraPermissionTitle", alter: "السماح باستخدام الكاميرا"),
+                Language.get("Inventory_CameraPermission_Title", alter: "السماح باستخدام الكاميرا"),
                 isPresented: $showCameraAccessAlert
             ) {
                 Button(Language.get("LivePetIntake_OpenSettings", alter: "فتح الإعدادات")) {
@@ -11528,7 +11875,7 @@ private struct PPLivePetUnitProfileEditorSheet: View {
                 }
                 Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
             } message: {
-                Text(Language.get("LivePetIntake_UnitPhotoCameraPermissionMessage", alter: "فعّل إذن الكاميرا من الإعدادات لالتقاط صورة خاصة بهذا الحيوان."))
+                Text(Language.get("Inventory_CameraPermission_Message", alter: "يحتاج التطبيق إذن الوصول للكاميرا لالتقاط الصور. يمكنك تفعيل الإذن من إعدادات الجهاز."))
                     .font(Font.custom("Beiruti-Regular", size: 14))
             }
             .fullScreenCover(item: $previewMedia) { media in
