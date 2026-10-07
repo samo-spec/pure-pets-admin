@@ -2859,6 +2859,8 @@
 "POS_VariantPicker_RemoveFormat" = "Remove %@ from cart";
 "POS_VariantPicker_DecreaseFormat" = "Decrease %@ quantity";
 "POS_VariantPicker_IncreaseFormat" = "Increase %@ quantity";
+"POS_Variant_MatchedBarcode" = "Matched Option";
+"POS_Scanner_Resolved_Options_Format" = "Found options for %@. Select the desired option";
 
 /* ===================== Dashboard Features Section ===================== */
 "AdminDashboard_Section_Features" = "Features";
@@ -4133,7 +4135,7 @@
 "Delivery_Error_State_Assignment_Blocked" = "Driver assignment blocked";
 "Delivery_Error_State_Access_Denied" = "Delivery access denied";
 "Delivery_Error_State_Changed" = "Delivery state changed";
-"Delivery_Error_State_Authority_Mismatch" = "Lifecycle authority mismatch";
+"Delivery_Error_State_Authority_Mismatch" = "Delivery action unavailable";
 "Delivery_Error_State_COD_Attention" = "COD reconciliation blocked";
 "Delivery_Error_State_POD_Incomplete" = "POD evidence incomplete";
 "Delivery_Error_State_Service_Unavailable" = "Delivery service unavailable";
@@ -4143,7 +4145,7 @@
 "Delivery_Error_Cause_Driver_Eligibility" = "The server rejected the selected driver using current eligibility evidence.";
 "Delivery_Error_Cause_Permission" = "The active staff record does not include the required delivery permission.";
 "Delivery_Error_Cause_Stale_Action" = "The delivery changed after this dossier revision was loaded.";
-"Delivery_Error_Cause_Fulfillment_Authority" = "This lifecycle is owned by Fulfillment V1 or another carrier authority.";
+"Delivery_Error_Cause_Fulfillment_Authority" = "The selected action is not available for this delivery.";
 "Delivery_Error_Cause_COD_Mismatch" = "Cash custody, expected amount, collected amount, or handover evidence does not match.";
 "Delivery_Error_Cause_POD_Required" = "Required proof-of-delivery evidence has not been finalized.";
 "Delivery_Error_Cause_Service" = "The callable, network, App Check, or backend service did not return a classified business result.";
@@ -4161,7 +4163,7 @@
 "Delivery_Error_Recovery_Review_Driver" = "Review the unavailable reasons and select a server-eligible driver.";
 "Delivery_Error_Recovery_Request_Access" = "Ask an owner to grant the specific delivery permission.";
 "Delivery_Error_Recovery_Refresh_Dossier" = "Reload the dossier and decide again from the current state.";
-"Delivery_Error_Recovery_Open_Fulfillment" = "Open the Fulfillment workspace or the correct carrier authority.";
+"Delivery_Error_Recovery_Open_Fulfillment" = "Refresh the delivery details to review the available actions.";
 "Delivery_Error_Recovery_Verify_Custody" = "Verify expected cash, collected cash, variance, and physical handover.";
 "Delivery_Error_Recovery_Collect_POD" = "Complete the required receiver, photo, signature, or OTP evidence workflow.";
 "Delivery_Error_Recovery_Retry" = "Check connectivity and App Check, then retry. Escalate if the incident persists.";
@@ -4443,6 +4445,12 @@
 "Staff_Role_Delete_Confirm_Message_Format" = "Deleting %@ permanently removes this role definition. Review affected staff assignments before continuing.";
 "Inventory_Price_Unavailable" = "Price unavailable";
 "Inventory_Unpriced_Items_Format" = "%@ items are awaiting a selling price. Inventory valuation excludes them.";
+"Inventory_NoOptions" = "No Options";
+"Inventory_HasOptions" = "Options";
+"Inventory_Filter_HasOptions" = "With Options";
+"Inventory_Filter_NoOptions" = "No Options";
+"Inventory_Family_OptionsSummary_A11y" = "Options: %@";
+"POS_DefaultVariant" = "Default";
 
 /* Fast Sell receipt */
 "POS_Receipt_Title" = "Sales receipt";
@@ -10733,7 +10741,7 @@
 "WantedPet_Fulfill_Short" = "Fulfill With This";
 "WantedPets_WhatsApp_Detail_Ring" = "Tag: #%@";
 "WantedPets_WhatsApp_Detail_Gender" = "Gender: %@";
-"WantedPets_WhatsApp_Detail_Price" = "Price: %.0f %@";
+"WantedPets_WhatsApp_Detail_Price" = "Price: %@";
 "WantedPets_WhatsApp_Detail_Branch" = "Branch: %@";
 "WantedPets_WhatsApp_MatchFound_Template" = "Hello %@, we are pleased to inform you that a pet matching your request is available at Pure Pets: %@%@. Would you like us to reserve it for you?";
 
@@ -10937,3 +10945,170 @@
 "Fulfillment_Recovery_Limited" = "A limited set of recent orders was checked. Open Orders to review other records.";
 "Fulfillment_Recovery_AllOrders" = "Open orders";
 "Fulfillment_ClearFilters" = "Clear search and filters";
+
+/* Delivery workspace — queue, route, and recovery */
+"DeliveryWorkspace_FleetCaption" = "The official Pure Pets fleet";
+"DeliveryWorkspace_Tools" = "Fleet tools";
+"DeliveryWorkspace_ToolsHint" = "Open fleet overview, drivers, exceptions, cash collection, or delivery evidence, according to your permissions.";
+"DeliveryWorkspace_Queue" = "DELIVERY QUEUE";
+"DeliveryWorkspace_Refreshing" = "Updating the delivery queue…";
+"DeliveryWorkspace_PreviousData" = "Showing the last loaded queue. Refresh to confirm changes.";
+"DeliveryWorkspace_UnknownFreshness" = "Update time is unavailable";
+"DeliveryWorkspace_Updated" = "Updated %@";
+"DeliveryWorkspace_Created" = "Created %@";
+"DeliveryWorkspace_ResultCount" = "%@ requests in this view";
+"DeliveryWorkspace_LoadedCount" = "%@ loaded requests";
+"DeliveryWorkspace_LoadedScope" = "Showing requests from the loaded queue";
+"DeliveryWorkspace_Search" = "Find an order, customer, or driver";
+"DeliveryWorkspace_ClearSearch" = "Clear search";
+"DeliveryWorkspace_NoMatches" = "No matching requests";
+"DeliveryWorkspace_NoMatchesDetail" = "Try another name or reference, or choose a different delivery stage.";
+"DeliveryWorkspace_OrderReference" = "Order reference";
+"DeliveryWorkspace_Driver" = "Driver";
+"DeliveryWorkspace_Fee" = "Delivery fee";
+"DeliveryWorkspace_Unspecified" = "Not provided";
+"DeliveryWorkspace_ViewRequest" = "View delivery";
+"DeliveryWorkspace_AssignedDriver" = "Assigned · name unavailable";
+"DeliveryWorkspace_AddressMissing" = "Address not provided";
+"DeliveryWorkspace_TimingMissing" = "Request times are unavailable";
+
+/* Delivery detail sheet — route, next step, and supporting evidence */
+"DeliveryDetail_Refreshing" = "Refreshing delivery details…";
+"DeliveryDetail_Journey" = "The delivery route";
+"DeliveryDetail_CustomerMissing" = "Name not provided";
+"DeliveryDetail_Collection" = "Cash collection";
+"DeliveryDetail_Progress" = "Delivery progress";
+"DeliveryDetail_References" = "Record details";
+"DeliveryDetail_ReferencesCaption" = "References and timestamps";
+"DeliveryDetail_RequestID" = "Delivery reference";
+"DeliveryDetail_Created" = "Created";
+"DeliveryDetail_Updated" = "Last updated";
+"DeliveryDetail_Activity" = "Recent activity";
+"DeliveryDetail_EventCount" = "%@ recorded updates";
+"DeliveryDetail_FromState" = "From: %@";
+"DeliveryDetail_ToState" = "To: %@";
+"DeliveryDetail_NextActions" = "Next steps";
+"DeliveryDetail_ActionNotice" = "Actions reflect the latest loaded state. Review the confirmation before continuing.";
+
+/* Canonical delivery states and recorded actions displayed in the dossier */
+"Delivery_Value_CREATED" = "Created";
+"Delivery_Value_READY_FOR_ASSIGNMENT" = "Ready for assignment";
+"Delivery_Value_PICKUP_PENDING" = "Awaiting pickup";
+"Delivery_Value_IN_TRANSIT" = "On the way";
+"Delivery_Value_DELIVERED" = "Delivered";
+"Delivery_Value_CLOSED" = "Closed";
+"Delivery_Value_CANCELLED" = "Cancelled";
+"Delivery_Value_FAILED" = "Failed";
+"Delivery_Value_EXPIRED" = "Expired";
+"Delivery_Value_OFFERED" = "Offered";
+"Delivery_Value_ACCEPTED" = "Accepted";
+"Delivery_Value_REJECTED" = "Rejected";
+"Delivery_Value_ASSIGNED" = "Assigned";
+"Delivery_Value_RELEASED" = "Released from assignment";
+"Delivery_Value_NOT_CONFIGURED" = "Not configured";
+"Delivery_Value_PLANNED" = "Planned";
+"Delivery_Value_COMPLETED" = "Completed";
+"Delivery_Value_NOT_REQUIRED" = "Not required";
+"Delivery_Value_PARTIAL" = "Partial";
+"Delivery_Value_CORRECTION_REQUIRED" = "Correction required";
+"Delivery_Value_ACCEPTED_BY_COMPANY" = "Accepted by the company";
+"Delivery_Value_ASSIGNED_TO_DRIVER" = "Assigned to a driver";
+"Delivery_Value_PICKED_UP" = "Picked up";
+"Delivery_Value_NEW_REQUEST" = "New request";
+"Delivery_Value_PREPARING" = "Preparing";
+"Delivery_Value_READY_FOR_PICKUP" = "Ready for pickup";
+"Delivery_Value_DELIVERY_REQUESTED" = "Delivery requested";
+"Delivery_Value_DELIVERY_ASSIGNED" = "Delivery assigned";
+"Delivery_Value_AWAITING_HANDOVER" = "Awaiting handover";
+"Delivery_Value_PAYMENT_PENDING" = "Payment pending";
+"Delivery_Value_PAYMENT_CONFIRMED" = "Payment confirmed";
+"Delivery_Value_DELIVERY_EVENT" = "Delivery update";
+"Delivery_Value_ACCEPT" = "Request accepted";
+"Delivery_Value_REJECT" = "Request rejected";
+"Delivery_Value_ASSIGN" = "Driver assigned";
+"Delivery_Value_REASSIGN" = "Driver reassigned";
+"Delivery_Value_PICK_UP" = "Pickup confirmed";
+"Delivery_Value_START_TRANSIT" = "Delivery started";
+"Delivery_Value_CANCEL" = "Delivery cancelled";
+"Delivery_Value_FAIL" = "Delivery marked as failed";
+"Delivery_Value_RECONCILE_COD" = "Cash collection reconciled";
+"Delivery_Value_DELIVER" = "Delivery confirmed";
+"Delivery_Value_FINALIZE_POD" = "Delivery evidence finalized";
+
+/* Delivery-only next steps */
+"DeliveryDetail_DriversAction" = "Drivers & availability";
+"DeliveryDetail_DriversHint" = "Open the delivery fleet to review drivers and their availability.";
+"DeliveryDetail_RefreshAction" = "Refresh delivery";
+"DeliveryDetail_RefreshHint" = "Check the latest delivery status and available actions.";
+
+/* Staff delivery acceptance */
+"DeliveryDetail_AcceptDelivery" = "Accept delivery";
+"DeliveryDetail_AcceptHint" = "Choose an eligible driver, then confirm delivery acceptance.";
+"DeliveryDetail_AcceptUnavailable" = "Delivery acceptance is not available for your current access or this order state. Refresh to check again.";
+"DeliveryDetail_AcceptDriverConfirmation" = "Accept this delivery and assign it to %@? The driver will continue the delivery from their app.";
+"Delivery_Value_ORDER_ACCEPT_DELIVERY" = "Delivery accepted and driver assigned";
+
+/* Fulfillment audit recovery and canonical projections. */
+"Fulfillment_Command_Sending" = "Sending action…";
+"Fulfillment_Command_Syncing" = "Action accepted. Confirming the current server state…";
+"Fulfillment_Command_Unconfirmed" = "State is not confirmed yet. Retry to safely check the same action.";
+"Fulfillment_Completed_InQueue" = "Completed in this queue";
+"Fulfillment_Completed_NetBadge" = "Net %.2f QAR";
+"Fulfillment_Ledger_Subtotal" = "Subtotal";
+"Fulfillment_Ledger_Commission" = "Platform commission";
+"Fulfillment_Ledger_DeliveryFee" = "Delivery fee";
+"Fulfillment_Ledger_ProviderNet" = "Store net";
+"Fulfillment_Delivery_Unspecified" = "Delivery carrier not specified";
+"Fulfillment_Delivery_Driver" = "Delivery driver";
+"Fulfillment_Timeline_Stale" = "Saved history; the latest server history is not confirmed.";
+"Fulfillment_Record_Unavailable" = "This fulfillment record is no longer available.";
+
+/* Fulfillment financial and delivery safety */
+"Fulfillment_Safety_CashReview" = "Review the amount due before collecting payment after a cancellation, failed delivery, or return.";
+"Fulfillment_Safety_InventoryReview" = "Inventory needs review before this action can continue.";
+"Fulfillment_Safety_ReservationReview" = "Review the complete order reservation before cancelling part of this order.";
+"Fulfillment_Safety_ReturnRequired" = "These items have been handed over. Use the return workflow.";
+"Fulfillment_Safety_DeliveryEvidence" = "Complete the assigned courier or handover action before recovering this status.";
+
+/* Banners operations & feedback */
+"Banners_Add" = "Add Banner";
+"Banners_Confirm_Delete_Message" = "Are you sure you want to delete this banner?";
+"Banners_Confirm_Delete_Title" = "Confirm Delete";
+"Banners_Delete" = "Delete";
+"Banners_Deleted" = "Deleted";
+"Banners_Deleted_Subtitle" = "Banner deleted successfully";
+"Banners_Empty_Subtitle" = "Tap + to add the first banner.";
+"Banners_Empty_Title" = "No Banners Yet";
+"Banners_Filter_NotImplemented" = "Filtering feature coming soon.";
+"Banners_Hidden" = "Hidden";
+"Banners_Hide" = "Hide";
+"Banners_Position" = "Position";
+"Banners_Show" = "Show";
+"Banners_Transition" = "Transition";
+"Banners_Update" = "Edit";
+"Banners_Updated" = "Updated";
+"Banners_Visibility_Changed" = "Visibility status updated";
+"Banners_Visible" = "Visible";
+
+/* Common action & state keys */
+"Common_Delete" = "Delete";
+"Common_Error" = "Error";
+"Common_OK" = "OK";
+"Common_Success" = "Success";
+"Draw" = "Draw";
+"Pending" = "Pending Review";
+"Rejected" = "Rejected";
+"Verified" = "Verified";
+
+/* Pets Hotel checkout and safety */
+"Hotel_Checkout_Belongings_Badge" = "%d belongings registered";
+"Hotel_Checkout_Health_VitalsNormal" = "Vital signs normal • Healthy and stable";
+"Hotel_Checkout_NoBelongings" = "No belongings";
+"Hotel_Checkout_Reunion_Subtitle" = "Complete checkout, return belongings, and release suite";
+"Hotel_Checkout_Reunion_Title" = "Reunion & Departure Gate";
+"Hotel_Checkout_SingleNight" = "1 night";
+"Hotel_Checkout_StayDuration_Format" = "%d nights stay";
+
+/* General operations */
+"ManageFood" = "Remove Food";
+"MissionControl_UserDetail_Protection" = "Protection";

@@ -3071,6 +3071,8 @@
 "POS_VariantPicker_RemoveFormat" = "إزالة %@ من السلة";
 "POS_VariantPicker_DecreaseFormat" = "تقليل كمية %@";
 "POS_VariantPicker_IncreaseFormat" = "زيادة كمية %@";
+"POS_Variant_MatchedBarcode" = "الخيار المطابق";
+"POS_Scanner_Resolved_Options_Format" = "تم العثور على خيارات %@. حدد الخيار المطلوب";
 
 /* ===================== Dashboard Features Section ===================== */
 "AdminDashboard_Section_Features" = "الميزات";
@@ -4195,7 +4197,7 @@
 "Delivery_Error_State_Assignment_Blocked" = "تعيين السائق متعذر";
 "Delivery_Error_State_Access_Denied" = "الوصول إلى التوصيل مرفوض";
 "Delivery_Error_State_Changed" = "تغيرت حالة التوصيل";
-"Delivery_Error_State_Authority_Mismatch" = "تعارض في سلطة دورة الحالة";
+"Delivery_Error_State_Authority_Mismatch" = "إجراء التوصيل غير متاح";
 "Delivery_Error_State_COD_Attention" = "تسوية التحصيل متعذرة";
 "Delivery_Error_State_POD_Incomplete" = "أدلة التسليم غير مكتملة";
 "Delivery_Error_State_Service_Unavailable" = "خدمة التوصيل غير متاحة";
@@ -4205,7 +4207,7 @@
 "Delivery_Error_Cause_Driver_Eligibility" = "رفض الخادم السائق المحدد وفق أدلة الأهلية الحالية.";
 "Delivery_Error_Cause_Permission" = "سجل الموظف النشط لا يتضمن صلاحية التوصيل المطلوبة.";
 "Delivery_Error_Cause_Stale_Action" = "تغير التوصيل بعد تحميل مراجعة هذا الملف.";
-"Delivery_Error_Cause_Fulfillment_Authority" = "دورة الحالة مملوكة لنظام التنفيذ V1 أو لسلطة ناقل أخرى.";
+"Delivery_Error_Cause_Fulfillment_Authority" = "الإجراء المحدد غير متاح لهذا التوصيل.";
 "Delivery_Error_Cause_COD_Mismatch" = "عهدة النقد أو المبلغ المتوقع أو المحصّل أو إثبات التسليم غير متطابق.";
 "Delivery_Error_Cause_POD_Required" = "لم تُعتمد أدلة إثبات التسليم المطلوبة.";
 "Delivery_Error_Cause_Service" = "لم تُرجع الدالة أو الشبكة أو App Check أو الخدمة نتيجة أعمال مصنفة.";
@@ -4223,7 +4225,7 @@
 "Delivery_Error_Recovery_Review_Driver" = "راجع أسباب عدم التوفر واختر سائقًا يؤكد الخادم أهليته.";
 "Delivery_Error_Recovery_Request_Access" = "اطلب من المالك منح صلاحية التوصيل المحددة.";
 "Delivery_Error_Recovery_Refresh_Dossier" = "أعد تحميل الملف واتخذ القرار من الحالة الحالية.";
-"Delivery_Error_Recovery_Open_Fulfillment" = "افتح مساحة التنفيذ أو سلطة الناقل الصحيحة.";
+"Delivery_Error_Recovery_Open_Fulfillment" = "حدّث تفاصيل التوصيل للاطلاع على الإجراءات المتاحة.";
 "Delivery_Error_Recovery_Verify_Custody" = "تحقق من النقد المتوقع والمحصّل والفارق والتسليم الفعلي للعهدة.";
 "Delivery_Error_Recovery_Collect_POD" = "أكمل أدلة المستلم أو الصورة أو التوقيع أو رمز التحقق المطلوبة.";
 "Delivery_Error_Recovery_Retry" = "تحقق من الاتصال وApp Check ثم أعد المحاولة، وصعّد الحادثة إذا استمرت.";
@@ -4504,6 +4506,12 @@
 "Staff_Role_Delete_Confirm_Message_Format" = "سيؤدي حذف %@ إلى إزالة تعريف هذا الدور نهائيًا. راجع تعيينات الموظفين المتأثرة قبل المتابعة.";
 "Inventory_Price_Unavailable" = "السعر غير متاح";
 "Inventory_Unpriced_Items_Format" = "لم يُحدَّد سعر البيع لعدد %@ من الأصناف. لا تشملها قيمة المخزون.";
+"Inventory_NoOptions" = "بدون خيارات";
+"Inventory_HasOptions" = "خيارات";
+"Inventory_Filter_HasOptions" = "أصناف بخيارات";
+"Inventory_Filter_NoOptions" = "أصناف بدون خيارات";
+"Inventory_Family_OptionsSummary_A11y" = "الخيارات: %@";
+"POS_DefaultVariant" = "الافتراضي";
 
 /* إيصال البيع السريع */
 "POS_Receipt_Title" = "إيصال بيع";
@@ -10801,7 +10809,7 @@
 "WantedPet_Fulfill_Short" = "إتمام بهذا الحيوان";
 "WantedPets_WhatsApp_Detail_Ring" = "رقم التعريف: #%@";
 "WantedPets_WhatsApp_Detail_Gender" = "الجنس: %@";
-"WantedPets_WhatsApp_Detail_Price" = "السعر: %.0f %@";
+"WantedPets_WhatsApp_Detail_Price" = "السعر: %@";
 "WantedPets_WhatsApp_Detail_Branch" = "الفرع: %@";
 "WantedPets_WhatsApp_MatchFound_Template" = "مرحباً %@، يسعدنا إبلاغك بتوفر حيوان مطابق لطلبك في بيور بيتس: %@%@. هل ترغب بحجزه لك؟";
 
@@ -11006,3 +11014,131 @@
 "Fulfillment_Recovery_Limited" = "تم فحص عدد محدود من الطلبات الأخيرة. افتح الطلبات لمراجعة السجلات الأخرى.";
 "Fulfillment_Recovery_AllOrders" = "فتح الطلبات";
 "Fulfillment_ClearFilters" = "مسح البحث والفلاتر";
+
+/* Delivery workspace — queue, route, and recovery */
+"DeliveryWorkspace_FleetCaption" = "أسطول بيوربتس الرسمي";
+"DeliveryWorkspace_Tools" = "أدوات الأسطول";
+"DeliveryWorkspace_ToolsHint" = "افتح ملخص الأسطول أو السائقين أو الاستثناءات أو التحصيل أو إثباتات التسليم، حسب صلاحياتك.";
+"DeliveryWorkspace_Queue" = "قائمة التوصيل";
+"DeliveryWorkspace_Refreshing" = "جارٍ تحديث قائمة التوصيل…";
+"DeliveryWorkspace_PreviousData" = "تُعرض آخر قائمة محمّلة. حدّثها للتحقق من التغييرات.";
+"DeliveryWorkspace_UnknownFreshness" = "وقت التحديث غير متاح";
+"DeliveryWorkspace_Updated" = "آخر تحديث: %@";
+"DeliveryWorkspace_Created" = "أُنشئ في %@";
+"DeliveryWorkspace_ResultCount" = "عدد الطلبات في هذا العرض: %@";
+"DeliveryWorkspace_LoadedCount" = "عدد الطلبات المحمّلة: %@";
+"DeliveryWorkspace_LoadedScope" = "الطلبات المعروضة من القائمة المحمّلة";
+"DeliveryWorkspace_Search" = "ابحث عن طلب أو عميل أو سائق";
+"DeliveryWorkspace_ClearSearch" = "مسح البحث";
+"DeliveryWorkspace_NoMatches" = "لا توجد طلبات مطابقة";
+"DeliveryWorkspace_NoMatchesDetail" = "جرّب اسمًا أو مرجعًا آخر، أو اختر مرحلة توصيل مختلفة.";
+"DeliveryWorkspace_OrderReference" = "مرجع الطلب";
+"DeliveryWorkspace_Driver" = "السائق";
+"DeliveryWorkspace_Fee" = "رسوم التوصيل";
+"DeliveryWorkspace_Unspecified" = "غير محددة";
+"DeliveryWorkspace_ViewRequest" = "عرض التوصيل";
+"DeliveryWorkspace_AssignedDriver" = "تم التعيين · الاسم غير متاح";
+"DeliveryWorkspace_AddressMissing" = "العنوان غير متاح";
+"DeliveryWorkspace_TimingMissing" = "توقيت الطلب غير متاح";
+
+/* Delivery detail sheet — route, next step, and supporting evidence */
+"DeliveryDetail_Refreshing" = "جارٍ تحديث تفاصيل التوصيل…";
+"DeliveryDetail_Journey" = "مسار التوصيل";
+"DeliveryDetail_CustomerMissing" = "الاسم غير متاح";
+"DeliveryDetail_Collection" = "التحصيل النقدي";
+"DeliveryDetail_Progress" = "حالة التوصيل";
+"DeliveryDetail_References" = "بيانات السجل";
+"DeliveryDetail_ReferencesCaption" = "المراجع والتوقيتات";
+"DeliveryDetail_RequestID" = "مرجع التوصيل";
+"DeliveryDetail_Created" = "تاريخ الإنشاء";
+"DeliveryDetail_Updated" = "آخر تحديث";
+"DeliveryDetail_Activity" = "آخر المستجدات";
+"DeliveryDetail_EventCount" = "عدد التحديثات المسجلة: %@";
+"DeliveryDetail_FromState" = "من: %@";
+"DeliveryDetail_ToState" = "إلى: %@";
+"DeliveryDetail_NextActions" = "الخطوة التالية";
+"DeliveryDetail_ActionNotice" = "الإجراءات حسب آخر حالة محمّلة. راجع التأكيد قبل المتابعة.";
+
+/* Canonical delivery states and recorded actions displayed in the dossier */
+"Delivery_Value_CREATED" = "تم الإنشاء";
+"Delivery_Value_READY_FOR_ASSIGNMENT" = "جاهز للتعيين";
+"Delivery_Value_PICKUP_PENDING" = "بانتظار الاستلام";
+"Delivery_Value_IN_TRANSIT" = "في الطريق";
+"Delivery_Value_DELIVERED" = "تم التوصيل";
+"Delivery_Value_CLOSED" = "مغلق";
+"Delivery_Value_CANCELLED" = "ملغي";
+"Delivery_Value_FAILED" = "تعذّر التوصيل";
+"Delivery_Value_EXPIRED" = "منتهي الصلاحية";
+"Delivery_Value_OFFERED" = "معروض";
+"Delivery_Value_ACCEPTED" = "مقبول";
+"Delivery_Value_REJECTED" = "مرفوض";
+"Delivery_Value_ASSIGNED" = "تم التعيين";
+"Delivery_Value_RELEASED" = "أُلغي التعيين";
+"Delivery_Value_NOT_CONFIGURED" = "غير مُعدّ";
+"Delivery_Value_PLANNED" = "مخطط";
+"Delivery_Value_COMPLETED" = "مكتمل";
+"Delivery_Value_NOT_REQUIRED" = "غير مطلوب";
+"Delivery_Value_PARTIAL" = "جزئي";
+"Delivery_Value_CORRECTION_REQUIRED" = "يتطلب تصحيحًا";
+"Delivery_Value_ACCEPTED_BY_COMPANY" = "قبلته الشركة";
+"Delivery_Value_ASSIGNED_TO_DRIVER" = "تم تعيين سائق";
+"Delivery_Value_PICKED_UP" = "تم الاستلام";
+"Delivery_Value_NEW_REQUEST" = "طلب جديد";
+"Delivery_Value_PREPARING" = "قيد التجهيز";
+"Delivery_Value_READY_FOR_PICKUP" = "جاهز للاستلام";
+"Delivery_Value_DELIVERY_REQUESTED" = "تم طلب التوصيل";
+"Delivery_Value_DELIVERY_ASSIGNED" = "تم تعيين التوصيل";
+"Delivery_Value_AWAITING_HANDOVER" = "بانتظار التسليم للسائق";
+"Delivery_Value_PAYMENT_PENDING" = "بانتظار الدفع";
+"Delivery_Value_PAYMENT_CONFIRMED" = "تم تأكيد الدفع";
+"Delivery_Value_DELIVERY_EVENT" = "تحديث التوصيل";
+"Delivery_Value_ACCEPT" = "تم قبول الطلب";
+"Delivery_Value_REJECT" = "تم رفض الطلب";
+"Delivery_Value_ASSIGN" = "تم تعيين السائق";
+"Delivery_Value_REASSIGN" = "تم تغيير السائق";
+"Delivery_Value_PICK_UP" = "تم تأكيد الاستلام";
+"Delivery_Value_START_TRANSIT" = "بدأ التوصيل";
+"Delivery_Value_CANCEL" = "أُلغي التوصيل";
+"Delivery_Value_FAIL" = "سُجّل تعذّر التوصيل";
+"Delivery_Value_RECONCILE_COD" = "تمت تسوية التحصيل النقدي";
+"Delivery_Value_DELIVER" = "تم تأكيد التوصيل";
+"Delivery_Value_FINALIZE_POD" = "اكتمل إثبات التوصيل";
+
+/* Delivery-only next steps */
+"DeliveryDetail_DriversAction" = "السائقون والتوافر";
+"DeliveryDetail_DriversHint" = "افتح أسطول التوصيل لمراجعة السائقين ومدى توافرهم.";
+"DeliveryDetail_RefreshAction" = "تحديث التوصيل";
+"DeliveryDetail_RefreshHint" = "تحقق من آخر حالة للتوصيل والإجراءات المتاحة.";
+
+/* Staff delivery acceptance */
+"DeliveryDetail_AcceptDelivery" = "قبول التوصيل";
+"DeliveryDetail_AcceptHint" = "اختر سائقًا مؤهلًا، ثم أكّد قبول التوصيل.";
+"DeliveryDetail_AcceptUnavailable" = "قبول التوصيل غير متاح لصلاحياتك الحالية أو لحالة هذا الطلب. حدّث التفاصيل للتحقق مجددًا.";
+"DeliveryDetail_AcceptDriverConfirmation" = "هل تريد قبول هذا التوصيل وتعيينه للسائق %@؟ سيتابع السائق خطوات التوصيل من تطبيقه.";
+"Delivery_Value_ORDER_ACCEPT_DELIVERY" = "تم قبول التوصيل وتعيين السائق";
+
+/* Fulfillment audit recovery and canonical projections. */
+"Fulfillment_Command_Sending" = "جارٍ إرسال الإجراء…";
+"Fulfillment_Command_Syncing" = "تم قبول الإجراء. جارٍ تأكيد الحالة من الخادم…";
+"Fulfillment_Command_Unconfirmed" = "لم تتأكد الحالة بعد. أعد المحاولة للتحقق بأمان من الإجراء نفسه.";
+"Fulfillment_Completed_InQueue" = "مكتملة في القائمة";
+"Fulfillment_Completed_NetBadge" = "الصافي %.2f ر.ق";
+"Fulfillment_Ledger_Subtotal" = "الإجمالي الفرعي";
+"Fulfillment_Ledger_Commission" = "عمولة المنصة";
+"Fulfillment_Ledger_DeliveryFee" = "رسوم التوصيل";
+"Fulfillment_Ledger_ProviderNet" = "صافي المتجر";
+"Fulfillment_Delivery_Unspecified" = "لم تحدد جهة التوصيل";
+"Fulfillment_Delivery_Driver" = "مندوب التوصيل";
+"Fulfillment_Timeline_Stale" = "سجل محفوظ؛ لم يتأكد أحدث سجل من الخادم.";
+"Fulfillment_Record_Unavailable" = "لم يعد سجل التنفيذ متاحاً.";
+
+/* Fulfillment financial and delivery safety */
+"Fulfillment_Safety_CashReview" = "راجع المبلغ المستحق قبل تحصيل الدفع بعد إلغاء أو تعذّر توصيل أو إرجاع.";
+"Fulfillment_Safety_InventoryReview" = "يجب مراجعة المخزون قبل إكمال هذا الإجراء.";
+"Fulfillment_Safety_ReservationReview" = "راجع حجز الطلب بالكامل قبل إلغاء جزء منه.";
+"Fulfillment_Safety_ReturnRequired" = "تم تسليم هذه العناصر للمندوب. استخدم إجراءات الإرجاع.";
+"Fulfillment_Safety_DeliveryEvidence" = "أكمل إجراء المندوب المكلّف أو التسليم قبل استعادة هذه الحالة.";
+
+/* Plans & food management */
+"Providers_Plans_Delete_Explanation" = "سيتم حذف الخطة نهائياً. ستحتفظ الاشتراكات الحالية بنسختها المحفوظة.";
+"RemoveFood" = "إزالة الطعام";

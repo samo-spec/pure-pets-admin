@@ -1,4 +1,5 @@
 import SwiftUI
+import FirebaseFirestore
 
 // MARK: - Filter Enum
 
@@ -35,6 +36,7 @@ final class PPVetsListViewModel: ObservableObject {
     var disabledCount: Int { allVets.filter { $0.isDisabled }.count }
 
     func startListening() {
+        stopListening()
         listener = PPVetManager.shared().observeAllVets { [weak self] vets, _ in
             Task { @MainActor in
                 guard let self = self else { return }
@@ -46,6 +48,7 @@ final class PPVetsListViewModel: ObservableObject {
     }
 
     func stopListening() {
+        (listener as? ListenerRegistration)?.remove()
         listener = nil
     }
 

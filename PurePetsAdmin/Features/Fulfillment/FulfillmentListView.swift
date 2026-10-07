@@ -15,6 +15,7 @@
 import SwiftUI
 import UIKit
 import FirebaseFirestore
+import FirebaseAuth
 
 // MARK: - Sendable Conformance
 
@@ -207,7 +208,8 @@ struct FulfillmentRecordSnapshot: Identifiable, Sendable {
     let storeName: String
     let fulfillmentMode: String
     let status: String
-    let deliveryMode: String
+    let deliveryCompanyID: String
+    let driverID: String
     let deliveryStatus: String?
     let driverName: String?
     let driverPhone: String?
@@ -244,10 +246,11 @@ struct FulfillmentRecordSnapshot: Identifiable, Sendable {
         }
         self.fulfillmentMode = record.fulfillmentMode ?? "standard"
         self.status = (record.status ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        self.deliveryMode = "company"
-        self.deliveryStatus = nil
-        self.driverName = nil
-        self.driverPhone = nil
+        self.deliveryCompanyID = record.deliveryCompanyID
+        self.deliveryStatus = record.deliveryStatus.isEmpty ? nil : record.deliveryStatus
+        self.driverID = record.deliveryUserID
+        self.driverName = record.deliveryUserName.isEmpty ? nil : record.deliveryUserName
+        self.driverPhone = record.deliveryUserPhone.isEmpty ? nil : record.deliveryUserPhone
 
         var parsedItems: [FulfillmentItemSnapshot] = []
         if let rawItems = record.items as? [[String: Any]] {
@@ -261,8 +264,9 @@ struct FulfillmentRecordSnapshot: Identifiable, Sendable {
         self.subtotal = (moneyDict["subtotal"] as? NSNumber)?.doubleValue ?? 0.0
         self.deliveryFee = (moneyDict["deliveryFee"] as? NSNumber)?.doubleValue ?? 0.0
         self.platformCommission = (moneyDict["platformCommission"] as? NSNumber)?.doubleValue ?? 0.0
-        let net = (moneyDict["providerNet"] as? NSNumber)?.doubleValue ?? 0.0
-        self.providerNet = net > 0 ? net : subtotal
+        // A real zero is valid (for example a fully discounted child). Only a
+        // missing legacy field falls back; never reinterpret zero as absent.
+        self.providerNet = (moneyDict["providerNet"] as? NSNumber)?.doubleValue ?? subtotal
         self.currency = moneyDict["currency"] as? String ?? "QAR"
         self.createdAt = record.createdAt
         self.updatedAt = record.updatedAt
@@ -384,20 +388,38 @@ struct FulfillmentEventSnapshot: Identifiable, Sendable {
 
     init(dict: [String: Any], docID: String) {
         self.id = docID
-        self.eventType = dict["eventType"] as? String ?? dict["type"] as? String ?? "event"
-        self.actorUID = dict["actorUid"] as? String ?? dict["actorId"] as? String ?? dict["uid"] as? String
-        self.actorRole = dict["actorRole"] as? String ?? dict["role"] as? String
-        self.note = dict["note"] as? String ?? dict["reason"] as? String
+        let metadata = dict["metadata"] as? [String: Any] ?? [:]
+        self.eventType = dict["action"] as? String ?? dict["eventType"] as? String ?? dict["type"] as? String ?? "event"
+        self.actorUID = dict["actorUserId"] as? String ?? dict["actorUid"] as? String ?? dict["actorId"] as? String ?? dict["uid"] as? String
+        self.actorRole = dict["actorType"] as? String ?? dict["actorRole"] as? String ?? dict["role"] as? String
+        self.note = metadata["note"] as? String ?? metadata["reason"] as? String ?? dict["note"] as? String ?? dict["reason"] as? String
         self.fromStatus = dict["fromStatus"] as? String ?? dict["previousStatus"] as? String
         self.toStatus = dict["toStatus"] as? String ?? dict["targetStatus"] as? String ?? dict["status"] as? String
-        if let ts = dict["timestamp"] as? Timestamp {
+        let createdAt = dict["createdAt"] ?? dict["timestamp"]
+        if let ts = createdAt as? Timestamp {
             self.timestamp = ts.dateValue()
-        } else if let dt = dict["timestamp"] as? Date {
+        } else if let dt = createdAt as? Date {
             self.timestamp = dt
         } else {
             self.timestamp = nil
         }
     }
+    var displayAction: String {
+        let key: String
+        switch eventType {
+        case "accept": key = "Fulfillment_Quick_Accept"
+        case "start_preparing": key = "Fulfillment_Quick_Prepare"
+        case "mark_ready": key = "Fulfillment_Quick_Ready"
+        case "request_delivery": key = "Fulfillment_Quick_Request_Delivery"
+        case "reject": key = "Fulfillment_Status_Rejected"
+        case "cancel_request": key = "Fulfillment_Status_Cancelled"
+        case "confirm_handover": key = "Fulfillment_Status_HandedOver"
+        case "admin_override": key = "Fulfillment_Admin_Override_Title"
+        default: return eventType
+        }
+        return Language.get(key, alter: eventType)
+    }
+
 }
 
 struct FulfillmentCockpitMetrics: Sendable {
@@ -405,7 +427,7 @@ struct FulfillmentCockpitMetrics: Sendable {
     let inPreparationCount: Int
     let inTransitCount: Int
     let completedCount: Int
-    let totalGrossValue: Double
+    let completedProviderNet: Double
     let slaUrgentCount: Int
 }
 
@@ -415,8 +437,10 @@ enum FulfillmentOverrideCommitResult: Sendable {
     case succeeded
     case conflict(requiresLiveRecordReload: Bool)
     case denied
+    case blocked(String)
     case invalid
     case failed
+    case stale
 
     static func from(error: Error) -> Self {
         var currentError: NSError? = error as NSError
@@ -425,6 +449,9 @@ enum FulfillmentOverrideCommitResult: Sendable {
 
         for _ in 0..<4 {
             guard let candidate = currentError else { break }
+            if candidate.domain == "PPFulfillmentService", candidate.code == 418 {
+                return .blocked(candidate.localizedDescription)
+            }
             if candidate.domain == "com.firebase.functions" {
                 switch candidate.code {
                 case 7, 16: // permission-denied, unauthenticated
@@ -479,6 +506,7 @@ final class FulfillmentListViewModel: ObservableObject {
     @Published private(set) var recoveryError: String?
     @Published private(set) var recoveryCheckLimited = false
     @Published var errorMessage: String?
+    @Published private(set) var queueErrorMessage: String?
     @Published var selectedStage: FulfillmentStage = .all
     @Published var searchText: String = ""
     @Published var onlySLAUrgent: Bool = false
@@ -486,6 +514,33 @@ final class FulfillmentListViewModel: ObservableObject {
     @Published var sortOption: FulfillmentSortOption = .newest
     @Published var isSubmittingAction: Bool = false
     @Published var actionSuccessToast: String?
+    @Published private(set) var actionProgressMessage: String?
+    @Published private(set) var confirmedRecord: FulfillmentRecordSnapshot?
+    @Published private(set) var hasQuickActionRetry = false
+    private var retryableQuickAction: (FulfillmentRecordSnapshot, String)?
+
+    private struct CommandEnvelope {
+        let id: String
+        var accepted = false
+    }
+
+    private struct CommandReceipt: Sendable {
+        let isOk: Bool
+        let fulfillmentID: String?
+        let commandId: String?
+        let toStatus: String?
+
+        init(dictionary: [AnyHashable: Any]?) {
+            self.isOk = dictionary?["ok"] as? Bool == true
+            self.fulfillmentID = dictionary?["fulfillmentID"] as? String
+            self.commandId = dictionary?["commandId"] as? String
+            self.toStatus = dictionary?["toStatus"] as? String
+        }
+    }
+    // One stable ID per exact payload for this screen/session. Transport failures
+    // retain the envelope; an accepted command retries only its server readback.
+    private var commands: [[String]: CommandEnvelope] = [:]
+    private var actionAttempt = UUID()
 
     private var listener: (any ListenerRegistration)?
     private var listenerGeneration = UUID()
@@ -577,10 +632,11 @@ final class FulfillmentListViewModel: ObservableObject {
                 inTransit += 1
             } else if FulfillmentStage.completed.matches(r.status) {
                 comp += 1
+                // The bounded visible queue is not an accounting settlement report.
+                if r.currency == "QAR" { totalVal += r.providerNet }
             }
 
             if r.isSLAUrgent { urgent += 1 }
-            totalVal += r.providerNet
         }
 
         return FulfillmentCockpitMetrics(
@@ -588,9 +644,15 @@ final class FulfillmentListViewModel: ObservableObject {
             inPreparationCount: inPrep,
             inTransitCount: inTransit,
             completedCount: comp,
-            totalGrossValue: totalVal,
+            completedProviderNet: totalVal,
             slaUrgentCount: urgent
         )
+    }
+
+    static func isAuthorityLoss(_ error: Error) -> Bool {
+        let ns = error as NSError
+        return (ns.domain == "PPFulfillmentService" && [410, 411, 412].contains(ns.code)) ||
+            ((ns.domain == "FIRFirestoreErrorDomain" || ns.domain == "com.firebase.firestore") && [7, 16].contains(ns.code))
     }
 
     static func userFriendlyErrorMessage(_ error: Error) -> String {
@@ -624,7 +686,7 @@ final class FulfillmentListViewModel: ObservableObject {
         isPartialRead = false
         queueReadFailed = false
         isFromCache = true
-        errorMessage = nil
+        queueErrorMessage = nil
         let generation = UUID()
         listenerGeneration = generation
 
@@ -642,12 +704,18 @@ final class FulfillmentListViewModel: ObservableObject {
                     self.records = self.isPartialRead
                         ? (rawRecords ?? []).map { FulfillmentRecordSnapshot(record: $0) }
                         : []
-                    self.errorMessage = Self.userFriendlyErrorMessage(error)
+                    self.queueErrorMessage = Self.userFriendlyErrorMessage(error)
                 } else {
                     self.isPartialRead = false
                     self.queueReadFailed = false
-                    self.errorMessage = nil
+                    self.queueErrorMessage = nil
                     self.records = (rawRecords ?? []).map { FulfillmentRecordSnapshot(record: $0) }
+                }
+                if let error, Self.isAuthorityLoss(error) {
+                    self.recoveryOrders = []
+                    self.commands.removeAll()
+                    self.retryableQuickAction = nil
+                    self.hasQuickActionRetry = false
                 }
                 self.finishRefresh()
             }
@@ -715,57 +783,41 @@ final class FulfillmentListViewModel: ObservableObject {
         guard !isSubmittingAction,
               let action = record.nextQuickAction,
               action.targetStatus == targetStatus else { return }
-        isSubmittingAction = true
-        errorMessage = nil
-        actionSuccessToast = nil
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-
-        let cmdID = "cmd_\(UUID().uuidString)"
+        retryableQuickAction = (record, targetStatus)
+        hasQuickActionRetry = false
         let note = String(format: Language.get("Fulfillment_Quick_Audit_Note", alter: "إجراء موظف من تطبيق الإدارة: %@"), action.title)
-
-        if PPFulfillmentService.isOfficialPlatformFulfillment(record.rawRecord) {
-            // Official platform transition
-            PPFulfillmentService.shared().transitionOfficialFulfillment(
-                record.rawRecord,
-                expectedStatus: record.status,
-                action: action.providerAction,
-                note: note,
-                commandID: cmdID
-            ) { [weak self] _, error in
-                Task { @MainActor in
-                    guard let self = self else { return }
-                    self.isSubmittingAction = false
-                    if let error = error {
-                        self.errorMessage = Self.userFriendlyErrorMessage(error)
-                    } else {
-                        self.actionSuccessToast = Language.get("Fulfillment_Transition_Success", alter: "تم تحديث حالة الطلب بنجاح")
-                        UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    }
-                }
-            }
-        } else {
-            // Authorized admin override for partner or non-official child
-            PPFulfillmentService.shared().adminOverride(
-                record.id,
-                expectedStatus: record.status,
-                targetStatus: targetStatus,
-                reason: "Staff operational acceleration",
-                note: note,
-                notify: true,
-                commandID: cmdID
-            ) { [weak self] _, error in
-                Task { @MainActor in
-                    guard let self = self else { return }
-                    self.isSubmittingAction = false
-                    if let error = error {
-                        self.errorMessage = Self.userFriendlyErrorMessage(error)
-                    } else {
-                        self.actionSuccessToast = Language.get("Fulfillment_Transition_Success", alter: "تم تحديث حالة الطلب بنجاح")
-                        UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    }
-                }
+        let key = [Auth.auth().currentUser?.uid ?? "", record.id, record.status, targetStatus, "quick", note]
+        let cmdID = commands[key]?.id ?? "cmd_\(UUID().uuidString)"
+        commands[key] = commands[key] ?? CommandEnvelope(id: cmdID)
+        beginAction()
+        let attempt = actionAttempt
+        if commands[key]?.accepted == true {
+            confirmCommand(key: key, attempt: attempt, targetStatus: targetStatus, completion: nil)
+            return
+        }
+        let completed: ([AnyHashable: Any]?, Error?) -> Void = { [weak self] rawResult, error in
+            let receipt = CommandReceipt(dictionary: rawResult)
+            Task { @MainActor in
+                self?.receiveCommand(receipt, error: error, key: key, attempt: attempt,
+                                     targetStatus: targetStatus, completion: nil)
             }
         }
+        if PPFulfillmentService.isOfficialPlatformFulfillment(record.rawRecord) {
+            PPFulfillmentService.shared().transitionOfficialFulfillment(
+                record.rawRecord, expectedStatus: record.status, action: action.providerAction,
+                note: note, commandID: cmdID, completion: completed
+            )
+        } else {
+            PPFulfillmentService.shared().adminOverride(
+                record.id, expectedStatus: record.status, targetStatus: targetStatus,
+                reason: note, note: note, notify: true, commandID: cmdID, completion: completed
+            )
+        }
+    }
+
+    func retryLastQuickAction() {
+        guard let (record, target) = retryableQuickAction else { return }
+        quickAdvance(record: record, targetStatus: target)
     }
 
     func executeAdminOverride(
@@ -777,26 +829,137 @@ final class FulfillmentListViewModel: ObservableObject {
         notify: Bool,
         completion: @escaping @Sendable (FulfillmentOverrideCommitResult) -> Void
     ) {
-        let cmdID = "override_\(UUID().uuidString.prefix(8))"
+        guard !isSubmittingAction else { completion(.failed); return }
+        retryableQuickAction = nil
+        hasQuickActionRetry = false
+        let key = [Auth.auth().currentUser?.uid ?? "", record.id, expectedStatus,
+                   targetStatus, "override", reason, note ?? "", String(notify)]
+        let cmdID = commands[key]?.id ?? "override_\(UUID().uuidString)"
+        commands[key] = commands[key] ?? CommandEnvelope(id: cmdID)
+        beginAction(completion: completion)
+        let attempt = actionAttempt
+        if commands[key]?.accepted == true {
+            confirmCommand(key: key, attempt: attempt, targetStatus: targetStatus, completion: completion)
+            return
+        }
         PPFulfillmentService.shared().adminOverride(
-            record.id,
-            expectedStatus: expectedStatus,
-            targetStatus: targetStatus,
-            reason: reason,
-            note: note,
-            notify: notify,
-            commandID: cmdID
-        ) { _, error in
+            record.id, expectedStatus: expectedStatus, targetStatus: targetStatus,
+            reason: reason, note: note, notify: notify, commandID: cmdID
+        ) { [weak self] rawResult, error in
+            let receipt = CommandReceipt(dictionary: rawResult)
             Task { @MainActor in
-                if let error = error {
-                    completion(FulfillmentOverrideCommitResult.from(error: error))
-                } else {
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    completion(.succeeded)
-                }
+                self?.receiveCommand(receipt, error: error, key: key, attempt: attempt,
+                                     targetStatus: targetStatus, completion: completion)
             }
         }
     }
+
+    private func beginAction(completion: (@Sendable (FulfillmentOverrideCommitResult) -> Void)? = nil) {
+        isSubmittingAction = true
+        errorMessage = nil
+        actionSuccessToast = nil
+        confirmedRecord = nil
+        actionAttempt = UUID()
+        actionProgressMessage = Language.get("Fulfillment_Command_Sending", alter: "جارٍ إرسال الإجراء…")
+        let attempt = actionAttempt
+        DispatchQueue.main.asyncAfter(deadline: .now() + 45) { [weak self] in
+            guard let self, self.actionAttempt == attempt, self.isSubmittingAction else { return }
+            self.finishAction(.stale, completion: completion)
+        }
+    }
+
+    private func receiveCommand(_ receipt: CommandReceipt, error: Error?, key: [String], attempt: UUID,
+                                targetStatus: String, completion: (@Sendable (FulfillmentOverrideCommitResult) -> Void)?) {
+        guard actionAttempt == attempt, isSubmittingAction else { return }
+        guard Auth.auth().currentUser?.uid == key[0] else {
+            commands.removeAll()
+            finishAction(.denied, completion: completion)
+            return
+        }
+        if let error {
+            finishAction(FulfillmentOverrideCommitResult.from(error: error), completion: completion)
+            errorMessage = Self.userFriendlyErrorMessage(error)
+            return
+        }
+        guard receipt.isOk,
+              receipt.fulfillmentID == key[1],
+              receipt.commandId == commands[key]?.id,
+              receipt.toStatus == targetStatus else {
+            finishAction(.stale, completion: completion)
+            return
+        }
+        commands[key]?.accepted = true
+        confirmCommand(key: key, attempt: attempt, targetStatus: targetStatus, completion: completion)
+    }
+
+    private func confirmCommand(key: [String], attempt: UUID, targetStatus: String,
+                                completion: (@Sendable (FulfillmentOverrideCommitResult) -> Void)?) {
+        actionProgressMessage = Language.get("Fulfillment_Command_Syncing", alter: "تم قبول الإجراء. جارٍ تأكيد الحالة من الخادم…")
+        // A server-only read is the declared confirmation boundary; a callable
+        // receipt or cached listener alone must never emit success.
+        PPFulfillmentService.shared().refreshFulfillmentFromServer(key[1]) { [weak self] rawRecord, error in
+            Task { @MainActor in
+                guard let self, self.actionAttempt == attempt, self.isSubmittingAction else { return }
+                guard Auth.auth().currentUser?.uid == key[0] else {
+                    self.commands.removeAll()
+                    self.finishAction(.denied, completion: completion)
+                    return
+                }
+                guard error == nil, let rawRecord else {
+                    self.finishAction(.stale, completion: completion)
+                    return
+                }
+                let snapshot = FulfillmentRecordSnapshot(record: rawRecord)
+                self.confirmedRecord = snapshot
+                if let index = self.records.firstIndex(where: { $0.id == snapshot.id }) {
+                    self.records[index] = snapshot
+                }
+                guard snapshot.status == targetStatus else {
+                    self.finishAction(.conflict(requiresLiveRecordReload: true), completion: completion)
+                    return
+                }
+                self.commands.removeValue(forKey: key)
+                self.finishAction(.succeeded, completion: completion)
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+            guard let self, self.actionAttempt == attempt, self.isSubmittingAction else { return }
+            self.finishAction(.stale, completion: completion)
+        }
+    }
+
+    private func finishAction(_ result: FulfillmentOverrideCommitResult,
+                              completion: (@Sendable (FulfillmentOverrideCommitResult) -> Void)?) {
+        isSubmittingAction = false
+        actionProgressMessage = nil
+        switch result {
+        case .succeeded:
+            retryableQuickAction = nil
+            hasQuickActionRetry = false
+            actionSuccessToast = Language.get("Fulfillment_Transition_Success", alter: "تم تحديث حالة الطلب بنجاح")
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        case .stale:
+            hasQuickActionRetry = retryableQuickAction != nil
+            errorMessage = Language.get("Fulfillment_Command_Unconfirmed", alter: "لم تتأكد الحالة بعد. أعد المحاولة للتحقق بأمان من الإجراء نفسه.")
+        case .conflict:
+            retryableQuickAction = nil
+            hasQuickActionRetry = false
+            errorMessage = Language.get("Fulfillment_OverrideConflict", alter: "تغيرت حالة التنفيذ. راجع الحالة المباشرة قبل المتابعة.")
+        case .denied:
+            retryableQuickAction = nil
+            hasQuickActionRetry = false
+            errorMessage = Language.get("Fulfillment_OverridePermissionDenied", alter: "ليس لديك صلاحية لتنفيذ هذا الإجراء.")
+        case .blocked(let message):
+            retryableQuickAction = nil
+            hasQuickActionRetry = false
+            errorMessage = message
+        case .invalid, .failed:
+            hasQuickActionRetry = retryableQuickAction != nil
+            errorMessage = Language.get("Fulfillment_OverrideFailed", alter: "تعذر إكمال الإجراء. تحقق من الحالة ثم أعد المحاولة.")
+        }
+        completion?(result)
+    }
+
 }
 
 // MARK: - Main Fulfillment Screen
@@ -891,9 +1054,7 @@ struct AdminFulfillmentListView: View {
                         parentPaymentOrderIDToOpen = orderID
                     }
                 },
-                onQuickAdvance: { r, target in
-                    viewModel.quickAdvance(record: r, targetStatus: target)
-                }
+                actionModel: viewModel
             )
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
@@ -1017,9 +1178,7 @@ struct AdminFulfillmentListView: View {
                 onOpenParentOrder: { orderID in
                     parentPaymentOrderIDToOpen = orderID
                 },
-                onQuickAdvance: { r, target in
-                    viewModel.quickAdvance(record: r, targetStatus: target)
-                }
+                actionModel: viewModel
             )
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
@@ -1095,8 +1254,19 @@ struct AdminFulfillmentListView: View {
                 }
             }
 
-            if let error = viewModel.errorMessage {
+            if let progress = viewModel.actionProgressMessage {
+                Label(progress, systemImage: "arrow.triangle.2.circlepath")
+                    .font(AdminType.caption1)
+                    .foregroundStyle(FulfillmentTokens.inkSecondary)
+            }
+            if let error = viewModel.queueErrorMessage {
                 AdminErrorBanner(message: error, retry: { viewModel.reload() })
+            }
+            if let error = viewModel.errorMessage {
+                AdminErrorBanner(message: error, retry: {
+                    if viewModel.hasQuickActionRetry { viewModel.retryLastQuickAction() }
+                    else { viewModel.reload() }
+                })
                     .padding(.horizontal, AdminSpacing.screenMargin)
                     .padding(.top, 6)
             }
@@ -1150,11 +1320,11 @@ struct AdminFulfillmentListView: View {
                 }
             }
 
-            // 4. Completed & Settled GMV
+            // Completed child net in this bounded queue; not settlement accounting.
             CockpitMetricCard(
-                title: Language.get("Fulfillment_Gross_Settled", alter: "مكتملة ومسوّاة"),
+                title: Language.get("Fulfillment_Completed_InQueue", alter: "مكتملة في القائمة"),
                 value: "\(m.completedCount)",
-                badge: String(format: "%.2f %@", m.totalGrossValue, Language.get("Currency_QAR", alter: "ر.ق")),
+                badge: String(format: Language.get("Fulfillment_Completed_NetBadge", alter: "الصافي %.2f ر.ق"), m.completedProviderNet),
                 symbol: "checkmark.seal.fill",
                 accentColor: FulfillmentTokens.emerald,
                 isSelected: viewModel.selectedStage == .completed
@@ -1435,7 +1605,8 @@ struct AdminFulfillmentListView: View {
                         },
                         onQuickAdvance: { target in
                             viewModel.quickAdvance(record: record, targetStatus: target)
-                        }
+                        },
+                        actionsDisabled: viewModel.isSubmittingAction || viewModel.hasQuickActionRetry || viewModel.isFromCache
                     )
                 }
             }
@@ -1508,6 +1679,7 @@ private struct FulfillmentHeroCard: View {
     let onTapCard: () -> Void
     var onOverride: (() -> Void)? = nil
     let onQuickAdvance: (String) -> Void
+    var actionsDisabled = false
 
     @State private var copied: Bool = false
 
@@ -1671,7 +1843,7 @@ private struct FulfillmentHeroCard: View {
             HStack(spacing: 12) {
                 // Price & Items Count
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(String(format: "%.2f %@", record.providerNet, Language.get("Currency_QAR", alter: "ر.ق")))
+                    Text(String(format: "%.2f %@", record.providerNet, record.currency == "QAR" ? Language.get("Currency_QAR", alter: "ر.ق") : record.currency))
                         .font(.system(size: 16, weight: .heavy, design: .rounded))
                         .foregroundStyle(FulfillmentTokens.inkPrimary)
                         .monospacedDigit()
@@ -1701,6 +1873,7 @@ private struct FulfillmentHeroCard: View {
                         .shadow(color: record.statusTone.opacity(0.3), radius: 4, y: 2)
                     }
                     .buttonStyle(.plain)
+                    .disabled(actionsDisabled)
                 }
 
                 // Privileged Admin Override Push Trigger
@@ -1751,7 +1924,7 @@ struct FulfillmentDossierView: View {
     var onDismiss: (() -> Void)? = nil
     let onOverride: (FulfillmentRecordSnapshot) -> Void
     let onOpenParentOrder: (String) -> Void
-    let onQuickAdvance: (FulfillmentRecordSnapshot, String) -> Void
+    @ObservedObject var actionModel: FulfillmentListViewModel
 
     @Environment(\.dismiss) private var dismiss
     @State private var events: [FulfillmentEventSnapshot] = []
@@ -1759,6 +1932,19 @@ struct FulfillmentDossierView: View {
     @State private var eventsListener: (any ListenerRegistration)?
     @State private var eventsListenerGeneration = UUID()
     @State private var recordForOverridePush: FulfillmentRecordSnapshot?
+    @State private var liveRecord: FulfillmentRecordSnapshot?
+    @State private var recordListener: (any ListenerRegistration)?
+    @State private var recordListenerGeneration = UUID()
+    @State private var isRecordLive = false
+    @State private var recordReadError: String?
+    @State private var eventsError: String?
+    @State private var eventsFromCache = true
+
+    private var currentRecord: FulfillmentRecordSnapshot { liveRecord ?? record }
+    private var canAct: Bool {
+        isRecordLive && recordReadError == nil && !actionModel.isSubmittingAction &&
+            !actionModel.hasQuickActionRetry && PPFulfillmentService.shared().canAdminOverride()
+    }
 
     private var statusBarHeight: CGFloat {
         if let window = UIApplication.shared.connectedScenes
@@ -1795,12 +1981,21 @@ struct FulfillmentDossierView: View {
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 20) {
-                        dossierJourneyStepper
-                        financialSettlementMatrix
-                        customerBlueprintCard
-                        productManifestCard
-                        deliveryCourierCard
-                        auditTimelineCard
+                        if let error = recordReadError {
+                            AdminErrorBanner(message: error, retry: restartRecordListener)
+                        } else {
+                            if !isRecordLive {
+                                Text(Language.get("Fulfillment_Connection_Cached", alter: "بيانات محفوظة"))
+                                    .font(AdminType.caption1)
+                                    .foregroundStyle(FulfillmentTokens.inkSecondary)
+                            }
+                            dossierJourneyStepper
+                            financialSettlementMatrix
+                            customerBlueprintCard
+                            productManifestCard
+                            deliveryCourierCard
+                            auditTimelineCard
+                        }
                     }
                     .padding(.horizontal, AdminSpacing.screenMargin)
                     .padding(.top, 14)
@@ -1815,15 +2010,27 @@ struct FulfillmentDossierView: View {
             }
         }
         .background(overridePushLink)
-        .onAppear(perform: startListeningEvents)
-        .onDisappear(perform: stopListeningEvents)
+        .onAppear {
+            startRecordListener()
+            startListeningEvents()
+        }
+        .onDisappear {
+            stopRecordListener()
+            stopListeningEvents()
+        }
+        .onReceive(actionModel.$confirmedRecord) { snapshot in
+            guard let snapshot, snapshot.id == record.id else { return }
+            liveRecord = snapshot
+            isRecordLive = true
+        }
+        .interactiveDismissDisabled(actionModel.isSubmittingAction)
     }
 
     private var sovereignPushHeader: some View {
         AdminSovereignNavigationBar(
-            title: record.parentOrderNumber,
-            subtitle: record.displayStatus,
-            statusDotColor: record.statusTone,
+            title: currentRecord.parentOrderNumber,
+            subtitle: currentRecord.displayStatus,
+            statusDotColor: currentRecord.statusTone,
             onBack: {
                 if let onDismiss {
                     onDismiss()
@@ -1833,7 +2040,7 @@ struct FulfillmentDossierView: View {
             }
         ) {
             Button {
-                recordForOverridePush = record
+                recordForOverridePush = currentRecord
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "slider.horizontal.3")
@@ -1847,6 +2054,7 @@ struct FulfillmentDossierView: View {
                 .overlay(Capsule().stroke(FulfillmentTokens.crimson.opacity(0.3), lineWidth: 0.75))
             }
             .buttonStyle(.plain)
+            .disabled(!canAct)
         }
     }
 
@@ -1868,18 +2076,18 @@ struct FulfillmentDossierView: View {
             Spacer()
 
             VStack(spacing: 2) {
-                Text(record.parentOrderNumber)
+                Text(currentRecord.parentOrderNumber)
                     .font(AdminType.headline)
                     .foregroundStyle(FulfillmentTokens.inkPrimary)
-                Text(record.displayStatus)
+                Text(currentRecord.displayStatus)
                     .font(AdminType.caption2)
-                    .foregroundStyle(record.statusTone)
+                    .foregroundStyle(currentRecord.statusTone)
             }
 
             Spacer()
 
             Button {
-                recordForOverridePush = record
+                recordForOverridePush = currentRecord
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "slider.horizontal.3")
@@ -1892,6 +2100,7 @@ struct FulfillmentDossierView: View {
                 .background(FulfillmentTokens.crimsonSoft, in: Capsule())
             }
             .buttonStyle(.plain)
+            .disabled(!canAct)
         }
         .padding(.horizontal, AdminSpacing.screenMargin)
         .padding(.vertical, 14)
@@ -1923,24 +2132,10 @@ struct FulfillmentDossierView: View {
                     recordForOverridePush = nil
                 },
                 onCommit: { expectedStatus, target, reason, note, notify, completion in
-                    PPFulfillmentService.shared().adminOverride(
-                        rec.id,
-                        expectedStatus: expectedStatus,
-                        targetStatus: target,
-                        reason: reason,
-                        note: note,
-                        notify: notify,
-                        commandID: "cmd_\(UUID().uuidString.prefix(8))"
-                    ) { _, error in
-                        Task { @MainActor in
-                            if let error = error {
-                                completion(FulfillmentOverrideCommitResult.from(error: error))
-                            } else {
-                                recordForOverridePush = nil
-                                completion(.succeeded)
-                            }
-                        }
-                    }
+                    actionModel.executeAdminOverride(
+                        record: rec, expectedStatus: expectedStatus, targetStatus: target,
+                        reason: reason, note: note, notify: notify, completion: completion
+                    )
                 }
             )
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
@@ -1950,11 +2145,11 @@ struct FulfillmentDossierView: View {
     // 1. Spatial Stage Journey Stepper
     private var dossierJourneyStepper: some View {
         let stages: [(title: String, symbol: String, isDone: Bool, isCurrent: Bool)] = [
-            ("جديد", "bell.fill", record.stage != .newRequests, record.stage == .newRequests),
-            ("مقبول", "hand.thumbsup.fill", record.stage != .newRequests && record.stage != .preparing, record.stage == .preparing),
-            ("تجهيز", "gearshape.2.fill", record.stage == .ready || record.stage == .inTransit || record.stage == .delivered || record.stage == .completed, record.stage == .ready),
-            ("توصيل", "box.truck.fill", record.stage == .delivered || record.stage == .completed, record.stage == .inTransit),
-            ("مكتمل", "checkmark.seal.fill", record.stage == .completed, record.stage == .completed)
+            (Language.get("Fulfillment_Status_NewRequest", alter: "جديد"), "bell.fill", currentRecord.stage != .newRequests, currentRecord.stage == .newRequests),
+            (Language.get("Fulfillment_Status_Accepted", alter: "مقبول"), "hand.thumbsup.fill", currentRecord.stage != .newRequests && currentRecord.stage != .preparing, currentRecord.stage == .preparing),
+            (Language.get("Fulfillment_Status_Preparing", alter: "تجهيز"), "gearshape.2.fill", currentRecord.stage == .ready || currentRecord.stage == .inTransit || currentRecord.stage == .delivered || currentRecord.stage == .completed, currentRecord.stage == .ready),
+            (Language.get("Fulfillment_Status_InTransit", alter: "توصيل"), "box.truck.fill", currentRecord.stage == .delivered || currentRecord.stage == .completed, currentRecord.stage == .inTransit),
+            (Language.get("Fulfillment_Status_Completed", alter: "مكتمل"), "checkmark.seal.fill", currentRecord.stage == .completed, currentRecord.stage == .completed)
         ]
 
         return VStack(alignment: .leading, spacing: 14) {
@@ -1966,14 +2161,14 @@ struct FulfillmentDossierView: View {
                 Spacer()
 
                 HStack(spacing: 5) {
-                    Image(systemName: record.statusSymbol)
-                    Text(record.displayStatus)
+                    Image(systemName: currentRecord.statusSymbol)
+                    Text(currentRecord.displayStatus)
                 }
                 .font(AdminType.caption2Bold)
-                .foregroundStyle(record.statusTone)
+                .foregroundStyle(currentRecord.statusTone)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 4)
-                .background(record.statusTone.opacity(0.12), in: Capsule())
+                .background(currentRecord.statusTone.opacity(0.12), in: Capsule())
             }
 
             HStack(spacing: 0) {
@@ -1982,7 +2177,7 @@ struct FulfillmentDossierView: View {
                     VStack(spacing: 6) {
                         ZStack {
                             Circle()
-                                .fill(item.isCurrent ? record.statusTone : (item.isDone ? FulfillmentTokens.emerald : FulfillmentTokens.surfaceSecondary))
+                                .fill(item.isCurrent ? currentRecord.statusTone : (item.isDone ? FulfillmentTokens.emerald : FulfillmentTokens.surfaceSecondary))
                                 .frame(width: 32, height: 32)
 
                             Image(systemName: item.isDone ? "checkmark" : item.symbol)
@@ -1990,7 +2185,7 @@ struct FulfillmentDossierView: View {
                                 .foregroundStyle(item.isCurrent || item.isDone ? .white : FulfillmentTokens.inkTertiary)
                         }
                         .overlay(
-                            item.isCurrent ? Circle().stroke(record.statusTone.opacity(0.3), lineWidth: 5) : nil
+                            item.isCurrent ? Circle().stroke(currentRecord.statusTone.opacity(0.3), lineWidth: 5) : nil
                         )
 
                         Text(item.title)
@@ -2020,7 +2215,7 @@ struct FulfillmentDossierView: View {
                     .font(AdminType.subheadlineBold)
                     .foregroundStyle(FulfillmentTokens.inkPrimary)
                 Spacer()
-                Text(record.currency)
+                Text(currentRecord.currency)
                     .font(AdminType.caption2Bold)
                     .foregroundStyle(FulfillmentTokens.inkTertiary)
             }
@@ -2028,15 +2223,15 @@ struct FulfillmentDossierView: View {
             Divider().background(FulfillmentTokens.hairline)
 
             HStack {
-                DossierLedgerRow(title: "الإجمالي الفرعي", value: String(format: "%.2f", record.subtotal))
+                DossierLedgerRow(title: Language.get("Fulfillment_Ledger_Subtotal", alter: "الإجمالي الفرعي"), value: String(format: "%.2f", currentRecord.subtotal))
                 Spacer()
-                DossierLedgerRow(title: "عمولة المنصة", value: String(format: "%.2f", record.platformCommission))
+                DossierLedgerRow(title: Language.get("Fulfillment_Ledger_Commission", alter: "عمولة المنصة"), value: String(format: "%.2f", currentRecord.platformCommission))
             }
 
             HStack {
-                DossierLedgerRow(title: "رسوم التوصيل", value: String(format: "%.2f", record.deliveryFee))
+                DossierLedgerRow(title: Language.get("Fulfillment_Ledger_DeliveryFee", alter: "رسوم التوصيل"), value: String(format: "%.2f", currentRecord.deliveryFee))
                 Spacer()
-                DossierLedgerRow(title: "صافي المتجر", value: String(format: "%.2f", record.providerNet), isBold: true)
+                DossierLedgerRow(title: Language.get("Fulfillment_Ledger_ProviderNet", alter: "صافي المتجر"), value: String(format: "%.2f", currentRecord.providerNet), isBold: true)
             }
         }
         .padding(16)
@@ -2052,7 +2247,7 @@ struct FulfillmentDossierView: View {
                     .font(AdminType.subheadlineBold)
                     .foregroundStyle(FulfillmentTokens.inkPrimary)
                 Spacer()
-                Text(record.customerID.prefix(8).uppercased())
+                Text(currentRecord.customerID.prefix(8).uppercased())
                     .font(AdminType.caption2)
                     .foregroundStyle(FulfillmentTokens.inkTertiary)
             }
@@ -2065,11 +2260,11 @@ struct FulfillmentDossierView: View {
                     .foregroundStyle(FulfillmentTokens.primary)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(record.customerName)
+                    Text(currentRecord.customerName)
                         .font(AdminType.headline)
                         .foregroundStyle(FulfillmentTokens.inkPrimary)
 
-                    if let phone = record.customerPhone, !phone.isEmpty {
+                    if let phone = currentRecord.customerPhone, !phone.isEmpty {
                         Text(phone)
                             .font(AdminType.caption1)
                             .foregroundStyle(FulfillmentTokens.inkSecondary)
@@ -2078,7 +2273,7 @@ struct FulfillmentDossierView: View {
 
                 Spacer()
 
-                if let phone = record.customerPhone, let url = URL(string: "tel://\(phone)"), !phone.isEmpty {
+                if let phone = currentRecord.customerPhone, let url = URL(string: "tel://\(phone)"), !phone.isEmpty {
                     Button {
                         UIApplication.shared.open(url)
                     } label: {
@@ -2103,7 +2298,7 @@ struct FulfillmentDossierView: View {
                     .font(AdminType.subheadlineBold)
                     .foregroundStyle(FulfillmentTokens.inkPrimary)
                 Spacer()
-                Text("\(record.items.count) \(Language.get("Fulfillment_Items", alter: "عناصر"))")
+                Text("\(currentRecord.items.count) \(Language.get("Fulfillment_Items", alter: "عناصر"))")
                     .font(AdminType.caption2Bold)
                     .foregroundStyle(FulfillmentTokens.inkTertiary)
             }
@@ -2111,7 +2306,7 @@ struct FulfillmentDossierView: View {
             Divider().background(FulfillmentTokens.hairline)
 
             VStack(spacing: 10) {
-                ForEach(record.items) { item in
+                ForEach(currentRecord.items) { item in
                     HStack(spacing: 12) {
                         if let url = item.imageURL {
                             AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 44, height: 44)) {
@@ -2167,20 +2362,16 @@ struct FulfillmentDossierView: View {
 
     // 5. Delivery & Logistics Card
     private var deliveryCourierCard: some View {
-        let isDeliveryActive = record.status == "delivery_requested" ||
-                              record.status == "delivery_assigned" ||
-                              record.status == "awaiting_handover" ||
-                              record.status == "handed_over" ||
-                              record.status == "in_transit" ||
-                              record.status == "delivered"
+        let isDeliveryActive = currentRecord.status == "delivery_requested" ||
+                              currentRecord.status == "delivery_assigned" ||
+                              currentRecord.status == "awaiting_handover" ||
+                              currentRecord.status == "handed_over" ||
+                              currentRecord.status == "in_transit" ||
+                              currentRecord.status == "delivered"
 
-        let deliveryModeDisplay: String = {
-            if record.deliveryMode == "pickup" {
-                return Language.get("Fulfillment_Delivery_Mode_Pickup", alter: "استلام من المتجر")
-            } else {
-                return Language.get("Fulfillment_Delivery_Mode_Company", alter: "أسطول التوصيل")
-            }
-        }()
+        let deliveryModeDisplay = currentRecord.deliveryCompanyID.isEmpty
+            ? Language.get("Fulfillment_Delivery_Unspecified", alter: "لم تحدد جهة التوصيل")
+            : Language.get("Fulfillment_Delivery_Mode_Company", alter: "أسطول التوصيل")
 
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -2192,15 +2383,15 @@ struct FulfillmentDossierView: View {
                 if isDeliveryActive {
                     HStack(spacing: 4) {
                         Circle()
-                            .fill(record.statusTone)
+                            .fill(currentRecord.statusTone)
                             .frame(width: 6, height: 6)
-                        Text(record.displayStatus)
+                        Text(currentRecord.displayStatus)
                     }
                     .font(AdminType.caption2Bold)
-                    .foregroundStyle(record.statusTone)
+                    .foregroundStyle(currentRecord.statusTone)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(record.statusTone.opacity(0.12), in: Capsule())
+                    .background(currentRecord.statusTone.opacity(0.12), in: Capsule())
                 } else {
                     Text(deliveryModeDisplay)
                         .font(AdminType.caption2Bold)
@@ -2218,7 +2409,7 @@ struct FulfillmentDossierView: View {
                     Text(Language.get("Fulfillment_DetailOwner", alter: "التنفيذ بواسطة"))
                         .font(AdminType.caption2)
                         .foregroundStyle(FulfillmentTokens.inkTertiary)
-                    Text(record.storeName)
+                    Text(currentRecord.storeName)
                         .font(AdminType.subheadlineBold)
                         .foregroundStyle(FulfillmentTokens.inkPrimary)
                 }
@@ -2229,21 +2420,34 @@ struct FulfillmentDossierView: View {
                     Text(Language.get("Fulfillment_DetailMode", alter: "نوع التنفيذ"))
                         .font(AdminType.caption2)
                         .foregroundStyle(FulfillmentTokens.inkTertiary)
-                    Text(record.isPlatformOwned ? Language.get("Fulfillment_Mode_Platform", alter: "تنفيذ المنصة") : Language.get("Fulfillment_Mode_Partner", alter: "متجر شريك"))
+                    Text(currentRecord.isPlatformOwned ? Language.get("Fulfillment_Mode_Platform", alter: "تنفيذ المنصة") : Language.get("Fulfillment_Mode_Partner", alter: "متجر شريك"))
                         .font(AdminType.captionBold)
                         .foregroundStyle(FulfillmentTokens.primary)
                 }
             }
 
+            if !currentRecord.driverID.isEmpty {
+                Divider().background(FulfillmentTokens.hairline)
+                VStack(alignment: .leading, spacing: 4) {
+                    Label(Language.get("Fulfillment_Delivery_Driver", alter: "مندوب التوصيل"), systemImage: "person.fill")
+                        .font(AdminType.caption2)
+                    Text(currentRecord.driverName ?? currentRecord.driverID)
+                        .font(AdminType.subheadlineBold)
+                    if let phone = currentRecord.driverPhone {
+                        Text(phone).font(AdminType.caption1).environment(\.layoutDirection, .leftToRight)
+                    }
+                }
+                .foregroundStyle(FulfillmentTokens.inkSecondary)
+            }
             if isDeliveryActive {
                 Divider().background(FulfillmentTokens.hairline)
 
                 HStack {
                     Image(systemName: "info.circle.fill")
                         .font(.system(size: 13))
-                        .foregroundStyle(record.statusTone)
+                        .foregroundStyle(currentRecord.statusTone)
 
-                    Text(record.displayStatus)
+                    Text(currentRecord.displayStatus)
                         .font(AdminType.caption2)
                         .foregroundStyle(FulfillmentTokens.inkSecondary)
 
@@ -2277,7 +2481,15 @@ struct FulfillmentDossierView: View {
 
             Divider().background(FulfillmentTokens.hairline)
 
-            if events.isEmpty && !isLoadingEvents {
+            if let error = eventsError {
+                AdminErrorBanner(message: error, retry: restartEventsListener)
+            }
+            if eventsFromCache || (eventsError != nil && !events.isEmpty) {
+                Text(Language.get("Fulfillment_Timeline_Stale", alter: "سجل محفوظ؛ لم يتأكد أحدث سجل من الخادم."))
+                    .font(AdminType.caption2)
+                    .foregroundStyle(FulfillmentTokens.inkSecondary)
+            }
+            if events.isEmpty && !isLoadingEvents && eventsError == nil && !eventsFromCache {
                 Text(Language.get("Fulfillment_NoEvents", alter: "لم تسجل أي حركات إضافية بعد"))
                     .font(AdminType.caption1)
                     .foregroundStyle(FulfillmentTokens.inkTertiary)
@@ -2294,19 +2506,26 @@ struct FulfillmentDossierView: View {
 
                             VStack(alignment: .leading, spacing: 2) {
                                 HStack {
-                                    Text(ev.eventType)
+                                    Text(ev.displayAction)
                                         .font(AdminType.captionBold)
                                         .foregroundStyle(FulfillmentTokens.inkPrimary)
 
                                     Spacer()
 
                                     if let date = ev.timestamp {
-                                        Text(date.formatted(date: .omitted, time: .shortened))
+                                        Text(date.formatted(date: .abbreviated, time: .shortened))
                                             .font(AdminType.caption2)
                                             .foregroundStyle(FulfillmentTokens.inkTertiary)
                                     }
                                 }
 
+                                if let actor = ev.actorUID, !actor.isEmpty {
+                                    Text([ev.actorRole, actor].compactMap { $0 }.joined(separator: " · "))
+                                        .font(AdminType.caption2)
+                                        .foregroundStyle(FulfillmentTokens.inkTertiary)
+                                        .environment(\.layoutDirection, .leftToRight)
+                                        .textSelection(.enabled)
+                                }
                                 if let note = ev.note, !note.isEmpty {
                                     Text(note)
                                         .font(AdminType.caption2)
@@ -2326,12 +2545,23 @@ struct FulfillmentDossierView: View {
     // 7. Sticky Command Dock
     private var stickyCommandDock: some View {
         VStack(spacing: 8) {
+            if let progress = actionModel.actionProgressMessage {
+                Label(progress, systemImage: "arrow.triangle.2.circlepath").font(AdminType.caption1)
+            }
+            if let error = actionModel.errorMessage {
+                AdminErrorBanner(message: error, retry: {
+                    if actionModel.hasQuickActionRetry { actionModel.retryLastQuickAction() }
+                    else { restartRecordListener() }
+                })
+            }
+            if let success = actionModel.actionSuccessToast {
+                Text(success).font(AdminType.caption1).foregroundStyle(FulfillmentTokens.emerald)
+            }
             HStack(spacing: 12) {
                 // Next Quick Action Button
-                if let action = record.nextQuickAction {
+                if let action = currentRecord.nextQuickAction {
                     Button {
-                        onQuickAdvance(record, action.targetStatus)
-                        dismiss()
+                        actionModel.quickAdvance(record: currentRecord, targetStatus: action.targetStatus)
                     } label: {
                         HStack {
                             Image(systemName: action.symbol)
@@ -2341,16 +2571,17 @@ struct FulfillmentDossierView: View {
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)
-                        .background(record.statusTone, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .shadow(color: record.statusTone.opacity(0.35), radius: 8, y: 3)
+                        .background(currentRecord.statusTone, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .shadow(color: currentRecord.statusTone.opacity(0.35), radius: 8, y: 3)
                     }
                     .buttonStyle(.plain)
+                    .disabled(!canAct)
                 }
 
                 // Open Parent Order in Payments
-                if !record.parentOrderID.isEmpty {
+                if !currentRecord.parentOrderID.isEmpty {
                     Button {
-                        onOpenParentOrder(record.parentOrderID)
+                        onOpenParentOrder(currentRecord.parentOrderID)
                     } label: {
                         Image(systemName: "creditcard.fill")
                             .font(.system(size: 16, weight: .bold))
@@ -2381,19 +2612,74 @@ struct FulfillmentDossierView: View {
         let generation = UUID()
         eventsListenerGeneration = generation
         isLoadingEvents = true
-        eventsListener = PPFulfillmentService.shared().observeFulfillmentEvents(record.id) { rawEvents, _ in
-            Task { @MainActor in
-                guard eventsListenerGeneration == generation else { return }
-                self.isLoadingEvents = false
-                var list: [FulfillmentEventSnapshot] = []
+        eventsError = nil
+        eventsFromCache = true
+        eventsListener = PPFulfillmentService.shared().observeFulfillmentEventsWithMetadata(record.id) { rawEvents, fromCache, error in
+            var list: [FulfillmentEventSnapshot] = []
+            if error == nil {
                 for (idx, dict) in (rawEvents ?? []).enumerated() {
                     let stringDict = (dict as? [String: Any]) ?? [:]
                     let docID = stringDict["id"] as? String ?? "\(idx)"
                     list.append(FulfillmentEventSnapshot(dict: stringDict, docID: docID))
                 }
+            }
+            Task { @MainActor in
+                guard eventsListenerGeneration == generation else { return }
+                self.isLoadingEvents = false
+                if let error {
+                    self.eventsError = FulfillmentListViewModel.userFriendlyErrorMessage(error)
+                    // Never retain staff-only audit history after authority loss.
+                    if FulfillmentListViewModel.isAuthorityLoss(error) { self.events = [] }
+                    return
+                }
+                self.eventsError = nil
+                self.eventsFromCache = fromCache
                 self.events = list
             }
         }
+    }
+
+    private func restartEventsListener() {
+        stopListeningEvents()
+        startListeningEvents()
+    }
+
+    private func startRecordListener() {
+        guard recordListener == nil else { return }
+        let generation = UUID()
+        recordListenerGeneration = generation
+        isRecordLive = false
+        recordReadError = nil
+        recordListener = PPFulfillmentService.shared().observeFulfillment(record.id) { rawRecord, fromCache, pending, error in
+            Task { @MainActor in
+                guard recordListenerGeneration == generation else { return }
+                guard error == nil, let rawRecord else {
+                    isRecordLive = false
+                    recordReadError = error.map(FulfillmentListViewModel.userFriendlyErrorMessage)
+                        ?? Language.get("Fulfillment_Record_Unavailable", alter: "لم يعد سجل التنفيذ متاحاً.")
+                    liveRecord = nil
+                    events = []
+                    stopListeningEvents()
+                    return
+                }
+                liveRecord = FulfillmentRecordSnapshot(record: rawRecord)
+                isRecordLive = !fromCache && !pending
+                recordReadError = nil
+            }
+        }
+    }
+
+    private func stopRecordListener() {
+        recordListenerGeneration = UUID()
+        recordListener?.remove()
+        recordListener = nil
+        isRecordLive = false
+    }
+
+    private func restartRecordListener() {
+        stopRecordListener()
+        startRecordListener()
+        restartEventsListener()
     }
 
     private func stopListeningEvents() {
@@ -3336,6 +3622,11 @@ struct FulfillmentOverrideView: View {
                 case .invalid:
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
                     errorMessage = Language.get("Fulfillment_OverrideInvalid", alter: "لم يعد أمر التنفيذ صالحاً. راجع الحالة المختارة والمعلومات المطلوبة.")
+                case .blocked(let message):
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    errorMessage = message
+                case .stale:
+                    errorMessage = Language.get("Fulfillment_Command_Unconfirmed", alter: "لم تتأكد الحالة بعد. أعد المحاولة للتحقق بأمان من الإجراء نفسه.")
                 case .failed:
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
                     errorMessage = Language.get("Fulfillment_OverrideFailed", alter: "تعذر إكمال أمر التنفيذ. أبقِ هذا السجل مفتوحاً وتحقق من الحالة المباشرة قبل المحاولة مرة أخرى.")

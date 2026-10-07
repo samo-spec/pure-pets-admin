@@ -2208,6 +2208,38 @@ extension PPAccessoryVariantFamily {
 // MARK: - PetAccessory Variant Dimension & Display Extensions
 
 public extension PetAccessory {
+    /// True if the product has options or variants configured, belongs to a family, has color/size/weight variant attributes or selected options.
+    var hasVariantOptions: Bool {
+        if belongsToVariantFamily { return true }
+        if isVariant { return true }
+        if let snapshot = selectedOptionsSnapshot, !snapshot.isEmpty { return true }
+        if let options = selectedOptions, !options.isEmpty { return true }
+        if let combo = variantCombinationKey?.trimmingCharacters(in: .whitespacesAndNewlines), !combo.isEmpty { return true }
+        if pos_hasRealColor { return true }
+        if variantColorDictionary != nil { return true }
+        if let axis = variantAxis?.trimmingCharacters(in: .whitespacesAndNewlines), !axis.isEmpty { return true }
+        return false
+    }
+
+    /// Primary display description of this product's specific variant option (or nil if it has no options).
+    var resolvedOptionDisplayTitle: String? {
+        guard hasVariantOptions else { return nil }
+        let candidate = pos_variantDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !candidate.isEmpty && candidate != accessoryID && candidate != sku && candidate != name && candidate != nameEn {
+            return candidate
+        }
+        if pos_hasRealColor, let color = pos_variantColor {
+            return color.localizedName
+        }
+        if let axis = variantAxis?.trimmingCharacters(in: .whitespacesAndNewlines), !axis.isEmpty {
+            return axis
+        }
+        if isDefaultVariant {
+            return Language.get("POS_DefaultVariant", alter: "الافتراضي")
+        }
+        return Language.get("Inventory_HasOptions", alter: "خيارات")
+    }
+
     /// Resolved variant color model from `variantColorDictionary`.
     var pos_variantColor: PPAccessoryVariantColor? {
         guard let dict = variantColorDictionary else { return nil }

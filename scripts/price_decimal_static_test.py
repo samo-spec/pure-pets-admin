@@ -14,6 +14,7 @@ allowed_whole_money_markers = (
     "commissionRate * 100",
     "String(format: \"%.0f\", val)",       # fixed denomination/preset chip labels
     "String(format: \"%.0f\", preset)",    # fixed discount preset labels
+    "String(format: \"%.0f\", percentage)",# profit margin percentage
 )
 
 for path in ROOT.rglob("*.swift"):

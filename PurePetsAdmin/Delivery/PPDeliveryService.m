@@ -1,5 +1,6 @@
 #import "PPDeliveryService.h"
 #import "PPFirebaseCompat.h"
+#import <math.h>
 
 NSString * const PPDeliveryServiceErrorDomain = @"PPDeliveryService";
 
@@ -32,9 +33,27 @@ static NSString *PPDeliveryString(id value) {
 static NSDate * _Nullable PPDeliveryDate(id value) {
     if ([value isKindOfClass:NSDate.class]) return value;
     if ([value isKindOfClass:FIRTimestamp.class]) return [(FIRTimestamp *)value dateValue];
+    // Callable projections may serialize Firestore timestamps as a dictionary.
+    if ([value isKindOfClass:NSDictionary.class]) {
+        id seconds = value[@"seconds"] ?: value[@"_seconds"];
+        id nanoseconds = value[@"nanoseconds"] ?: value[@"_nanoseconds"] ?: @0;
+        if (![seconds isKindOfClass:NSNumber.class] || ![nanoseconds isKindOfClass:NSNumber.class]) return nil;
+        double secondsValue = [seconds doubleValue];
+        double nanosValue = [nanoseconds doubleValue];
+        if (!isfinite(secondsValue) || !isfinite(nanosValue) ||
+            secondsValue < -62135596800.0 || secondsValue > 253402300799.0 ||
+            nanosValue < 0 || nanosValue >= 1000000000.0) return nil;
+        return [NSDate dateWithTimeIntervalSince1970:secondsValue + nanosValue / 1000000000.0];
+    }
     if (![value isKindOfClass:NSString.class] || [(NSString *)value length] == 0) return nil;
     if (@available(iOS 10.0, *)) {
         NSISO8601DateFormatter *formatter = [NSISO8601DateFormatter new];
+        if (@available(iOS 11.0, *)) {
+            formatter.formatOptions = NSISO8601DateFormatWithInternetDateTime | NSISO8601DateFormatWithFractionalSeconds;
+            NSDate *date = [formatter dateFromString:value];
+            if (date) return date;
+            formatter.formatOptions = NSISO8601DateFormatWithInternetDateTime;
+        }
         return [formatter dateFromString:value];
     }
     return nil;
@@ -549,91 +568,23 @@ static NSError *PPDeliveryInvalidResponseError(void) {
 }
 
 - (void)fetchCommandCenterWithCompletion:(void(^)(PPDeliveryCommandCenterSnapshot *, NSError *))completion {
-    __weak typeof(self) weakSelf = self;
     [self callFunction:@"getDeliveryCommandCenter"
                 params:@{@"pageSize": @100}
             completion:^(id result, NSError *error) {
-        if (!error && [result isKindOfClass:NSDictionary.class]) {
-            if (completion) completion([[PPDeliveryCommandCenterSnapshot alloc] initWithDictionary:result], nil);
+        // Only Infra can resolve the official fleet, scope its jobs and redact
+        // protected fields. A denied/unavailable callable is not an empty fleet.
+        if (error) {
+            if (completion) completion(nil, error);
             return;
         }
-        
-        NSLog(@"[PPDeliveryService] getDeliveryCommandCenter error: %@. Attempting resilient direct Firestore recovery...", error.localizedDescription);
-        
-        // Resilient direct Firestore fallback: Query deliveryRequests directly
-        FIRFirestore *db = [FIRFirestore firestore];
-        [[[db collectionWithPath:@"deliveryRequests"] queryLimitedTo:100] getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable fsError) {
-            if (!fsError && snapshot.documents.count > 0) {
-                NSMutableArray *jobs = [NSMutableArray array];
-                for (FIRDocumentSnapshot *doc in snapshot.documents) {
-                    NSMutableDictionary *data = [doc.data mutableCopy] ?: [NSMutableDictionary dictionary];
-                    data[@"id"] = doc.documentID;
-                    if (!data[@"legacyStatus"] && data[@"status"]) {
-                        data[@"legacyStatus"] = data[@"status"];
-                    }
-                    [jobs addObject:data];
-                }
-                
-                NSDictionary *fallbackDict = @{
-                    @"jobs": jobs,
-                    @"carrier": @{
-                        @"id": @"purepets_deliveries",
-                        @"displayName": @"Pure Pets Official Delivery"
-                    },
-                    @"projection": @{
-                        @"counts": @{
-                            @"active": @(jobs.count),
-                            @"unassigned": @(0)
-                        }
-                    }
-                };
-                
-                PPDeliveryCommandCenterSnapshot *fallbackSnapshot = [[PPDeliveryCommandCenterSnapshot alloc] initWithDictionary:fallbackDict];
-                if (completion) completion(fallbackSnapshot, nil);
-                return;
-            }
-            
-            // Secondary Fallback: Query Orders with deliveryStatus
-            [[[db collectionWithPath:@"Orders"] queryLimitedTo:50] getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable orderSnap, NSError * _Nullable oError) {
-                NSMutableArray *jobs = [NSMutableArray array];
-                if (orderSnap) {
-                    for (FIRDocumentSnapshot *doc in orderSnap.documents) {
-                        NSDictionary *d = doc.data;
-                        NSString *dStatus = d[@"deliveryStatus"] ?: d[@"status"];
-                        if (dStatus.length > 0) {
-                            NSMutableDictionary *job = [NSMutableDictionary dictionary];
-                            job[@"id"] = doc.documentID;
-                            job[@"orderId"] = doc.documentID;
-                            job[@"reference"] = d[@"orderNumber"] ?: doc.documentID;
-                            job[@"legacyStatus"] = dStatus;
-                            job[@"status"] = dStatus;
-                            job[@"customerName"] = d[@"userName"] ?: d[@"customerName"] ?: @"";
-                            job[@"deliveryFee"] = d[@"deliveryFee"] ?: @(0);
-                            if (d[@"address"]) job[@"dropoffAddress"] = @{@"formattedAddress": [NSString stringWithFormat:@"%@", d[@"address"]]};
-                            if (d[@"created_at"]) job[@"createdAt"] = d[@"created_at"];
-                            [jobs addObject:job];
-                        }
-                    }
-                }
-                
-                // Return gracefully with populated snapshot or clean empty snapshot
-                NSDictionary *fallbackDict = @{
-                    @"jobs": jobs,
-                    @"carrier": @{
-                        @"id": @"purepets_deliveries",
-                        @"displayName": @"Pure Pets Delivery Network"
-                    },
-                    @"projection": @{
-                        @"counts": @{
-                            @"active": @(jobs.count),
-                            @"unassigned": @(0)
-                        }
-                    }
-                };
-                PPDeliveryCommandCenterSnapshot *fallbackSnapshot = [[PPDeliveryCommandCenterSnapshot alloc] initWithDictionary:fallbackDict];
-                if (completion) completion(fallbackSnapshot, nil);
-            }];
-        }];
+        if (![result isKindOfClass:NSDictionary.class] ||
+            ![result[@"jobs"] isKindOfClass:NSArray.class] ||
+            ![result[@"carrier"] isKindOfClass:NSDictionary.class] ||
+            ![result[@"permissions"] isKindOfClass:NSArray.class]) {
+            if (completion) completion(nil, PPDeliveryInvalidResponseError());
+            return;
+        }
+        if (completion) completion([[PPDeliveryCommandCenterSnapshot alloc] initWithDictionary:result], nil);
     }];
 }
 

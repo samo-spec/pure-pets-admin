@@ -20,7 +20,9 @@ static NSUInteger const PPFulfillmentRecoveryChildLimit = 20;
 @property (nonatomic, strong) NSMutableDictionary<NSNumber *, NSError *> *errorsByQuery;
 @property (nonatomic, strong) NSMutableDictionary<NSNumber *, NSNumber *> *cacheStateByQuery;
 @property (nonatomic, assign) NSUInteger queryCount;
+@property (nonatomic, strong) FIRAuthStateDidChangeListenerHandle authListener;
 - (void)addRegistration:(id<FIRListenerRegistration>)registration;
+- (void)watchStaffUID:(NSString *)uid onInvalidated:(void(^)(void))onInvalidated;
 @end
 
 @implementation PPFulfillmentCompositeRegistration
@@ -44,11 +46,23 @@ static NSUInteger const PPFulfillmentRecoveryChildLimit = 20;
     }
     if (shouldRemove) [registration remove];
 }
+- (void)watchStaffUID:(NSString *)uid onInvalidated:(void(^)(void))onInvalidated {
+    __weak typeof(self) weakSelf = self;
+    self.authListener = [[FIRAuth auth] addAuthStateDidChangeListener:^(FIRAuth *auth, FIRUser *user) {
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self || !self.isActive || [user.uid isEqualToString:uid]) return;
+        [self remove];
+        if (onInvalidated) onInvalidated();
+    }];
+}
 - (void)remove {
     NSArray<id<FIRListenerRegistration>> *registrations = nil;
+    FIRAuthStateDidChangeListenerHandle authListener = nil;
     @synchronized (self) {
         if (!self.isActive) return;
         self.active = NO;
+        authListener = self.authListener;
+        self.authListener = nil;
         registrations = self.registrations.copy;
         [self.registrations removeAllObjects];
         [self.documentsByQuery removeAllObjects];
@@ -56,8 +70,10 @@ static NSUInteger const PPFulfillmentRecoveryChildLimit = 20;
         [self.errorsByQuery removeAllObjects];
         [self.cacheStateByQuery removeAllObjects];
     }
+    if (authListener) [[FIRAuth auth] removeAuthStateDidChangeListener:authListener];
     for (id<FIRListenerRegistration> registration in registrations) [registration remove];
 }
+- (void)dealloc { [self remove]; }
 @end
 
 static NSError *PPFulfillmentReadError(NSInteger code, NSString *localizationKey) {
@@ -67,6 +83,24 @@ static NSError *PPFulfillmentReadError(NSInteger code, NSString *localizationKey
 }
 
 static NSError *PPFulfillmentActionFailure(NSError *error) {
+    if ([error.domain isEqualToString:FIRFunctionsErrorDomain]) {
+        id rawDetails = error.userInfo[FIRFunctionsErrorDetailsKey] ?: error.userInfo[@"details"];
+        NSDictionary *details = [rawDetails isKindOfClass:NSDictionary.class] ? rawDetails : @{};
+        NSString *domainCode = [details[@"domainCode"] isKindOfClass:NSString.class] ? details[@"domainCode"] : @"";
+        NSDictionary<NSString *, NSString *> *keys = @{
+            @"FULFILLMENT_CASH_RECONCILIATION_REQUIRED": @"Fulfillment_Safety_CashReview",
+            @"FULFILLMENT_RETURN_RECONCILIATION_REQUIRED": @"Fulfillment_Safety_InventoryReview",
+            @"FULFILLMENT_CANCELLATION_REVIEW_REQUIRED": @"Fulfillment_Safety_InventoryReview",
+            @"FULFILLMENT_RESERVATION_REVIEW_REQUIRED": @"Fulfillment_Safety_ReservationReview",
+            @"FULFILLMENT_RETURN_REQUIRED": @"Fulfillment_Safety_ReturnRequired",
+            @"FULFILLMENT_DELIVERY_EVIDENCE_REQUIRED": @"Fulfillment_Safety_DeliveryEvidence"
+        };
+        NSString *key = keys[domainCode];
+        if (key.length) {
+            return [NSError errorWithDomain:PPFulfillmentServiceErrorDomain code:418
+                                   userInfo:@{NSLocalizedDescriptionKey: kLang(key), NSUnderlyingErrorKey: error}];
+        }
+    }
     if (![error.domain isEqualToString:FIRFunctionsErrorDomain] ||
         error.code != FIRFunctionsErrorCodePermissionDenied) return error;
     // Action denial must not masquerade as loss of queue read access. Preserve
@@ -301,6 +335,14 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
         _ownerType = PPSafeString(dict[@"ownerType"]);
         _fulfillmentMode = PPSafeString(dict[@"fulfillmentMode"]);
         _status = PPSafeString(dict[@"status"]);
+        _deliveryStatus = PPSafeString(dict[@"deliveryStatus"]);
+        _deliveryCompanyID = PPSafeString(dict[@"deliveryCompanyId"]);
+        if (!_deliveryCompanyID.length) _deliveryCompanyID = PPSafeString(dict[@"carrierId"]);
+        if (!_deliveryCompanyID.length) _deliveryCompanyID = PPSafeString(dict[@"targetCompanyId"]);
+        _deliveryUserID = PPSafeString(dict[@"deliveryUserId"]);
+        if (!_deliveryUserID.length) _deliveryUserID = PPSafeString(dict[@"deliveryAssignedDriverUid"]);
+        _deliveryUserName = PPSafeString(dict[@"deliveryUserName"]);
+        _deliveryUserPhone = PPSafeString(dict[@"deliveryUserPhone"]);
         _items = PPSafeArray(dict[@"items"]);
         _money = PPSafeDict(dict[@"money"]);
         
@@ -396,8 +438,11 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
 
 - (id<FIRListenerRegistration>)observeFulfillmentsWithCompletion:(void(^)(NSArray<PPFulfillmentRecord *> *, BOOL, NSError *))completion {
     FIRFirestore *db = [FIRFirestore firestore];
-    PPFulfillmentCompositeRegistration *composite = [PPFulfillmentCompositeRegistration new];
     PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    PPFulfillmentCompositeRegistration *composite = [PPFulfillmentCompositeRegistration new];
+    [composite watchStaffUID:staff.uid onInvalidated:^{
+        if (completion) completion(@[], NO, PPFulfillmentReadError(412, @"PPOrder_Error_SessionChanged"));
+    }];
     if (!PPFulfillmentCanRead(staff) || !PPFulfillmentHasReadableScope(staff)) {
         NSError *error = PPFulfillmentReadError(PPFulfillmentCanRead(staff) ? 411 : 410,
                                                 PPFulfillmentCanRead(staff) ? @"PPOrder_Error_MissingReadScope" : @"PPOrder_Error_NoReadPermission");
@@ -640,6 +685,9 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
 - (id<FIRListenerRegistration>)observeFulfillment:(NSString *)fulfillmentID completion:(void(^)(PPFulfillmentRecord *, BOOL, BOOL, NSError *))completion {
     PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
     PPFulfillmentCompositeRegistration *composite = [PPFulfillmentCompositeRegistration new];
+    [composite watchStaffUID:staff.uid onInvalidated:^{
+        if (completion) completion(nil, NO, NO, PPFulfillmentReadError(412, @"PPOrder_Error_SessionChanged"));
+    }];
     if (!PPFulfillmentCanRead(staff) || !PPFulfillmentHasReadableScope(staff)) {
         NSError *error = PPFulfillmentReadError(PPFulfillmentCanRead(staff) ? 411 : 410,
                                                 PPFulfillmentCanRead(staff) ? @"PPOrder_Error_MissingReadScope" : @"PPOrder_Error_NoReadPermission");
@@ -679,6 +727,9 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
 - (id<FIRListenerRegistration>)observeAdminOverrideCommand:(NSString *)fulfillmentID commandDocumentID:(NSString *)commandDocumentID completion:(void(^)(NSDictionary *, BOOL, BOOL, NSError *))completion {
     PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
     PPFulfillmentCompositeRegistration *composite = [PPFulfillmentCompositeRegistration new];
+    [composite watchStaffUID:staff.uid onInvalidated:^{
+        if (completion) completion(nil, NO, NO, PPFulfillmentReadError(412, @"PPOrder_Error_SessionChanged"));
+    }];
     if (![staff hasPermission:kStaffPermPaymentsManage] || !PPFulfillmentHasReadableScope(staff)) {
         NSError *error = PPFulfillmentReadError([staff hasPermission:kStaffPermPaymentsManage] ? 411 : 410,
                                                 [staff hasPermission:kStaffPermPaymentsManage] ? @"PPOrder_Error_MissingReadScope" : @"PPOrder_Error_NoReadPermission");
@@ -871,10 +922,19 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
 }
 
 - (id<FIRListenerRegistration>)observeFulfillmentEvents:(NSString *)fulfillmentID completion:(void(^)(NSArray<NSDictionary *> *, NSError *))completion {
+    return [self observeFulfillmentEventsWithMetadata:fulfillmentID completion:^(NSArray<NSDictionary *> *events, BOOL isFromCache, NSError *error) {
+        if (completion) completion(events, error);
+    }];
+}
+
+- (id<FIRListenerRegistration>)observeFulfillmentEventsWithMetadata:(NSString *)fulfillmentID completion:(void(^)(NSArray<NSDictionary *> *, BOOL, NSError *))completion {
     PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
     PPFulfillmentCompositeRegistration *composite = [PPFulfillmentCompositeRegistration new];
+    [composite watchStaffUID:staff.uid onInvalidated:^{
+        if (completion) completion(@[], NO, PPFulfillmentReadError(412, @"PPOrder_Error_SessionChanged"));
+    }];
     if (!PPFulfillmentCanRead(staff) || !PPFulfillmentHasReadableScope(staff)) {
-        if (completion) completion(@[], PPFulfillmentReadError(PPFulfillmentCanRead(staff) ? 411 : 410,
+        if (completion) completion(@[], NO, PPFulfillmentReadError(PPFulfillmentCanRead(staff) ? 411 : 410,
                                                                PPFulfillmentCanRead(staff) ? @"PPOrder_Error_MissingReadScope" : @"PPOrder_Error_NoReadPermission"));
         return composite;
     }
@@ -882,26 +942,31 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
     FIRDocumentReference *fulfillmentRef = [[db collectionWithPath:@"FulfillmentOrders"] documentWithPath:fulfillmentID];
     [fulfillmentRef getDocumentWithCompletion:^(FIRDocumentSnapshot *parentSnapshot, NSError *parentError) {
         if (!composite.isActive) return;
+        if (!PPFulfillmentStaffSessionIsCurrent(staff)) {
+            [composite remove];
+            if (completion) completion(@[], NO, PPFulfillmentReadError(412, @"PPOrder_Error_SessionChanged"));
+            return;
+        }
         if (parentError || !parentSnapshot.exists) {
-            if (completion) completion(@[], parentError ?: PPFulfillmentReadError(404, @"PPOrder_Error_NoReadPermission"));
+            if (completion) completion(@[], NO, parentError ?: PPFulfillmentReadError(404, @"PPOrder_Error_NoReadPermission"));
             return;
         }
         if (!PPFulfillmentStaffCanReachData(staff, parentSnapshot.data)) {
-            if (completion) completion(@[], PPFulfillmentReadError(411, @"PPOrder_Error_MissingReadScope"));
+            if (completion) completion(@[], NO, PPFulfillmentReadError(411, @"PPOrder_Error_MissingReadScope"));
             return;
         }
         FIRQuery *query = [[fulfillmentRef collectionWithPath:@"events"] queryOrderedByField:@"createdAt" descending:YES];
         query = [query queryOrderedByFieldPath:[FIRFieldPath documentID] descending:YES];
         query = [query queryLimitedTo:50];
-        id<FIRListenerRegistration> registration = [query addSnapshotListener:^(FIRQuerySnapshot *snapshot, NSError *error) {
+        id<FIRListenerRegistration> registration = [query addSnapshotListenerWithIncludeMetadataChanges:YES listener:^(FIRQuerySnapshot *snapshot, NSError *error) {
             if (!composite.isActive) return;
             if (!PPFulfillmentStaffSessionIsCurrent(staff)) {
                 [composite remove];
-                if (completion) completion(@[], PPFulfillmentReadError(412, @"PPOrder_Error_SessionChanged"));
+                if (completion) completion(@[], NO, PPFulfillmentReadError(412, @"PPOrder_Error_SessionChanged"));
                 return;
             }
             if (error) {
-                if (completion) completion(@[], error);
+                if (completion) completion(@[], NO, error);
                 return;
             }
             NSMutableArray *events = [NSMutableArray array];
@@ -910,7 +975,7 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
                 dict[@"id"] = doc.documentID;
                 [events addObject:dict];
             }
-            if (completion) completion(events, nil);
+            if (completion) completion(events, snapshot.metadata.isFromCache || snapshot.metadata.hasPendingWrites, nil);
         }];
         [composite addRegistration:registration];
     }];
@@ -1165,7 +1230,7 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
             return;
         }
         NSDictionary *dict = [result.data isKindOfClass:NSDictionary.class] ? (NSDictionary *)result.data : nil;
-        if (completion) completion(dict, error);
+        if (completion) completion(dict, PPFulfillmentActionFailure(error));
     }];
 }
 

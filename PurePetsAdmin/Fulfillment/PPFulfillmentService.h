@@ -19,6 +19,11 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy) NSString *ownerType;
 @property (nonatomic, copy) NSString *fulfillmentMode;
 @property (nonatomic, copy) NSString *status;
+@property (nonatomic, copy) NSString *deliveryStatus;
+@property (nonatomic, copy) NSString *deliveryCompanyID;
+@property (nonatomic, copy) NSString *deliveryUserID;
+@property (nonatomic, copy) NSString *deliveryUserName;
+@property (nonatomic, copy) NSString *deliveryUserPhone;
 @property (nonatomic, copy) NSArray *items;
 @property (nonatomic, copy) NSDictionary *money;
 @property (nonatomic, copy, nullable) NSDate *createdAt;
@@ -77,6 +82,11 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (id<FIRListenerRegistration>)observeFulfillmentEvents:(NSString *)fulfillmentID completion:(void(^)(NSArray<NSDictionary *> *events, NSError * _Nullable error))completion
     NS_SWIFT_NAME(observeFulfillmentEvents(_:completion:));
+
+/// Metadata-aware timeline for distinguishing cached history from server evidence.
+- (id<FIRListenerRegistration>)observeFulfillmentEventsWithMetadata:(NSString *)fulfillmentID
+    completion:(void(^)(NSArray<NSDictionary *> *events, BOOL isFromCache, NSError * _Nullable error))completion
+    NS_SWIFT_NAME(observeFulfillmentEventsWithMetadata(_:completion:));
 
 - (void)resolveUserProfilesForIDs:(NSArray<NSString *> *)userIDs completion:(void(^)(NSDictionary<NSString *, NSString *> *names))completion
     NS_SWIFT_NAME(resolveUserProfiles(forIDs:completion:));

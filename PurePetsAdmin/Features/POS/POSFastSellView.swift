@@ -1306,6 +1306,7 @@ final class POSVariantPickerState: ObservableObject {
     @Published var familyId: String?
     @Published var members: [PetAccessory] = []
     @Published var primaryAccessory: PetAccessory?
+    @Published var focusedAccessoryID: String?
 
     var isPresented: Bool { familyId != nil && !members.isEmpty }
 
@@ -1321,7 +1322,7 @@ final class POSVariantPickerState: ObservableObject {
         dimension.countOptionsLabel
     }
 
-    func open(familyId: String, members: [PetAccessory], primary: PetAccessory?) {
+    func open(familyId: String, members: [PetAccessory], primary: PetAccessory?, focusedAccessoryID: String? = nil) {
         self.familyId = familyId
         self.members = members.sorted { lhs, rhs in
             lhs.variantSortOrder == rhs.variantSortOrder
@@ -1329,12 +1330,14 @@ final class POSVariantPickerState: ObservableObject {
                 : lhs.variantSortOrder < rhs.variantSortOrder
         }
         self.primaryAccessory = primary ?? members.first(where: { $0.isDefaultVariant }) ?? members.first
+        self.focusedAccessoryID = focusedAccessoryID ?? primary?.accessoryID
     }
 
     func close() {
         familyId = nil
         members = []
         primaryAccessory = nil
+        focusedAccessoryID = nil
     }
 }
 
@@ -1710,7 +1713,15 @@ final class POSFastSellViewModel: ObservableObject {
             if sortedMembers.count > 1 {
                 // Multi-variant family: include if at least one member is sellable in this active branch
                 if sortedMembers.contains(where: { $0.pos_isSellable }) {
-                    result.append(.family(familyId: familyId, members: sortedMembers, primary: defaultOrFirst))
+                    let needle = q.lowercased()
+                    let targetMember = sortedMembers.first(where: {
+                        let b = ($0.barcode ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                        let s = ($0.sku ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                        let i = $0.accessoryID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                        return (!b.isEmpty && b == needle) || (!s.isEmpty && s == needle) || (!i.isEmpty && i == needle)
+                    }) ?? sortedMembers.first(where: { $0.pos_matchesSearch(q) }) ?? defaultOrFirst
+
+                    result.append(.family(familyId: familyId, members: sortedMembers, primary: targetMember))
                 }
             } else {
                 if let single = sortedMembers.first, single.pos_isSellable {
@@ -1727,6 +1738,22 @@ final class POSFastSellViewModel: ObservableObject {
         }
 
         return result
+    }
+
+    func variantMembers(for product: PetAccessory) -> [PetAccessory] {
+        let familyId = (product.productFamilyId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !familyId.isEmpty else { return [] }
+        return allAccessories.filter {
+            ($0.productFamilyId ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == familyId
+        }.sorted { lhs, rhs in
+            lhs.variantSortOrder == rhs.variantSortOrder
+                ? lhs.accessoryID < rhs.accessoryID
+                : lhs.variantSortOrder < rhs.variantSortOrder
+        }
+    }
+
+    func hasVariantOptions(for product: PetAccessory) -> Bool {
+        variantMembers(for: product).count > 1
     }
 
     func quantityInCart(for item: POSCatalogDisplayItem) -> Int {
@@ -3360,10 +3387,13 @@ struct AdminPOSFastSellView: View {
                     switch viewModel.resolveScannedCode(normalized) {
                     case .resolved(let product, let matchedGroup):
                         scanAmbiguousMatches = []
+                        let hasOptions = viewModel.hasVariantOptions(for: product)
+                        let formatKey = hasOptions ? "POS_Scanner_Resolved_Options_Format" : "POS_Scanner_Resolved_Format"
+                        let fallbackFormat = hasOptions ? "تم العثور على خيارات %@. حدد الخيار المطلوب" : "تم تحديد %@"
                         UIAccessibility.post(
                             notification: .announcement,
                             argument: String(
-                                format: Language.get("POS_Scanner_Resolved_Format", alter: "تم تحديد %@"),
+                                format: Language.get(formatKey, alter: fallbackFormat),
                                 product.name
                             )
                         )
@@ -3871,7 +3901,7 @@ struct AdminPOSFastSellView: View {
                 .foregroundStyle(commandInk)
                 .focused($isSearchFocused)
                 .submitLabel(.search)
-                .onSubmit { dismissKeyboard() }
+                .onSubmit { handleSearchSubmit() }
                 .autocapitalization(.none)
                 .disableAutocorrection(true)
                 .frame(minHeight: AdminTouchTarget.minimum)
@@ -4245,6 +4275,23 @@ struct AdminPOSFastSellView: View {
 
     // MARK: - Interaction
 
+    private func handleSearchSubmit() {
+        dismissKeyboard()
+        let query = viewModel.catalogSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
+
+        switch viewModel.resolveScannedCode(query) {
+        case .resolved(let product, let matchedGroup):
+            if viewModel.hasVariantOptions(for: product) {
+                commitScannedSelection(product, matchedGroup: matchedGroup)
+            }
+        case .ambiguous(let matches):
+            scanAmbiguousMatches = matches
+        case .notFound:
+            break
+        }
+    }
+
     private func handleCatalogItemTap(_ item: POSCatalogDisplayItem, from rect: CGRect) {
         dismissKeyboard()
         guard !viewModel.isCheckoutBusy else { return }
@@ -4254,7 +4301,7 @@ struct AdminPOSFastSellView: View {
             handleCatalogTap(accessory, from: rect)
         case .family(let familyId, let members, let primary):
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            variantPicker.open(familyId: familyId, members: members, primary: primary)
+            variantPicker.open(familyId: familyId, members: members, primary: primary, focusedAccessoryID: primary.accessoryID)
         }
     }
 
@@ -4294,6 +4341,15 @@ struct AdminPOSFastSellView: View {
     private func commitScannedSelection(_ accessory: PetAccessory, matchedGroup: POSQuantityGroupInfo? = nil) {
         if accessory.pos_isIndividuallyTrackedLivePet {
             openUnitPicker(for: accessory)
+            return
+        }
+        // If the scanned item has variant options (multiple members in the family),
+        // show options and focus the target scanned item!
+        if viewModel.hasVariantOptions(for: accessory) {
+            let members = viewModel.variantMembers(for: accessory)
+            let familyId = (accessory.productFamilyId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            variantPicker.open(familyId: familyId, members: members, primary: accessory, focusedAccessoryID: accessory.accessoryID)
             return
         }
         if let g = matchedGroup {
@@ -6375,60 +6431,80 @@ private struct POSVariantPickerSheet: View {
             .padding(.bottom, 8)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    if let primary = variantPicker.primaryAccessory {
-                        productOverview(primary)
-                    }
-                    if variantPicker.members.isEmpty {
-                        emptyState
-                    } else {
-                        let baseUnits = cartBaseUnits
-                        LazyVStack(spacing: 0) {
-                            ForEach(variantPicker.members, id: \.accessoryID) { member in
-                                POSVariantRow(
-                                    member: member,
-                                    inCart: viewModel.quantityInCart(for: member.accessoryID),
-                                    cartBaseUnits: baseUnits[member.accessoryID, default: 0],
-                                    salesChannel: viewModel.salesChannel,
-                                    currency: currency,
-                                    onIncrement: {
-                                        if member.pos_hasMultipleSellUnits(for: viewModel.salesChannel) {
-                                            onSelectSellUnit(member)
-                                        } else {
-                                            let added = viewModel.addToCart(member)
-                                            if added {
-                                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                ScrollViewReader { scrollProxy in
+                    VStack(alignment: .leading, spacing: 18) {
+                        if let primary = variantPicker.primaryAccessory {
+                            productOverview(primary)
+                        }
+                        if variantPicker.members.isEmpty {
+                            emptyState
+                        } else {
+                            let baseUnits = cartBaseUnits
+                            LazyVStack(spacing: 0) {
+                                ForEach(variantPicker.members, id: \.accessoryID) { member in
+                                    POSVariantRow(
+                                        member: member,
+                                        inCart: viewModel.quantityInCart(for: member.accessoryID),
+                                        cartBaseUnits: baseUnits[member.accessoryID, default: 0],
+                                        salesChannel: viewModel.salesChannel,
+                                        isFocusedTarget: member.accessoryID == variantPicker.focusedAccessoryID,
+                                        currency: currency,
+                                        onIncrement: {
+                                            if member.pos_hasMultipleSellUnits(for: viewModel.salesChannel) {
+                                                onSelectSellUnit(member)
                                             } else {
-                                                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                                                let added = viewModel.addToCart(member)
+                                                if added {
+                                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                                } else {
+                                                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                                                }
                                             }
+                                        },
+                                        onDecrement: {
+                                            viewModel.decrementQuantity(for: member.accessoryID)
+                                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                         }
-                                    },
-                                    onDecrement: {
-                                        viewModel.decrementQuantity(for: member.accessoryID)
-                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    )
+                                    .id(member.accessoryID)
+                                    if member.accessoryID != variantPicker.members.last?.accessoryID {
+                                        Rectangle()
+                                            .fill(AdminSurface.hairline)
+                                            .frame(height: 0.75)
+                                            .padding(.horizontal, 16)
+                                            .accessibilityHidden(true)
                                     }
-                                )
-                                if member.accessoryID != variantPicker.members.last?.accessoryID {
-                                    Rectangle()
-                                        .fill(AdminSurface.hairline)
-                                        .frame(height: 0.75)
-                                        .padding(.horizontal, 16)
-                                        .accessibilityHidden(true)
+                                }
+                            }
+                            .background(AdminSurface.surface,
+                                        in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+                                    .allowsHitTesting(false)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.top, 4)
+                    .padding(.bottom, 24)
+                    .onAppear {
+                        if let targetID = variantPicker.focusedAccessoryID {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    scrollProxy.scrollTo(targetID, anchor: .center)
                                 }
                             }
                         }
-                        .background(AdminSurface.surface,
-                                    in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
-                                .allowsHitTesting(false)
+                    }
+                    .onChange(of: variantPicker.focusedAccessoryID) { newTarget in
+                        if let newTarget {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                scrollProxy.scrollTo(newTarget, anchor: .center)
+                            }
                         }
                     }
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 4)
-                .padding(.bottom, 24)
             }
         }
         .background(AdminSurface.background)
@@ -6496,6 +6572,7 @@ private struct POSVariantRow: View {
     let inCart: Int
     let cartBaseUnits: Int
     var salesChannel: POSSalesChannel = .retail
+    var isFocusedTarget: Bool = false
     let currency: (Double) -> String
     let onIncrement: () -> Void
     let onDecrement: () -> Void
@@ -6538,10 +6615,26 @@ private struct POSVariantRow: View {
             }
         }
         .padding(16)
-        .background(inCart > 0 ? AdminSurface.primary.opacity(0.045) : Color.clear)
+        .background(
+            ZStack {
+                if isFocusedTarget {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color(uiColor: .systemGreen).opacity(0.08))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(Color(uiColor: .systemGreen).opacity(0.4), lineWidth: 1.5)
+                        )
+                } else if inCart > 0 {
+                    AdminSurface.primary.opacity(0.045)
+                } else {
+                    Color.clear
+                }
+            }
+        )
         .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: inCart)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("admin.pos.variant.\(member.accessoryID)")
+        .accessibilityValue(isFocusedTarget ? Language.get("POS_Variant_MatchedBarcode", alter: "الخيار المطابق") : "")
     }
 
     private var identity: some View {
@@ -6562,7 +6655,18 @@ private struct POSVariantRow: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
             }
-            if member.isDefaultVariant {
+            if isFocusedTarget {
+                HStack(spacing: 5) {
+                    Image(systemName: "barcode.viewfinder")
+                        .font(.system(size: 11, weight: .bold))
+                    Text(Language.get("POS_Variant_MatchedBarcode", alter: "الخيار المطابق"))
+                        .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
+                }
+                .foregroundStyle(Color(uiColor: .systemGreen))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Color(uiColor: .systemGreen).opacity(0.12), in: Capsule())
+            } else if member.isDefaultVariant {
                 Label(Language.get("Variant_Default_Badge", alter: nil), systemImage: "checkmark.seal")
                     .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
                     .foregroundStyle(actionInk)

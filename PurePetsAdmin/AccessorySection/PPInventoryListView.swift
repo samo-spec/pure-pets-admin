@@ -1658,6 +1658,8 @@ private enum InventoryFilter: Int, CaseIterable, Identifiable {
     case hasOffer
     case conditionNew
     case conditionUsed
+    case hasOptions
+    case noOptions
 
     var id: Int { rawValue }
 
@@ -1670,6 +1672,8 @@ private enum InventoryFilter: Int, CaseIterable, Identifiable {
         case .hasOffer: return "Offers"
         case .conditionNew: return "New"
         case .conditionUsed: return "Used"
+        case .hasOptions: return "Inventory_Filter_HasOptions"
+        case .noOptions: return "Inventory_Filter_NoOptions"
         }
     }
 
@@ -1682,6 +1686,8 @@ private enum InventoryFilter: Int, CaseIterable, Identifiable {
         case .hasOffer: return Language.get("Offers", alter: "العروض والتخفيضات")
         case .conditionNew: return Language.get("Condition_New", alter: "جديد")
         case .conditionUsed: return Language.get("Condition_Used", alter: "مستعمل")
+        case .hasOptions: return Language.get("Inventory_Filter_HasOptions", alter: "أصناف بخيارات")
+        case .noOptions: return Language.get("Inventory_Filter_NoOptions", alter: "أصناف بدون خيارات")
         }
     }
 
@@ -1694,6 +1700,8 @@ private enum InventoryFilter: Int, CaseIterable, Identifiable {
         case .hasOffer: return "tag.fill"
         case .conditionNew: return "sparkles"
         case .conditionUsed: return "arrow.3.trianglepath"
+        case .hasOptions: return "square.stack.3d.up.fill"
+        case .noOptions: return "square.dashed"
         }
     }
 }
@@ -2005,6 +2013,8 @@ final class PPInventoryListViewModel: ObservableObject {
     var unpricedItemsCount: Int {
         allItems.filter { !$0.hasResolvedSellingPrice }.count
     }
+    var hasOptionsCount: Int { allItems.filter { $0.hasVariantOptions }.count }
+    var noOptionsCount: Int { allItems.filter { !$0.hasVariantOptions }.count }
     var totalValuation: Double {
         allItems.reduce(0.0) { sum, item in
             guard item.hasResolvedSellingPrice else { return sum }
@@ -2136,6 +2146,10 @@ final class PPInventoryListViewModel: ObservableObject {
             return item.condition == .new
         case .conditionUsed:
             return item.condition == .used
+        case .hasOptions:
+            return item.hasVariantOptions
+        case .noOptions:
+            return !item.hasVariantOptions
         }
     }
 
@@ -3289,6 +3303,8 @@ struct PPInventoryListView: View {
         let total = viewModel.totalCount
         let newCount = viewModel.allItems.filter { $0.condition == .new }.count
         let usedCount = viewModel.allItems.filter { $0.condition == .used }.count
+        let hasOptionsCount = viewModel.hasOptionsCount
+        let noOptionsCount = viewModel.noOptionsCount
         let unpriced = viewModel.unpricedItemsCount
         let valuation = viewModel.totalValuation
 
@@ -3385,6 +3401,8 @@ struct PPInventoryListView: View {
                         heroCatalogFilter(.all, count: total)
                         heroCatalogFilter(.conditionNew, count: newCount)
                         heroCatalogFilter(.conditionUsed, count: usedCount)
+                        heroCatalogFilter(.hasOptions, count: hasOptionsCount)
+                        heroCatalogFilter(.noOptions, count: noOptionsCount)
                     }
                     .disabled(!heroHasMetrics || total == 0)
 
@@ -4767,6 +4785,7 @@ private struct PPInventoryVariantChildInspector: View {
     }
 
     private var variantTitle: String {
+        if let title = item.resolvedOptionDisplayTitle { return title }
         let name = item.pos_variantDisplayName
         if !name.isEmpty && name != item.accessoryID { return name }
         if let colour, !colour.localizedName.isEmpty { return colour.localizedName }
@@ -5425,7 +5444,11 @@ private struct FlagshipInventoryCard: View {
                     portrait(size: dynamicTypeSize >= .xxLarge ? 64 : 84)
 
                     VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-                        categoryLine
+                        HStack(alignment: .center, spacing: AdminSpacing.xs) {
+                            categoryLine
+                            Spacer(minLength: AdminSpacing.xs)
+                            optionBadgeView
+                        }
                         productTitle
                         priceReadout
                     }
@@ -5448,7 +5471,11 @@ private struct FlagshipInventoryCard: View {
             HStack(alignment: .center, spacing: AdminSpacing.base) {
                 portrait(size: 104)
                 VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-                    categoryLine
+                    HStack(alignment: .center, spacing: AdminSpacing.xs) {
+                        categoryLine
+                        Spacer(minLength: AdminSpacing.xs)
+                        optionBadgeView
+                    }
                     productTitle
                     metadata
                     technicalIdentity
@@ -5470,7 +5497,11 @@ private struct FlagshipInventoryCard: View {
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: AdminSpacing.md) {
                 portrait(size: 80)
-                categoryLine
+                HStack(alignment: .center, spacing: AdminSpacing.xs) {
+                    categoryLine
+                    Spacer(minLength: AdminSpacing.xs)
+                    optionBadgeView
+                }
                 productTitle
                 priceReadout
                 metadata
@@ -5488,6 +5519,18 @@ private struct FlagshipInventoryCard: View {
 
     private var identityAccessibilityLabel: String {
         var parts = [title, theme.categoryName, branchName, formattedPrice]
+        if item.hasVariantOptions {
+            if let title = item.resolvedOptionDisplayTitle {
+                parts.append("\(Language.get("Inventory_HasOptions", alter: "خيارات")): \(title)")
+            } else {
+                parts.append(Language.get("Inventory_HasOptions", alter: "خيارات"))
+            }
+            if item.isDefaultVariant {
+                parts.append(Language.get("Inventory_Family_DefaultOption", alter: "الخيار الافتراضي"))
+            }
+        } else {
+            parts.append(Language.get("Inventory_NoOptions", alter: "بدون خيارات"))
+        }
         if !item.isLivePet, item.condition.rawValue != -1 { parts.append(PetAccessory.conditionText(for: item)) }
         parts.append(contentsOf: [item.size, item.weightText, item.sku, item.barcode].compactMap { $0 })
         if hasDiscount {
@@ -5503,6 +5546,56 @@ private struct FlagshipInventoryCard: View {
             parts.append("\(Language.get("Cost_Short", alter: "تكلفة:")) \(PetAccessory.formatCurrency(cost))")
         }
         return parts.filter { !$0.isEmpty }.joined(separator: ", ")
+    }
+
+    @ViewBuilder
+    private var optionBadgeView: some View {
+        if item.hasVariantOptions {
+            HStack(spacing: 4) {
+                if item.pos_hasRealColor, let color = item.pos_variantColor {
+                    Circle()
+                        .fill(Color(uiColor: color.uiColor))
+                        .overlay(
+                            Circle()
+                                .strokeBorder(
+                                    AdminSurface.primaryText.opacity(color.requiresContrastBorder ? 0.4 : 0.15),
+                                    lineWidth: 1
+                                )
+                        )
+                        .frame(width: 8, height: 8)
+                } else {
+                    Image(systemName: item.pos_variantDimension.sfSymbolName)
+                        .font(.system(size: 9, weight: .bold))
+                }
+                Text(item.resolvedOptionDisplayTitle ?? Language.get("Inventory_HasOptions", alter: "خيارات"))
+                    .font(AdminType.caption1Bold)
+                    .lineLimit(1)
+                if item.isDefaultVariant {
+                    Text("•")
+                        .font(AdminType.caption1)
+                        .opacity(0.6)
+                    Text(Language.get("POS_DefaultVariant", alter: "الافتراضي"))
+                        .font(AdminType.caption2)
+                }
+            }
+            .foregroundStyle(AdminSurface.primary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2.5)
+            .background(AdminSurface.primarySoft, in: Capsule())
+            .accessibilityElement(children: .combine)
+        } else {
+            HStack(spacing: 3) {
+                Image(systemName: "square.dashed")
+                    .font(.system(size: 8, weight: .semibold))
+                Text(Language.get("Inventory_NoOptions", alter: "بدون خيارات"))
+                    .font(AdminType.caption1)
+            }
+            .foregroundStyle(AdminCommandInk.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(AdminSurface.control, in: Capsule())
+            .accessibilityElement(children: .combine)
+        }
     }
 
     private var categoryLine: some View {
@@ -5582,6 +5675,31 @@ private struct FlagshipInventoryCard: View {
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(Color(uiColor: .systemOrange).opacity(0.12), in: Capsule())
+                }
+            }
+            if item.hasVariantOptions {
+                if item.pos_hasRealColor, let color = item.pos_variantColor {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color(uiColor: color.uiColor))
+                            .overlay(
+                                Circle()
+                                    .strokeBorder(
+                                        AdminSurface.primaryText.opacity(color.requiresContrastBorder ? 0.4 : 0.15),
+                                        lineWidth: 1
+                                    )
+                            )
+                            .frame(width: 9, height: 9)
+                        Text(color.localizedName)
+                    }
+                }
+                if let snapshots = item.selectedOptionsSnapshot, !snapshots.isEmpty {
+                    ForEach(snapshots.indices, id: \.self) { idx in
+                        let snap = snapshots[idx]
+                        if let name = snap["valueName"] as? String, !name.isEmpty {
+                            Label(name, systemImage: "slider.horizontal.3")
+                        }
+                    }
                 }
             }
         }

@@ -17,7 +17,7 @@ private func deliveryText(_ key: String) -> String {
 
 private func deliveryFormat(_ key: String, _ arguments: CVarArg...) -> String {
     String(format: deliveryText(key),
-           locale: Locale(identifier: Language.currentLanguageCode() ?? "ar"),
+           locale: Locale(identifier: Language.currentLanguageCode()),
            arguments: arguments)
 }
 
@@ -43,14 +43,41 @@ private func deliveryInteger(_ dictionary: [String: Any], _ key: String) -> Int 
 private func deliveryDate(_ value: Any?) -> Date? {
     if let date = value as? Date { return date }
     if let timestamp = value as? Timestamp { return timestamp.dateValue() }
+    if let raw = value as? [String: Any],
+       let seconds = (raw["seconds"] ?? raw["_seconds"]) as? NSNumber {
+        let rawNanos = raw["nanoseconds"] ?? raw["_nanoseconds"] ?? NSNumber(value: 0)
+        guard let nanos = rawNanos as? NSNumber else { return nil }
+        let secondsValue = seconds.doubleValue
+        let nanosValue = nanos.doubleValue
+        guard secondsValue.isFinite, nanosValue.isFinite,
+              (-62_135_596_800...253_402_300_799).contains(secondsValue),
+              (0..<1_000_000_000).contains(nanosValue) else { return nil }
+        return Date(timeIntervalSince1970: secondsValue + nanosValue / 1_000_000_000)
+    }
     guard let raw = value as? String else { return nil }
-    return ISO8601DateFormatter().date(from: raw)
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let date = formatter.date(from: raw) { return date }
+    formatter.formatOptions = [.withInternetDateTime]
+    return formatter.date(from: raw)
+}
+
+private func deliveryNumber(_ value: Int) -> String {
+    value.formatted(.number.locale(Locale(identifier: Language.currentLanguageCode())))
+}
+
+private func deliveryReference(_ record: PPDeliveryRequestRecord) -> String {
+    let reference = record.orderNumber.isEmpty
+        ? (record.orderID.isEmpty ? record.requestID : record.orderID)
+        : record.orderNumber
+    // Isolate technical text without reversing the surrounding Arabic layout.
+    return "\u{2066}\(reference)\u{2069}"
 }
 
 private func deliveryDateText(_ value: Any?) -> String {
     guard let date = deliveryDate(value) else { return deliveryText("Delivery_Not_Available") }
     let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: Language.currentLanguageCode() ?? "ar")
+    formatter.locale = Locale(identifier: Language.currentLanguageCode())
     formatter.dateStyle = .medium
     formatter.timeStyle = .short
     return formatter.string(from: date)
@@ -85,6 +112,7 @@ private func deliveryStatusColor(_ status: String) -> Color {
 
 private func deliveryStatusText(_ status: String) -> String {
     switch status.lowercased() {
+    case "pending": return deliveryText("Delivery_Status_Pending")
     case "offered": return deliveryText("Delivery_Status_Offered")
     case "accepted_by_company", "accepted": return deliveryText("Delivery_Status_Accepted")
     case "assigned_to_driver", "assigned": return deliveryText("Delivery_Status_Assigned")
@@ -118,7 +146,7 @@ private func deliveryCurrencyText(_ amount: NSNumber?, currency: String = "QAR")
     formatter.numberStyle = .decimal
     formatter.minimumFractionDigits = 2
     formatter.maximumFractionDigits = 2
-    formatter.locale = Locale(identifier: Language.currentLanguageCode() ?? "ar")
+    formatter.locale = Locale(identifier: Language.currentLanguageCode())
     let value = formatter.string(from: amount) ?? amount.stringValue
     let currencyText = currency.uppercased() == "QAR" ? Language.get("QAR", alter: "ر.ق") : currency
     return "\(value) \(currencyText)"
@@ -241,6 +269,23 @@ private enum DeliveryAdminTab: String, CaseIterable, Identifiable {
             return false
         }
     }
+
+    var symbol: String {
+        switch self {
+        case .newRequests: return "tray"
+        case .accepted: return "checkmark.circle"
+        case .assigned: return "person.crop.circle.badge.checkmark"
+        case .inProgress: return "truck.box"
+        case .delivered: return "shippingbox"
+        case .completed: return "checkmark.seal"
+        case .closed: return "archivebox"
+        case .drivers: return "person.2"
+        case .overview: return "chart.bar.xaxis"
+        case .exceptions: return "exclamationmark.bubble"
+        case .cod: return "banknote"
+        case .pod: return "checkmark.shield"
+        }
+    }
 }
 
 private struct PendingDriverCommand: Identifiable {
@@ -268,6 +313,7 @@ private final class DeliveryCommandCenterViewModel: ObservableObject {
     @Published var searchText = ""
     @Published var selectedTab: DeliveryAdminTab = .newRequests
     @Published var selectedRequestID: String?
+    private var dossierLoadGeneration = UUID()
 
     var records: [PPDeliveryRequestRecord] { snapshot?.records ?? [] }
     var drivers: [PPDeliveryDriverRecord] { snapshot?.drivers ?? [] }
@@ -303,9 +349,9 @@ private final class DeliveryCommandCenterViewModel: ObservableObject {
         }
     }
 
-    func records(for tab: DeliveryAdminTab) -> [PPDeliveryRequestRecord] {
+    func records(for tab: DeliveryAdminTab, matchingSearch: Bool = true) -> [PPDeliveryRequestRecord] {
         let queryIsEmpty = searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let source = queryIsEmpty ? records : filteredRecords
+        let source = !matchingSearch || queryIsEmpty ? records : filteredRecords
         return source.filter { record in
             let status = record.status.lowercased()
             switch tab {
@@ -353,20 +399,36 @@ private final class DeliveryCommandCenterViewModel: ObservableObject {
     func count(_ key: String) -> Int { deliveryInteger(projectionCounts, key) }
     func driverCount(_ key: String) -> Int { deliveryInteger(projectionDriverCounts, key) }
 
-    func load(refresh: Bool = false) {
-        guard !isLoading && !isRefreshing else { return }
-        if snapshot == nil { isLoading = true } else { isRefreshing = refresh }
+    func refresh() async {
+        await withCheckedContinuation { continuation in
+            load(refresh: true) { continuation.resume() }
+        }
+    }
+
+    func load(refresh: Bool = false, completion: (@MainActor @Sendable () -> Void)? = nil) {
+        guard !isLoading && !isRefreshing else {
+            completion?()
+            return
+        }
+        if snapshot == nil { isLoading = true } else { isRefreshing = true }
         incident = nil
         // The Admin service intentionally omits companyId. Infra resolves that
         // request to the canonical or protected legacy Pure Pets official fleet;
         // this screen must never become a mutable third-party carrier selector.
         PPDeliveryService.shared().fetchCommandCenter { [weak self] snapshot, error in
             Task { @MainActor in
+                defer { completion?() }
                 guard let self else { return }
                 self.isLoading = false
                 self.isRefreshing = false
                 if let error {
                     self.incident = DeliveryIncident.classify(error as NSError)
+                    if self.incident?.domainCode == "DELIVERY_PERMISSION_DENIED" {
+                        self.snapshot = nil
+                        self.companyMembers = []
+                        self.dossier = nil
+                        self.selectedRequestID = nil
+                    }
                     return
                 }
                 guard let snapshot else {
@@ -396,6 +458,7 @@ private final class DeliveryCommandCenterViewModel: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 self.isLoadingMembers = false
+                guard self.snapshot != nil, self.officialCompanyID == resolvedCompanyID else { return }
                 if let error {
                     self.memberIncident = DeliveryIncident.classify(error as NSError)
                     return
@@ -488,6 +551,8 @@ private final class DeliveryCommandCenterViewModel: ObservableObject {
     }
 
     func closeDossier() {
+        dossierLoadGeneration = UUID()
+        isLoadingDossier = false
         selectedRequestID = nil
         dossier = nil
         dossierIncident = nil
@@ -496,11 +561,14 @@ private final class DeliveryCommandCenterViewModel: ObservableObject {
 
     func loadDossier(requestID: String? = nil) {
         guard let requestID = requestID ?? selectedRequestID, !requestID.isEmpty else { return }
+        let generation = UUID()
+        dossierLoadGeneration = generation
         isLoadingDossier = true
         dossierIncident = nil
         PPDeliveryService.shared().fetchDossier(requestID: requestID) { [weak self] dossier, error in
             Task { @MainActor in
-                guard let self, self.selectedRequestID == requestID else { return }
+                guard let self, self.selectedRequestID == requestID,
+                      self.dossierLoadGeneration == generation else { return }
                 self.isLoadingDossier = false
                 if let error {
                     self.dossierIncident = DeliveryIncident.classify(error as NSError)
@@ -530,7 +598,8 @@ private final class DeliveryCommandCenterViewModel: ObservableObject {
                 if let error {
                     let classified = DeliveryIncident.classify(error as NSError)
                     self.commandIncident = classified
-                    if classified.domainCode == "DELIVERY_STATE_CONFLICT" {
+                    if ["DELIVERY_STATE_CONFLICT", "DELIVERY_DRIVER_NOT_ELIGIBLE", "DELIVERY_PERMISSION_DENIED"]
+                        .contains(classified.domainCode) {
                         self.loadDossier(requestID: requestID)
                         self.load(refresh: true)
                     }
@@ -574,6 +643,9 @@ struct AdminDeliveryListView: View {
     @StateObject private var viewModel = DeliveryCommandCenterViewModel()
     @State private var selectedDriver: PPDeliveryDriverRecord?
     @State private var presentsInviteDriver = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @FocusState private var searchFocused: Bool
 
     init(onDismiss: (() -> Void)? = nil) {
         self.onDismiss = onDismiss
@@ -584,9 +656,7 @@ struct AdminDeliveryListView: View {
             AdminSurface.background.ignoresSafeArea()
             VStack(spacing: 0) {
                 header
-                hero
-                tabRail
-                content
+                workspace
             }
             if viewModel.isExecuting {
                 AdminLoadingOverlay(message: deliveryText("Delivery_Command_Applying"))
@@ -594,9 +664,16 @@ struct AdminDeliveryListView: View {
                     .accessibilityAddTraits(.isModal)
             }
         }
-        .ignoresSafeArea()
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .environment(\.locale, Locale(identifier: Language.currentLanguageCode()))
+        .multilineTextAlignment(.leading)
         .onAppear { viewModel.load() }
+        .onChange(of: viewModel.incident?.domainCode) { _, code in
+            if code == "DELIVERY_PERMISSION_DENIED" {
+                selectedDriver = nil
+                presentsInviteDriver = false
+            }
+        }
         .sheet(isPresented: Binding(
             get: { viewModel.selectedRequestID != nil },
             set: { if !$0 { viewModel.closeDossier() } }
@@ -622,221 +699,300 @@ struct AdminDeliveryListView: View {
         }
     }
 
-    // MARK: - Sovereign Navigation Bar
+    // MARK: - Delivery workspace
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-            AdminSovereignNavigationBar(
-                title: deliveryText("DeliveryCompany_NavTitle"),
-                subtitle: Language.get("CommandCenter_Delivery_Workspace", alter: "مساحة التوصيل"),
-                onBack: { close() }
-            ) {
-                if viewModel.isLoading || viewModel.isRefreshing {
-                    ProgressView().tint(AdminSurface.primary)
-                } else {
-                    Button { viewModel.load(refresh: true) } label: {
+        HStack(alignment: .center, spacing: 12) {
+            AdminSquircleBackButton(action: close)
+            Text(deliveryText("DeliveryCompany_NavTitle"))
+                .font(AdminType.headline)
+                .foregroundStyle(AdminSurface.primaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            Button { viewModel.load(refresh: true) } label: {
+                ZStack {
+                    if viewModel.isLoading || viewModel.isRefreshing {
+                        ProgressView().tint(AdminSurface.primary)
+                    } else {
                         Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundColor(AdminSurface.primaryText)
-                            .frame(width: 44, height: 44)
-                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
-                            )
-                            .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+                            .font(.system(size: 17, weight: .semibold))
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(deliveryText("CommandCenter_Refresh"))
                 }
+                .foregroundStyle(AdminSurface.primaryText)
+                .frame(width: 44, height: 44)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
-
-            if let snapshot = viewModel.snapshot {
-                HStack(spacing: 8) {
-                    AdminStatusBadge(
-                        text: deliveryText("DeliveryCompany_Official_Badge"),
-                        status: .processing
-                    )
-                    Text(deliveryFreshnessText(snapshot))
-                        .font(AdminType.caption1)
-                        .foregroundColor(AdminSurface.secondaryText)
-                }
-                .padding(.horizontal, AdminSpacing.screenMargin)
-
-                if snapshot.permissionSource == "legacy_official_delivery_bridge" {
-                    Label(deliveryText("Delivery_Legacy_Permission_Warning"), systemImage: "exclamationmark.shield.fill")
-                        .font(AdminType.captionBold)
-                        .foregroundColor(.orange)
-                        .accessibilityElement(children: .combine)
-                        .padding(.horizontal, AdminSpacing.screenMargin)
-                }
-            }
+            .buttonStyle(DeliveryCompanyCardButtonStyle())
+            .disabled(viewModel.isLoading || viewModel.isRefreshing)
+            .accessibilityLabel(deliveryText("CommandCenter_Refresh"))
+            .accessibilityValue(viewModel.isLoading || viewModel.isRefreshing ? deliveryText("Delivery_Loading_Operations") : "")
         }
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.vertical, 8)
+        .background(AdminSurface.background)
     }
 
-    private var hero: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(AdminSurface.surface)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .stroke(AdminSurface.hairline.opacity(0.65), lineWidth: 0.5)
+    private var fleetHeader: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "truck.box.fill")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(AdminSurface.primary)
+                    .frame(width: 48, height: 48)
+                    .background(AdminSurface.primary.opacity(0.09), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(deliveryText("DeliveryCompany_Official_Name"))
+                        .font(AdminType.title2)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(deliveryText("DeliveryWorkspace_FleetCaption"))
+                        .font(AdminType.subheadline)
+                        .foregroundStyle(AdminSurface.secondaryText)
                 }
-                .shadow(color: .black.opacity(0.06), radius: 24, y: 12)
-
-            Image(systemName: "truck.box.fill")
-                .font(.system(size: 21, weight: .semibold))
-                .foregroundColor(AdminSurface.primary)
-                .frame(width: 46, height: 46)
-                .background(AdminSurface.primary.opacity(0.11), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .padding(22)
-                .accessibilityHidden(true)
-
-            VStack(spacing: -2) {
-                Text("\(viewModel.records.count)")
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundColor(AdminSurface.primaryText)
-                Text(deliveryText("DeliveryCompany_Dashboard_Requests"))
-                    .font(AdminType.caption2Bold)
-                    .foregroundColor(AdminSurface.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(width: 96, height: 72)
-            .background(AdminSurface.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            .padding(.top, 22)
-            .padding(.trailing, 20)
-            .accessibilityElement(children: .combine)
-
-            VStack(alignment: .leading, spacing: 0) {
-                Text(deliveryText("DeliveryCompany_Dashboard_Eyebrow"))
-                    .font(AdminType.caption2Bold)
-                    .foregroundColor(AdminSurface.primary)
-                Text(deliveryText("DeliveryCompany_Official_Name"))
-                    .font(AdminType.largeTitle)
-                    .foregroundColor(AdminSurface.primaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                    .accessibilityAddTraits(.isHeader)
-                Text(deliveryText("DeliveryCompany_Dashboard_OfficialSubtitle"))
-                    .font(AdminType.subheadline)
-                    .foregroundColor(AdminSurface.secondaryText)
-                    .lineLimit(2)
-                    .padding(.top, 3)
-
-                Spacer(minLength: 10)
-
+            adaptiveRow(spacing: 12) {
                 if viewModel.availableTabs.contains(.drivers) {
-                    Button {
-                        withAnimation(reduceMotion ? nil : AdminAnimation.standard) {
-                            viewModel.selectedTab = .drivers
-                        }
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "person.3.fill")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(AdminSurface.primary)
-                                .frame(width: 36, height: 36)
-                                .background(AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(deliveryText("DeliveryCompany_Tab_Members"))
-                                    .font(AdminType.subheadlineBold)
-                                    .foregroundColor(AdminSurface.primaryText)
-                                Text(deliveryText("DeliveryCompany_Dashboard_MembersShortcutSubtitle"))
-                                    .font(AdminType.caption1)
-                                    .foregroundColor(AdminSurface.secondaryText)
-                                    .lineLimit(1)
-                            }
-                            Spacer(minLength: 8)
-                            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundColor(AdminSurface.primaryText.opacity(0.76))
-                        }
-                        .padding(.horizontal, 14)
-                        .frame(height: 64)
-                        .background(AdminSurface.background.opacity(0.74), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    Button { selectTab(.drivers) } label: {
+                        Label(deliveryText("DeliveryCompany_Tab_Members"), systemImage: "person.2.fill")
+                            .font(AdminType.subheadlineBold)
+                            .foregroundStyle(AdminSurface.primary)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .frame(minHeight: 44)
+                            .background(AdminSurface.surface, in: Capsule())
+                            .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.5))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(DeliveryCompanyCardButtonStyle())
                     .accessibilityHint(deliveryText("DeliveryCompany_Dashboard_MembersShortcutSubtitle"))
                 }
+                if !utilityTabs.isEmpty {
+                    Menu {
+                        ForEach(utilityTabs) { tab in
+                            Button { selectTab(tab) } label: {
+                                Label(deliveryText(tab.titleKey), systemImage: tab.symbol)
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "slider.horizontal.3")
+                            Text(deliveryText("DeliveryWorkspace_Tools"))
+                            Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+                        }
+                        .font(AdminType.subheadlineBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                    }
+                    .accessibilityHint(deliveryText("DeliveryWorkspace_ToolsHint"))
+                }
             }
-            .padding(.horizontal, 22)
-            .padding(.top, 86)
-            .padding(.bottom, 18)
+            if let snapshot = viewModel.snapshot {
+                Label(freshnessLabel(snapshot), systemImage: viewModel.incident == nil ? "clock" : "exclamationmark.arrow.triangle.2.circlepath")
+                    .font(AdminType.caption1)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityElement(children: .combine)
+                if snapshot.permissionSource == "legacy_official_delivery_bridge" {
+                    Label(deliveryText("Delivery_Legacy_Permission_Warning"), systemImage: "exclamationmark.shield")
+                        .font(AdminType.captionBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
-        .frame(height: 256)
-        .padding(.horizontal, 18)
-        .padding(.bottom, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var utilityTabs: [DeliveryAdminTab] {
+        viewModel.availableTabs.filter { !$0.isDeliveryFilter }
+    }
+
+    private func selectTab(_ tab: DeliveryAdminTab) {
+        searchFocused = false
+        viewModel.selectedTab = tab
+    }
+
+    private func freshnessLabel(_ snapshot: PPDeliveryCommandCenterSnapshot) -> String {
+        if viewModel.isRefreshing { return deliveryText("DeliveryWorkspace_Refreshing") }
+        if viewModel.incident != nil { return deliveryText("DeliveryWorkspace_PreviousData") }
+        let generatedAt = deliveryDictionary(snapshot.projection)["generatedAt"]
+        guard deliveryDate(generatedAt) != nil else { return deliveryText("DeliveryWorkspace_UnknownFreshness") }
+        return deliveryFormat("DeliveryWorkspace_Updated", deliveryDateText(generatedAt))
+    }
+
+    private func adaptiveRow<Content: View>(spacing: CGFloat, @ViewBuilder content: @escaping () -> Content) -> some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: spacing))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: spacing))
+        return layout { content() }
+    }
+
+    private var queueHeading: some View {
+        adaptiveRow(spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(deliveryText(viewModel.selectedTab.isDeliveryFilter ? "DeliveryWorkspace_Queue" : "DeliveryWorkspace_Tools"))
+                    .font(AdminType.captionBold)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                Text(deliveryText(viewModel.selectedTab.titleKey))
+                    .font(AdminType.title)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if viewModel.snapshot != nil && viewModel.selectedTab.isDeliveryFilter {
+                Text(deliveryNumber(viewModel.records(for: viewModel.selectedTab).count))
+                    .font(.system(.largeTitle, design: .rounded, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(AdminSurface.primary)
+                    .fixedSize()
+                    .accessibilityLabel(deliveryFormat("DeliveryWorkspace_ResultCount", deliveryNumber(viewModel.records(for: viewModel.selectedTab).count)))
+            }
+        }
+        .padding(.top, 8)
+        .id("delivery-queue")
     }
 
     private var tabRail: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(viewModel.availableTabs) { tab in
-                    Button {
-                        viewModel.selectedTab = tab
-                    } label: {
-                        Text(deliveryText(tab.titleKey))
-                            .font(AdminType.captionBold)
-                            .foregroundColor(viewModel.selectedTab == tab ? .white : AdminSurface.primaryText)
-                            .padding(.horizontal, 16)
-                            .frame(height: 36)
-                            .background(viewModel.selectedTab == tab ? AdminSurface.primary : AdminSurface.surface,
-                                        in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                    .stroke(viewModel.selectedTab == tab ? AdminSurface.primary.opacity(0.20) : AdminSurface.hairline.opacity(0.65), lineWidth: 0.5)
+        ScrollViewReader { rail in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 20) {
+                    ForEach(viewModel.availableTabs.filter(\.isDeliveryFilter)) { tab in
+                        let selected = viewModel.selectedTab == tab
+                        Button { selectTab(tab) } label: {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 6) {
+                                    Text(deliveryText(tab.titleKey))
+                                        .font(AdminType.subheadlineBold)
+                                    if viewModel.snapshot != nil {
+                                        Text(deliveryNumber(viewModel.records(for: tab, matchingSearch: false).count))
+                                            .font(.system(.caption, design: .rounded, weight: .semibold))
+                                            .monospacedDigit()
+                                            .foregroundStyle(selected ? AdminSurface.primary : AdminSurface.secondaryText)
+                                    }
+                                }
+                                .fixedSize(horizontal: true, vertical: false)
+                                .padding(.top, 8)
+                                Capsule()
+                                    .fill(selected ? AdminSurface.primary : .clear)
+                                    .frame(height: 3)
                             }
-                            .shadow(color: viewModel.selectedTab == tab ? AdminSurface.primary.opacity(0.22) : .clear,
-                                    radius: viewModel.selectedTab == tab ? 16 : 0,
-                                    y: viewModel.selectedTab == tab ? 8 : 0)
+                            .foregroundStyle(selected ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                            .frame(minHeight: 48)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .id(tab.id)
+                        .accessibilityAddTraits(selected ? .isSelected : [])
+                        .accessibilityLabel(deliveryText(tab.titleKey))
+                        .accessibilityValue(viewModel.snapshot == nil ? "" : deliveryFormat("DeliveryWorkspace_LoadedCount", deliveryNumber(viewModel.records(for: tab, matchingSearch: false).count)))
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(viewModel.selectedTab == tab ? .isSelected : [])
                 }
             }
-            .padding(.horizontal, AdminSpacing.screenMargin)
+            .onChange(of: viewModel.selectedTab) { _, tab in
+                guard tab.isDeliveryFilter else { return }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                    rail.scrollTo(tab.id, anchor: .center)
+                }
+            }
         }
-        .padding(.bottom, AdminSpacing.sm)
+        .overlay(alignment: .bottom) { Rectangle().fill(AdminSurface.hairline).frame(height: 0.5) }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(AdminSurface.secondaryText)
+                .accessibilityHidden(true)
+            TextField(deliveryText("DeliveryWorkspace_Search"), text: $viewModel.searchText)
+                .font(AdminType.body)
+                .foregroundStyle(AdminSurface.primaryText)
+                .multilineTextAlignment(.leading)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .focused($searchFocused)
+                .onSubmit { searchFocused = false }
+                .accessibilityLabel(deliveryText("Delivery_Search"))
+                .frame(minHeight: 48)
+            if !viewModel.searchText.isEmpty {
+                Button { viewModel.searchText = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(deliveryText("DeliveryWorkspace_ClearSearch"))
+            }
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, viewModel.searchText.isEmpty ? 16 : 4)
+        .padding(.vertical, 2)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .strokeBorder(searchFocused ? AdminSurface.primary : AdminSurface.hairline, lineWidth: searchFocused ? 1.5 : 0.5))
+        .tint(AdminSurface.primary)
+    }
+
+    private var workspace: some View {
+        ScrollViewReader { scroll in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    fleetHeader
+                    if viewModel.snapshot != nil {
+                        if let incident = viewModel.incident {
+                            DeliveryIncidentPanel(incident: incident, retry: { viewModel.load(refresh: true) })
+                        }
+                        if let incident = viewModel.commandIncident, viewModel.selectedRequestID == nil {
+                            DeliveryIncidentPanel(incident: incident, retry: nil)
+                        }
+                        queueHeading
+                        tabRail
+                        if viewModel.selectedTab.isDeliveryFilter {
+                            searchField
+                        }
+                    }
+                    content
+                }
+                .padding(.horizontal, AdminSpacing.screenMargin)
+                .padding(.top, 16)
+                .padding(.bottom, 32)
+                .frame(maxWidth: 960)
+                .frame(maxWidth: .infinity, alignment: .top)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .refreshable { await viewModel.refresh() }
+            .onChange(of: viewModel.selectedTab) { _, _ in
+                // Keep the selected queue and its first request together.
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                    scroll.scrollTo("delivery-queue", anchor: .top)
+                }
+            }
+        }
     }
 
     @ViewBuilder
     private var content: some View {
         if viewModel.isLoading && viewModel.snapshot == nil {
             AdminLoadingOverlay(message: deliveryText("Delivery_Loading_Operations"))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, minHeight: 240)
         } else if let incident = viewModel.incident, viewModel.snapshot == nil {
-            ScrollView {
-                DeliveryIncidentPanel(incident: incident, retry: { viewModel.load() })
-                    .padding(AdminSpacing.screenMargin)
+            DeliveryIncidentPanel(incident: incident, retry: { viewModel.load() })
+        } else if viewModel.snapshot != nil {
+            switch viewModel.selectedTab {
+            case .newRequests, .accepted, .assigned, .inProgress, .delivered, .completed, .closed:
+                deliveryList(viewModel.records(for: viewModel.selectedTab), emptyKey: "DeliveryCompany_Empty_Title")
+            case .overview: overview
+            case .drivers: drivers
+            case .exceptions: exceptions
+            case .cod: codQueue
+            case .pod: podQueue
             }
-        } else {
-            ScrollView {
-                VStack(spacing: 16) {
-                    if let incident = viewModel.incident {
-                        DeliveryIncidentPanel(incident: incident, retry: { viewModel.load(refresh: true) })
-                    }
-                    if let incident = viewModel.commandIncident, viewModel.selectedRequestID == nil {
-                        DeliveryIncidentPanel(incident: incident, retry: nil)
-                    }
-                    if viewModel.selectedTab.isDeliveryFilter {
-                        AdminSearchField(text: $viewModel.searchText, placeholder: deliveryText("Delivery_Search"))
-                    }
-                    switch viewModel.selectedTab {
-                    case .newRequests, .accepted, .assigned, .inProgress, .delivered, .completed, .closed:
-                        deliveryList(viewModel.records(for: viewModel.selectedTab), emptyKey: "DeliveryCompany_Empty_Title")
-                    case .overview: overview
-                    case .drivers: drivers
-                    case .exceptions: exceptions
-                    case .cod: codQueue
-                    case .pod: podQueue
-                    }
-                }
-                .padding(.horizontal, AdminSpacing.screenMargin)
-                .padding(.bottom, 32)
-            }
-            .refreshable { viewModel.load(refresh: true) }
         }
     }
 
@@ -1254,17 +1410,46 @@ struct AdminDeliveryListView: View {
 
     @ViewBuilder
     private func deliveryList(_ records: [PPDeliveryRequestRecord], emptyKey: String) -> some View {
+        let isSearching = viewModel.selectedTab.isDeliveryFilter && !viewModel.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if records.isEmpty {
-            AdminEmptyStateView(symbol: "shippingbox",
-                                title: deliveryText(emptyKey),
-                                subtitle: deliveryText(emptyKey == "DeliveryCompany_Empty_Title"
-                                                       ? "DeliveryCompany_Empty_Subtitle"
-                                                       : "Delivery_Empty_Detail"))
-                .frame(minHeight: 280)
+            VStack(alignment: .leading, spacing: 16) {
+                Image(systemName: isSearching ? "magnifyingglass" : "tray")
+                    .font(.system(size: 28, weight: .light))
+                    .foregroundStyle(AdminSurface.primary)
+                    .padding(.bottom, 4)
+                    .accessibilityHidden(true)
+                Text(deliveryText(isSearching ? "DeliveryWorkspace_NoMatches" : emptyKey))
+                    .font(AdminType.title2)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .accessibilityAddTraits(.isHeader)
+                Text(deliveryText(isSearching ? "DeliveryWorkspace_NoMatchesDetail"
+                                  : (emptyKey == "DeliveryCompany_Empty_Title" ? "DeliveryCompany_Empty_Subtitle" : "Delivery_Empty_Detail")))
+                    .font(AdminType.body)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                if isSearching {
+                    Button(deliveryText("DeliveryWorkspace_ClearSearch")) { viewModel.searchText = "" }
+                        .font(AdminType.headline)
+                        .foregroundStyle(AdminSurface.primary)
+                        .frame(minHeight: 44)
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, minHeight: 220, alignment: .leading)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         } else {
-            LazyVStack(spacing: 10) {
-                ForEach(records, id: \.requestID) { record in
-                    deliveryCard(record)
+            VStack(alignment: .leading, spacing: 12) {
+                if viewModel.selectedTab.isDeliveryFilter {
+                    Text(deliveryText("DeliveryWorkspace_LoadedScope"))
+                        .font(AdminType.caption1)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+                LazyVGrid(columns: dynamicTypeSize.isAccessibilitySize || horizontalSizeClass != .regular
+                          ? [GridItem(.flexible())]
+                          : [GridItem(.adaptive(minimum: 340), spacing: 16, alignment: .top)], spacing: 16) {
+                    ForEach(records, id: \.requestID) { record in
+                        deliveryCard(record)
+                    }
                 }
             }
         }
@@ -1272,81 +1457,7 @@ struct AdminDeliveryListView: View {
 
     private func deliveryCard(_ record: PPDeliveryRequestRecord) -> some View {
         Button { viewModel.openDossier(record) } label: {
-            let statusColor = deliveryStatusColor(record.status)
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .fill(AdminSurface.surface)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 28, style: .continuous)
-                            .stroke(AdminSurface.hairline.opacity(0.38), lineWidth: 0.5)
-                    }
-                    .shadow(color: .black.opacity(0.08), radius: 24, y: 12)
-
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(statusColor)
-                    .frame(width: 5)
-                    .padding(.vertical, 22)
-                    .padding(.leading, 16)
-
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(deliveryText("DeliveryCompany_Dashboard_Eyebrow"))
-                        .font(AdminType.caption2Bold)
-                        .foregroundColor(AdminSurface.secondaryText.opacity(0.84))
-
-                    HStack(alignment: .center, spacing: 10) {
-                        Text(deliveryFormat("DeliveryCompany_Order_Format",
-                                            record.orderNumber.isEmpty ? (record.orderID.isEmpty ? record.requestID : record.orderID) : record.orderNumber))
-                            .font(AdminType.title3)
-                            .foregroundColor(AdminSurface.primaryText)
-                            .lineLimit(1)
-                        Spacer(minLength: 8)
-                        Text(deliveryStatusText(record.status))
-                            .font(AdminType.caption2Bold)
-                            .foregroundColor(statusColor)
-                            .padding(.horizontal, 12)
-                            .frame(minHeight: 23)
-                            .background(statusColor.opacity(0.10), in: Capsule())
-                    }
-                    .padding(.top, 6)
-
-                    Text(deliveryFormat("DeliveryCompany_Pickup_Format", deliveryAddressText(record.pickupAddress)))
-                        .font(AdminType.captionBold)
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .lineLimit(2)
-                        .padding(.top, 12)
-                    Text(deliveryFormat("DeliveryCompany_Dropoff_Format", deliveryAddressText(record.dropoffAddress)))
-                        .font(AdminType.captionBold)
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .lineLimit(2)
-                        .padding(.top, 6)
-
-                    HStack(spacing: 10) {
-                        Text(deliveryFormat("DeliveryCompany_Driver_Format",
-                                            record.assignedDriverName.isEmpty ? deliveryText("DeliveryCompany_Unassigned") : record.assignedDriverName))
-                            .font(AdminType.captionBold)
-                            .foregroundColor(AdminSurface.primaryText)
-                            .lineLimit(1)
-                        Spacer(minLength: 8)
-                        Text(deliveryCurrencyText(record.deliveryFee,
-                                                  currency: record.cod["currency"] as? String ?? "QAR"))
-                            .font(AdminType.captionBold)
-                            .foregroundColor(AdminSurface.primary)
-                            .lineLimit(1)
-                    }
-                    .padding(.top, 12)
-
-                    Text(deliveryFormat("DeliveryCompany_Dates_Format",
-                                        deliveryDateText(record.createdAt),
-                                        deliveryDateText(record.updatedAt)))
-                        .font(AdminType.caption2)
-                        .foregroundColor(AdminSurface.secondaryText.opacity(0.78))
-                        .padding(.top, 8)
-                }
-                .padding(.top, 18)
-                .padding(.bottom, 17)
-                .padding(.leading, 34)
-                .padding(.trailing, 16)
-            }
+            DeliveryDispatchCard(record: record)
         }
         .buttonStyle(DeliveryCompanyCardButtonStyle())
         .accessibilityElement(children: .combine)
@@ -1399,10 +1510,163 @@ struct AdminDeliveryListView: View {
     }
 }
 
+/// A delivery request is a route with an owner, rather than a stack of metrics.
+/// This view only displays the service projection; the dossier owns every action.
+private struct DeliveryDispatchCard: View {
+    let record: PPDeliveryRequestRecord
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var statusColor: Color { deliveryStatusColor(record.status) }
+    private var rowLayout: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: 16))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            rowLayout {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(deliveryText("DeliveryWorkspace_OrderReference"))
+                        .font(AdminType.caption1)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    Text(deliveryReference(record))
+                        .font(.system(.subheadline, design: .monospaced, weight: .semibold))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityLabel(deliveryFormat("DeliveryCompany_Order_Format", deliveryReference(record)))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 6) {
+                    Circle().fill(statusColor).frame(width: 6, height: 6).accessibilityHidden(true)
+                    Text(deliveryStatusText(record.status))
+                        .font(AdminType.captionBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(statusColor.opacity(0.09), in: Capsule())
+            }
+            route
+            Rectangle().fill(AdminSurface.hairline).frame(height: 0.5).accessibilityHidden(true)
+            rowLayout {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "person.crop.circle")
+                        .font(.system(.title3, weight: .regular))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(deliveryText("DeliveryWorkspace_Driver"))
+                            .font(AdminType.caption1)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                        Text(driverName)
+                            .font(AdminType.subheadlineBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(deliveryText("DeliveryWorkspace_Fee"))
+                        .font(AdminType.caption1)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    Text(record.deliveryFee == nil
+                         ? deliveryText("DeliveryWorkspace_Unspecified")
+                         : "\u{2068}\(deliveryCurrencyText(record.deliveryFee, currency: record.cod["currency"] as? String ?? "QAR"))\u{2069}")
+                        .font(AdminType.subheadlineBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                timing
+                HStack(spacing: 8) {
+                    Text(deliveryText("DeliveryWorkspace_ViewRequest"))
+                        .font(AdminType.subheadlineBold)
+                    Spacer(minLength: 8)
+                    Image(systemName: "arrow.forward")
+                        .font(.system(size: 14, weight: .semibold))
+                        .accessibilityHidden(true)
+                }
+                .foregroundStyle(AdminSurface.primary)
+            }
+        }
+        .multilineTextAlignment(.leading)
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(AdminSurface.hairline.opacity(0.75), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.025), radius: 12, y: 5)
+        .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
+
+    private var driverName: String {
+        if !record.assignedDriverName.isEmpty { return record.assignedDriverName }
+        return deliveryText(record.assignedDriverUID.isEmpty ? "DeliveryCompany_Unassigned" : "DeliveryWorkspace_AssignedDriver")
+    }
+
+    private var route: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            routeStop(title: "DeliveryCompany_Pickup", address: record.pickupAddress, destination: false)
+            routeStop(title: "DeliveryCompany_Dropoff", address: record.dropoffAddress, destination: true)
+        }
+    }
+
+    private func routeStop(title: String, address: Any?, destination: Bool) -> some View {
+        let addressText = deliveryAddressText(address)
+        let missing = addressText == deliveryText("Delivery_Not_Available")
+        return HStack(alignment: .top, spacing: 12) {
+            VStack(spacing: 4) {
+                Image(systemName: destination ? "mappin.circle.fill" : "circle.inset.filled")
+                    .font(.system(size: 17, weight: .regular))
+                    .foregroundStyle(destination ? AdminSurface.primary : AdminSurface.secondaryText)
+                    .frame(width: 20, height: 20)
+                if !destination {
+                    Rectangle().fill(AdminSurface.hairline).frame(width: 1)
+                }
+            }
+            .padding(.top, 2)
+            .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(deliveryText(title))
+                    .font(AdminType.caption1)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                Text(missing ? deliveryText("DeliveryWorkspace_AddressMissing") : addressText)
+                    .font(missing ? AdminType.subheadline : AdminType.bodyBold)
+                    .foregroundStyle(missing ? AdminSurface.secondaryText : AdminSurface.primaryText)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, destination ? 0 : 16)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var timing: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if record.createdAt != nil {
+                Text(deliveryFormat("DeliveryWorkspace_Created", deliveryDateText(record.createdAt)))
+            }
+            if record.updatedAt != nil {
+                Text(deliveryFormat("DeliveryWorkspace_Updated", deliveryDateText(record.updatedAt)))
+            }
+            if record.createdAt == nil && record.updatedAt == nil {
+                Text(deliveryText("DeliveryWorkspace_TimingMissing"))
+            }
+        }
+        .font(AdminType.caption1)
+        .foregroundStyle(AdminSurface.secondaryText)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
 private struct DeliveryIncidentPanel: View {
     let incident: DeliveryIncident
     let retry: (() -> Void)?
-    var openFulfillment: (() -> Void)? = nil
 
     var body: some View {
         AdminCard {
@@ -1419,21 +1683,6 @@ private struct DeliveryIncidentPanel: View {
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundColor(AdminSurface.secondaryText)
                     .textSelection(.enabled)
-                if incident.domainCode == "DELIVERY_AUTHORITY_MISMATCH", let openFulfillment {
-                    Button(action: openFulfillment) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "shippingbox.fill")
-                            Text(deliveryText("Delivery_Open_Fulfillment_Action"))
-                        }
-                        .font(AdminType.subheadlineBold)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 44)
-                        .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.top, 4)
-                }
                 if let retry {
                     Button(deliveryText("Retry"), action: retry)
                         .buttonStyle(.borderedProminent)
@@ -1464,45 +1713,77 @@ private struct PendingDeliveryAssignment: Identifiable {
     let action: PPDeliveryAllowedAction
 }
 
+private enum DeliveryDetailSection: Hashable {
+    case collection, proof, activity, progress, references
+}
+
+private struct DeliveryDetailEvent: Identifiable {
+    let id: String
+    let data: [String: Any]
+}
+
+@MainActor
 private struct DeliveryDossierSheet: View {
     @ObservedObject var viewModel: DeliveryCommandCenterViewModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pendingAssignment: PendingDeliveryAssignment?
     @State private var handoverConfirmed = false
-    @State private var showingFulfillmentWorkspace = false
+    @State private var expandedSections: Set<DeliveryDetailSection> = []
 
     var body: some View {
         VStack(spacing: 0) {
-            sovereignHeaderBar
-
-            ZStack {
-                AdminSurface.background.ignoresSafeArea()
-                ScrollView {
-                    VStack(spacing: 14) {
-                        if viewModel.isLoadingDossier && viewModel.dossier == nil {
-                            AdminLoadingOverlay(message: deliveryText("Delivery_Loading_Dossier"))
-                                .frame(minHeight: 300)
-                        } else if let incident = viewModel.dossierIncident {
-                            DeliveryIncidentPanel(incident: incident, retry: {
-                                viewModel.loadDossier()
-                            }, openFulfillment: {
-                                showingFulfillmentWorkspace = true
-                            })
-                        } else if let dossier = viewModel.dossier {
-                            dossierContent(dossier)
-                        }
-                        if let incident = viewModel.commandIncident {
-                            DeliveryIncidentPanel(incident: incident, retry: nil, openFulfillment: {
-                                showingFulfillmentWorkspace = true
-                            })
-                        }
+            sheetHeader
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    if usesInlineFooter && viewModel.isExecuting { actionFooter }
+                    if viewModel.isLoadingDossier && viewModel.dossier == nil {
+                        AdminLoadingOverlay(message: deliveryText("Delivery_Loading_Dossier"))
+                            .frame(maxWidth: .infinity, minHeight: 280)
+                    } else if let incident = viewModel.dossierIncident {
+                        DeliveryIncidentPanel(incident: incident, retry: {
+                            viewModel.loadDossier()
+                        })
+                    } else if let dossier = viewModel.dossier {
+                        dossierContent(dossier)
+                    } else {
+                        DeliveryIncidentPanel(
+                            incident: DeliveryIncident.classify(NSError(domain: PPDeliveryServiceErrorDomain, code: 1)),
+                            retry: { viewModel.loadDossier() }
+                        )
                     }
-                    .padding(AdminSpacing.screenMargin)
-                    .padding(.bottom, 32)
+                    if let incident = viewModel.commandIncident {
+                        DeliveryIncidentPanel(incident: incident, retry: {
+                            viewModel.loadDossier()
+                        })
+                        .disabled(viewModel.isLoadingDossier || viewModel.isExecuting)
+                    }
                 }
+                .padding(.horizontal, 24)
+                .padding(.top, 24)
+                .padding(.bottom, 28)
+                .frame(maxWidth: 760)
+                .frame(maxWidth: .infinity)
             }
         }
+        .background(AdminSurface.background.ignoresSafeArea())
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if !usesInlineFooter { actionFooter }
+        }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .environment(\.locale, Locale(identifier: Language.currentLanguageCode()))
+        .multilineTextAlignment(.leading)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .presentationCornerRadius(28)
+        .interactiveDismissDisabled(viewModel.isExecuting)
+        .accessibilityAction(.escape) { close() }
+        .onChange(of: viewModel.dossier?.record.revision) { _, _ in
+            handoverConfirmed = false
+            pendingAssignment = nil
+        }
         .sheet(item: $pendingAssignment) { pending in
             DeliveryDriverPickerSheet(
                 action: pending.action,
@@ -1518,44 +1799,148 @@ private struct DeliveryDossierSheet: View {
             }
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
-        .sheet(isPresented: $showingFulfillmentWorkspace) {
-            AdminFulfillmentListView(session: AdminSession(source: PPAdminSessionSnapshot())) {
-                showingFulfillmentWorkspace = false
-            }
-            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+
+    // MARK: - Sheet ownership and next action
+
+    private var usesInlineFooter: Bool {
+        dynamicTypeSize.isAccessibilitySize || verticalSizeClass == .compact
+    }
+
+    private var canReviewDeliveryDrivers: Bool {
+        viewModel.availableTabs.contains(.drivers)
+    }
+
+    private var deliveryAcceptanceAction: PPDeliveryAllowedAction? {
+        viewModel.dossier?.record.allowedActions.first { $0.action == "ACCEPT_AND_ASSIGN" }
+    }
+
+    private var needsDeliveryAcceptance: Bool {
+        guard let record = viewModel.dossier?.record else { return false }
+        return record.authority == "FULFILLMENT_V1" && ["offered", "pending"].contains(record.status.lowercased())
+    }
+
+    private var deliveryFooterTitle: String {
+        if needsDeliveryAcceptance { return deliveryText("DeliveryDetail_AcceptDelivery") }
+        return deliveryText(canReviewDeliveryDrivers ? "DeliveryDetail_DriversAction" : "DeliveryDetail_RefreshAction")
+    }
+
+    private func continueDelivery() {
+        guard !viewModel.isLoadingDossier, !viewModel.isExecuting else { return }
+        if needsDeliveryAcceptance {
+            guard let action = deliveryAcceptanceAction else { return }
+            pendingAssignment = PendingDeliveryAssignment(action: action)
+        } else if canReviewDeliveryDrivers {
+            viewModel.selectedTab = .drivers
+            close()
+        } else {
+            viewModel.loadDossier()
         }
     }
 
-    private var sovereignHeaderBar: some View {
-        HStack {
-            Spacer()
+    private var sheetHeader: some View {
+        HStack(spacing: 12) {
             Text(deliveryText("DeliveryCompany_Detail_NavTitle"))
                 .font(AdminType.headline)
-                .foregroundColor(AdminSurface.primaryText)
-            Spacer()
-        }
-        .overlay(alignment: Language.isRTL() ? .trailing : .leading) {
-            Button(action: {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                viewModel.closeDossier()
-                dismiss()
-            }) {
-                Text(deliveryText("Close"))
-                    .font(AdminType.calloutBold)
-                    .foregroundColor(AdminSurface.primary)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 7)
-                    .background(AdminSurface.primary.opacity(0.08), in: Capsule())
-                    .overlay(Capsule().stroke(AdminSurface.primary.opacity(0.20), lineWidth: 1.0))
+                .foregroundStyle(AdminSurface.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityAddTraits(.isHeader)
+            Button { viewModel.loadDossier() } label: {
+                ZStack {
+                    if viewModel.isLoadingDossier {
+                        ProgressView().tint(AdminSurface.primary)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 16, weight: .semibold))
+                    }
+                }
+                .foregroundStyle(AdminSurface.secondaryText)
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(DeliveryCompanyCardButtonStyle())
+            .disabled(viewModel.isLoadingDossier || viewModel.isExecuting)
+            .accessibilityLabel(deliveryText("CommandCenter_Refresh"))
+            Button(action: close) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .frame(width: 44, height: 44)
+                    .background(AdminSurface.surface, in: Circle())
+            }
+            .buttonStyle(DeliveryCompanyCardButtonStyle())
+            .disabled(viewModel.isExecuting)
+            .accessibilityLabel(deliveryText("Close"))
         }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .frame(height: 56)
-        .background(AdminSurface.surface)
-        .overlay(alignment: .bottom) {
-            Divider().background(AdminSurface.hairline)
+        .padding(.horizontal, 24)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+    }
+
+    @ViewBuilder
+    private var actionFooter: some View {
+        if viewModel.isExecuting {
+            HStack(spacing: 12) {
+                ProgressView().tint(AdminSurface.primary)
+                Text(deliveryText("Delivery_Command_Applying"))
+                    .font(AdminType.bodyBold)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(20)
+            .background(AdminSurface.surface)
+            .accessibilityElement(children: .combine)
+        } else if let record = viewModel.dossier?.record,
+                  record.authority == "FULFILLMENT_V1", viewModel.dossierIncident == nil {
+            VStack(alignment: .leading, spacing: 10) {
+                if needsDeliveryAcceptance && deliveryAcceptanceAction == nil {
+                    Text(deliveryText("DeliveryDetail_AcceptUnavailable"))
+                        .font(AdminType.footnote)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Button(action: continueDelivery) {
+                    HStack(spacing: 12) {
+                        Image(systemName: needsDeliveryAcceptance ? "checkmark.circle" : (canReviewDeliveryDrivers ? "person.2" : "arrow.clockwise"))
+                            .font(.system(.body, weight: .semibold))
+                            .accessibilityHidden(true)
+                        Text(deliveryFooterTitle)
+                            .font(AdminType.headline)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if needsDeliveryAcceptance || canReviewDeliveryDrivers {
+                            Image(systemName: "arrow.forward")
+                                .font(.system(.body, weight: .semibold))
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 14)
+                    .frame(minHeight: 54)
+                    .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                .buttonStyle(DeliveryCompanyCardButtonStyle())
+                .disabled(viewModel.isLoadingDossier || (needsDeliveryAcceptance && deliveryAcceptanceAction == nil))
+                .opacity(viewModel.isLoadingDossier || (needsDeliveryAcceptance && deliveryAcceptanceAction == nil) ? 0.55 : 1)
+                .accessibilityHint(deliveryText(needsDeliveryAcceptance ? "DeliveryDetail_AcceptHint" :
+                    (canReviewDeliveryDrivers ? "DeliveryDetail_DriversHint" : "DeliveryDetail_RefreshHint")))
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 12)
+            .padding(.bottom, 12)
+            .frame(maxWidth: .infinity)
+            .background(AdminSurface.surface)
+            .overlay(alignment: .top) { Rectangle().fill(AdminSurface.hairline).frame(height: 0.5) }
         }
+    }
+
+    private func close() {
+        guard !viewModel.isExecuting else { return }
+        viewModel.closeDossier()
+        dismiss()
     }
 
     private func presentCommandAlert(for pending: PendingDeliveryCommand) {
@@ -1583,225 +1968,236 @@ private struct DeliveryDossierSheet: View {
         )
     }
 
+    // MARK: - Route document
+
     private func dossierContent(_ dossier: PPDeliveryDossierSnapshot) -> some View {
         let record = dossier.record
-        return VStack(spacing: 14) {
+        return VStack(alignment: .leading, spacing: 24) {
             detailHero(record)
-
             if record.authority == "FULFILLMENT_V1" {
-                deliveryCompanySurface {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Label(deliveryText("Delivery_Fulfillment_Read_Only"), systemImage: "lock.shield")
-                            .font(AdminType.subheadline)
-                            .foregroundColor(AdminSurface.secondaryText)
-                            .accessibilityElement(children: .combine)
-
-                        Button(action: {
-                            showingFulfillmentWorkspace = true
-                        }) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "shippingbox.fill")
-                                Text(deliveryText("Delivery_Open_Fulfillment_Action"))
-                            }
-                            .font(AdminType.subheadlineBold)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 44)
-                            .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(20)
-                }
+                if usesInlineFooter && !viewModel.isExecuting { actionFooter }
+            } else {
+                commandDock(record)
             }
-
-            routeSection(record)
-            assignmentSummary(record)
-            dossierSection("Delivery_Dossier_Customer", symbol: "person") {
-                dossierFact("Delivery_Dossier_Customer", record.customerName)
-                dossierFact("Delivery_Dossier_Order", record.orderID)
+            routeDocument(record)
+            VStack(spacing: 0) {
+                codSection(record)
+                podSection(record)
+                eventSection(dossier.events.map { $0 as Any })
+                progressSection(record)
+                referencesSection(record)
             }
-            dossierSection("Delivery_Dossier_Lifecycle", symbol: "point.topleft.down.to.point.bottomright.curvepath") {
-                dossierFact("Delivery_Dimension_Job", deliveryEnumText(record.deliveryJobStatus))
-                dossierFact("Delivery_Dimension_Carrier", deliveryEnumText(record.carrierAssignmentStatus))
-                dossierFact("Delivery_Dimension_Driver", deliveryEnumText(record.driverAssignmentStatus))
-                dossierFact("Delivery_Dimension_Route", deliveryEnumText(record.routeStatus))
-                dossierFact("Delivery_Dimension_POD", deliveryEnumText(record.podStatus))
-                dossierFact("Delivery_Dimension_COD", deliveryEnumText(record.codStatus))
-                dossierFact("Delivery_Dimension_Return", deliveryEnumText(record.returnStatus))
-            }
-            codSection(record)
-            podSection(record)
-            eventSection(dossier.events.map { $0 as Any })
-            commandDock(record)
         }
     }
 
     private func detailHero(_ record: PPDeliveryRequestRecord) -> some View {
-        let color = deliveryStatusColor(record.status)
-        let order = record.orderNumber.isEmpty ? (record.orderID.isEmpty ? record.requestID : record.orderID) : record.orderNumber
-        return ZStack(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 30, style: .continuous)
-                .fill(AdminSurface.surface)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 30, style: .continuous)
-                        .stroke(AdminSurface.hairline.opacity(0.42), lineWidth: 0.5)
-                }
-                .shadow(color: .black.opacity(0.08), radius: 24, y: 12)
-
-            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                .fill(color)
-                .frame(width: 5)
-                .padding(.vertical, 24)
-                .padding(.leading, 17)
-
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text(deliveryStatusText(record.status))
-                        .font(AdminType.captionBold)
-                        .foregroundColor(color)
-                        .padding(.horizontal, 12)
-                        .frame(minHeight: 26)
-                        .background(color.opacity(0.10), in: Capsule())
-                    Spacer()
-                    Text(deliveryFormat("DeliveryCompany_Detail_Updated_Format", deliveryDateText(record.updatedAt)))
-                        .font(AdminType.caption1)
-                        .foregroundColor(AdminSurface.secondaryText)
-                }
-                Text(deliveryFormat("DeliveryCompany_Order_Format", order))
-                    .font(AdminType.title)
-                    .foregroundColor(AdminSurface.primaryText)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.76)
-                    .textSelection(.enabled)
-                Text(deliveryText("DeliveryCompany_Official_Name"))
-                    .font(AdminType.subheadlineBold)
-                    .foregroundColor(AdminSurface.primary)
-                Text(record.requestID)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(AdminSurface.secondaryText)
-                    .textSelection(.enabled)
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Circle()
+                    .fill(deliveryStatusColor(record.status))
+                    .frame(width: 9, height: 9)
+                    .accessibilityHidden(true)
+                Text(deliveryStatusText(record.status))
+                    .font(AdminType.largeTitle)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
             }
-            .padding(.vertical, 22)
-            .padding(.leading, 38)
-            .padding(.trailing, 20)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
-        .accessibilityElement(children: .combine)
-    }
-
-    private func routeSection(_ record: PPDeliveryRequestRecord) -> some View {
-        dossierSection("DeliveryCompany_Detail_Route", symbol: "arrow.triangle.turn.up.right.diamond.fill") {
-            routeRow(titleKey: "DeliveryCompany_Pickup",
-                     value: deliveryAddressText(record.pickupAddress),
-                     symbol: "shippingbox.fill",
-                     color: .orange)
-            routeRow(titleKey: "DeliveryCompany_Dropoff",
-                     value: deliveryAddressText(record.dropoffAddress),
-                     symbol: "mappin.and.ellipse",
-                     color: .green)
-        }
-    }
-
-    private func routeRow(titleKey: String, value: String, symbol: String, color: Color) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: symbol)
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundColor(color)
-                .frame(width: 38, height: 38)
-                .background(color.opacity(0.10), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-            VStack(alignment: .leading, spacing: 4) {
-                Text(deliveryText(titleKey))
+            VStack(alignment: .leading, spacing: 6) {
+                Text(deliveryText("DeliveryWorkspace_OrderReference"))
                     .font(AdminType.captionBold)
-                    .foregroundColor(AdminSurface.primaryText)
-                Text(value)
-                    .font(AdminType.captionBold)
-                    .foregroundColor(AdminSurface.secondaryText)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                Text(deliveryReference(record))
+                    .font(.system(.title2, design: .monospaced, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primaryText)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(15)
-        .background(AdminSurface.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .accessibilityElement(children: .combine)
-    }
-
-    private func assignmentSummary(_ record: PPDeliveryRequestRecord) -> some View {
-        dossierSection("DeliveryCompany_Detail_Assignment", symbol: "person.crop.circle.badge.checkmark") {
-            HStack(spacing: 12) {
-                Image(systemName: "person.crop.circle.badge.checkmark")
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundColor(AdminSurface.primary)
-                    .frame(width: 42, height: 42)
-                    .background(AdminSurface.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(record.assignedDriverName.isEmpty ? deliveryText("DeliveryCompany_Unassigned") : record.assignedDriverName)
-                        .font(AdminType.title3)
-                        .foregroundColor(AdminSurface.primaryText)
-                    Text(record.assignedDriverUID.isEmpty
-                         ? deliveryText("DeliveryCompany_Detail_AssignmentPending")
-                         : deliveryText("DeliveryCompany_Detail_AssignedDriver"))
-                        .font(AdminType.captionBold)
-                        .foregroundColor(AdminSurface.secondaryText)
-                    if !record.assignedDriverUID.isEmpty {
-                        Text(record.assignedDriverUID)
-                            .font(.system(.caption2, design: .monospaced))
-                            .foregroundColor(AdminSurface.secondaryText)
-                            .textSelection(.enabled)
-                    }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(deliveryText("DeliveryCompany_Official_Name"))
+                    .font(AdminType.subheadlineBold)
+                    .foregroundStyle(AdminSurface.primary)
+                if viewModel.isLoadingDossier {
+                    Text(deliveryText("DeliveryDetail_Refreshing"))
+                        .font(AdminType.caption1)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                } else {
+                    Text(record.updatedAt == nil
+                         ? deliveryText("DeliveryWorkspace_UnknownFreshness")
+                         : deliveryFormat("DeliveryWorkspace_Updated", deliveryDateText(record.updatedAt)))
+                        .font(AdminType.caption1)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func dossierSection<Content: View>(_ titleKey: String,
-                                               symbol: String,
-                                               @ViewBuilder content: () -> Content) -> some View {
-        deliveryCompanySurface {
-            VStack(alignment: .leading, spacing: 12) {
-                Label(deliveryText(titleKey), systemImage: symbol)
-                    .font(AdminType.headline)
-                    .foregroundColor(AdminSurface.primaryText)
-                    .accessibilityAddTraits(.isHeader)
-                content()
+    private func routeDocument(_ record: PPDeliveryRequestRecord) -> some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Label(deliveryText("DeliveryDetail_Journey"), systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                .font(AdminType.headline)
+                .foregroundStyle(AdminSurface.primaryText)
+                .accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: 0) {
+                routeStop("DeliveryCompany_Pickup", address: record.pickupAddress, isDestination: false)
+                routeStop("DeliveryCompany_Dropoff", address: record.dropoffAddress, isDestination: true)
             }
-            .padding(20)
+            sectionRule
+            adaptiveRow {
+                personSummary("DeliveryWorkspace_Driver", value: driverName(record), symbol: "person.crop.circle")
+                personSummary("Delivery_Dossier_Customer", value: record.customerName.isEmpty
+                              ? deliveryText("DeliveryDetail_CustomerMissing") : record.customerName, symbol: "person")
+            }
+            sectionRule
+            dossierFact("DeliveryWorkspace_Fee", record.deliveryFee == nil
+                        ? deliveryText("DeliveryWorkspace_Unspecified")
+                        : deliveryCurrencyText(record.deliveryFee, currency: record.cod["currency"] as? String ?? "QAR"))
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(AdminSurface.hairline.opacity(0.7), lineWidth: 0.5))
+    }
+
+    private func routeStop(_ title: String, address: Any?, isDestination: Bool) -> some View {
+        let value = deliveryAddressText(address)
+        let missing = value == deliveryText("Delivery_Not_Available")
+        return HStack(alignment: .top, spacing: 14) {
+            VStack(spacing: 6) {
+                Image(systemName: isDestination ? "mappin.circle.fill" : "circle.inset.filled")
+                    .font(.system(size: 20, weight: .regular))
+                    .foregroundStyle(isDestination ? AdminSurface.primary : AdminSurface.secondaryText)
+                    .frame(width: 24, height: 24)
+                if !isDestination {
+                    Rectangle().fill(AdminSurface.hairline).frame(width: 1)
+                }
+            }
+            .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(deliveryText(title))
+                    .font(AdminType.captionBold)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                Text(missing ? deliveryText("DeliveryWorkspace_AddressMissing") : value)
+                    .font(missing ? AdminType.body : AdminType.bodyBold)
+                    .foregroundStyle(missing ? AdminSurface.secondaryText : AdminSurface.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, isDestination ? 0 : 24)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func driverName(_ record: PPDeliveryRequestRecord) -> String {
+        if !record.assignedDriverName.isEmpty { return record.assignedDriverName }
+        return deliveryText(record.assignedDriverUID.isEmpty ? "DeliveryCompany_Unassigned" : "DeliveryWorkspace_AssignedDriver")
+    }
+
+    private func personSummary(_ key: String, value: String, symbol: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: symbol)
+                .font(.system(.body, weight: .medium))
+                .foregroundStyle(AdminSurface.secondaryText)
+                .frame(width: 24)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(deliveryText(key)).font(AdminType.caption1).foregroundStyle(AdminSurface.secondaryText)
+                Text(value)
+                    .font(AdminType.subheadlineBold)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: - Supporting details, progressively disclosed
+
+    private var sectionRule: some View {
+        Rectangle().fill(AdminSurface.hairline).frame(height: 0.5).accessibilityHidden(true)
+    }
+
+    private func adaptiveRow<Content: View>(@ViewBuilder content: @escaping () -> Content) -> some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 16))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: 20))
+        return layout { content() }
+    }
+
+    private func expansion(for section: DeliveryDetailSection) -> Binding<Bool> {
+        Binding(get: { expandedSections.contains(section) }, set: { expanded in
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                if expanded { expandedSections.insert(section) }
+                else { expandedSections.remove(section) }
+            }
+        })
+    }
+
+    private func detailDisclosure<Content: View>(_ section: DeliveryDetailSection,
+                                                title: String, symbol: String, summary: String,
+                                                @ViewBuilder content: @escaping () -> Content) -> some View {
+        VStack(spacing: 0) {
+            sectionRule
+            DisclosureGroup(isExpanded: expansion(for: section)) {
+                VStack(alignment: .leading, spacing: 8) { content() }
+                    .padding(.top, 12)
+                    .padding(.bottom, 20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } label: {
+                HStack(alignment: .center, spacing: 12) {
+                    Image(systemName: symbol)
+                        .font(.system(.body, weight: .medium))
+                        .foregroundStyle(AdminSurface.primary)
+                        .frame(width: 24)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(deliveryText(title))
+                            .font(AdminType.headline)
+                            .foregroundStyle(AdminSurface.primaryText)
+                        Text(summary)
+                            .font(AdminType.caption1)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.vertical, 14)
+                .frame(minHeight: 56)
+                .contentShape(Rectangle())
+            }
+            .tint(AdminSurface.secondaryText)
         }
     }
 
-    private func deliveryCompanySurface<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .stroke(AdminSurface.hairline.opacity(0.42), lineWidth: 0.5)
-            }
-            .shadow(color: .black.opacity(0.06), radius: 20, y: 10)
-    }
-
-    private func dossierFact(_ labelKey: String, _ rawValue: String) -> some View {
+    private func dossierFact(_ labelKey: String, _ rawValue: String, technical: Bool = false) -> some View {
         let value = rawValue.isEmpty ? deliveryText("Delivery_Not_Available") : rawValue
-        return HStack(alignment: .top, spacing: 12) {
+        return adaptiveRow {
             Text(deliveryText(labelKey))
-                .font(AdminType.captionBold)
-                .foregroundColor(AdminSurface.secondaryText)
+                .font(AdminType.footnote)
+                .foregroundStyle(AdminSurface.secondaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Text(value)
-                .font(AdminType.captionBold)
-                .foregroundColor(AdminSurface.primaryText)
+            Text(technical ? "\u{2066}\(value)\u{2069}" : value)
+                .font(technical ? .system(.footnote, design: .monospaced) : AdminType.subheadlineBold)
+                .foregroundStyle(AdminSurface.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
         }
-        .padding(.vertical, 7)
+        .padding(.vertical, 5)
+        .accessibilityElement(children: .combine)
     }
 
     private func codSection(_ record: PPDeliveryRequestRecord) -> some View {
         let cod = deliveryDictionary(record.cod)
         let currency = cod["currency"] as? String ?? "QAR"
-        return dossierSection("Delivery_Dossier_COD", symbol: "banknote") {
-            dossierFact("Delivery_COD_Status", record.codStatus)
+        return detailDisclosure(.collection, title: "DeliveryDetail_Collection", symbol: "banknote",
+                                summary: deliveryEnumText(record.codStatus)) {
+            dossierFact("Delivery_COD_Status", deliveryEnumText(record.codStatus))
             dossierFact("Delivery_COD_Expected", deliveryCurrencyText(cod["expectedAmount"] as? NSNumber, currency: currency))
             dossierFact("Delivery_COD_Collected", deliveryCurrencyText(cod["collectedAmount"] as? NSNumber, currency: currency))
             dossierFact("Delivery_COD_Handover", deliveryDateText(cod["handoverAt"]))
@@ -1811,87 +2207,134 @@ private struct DeliveryDossierSheet: View {
 
     private func podSection(_ record: PPDeliveryRequestRecord) -> some View {
         let pod = deliveryDictionary(record.proofOfDelivery)
-        return dossierSection("Delivery_Dossier_POD", symbol: "signature") {
-            dossierFact("Delivery_POD_Status", record.podStatus)
-            dossierFact("Delivery_POD_Completeness", pod["evidenceCompleteness"] as? String ?? "")
+        return detailDisclosure(.proof, title: "Delivery_Dossier_POD", symbol: "checkmark.shield",
+                                summary: deliveryEnumText(record.podStatus)) {
+            dossierFact("Delivery_POD_Status", deliveryEnumText(record.podStatus))
+            dossierFact("Delivery_POD_Completeness", deliveryEnumText(pod["evidenceCompleteness"] as? String ?? ""))
             dossierFact("Delivery_POD_Receiver", pod["receiverName"] as? String ?? "")
             dossierFact("Delivery_POD_Delivered_At", deliveryDateText(pod["deliveredAt"]))
-            let photoCount = (pod["photoUrls"] as? [Any])?.count ?? 0
-            dossierFact("Delivery_POD_Photos", "\(photoCount)")
+            let photos = pod["photoUrls"] as? [Any]
+            dossierFact("Delivery_POD_Photos", photos.map { deliveryNumber($0.count) } ?? deliveryText("Delivery_Not_Available"))
         }
     }
 
-    private func eventSection(_ events: [Any]) -> some View {
-        dossierSection("Delivery_Dossier_Audit", symbol: "clock.arrow.circlepath") {
+    private func progressSection(_ record: PPDeliveryRequestRecord) -> some View {
+        detailDisclosure(.progress, title: "DeliveryDetail_Progress", symbol: "list.bullet.rectangle",
+                         summary: deliveryStatusText(record.status)) {
+            dossierFact("Delivery_Dimension_Job", deliveryEnumText(record.deliveryJobStatus))
+            dossierFact("Delivery_Dimension_Carrier", deliveryEnumText(record.carrierAssignmentStatus))
+            dossierFact("Delivery_Dimension_Driver", deliveryEnumText(record.driverAssignmentStatus))
+            dossierFact("Delivery_Dimension_Route", deliveryEnumText(record.routeStatus))
+            dossierFact("Delivery_Dimension_POD", deliveryEnumText(record.podStatus))
+            dossierFact("Delivery_Dimension_COD", deliveryEnumText(record.codStatus))
+            dossierFact("Delivery_Dimension_Return", deliveryEnumText(record.returnStatus))
+        }
+    }
+
+    private func referencesSection(_ record: PPDeliveryRequestRecord) -> some View {
+        detailDisclosure(.references, title: "DeliveryDetail_References", symbol: "number",
+                         summary: deliveryText("DeliveryDetail_ReferencesCaption")) {
+            dossierFact("DeliveryDetail_RequestID", record.requestID, technical: true)
+            dossierFact("Delivery_Dossier_Order", record.orderID, technical: true)
+            dossierFact("Delivery_Dossier_Driver_UID", record.assignedDriverUID, technical: true)
+            dossierFact("DeliveryDetail_Created", deliveryDateText(record.createdAt))
+            dossierFact("DeliveryDetail_Updated", deliveryDateText(record.updatedAt))
+        }
+    }
+
+    private func eventSection(_ rawEvents: [Any]) -> some View {
+        let events = rawEvents.enumerated().map { index, raw -> DeliveryDetailEvent in
+            let data = deliveryDictionary(raw)
+            return DeliveryDetailEvent(id: data["id"] as? String ?? "event-\(index)", data: data)
+        }
+        return detailDisclosure(.activity, title: "DeliveryDetail_Activity", symbol: "clock.arrow.circlepath",
+                                summary: deliveryFormat("DeliveryDetail_EventCount", deliveryNumber(events.count))) {
             if events.isEmpty {
                 Text(deliveryText("Delivery_Events_Empty"))
-                    .font(AdminType.subheadline)
-                    .foregroundColor(AdminSurface.secondaryText)
+                    .font(AdminType.body)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
-                ForEach(Array(events.enumerated()), id: \.offset) { _, event in
-                    let dict = deliveryDictionary(event)
-                    let transitionArrow = Language.isRTL() ? "←" : "→"
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(deliveryEnumText(dict["eventType"] as? String ?? "DELIVERY_EVENT"))
-                            .font(AdminType.captionBold)
-                            .foregroundColor(AdminSurface.primaryText)
-                        Text("\(deliveryEnumText(dict["fromStatus"] as? String ?? "")) \(transitionArrow) \(deliveryEnumText(dict["toStatus"] as? String ?? ""))")
-                            .font(AdminType.caption1)
-                            .foregroundColor(AdminSurface.secondaryText)
-                        Text(deliveryDateText(dict["createdAt"]))
-                            .font(AdminType.caption1)
-                            .foregroundColor(AdminSurface.secondaryText)
+                LazyVStack(alignment: .leading, spacing: 20) {
+                    ForEach(events) { event in
+                        eventRow(event.data)
                     }
-                    .padding(.vertical, 4)
                 }
             }
         }
     }
 
-    private func commandDock(_ record: PPDeliveryRequestRecord) -> some View {
-        let assignmentNames: Set<String> = ["ASSIGN", "REASSIGN"]
-        let evidenceNames: Set<String> = ["DELIVER", "FINALIZE_POD"]
-        let actions = record.allowedActions.filter {
-            !evidenceNames.contains($0.action)
+    private func eventRow(_ event: [String: Any]) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Circle().fill(AdminSurface.primary.opacity(0.65)).frame(width: 6, height: 6)
+                .padding(.top, 8)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(deliveryEnumText(event["eventType"] as? String ?? "DELIVERY_EVENT"))
+                    .font(AdminType.subheadlineBold)
+                    .foregroundStyle(AdminSurface.primaryText)
+                if let from = event["fromStatus"] as? String, !from.isEmpty {
+                    Text(deliveryFormat("DeliveryDetail_FromState", deliveryEnumText(from)))
+                        .font(AdminType.footnote)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+                if let to = event["toStatus"] as? String, !to.isEmpty {
+                    Text(deliveryFormat("DeliveryDetail_ToState", deliveryEnumText(to)))
+                        .font(AdminType.footnote)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+                Text(deliveryDateText(event["createdAt"]))
+                    .font(AdminType.caption1)
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: - Existing server-provided commands
+
+    private func commandDock(_ record: PPDeliveryRequestRecord) -> some View {
+        let assignmentNames: Set<String> = ["ACCEPT_AND_ASSIGN", "ASSIGN", "REASSIGN"]
+        let evidenceNames: Set<String> = ["DELIVER", "FINALIZE_POD"]
+        let actions = record.allowedActions.filter { !evidenceNames.contains($0.action) }
         return Group {
-            if actions.isEmpty {
-                EmptyView()
-            } else {
-                deliveryCompanySurface {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Label(deliveryText("DeliveryCompany_Detail_Actions"), systemImage: "bolt.fill")
-                            .font(AdminType.headline)
-                            .foregroundColor(AdminSurface.primaryText)
-                            .accessibilityAddTraits(.isHeader)
-                        Text(deliveryText("Delivery_Stale_Action_Notice"))
-                            .font(AdminType.caption1)
-                            .foregroundColor(AdminSurface.secondaryText)
-                        if let reconcile = actions.first(where: { $0.action == "RECONCILE_COD" }) {
-                            Toggle(deliveryText("Delivery_COD_Handover_Confirmed"), isOn: $handoverConfirmed)
-                                .font(AdminType.captionBold)
-                            deliveryActionButton(reconcile, enabled: handoverConfirmed) {
-                                let pending = PendingDeliveryCommand(action: reconcile,
-                                                                     driverUID: nil,
-                                                                     handoverConfirmed: true)
-                                presentCommandAlert(for: pending)
-                            }
+            if !actions.isEmpty {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(deliveryText("DeliveryDetail_NextActions"))
+                        .font(AdminType.headline)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .accessibilityAddTraits(.isHeader)
+                    Text(deliveryText("DeliveryDetail_ActionNotice"))
+                        .font(AdminType.footnote)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let reconcile = actions.first(where: { $0.action == "RECONCILE_COD" }) {
+                        Toggle(deliveryText("Delivery_COD_Handover_Confirmed"), isOn: $handoverConfirmed)
+                            .font(AdminType.body)
+                            .tint(AdminSurface.primary)
+                        deliveryActionButton(reconcile, enabled: handoverConfirmed) {
+                            let pending = PendingDeliveryCommand(action: reconcile, driverUID: nil, handoverConfirmed: true)
+                            presentCommandAlert(for: pending)
                         }
+                    }
+                    LazyVGrid(columns: dynamicTypeSize.isAccessibilitySize
+                              ? [GridItem(.flexible())]
+                              : [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                         ForEach(actions.filter { $0.action != "RECONCILE_COD" }, id: \.action) { action in
                             deliveryActionButton(action, enabled: true) {
                                 if assignmentNames.contains(action.action) {
                                     pendingAssignment = PendingDeliveryAssignment(action: action)
                                 } else {
-                                    let pending = PendingDeliveryCommand(action: action,
-                                                                         driverUID: nil,
-                                                                         handoverConfirmed: false)
+                                    let pending = PendingDeliveryCommand(action: action, driverUID: nil, handoverConfirmed: false)
                                     presentCommandAlert(for: pending)
                                 }
                             }
                         }
                     }
-                    .padding(20)
                 }
+                .disabled(viewModel.isExecuting || viewModel.isLoadingDossier || viewModel.dossierIncident != nil)
             }
         }
     }
@@ -1900,20 +2343,21 @@ private struct DeliveryDossierSheet: View {
                                       enabled: Bool,
                                       perform: @escaping () -> Void) -> some View {
         let destructive = ["REJECT", "CANCEL", "FAIL"].contains(action.action)
-        let tint = destructive ? Color.red : AdminSurface.primary
         return Button(action: perform) {
             Text(deliveryCommandText(action.action))
                 .font(AdminType.subheadlineBold)
-                .foregroundColor(destructive ? .red : .white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 54)
-                .background(destructive ? Color.red.opacity(0.10) : tint,
-                            in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .shadow(color: destructive ? .clear : tint.opacity(0.22), radius: 16, y: 10)
+                .foregroundStyle(destructive ? AdminSurface.danger : .white)
+                .fixedSize(horizontal: false, vertical: true)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 13)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .background(destructive ? AdminSurface.danger.opacity(0.08) : AdminSurface.primary,
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-        .buttonStyle(.plain)
-        .disabled(!enabled || viewModel.isExecuting)
-        .opacity((enabled && !viewModel.isExecuting) ? 1 : 0.46)
+        .buttonStyle(DeliveryCompanyCardButtonStyle())
+        .disabled(!enabled || viewModel.isExecuting || viewModel.isLoadingDossier)
+        .opacity((enabled && !viewModel.isExecuting && !viewModel.isLoadingDossier) ? 1 : 0.46)
     }
 }
 
@@ -1923,6 +2367,8 @@ private struct DeliveryDriverPickerSheet: View {
     let isExecuting: Bool
     let onSelect: (PPDeliveryDriverRecord) -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var driverToConfirm: PPDeliveryDriverRecord?
 
     var body: some View {
         NavigationView {
@@ -1957,7 +2403,24 @@ private struct DeliveryDriverPickerSheet: View {
                     Button(deliveryText("Close")) { dismiss() }
                 }
             }
+            .alert(deliveryText("DeliveryDetail_AcceptDelivery"), isPresented: Binding(
+                get: { driverToConfirm != nil },
+                set: { if !$0 { driverToConfirm = nil } }
+            ), presenting: driverToConfirm) { driver in
+                Button(deliveryText("Cancel"), role: .cancel) { driverToConfirm = nil }
+                Button(deliveryText("DeliveryDetail_AcceptDelivery")) {
+                    guard driver.eligible && !isExecuting else { return }
+                    onSelect(driver)
+                    driverToConfirm = nil
+                }
+            } message: { driver in
+                Text(deliveryFormat("DeliveryDetail_AcceptDriverConfirmation", "\u{2068}\(driver.displayName)\u{2069}"))
+            }
         }
+        .navigationViewStyle(.stack)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .environment(\.locale, Locale(identifier: Language.currentLanguageCode()))
+        .multilineTextAlignment(.leading)
     }
 
     private var pickerHero: some View {
@@ -1995,7 +2458,11 @@ private struct DeliveryDriverPickerSheet: View {
         let accent: Color = driver.eligible ? AdminSurface.primary : .orange
         return Button {
             guard driver.eligible && !isExecuting else { return }
-            onSelect(driver)
+            if action.action == "ACCEPT_AND_ASSIGN" {
+                driverToConfirm = driver
+            } else {
+                onSelect(driver)
+            }
         } label: {
             ZStack(alignment: .topTrailing) {
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -2005,7 +2472,10 @@ private struct DeliveryDriverPickerSheet: View {
                             .stroke(driver.eligible ? AdminSurface.hairline.opacity(0.42) : Color.orange.opacity(0.20), lineWidth: 0.5)
                     }
                     .shadow(color: .black.opacity(0.06), radius: 18, y: 9)
-                HStack(spacing: 12) {
+                let layout = dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+                    : AnyLayout(HStackLayout(spacing: 12))
+                layout {
                     Image(systemName: "person.crop.circle.fill")
                         .font(.system(size: 22, weight: .semibold))
                         .foregroundColor(accent)
@@ -2015,15 +2485,16 @@ private struct DeliveryDriverPickerSheet: View {
                         Text(driver.displayName)
                             .font(AdminType.headline)
                             .foregroundColor(AdminSurface.primaryText)
+                            .fixedSize(horizontal: false, vertical: true)
                         Text(driver.eligible
                              ? deliveryText("Delivery_Driver_Eligible")
                              : driver.eligibilityReasonCodes.map(deliveryEnumText).joined(separator: " · "))
                             .font(AdminType.caption1)
                             .foregroundColor(driver.eligible ? .green : .orange)
-                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    Spacer(minLength: 8)
-                    VStack(alignment: .trailing, spacing: 4) {
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .trailing, spacing: 4) {
                         Text(deliveryFormat("DeliveryCompany_Members_ActiveCount_Format", driver.activeDeliveryCount))
                             .font(AdminType.captionBold)
                             .foregroundColor(AdminSurface.secondaryText)
@@ -2038,6 +2509,7 @@ private struct DeliveryDriverPickerSheet: View {
         .buttonStyle(DeliveryCompanyCardButtonStyle())
         .disabled(!driver.eligible || isExecuting)
         .opacity(driver.eligible ? 1 : 0.68)
+        .accessibilityElement(children: .combine)
         .accessibilityHint(driver.eligible ? deliveryCommandText(action.action) : deliveryText("Delivery_Why_Unavailable"))
     }
 }
@@ -2543,6 +3015,7 @@ private struct DeliveryDriverInviteSheet: View {
 
 private func deliveryCommandText(_ action: String) -> String {
     switch action.uppercased() {
+    case "ACCEPT_AND_ASSIGN": return deliveryText("DeliveryDetail_AcceptDelivery")
     case "ACCEPT": return deliveryText("Delivery_Command_Accept")
     case "REJECT": return deliveryText("Delivery_Command_Reject")
     case "ASSIGN": return deliveryText("Delivery_Command_Assign")

@@ -219,9 +219,9 @@ struct AdminAppShell: View {
                 .navigationBarBackButtonHidden(true)
                 .navigationBarHidden(true)
                 .toolbar(.hidden, for: .navigationBar)
-                // UIKit continues to own both safe-area edges for legacy route
-                // containers; the push only replaces the former modal handoff.
-                .ignoresSafeArea()
+                // Delivery owns native insets, including its search keyboard.
+                // Legacy route containers retain their existing edge ownership.
+                .ignoresSafeArea(edges: route == .delivery ? [] : .all)
         } else {
             EmptyView()
         }

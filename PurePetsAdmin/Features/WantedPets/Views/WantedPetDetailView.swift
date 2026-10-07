@@ -447,7 +447,7 @@ public struct WantedPetDetailView: View {
                 // Budget Ceiling Chip
                 specimenAttributeTile(
                     title: Language.get("WantedPets_Budget_Label", alter: "الحد الأقصى للميزانية"),
-                    value: (pet.budgetMax != nil && pet.budgetMax! > 0) ? String(format: "≤ %.0f %@", pet.budgetMax!, Language.isRTL() ? "ر.ق" : "QAR") : Language.get("WantedPet_NoBudget", alter: "غير محدد"),
+                    value: (pet.budgetMax != nil && pet.budgetMax! > 0) ? "≤ " + PetAccessory.formatCurrency(NSNumber(value: pet.budgetMax!)) : Language.get("WantedPet_NoBudget", alter: "غير محدد"),
                     icon: "banknote.fill",
                     tint: Color(uiColor: .ppSuccess)
                 )
@@ -664,7 +664,7 @@ public struct WantedPetDetailView: View {
 
                                 VStack(alignment: Language.isRTL() ? .leading : .trailing, spacing: 2) {
                                     if let p = matchPet.price, p > 0 {
-                                        Text(String(format: "%.0f %@", p, Language.isRTL() ? "ر.ق" : "QAR"))
+                                        Text(PetAccessory.formatCurrency(NSNumber(value: p)))
                                             .font(Font.custom("Beiruti-Bold", size: 15))
                                             .foregroundStyle(Color(uiColor: .ppSuccess))
                                     }
@@ -1576,7 +1576,7 @@ public struct WantedPetDetailView: View {
             details.append(String(format: Language.get("WantedPets_WhatsApp_Detail_Gender", alter: "الجنس: %@"), g))
         }
         if let p = match.price, p > 0 {
-            details.append(String(format: Language.get("WantedPets_WhatsApp_Detail_Price", alter: "السعر: %.0f %@"), p, Language.isRTL() ? "ر.ق" : "QAR"))
+            details.append(String(format: Language.get("WantedPets_WhatsApp_Detail_Price", alter: "السعر: %@"), PetAccessory.formatCurrency(NSNumber(value: p))))
         }
         if let branch = match.branchName, !branch.isEmpty {
             details.append(String(format: Language.get("WantedPets_WhatsApp_Detail_Branch", alter: "الفرع: %@"), branch))

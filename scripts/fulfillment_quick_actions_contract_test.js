@@ -54,7 +54,8 @@ assert.match(submit, /expectedStatus: record\.status/);
 assert.match(submit, /targetStatus: targetStatus/); // Partner override retains its status contract.
 assert.match(submit, /isOfficialPlatformFulfillment\(record\.rawRecord\)/);
 assert.doesNotMatch(submit, /uuidString\.prefix/);
-assert.match(submit, /errorMessage = nil/);
+assert.match(submit, /beginAction\(\)/);
+assert.match(between(view, "    private func beginAction(", "    private func receiveCommand("), /errorMessage = nil/);
 
 // Regression: these are Firestore registrations, not NotificationCenter tokens.
 assert.match(view, /listener\?\.remove\(\)/);

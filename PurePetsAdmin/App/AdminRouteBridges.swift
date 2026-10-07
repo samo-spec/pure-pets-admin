@@ -7,10 +7,10 @@ import SwiftUI
 
 extension UIViewController {
     @discardableResult
-    fileprivate func pp_embedSwiftUI<V: View>(_ swiftUIView: V) -> UIHostingController<some View> {
+    fileprivate func pp_embedSwiftUI<V: View>(_ swiftUIView: V, respectsSafeArea: Bool = false) -> UIHostingController<some View> {
         extendedLayoutIncludesOpaqueBars = true
         edgesForExtendedLayout = .all
-        let host = UIHostingController(rootView: swiftUIView.ignoresSafeArea())
+        let host = UIHostingController(rootView: swiftUIView.ignoresSafeArea(edges: respectsSafeArea ? [] : .all))
         host.view.backgroundColor = .clear
         host.extendedLayoutIncludesOpaqueBars = true
         host.edgesForExtendedLayout = .all
@@ -96,6 +96,7 @@ extension UIViewController {
 
 @objc public final class AdminFulfillmentOverrideHostingController: UIViewController {
     private let record: PPFulfillmentRecord
+    private let fulfillmentActions = FulfillmentListViewModel()
     @objc public init(record: PPFulfillmentRecord) {
         self.record = record
         super.init(nibName: nil, bundle: nil)
@@ -116,25 +117,12 @@ extension UIViewController {
                 }
                 PPAdminNavigationFallback.popOrDismiss(from: self)
             },
-            onCommit: { expectedStatus, target, reason, note, notify, completion in
-                PPFulfillmentService.shared().adminOverride(
-                    snap.id,
-                    expectedStatus: expectedStatus,
-                    targetStatus: target,
-                    reason: reason,
-                    note: note,
-                    notify: notify,
-                    commandID: "override_\(UUID().uuidString.prefix(8))"
-                ) { _, error in
-                    Task { @MainActor in
-                        if let error = error {
-                            completion(FulfillmentOverrideCommitResult.from(error: error))
-                        } else {
-                            UINotificationFeedbackGenerator().notificationOccurred(.success)
-                            completion(.succeeded)
-                        }
-                    }
-                }
+            onCommit: { [weak self] expectedStatus, target, reason, note, notify, completion in
+                guard let self else { completion(.failed); return }
+                self.fulfillmentActions.executeAdminOverride(
+                    record: snap, expectedStatus: expectedStatus, targetStatus: target,
+                    reason: reason, note: note, notify: notify, completion: completion
+                )
             }
         ))
     }
@@ -165,7 +153,7 @@ extension UIViewController {
                 return
             }
             PPAdminNavigationFallback.popOrDismiss(from: self)
-        })
+        }, respectsSafeArea: true)
     }
     public override func viewWillAppear(_ animated: Bool) { super.viewWillAppear(animated); navigationController?.setNavigationBarHidden(true, animated: animated) }
 }

@@ -208,6 +208,25 @@ struct PPInventoryFamilyRow: View {
         activeMembers.contains { (availability($0).quantity ?? Int.max) <= 0 }
     }
 
+    private var familyOptionsSummary: String? {
+        let titles = activeMembers.compactMap { member -> String? in
+            let title = (member.resolvedOptionDisplayTitle ?? member.pos_variantDisplayName).trimmingCharacters(in: .whitespacesAndNewlines)
+            return title.isEmpty ? nil : title
+        }
+        guard !titles.isEmpty else { return nil }
+        var unique: [String] = []
+        for t in titles where !unique.contains(t) {
+            unique.append(t)
+        }
+        guard !unique.isEmpty else { return nil }
+        if unique.count <= 4 {
+            return unique.joined(separator: " • ")
+        }
+        let head = unique.prefix(3).joined(separator: " • ")
+        let remaining = unique.count - 3
+        return "\(head) +\(remaining)"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
@@ -302,13 +321,23 @@ struct PPInventoryFamilyRow: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Text(String(format: familyDimension.shortCountFormat,
-                                NSNumber(value: activeMembers.count)))
-                        .font(AdminType.captionBold)
-                        .foregroundStyle(AdminSurface.primary)
-                        .padding(.horizontal, AdminSpacing.sm)
-                        .padding(.vertical, AdminSpacing.xs)
-                        .background(AdminSurface.primarySoft, in: Capsule())
+                    HStack(spacing: AdminSpacing.xs) {
+                        Text(String(format: familyDimension.shortCountFormat,
+                                    NSNumber(value: activeMembers.count)))
+                            .font(AdminType.captionBold)
+                            .foregroundStyle(AdminSurface.primary)
+                            .padding(.horizontal, AdminSpacing.sm)
+                            .padding(.vertical, AdminSpacing.xs)
+                            .background(AdminSurface.primarySoft, in: Capsule())
+
+                        if let summary = familyOptionsSummary {
+                            Text(summary)
+                                .font(AdminType.caption)
+                                .foregroundStyle(AdminCommandInk.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                    }
                 }
 
                 Image(systemName: "chevron.down")
@@ -495,11 +524,18 @@ struct PPInventoryFamilyRow: View {
                                 }
                                 .frame(width: 18, height: 18)
                         } else {
-                            Text(String(format: "%02d", index + 1))
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
-                                .monospacedDigit()
-                                .foregroundStyle(AdminSurface.primary)
-                                .environment(\.layoutDirection, .leftToRight)
+                            let badge = member.pos_variantShortBadge.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !badge.isEmpty && badge.count <= 4 {
+                                Text(badge)
+                                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                                    .foregroundStyle(AdminSurface.primary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                            } else {
+                                Image(systemName: member.pos_variantDimension.sfSymbolName)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(AdminSurface.primary)
+                            }
                         }
                     }
                     .frame(width: 28, height: 28)
@@ -614,6 +650,9 @@ struct PPInventoryFamilyRow: View {
     private var accessibilitySummary: String {
         var parts = [expandedFamilyTitle,
                      String(format: familyDimension.shortCountFormat, NSNumber(value: activeMembers.count))]
+        if let familyOptionsSummary {
+            parts.append(String(format: Language.get("Inventory_Family_OptionsSummary_A11y", alter: "الخيارات: %@"), familyOptionsSummary))
+        }
         if let totalAvailable {
             parts.append(String(format: Language.get("Inventory_Family_TotalAvailable", alter: "%@ متوفر"),
                                 NSNumber(value: totalAvailable)))
