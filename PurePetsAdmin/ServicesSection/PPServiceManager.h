@@ -17,13 +17,19 @@ typedef void (^PPServiceModelBlock)(PPServiceModel * _Nullable service, NSError 
 
 @interface PPServiceManager : NSObject
 
-+ (instancetype)sharedManager;
++ (instancetype)sharedManager NS_SWIFT_NAME(shared());
 
 - (BOOL)currentAdminCanManageServices;
+- (BOOL)currentAdminCanReadServices;
 
 - (id<FIRListenerRegistration> _Nullable)observeAllServices:(PPServiceArrayBlock)onChange;
 - (void)fetchAllServicesWithCompletion:(PPServiceArrayBlock)completion;
-- (void)fetchServiceByID:(NSString *)serviceID completion:(PPServiceModelBlock)completion;
+- (void)fetchServiceByID:(NSString *)serviceID completion:(PPServiceModelBlock)completion NS_SWIFT_NAME(fetchService(byID:completion:));
+
+- (id<FIRListenerRegistration> _Nullable)observeServicePageWithLimit:(NSInteger)limit onChange:(PPServiceArrayBlock)onChange NS_SWIFT_NAME(observeServicePage(withLimit:onChange:));
+- (void)fetchServicePageAfterServiceID:(nullable NSString *)serviceID limit:(NSInteger)limit completion:(PPServiceArrayBlock)completion NS_SWIFT_NAME(fetchServicePage(afterServiceID:limit:completion:));
+
++ (BOOL)administrativeState:(PPServiceModel *)observed matchesService:(PPServiceModel *)candidate;
 
 - (void)addService:(PPServiceModel *)service
              image:(nullable UIImage *)image
@@ -36,6 +42,11 @@ typedef void (^PPServiceModelBlock)(PPServiceModel * _Nullable service, NSError 
            completion:(PPServiceVoidBlock)completion;
 
 - (void)updateAdministrativeStateForService:(PPServiceModel *)service
+                                  auditNote:(nullable NSString *)auditNote
+                                 completion:(PPServiceVoidBlock)completion;
+
+- (void)updateAdministrativeStateForService:(PPServiceModel *)service
+                            expectedService:(PPServiceModel *)expected
                                   auditNote:(nullable NSString *)auditNote
                                  completion:(PPServiceVoidBlock)completion;
 

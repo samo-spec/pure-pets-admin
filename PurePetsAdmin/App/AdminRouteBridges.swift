@@ -571,13 +571,25 @@ extension UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
-        pp_embedSwiftUI(AdminServicesView { [weak self] in
+        pp_embedSwiftUI(AdminServicesView(onDismiss: { [weak self] in
             guard let self = self else {
                 PPAdminNavigationFallback.popOrDismiss()
                 return
             }
             PPAdminNavigationFallback.popOrDismiss(from: self)
-        })
+        }, onOpenService: { [weak self] service in
+            guard let self else { return }
+            let detail = PPServiceDetailViewController(service: service)
+            detail.hidesBottomBarWhenPushed = true
+            if let navigation = self.navigationController {
+                guard navigation.topViewController === self else { return }
+                navigation.pushViewController(detail, animated: true)
+            } else {
+                let navigation = UINavigationController(rootViewController: detail)
+                navigation.modalPresentationStyle = .fullScreen
+                self.present(navigation, animated: true)
+            }
+        }))
     }
 
     public override func viewWillAppear(_ animated: Bool) {
@@ -593,4 +605,3 @@ extension UIViewController {
         }
     }
 }
-

@@ -9,7 +9,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @class PPServiceModel;
 
-@interface PPServiceModerationViewController : XLFormViewController
+@interface PPServiceModerationViewController : UIViewController
 
 - (instancetype)initWithService:(PPServiceModel *)service;
 

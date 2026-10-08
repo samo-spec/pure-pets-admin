@@ -56,6 +56,7 @@ extension PPServiceType {
 public final class PPServiceEditorViewModel: ObservableObject {
     public let originalService: PPServiceModel?
     public let isEditing: Bool
+    private let submissionServiceID = UUID().uuidString
     public let onDismiss: @Sendable () -> Void
     public let onSuccess: @Sendable () -> Void
 
@@ -167,6 +168,7 @@ public final class PPServiceEditorViewModel: ObservableObject {
     }
 
     public func save() {
+        guard !isSubmitting else { return }
         guard isValid else {
             errorMessage = validationErrors.first
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
@@ -191,6 +193,7 @@ public final class PPServiceEditorViewModel: ObservableObject {
         errorMessage = nil
 
         let model = originalService?.copy() as? PPServiceModel ?? PPServiceModel()
+        if !isEditing { model.serviceID = submissionServiceID }
         model.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
         model.serviceDescriptionText = serviceDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         model.price = parsedPrice
@@ -322,21 +325,27 @@ public struct AlertItem: Identifiable {
 
 public struct PPServiceEditorNavigationBar: View {
     @ObservedObject var viewModel: PPServiceEditorViewModel
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var showValidationSheet: Bool = false
 
     public var body: some View {
-        HStack(spacing: 14) {
-            // Dismiss Button
+        HStack(spacing: 12) {
+            // Dismiss Button (Studio-Crafted Tactile Back Squircle)
             Button(action: {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 viewModel.onDismiss()
             }) {
-                Image(systemName: Language.isRTL() ? "arrow.right" : "arrow.left")
+                Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
                     .font(.system(size: 16, weight: .bold))
                     .foregroundColor(AdminSurface.primaryText)
                     .frame(width: 40, height: 40)
-                    .background(AdminSurface.surface, in: Circle())
-                    .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: 1))
-                    .shadow(color: Color.black.opacity(0.04), radius: 4, y: 2)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 13, style: .continuous)
+                            .stroke(AdminSurface.hairline, lineWidth: 0.8)
+                    )
+                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.25 : 0.04), radius: 5, y: 2)
             }
             .accessibilityLabel(Language.get("Back", alter: "رجوع"))
 
@@ -346,82 +355,163 @@ public struct PPServiceEditorNavigationBar: View {
                     Text(viewModel.isEditing
                          ? Language.get("Service_Edit_Title", alter: "تعديل الخدمة")
                          : Language.get("Service_Add_Title", alter: "إضافة خدمة جديدة"))
-                        .font(AdminType.title3Bold)
+                        .font(Font.custom("Beiruti-Bold", size: 19, relativeTo: .title3))
                         .foregroundColor(AdminSurface.primaryText)
 
-                    // Type Pip
-                    Text(viewModel.serviceType == .grooming
-                         ? Language.get("Service_Type_Grooming", alter: "عناية وتنظيف")
-                         : Language.get("Service_Type_Training", alter: "تدريب"))
-                        .font(AdminType.caption2Bold)
-                        .foregroundColor(viewModel.serviceType == .grooming ? Color.teal : AdminSurface.primary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(
-                            (viewModel.serviceType == .grooming ? Color.teal : AdminSurface.primary).opacity(0.12),
-                            in: Capsule()
-                        )
+                    // Type Micro-Jewel Pip
+                    HStack(spacing: 4) {
+                        Image(systemName: viewModel.serviceType == .grooming ? "scissors" : "graduationcap.fill")
+                            .font(.system(size: 10, weight: .bold))
+                        Text(viewModel.serviceType == .grooming
+                             ? Language.get("Service_Type_Grooming", alter: "عناية وتنظيف")
+                             : Language.get("Service_Type_Training", alter: "تدريب"))
+                            .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
+                    }
+                    .foregroundColor(viewModel.serviceType == .grooming ? Color.teal : AdminSurface.primary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(
+                        (viewModel.serviceType == .grooming ? Color.teal : AdminSurface.primary).opacity(0.12),
+                        in: Capsule()
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke((viewModel.serviceType == .grooming ? Color.teal : AdminSurface.primary).opacity(0.25), lineWidth: 0.5)
+                    )
                 }
 
-                Text(Language.get("Service_Creative_Studio_Sub", alter: "استوديو الخدمات السيادي • إدارة العروض والتسعير"))
-                    .font(AdminType.caption2)
-                    .foregroundColor(AdminSurface.secondaryText)
+                // Dynamic Breadcrumb / Entity Tracker
+                if !viewModel.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(viewModel.title)
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                } else {
+                    Text(Language.get("Service_Creative_Studio_Sub", alter: "استوديو الخدمات السيادي • إدارة العروض والتسعير"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                }
             }
 
-            Spacer()
+            Spacer(minLength: 4)
 
-            // Live Validation Telemetry Pill
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(viewModel.isValid ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning))
-                    .frame(width: 7, height: 7)
-
-                Text(viewModel.isValid
-                     ? Language.get("Service_Status_Ready", alter: "جاهز للاعتماد")
-                     : String(format: Language.get("Service_Status_Incomplete_Format", alter: "%d حقول مطلوبة"), viewModel.validationErrors.count))
-                    .font(AdminType.captionBold)
-                    .foregroundColor(viewModel.isValid ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning))
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                (viewModel.isValid ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning)).opacity(0.10),
-                in: Capsule()
-            )
-
-            // Primary Save Button
+            // Live Validation Telemetry Pill (Interactive Guide)
             Button(action: {
-                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                viewModel.save()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                if !viewModel.isValid {
+                    showValidationSheet = true
+                }
             }) {
-                HStack(spacing: 6) {
-                    if viewModel.isSubmitting {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                            .tint(.white)
-                    } else {
-                        Image(systemName: "checkmark.seal.fill")
-                            .font(.system(size: 14, weight: .bold))
-                    }
-
-                    Text(Language.get("Save", alter: "حفظ واعتماد"))
-                        .font(AdminType.subheadlineBold)
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .frame(height: 40)
-                .background {
+                HStack(spacing: 5) {
                     if viewModel.isValid {
-                        LinearGradient(colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.85)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(AdminSurface.emerald)
+
+                        Text(Language.get("Service_Status_Ready", alter: "جاهز للاعتماد"))
+                            .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                            .foregroundColor(AdminSurface.emerald)
                     } else {
-                        Color.gray.opacity(0.4)
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(AdminSurface.amber)
+
+                        Text(String(format: Language.get("Service_Status_Incomplete_Format", alter: "%d حقول مطلوبة"), viewModel.validationErrors.count))
+                            .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                            .foregroundColor(AdminSurface.amber)
                     }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .shadow(color: viewModel.isValid ? AdminSurface.primary.opacity(0.28) : Color.clear, radius: 8, y: 3)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    (viewModel.isValid ? AdminSurface.emerald : AdminSurface.amber).opacity(0.10),
+                    in: Capsule()
+                )
+                .overlay(
+                    Capsule()
+                        .stroke((viewModel.isValid ? AdminSurface.emerald : AdminSurface.amber).opacity(0.28), lineWidth: 0.75)
+                )
             }
-            .disabled(!viewModel.isValid || viewModel.isSubmitting)
-            .keyboardShortcut("s", modifiers: .command)
+            .buttonStyle(.plain)
+
+            // Primary Save Button: Adaptive between iPad (Full CTA) and iPhone (Tactile Jewel Quick Save)
+            if horizontalSizeClass == .regular {
+                Button(action: {
+                    UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                    viewModel.save()
+                }) {
+                    HStack(spacing: 6) {
+                        if viewModel.isSubmitting {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.system(size: 14, weight: .bold))
+                        }
+
+                        Text(Language.get("Save", alter: "حفظ واعتماد"))
+                            .font(AdminType.subheadlineBold)
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 18)
+                    .frame(height: 40)
+                    .background {
+                        if viewModel.isValid {
+                            LinearGradient(colors: [AdminSurface.primary, Color(red: 0.96, green: 0.26, blue: 0.46)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        } else {
+                            AdminSurface.control
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 13, style: .continuous)
+                            .stroke(viewModel.isValid ? Color.clear : AdminSurface.hairline, lineWidth: 0.8)
+                    )
+                    .shadow(color: viewModel.isValid ? AdminSurface.primary.opacity(0.32) : Color.clear, radius: 8, y: 3)
+                }
+                .disabled(!viewModel.isValid || viewModel.isSubmitting)
+                .keyboardShortcut("s", modifiers: .command)
+            } else {
+                // iPhone Tactile Quick Save Icon
+                Button(action: {
+                    UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                    if viewModel.isValid {
+                        viewModel.save()
+                    } else {
+                        showValidationSheet = true
+                    }
+                }) {
+                    ZStack {
+                        if viewModel.isSubmitting {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                                .tint(.white)
+                        } else {
+                            Image(systemName: viewModel.isValid ? "checkmark.seal.fill" : "checkmark.seal")
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundColor(viewModel.isValid ? .white : AdminSurface.secondaryText.opacity(0.7))
+                        }
+                    }
+                    .frame(width: 40, height: 40)
+                    .background {
+                        if viewModel.isValid {
+                            LinearGradient(colors: [AdminSurface.primary, Color(red: 0.96, green: 0.26, blue: 0.46)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        } else {
+                            AdminSurface.control
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 13, style: .continuous)
+                            .stroke(viewModel.isValid ? Color.white.opacity(0.25) : AdminSurface.hairline, lineWidth: 0.8)
+                    )
+                    .shadow(color: viewModel.isValid ? AdminSurface.primary.opacity(0.35) : Color.clear, radius: 6, y: 2)
+                }
+                .disabled(viewModel.isSubmitting)
+                .accessibilityLabel(Language.get("Save", alter: "حفظ واعتماد"))
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -434,6 +524,13 @@ public struct PPServiceEditorNavigationBar: View {
                     alignment: .bottom
                 )
         )
+        .alert(isPresented: $showValidationSheet) {
+            Alert(
+                title: Text(Language.get("Service_Requirements_Title", alter: "الحقول المطلوبة للاعتماد")),
+                message: Text(viewModel.validationErrors.joined(separator: "\n• ")),
+                dismissButton: .default(Text(Language.get("OK", alter: "حسناً")))
+            )
+        }
     }
 }
 
@@ -463,9 +560,9 @@ public struct PPServiceEditorIPhoneView: View {
                 // 6. Enterprise Governance & Advanced Parameters
                 PPServiceGovernanceCard(viewModel: viewModel)
 
-                // Spacing for Bottom Dock
+                // Spacing for Bottom Dock (Generous clearance for floating command console)
                 Spacer()
-                    .frame(height: 90)
+                    .frame(height: 125)
             }
             .padding(.horizontal, 16)
             .padding(.top, 16)
@@ -1430,69 +1527,155 @@ public struct PPServiceLiveConsumerCard: View {
 
 public struct PPServiceFloatingActionDock: View {
     @ObservedObject var viewModel: PPServiceEditorViewModel
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var showRequirementsAlert: Bool = false
 
     public var body: some View {
-        HStack(spacing: 12) {
-            // Live Status Indicator
-            VStack(alignment: .leading, spacing: 2) {
-                Text(viewModel.isValid
-                     ? Language.get("Service_Ready_To_Save", alter: "مكتمل وجاهز للاعتماد")
-                     : Language.get("Service_Needs_Completion", alter: "يرجى إكمال الحقول"))
-                    .font(AdminType.caption2Bold)
-                    .foregroundColor(viewModel.isValid ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning))
+        HStack(spacing: 14) {
+            // Financial & Live Status Module
+            VStack(alignment: .leading, spacing: 3) {
+                // Readiness / Requirement Pill
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(viewModel.isValid ? AdminSurface.emerald : AdminSurface.amber)
+                        .frame(width: 7, height: 7)
 
-                Text(String(format: "%.2f %@", viewModel.parsedPrice, Language.isRTL() ? "ر.ق" : "QAR"))
-                    .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline))
-                    .foregroundColor(AdminSurface.primaryText)
+                    Text(viewModel.isValid
+                         ? Language.get("Service_Ready_To_Save", alter: "مكتمل وجاهز للاعتماد")
+                         : (viewModel.validationErrors.first ?? Language.get("Service_Needs_Completion", alter: "يرجى إكمال الحقول")))
+                        .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                        .foregroundColor(viewModel.isValid ? AdminSurface.emerald : AdminSurface.amber)
+                        .lineLimit(1)
+                }
+
+                // Price Master Display
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(String(format: "%.2f", viewModel.parsedPrice))
+                        .font(Font.custom("Beiruti-Bold", size: 23, relativeTo: .title3))
+                        .foregroundColor(AdminSurface.primaryText)
+
+                    Text(Language.isRTL() ? "ر.ق" : "QAR")
+                        .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
+                        .foregroundColor(AdminSurface.primary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                }
             }
 
-            Spacer()
+            Spacer(minLength: 4)
 
-            // Save Button
+            // Frosted Hairline Divider
+            RoundedRectangle(cornerRadius: 1)
+                .fill(AdminSurface.hairline.opacity(0.8))
+                .frame(width: 1, height: 36)
+
+            // Primary Action Button (Sovereign Tactile Engine)
             Button(action: {
-                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                viewModel.save()
+                if viewModel.isValid {
+                    UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                    viewModel.save()
+                } else {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    showRequirementsAlert = true
+                }
             }) {
                 HStack(spacing: 8) {
                     if viewModel.isSubmitting {
-                        ProgressView().tint(.white).scaleEffect(0.8)
-                    } else {
-                        Image(systemName: "checkmark.circle.fill")
+                        ProgressView()
+                            .tint(.white)
+                            .scaleEffect(0.85)
+                    } else if viewModel.isValid {
+                        Image(systemName: "checkmark.seal.fill")
                             .font(.system(size: 16, weight: .bold))
+                    } else {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(AdminSurface.amber)
                     }
-                    Text(viewModel.isEditing
-                         ? Language.get("Service_Update_Action", alter: "تحديث الخدمة")
-                         : Language.get("Service_Save_Action", alter: "حفظ واعتماد"))
-                        .font(AdminType.subheadlineBold)
+
+                    Text(viewModel.isSubmitting
+                         ? Language.get("Service_Saving", alter: "جارٍ الحفظ...")
+                         : (viewModel.isValid
+                            ? (viewModel.isEditing
+                               ? Language.get("Service_Update_Action", alter: "تحديث الخدمة")
+                               : Language.get("Service_Save_Action", alter: "حفظ واعتماد"))
+                            : Language.get("Service_Needs_Completion", alter: "إكمال الحقول")))
+                        .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline))
                 }
-                .foregroundColor(.white)
+                .foregroundColor(viewModel.isValid ? .white : AdminSurface.secondaryText)
                 .padding(.horizontal, 22)
-                .frame(height: 48)
+                .frame(height: 50)
                 .background {
                     if viewModel.isValid {
-                        LinearGradient(colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.85)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        LinearGradient(
+                            colors: [AdminSurface.primary, Color(red: 0.96, green: 0.26, blue: 0.46)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
                     } else {
-                        Color.gray.opacity(0.4)
+                        AdminSurface.control
                     }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .shadow(color: viewModel.isValid ? AdminSurface.primary.opacity(0.3) : Color.clear, radius: 8, y: 4)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(
+                            viewModel.isValid
+                                ? Color.white.opacity(0.25)
+                                : AdminSurface.hairline,
+                            lineWidth: 0.8
+                        )
+                )
+                .shadow(
+                    color: viewModel.isValid ? AdminSurface.primary.opacity(0.38) : Color.clear,
+                    radius: 10,
+                    y: 4
+                )
             }
-            .disabled(!viewModel.isValid || viewModel.isSubmitting)
+            .disabled(viewModel.isSubmitting)
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
         .background(
             .ultraThinMaterial,
-            in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(AdminSurface.hairline, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(colorScheme == .dark ? 0.22 : 0.55),
+                            AdminSurface.hairline.opacity(0.3)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 1
+                )
         )
-        .shadow(color: Color.black.opacity(0.12), radius: 16, y: 6)
+        .shadow(
+            color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.08),
+            radius: 20,
+            x: 0,
+            y: 8
+        )
+        .shadow(
+            color: Color.black.opacity(colorScheme == .dark ? 0.20 : 0.04),
+            radius: 6,
+            x: 0,
+            y: 2
+        )
         .padding(.horizontal, 16)
-        .padding(.bottom, 10)
+        .padding(.bottom, 12)
+        .alert(isPresented: $showRequirementsAlert) {
+            Alert(
+                title: Text(Language.get("Service_Requirements_Title", alter: "الحقول المطلوبة للاعتماد")),
+                message: Text(viewModel.validationErrors.joined(separator: "\n• ")),
+                dismissButton: .default(Text(Language.get("OK", alter: "حسناً")))
+            )
+        }
     }
 }
 

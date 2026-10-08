@@ -380,6 +380,8 @@
 		F3C100062F9A000100000001 /* PPServiceModerationViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F3C1100C2F9A000100000001 /* PPServiceModerationViewController.m */; };
 		F3C100072F9A000100000001 /* PPServiceDetailViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F3C1100E2F9A000100000001 /* PPServiceDetailViewController.m */; };
 		F3C100082F9A000100000001 /* PPServiceEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3C110102F9A000100000001 /* PPServiceEditorView.swift */; };
+		F3C100092F9A000100000001 /* PPServiceDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3C110112F9A000100000001 /* PPServiceDetailView.swift */; };
+		F3C1000A2F9A000100000001 /* PPServiceModerationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3C110122F9A000100000001 /* PPServiceModerationView.swift */; };
 		F3D100022F9A100100000001 /* PPProLoginHostingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3D100012F9A100100000001 /* PPProLoginHostingController.swift */; };
 		F3D100052F9A100100000001 /* PPProLoginCoordinator.m in Sources */ = {isa = PBXBuildFile; fileRef = F3D100042F9A100100000001 /* PPProLoginCoordinator.m */; };
 		F3E6A1012FA1000100A1D001 /* AddUserViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F3E6A1002FA1000100A1D001 /* AddUserViewController.m */; };
@@ -1017,6 +1019,8 @@
 		F3C1100D2F9A000100000001 /* PPServiceDetailViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPServiceDetailViewController.h; sourceTree = "<group>"; };
 		F3C1100E2F9A000100000001 /* PPServiceDetailViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPServiceDetailViewController.m; sourceTree = "<group>"; };
 		F3C110102F9A000100000001 /* PPServiceEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPServiceEditorView.swift; sourceTree = "<group>"; };
+		F3C110112F9A000100000001 /* PPServiceDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPServiceDetailView.swift; sourceTree = "<group>"; };
+		F3C110122F9A000100000001 /* PPServiceModerationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPServiceModerationView.swift; sourceTree = "<group>"; };
 		F3D100012F9A100100000001 /* PPProLoginHostingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPProLoginHostingController.swift; sourceTree = "<group>"; };
 		F3D100032F9A100100000001 /* PPProLoginCoordinator.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPProLoginCoordinator.h; sourceTree = "<group>"; };
 		F3D100042F9A100100000001 /* PPProLoginCoordinator.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPProLoginCoordinator.m; sourceTree = "<group>"; };
@@ -2191,6 +2195,8 @@
 				F3C1100D2F9A000100000001 /* PPServiceDetailViewController.h */,
 				F3C1100E2F9A000100000001 /* PPServiceDetailViewController.m */,
 				F3C110102F9A000100000001 /* PPServiceEditorView.swift */,
+				F3C110112F9A000100000001 /* PPServiceDetailView.swift */,
+				F3C110122F9A000100000001 /* PPServiceModerationView.swift */,
 			);
 			path = ServicesSection;
 			sourceTree = "<group>";
@@ -2459,6 +2465,8 @@
 				F3C100062F9A000100000001 /* PPServiceModerationViewController.m in Sources */,
 				F3C100072F9A000100000001 /* PPServiceDetailViewController.m in Sources */,
 				F3C100082F9A000100000001 /* PPServiceEditorView.swift in Sources */,
+				F3C100092F9A000100000001 /* PPServiceDetailView.swift in Sources */,
+				F3C1000A2F9A000100000001 /* PPServiceModerationView.swift in Sources */,
 				F2E33F343005D4FA005E31C6 /* PPAgentsViewController.m in Sources */,
 				F2E33F353005D4FA005E31C6 /* PPAgentEditorViewController.m in Sources */,
 				C54AFB88580CEB55093C550F /* ImageViewerController.m in Sources */,

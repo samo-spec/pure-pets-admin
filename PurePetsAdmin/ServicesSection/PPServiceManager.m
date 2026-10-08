@@ -1,29 +1,21 @@
-//
-//  PPServiceManager.m
-//  PurePetsAdmin
-//
-
 #import "PPServiceManager.h"
 #import "PPServiceModel.h"
-@import Firebase;
+#import "PPStaffAuth.h"
+#import "PPFirebaseCompat.h"
+#import "ArabicNormalizer.h"
+#import <math.h>
+#import <CommonCrypto/CommonDigest.h>
+@import FirebaseFirestore;
 @import FirebaseAuth;
-@import FirebaseMessaging;
-@import FirebaseAuth;
-#import "UserManager.h"
-#import "UserModel.h"
-#import "PPRolePermission.h"
-@import Firebase;
-@import FirebaseAuth;
-static NSString * const kPPServicesCollection = @"serviceOffers";
-static NSString * const kPPAdminAuditCollection = @"AdminAuditLogs";
-static NSString * const kPPServiceManagerErrorDomain = @"pp.service.manager";
+@import FirebaseFunctions;
+@import FirebaseStorage;
 
-typedef void (^PPServiceExistingDocumentBlock)(FIRDocumentReference * _Nullable docRef,
-                                               NSDictionary * _Nullable data,
-                                               NSError * _Nullable error);
+static NSString * const kPPServicesCollection = @"serviceOffers";
+static NSString * const kPPServiceManagerErrorDomain = @"pp.service.manager";
 
 @interface PPServiceManager ()
 @property (nonatomic, strong) FIRFirestore *db;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *uploadedMedia;
 @end
 
 @implementation PPServiceManager
@@ -31,646 +23,381 @@ typedef void (^PPServiceExistingDocumentBlock)(FIRDocumentReference * _Nullable 
 + (instancetype)sharedManager {
     static PPServiceManager *shared;
     static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        shared = [[PPServiceManager alloc] init];
-    });
+    dispatch_once(&onceToken, ^{ shared = [PPServiceManager new]; });
     return shared;
 }
 
 - (instancetype)init {
     self = [super init];
-    if (self) {
-        _db = [FIRFirestore firestore];
-    }
+    if (self) { _db = FIRFirestore.firestore; _uploadedMedia = [NSMutableDictionary new]; }
     return self;
 }
 
-#pragma mark - Public
+#pragma mark - Canonical staff authorization
 
 - (BOOL)currentAdminCanManageServices {
-    UserModel *currentUser = [UserManager shared].currentUser;
-    if (!currentUser) {
-        return NO;
+    PPStaffDoc *staff = PPStaffAuth.shared.cachedCurrentStaff;
+    if (!staff.isActive || ![staff.uid isEqualToString:FIRAuth.auth.currentUser.uid]) return NO;
+    if ([staff.authorizationMode isEqualToString:@"enforced"]) {
+        return [staff.authorizationGlobalPermissions containsObject:kStaffPermServicesManage];
     }
-    return ([currentUser hasPermissionNamed:kPermManageServices] ||
-            [currentUser hasPermissionNamed:kPermAdminAll]);
+    if ([staff.authorizationMode isEqualToString:@"retired"] ||
+        (staff.authorizationMode && ![@[@"legacy", @"shadow", @"prepared"] containsObject:staff.authorizationMode])) return NO;
+    return staff.isAdmin || (staff.hasGlobalScope && [staff.explicitPermissions containsObject:kStaffPermServicesManage]);
 }
 
-- (id<FIRListenerRegistration>)observeAllServices:(PPServiceArrayBlock)onChange {
-    if (![self currentAdminCanManageServices]) {
-        [self pp_completeArray:nil
-                         error:[self pp_errorWithCode:403 message:kLang(@"Service_Error_NoPermission")]
-                    completion:onChange];
-        return nil;
-    }
-
-    return [[self pp_collection] addSnapshotListener:^(FIRQuerySnapshot * _Nullable snap, NSError * _Nullable error) {
-        if (!onChange) {
-            return;
-        }
-        NSArray<PPServiceModel *> *mapped = error ? nil : [self pp_mapDocuments:snap.documents];
-        [self pp_completeArray:mapped error:error completion:onChange];
-    }];
+- (BOOL)currentAdminCanReadServices {
+    PPStaffDoc *staff = PPStaffAuth.shared.cachedCurrentStaff;
+    return staff.isActive && [staff.uid isEqualToString:FIRAuth.auth.currentUser.uid] &&
+        (staff.isAdmin || [staff hasPermission:kStaffPermServicesView] || [staff hasPermission:kStaffPermServicesManage]);
 }
 
-- (void)fetchAllServicesWithCompletion:(PPServiceArrayBlock)completion {
-    if (![self currentAdminCanManageServices]) {
-        [self pp_completeArray:nil
-                         error:[self pp_errorWithCode:403 message:kLang(@"Service_Error_NoPermission")]
-                    completion:completion];
-        return;
-    }
+#pragma mark - Reads and bounded list projection
 
-    [[self pp_collection] getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable snap, NSError * _Nullable error) {
-        [self pp_completeArray:(error ? nil : [self pp_mapDocuments:snap.documents])
-                         error:error
-                    completion:completion];
-    }];
-}
+- (FIRCollectionReference *)collection { return [self.db collectionWithPath:kPPServicesCollection]; }
 
-- (void)fetchServiceByID:(NSString *)serviceID completion:(PPServiceModelBlock)completion {
-    NSString *cleanServiceID = [[PPSafeString(serviceID) stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] copy];
-    if (cleanServiceID.length == 0) {
-        [self pp_completeModel:nil
-                         error:[self pp_errorWithCode:400 message:kLang(@"Service_Error_MissingID")]
-                    completion:completion];
-        return;
-    }
-
-    [[[self pp_collection] documentWithPath:cleanServiceID] getDocumentWithCompletion:^(FIRDocumentSnapshot * _Nullable snap, NSError * _Nullable error) {
-        if (error) {
-            [self pp_completeModel:nil error:error completion:completion];
-            return;
-        }
-        if (!snap.exists) {
-            [self pp_completeModel:nil
-                             error:[self pp_errorWithCode:404 message:kLang(@"Service_Error_NotFound")]
-                        completion:completion];
-            return;
-        }
-        PPServiceModel *model = [PPServiceModel fromDictionary:snap.data ?: @{} withID:snap.documentID ?: cleanServiceID];
-        [self pp_completeModel:model error:nil completion:completion];
-    }];
-}
-
-- (void)addService:(PPServiceModel *)service
-             image:(UIImage *)image
-         auditNote:(NSString *)auditNote
-        completion:(PPServiceVoidBlock)completion {
-    if (![self currentAdminCanManageServices]) {
-        [self pp_completeVoid:[self pp_errorWithCode:403 message:kLang(@"Service_Error_NoPermission")] completion:completion];
-        return;
-    }
-
-    PPServiceModel *candidate = [service copy] ?: [PPServiceModel new];
-    candidate.serviceID = [[NSUUID UUID] UUIDString];
-    if (candidate.serviceOwnerID.length == 0) {
-        candidate.serviceOwnerID = [self pp_currentAdminUID];
-    }
-    if (!candidate.createdAt) {
-        candidate.createdAt = [NSDate date];
-    }
-    candidate.updatedAt = [NSDate date];
-    if (!candidate.timestamp) {
-        candidate.timestamp = candidate.createdAt ?: [NSDate date];
-    }
-
-    NSError *validationError = nil;
-    [self pp_servicePayloadForModel:candidate creating:YES error:&validationError];
-    if (validationError) {
-        [self pp_completeVoid:validationError completion:completion];
-        return;
-    }
-
-    void (^commitBlock)(NSString *) = ^(NSString *resolvedImageURL) {
-        if (resolvedImageURL.length > 0) {
-            candidate.imageURL = resolvedImageURL;
-        }
-        NSDictionary *docPayload = [self pp_servicePayloadForModel:candidate creating:YES error:nil];
-        NSDictionary *auditAfter = [[PPServiceModel fromDictionary:docPayload withID:candidate.serviceID] toDictionary];
-        FIRDocumentReference *docRef = [[self pp_collection] documentWithPath:candidate.serviceID];
-        FIRWriteBatch *batch = [self.db batch];
-        [batch setData:docPayload forDocument:docRef];
-        [self pp_appendAuditWithBatch:batch
-                               action:@"service_create"
-                            serviceID:candidate.serviceID
-                               before:nil
-                                after:auditAfter
-                                 note:auditNote];
-        [batch commitWithCompletion:^(NSError * _Nullable error) {
-            [self pp_completeVoid:error completion:completion];
-        }];
-    };
-
-    if (image) {
-        [self pp_uploadImage:image serviceID:candidate.serviceID completion:^(NSString *imageURL, NSError *error) {
-            if (error) {
-                [self pp_completeVoid:error completion:completion];
-                return;
-            }
-            commitBlock(imageURL);
-        }];
-    } else {
-        commitBlock(candidate.imageURL);
-    }
-}
-
-- (void)updateService:(PPServiceModel *)service
-                image:(UIImage *)image
-            auditNote:(NSString *)auditNote
-           completion:(PPServiceVoidBlock)completion {
-    if (![self currentAdminCanManageServices]) {
-        [self pp_completeVoid:[self pp_errorWithCode:403 message:kLang(@"Service_Error_NoPermission")] completion:completion];
-        return;
-    }
-
-    NSString *serviceID = [[PPSafeString(service.serviceID) stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] copy];
-    if (serviceID.length == 0) {
-        [self pp_completeVoid:[self pp_errorWithCode:400 message:kLang(@"Service_Error_MissingID")] completion:completion];
-        return;
-    }
-
-    [self pp_fetchExistingDocumentForServiceID:serviceID completion:^(FIRDocumentReference * _Nullable docRef, NSDictionary * _Nullable beforeData, NSError * _Nullable error) {
-        if (error || !docRef) {
-            [self pp_completeVoid:error completion:completion];
-            return;
-        }
-
-        PPServiceModel *candidate = [service copy];
-        candidate.serviceID = serviceID;
-        candidate.createdAt = candidate.createdAt ?: [PPServiceModel fromDictionary:beforeData ?: @{} withID:serviceID].createdAt;
-        candidate.updatedAt = [NSDate date];
-        if (!candidate.timestamp) {
-            candidate.timestamp = [PPServiceModel fromDictionary:beforeData ?: @{} withID:serviceID].timestamp ?: [NSDate date];
-        }
-
-        NSError *validationError = nil;
-        NSDictionary *initialPayload = [self pp_servicePayloadForModel:candidate creating:NO error:&validationError];
-        if (validationError) {
-            [self pp_completeVoid:validationError completion:completion];
-            return;
-        }
-
-        void (^commitBlock)(NSString *) = ^(NSString *resolvedImageURL) {
-            if (resolvedImageURL.length > 0) {
-                candidate.imageURL = resolvedImageURL;
-            }
-            NSDictionary *docPayload = [self pp_servicePayloadForModel:candidate creating:NO error:nil];
-            NSDictionary *auditAfter = [[PPServiceModel fromDictionary:docPayload withID:serviceID] toDictionary];
-            FIRWriteBatch *batch = [self.db batch];
-            [batch setData:docPayload forDocument:docRef merge:YES];
-            [self pp_appendAuditWithBatch:batch
-                                   action:@"service_update"
-                                serviceID:serviceID
-                                   before:beforeData
-                                    after:auditAfter
-                                     note:auditNote];
-            [batch commitWithCompletion:^(NSError * _Nullable commitError) {
-                [self pp_completeVoid:commitError completion:completion];
-            }];
-        };
-
-        if (image) {
-            [self pp_uploadImage:image serviceID:serviceID completion:^(NSString *imageURL, NSError *uploadError) {
-                if (uploadError) {
-                    [self pp_completeVoid:uploadError completion:completion];
-                    return;
-                }
-                commitBlock(imageURL);
-            }];
-        } else {
-            commitBlock(candidate.imageURL.length > 0 ? candidate.imageURL : PPSafeString(initialPayload[@"imageURL"]));
-        }
-    }];
-}
-
-- (void)updateAdministrativeStateForService:(PPServiceModel *)service
-                                  auditNote:(NSString *)auditNote
-                                 completion:(PPServiceVoidBlock)completion {
-    if (![self currentAdminCanManageServices]) {
-        [self pp_completeVoid:[self pp_errorWithCode:403 message:kLang(@"Service_Error_NoPermission")] completion:completion];
-        return;
-    }
-
-    NSString *serviceID = [[PPSafeString(service.serviceID) stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] copy];
-    if (serviceID.length == 0) {
-        [self pp_completeVoid:[self pp_errorWithCode:400 message:kLang(@"Service_Error_MissingID")] completion:completion];
-        return;
-    }
-
-    [self pp_fetchExistingDocumentForServiceID:serviceID completion:^(FIRDocumentReference * _Nullable docRef, NSDictionary * _Nullable beforeData, NSError * _Nullable error) {
-        if (error || !docRef) {
-            [self pp_completeVoid:error completion:completion];
-            return;
-        }
-
-        PPServiceModel *existing = [PPServiceModel fromDictionary:beforeData ?: @{} withID:serviceID];
-        PPServiceModel *candidate = [existing copy];
-        candidate.isDisabled = service.isDisabled;
-        candidate.isBlocked = service.isBlocked;
-        candidate.verificationStatus = service.verificationStatus;
-        candidate.subscriptionType = service.subscriptionType;
-        candidate.subscriptionPlan = service.subscriptionPlan;
-        candidate.subscriptionStatus = service.subscriptionStatus;
-        candidate.subscriptionActive = service.subscriptionActive;
-        candidate.subscriptionStartDate = service.subscriptionStartDate;
-        candidate.subscriptionEndDate = service.subscriptionEndDate;
-        candidate.serviceFlags = service.serviceFlags ?: @{};
-        candidate.updatedAt = [NSDate date];
-        candidate.blockedBy = candidate.isBlocked ? [self pp_currentAdminUID] : @"";
-        candidate.disabledBy = candidate.isDisabled ? [self pp_currentAdminUID] : @"";
-
-        NSDictionary *docPayload = [self pp_servicePayloadForModel:candidate creating:NO error:nil];
-        NSMutableDictionary *mergedPayload = [docPayload mutableCopy];
-        if (!candidate.isBlocked) {
-            mergedPayload[@"blockedBy"] = [FIRFieldValue fieldValueForDelete];
-        }
-        if (!candidate.isDisabled) {
-            mergedPayload[@"disabledBy"] = [FIRFieldValue fieldValueForDelete];
-        }
-
-        FIRWriteBatch *batch = [self.db batch];
-        [batch setData:mergedPayload forDocument:docRef merge:YES];
-        [self pp_appendAuditWithBatch:batch
-                               action:@"service_admin_update"
-                            serviceID:serviceID
-                               before:beforeData
-                                after:[[PPServiceModel fromDictionary:docPayload withID:serviceID] toDictionary]
-                                 note:auditNote];
-        [batch commitWithCompletion:^(NSError * _Nullable commitError) {
-            [self pp_completeVoid:commitError completion:completion];
-        }];
-    }];
-}
-
-- (void)setDisabled:(BOOL)disabled
-       forServiceID:(NSString *)serviceID
-          auditNote:(NSString *)auditNote
-         completion:(PPServiceVoidBlock)completion {
-    NSString *action = disabled ? @"service_disable" : @"service_enable";
-    [self pp_updateStateForServiceID:serviceID
-                              action:action
-                                note:auditNote
-                          patchBlock:^NSDictionary *(NSMutableDictionary *after) {
-        after[@"isDisabled"] = @(disabled);
-        after[@"updatedAt"] = [NSDate date];
-        if (disabled) {
-            after[@"disabledBy"] = [self pp_currentAdminUID];
-            return @{
-                @"isDisabled": @YES,
-                @"disabledBy": [self pp_currentAdminUID],
-                @"updatedAt": [NSDate date]
-            };
-        }
-        after[@"disabledBy"] = @"";
-        return @{
-            @"isDisabled": @NO,
-            @"disabledBy": [FIRFieldValue fieldValueForDelete],
-            @"updatedAt": [NSDate date]
-        };
-    } completion:completion];
-}
-
-- (void)setBlocked:(BOOL)blocked
-      forServiceID:(NSString *)serviceID
-         auditNote:(NSString *)auditNote
-        completion:(PPServiceVoidBlock)completion {
-    NSString *action = blocked ? @"service_block" : @"service_unblock";
-    [self pp_updateStateForServiceID:serviceID
-                              action:action
-                                note:auditNote
-                          patchBlock:^NSDictionary *(NSMutableDictionary *after) {
-        after[@"isBlocked"] = @(blocked);
-        after[@"updatedAt"] = [NSDate date];
-        if (blocked) {
-            after[@"blockedBy"] = [self pp_currentAdminUID];
-            return @{
-                @"isBlocked": @YES,
-                @"blockedBy": [self pp_currentAdminUID],
-                @"updatedAt": [NSDate date]
-            };
-        }
-        after[@"blockedBy"] = @"";
-        return @{
-            @"isBlocked": @NO,
-            @"blockedBy": [FIRFieldValue fieldValueForDelete],
-            @"updatedAt": [NSDate date]
-        };
-    } completion:completion];
-}
-
-- (void)archiveServiceID:(NSString *)serviceID
-               auditNote:(NSString *)auditNote
-              completion:(PPServiceVoidBlock)completion {
-    [self pp_updateStateForServiceID:serviceID
-                              action:@"service_archive"
-                                note:auditNote
-                          patchBlock:^NSDictionary *(NSMutableDictionary *after) {
-        NSDate *now = [NSDate date];
-        after[@"isDeleted"] = @YES;
-        after[@"archivedAt"] = now;
-        after[@"archivedBy"] = [self pp_currentAdminUID];
-        after[@"updatedAt"] = now;
-        return @{
-            @"isDeleted": @YES,
-            @"archivedAt": now,
-            @"archivedBy": [self pp_currentAdminUID],
-            @"updatedAt": now
-        };
-    } completion:completion];
-}
-
-- (void)restoreServiceID:(NSString *)serviceID
-               auditNote:(NSString *)auditNote
-              completion:(PPServiceVoidBlock)completion {
-    [self pp_updateStateForServiceID:serviceID
-                              action:@"service_restore"
-                                note:auditNote
-                          patchBlock:^NSDictionary *(NSMutableDictionary *after) {
-        after[@"isDeleted"] = @NO;
-        after[@"archivedAt"] = [NSNull null];
-        after[@"archivedBy"] = @"";
-        after[@"updatedAt"] = [NSDate date];
-        return @{
-            @"isDeleted": @NO,
-            @"archivedAt": [FIRFieldValue fieldValueForDelete],
-            @"archivedBy": [FIRFieldValue fieldValueForDelete],
-            @"updatedAt": [NSDate date]
-        };
-    } completion:completion];
-}
-
-- (void)deleteServicePermanently:(NSString *)serviceID
-                       auditNote:(NSString *)auditNote
-                      completion:(PPServiceVoidBlock)completion {
-    if (![self currentAdminCanManageServices]) {
-        [self pp_completeVoid:[self pp_errorWithCode:403 message:kLang(@"Service_Error_NoPermission")] completion:completion];
-        return;
-    }
-
-    NSString *cleanServiceID = [[PPSafeString(serviceID) stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] copy];
-    if (cleanServiceID.length == 0) {
-        [self pp_completeVoid:[self pp_errorWithCode:400 message:kLang(@"Service_Error_MissingID")] completion:completion];
-        return;
-    }
-
-    [self pp_fetchExistingDocumentForServiceID:cleanServiceID completion:^(FIRDocumentReference * _Nullable docRef, NSDictionary * _Nullable beforeData, NSError * _Nullable error) {
-        if (error || !docRef) {
-            [self pp_completeVoid:error completion:completion];
-            return;
-        }
-
-        FIRWriteBatch *batch = [self.db batch];
-        [batch deleteDocument:docRef];
-        [self pp_appendAuditWithBatch:batch
-                               action:@"service_delete_permanent"
-                            serviceID:cleanServiceID
-                               before:beforeData
-                                after:@{}
-                                 note:auditNote];
-        [batch commitWithCompletion:^(NSError * _Nullable commitError) {
-            [self pp_completeVoid:commitError completion:completion];
-        }];
-    }];
-}
-
-#pragma mark - Private
-
-- (FIRCollectionReference *)pp_collection {
-    return [self.db collectionWithPath:kPPServicesCollection];
-}
-
-- (NSArray<PPServiceModel *> *)pp_mapDocuments:(NSArray<FIRDocumentSnapshot *> *)documents {
-    NSMutableArray<PPServiceModel *> *items = [NSMutableArray arrayWithCapacity:documents.count];
-    for (FIRDocumentSnapshot *doc in documents) {
-        [items addObject:[PPServiceModel fromDictionary:doc.data ?: @{} withID:doc.documentID ?: @""]];
+- (NSArray<PPServiceModel *> *)models:(NSArray<FIRQueryDocumentSnapshot *> *)documents {
+    NSMutableArray *items = [NSMutableArray new];
+    for (FIRQueryDocumentSnapshot *document in documents) {
+        [items addObject:[PPServiceModel fromDictionary:document.data withID:document.documentID]];
     }
     return items.copy;
 }
 
-- (void)pp_fetchExistingDocumentForServiceID:(NSString *)serviceID completion:(PPServiceExistingDocumentBlock)completion {
-    NSString *cleanServiceID = [[PPSafeString(serviceID) stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] copy];
-    if (cleanServiceID.length == 0) {
-        if (completion) {
-            completion(nil, nil, [self pp_errorWithCode:400 message:kLang(@"Service_Error_MissingID")]);
-        }
-        return;
+- (id<FIRListenerRegistration>)observeQuery:(FIRQuery *)query reportsCacheState:(BOOL)reportsCacheState onChange:(PPServiceArrayBlock)onChange {
+    if (![self currentAdminCanReadServices]) {
+        [self completeArray:nil error:[self error:403 key:@"Service_Error_NoPermission"] completion:onChange];
+        return nil;
     }
-
-    FIRDocumentReference *docRef = [[self pp_collection] documentWithPath:cleanServiceID];
-    [docRef getDocumentWithCompletion:^(FIRDocumentSnapshot * _Nullable snap, NSError * _Nullable error) {
-        if (!completion) {
+    return [query addSnapshotListenerWithIncludeMetadataChanges:reportsCacheState listener:^(FIRQuerySnapshot *snapshot, NSError *error) {
+        if (![self currentAdminCanReadServices]) {
+            [self completeArray:nil error:[self error:403 key:@"Service_Error_NoPermission"] completion:onChange];
             return;
         }
-        if (error) {
-            completion(nil, nil, error);
-            return;
+        NSError *stateError = [self localizedReadError:error];
+        if (reportsCacheState && !error && (snapshot.metadata.isFromCache || snapshot.metadata.hasPendingWrites)) {
+            stateError = [self error:299 key:@"Service_Workspace_CachedData"];
         }
-        if (!snap.exists) {
-            completion(nil, nil, [self pp_errorWithCode:404 message:kLang(@"Service_Error_NotFound")]);
-            return;
-        }
-        completion(docRef, snap.data ?: @{}, nil);
+        [self completeArray:(snapshot ? [self models:snapshot.documents] : nil) error:stateError completion:onChange];
     }];
 }
 
-- (NSDictionary *)pp_servicePayloadForModel:(PPServiceModel *)service creating:(BOOL)creating error:(NSError * _Nullable __autoreleasing *)errorPointer {
-    PPServiceModel *candidate = [service copy] ?: [PPServiceModel new];
-    candidate.title = [[PPSafeString(candidate.title) stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] copy];
-    candidate.serviceDescriptionText = [[PPSafeString(candidate.serviceDescriptionText) stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] copy];
-    candidate.category = [[PPSafeString(candidate.category) stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] copy];
-    candidate.categoryID = [[PPSafeString(candidate.categoryID) stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] copy];
-    candidate.imageURL = [[PPSafeString(candidate.imageURL) stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] copy];
-    candidate.blurHash = PPSafeString(candidate.blurHash);
-    candidate.serviceOwnerID = [[PPSafeString(candidate.serviceOwnerID) stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] copy];
-    candidate.verificationStatus = [[PPSafeString(candidate.verificationStatus) stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] copy];
-    candidate.subscriptionType = [[PPSafeString(candidate.subscriptionType) stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] copy];
-    candidate.subscriptionPlan = [[PPSafeString(candidate.subscriptionPlan) stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] copy];
-    candidate.subscriptionStatus = [[PPSafeString(candidate.subscriptionStatus) stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] copy];
-    candidate.extraFields = PPSafeDict(candidate.extraFields);
-    candidate.serviceFlags = PPSafeDict(candidate.serviceFlags);
-    candidate.updatedAt = candidate.updatedAt ?: [NSDate date];
-    if (creating && !candidate.createdAt) {
-        candidate.createdAt = [NSDate date];
-    }
-    if (!candidate.timestamp) {
-        candidate.timestamp = candidate.createdAt ?: [NSDate date];
-    }
-
-    NSString *validationMessage = [self pp_validationMessageForService:candidate creating:creating];
-    if (validationMessage.length > 0) {
-        if (errorPointer) {
-            *errorPointer = [self pp_errorWithCode:422 message:validationMessage];
-        }
-        return nil;
-    }
-
-    return [candidate toDictionary];
+- (id<FIRListenerRegistration>)observeAllServices:(PPServiceArrayBlock)onChange {
+    return [self observeQuery:self.collection reportsCacheState:NO onChange:onChange];
 }
 
-- (NSString *)pp_validationMessageForService:(PPServiceModel *)service creating:(BOOL)creating {
-    if (service.title.length == 0) {
-        return kLang(@"Service_Error_TitleRequired");
+- (id<FIRListenerRegistration>)observeServicePageWithLimit:(NSInteger)limit onChange:(PPServiceArrayBlock)onChange {
+    FIRQuery *query = [[self.collection queryOrderedByFieldPath:FIRFieldPath.documentID] queryLimitedTo:MAX(1, MIN(limit, 200))];
+    return [self observeQuery:query reportsCacheState:YES onChange:onChange];
+}
+
+- (void)fetchServicePageAfterServiceID:(nullable NSString *)serviceID limit:(NSInteger)limit completion:(PPServiceArrayBlock)completion {
+    if (![self currentAdminCanReadServices]) {
+        [self completeArray:nil error:[self error:403 key:@"Service_Error_NoPermission"] completion:completion]; return;
     }
-    if (service.serviceDescriptionText.length == 0) {
-        return kLang(@"Service_Error_DescriptionRequired");
+    FIRQuery *query = [[self.collection queryOrderedByFieldPath:FIRFieldPath.documentID] queryLimitedTo:MAX(1, MIN(limit, 200))];
+    if (serviceID.length) query = [query queryStartingAfterValues:@[serviceID]];
+    [query getDocumentsWithSource:FIRFirestoreSourceServer completion:^(FIRQuerySnapshot *snapshot, NSError *error) {
+        [self completeArray:(error ? nil : [self models:snapshot.documents]) error:[self localizedReadError:error] completion:completion];
+    }];
+}
+
+- (void)fetchAllServicesWithCompletion:(PPServiceArrayBlock)completion {
+    if (![self currentAdminCanReadServices]) {
+        [self completeArray:nil error:[self error:403 key:@"Service_Error_NoPermission"] completion:completion]; return;
     }
-    if (service.serviceOwnerID.length == 0) {
-        return kLang(@"Service_Error_OwnerRequired");
+    [self.collection getDocumentsWithSource:FIRFirestoreSourceServer completion:^(FIRQuerySnapshot *snapshot, NSError *error) {
+        [self completeArray:(error ? nil : [self models:snapshot.documents]) error:[self localizedReadError:error] completion:completion];
+    }];
+}
+
+- (void)fetchServiceByID:(NSString *)serviceID completion:(PPServiceModelBlock)completion {
+    if (![self currentAdminCanReadServices]) {
+        [self completeModel:nil error:[self error:403 key:@"Service_Error_NoPermission"] completion:completion]; return;
     }
-    if (service.price < 0) {
-        return kLang(@"Service_Error_InvalidPrice");
+    if (![self validID:serviceID]) {
+        [self completeModel:nil error:[self error:400 key:@"Service_Error_MissingID"] completion:completion]; return;
     }
-    if (service.category.length == 0 && service.categoryID.length == 0) {
-        return kLang(@"Service_Error_CategoryRequired");
+    [[self.collection documentWithPath:serviceID] getDocumentWithSource:FIRFirestoreSourceServer completion:^(FIRDocumentSnapshot *snapshot, NSError *error) {
+        if (error || !snapshot.exists) {
+            [self completeModel:nil error:[self localizedReadError:error] ?: [self error:404 key:@"Service_Error_NotFound"] completion:completion]; return;
+        }
+        [self completeModel:[PPServiceModel fromDictionary:snapshot.data withID:serviceID] error:nil completion:completion];
+    }];
+}
+
+#pragma mark - Content writes
+
+- (void)addService:(PPServiceModel *)service image:(UIImage *)image auditNote:(NSString *)auditNote completion:(PPServiceVoidBlock)completion {
+    if (![self requireManage:completion]) return;
+    PPServiceModel *candidate = [service copy];
+    candidate.serviceID = service.serviceID.length ? service.serviceID : NSUUID.UUID.UUIDString;
+    // Keep the ID stable for a repeat of the same editor submission.
+    service.serviceID = candidate.serviceID;
+    if (!candidate.serviceOwnerID.length) candidate.serviceOwnerID = FIRAuth.auth.currentUser.uid ?: @"";
+    if (![self validateContent:candidate completion:completion]) return;
+    [self resolveImage:image candidate:candidate completion:^(NSError *error) {
+        if (error) { [self completeVoid:error completion:completion]; return; }
+        [self execute:@"create" serviceID:candidate.serviceID payload:[self contentPayload:candidate]
+              expected:nil auditNote:auditNote completion:completion];
+    }];
+}
+
+- (void)updateService:(PPServiceModel *)service image:(UIImage *)image auditNote:(NSString *)auditNote completion:(PPServiceVoidBlock)completion {
+    if (![self requireManage:completion] || ![self validateContent:service completion:completion]) return;
+    PPServiceModel *candidate = [service copy];
+    [self fetchServiceByID:service.serviceID completion:^(PPServiceModel *current, NSError *error) {
+        if (error) { [self completeVoid:error completion:completion]; return; }
+        // The editor carries its original revision/timestamp. A fresh read
+        // provides compatibility only for legacy callers that omit a baseline.
+        PPServiceModel *expected = service.updatedAt ? service : current;
+        [self resolveImage:image candidate:candidate completion:^(NSError *uploadError) {
+            if (uploadError) { [self completeVoid:uploadError completion:completion]; return; }
+            [self execute:@"edit" serviceID:candidate.serviceID payload:[self contentPayload:candidate]
+                  expected:expected auditNote:auditNote completion:completion];
+        }];
+    }];
+}
+
+#pragma mark - Administrative decision writes
+
+- (void)updateAdministrativeStateForService:(PPServiceModel *)service auditNote:(NSString *)auditNote completion:(PPServiceVoidBlock)completion {
+    if (![self requireManage:completion]) return;
+    [self fetchServiceByID:service.serviceID completion:^(PPServiceModel *expected, NSError *error) {
+        if (error) { [self completeVoid:error completion:completion]; return; }
+        [self updateAdministrativeStateForService:service expectedService:expected auditNote:auditNote completion:completion];
+    }];
+}
+
+- (void)updateAdministrativeStateForService:(PPServiceModel *)service expectedService:(PPServiceModel *)expected auditNote:(NSString *)auditNote completion:(PPServiceVoidBlock)completion {
+    if (![self requireManage:completion]) return;
+    if (![service.serviceID isEqualToString:expected.serviceID]) {
+        [self completeVoid:[self error:400 key:@"Service_Error_MissingID"] completion:completion]; return;
     }
     if (service.subscriptionStartDate && service.subscriptionEndDate &&
         [service.subscriptionStartDate compare:service.subscriptionEndDate] == NSOrderedDescending) {
-        return kLang(@"Service_Error_SubscriptionDateOrder");
+        [self completeVoid:[self error:400 key:@"Service_Error_SubscriptionDateOrder"] completion:completion]; return;
     }
-    if (creating && service.serviceID.length == 0) {
-        return kLang(@"Service_Error_MissingID");
-    }
-    return @"";
+    [self execute:@"moderate" serviceID:service.serviceID payload:[self.class administrativePayload:service]
+          expected:expected auditNote:auditNote completion:completion];
 }
 
-- (void)pp_updateStateForServiceID:(NSString *)serviceID
-                            action:(NSString *)action
-                              note:(NSString *)note
-                        patchBlock:(NSDictionary * (^)(NSMutableDictionary *after))patchBlock
-                        completion:(PPServiceVoidBlock)completion {
-    if (![self currentAdminCanManageServices]) {
-        [self pp_completeVoid:[self pp_errorWithCode:403 message:kLang(@"Service_Error_NoPermission")] completion:completion];
-        return;
+- (void)setDisabled:(BOOL)disabled forServiceID:(NSString *)serviceID auditNote:(NSString *)auditNote completion:(PPServiceVoidBlock)completion {
+    [self changeState:@{@"isDisabled": @(disabled)} serviceID:serviceID auditNote:auditNote completion:completion];
+}
+- (void)setBlocked:(BOOL)blocked forServiceID:(NSString *)serviceID auditNote:(NSString *)auditNote completion:(PPServiceVoidBlock)completion {
+    [self changeState:@{@"isBlocked": @(blocked)} serviceID:serviceID auditNote:auditNote completion:completion];
+}
+- (void)archiveServiceID:(NSString *)serviceID auditNote:(NSString *)auditNote completion:(PPServiceVoidBlock)completion {
+    [self changeState:@{@"isDeleted": @YES} serviceID:serviceID auditNote:auditNote completion:completion];
+}
+- (void)restoreServiceID:(NSString *)serviceID auditNote:(NSString *)auditNote completion:(PPServiceVoidBlock)completion {
+    [self changeState:@{@"isDeleted": @NO} serviceID:serviceID auditNote:auditNote completion:completion];
+}
+- (void)changeState:(NSDictionary *)payload serviceID:(NSString *)serviceID auditNote:(NSString *)auditNote completion:(PPServiceVoidBlock)completion {
+    if (![self requireManage:completion]) return;
+    [self fetchServiceByID:serviceID completion:^(PPServiceModel *expected, NSError *error) {
+        if (error) { [self completeVoid:error completion:completion]; return; }
+        [self execute:@"state" serviceID:serviceID payload:payload expected:expected auditNote:auditNote completion:completion];
+    }];
+}
+- (void)deleteServicePermanently:(NSString *)serviceID auditNote:(NSString *)auditNote completion:(PPServiceVoidBlock)completion {
+    if (![self requireManage:completion]) return;
+    [self fetchServiceByID:serviceID completion:^(PPServiceModel *expected, NSError *error) {
+        if (error) { [self completeVoid:error completion:completion]; return; }
+        [self execute:@"delete" serviceID:serviceID payload:@{} expected:expected auditNote:auditNote completion:completion];
+    }];
+}
+
+#pragma mark - Callable command and server observation
+
+- (void)execute:(NSString *)operation serviceID:(NSString *)serviceID payload:(NSDictionary *)payload expected:(PPServiceModel *)expected auditNote:(NSString *)auditNote completion:(PPServiceVoidBlock)completion {
+    if (![self requireManage:completion]) return;
+    if (![self validID:serviceID]) { [self completeVoid:[self error:400 key:@"Service_Error_MissingID"] completion:completion]; return; }
+    NSNumber *revision = [expected.extraFields[@"adminRevision"] isKindOfClass:NSNumber.class] ? expected.extraFields[@"adminRevision"] : @0;
+    NSMutableDictionary *envelope = [@{
+        @"operation": operation, @"serviceID": serviceID, @"payload": payload,
+        @"expectedRevision": revision, @"expectedUpdatedAtMs": [self.class milliseconds:expected.updatedAt],
+        @"auditNote": auditNote ?: @""
+    } mutableCopy];
+    if ([operation isEqualToString:@"moderate"]) {
+        envelope[@"expectedAdminState"] = [self.class administrativePayload:expected];
+        NSMutableDictionary *reviewed = [[self contentPayload:expected] mutableCopy];
+        [reviewed removeObjectForKey:@"extras"];
+        [reviewed removeObjectForKey:@"searchTitle"];
+        reviewed[@"timestamp"] = [self.class milliseconds:expected.timestamp];
+        envelope[@"expectedContentState"] = reviewed;
     }
-
-    [self pp_fetchExistingDocumentForServiceID:serviceID completion:^(FIRDocumentReference * _Nullable docRef, NSDictionary * _Nullable beforeData, NSError * _Nullable error) {
-        if (error || !docRef) {
-            [self pp_completeVoid:error completion:completion];
-            return;
+    // Identical draft, baseline and actor produce the same command on retry.
+    // The server binds this identity to the exact payload and persists its receipt.
+    NSDictionary *wire = [self.class wireValue:envelope];
+    NSError *jsonError = nil;
+    NSData *data = [NSJSONSerialization dataWithJSONObject:wire options:NSJSONWritingSortedKeys error:&jsonError];
+    if (!data) { [self completeVoid:[self error:400 key:@"Service_Error_FlagsJSONInvalid"] completion:completion]; return; }
+    NSMutableData *identity = [NSMutableData dataWithData:[(FIRAuth.auth.currentUser.uid ?: @"") dataUsingEncoding:NSUTF8StringEncoding]];
+    [identity appendData:data];
+    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256(identity.bytes, (CC_LONG)identity.length, digest);
+    NSMutableString *commandID = [NSMutableString new];
+    for (NSUInteger index = 0; index < CC_SHA256_DIGEST_LENGTH; index++) [commandID appendFormat:@"%02x", digest[index]];
+    NSMutableDictionary *request = [wire mutableCopy];
+    request[@"commandID"] = commandID;
+    FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"adminServiceCommand"];
+    [callable callWithObject:request completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (error) { [self completeVoid:[self localizedCommandError:error] completion:completion]; return; }
+        NSDictionary *receipt = [result.data isKindOfClass:NSDictionary.class] ? result.data : @{};
+        if (![receipt[@"ok"] boolValue] || ![receipt[@"serviceID"] isEqual:serviceID] || ![receipt[@"commandID"] isEqual:commandID]) {
+            [self completeVoid:[self error:503 key:@"Service_Workspace_AwaitingConfirmation"] completion:completion]; return;
         }
-
-        NSMutableDictionary *after = [PPSafeDict(beforeData) mutableCopy];
-        NSDictionary *patch = patchBlock ? patchBlock(after) : @{};
-        FIRWriteBatch *batch = [self.db batch];
-        [batch setData:patch forDocument:docRef merge:YES];
-        [self pp_appendAuditWithBatch:batch
-                               action:action
-                            serviceID:PPSafeString(serviceID)
-                               before:beforeData
-                                after:after
-                                 note:note];
-        [batch commitWithCompletion:^(NSError * _Nullable commitError) {
-            [self pp_completeVoid:commitError completion:completion];
+        [[self.collection documentWithPath:serviceID] getDocumentWithSource:FIRFirestoreSourceServer completion:^(FIRDocumentSnapshot *snapshot, NSError *readError) {
+            BOOL deleted = [operation isEqualToString:@"delete"];
+            BOOL confirmed = !readError && (deleted ? !snapshot.exists :
+                (snapshot.exists && [snapshot.data[@"adminLastCommandID"] isEqual:commandID] &&
+                 [snapshot.data[@"adminRevision"] isEqual:receipt[@"revision"]]));
+            [self completeVoid:(confirmed ? nil : [self error:409 key:@"Service_Workspace_AwaitingConfirmation"]) completion:completion];
         }];
     }];
 }
 
-- (void)pp_appendAuditWithBatch:(FIRWriteBatch *)batch
-                         action:(NSString *)action
-                      serviceID:(NSString *)serviceID
-                         before:(NSDictionary *)before
-                          after:(NSDictionary *)after
-                           note:(NSString *)note {
-    FIRDocumentReference *auditRef = [[self.db collectionWithPath:kPPAdminAuditCollection] documentWithAutoID];
-    NSDictionary *payload = @{
-        @"auditId": PPSafeString(auditRef.documentID),
-        @"area": @"services",
-        @"action": PPSafeString(action),
-        @"entityType": @"service",
-        @"entityId": PPSafeString(serviceID),
-        @"serviceId": PPSafeString(serviceID),
-        @"adminUid": [self pp_currentAdminUID],
-        @"adminName": [self pp_currentAdminName],
-        @"note": PPSafeString(note),
-        @"before": PPSafeDict(before),
-        @"after": PPSafeDict(after),
-        @"createdAt": [NSDate date]
++ (NSDictionary *)administrativePayload:(PPServiceModel *)service {
+    return @{
+        @"isDisabled": @(service.isDisabled), @"isBlocked": @(service.isBlocked),
+        @"verificationStatus": service.verificationStatus ?: @"", @"subscriptionType": service.subscriptionType ?: @"",
+        @"subscriptionPlan": service.subscriptionPlan ?: @"", @"subscriptionStatus": service.subscriptionStatus ?: @"",
+        @"subscriptionActive": @(service.subscriptionActive),
+        @"subscriptionStartDate": [self milliseconds:service.subscriptionStartDate],
+        @"subscriptionEndDate": [self milliseconds:service.subscriptionEndDate], @"serviceFlags": service.serviceFlags ?: @{}
     };
-    [batch setData:payload forDocument:auditRef];
 }
 
-- (void)pp_uploadImage:(UIImage *)image
-              serviceID:(NSString *)serviceID
-             completion:(void (^)(NSString *imageURL, NSError * _Nullable error))completion {
-    NSData *imageData = UIImageJPEGRepresentation(image, 0.85);
-    if (!imageData) {
-        if (completion) {
-            completion(@"", [self pp_errorWithCode:400 message:kLang(@"Service_Error_ImageUpload")]);
-        }
-        return;
++ (BOOL)administrativeState:(PPServiceModel *)observed matchesService:(PPServiceModel *)candidate {
+    return [[self wireValue:[self administrativePayload:observed]] isEqual:[self wireValue:[self administrativePayload:candidate]]];
+}
+
+- (NSDictionary *)contentPayload:(PPServiceModel *)service {
+    NSMutableDictionary *payload = [NSMutableDictionary new];
+    NSDictionary *source = service.toDictionary;
+    for (NSString *key in @[@"title", @"searchTitle", @"description", @"price", @"category", @"categoryID", @"petMainKindID", @"availableDate", @"timestamp", @"imageURL", @"serviceOwnerID", @"type", @"blurHash"]) {
+        payload[key] = source[key] ?: NSNull.null;
     }
+    payload[@"searchTitle"] = [ArabicNormalizer normalize:service.title ?: @""] ?: @"";
+    NSMutableDictionary *extras = [service.extraFields mutableCopy] ?: [NSMutableDictionary new];
+    [extras removeObjectsForKeys:@[@"adminRevision", @"adminLastCommandID", @"createdBy", @"updatedBy"]];
+    payload[@"extras"] = extras;
+    return [self.class wireValue:payload];
+}
 
-    NSString *path = [NSString stringWithFormat:@"services/%@.jpg", serviceID];
-    FIRStorageReference *reference = [[[FIRStorage storage] reference] child:path];
++ (id)milliseconds:(NSDate *)date { return date ? @(llround(date.timeIntervalSince1970 * 1000.0)) : NSNull.null; }
 
-    FIRStorageMetadata *meta = [[FIRStorageMetadata alloc] init];
-    meta.contentType = @"image/jpeg";
-    meta.customMetadata = @{
-        @"uploaded_by": [self pp_currentAdminUID],
-        @"entity_type": @"service",
-        @"entity_id": serviceID ?: @""
-    };
++ (id)wireValue:(id)value {
+    if ([value isKindOfClass:NSDate.class]) return [self milliseconds:value];
+    if ([value isKindOfClass:FIRTimestamp.class]) return [self milliseconds:[value dateValue]];
+    if ([value isKindOfClass:NSDictionary.class]) {
+        NSMutableDictionary *result = [NSMutableDictionary new];
+        for (NSString *key in value) result[key] = [self wireValue:value[key]];
+        return result;
+    }
+    if ([value isKindOfClass:NSArray.class]) {
+        NSMutableArray *result = [NSMutableArray new];
+        for (id item in value) [result addObject:[self wireValue:item]];
+        return result;
+    }
+    return value ?: NSNull.null;
+}
 
-    [reference putData:imageData metadata:meta completion:^(FIRStorageMetadata * _Nullable metadata, NSError * _Nullable error) {
-        if (error) {
-            if (completion) {
-                completion(@"", error);
-            }
-            return;
-        }
-        [reference downloadURLWithCompletion:^(NSURL * _Nullable URL, NSError * _Nullable downloadError) {
-            if (completion) {
-                completion(PPSafeString(URL.absoluteString), downloadError);
-            }
+#pragma mark - Media and validation
+
+- (void)resolveImage:(UIImage *)image candidate:(PPServiceModel *)candidate completion:(PPServiceVoidBlock)completion {
+    if (!image) { completion(nil); return; }
+    NSData *data = UIImageJPEGRepresentation(image, 0.85);
+    if (!data) { completion([self error:400 key:@"Service_Error_ImageUpload"]); return; }
+    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256(data.bytes, (CC_LONG)data.length, digest);
+    NSMutableString *imageHash = [NSMutableString new];
+    for (NSUInteger index = 0; index < CC_SHA256_DIGEST_LENGTH; index++) [imageHash appendFormat:@"%02x", digest[index]];
+    NSString *cacheKey = [NSString stringWithFormat:@"%@/%@/%@", FIRAuth.auth.currentUser.uid ?: @"", candidate.serviceID, imageHash];
+    NSString *existingURL = self.uploadedMedia[cacheKey];
+    if (existingURL) { candidate.imageURL = existingURL; completion(nil); return; }
+    // A stale edit must not replace the image still referenced by the current
+    // service. A repeat of identical media reuses this staged upload URL.
+    NSString *path = [NSString stringWithFormat:@"services/%@/%@.jpg", candidate.serviceID, NSUUID.UUID.UUIDString];
+    FIRStorageReference *reference = [FIRStorage.storage.reference child:path];
+    FIRStorageMetadata *metadata = [FIRStorageMetadata new];
+    metadata.contentType = @"image/jpeg";
+    metadata.customMetadata = @{@"uploaded_by": FIRAuth.auth.currentUser.uid ?: @"", @"entity_type": @"service", @"entity_id": candidate.serviceID};
+    [reference putData:data metadata:metadata completion:^(FIRStorageMetadata *result, NSError *error) {
+        if (error) { completion([self error:400 key:@"Service_Error_ImageUpload"]); return; }
+        [reference downloadURLWithCompletion:^(NSURL *url, NSError *urlError) {
+            if (urlError || !url) { completion([self error:400 key:@"Service_Error_ImageUpload"]); return; }
+            dispatch_async(dispatch_get_main_queue(), ^{
+                candidate.imageURL = url.absoluteString;
+                self.uploadedMedia[cacheKey] = url.absoluteString;
+                completion(nil);
+            });
         }];
     }];
 }
 
-- (NSError *)pp_errorWithCode:(NSInteger)code message:(NSString *)message {
-    return [NSError errorWithDomain:kPPServiceManagerErrorDomain
-                               code:code
-                           userInfo:@{NSLocalizedDescriptionKey: PPSafeString(message).length > 0 ? message : kLang(@"Service_Error_Generic")}];
+- (BOOL)validID:(NSString *)value {
+    return value.length > 0 && value.length <= 200 && ![value containsString:@"/"] &&
+        ![value isEqualToString:@"."] && ![value isEqualToString:@".."];
+}
+- (BOOL)requireManage:(PPServiceVoidBlock)completion {
+    if ([self currentAdminCanManageServices]) return YES;
+    [self completeVoid:[self error:403 key:@"Service_Error_NoPermission"] completion:completion]; return NO;
+}
+- (BOOL)validateContent:(PPServiceModel *)service completion:(PPServiceVoidBlock)completion {
+    NSString *key = nil;
+    if (!service.title.length) key = @"Service_Error_TitleRequired";
+    else if (!service.serviceDescriptionText.length) key = @"Service_Error_DescriptionRequired";
+    else if (!service.serviceOwnerID.length) key = @"Service_Error_OwnerRequired";
+    else if (!isfinite(service.price) || service.price < 0) key = @"Service_Error_InvalidPrice";
+    else if (!service.category.length && !service.categoryID.length) key = @"Service_Error_CategoryRequired";
+    if (!key) return YES;
+    [self completeVoid:[self error:400 key:key] completion:completion]; return NO;
 }
 
-- (NSString *)pp_currentAdminUID {
-    return PPSafeString([FIRAuth auth].currentUser.uid);
-}
-
-- (NSString *)pp_currentAdminName {
-    UserModel *currentUser = [UserManager shared].currentUser;
-    NSString *name = [currentUser respondsToSelector:@selector(PPBestDisplayName)] ? [currentUser PPBestDisplayName] : currentUser.displayName;
-    if (PPSafeString(name).length > 0) {
-        return name;
+- (NSError *)localizedReadError:(NSError *)source {
+    if (!source) return nil;
+    if ([source.domain isEqualToString:FIRFirestoreErrorDomain] &&
+        (source.code == FIRFirestoreErrorCodePermissionDenied || source.code == FIRFirestoreErrorCodeUnauthenticated)) {
+        return [self error:403 key:@"Service_Error_NoPermission"];
     }
-    return [self pp_currentAdminUID];
+    return [NSError errorWithDomain:kPPServiceManagerErrorDomain code:source.code
+                          userInfo:@{NSLocalizedDescriptionKey: kLang(@"Service_Workspace_ReadFailure"), NSUnderlyingErrorKey: source}];
 }
 
-- (void)pp_completeVoid:(NSError *)error completion:(PPServiceVoidBlock)completion {
-    if (!completion) {
-        return;
+- (NSError *)localizedCommandError:(NSError *)source {
+    if (![source.domain isEqualToString:@"com.firebase.functions"] &&
+        ![source.domain isEqualToString:FIRFunctionsErrorDomain]) {
+        return source;
     }
-    dispatch_async(dispatch_get_main_queue(), ^{
-        completion(error);
-    });
+    switch (source.code) {
+        case FIRFunctionsErrorCodePermissionDenied:
+        case FIRFunctionsErrorCodeUnauthenticated: return [self error:403 key:@"Service_Error_NoPermission"];
+        case FIRFunctionsErrorCodeAborted:
+        case FIRFunctionsErrorCodeAlreadyExists: return [self error:409 key:@"Service_Review_Conflict"];
+        case FIRFunctionsErrorCodeNotFound: return [self error:404 key:@"Service_Error_CommandUnavailable"];
+        case FIRFunctionsErrorCodeInvalidArgument: return [self error:400 key:@"Service_Error_CommandInvalid"];
+        case FIRFunctionsErrorCodeUnavailable:
+        case FIRFunctionsErrorCodeDeadlineExceeded: return [self error:503 key:@"Service_Error_CommandRetry"];
+        default: return [self error:500 key:@"Service_Error_CommandFailed"];
+    }
 }
-
-- (void)pp_completeArray:(NSArray<PPServiceModel *> *)services error:(NSError *)error completion:(PPServiceArrayBlock)completion {
-    if (!completion) {
-        return;
-    }
-    dispatch_async(dispatch_get_main_queue(), ^{
-        completion(services, error);
-    });
+- (NSError *)error:(NSInteger)code key:(NSString *)key {
+    return [NSError errorWithDomain:kPPServiceManagerErrorDomain code:code userInfo:@{NSLocalizedDescriptionKey: kLang(key)}];
 }
-
-- (void)pp_completeModel:(PPServiceModel *)service error:(NSError *)error completion:(PPServiceModelBlock)completion {
-    if (!completion) {
-        return;
-    }
-    dispatch_async(dispatch_get_main_queue(), ^{
-        completion(service, error);
-    });
+- (void)completeVoid:(NSError *)error completion:(PPServiceVoidBlock)completion {
+    if (!completion) return;
+    if (NSThread.isMainThread) completion(error); else dispatch_async(dispatch_get_main_queue(), ^{ completion(error); });
+}
+- (void)completeArray:(NSArray<PPServiceModel *> *)services error:(NSError *)error completion:(PPServiceArrayBlock)completion {
+    if (!completion) return;
+    if (NSThread.isMainThread) completion(services, error); else dispatch_async(dispatch_get_main_queue(), ^{ completion(services, error); });
+}
+- (void)completeModel:(PPServiceModel *)service error:(NSError *)error completion:(PPServiceModelBlock)completion {
+    if (!completion) return;
+    if (NSThread.isMainThread) completion(service, error); else dispatch_async(dispatch_get_main_queue(), ^{ completion(service, error); });
 }
 
 @end
