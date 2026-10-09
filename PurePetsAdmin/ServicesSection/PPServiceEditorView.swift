@@ -12,6 +12,7 @@ import PhotosUI
 import UIKit
 import Firebase
 import FirebaseAuth
+import FirebaseFirestore
 
 // MARK: - Species Preset Model
 
@@ -22,12 +23,51 @@ public struct PPServiceSpeciesPreset: Identifiable, Hashable, Sendable {
     public let iconName: String
     public let badgeColor: Color
 
-    public static let presets: [PPServiceSpeciesPreset] = [
-        PPServiceSpeciesPreset(id: 0, nameAr: "جميع الحيوانات", nameEn: "All Animals", iconName: "pawprint.fill", badgeColor: Color(uiColor: .ppPrimary)),
-        PPServiceSpeciesPreset(id: 1, nameAr: "كلاب", nameEn: "Dogs", iconName: "dog.fill", badgeColor: Color.orange),
-        PPServiceSpeciesPreset(id: 2, nameAr: "قطط", nameEn: "Cats", iconName: "cat.fill", badgeColor: Color.purple),
-        PPServiceSpeciesPreset(id: 3, nameAr: "طيور وصقور", nameEn: "Birds & Falcons", iconName: "bird.fill", badgeColor: Color.blue),
-        PPServiceSpeciesPreset(id: 4, nameAr: "خيول", nameEn: "Horses", iconName: "hare.fill", badgeColor: Color.brown)
+    public static let canonicalPresets: [PPServiceSpeciesPreset] = [
+        PPServiceSpeciesPreset(id: 6, nameAr: "كلاب", nameEn: "Dogs", iconName: "dog.fill", badgeColor: Color.orange),
+        PPServiceSpeciesPreset(id: 5, nameAr: "قطط", nameEn: "Cats", iconName: "cat.fill", badgeColor: Color.purple),
+        PPServiceSpeciesPreset(id: 1, nameAr: "طيور", nameEn: "Birds", iconName: "bird.fill", badgeColor: Color.blue),
+        PPServiceSpeciesPreset(id: 3, nameAr: "خيول", nameEn: "Horses", iconName: "hare.fill", badgeColor: Color.brown),
+        PPServiceSpeciesPreset(id: 11, nameAr: "صقور", nameEn: "Falcons", iconName: "shield.fill", badgeColor: Color.teal),
+        PPServiceSpeciesPreset(id: 2, nameAr: "إبل", nameEn: "Camels", iconName: "sun.max.fill", badgeColor: Color(red: 0.85, green: 0.55, blue: 0.2)),
+        PPServiceSpeciesPreset(id: 4, nameAr: "أغنام", nameEn: "Sheep", iconName: "leaf.fill", badgeColor: Color.green),
+        PPServiceSpeciesPreset(id: 7, nameAr: "أسماك", nameEn: "Fish", iconName: "fish.fill", badgeColor: Color.cyan),
+        PPServiceSpeciesPreset(id: 8, nameAr: "أرانب", nameEn: "Rabbits", iconName: "pawprint.fill", badgeColor: Color.pink),
+        PPServiceSpeciesPreset(id: 13, nameAr: "قوارض", nameEn: "Rodents", iconName: "circle.grid.2x1.fill", badgeColor: Color.indigo),
+        PPServiceSpeciesPreset(id: 10, nameAr: "غزلان", nameEn: "Gazelles", iconName: "sparkles", badgeColor: Color.mint),
+        PPServiceSpeciesPreset(id: 9, nameAr: "قرود", nameEn: "Monkeys", iconName: "face.smiling", badgeColor: Color.yellow)
+    ]
+
+    public static var presets: [PPServiceSpeciesPreset] {
+        return [
+            PPServiceSpeciesPreset(id: 0, nameAr: "جميع الحيوانات", nameEn: "All Animals", iconName: "pawprint.fill", badgeColor: Color(uiColor: .ppPrimary))
+        ] + canonicalPresets
+    }
+
+    public func localizedName() -> String {
+        return Language.isRTL() ? nameAr : nameEn
+    }
+}
+
+// MARK: - Curated Service Specialty Preset
+
+public struct PPServiceSpecialtyPreset: Identifiable, Hashable, Sendable {
+    public let id: String
+    public let nameAr: String
+    public let nameEn: String
+    public let iconName: String
+    public let color: Color
+
+    public static let curated: [PPServiceSpecialtyPreset] = [
+        PPServiceSpecialtyPreset(id: "training", nameAr: "تدريب وتعديل سلوك", nameEn: "Training & Behavior", iconName: "graduationcap.fill", color: .indigo),
+        PPServiceSpecialtyPreset(id: "grooming", nameAr: "حلاقة وعناية متكاملة", nameEn: "Full Grooming & Spa", iconName: "scissors", color: .purple),
+        PPServiceSpecialtyPreset(id: "bathing", nameAr: "استحمام وتنظيف", nameEn: "Bathing & Hygiene", iconName: "drop.fill", color: .cyan),
+        PPServiceSpecialtyPreset(id: "hotel", nameAr: "فندقة واستضافة", nameEn: "Boarding & Hotel", iconName: "house.fill", color: .orange),
+        PPServiceSpecialtyPreset(id: "walking", nameAr: "مشاوير وتمشية", nameEn: "Walking & Exercise", iconName: "figure.walk", color: .green),
+        PPServiceSpecialtyPreset(id: "vet_care", nameAr: "رعاية وفحص صحي", nameEn: "Health Check & Care", iconName: "cross.case.fill", color: .red),
+        PPServiceSpecialtyPreset(id: "nails_ears", nameAr: "قص أظافر وتنظيف أذن", nameEn: "Nails & Ear Cleaning", iconName: "hand.raised.fill", color: .pink),
+        PPServiceSpecialtyPreset(id: "taxi", nameAr: "توصيل واستلام", nameEn: "Pet Taxi & Transport", iconName: "car.fill", color: .blue),
+        PPServiceSpecialtyPreset(id: "nutrition", nameAr: "تغذية واستشارات", nameEn: "Diet & Nutrition", iconName: "leaf.fill", color: .mint)
     ]
 
     public func localizedName() -> String {
@@ -66,8 +106,12 @@ public final class PPServiceEditorViewModel: ObservableObject {
     @Published public var priceText: String = ""
     @Published public var serviceType: PPServiceType = .training
 
-    // Classification & Taxonomy
-    @Published public var selectedSpeciesID: Int = 0
+    // Classification & Taxonomy (Apex Multi-Category Engine)
+    @Published public var isAllCategories: Bool = false
+    @Published public var selectedSpeciesIDs: Set<Int> = []
+    @Published public var selectedCategories: [String] = []
+    @Published public var customCategoryInput: String = ""
+    @Published public var selectedSpeciesID: Int = 0 // backward compatibility
     @Published public var category: String = ""
     @Published public var categoryID: String = ""
 
@@ -109,9 +153,43 @@ public final class PPServiceEditorViewModel: ObservableObject {
             self.serviceDescription = s.serviceDescriptionText ?? ""
             self.priceText = s.price > 0 ? String(format: "%.2f", s.price) : ""
             self.serviceType = s.type
-            self.selectedSpeciesID = Int(s.petMainKindID)
-            self.category = s.category ?? ""
+            
+            // Decode multi-category species
+            self.isAllCategories = s.isAllCategories || (s.petMainKindID == 0 && (s.petMainCategoryIDs == nil || s.petMainCategoryIDs?.isEmpty == true))
+            var speciesSet = Set<Int>()
+            if let ids = s.petMainCategoryIDs, !ids.isEmpty {
+                for idNum in ids {
+                    let val = idNum.intValue
+                    if val > 0 { speciesSet.insert(val) }
+                }
+            } else if s.petMainKindID > 0 {
+                speciesSet.insert(Int(s.petMainKindID))
+            }
+            self.selectedSpeciesIDs = speciesSet
+            self.selectedSpeciesID = speciesSet.sorted().first ?? Int(s.petMainKindID)
+
+            // Decode multi-category specialties
+            var cats: [String] = []
+            if let targetCats = s.targetCategories {
+                for cat in targetCats {
+                    let trimmed = cat.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty { cats.append(trimmed) }
+                }
+            }
+            if cats.isEmpty, let modelCats = s.categories {
+                for cat in modelCats {
+                    let trimmed = cat.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty { cats.append(trimmed) }
+                }
+            }
+            if cats.isEmpty, let singleCat = s.category {
+                let trimmed = singleCat.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { cats.append(trimmed) }
+            }
+            self.selectedCategories = cats
+            self.category = cats.first ?? (s.category ?? "")
             self.categoryID = s.categoryID ?? ""
+
             if let ad = s.availableDate {
                 self.hasAvailableDate = true
                 self.availableDate = ad
@@ -124,9 +202,118 @@ public final class PPServiceEditorViewModel: ObservableObject {
         } else {
             self.ownerID = Auth.auth().currentUser?.uid ?? ""
             self.creationDate = Date()
-            self.category = Language.isRTL() ? "خدمات عامة" : "General Services"
-            self.categoryID = "general"
+            self.isAllCategories = true
+            self.selectedSpeciesIDs = []
+            self.selectedSpeciesID = 0
+            self.selectedCategories = [Language.isRTL() ? "تدريب وتعديل سلوك" : "Training & Behavior"]
+            self.category = self.selectedCategories.first ?? ""
+            self.categoryID = "training"
         }
+    }
+
+    public var targetSpeciesSummary: String {
+        if isAllCategories {
+            return Language.isRTL() ? "جميع أنواع الحيوانات (شامل)" : "All Animals (Universal Scope)"
+        }
+        let matched = PPServiceSpeciesPreset.canonicalPresets.filter { selectedSpeciesIDs.contains($0.id) }
+        if matched.isEmpty {
+            return Language.isRTL() ? "جميع الحيوانات" : "All Animals"
+        }
+        return matched.map { $0.localizedName() }.joined(separator: " • ")
+    }
+
+    public var targetCategoriesSummary: String {
+        let clean = selectedCategories.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        if clean.isEmpty {
+            return category.isEmpty ? (Language.isRTL() ? "خدمات عامة" : "General Services") : category
+        }
+        return clean.joined(separator: " • ")
+    }
+
+    public func toggleAllCategories() {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            isAllCategories.toggle()
+            if isAllCategories {
+                // In universal mode, specific species are covered globally
+            } else if selectedSpeciesIDs.isEmpty {
+                selectedSpeciesIDs = [6, 5] // default dogs and cats
+                selectedSpeciesID = 6
+            }
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    public func toggleSpecies(_ id: Int) {
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+            if isAllCategories {
+                isAllCategories = false
+            }
+            if selectedSpeciesIDs.contains(id) {
+                selectedSpeciesIDs.remove(id)
+                if selectedSpeciesIDs.isEmpty {
+                    isAllCategories = true
+                }
+            } else {
+                selectedSpeciesIDs.insert(id)
+            }
+            selectedSpeciesID = selectedSpeciesIDs.sorted().first ?? 0
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    public func selectAllSpecies() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            isAllCategories = true
+            selectedSpeciesIDs.removeAll()
+            selectedSpeciesID = 0
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    public func toggleCategory(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+            if let idx = selectedCategories.firstIndex(of: trimmed) {
+                if selectedCategories.count > 1 {
+                    selectedCategories.remove(at: idx)
+                }
+            } else {
+                selectedCategories.append(trimmed)
+            }
+            category = selectedCategories.first ?? (Language.isRTL() ? "خدمات عامة" : "General Services")
+            categoryID = category.lowercased().replacingOccurrences(of: " ", with: "_")
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    public func addCustomCategory() {
+        let trimmed = customCategoryInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if !selectedCategories.contains(trimmed) {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                selectedCategories.append(trimmed)
+                category = selectedCategories.first ?? trimmed
+                categoryID = category.lowercased().replacingOccurrences(of: " ", with: "_")
+                customCategoryInput = ""
+            }
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        } else {
+            customCategoryInput = ""
+        }
+    }
+
+    public func removeCategory(_ name: String) {
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+            selectedCategories.removeAll(where: { $0 == name })
+            if selectedCategories.isEmpty {
+                let fallback = Language.isRTL() ? "خدمات عامة" : "General Services"
+                selectedCategories.append(fallback)
+            }
+            category = selectedCategories.first ?? ""
+            categoryID = category.lowercased().replacingOccurrences(of: " ", with: "_")
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     public var parsedPrice: Double {
@@ -198,9 +385,25 @@ public final class PPServiceEditorViewModel: ObservableObject {
         model.serviceDescriptionText = serviceDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         model.price = parsedPrice
         model.type = serviceType
-        model.category = category.trimmingCharacters(in: .whitespacesAndNewlines)
-        model.categoryID = categoryID.trimmingCharacters(in: .whitespacesAndNewlines)
-        model.petMainKindID = selectedSpeciesID
+        model.isAllCategories = isAllCategories
+        if isAllCategories {
+            model.petMainCategoryIDs = [0]
+            model.petMainKindID = 0
+            selectedSpeciesID = 0
+        } else {
+            let sortedSpecies = Array(selectedSpeciesIDs).sorted()
+            model.petMainCategoryIDs = sortedSpecies.map { NSNumber(value: $0) }
+            model.petMainKindID = sortedSpecies.first ?? 0
+            selectedSpeciesID = model.petMainKindID
+        }
+
+        let cleanCats = selectedCategories.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        let primaryCat = cleanCats.first ?? (Language.isRTL() ? "خدمات عامة" : "General Services")
+        model.categories = cleanCats
+        model.targetCategories = cleanCats
+        model.category = primaryCat
+        model.categoryID = primaryCat.lowercased().replacingOccurrences(of: " ", with: "_")
+        model.categoryIDs = cleanCats.map { $0.lowercased().replacingOccurrences(of: " ", with: "_") }
         model.availableDate = hasAvailableDate ? availableDate : nil
         model.timestamp = creationDate
         model.serviceOwnerID = ownerID.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -234,13 +437,71 @@ public final class PPServiceEditorViewModel: ObservableObject {
         }
     }
 
+    private static func sanitizeValueForJSON(_ value: Any) -> Any {
+        if let dict = value as? [String: Any] {
+            var sanitized: [String: Any] = [:]
+            for (k, v) in dict {
+                sanitized[k] = sanitizeValueForJSON(v)
+            }
+            return sanitized
+        } else if let arr = value as? [Any] {
+            return arr.map { sanitizeValueForJSON($0) }
+        } else if let date = value as? Date {
+            return ISO8601DateFormatter().string(from: date)
+        } else if let timestamp = value as? Timestamp {
+            return ISO8601DateFormatter().string(from: timestamp.dateValue())
+        } else if let geopoint = value as? GeoPoint {
+            return ["latitude": geopoint.latitude, "longitude": geopoint.longitude]
+        } else if let docRef = value as? DocumentReference {
+            return docRef.path
+        } else if let num = value as? NSNumber {
+            return num
+        } else if let str = value as? String {
+            return str
+        } else if let boolVal = value as? Bool {
+            return boolVal
+        } else if value is NSNull {
+            return NSNull()
+        } else {
+            let obj = value as AnyObject
+            if obj.responds(to: Selector(("dateValue"))),
+               let date = obj.perform(Selector(("dateValue")))?.takeUnretainedValue() as? Date {
+                return ISO8601DateFormatter().string(from: date)
+            }
+            if obj.responds(to: Selector(("path"))),
+               let path = obj.perform(Selector(("path")))?.takeUnretainedValue() as? String {
+                return path
+            }
+            return String(describing: value)
+        }
+    }
+
     private static func prettyJSON(from dict: [String: Any]?) -> String {
         guard let dict = dict, !dict.isEmpty else { return "" }
-        if let data = try? JSONSerialization.data(withJSONObject: dict, options: .prettyPrinted),
-           let str = String(data: data, encoding: .utf8) {
-            return str
+        let sanitized = sanitizeValueForJSON(dict)
+        guard JSONSerialization.isValidJSONObject(sanitized) else {
+            if let sanitizedDict = sanitized as? [String: Any] {
+                var safeDict: [String: Any] = [:]
+                for (k, v) in sanitizedDict {
+                    if JSONSerialization.isValidJSONObject([k: v]) {
+                        safeDict[k] = v
+                    } else {
+                        safeDict[k] = String(describing: v)
+                    }
+                }
+                if JSONSerialization.isValidJSONObject(safeDict),
+                   let data = try? JSONSerialization.data(withJSONObject: safeDict, options: [.prettyPrinted, .sortedKeys]),
+                   let str = String(data: data, encoding: .utf8) {
+                    return str
+                }
+            }
+            return ""
         }
-        return ""
+        guard let data = try? JSONSerialization.data(withJSONObject: sanitized, options: [.prettyPrinted, .sortedKeys]),
+              let str = String(data: data, encoding: .utf8) else {
+            return ""
+        }
+        return str
     }
 }
 
@@ -1162,85 +1423,411 @@ public struct PPServiceStepperButtonStyle: ButtonStyle {
 
 // MARK: - Species & Taxonomy Grid
 
+// MARK: - Apex Multi-Category & Species Taxonomy Studio
+
 public struct PPServiceSpeciesCard: View {
     @ObservedObject var viewModel: PPServiceEditorViewModel
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Label(
-                Language.get("Service_Classification_Species", alter: "الأنواع المستهدفة والتصنيف"),
-                systemImage: "square.grid.2x2.fill"
-            )
-            .font(AdminType.subheadlineBold)
-            .foregroundColor(AdminSurface.primaryText)
+        VStack(alignment: .leading, spacing: 18) {
+            // Header: Title + Telemetry Badges
+            HStack(alignment: .center, spacing: 10) {
+                Label {
+                    Text(Language.get("Service_Classification_Species", alter: "الاستهداف وتصنيف الخدمة"))
+                        .font(AdminType.subheadlineBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                } icon: {
+                    Image(systemName: "square.grid.3x3.fill")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [Color(uiColor: .ppPrimary), Color.teal],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                }
 
-            // Species Quick Selector Chips
-            VStack(alignment: .leading, spacing: 8) {
-                Text(Language.get("Service_Field_PetMainKindID", alter: "فئة الحيوان الأساسية"))
-                    .font(AdminType.captionBold)
-                    .foregroundColor(AdminSurface.secondaryText)
+                Spacer()
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(PPServiceSpeciesPreset.presets) { preset in
-                            let isSelected = (viewModel.selectedSpeciesID == preset.id)
-                            Button(action: {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                withAnimation(.spring(response: 0.28)) {
-                                    viewModel.selectedSpeciesID = preset.id
-                                }
-                            }) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: preset.iconName)
-                                        .font(.system(size: 13, weight: .bold))
-                                    Text(preset.localizedName())
-                                        .font(AdminType.captionBold)
-                                }
-                                .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
-                                .padding(.horizontal, 12)
-                                .frame(height: 36)
-                                .background(
-                                    isSelected ? preset.badgeColor : AdminSurface.control,
-                                    in: Capsule()
-                                )
-                                .overlay(Capsule().stroke(isSelected ? Color.clear : AdminSurface.hairline))
-                                .shadow(color: isSelected ? preset.badgeColor.opacity(0.3) : Color.clear, radius: 4, y: 2)
+                // Live Telemetry Pill
+                if viewModel.isAllCategories {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(AdminSurface.emerald)
+                            .frame(width: 7, height: 7)
+                        Text(Language.get("Service_Scope_Universal_Badge", alter: "شامل لكل الحيوانات"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundColor(AdminSurface.emerald)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(AdminSurface.emerald.opacity(0.12), in: Capsule())
+                    .overlay(Capsule().stroke(AdminSurface.emerald.opacity(0.3), lineWidth: 0.8))
+                } else {
+                    HStack(spacing: 5) {
+                        Image(systemName: "checklist")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(AdminSurface.primary)
+                        Text("\(viewModel.selectedSpeciesIDs.count) \(Language.get("Service_Scope_Species_Count", alter: "أنواع محددة"))")
+                            .font(AdminType.caption2Bold)
+                            .foregroundColor(AdminSurface.primary)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+                    .overlay(Capsule().stroke(AdminSurface.primary.opacity(0.25), lineWidth: 0.8))
+                }
+            }
+
+            // 1. Master Scope Hero Card: Universal All-Animals Switch
+            Button(action: {
+                viewModel.toggleAllCategories()
+            }) {
+                HStack(spacing: 14) {
+                    // Jewel Icon
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(
+                                viewModel.isAllCategories
+                                    ? LinearGradient(colors: [AdminSurface.emerald, Color.teal], startPoint: .topLeading, endPoint: .bottomTrailing)
+                                    : LinearGradient(colors: [AdminSurface.control, AdminSurface.control], startPoint: .topLeading, endPoint: .bottomTrailing)
+                            )
+                            .frame(width: 44, height: 44)
+                            .shadow(color: viewModel.isAllCategories ? AdminSurface.emerald.opacity(0.3) : Color.clear, radius: 8, y: 3)
+
+                        Image(systemName: viewModel.isAllCategories ? "sparkles" : "pawprint.fill")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(viewModel.isAllCategories ? .white : AdminSurface.secondaryText)
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(Language.get("Service_Scope_All_Title", alter: "استهداف شامل لجميع فئات الحيوانات"))
+                                .font(AdminType.calloutBold)
+                                .foregroundColor(AdminSurface.primaryText)
+
+                            if viewModel.isAllCategories {
+                                Text(Language.get("Universal", alter: "شامل"))
+                                    .font(.system(size: 10, weight: .heavy))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(AdminSurface.emerald, in: Capsule())
+                                    .foregroundColor(.white)
                             }
                         }
+
+                        Text(Language.get("Service_Scope_All_Subtitle", alter: "تظهر الخدمة تلقائياً في المتجر العام، وكافة أقسام الحيوانات، وتصنيفات البحث."))
+                            .font(AdminType.caption)
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer()
+
+                    // Tactile Toggle Indicator
+                    ZStack(alignment: viewModel.isAllCategories ? (Language.isRTL() ? .leading : .trailing) : (Language.isRTL() ? .trailing : .leading)) {
+                        Capsule()
+                            .fill(viewModel.isAllCategories ? AdminSurface.emerald : AdminSurface.hairline)
+                            .frame(width: 48, height: 28)
+
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 22, height: 22)
+                            .padding(.horizontal, 3)
+                            .shadow(color: Color.black.opacity(0.2), radius: 3, y: 1)
+                    }
+                    .animation(.spring(response: 0.28, dampingFraction: 0.75), value: viewModel.isAllCategories)
+                }
+                .padding(14)
+                .background(
+                    viewModel.isAllCategories
+                        ? AdminSurface.emerald.opacity(0.08)
+                        : AdminSurface.control.opacity(0.5),
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(
+                            viewModel.isAllCategories ? AdminSurface.emerald.opacity(0.4) : AdminSurface.hairline,
+                            lineWidth: viewModel.isAllCategories ? 1.5 : 0.8
+                        )
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            // 2. Multi-Species Bento Ribbon / Grid
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text(Language.get("Service_Target_Species_Select", alter: "فئات الحيوانات المستهدفة"))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(AdminSurface.secondaryText)
+
+                    Spacer()
+
+                    if viewModel.isAllCategories {
+                        Button(action: {
+                            viewModel.toggleAllCategories()
+                        }) {
+                            Text(Language.get("Service_Customize_Species", alter: "تخصيص فئات معينة"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundColor(Color(uiColor: .ppPrimary))
+                        }
+                    } else {
+                        Button(action: {
+                            viewModel.selectAllSpecies()
+                        }) {
+                            Text(Language.get("Service_Select_All_Species", alter: "اختيار الكل (شامل)"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundColor(Color(uiColor: .ppPrimary))
+                        }
+                    }
+                }
+
+                // Grid of Canonical Species
+                LazyVGrid(
+                    columns: [
+                        GridItem(.adaptive(minimum: 140), spacing: 8)
+                    ],
+                    spacing: 8
+                ) {
+                    ForEach(PPServiceSpeciesPreset.canonicalPresets) { preset in
+                        let isSelected = viewModel.isAllCategories || viewModel.selectedSpeciesIDs.contains(preset.id)
+                        let isDirectlySelected = viewModel.selectedSpeciesIDs.contains(preset.id)
+
+                        Button(action: {
+                            viewModel.toggleSpecies(preset.id)
+                        }) {
+                            HStack(spacing: 8) {
+                                ZStack {
+                                    Circle()
+                                        .fill(preset.badgeColor.opacity(isSelected ? 0.22 : 0.10))
+                                        .frame(width: 26, height: 26)
+
+                                    Image(systemName: preset.iconName)
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundColor(preset.badgeColor)
+                                }
+
+                                Text(preset.localizedName())
+                                    .font(AdminType.captionBold)
+                                    .foregroundColor(isSelected ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                                    .lineLimit(1)
+
+                                Spacer()
+
+                                if viewModel.isAllCategories {
+                                    Text("✓")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(AdminSurface.emerald)
+                                } else if isDirectlySelected {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 14, weight: .bold))
+                                        .foregroundColor(preset.badgeColor)
+                                }
+                            }
+                            .padding(.horizontal, 10)
+                            .frame(height: 40)
+                            .background(
+                                isDirectlySelected
+                                    ? preset.badgeColor.opacity(0.12)
+                                    : (viewModel.isAllCategories ? AdminSurface.emerald.opacity(0.04) : AdminSurface.control),
+                                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(
+                                        isDirectlySelected
+                                            ? preset.badgeColor
+                                            : (viewModel.isAllCategories ? AdminSurface.emerald.opacity(0.2) : AdminSurface.hairline),
+                                        lineWidth: isDirectlySelected ? 1.4 : 0.8
+                                    )
+                            )
+                            .shadow(color: isDirectlySelected ? preset.badgeColor.opacity(0.2) : Color.clear, radius: 4, y: 2)
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
                 }
             }
 
-            // Category & Category ID Details
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(Language.get("Service_Field_Category", alter: "اسم الفئة"))
+            // Divider
+            Rectangle()
+                .fill(AdminSurface.hairline)
+                .frame(height: 0.8)
+
+            // 3. Specialties & Sub-Categories Multi-Select
+            VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(Language.get("Service_Specialties_Title", alter: "تخصصات وتصنيفات الخدمة الدقيقة"))
                         .font(AdminType.captionBold)
                         .foregroundColor(AdminSurface.secondaryText)
-
-                    TextField(Language.get("Service_Field_Category", alter: "الفئة"), text: $viewModel.category)
-                        .font(AdminType.callout)
-                        .foregroundColor(AdminSurface.primaryText)
-                        .padding(.horizontal, 12)
-                        .frame(height: 44)
-                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(AdminSurface.hairline))
+                    Text(Language.get("Service_Specialties_Subtitle", alter: "حدد التخصصات المرتبطة أو أضف تصنيفاً مخصصاً ليظهر في تصفية المتجر."))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText.opacity(0.8))
                 }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(Language.get("Service_Field_CategoryID", alter: "معرّف الفئة"))
-                        .font(AdminType.captionBold)
-                        .foregroundColor(AdminSurface.secondaryText)
+                // Curated Specialty Chips
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(PPServiceSpecialtyPreset.curated) { specialty in
+                            let isPicked = viewModel.selectedCategories.contains(specialty.nameAr) ||
+                                           viewModel.selectedCategories.contains(specialty.nameEn)
 
-                    TextField(Language.get("Service_Field_CategoryID", alter: "Category ID"), text: $viewModel.categoryID)
-                        .font(AdminType.callout.monospaced())
-                        .foregroundColor(AdminSurface.primaryText)
-                        .padding(.horizontal, 12)
-                        .frame(height: 44)
-                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(AdminSurface.hairline))
+                            Button(action: {
+                                viewModel.toggleCategory(Language.isRTL() ? specialty.nameAr : specialty.nameEn)
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: specialty.iconName)
+                                        .font(.system(size: 11, weight: .bold))
+                                    Text(specialty.localizedName())
+                                        .font(AdminType.captionBold)
+                                    if isPicked {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 9, weight: .bold))
+                                    }
+                                }
+                                .foregroundColor(isPicked ? .white : AdminSurface.primaryText)
+                                .padding(.horizontal, 12)
+                                .frame(height: 34)
+                                .background(
+                                    isPicked ? specialty.color : AdminSurface.control,
+                                    in: Capsule()
+                                )
+                                .overlay(Capsule().stroke(isPicked ? Color.clear : AdminSurface.hairline))
+                                .shadow(color: isPicked ? specialty.color.opacity(0.3) : Color.clear, radius: 4, y: 2)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+
+                // Selected Active Categories Flow Ribbon
+                if !viewModel.selectedCategories.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(Language.get("Service_Selected_Categories_Label", alter: "التصنيفات المعتمدة للخدمة:"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundColor(AdminSurface.secondaryText)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(viewModel.selectedCategories, id: \.self) { cat in
+                                    HStack(spacing: 6) {
+                                        Text(cat)
+                                            .font(AdminType.captionBold)
+                                            .foregroundColor(AdminSurface.primaryText)
+
+                                        Button(action: {
+                                            viewModel.removeCategory(cat)
+                                        }) {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .font(.system(size: 13))
+                                                .foregroundColor(AdminSurface.secondaryText)
+                                        }
+                                    }
+                                    .padding(.leading, 10)
+                                    .padding(.trailing, 6)
+                                    .frame(height: 30)
+                                    .background(AdminSurface.control, in: Capsule())
+                                    .overlay(Capsule().stroke(Color(uiColor: .ppPrimary).opacity(0.4), lineWidth: 1.0))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Custom Specialty / Category Creator Field
+                HStack(spacing: 8) {
+                    TextField(
+                        Language.get("Service_Add_Custom_Category_Prompt", alter: "أو اكتب تصنيفاً إضافياً هنا..."),
+                        text: $viewModel.customCategoryInput
+                    )
+                    .font(AdminType.callout)
+                    .foregroundColor(AdminSurface.primaryText)
+                    .padding(.horizontal, 14)
+                    .frame(height: 42)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(AdminSurface.hairline))
+                    .submitLabel(.done)
+                    .onSubmit {
+                        viewModel.addCustomCategory()
+                    }
+
+                    Button(action: {
+                        viewModel.addCustomCategory()
+                    }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 13, weight: .bold))
+                            Text(Language.get("Add", alter: "إضافة"))
+                                .font(AdminType.captionBold)
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .frame(height: 42)
+                        .background(
+                            LinearGradient(
+                                colors: [Color(uiColor: .ppPrimary), Color.teal],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        )
+                        .shadow(color: Color(uiColor: .ppPrimary).opacity(0.3), radius: 4, y: 2)
+                    }
+                    .disabled(viewModel.customCategoryInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .opacity(viewModel.customCategoryInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1.0)
                 }
             }
+
+            // 4. Live Consumer Store Feed Projection Pill
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "storefront.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(AdminSurface.emerald)
+
+                    Text(Language.get("Service_Store_Projection_Title", alter: "محاكاة العرض في متجر وقوائم التطبيق"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundColor(AdminSurface.secondaryText)
+
+                    Spacer()
+
+                    Circle()
+                        .fill(AdminSurface.emerald)
+                        .frame(width: 6, height: 6)
+                    Text(Language.get("Service_Store_Projection_Ready", alter: "مفعل للمتجر"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundColor(AdminSurface.emerald)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(Language.get("Service_Target_Animals_Label", alter: "الحيوانات المستهدفة:"))
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                        Text(viewModel.targetSpeciesSummary)
+                            .font(AdminType.captionBold)
+                            .foregroundColor(AdminSurface.primaryText)
+                            .lineLimit(1)
+                    }
+
+                    HStack(spacing: 6) {
+                        Text(Language.get("Service_Specialties_Label", alter: "التصنيفات المطبقة:"))
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                        Text(viewModel.targetCategoriesSummary)
+                            .font(AdminType.captionBold)
+                            .foregroundColor(Color(uiColor: .ppPrimary))
+                            .lineLimit(1)
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(AdminSurface.control.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .padding(12)
+            .background(AdminSurface.emerald.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.emerald.opacity(0.2), lineWidth: 0.8))
         }
         .padding(18)
         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -1468,10 +2055,10 @@ public struct PPServiceLiveConsumerCard: View {
                                 .font(.system(size: 11))
                                 .foregroundColor(AdminSurface.primary)
 
-                            let preset = PPServiceSpeciesPreset.presets.first(where: { $0.id == viewModel.selectedSpeciesID })
-                            Text(preset?.localizedName() ?? Language.get("All_Pets", alter: "جميع الحيوانات"))
+                            Text(viewModel.targetSpeciesSummary)
                                 .font(AdminType.caption2)
                                 .foregroundColor(AdminSurface.secondaryText)
+                                .lineLimit(1)
                         }
                     }
 

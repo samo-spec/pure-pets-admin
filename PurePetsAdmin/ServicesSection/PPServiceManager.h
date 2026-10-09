@@ -11,6 +11,14 @@ NS_ASSUME_NONNULL_BEGIN
 @class PPServiceModel;
 @protocol FIRListenerRegistration;
 
+// A command whose server outcome could not yet be confirmed. The accepted
+// flag distinguishes a validated receipt from an incomplete response.
+FOUNDATION_EXPORT NSString * const PPServiceManagerErrorDomain;
+FOUNDATION_EXPORT NSInteger const PPServiceCommandAwaitingConfirmationCode;
+FOUNDATION_EXPORT NSString * const PPServiceCommandIDKey;
+FOUNDATION_EXPORT NSString * const PPServiceCommandRevisionKey;
+FOUNDATION_EXPORT NSString * const PPServiceCommandAcceptedKey;
+
 typedef void (^PPServiceVoidBlock)(NSError * _Nullable error);
 typedef void (^PPServiceArrayBlock)(NSArray<PPServiceModel *> * _Nullable services, NSError * _Nullable error);
 typedef void (^PPServiceModelBlock)(PPServiceModel * _Nullable service, NSError * _Nullable error);
@@ -49,6 +57,12 @@ typedef void (^PPServiceModelBlock)(PPServiceModel * _Nullable service, NSError 
                             expectedService:(PPServiceModel *)expected
                                   auditNote:(nullable NSString *)auditNote
                                  completion:(PPServiceVoidBlock)completion;
+
+/// Returns the model from the receipt-bound server read, with no second read.
+- (void)saveAdministrativeStateForService:(PPServiceModel *)service
+                          expectedService:(PPServiceModel *)expected
+                                auditNote:(nullable NSString *)auditNote
+                               completion:(PPServiceModelBlock)completion;
 
 - (void)setDisabled:(BOOL)disabled
        forServiceID:(NSString *)serviceID

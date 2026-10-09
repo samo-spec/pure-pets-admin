@@ -13,6 +13,11 @@
 @property (nonatomic, strong, nullable) NSNumber *previousNavigationBarHidden;
 @property (nonatomic, assign) NSUInteger generation;
 @property (nonatomic, strong, nullable) NSNumber *previousInteractivePopEnabled;
+@property (nonatomic, strong, nullable) PPServiceModel *pendingCandidate;
+@property (nonatomic, copy, nullable) NSString *pendingCommandID;
+@property (nonatomic, strong, nullable) NSNumber *pendingRevision;
+@property (nonatomic, copy, nullable) NSString *pendingActorUID;
+@property (nonatomic, assign) BOOL pendingAccepted;
 @end
 
 @implementation PPServiceModerationViewController
@@ -91,6 +96,15 @@
 
 - (void)reloadService {
     if ([self isBusy]) return;
+    if (self.phase == PPServiceModerationPhaseAwaitingConfirmation && self.pendingCandidate) {
+        [self confirmPendingCandidate];
+        return;
+    }
+    self.pendingCandidate = nil;
+    self.pendingCommandID = nil;
+    self.pendingRevision = nil;
+    self.pendingActorUID = nil;
+    self.pendingAccepted = NO;
     NSUInteger requestGeneration = ++self.generation;
     self.phase = PPServiceModerationPhaseLoading;
     self.errorMessage = nil;
@@ -127,8 +141,53 @@
 
 #pragma mark - Decision
 
+- (void)confirmPendingCandidate {
+    if ([self isBusy] || !self.pendingCandidate) return;
+    if (![self.pendingActorUID isEqualToString:FIRAuth.auth.currentUser.uid] || ![self canManage]) {
+        self.phase = PPServiceModerationPhaseUnavailable;
+        self.errorMessage = kLang(@"Service_Error_NoPermission");
+        [self renderReplacingDraft:NO];
+        return;
+    }
+    NSUInteger requestGeneration = ++self.generation;
+    self.phase = PPServiceModerationPhaseConfirming;
+    self.errorMessage = nil;
+    [self renderReplacingDraft:NO];
+    __weak typeof(self) weakSelf = self;
+    [PPServiceManager.sharedManager fetchServiceByID:self.pendingCandidate.serviceID completion:^(PPServiceModel *observed, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self || requestGeneration != self.generation) return;
+            NSNumber *observedRevision = [observed.extraFields[@"adminRevision"] isKindOfClass:NSNumber.class]
+                ? observed.extraFields[@"adminRevision"] : nil;
+            if (![self.pendingActorUID isEqualToString:FIRAuth.auth.currentUser.uid] || ![self canManage]) {
+                self.phase = PPServiceModerationPhaseUnavailable;
+                self.errorMessage = kLang(@"Service_Error_NoPermission");
+            } else if (observed && [observed.extraFields[@"adminLastCommandID"] isEqual:self.pendingCommandID] &&
+                       [observed.extraFields[@"adminRevision"] isEqual:self.pendingRevision] &&
+                       [PPServiceManager administrativeState:observed matchesService:self.pendingCandidate]) {
+                self.service = observed;
+                self.pendingCandidate = nil;
+                self.phase = PPServiceModerationPhaseSaved;
+                [self renderReplacingDraft:YES];
+                [[[UINotificationFeedbackGenerator alloc] init] notificationOccurred:UINotificationFeedbackTypeSuccess];
+                return;
+            } else if ((!error && !observed) ||
+                       ([error.domain isEqualToString:PPServiceManagerErrorDomain] && error.code == 404) ||
+                       (observedRevision && observedRevision.longLongValue >= self.pendingRevision.longLongValue)) {
+                self.phase = PPServiceModerationPhaseConflict;
+                self.errorMessage = kLang(self.pendingAccepted ? @"Service_Review_ChangedAfterDecision" : @"Service_Review_Conflict");
+            } else {
+                self.phase = PPServiceModerationPhaseAwaitingConfirmation;
+                self.errorMessage = kLang(self.pendingAccepted ? @"Service_Review_AcceptedPending" : @"Service_Workspace_AwaitingConfirmation");
+            }
+            [self renderReplacingDraft:NO];
+        });
+    }];
+}
+
 - (void)saveCandidate:(PPServiceModel *)candidate expected:(PPServiceModel *)expected note:(NSString *)note {
-    if ([self isBusy] || self.phase == PPServiceModerationPhaseLoading || self.phase == PPServiceModerationPhaseSaved) return;
+    if (self.phase != PPServiceModerationPhaseReady && self.phase != PPServiceModerationPhaseFailed) return;
     if (![self canManage] || ![candidate.serviceID isEqualToString:self.service.serviceID]) {
         self.errorMessage = kLang(@"Service_Error_NoPermission");
         self.phase = PPServiceModerationPhaseUnavailable;
@@ -137,37 +196,47 @@
     }
     self.phase = PPServiceModerationPhaseSaving;
     self.errorMessage = nil;
+    NSUInteger requestGeneration = ++self.generation;
+    NSString *actorUID = [FIRAuth.auth.currentUser.uid copy];
     [self renderReplacingDraft:NO];
     __weak typeof(self) weakSelf = self;
-    [PPServiceManager.sharedManager updateAdministrativeStateForService:candidate expectedService:expected auditNote:note
-        completion:^(NSError * _Nullable error) {
+    [PPServiceManager.sharedManager saveAdministrativeStateForService:candidate expectedService:expected auditNote:note
+        completion:^(PPServiceModel * _Nullable observed, NSError * _Nullable error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             __strong typeof(weakSelf) self = weakSelf;
-            if (!self) return;
+            if (!self || requestGeneration != self.generation) return;
+            if (![actorUID isEqualToString:FIRAuth.auth.currentUser.uid]) {
+                self.phase = PPServiceModerationPhaseUnavailable;
+                self.errorMessage = kLang(@"Service_Error_NoPermission");
+                [self renderReplacingDraft:NO];
+                return;
+            }
             if (error) {
-                self.phase = error.code == 409 ? PPServiceModerationPhaseConflict : PPServiceModerationPhaseFailed;
+                if (error.code == PPServiceCommandAwaitingConfirmationCode) {
+                    self.pendingCandidate = [candidate copy];
+                    self.pendingCommandID = error.userInfo[PPServiceCommandIDKey];
+                    self.pendingRevision = error.userInfo[PPServiceCommandRevisionKey];
+                    self.pendingActorUID = actorUID;
+                    self.pendingAccepted = [error.userInfo[PPServiceCommandAcceptedKey] boolValue];
+                    self.phase = PPServiceModerationPhaseAwaitingConfirmation;
+                } else {
+                    self.phase = error.code == 409 ? PPServiceModerationPhaseConflict :
+                        (error.code == 403 ? PPServiceModerationPhaseUnavailable : PPServiceModerationPhaseFailed);
+                }
                 self.errorMessage = error.localizedDescription;
                 [self renderReplacingDraft:NO];
                 return;
             }
-            self.phase = PPServiceModerationPhaseConfirming;
-            [self renderReplacingDraft:NO];
-            [PPServiceManager.sharedManager fetchServiceByID:candidate.serviceID completion:^(PPServiceModel * _Nullable observed, NSError * _Nullable readError) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    __strong typeof(weakSelf) self = weakSelf;
-                    if (!self) return;
-                    if (readError || !observed || ![PPServiceManager administrativeState:observed matchesService:candidate]) {
-                        self.phase = PPServiceModerationPhaseConflict;
-                        self.errorMessage = kLang(@"Service_Workspace_AwaitingConfirmation");
-                        [self renderReplacingDraft:NO];
-                        return;
-                    }
-                    self.service = observed;
-                    self.phase = PPServiceModerationPhaseSaved;
-                    [self renderReplacingDraft:YES];
-                    [[[UINotificationFeedbackGenerator alloc] init] notificationOccurred:UINotificationFeedbackTypeSuccess];
-                });
-            }];
+            if (!observed || ![PPServiceManager administrativeState:observed matchesService:candidate]) {
+                self.phase = PPServiceModerationPhaseConflict;
+                self.errorMessage = kLang(@"Service_Review_ChangedAfterDecision");
+                [self renderReplacingDraft:NO];
+                return;
+            }
+            self.service = observed;
+            self.phase = PPServiceModerationPhaseSaved;
+            [self renderReplacingDraft:YES];
+            [[[UINotificationFeedbackGenerator alloc] init] notificationOccurred:UINotificationFeedbackTypeSuccess];
         });
     }];
 }
@@ -177,11 +246,14 @@
 - (void)requestClose {
     if ([self isBusy] || self.presentedViewController) return;
     if (self.moderationHost.hasUnsavedChanges) {
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:kLang(@"Service_Review_DiscardTitle")
-            message:kLang(@"Service_Review_DiscardDetail") preferredStyle:UIAlertControllerStyleAlert];
+        BOOL pending = self.pendingCandidate != nil;
+        NSString *detail = pending ? (self.pendingAccepted ? @"Service_Review_LeavePendingDetail" : @"Service_Review_LeaveUnconfirmedDetail") : @"Service_Review_DiscardDetail";
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:kLang(pending ? @"Service_Review_LeavePendingTitle" : @"Service_Review_DiscardTitle")
+            message:kLang(detail) preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:kLang(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
         __weak typeof(self) weakSelf = self;
-        [alert addAction:[UIAlertAction actionWithTitle:kLang(@"Service_Review_Discard") style:UIAlertActionStyleDestructive
+        [alert addAction:[UIAlertAction actionWithTitle:kLang(pending ? @"Service_Review_LeavePending" : @"Service_Review_Discard")
+            style:pending ? UIAlertActionStyleDefault : UIAlertActionStyleDestructive
             handler:^(UIAlertAction *action) { [weakSelf close]; }]];
         [self presentViewController:alert animated:YES completion:nil];
     } else { [self close]; }

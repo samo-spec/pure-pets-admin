@@ -100,6 +100,9 @@ final class AdminServicesViewModel: ObservableObject {
     @Published var successMessage: String?
     @Published private(set) var lastReceivedAt: Date?
     let openDetail: (PPServiceModel) -> Void
+    var onAddService: (() -> Void)?
+    var onEditService: ((PPServiceModel) -> Void)?
+    var onModerateService: ((PPServiceModel) -> Void)?
 
     private let lifetime = PPServiceListenerLifetime()
     private let pageSize = 100
@@ -109,7 +112,17 @@ final class AdminServicesViewModel: ObservableObject {
     private var generation = 0
     private var active = false
 
-    init(openDetail: @escaping (PPServiceModel) -> Void) { self.openDetail = openDetail }
+    init(
+        openDetail: @escaping (PPServiceModel) -> Void,
+        onAddService: (() -> Void)? = nil,
+        onEditService: ((PPServiceModel) -> Void)? = nil,
+        onModerateService: ((PPServiceModel) -> Void)? = nil
+    ) {
+        self.openDetail = openDetail
+        self.onAddService = onAddService
+        self.onEditService = onEditService
+        self.onModerateService = onModerateService
+    }
 
     var selectedService: PPServiceModel? { allServices.first { $0.serviceID == selectedServiceID } }
     var totalCount: Int { allServices.count }
@@ -284,7 +297,32 @@ final class AdminServicesViewModel: ObservableObject {
 
     func present(_ sheet: AdminServiceActiveSheet) {
         guard canManage, mutationID == nil else { return }
-        activeSheet = sheet
+        switch sheet {
+        case .add:
+            if let onAddService {
+                onAddService()
+                return
+            }
+            let controller = PPAddEditServiceViewController(service: nil)
+            controller.hidesBottomBarWhenPushed = true
+            PPAdminNavigationFallback.presentOrPush(controller)
+        case .edit(let service):
+            if let onEditService {
+                onEditService(service)
+                return
+            }
+            let controller = PPAddEditServiceViewController(service: service)
+            controller.hidesBottomBarWhenPushed = true
+            PPAdminNavigationFallback.presentOrPush(controller)
+        case .moderate(let service):
+            if let onModerateService {
+                onModerateService(service)
+                return
+            }
+            let controller = PPServiceModerationViewController(service: service)
+            controller.hidesBottomBarWhenPushed = true
+            PPAdminNavigationFallback.presentOrPush(controller)
+        }
     }
 
     func reviewNext() {
@@ -365,6 +403,9 @@ final class AdminServicesViewModel: ObservableObject {
 
 public struct AdminServicesView: View {
     public var onDismiss: (() -> Void)?
+    public var onAddService: (() -> Void)?
+    public var onEditService: ((PPServiceModel) -> Void)?
+    public var onModerateService: ((PPServiceModel) -> Void)?
     @StateObject private var model: AdminServicesViewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -373,9 +414,23 @@ public struct AdminServicesView: View {
     @State private var showsRefinement = false
     @State private var confirmation: PPServiceListConfirmation?
 
-    public init(onDismiss: (() -> Void)? = nil, onOpenService: @escaping (PPServiceModel) -> Void) {
+    public init(
+        onDismiss: (() -> Void)? = nil,
+        onOpenService: @escaping (PPServiceModel) -> Void,
+        onAddService: (() -> Void)? = nil,
+        onEditService: ((PPServiceModel) -> Void)? = nil,
+        onModerateService: ((PPServiceModel) -> Void)? = nil
+    ) {
         self.onDismiss = onDismiss
-        _model = StateObject(wrappedValue: AdminServicesViewModel(openDetail: onOpenService))
+        self.onAddService = onAddService
+        self.onEditService = onEditService
+        self.onModerateService = onModerateService
+        _model = StateObject(wrappedValue: AdminServicesViewModel(
+            openDetail: onOpenService,
+            onAddService: onAddService,
+            onEditService: onEditService,
+            onModerateService: onModerateService
+        ))
     }
 
     public var body: some View {
@@ -415,16 +470,6 @@ public struct AdminServicesView: View {
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LanguageDidChangeNotification"))) { _ in
             language = Language.currentLanguageCode()
         }
-        .sheet(item: $model.activeSheet, onDismiss: { model.refreshTriggered() }) { sheet in
-            Group {
-                switch sheet {
-                case .add: AdminServiceAddEditSheetRepresentable(service: nil)
-                case .edit(let service): AdminServiceAddEditSheetRepresentable(service: service)
-                case .moderate(let service): AdminServiceModerationSheetRepresentable(service: service)
-                }
-            }
-            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        }
         .sheet(isPresented: $showsRefinement) {
             PPServiceRefinementSheet(model: model)
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
@@ -461,12 +506,12 @@ public struct AdminServicesView: View {
                     .background(AdminSurface.card, in: Circle())
             }.accessibilityLabel(PPServiceText("Service_Workspace_Actions"))
         }
-        .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 16)
+        .padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 2)
     }
 
     private func collection(inspector: Bool) -> some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 20) {
+            LazyVStack(alignment: .leading, spacing: 14) {
                 if model.canRead {
                     if model.hasLoaded { reviewFocus }
                     search
@@ -513,24 +558,25 @@ public struct AdminServicesView: View {
                         actionTitle: PPServiceText("Retry"), action: model.refreshTriggered)
                 }
             }
-            .padding(.top, 8).padding(.bottom, 36)
+            .padding(.top, 2).padding(.bottom, 36)
         }
         .scrollDismissesKeyboard(.interactively)
         .refreshable { model.refreshTriggered() }
     }
 
     private var reviewFocus: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .firstTextBaseline, spacing: 14) {
-                Text(model.reviewCount, format: .number)
-                    .font(.system(size: 64, weight: .light, design: .rounded)).monospacedDigit()
-                    .foregroundStyle(model.reviewCount > 0 ? AdminSurface.primary : AdminSurface.primaryText)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 10) {
+                if model.reviewCount > 0 {
+                    Text(model.reviewCount, format: .number)
+                        .font(.system(size: 26, weight: .bold, design: .rounded)).monospacedDigit()
+                        .foregroundStyle(AdminSurface.primary)
+                }
+                VStack(alignment: .leading, spacing: 2) {
                     Text(PPServiceText(model.reviewCount > 0 ? "Service_Workspace_ReviewFocus" : "Service_Workspace_AllClear"))
-                        .font(AdminType.title2).fixedSize(horizontal: false, vertical: true)
+                        .font(AdminType.title3).bold().fixedSize(horizontal: false, vertical: true)
                     Text(PPServiceText(model.reviewCount > 0 ? "Service_Workspace_ReviewFocusDetail" : "Service_Workspace_AllClearDetail"))
-                        .font(AdminType.callout).foregroundStyle(AdminSurface.secondaryText)
+                        .font(AdminType.subheadline).foregroundStyle(AdminSurface.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -538,15 +584,15 @@ public struct AdminServicesView: View {
             .accessibilityValue(String(format: PPServiceText("Service_Workspace_ReviewCount_Format"), model.reviewCount))
             if model.reviewCount > 0 && model.canManage {
                 Button { model.reviewNext() } label: {
-                    HStack(spacing: 10) {
-                        Text(PPServiceText("Service_Workspace_ReviewNext")).font(AdminType.headline)
-                        Image(systemName: "arrow.forward").font(.system(size: 14, weight: .semibold))
-                    }.frame(minHeight: 44).padding(.horizontal, 20)
+                    HStack(spacing: 8) {
+                        Text(PPServiceText("Service_Workspace_ReviewNext")).font(AdminType.footnoteBold)
+                        Image(systemName: "arrow.forward").font(.system(size: 11, weight: .bold))
+                    }.frame(minHeight: 36).padding(.horizontal, 16)
                 }
                 .buttonStyle(PPServicePressStyle()).foregroundStyle(.white)
                 .background(AdminSurface.primary, in: Capsule()).disabled(model.mutationID != nil)
             }
-        }.padding(.vertical, 8)
+        }
     }
 
     private var search: some View {

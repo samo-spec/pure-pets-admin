@@ -589,6 +589,33 @@ extension UIViewController {
                 navigation.modalPresentationStyle = .fullScreen
                 self.present(navigation, animated: true)
             }
+        }, onAddService: { [weak self] in
+            guard let self else { return }
+            let controller = PPAddEditServiceViewController(service: nil)
+            controller.hidesBottomBarWhenPushed = true
+            if let navigation = self.navigationController {
+                navigation.pushViewController(controller, animated: true)
+            } else {
+                PPAdminNavigationFallback.presentOrPush(controller, from: self)
+            }
+        }, onEditService: { [weak self] service in
+            guard let self else { return }
+            let controller = PPAddEditServiceViewController(service: service)
+            controller.hidesBottomBarWhenPushed = true
+            if let navigation = self.navigationController {
+                navigation.pushViewController(controller, animated: true)
+            } else {
+                PPAdminNavigationFallback.presentOrPush(controller, from: self)
+            }
+        }, onModerateService: { [weak self] service in
+            guard let self else { return }
+            let controller = PPServiceModerationViewController(service: service)
+            controller.hidesBottomBarWhenPushed = true
+            if let navigation = self.navigationController {
+                navigation.pushViewController(controller, animated: true)
+            } else {
+                PPAdminNavigationFallback.presentOrPush(controller, from: self)
+            }
         }))
     }
 

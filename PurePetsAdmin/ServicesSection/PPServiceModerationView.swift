@@ -4,6 +4,7 @@ import UIKit
 @objc(PPServiceModerationPhase)
 enum PPServiceModerationPhase: Int {
     case loading, ready, saving, confirming, saved, failed, conflict, unavailable
+    case awaitingConfirmation
 }
 
 private struct PPServiceReviewChange: Identifiable {
@@ -34,12 +35,12 @@ private final class PPServiceModerationDraft: ObservableObject {
     @Published var validationError: String?
 
     init(service: PPServiceModel) {
-        baseline = service.copy() as! PPServiceModel
+        baseline = Self.snapshotCopy(service)
         reset(to: service)
     }
 
     func reset(to service: PPServiceModel) {
-        baseline = service.copy() as! PPServiceModel
+        baseline = Self.snapshotCopy(service)
         disabled = service.isDisabled
         blocked = service.isBlocked
         verification = service.verificationStatus
@@ -57,11 +58,11 @@ private final class PPServiceModerationDraft: ObservableObject {
     }
 
     var busy: Bool { phase == .loading || phase == .saving || phase == .confirming }
-    var canEdit: Bool { canManage && !busy && phase != .saved && phase != .unavailable && phase != .conflict }
+    var canEdit: Bool { canManage && !busy && phase != .saved && phase != .unavailable && phase != .conflict && phase != .awaitingConfirmation }
     var hasChanges: Bool { !changes.isEmpty || !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     var futureVisible: Bool { !baseline.isDeleted && !disabled && !blocked }
     var verificationLabel: String {
-        let copy = baseline.copy() as! PPServiceModel
+        let copy = Self.snapshotCopy(baseline)
         copy.verificationStatus = verification
         return copy.localizedVerificationTitle()
     }
@@ -103,10 +104,15 @@ private final class PPServiceModerationDraft: ObservableObject {
         guard !hasStart || !hasEnd || start <= end else {
             validationError = PPServiceText("Service_Error_SubscriptionDateOrder"); return nil
         }
-        guard flags.utf8.count <= 16_384, note.count <= 2_000 else {
+        guard let compactFlags = try? JSONSerialization.data(withJSONObject: parsedFlags, options: [.sortedKeys, .withoutEscapingSlashes]),
+              compactFlags.count <= 16_384, note.utf16.count <= 2_000,
+              [verification, subscriptionType, subscriptionPlan, subscriptionStatus].allSatisfy({ $0.utf16.count <= 160 }) else {
             validationError = PPServiceText("Service_Review_InputTooLong"); return nil
         }
-        let value = baseline.copy() as! PPServiceModel
+        guard Self.validMetadata(parsedFlags) else {
+            validationError = PPServiceText("Service_Review_FlagsStructure"); return nil
+        }
+        let value = Self.snapshotCopy(baseline)
         value.isDisabled = disabled
         value.isBlocked = blocked
         value.verificationStatus = verification.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -121,6 +127,27 @@ private final class PPServiceModerationDraft: ObservableObject {
     }
 
     private func display(_ value: String) -> String { value.isEmpty ? PPServiceText("Service_Value_NotSpecified") : value }
+
+    private static func snapshotCopy(_ service: PPServiceModel) -> PPServiceModel {
+        if let copy = service.copy() as? PPServiceModel { return copy }
+        return PPServiceModel.fromDictionary(service.toDictionary(), withID: service.serviceID)
+    }
+
+    // Same bounds as Infra's metadata validator; the server remains authority.
+    private static func validMetadata(_ value: Any, depth: Int = 0) -> Bool {
+        guard depth <= 6 else { return false }
+        if value is NSNull { return true }
+        if let text = value as? String { return text.utf16.count <= 8_000 }
+        if let number = value as? NSNumber { return number.doubleValue.isFinite }
+        if let array = value as? [Any] {
+            return array.count <= 100 && array.allSatisfy { validMetadata($0, depth: depth + 1) }
+        }
+        guard let object = value as? [String: Any], object.count <= 100 else { return false }
+        return object.allSatisfy { key, entry in
+            !key.isEmpty && key.utf16.count <= 120 && !["__proto__", "prototype", "constructor"].contains(key)
+                && validMetadata(entry, depth: depth + 1)
+        }
+    }
     private func date(_ value: Date?) -> String {
         guard let value else { return "" }
         let formatter = DateFormatter()
@@ -191,10 +218,12 @@ private struct PPServiceModerationScreen: View {
     let reload: () -> Void
     let save: (PPServiceModel, PPServiceModel, String) -> Void
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var language = Language.currentLanguageCode()
     @State private var showsConfirmation = false
     @State private var showsReloadConfirmation = false
     @FocusState private var isEditingText: Bool
+    @AccessibilityFocusState private var completionFocused: Bool
 
     private var service: PPServiceModel { draft.baseline }
     private var locale: Locale { Locale(identifier: language.hasPrefix("ar") ? "ar_QA" : "en_QA") }
@@ -203,11 +232,14 @@ private struct PPServiceModerationScreen: View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
                 navigation
-                ScrollView {
+                ScrollViewReader { proxy in
+                  ScrollView {
                     VStack(alignment: .leading, spacing: 28) {
                         identity
-                        if let error = draft.error { recovery(error) }
-                        if let error = draft.validationError { PPServiceNotice(text: error, isError: true) }
+                        VStack(alignment: .leading, spacing: 12) {
+                            if let error = draft.error { recovery(error) }
+                            if let error = draft.validationError { PPServiceNotice(text: error, isError: true) }
+                        }.id("review.feedback")
                         if draft.phase == .saved {
                             saved
                         } else if geometry.size.width >= 820 && !typeSize.isAccessibilitySize {
@@ -225,7 +257,20 @@ private struct PPServiceModerationScreen: View {
                         }
                     }
                     .padding(24).frame(maxWidth: 1100, alignment: .leading).frame(maxWidth: .infinity)
-                }.scrollDismissesKeyboard(.interactively)
+                  }.scrollDismissesKeyboard(.interactively)
+                    .onChange(of: draft.validationError) { _, message in
+                        if let message { revealFeedback(message, proxy: proxy) }
+                    }
+                    .onChange(of: draft.error) { _, message in
+                        if let message { revealFeedback(message, proxy: proxy) }
+                    }
+                    .onChange(of: draft.phase) { _, phase in
+                        if phase == .saved {
+                            proxy.scrollTo("review.saved", anchor: .top)
+                            completionFocused = true
+                        }
+                    }
+                }
             }
             .background(AdminSurface.background.ignoresSafeArea())
             .safeAreaInset(edge: .bottom, spacing: 0) { decisionBar }
@@ -294,7 +339,7 @@ private struct PPServiceModerationScreen: View {
 
     private var availability: some View {
         VStack(alignment: .leading, spacing: 16) {
-            sectionHeading("Service_Review_Availability", "01")
+            sectionHeading("Service_Review_Availability", 1)
             VStack(spacing: 0) {
                 Toggle(isOn: Binding(get: { !draft.disabled }, set: { draft.disabled = !$0 })) {
                     controlLabel("Service_Review_Available", "Service_Review_AvailableDetail", "sun.max")
@@ -314,9 +359,10 @@ private struct PPServiceModerationScreen: View {
 
     private var verification: some View {
         VStack(alignment: .leading, spacing: 16) {
-            sectionHeading("Service_Review_Verification", "02")
+            sectionHeading("Service_Review_Verification", 2)
             Text(PPServiceText("Service_Review_VerificationDetail")).font(AdminType.callout).foregroundStyle(AdminSurface.secondaryText)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: typeSize.isAccessibilitySize ? 280 : 140), spacing: 12)], spacing: 12) {
+            LazyVGrid(columns: typeSize.isAccessibilitySize ? [GridItem(.flexible())] :
+                [GridItem(.flexible(), spacing: 12), GridItem(.flexible())], spacing: 12) {
                 verificationChoice("verified", "Service_Review_Verified", "checkmark.seal")
                 verificationChoice("pending", "Service_Review_Pending", "clock")
                 verificationChoice("rejected", "Service_Review_Rejected", "xmark.seal")
@@ -352,7 +398,7 @@ private struct PPServiceModerationScreen: View {
 
     private var subscription: some View {
         VStack(alignment: .leading, spacing: 16) {
-            sectionHeading("Service_Moderation_SubscriptionSection", "03")
+            sectionHeading("Service_Moderation_SubscriptionSection", 3)
             DisclosureGroup {
                 VStack(alignment: .leading, spacing: 20) {
                     technicalField("Service_Field_SubscriptionType", text: $draft.subscriptionType)
@@ -373,7 +419,7 @@ private struct PPServiceModerationScreen: View {
 
     private var audit: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionHeading("Service_Review_Note", "04")
+            sectionHeading("Service_Review_Note", 4)
             Text(PPServiceText("Service_Review_NoteDetail")).font(AdminType.callout).foregroundStyle(AdminSurface.secondaryText)
             TextField(PPServiceText("Service_Field_AuditNote_Placeholder"), text: $draft.note, axis: .vertical)
                 .lineLimit(3...8).multilineTextAlignment(.leading).focused($isEditingText)
@@ -414,6 +460,13 @@ private struct PPServiceModerationScreen: View {
             } else if draft.phase == .saved {
                 Button(action: close) { Text(PPServiceText("Done")).font(AdminType.headline).frame(maxWidth: .infinity).frame(minHeight: 54) }
                     .buttonStyle(PPServicePressStyle()).foregroundStyle(.white).background(AdminSurface.primary, in: Capsule())
+            } else if draft.phase == .awaitingConfirmation {
+                Button(action: reload) {
+                    Label(PPServiceText("Service_Review_CheckStatus"), systemImage: "arrow.clockwise")
+                        .font(AdminType.headline).frame(maxWidth: .infinity).frame(minHeight: 54)
+                }.buttonStyle(PPServicePressStyle()).foregroundStyle(.white).background(AdminSurface.primary, in: Capsule())
+                Text(draft.error ?? PPServiceText("Service_Review_AcceptedPending")).font(AdminType.caption)
+                    .foregroundStyle(AdminSurface.secondaryText).fixedSize(horizontal: false, vertical: true)
             } else {
                 Button {
                     isEditingText = false
@@ -477,22 +530,34 @@ private struct PPServiceModerationScreen: View {
     private var saved: some View {
         VStack(alignment: .leading, spacing: 20) {
             Image(systemName: "checkmark.seal").font(.system(size: 52, weight: .light)).foregroundStyle(AdminSurface.emerald).accessibilityHidden(true)
-            Text(PPServiceText("Service_Review_SavedTitle")).font(AdminType.title)
+            Text(PPServiceText("Service_Review_SavedTitle")).font(AdminType.title).accessibilityAddTraits(.isHeader)
+                .accessibilityFocused($completionFocused)
             Text(PPServiceText("Service_Review_SavedDetail")).font(AdminType.body).foregroundStyle(AdminSurface.secondaryText)
             preview
-        }.padding(.vertical, 24)
+        }.padding(.vertical, 24).id("review.saved")
     }
 
     private func recovery(_ error: String) -> some View {
-        PPServiceNotice(text: error, isError: true,
+        PPServiceNotice(text: error, isError: draft.phase != .awaitingConfirmation,
             actionTitle: (draft.phase == .conflict || draft.phase == .unavailable || draft.phase == .failed) ? PPServiceText("Service_Review_Reload") : nil) {
                 if draft.hasChanges { showsReloadConfirmation = true } else { reload() }
             }
     }
 
-    private func sectionHeading(_ key: String, _ number: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(number).font(.system(.caption, design: .monospaced)).foregroundStyle(AdminSurface.primary).accessibilityHidden(true)
+    private func revealFeedback(_ message: String, proxy: ScrollViewProxy) {
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { proxy.scrollTo("review.feedback", anchor: .top) }
+        if UIAccessibility.isVoiceOverRunning { UIAccessibility.post(notification: .announcement, argument: message) }
+    }
+
+    private func sectionHeading(_ key: String, _ number: Int) -> some View {
+        let formatter = NumberFormatter()
+        formatter.locale = locale
+        formatter.minimumIntegerDigits = 2
+        formatter.maximumFractionDigits = 0
+        formatter.usesGroupingSeparator = false
+        let ordinal = formatter.string(from: NSNumber(value: number)) ?? String(number)
+        return HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(ordinal).font(.system(.caption, design: .monospaced)).foregroundStyle(AdminSurface.primary).accessibilityHidden(true)
             Text(PPServiceText(key)).font(AdminType.title3).accessibilityAddTraits(.isHeader)
         }
     }
@@ -521,7 +586,8 @@ private struct PPServiceModerationScreen: View {
             Toggle(PPServiceText(key), isOn: enabled).tint(AdminSurface.primary)
             if enabled.wrappedValue {
                 DatePicker(PPServiceText(key), selection: date, displayedComponents: .date)
-                    .datePickerStyle(.compact).font(AdminType.callout)
+                    .datePickerStyle(.compact).labelsHidden().font(AdminType.callout)
+                    .frame(minHeight: 44, alignment: .leading).accessibilityLabel(PPServiceText(key))
             }
         }
     }

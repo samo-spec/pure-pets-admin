@@ -30,6 +30,74 @@
     model.category = PPSafeString(safeDict[@"category"]);
     model.categoryID = PPSafeString(safeDict[@"categoryID"]);
     model.petMainKindID = [safeDict[@"petMainKindID"] respondsToSelector:@selector(integerValue)] ? [safeDict[@"petMainKindID"] integerValue] : 0;
+    
+    // Multi-category & Apex Taxonomy
+    if ([safeDict[@"petMainCategoryIDs"] isKindOfClass:NSArray.class]) {
+        NSMutableArray<NSNumber *> *catNums = [NSMutableArray array];
+        for (id item in (NSArray *)safeDict[@"petMainCategoryIDs"]) {
+            if ([item respondsToSelector:@selector(integerValue)]) {
+                [catNums addObject:@([item integerValue])];
+            }
+        }
+        model.petMainCategoryIDs = catNums.copy;
+    } else if (model.petMainKindID > 0) {
+        model.petMainCategoryIDs = @[@(model.petMainKindID)];
+    } else {
+        model.petMainCategoryIDs = @[];
+    }
+    
+    if (safeDict[@"isAllCategories"] != nil) {
+        model.isAllCategories = [safeDict[@"isAllCategories"] boolValue];
+    } else {
+        model.isAllCategories = (model.petMainKindID == 0);
+    }
+    
+    if ([safeDict[@"targetCategories"] isKindOfClass:NSArray.class]) {
+        NSMutableArray<NSString *> *strings = [NSMutableArray array];
+        for (id item in (NSArray *)safeDict[@"targetCategories"]) {
+            if ([item isKindOfClass:NSString.class]) {
+                NSString *trimmed = [(NSString *)item stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                if (trimmed.length > 0) [strings addObject:trimmed];
+            } else if ([item respondsToSelector:@selector(stringValue)]) {
+                NSString *trimmed = [[item stringValue] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                if (trimmed.length > 0) [strings addObject:trimmed];
+            }
+        }
+        model.targetCategories = strings.copy;
+    } else {
+        model.targetCategories = @[];
+    }
+    if ([safeDict[@"categories"] isKindOfClass:NSArray.class]) {
+        NSMutableArray<NSString *> *strings = [NSMutableArray array];
+        for (id item in (NSArray *)safeDict[@"categories"]) {
+            if ([item isKindOfClass:NSString.class]) {
+                NSString *trimmed = [(NSString *)item stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                if (trimmed.length > 0) [strings addObject:trimmed];
+            } else if ([item respondsToSelector:@selector(stringValue)]) {
+                NSString *trimmed = [[item stringValue] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                if (trimmed.length > 0) [strings addObject:trimmed];
+            }
+        }
+        model.categories = strings.copy;
+    } else {
+        model.categories = @[];
+    }
+    if ([safeDict[@"categoryIDs"] isKindOfClass:NSArray.class]) {
+        NSMutableArray<NSString *> *strings = [NSMutableArray array];
+        for (id item in (NSArray *)safeDict[@"categoryIDs"]) {
+            if ([item isKindOfClass:NSString.class]) {
+                NSString *trimmed = [(NSString *)item stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                if (trimmed.length > 0) [strings addObject:trimmed];
+            } else if ([item respondsToSelector:@selector(stringValue)]) {
+                NSString *trimmed = [[item stringValue] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                if (trimmed.length > 0) [strings addObject:trimmed];
+            }
+        }
+        model.categoryIDs = strings.copy;
+    } else {
+        model.categoryIDs = @[];
+    }
+    
     model.availableDate = [self pp_dateFromValue:safeDict[@"availableDate"]];
     model.timestamp = [self pp_dateFromValue:safeDict[@"timestamp"]];
     model.imageURL = PPSafeString(safeDict[@"imageURL"]);
@@ -77,6 +145,23 @@
     dictionary[@"category"] = PPSafeString(self.category);
     dictionary[@"categoryID"] = PPSafeString(self.categoryID);
     dictionary[@"petMainKindID"] = @(self.petMainKindID);
+    dictionary[@"isAllCategories"] = @(self.isAllCategories);
+    if (self.petMainCategoryIDs.count > 0) {
+        dictionary[@"petMainCategoryIDs"] = self.petMainCategoryIDs;
+    } else if (self.petMainKindID > 0) {
+        dictionary[@"petMainCategoryIDs"] = @[@(self.petMainKindID)];
+    } else {
+        dictionary[@"petMainCategoryIDs"] = @[];
+    }
+    if (self.targetCategories.count > 0) {
+        dictionary[@"targetCategories"] = self.targetCategories;
+    }
+    if (self.categories.count > 0) {
+        dictionary[@"categories"] = self.categories;
+    }
+    if (self.categoryIDs.count > 0) {
+        dictionary[@"categoryIDs"] = self.categoryIDs;
+    }
     dictionary[@"availableDate"] = self.availableDate ?: [NSNull null];
     dictionary[@"timestamp"] = self.timestamp ?: [NSDate date];
     dictionary[@"imageURL"] = PPSafeString(self.imageURL);
@@ -216,6 +301,11 @@
     copy.category = self.category;
     copy.categoryID = self.categoryID;
     copy.petMainKindID = self.petMainKindID;
+    copy.petMainCategoryIDs = self.petMainCategoryIDs;
+    copy.isAllCategories = self.isAllCategories;
+    copy.targetCategories = self.targetCategories;
+    copy.categories = self.categories;
+    copy.categoryIDs = self.categoryIDs;
     copy.availableDate = self.availableDate;
     copy.timestamp = self.timestamp;
     copy.imageURL = self.imageURL;
@@ -275,6 +365,11 @@
             @"category",
             @"categoryID",
             @"petMainKindID",
+            @"petMainCategoryIDs",
+            @"isAllCategories",
+            @"targetCategories",
+            @"categories",
+            @"categoryIDs",
             @"availableDate",
             @"timestamp",
             @"imageURL",
@@ -297,7 +392,12 @@
             @"archivedAt",
             @"archivedBy",
             @"blockedBy",
-            @"disabledBy"
+            @"disabledBy",
+            @"serviceID",
+            @"id",
+            @"date",
+            @"requestDate",
+            @"searchTokens"
         ];
     });
     return keys;

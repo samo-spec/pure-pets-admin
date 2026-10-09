@@ -26,6 +26,11 @@ typedef NS_ENUM(NSInteger, PPServiceType) {
 @property (nonatomic, copy) NSString *category;
 @property (nonatomic, copy) NSString *categoryID;
 @property (nonatomic, assign) NSInteger petMainKindID;
+@property (nonatomic, copy, nullable) NSArray<NSNumber *> *petMainCategoryIDs;
+@property (nonatomic, assign) BOOL isAllCategories;
+@property (nonatomic, copy, nullable) NSArray<NSString *> *targetCategories;
+@property (nonatomic, copy, nullable) NSArray<NSString *> *categories;
+@property (nonatomic, copy, nullable) NSArray<NSString *> *categoryIDs;
 @property (nonatomic, strong, nullable) NSDate *availableDate;
 @property (nonatomic, strong, nullable) NSDate *timestamp;
 @property (nonatomic, copy) NSString *imageURL;

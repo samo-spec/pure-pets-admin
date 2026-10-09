@@ -11223,10 +11223,37 @@
 "Service_Review_DiscardDetail" = "Your changes have not been saved. Stay to continue, or discard this draft.";
 "Service_Review_Discard" = "Discard changes";
 "Service_Review_Conflict" = "Another change reached this service first. Reload its current record and review your decision again.";
-"Service_Review_InputTooLong" = "Keep flags under 16 KB and the audit note under 2,000 characters.";
+"Service_Review_InputTooLong" = "Use up to 160 characters per status, 16 KB of flags, and 2,000 characters for the audit note.";
 "Service_Error_CommandUnavailable" = "The service command is unavailable, or the record no longer exists. Reload and try again when the backend is ready.";
 "Service_Error_CommandInvalid" = "Some values could not be accepted. Check the status, dates and metadata, then try again.";
 "Service_Error_CommandRetry" = "The result could not be confirmed. Keep this draft and retry the same decision.";
 "Service_Error_CommandFailed" = "The service decision could not be saved. Your draft is still here.";
 "Services" = "Services";
 "Service_Workspace_ReadFailure" = "The current service record could not be loaded. Check your connection and try again.";
+
+// Service experience: discovery and decision recovery.
+"Service_Review_FlagsStructure" = "Use a JSON object with valid keys, up to 100 entries per object or list, and no more than 6 levels.";
+"Service_Review_AcceptedPending" = "Your decision was accepted. Check its current status to confirm it. Your draft is kept here.";
+"Service_Review_CheckStatus" = "Check saved decision";
+"Service_Review_ChangedAfterDecision" = "Your decision reached the server, and this record has since changed. Reload the latest record before making another decision.";
+"Service_Review_LeavePendingTitle" = "Leave this review?";
+"Service_Review_LeavePendingDetail" = "Your decision has already been accepted. Leaving closes this review and does not cancel the change. Reopen the service to check its current state.";
+"Service_Review_LeavePending" = "Leave review";
+"Service_Review_LeaveUnconfirmedDetail" = "The server result is still unconfirmed. Leaving only closes this review. A change may already be saved. Reopen the service to check its current state.";
+
+/* Service Apex Multi-Category Studio */
+"Service_Scope_Universal_Badge" = "Universal Animal Scope";
+"Service_Scope_Species_Count" = "species selected";
+"Service_Scope_All_Title" = "Universal Target for All Animals";
+"Service_Scope_All_Subtitle" = "This service automatically appears in the general store, all pet categories, and search filters.";
+"Service_Target_Species_Select" = "Target Animal Species";
+"Service_Customize_Species" = "Customize Specific Species";
+"Service_Select_All_Species" = "Select All (Universal)";
+"Service_Specialties_Title" = "Service Specialties & Categories";
+"Service_Specialties_Subtitle" = "Select relevant specialties or type a custom tag for precise store discovery.";
+"Service_Selected_Categories_Label" = "Active Service Categories:";
+"Service_Add_Custom_Category_Prompt" = "Or enter a custom category here...";
+"Service_Store_Projection_Title" = "App Store & List Preview";
+"Service_Store_Projection_Ready" = "Ready for Store";
+"Service_Target_Animals_Label" = "Target Animals:";
+"Service_Specialties_Label" = "Applied Specialties:";

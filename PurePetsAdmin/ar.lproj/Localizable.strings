@@ -11253,10 +11253,37 @@
 "Service_Review_DiscardDetail" = "لم تُحفظ تغييراتك. ابقَ للمتابعة أو تجاهل المسودة.";
 "Service_Review_Discard" = "تجاهل التغييرات";
 "Service_Review_Conflict" = "وصل تعديل آخر إلى هذه الخدمة أولاً. أعد تحميل سجلها الحالي وراجع قرارك مجدداً.";
-"Service_Review_InputTooLong" = "يجب ألا تتجاوز بيانات الخدمة ١٦ كيلوبايت، وملاحظة التدقيق ٢٠٠٠ حرف.";
+"Service_Review_InputTooLong" = "الحد الأقصى ١٦٠ حرفًا لكل حالة، و١٦ كيلوبايت للخصائص، و٢٠٠٠ حرف لملاحظة المراجعة.";
 "Service_Error_CommandUnavailable" = "أمر الخدمة غير متاح، أو لم يعد السجل موجوداً. أعد التحميل وحاول مجدداً عند جاهزية الخادم.";
 "Service_Error_CommandInvalid" = "تعذّر قبول بعض القيم. راجع الحالة والتواريخ والبيانات، ثم حاول مجدداً.";
 "Service_Error_CommandRetry" = "تعذّر تأكيد النتيجة. احتفظ بهذه المسودة وأعد محاولة القرار نفسه.";
 "Service_Error_CommandFailed" = "تعذّر حفظ قرار الخدمة. مسودتك ما زالت محفوظة هنا.";
 "Services" = "الخدمات";
 "Service_Workspace_ReadFailure" = "تعذّر تحميل الحالة الحالية للخدمة. تحقّق من الاتصال وحاول مجدداً.";
+
+// Service experience: discovery and decision recovery.
+"Service_Review_FlagsStructure" = "استخدم كائن JSON بمفاتيح صالحة، وبحد أقصى ١٠٠ عنصر لكل كائن أو قائمة و٦ مستويات.";
+"Service_Review_AcceptedPending" = "تم قبول قرارك. تحقق من حالته الحالية لتأكيد الحفظ. مسودتك محفوظة هنا.";
+"Service_Review_CheckStatus" = "التحقق من حفظ القرار";
+"Service_Review_ChangedAfterDecision" = "تم حفظ قرارك، ثم تغير هذا السجل. أعد تحميل أحدث نسخة قبل اتخاذ قرار آخر.";
+"Service_Review_LeavePendingTitle" = "مغادرة المراجعة؟";
+"Service_Review_LeavePendingDetail" = "تم قبول قرارك. المغادرة تغلق شاشة المراجعة ولن تلغي التغيير. يمكنك فتح الخدمة مجددًا للتحقق من حالتها.";
+"Service_Review_LeavePending" = "مغادرة المراجعة";
+"Service_Review_LeaveUnconfirmedDetail" = "لم تتأكد نتيجة الطلب بعد. المغادرة تغلق شاشة المراجعة فقط، وقد يكون التغيير قد حُفظ. افتح الخدمة مجددًا للتحقق من حالتها.";
+
+/* Service Apex Multi-Category Studio */
+"Service_Scope_Universal_Badge" = "شامل لكل الحيوانات";
+"Service_Scope_Species_Count" = "أنواع محددة";
+"Service_Scope_All_Title" = "استهداف شامل لجميع فئات الحيوانات";
+"Service_Scope_All_Subtitle" = "تظهر الخدمة تلقائياً في المتجر العام، وكافة أقسام الحيوانات، وتصنيفات البحث.";
+"Service_Target_Species_Select" = "فئات الحيوانات المستهدفة";
+"Service_Customize_Species" = "تخصيص فئات معينة";
+"Service_Select_All_Species" = "اختيار الكل (شامل)";
+"Service_Specialties_Title" = "تخصصات وتصنيفات الخدمة الدقيقة";
+"Service_Specialties_Subtitle" = "حدد التخصصات المرتبطة أو أضف تصنيفاً مخصصاً ليظهر في تصفية المتجر.";
+"Service_Selected_Categories_Label" = "التصنيفات المعتمدة للخدمة:";
+"Service_Add_Custom_Category_Prompt" = "أو اكتب تصنيفاً إضافياً هنا...";
+"Service_Store_Projection_Title" = "محاكاة العرض في متجر وقوائم التطبيق";
+"Service_Store_Projection_Ready" = "مفعل للمتجر";
+"Service_Target_Animals_Label" = "الحيوانات المستهدفة:";
+"Service_Specialties_Label" = "التصنيفات المطبقة:";

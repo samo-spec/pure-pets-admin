@@ -13,6 +13,7 @@
 @interface PPAddEditServiceViewController ()
 @property (nonatomic, strong) PPServiceModel *serviceToEdit;
 @property (nonatomic, strong) UIViewController *hostingController;
+@property (nonatomic, strong, nullable) NSNumber *previousNavigationBarHidden;
 @end
 
 @implementation PPAddEditServiceViewController
@@ -21,6 +22,7 @@
     self = [super initWithNibName:nil bundle:nil];
     if (self) {
         _serviceToEdit = service;
+        self.hidesBottomBarWhenPushed = YES;
     }
     return self;
 }
@@ -67,8 +69,19 @@
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
+    if (!self.previousNavigationBarHidden && self.navigationController) {
+        self.previousNavigationBarHidden = @(self.navigationController.navigationBarHidden);
+    }
     if (self.navigationController) {
         [self.navigationController setNavigationBarHidden:YES animated:animated];
+    }
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    if (self.previousNavigationBarHidden && self.navigationController) {
+        [self.navigationController setNavigationBarHidden:self.previousNavigationBarHidden.boolValue animated:animated];
+        self.previousNavigationBarHidden = nil;
     }
 }
 
