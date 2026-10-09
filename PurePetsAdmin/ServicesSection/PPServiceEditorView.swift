@@ -182,22 +182,22 @@ public final class PPServiceEditorViewModel: ObservableObject {
                     if !trimmed.isEmpty { cats.append(trimmed) }
                 }
             }
-            if cats.isEmpty, let singleCat = s.category {
-                let trimmed = singleCat.trimmingCharacters(in: .whitespacesAndNewlines)
+            if cats.isEmpty {
+                let trimmed = s.category.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty { cats.append(trimmed) }
             }
             self.selectedCategories = cats
-            self.category = cats.first ?? (s.category ?? "")
-            self.categoryID = s.categoryID ?? ""
+            self.category = cats.first ?? s.category
+            self.categoryID = s.categoryID
 
             if let ad = s.availableDate {
                 self.hasAvailableDate = true
                 self.availableDate = ad
             }
             self.creationDate = s.timestamp ?? s.createdAt ?? Date()
-            self.existingImageURL = s.imageURL ?? ""
-            self.blurHash = s.blurHash ?? ""
-            self.ownerID = s.serviceOwnerID ?? (Auth.auth().currentUser?.uid ?? "")
+            self.existingImageURL = s.imageURL
+            self.blurHash = s.blurHash
+            self.ownerID = !s.serviceOwnerID.isEmpty ? s.serviceOwnerID : (Auth.auth().currentUser?.uid ?? "")
             self.extraJSONText = PPServiceEditorViewModel.prettyJSON(from: s.extraFields)
         } else {
             self.ownerID = Auth.auth().currentUser?.uid ?? ""
