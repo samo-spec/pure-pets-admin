@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		86DBFB6A5CE3C0327FB937CD /* Features/POS/ProformaInvoicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3FB814CF9559A6CAA71C5E3 /* Features/POS/ProformaInvoicesView.swift */; };
+		80C8794ACA68F0A43EC54AD0 /* Features/POS/ProformaInvoiceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D28AB224FF48D53ACEE40039 /* Features/POS/ProformaInvoiceModels.swift */; };
+		170EBAAF9418ECB342DAED78 /* Features/POS/ProformaInvoiceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F5B587A120337C50D0BBAC2 /* Features/POS/ProformaInvoiceService.swift */; };
+		6AEED4E358248ED5428D0918 /* Features/POS/ProformaInvoiceDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = E298C470F4454FD94A710943 /* Features/POS/ProformaInvoiceDocument.swift */; };
 		0E459C5F97C3462EBFC81034 /* Features/Providers/ProvidersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 174216D85CB0499686726B1E /* Features/Providers/ProvidersView.swift */; };
 		164CA91FA82D4B09B2BECE92 /* Features/Payments/PaymentDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B1FB3466EFD4302802B480D /* Features/Payments/PaymentDetailView.swift */; };
 		1A501138C31C4AB198EC2143 /* Features/More/NotificationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4625C65E1CE495C9DE824C0 /* Features/More/NotificationsView.swift */; };
@@ -416,6 +420,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		C3FB814CF9559A6CAA71C5E3 /* Features/POS/ProformaInvoicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/ProformaInvoicesView.swift; sourceTree = "<group>"; };
+		D28AB224FF48D53ACEE40039 /* Features/POS/ProformaInvoiceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/ProformaInvoiceModels.swift; sourceTree = "<group>"; };
+		7F5B587A120337C50D0BBAC2 /* Features/POS/ProformaInvoiceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/ProformaInvoiceService.swift; sourceTree = "<group>"; };
+		E298C470F4454FD94A710943 /* Features/POS/ProformaInvoiceDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/ProformaInvoiceDocument.swift; sourceTree = "<group>"; };
 		037779E2FB6A43D1886C40F6 /* Features/Payments/PaymentSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Payments/PaymentSettingsView.swift; sourceTree = "<group>"; };
 		068FBBDA955D966F979652B5 /* QBVideoIconView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QBVideoIconView.m; sourceTree = "<group>"; };
 		"06EF09F7-BCB6-470D-A1D1-30D24BDBC726" /* PPListingsAdminViewController.m */ = {isa = PBXFileReference; explicitFileType = sourcecode.c.objc; fileEncoding = 4; name = PPListingsAdminViewController.m; path = CategoriesSection/PPListingsAdminViewController.m; sourceTree = "<group>"; };
@@ -1424,6 +1432,10 @@
 				A7C91D04FBE74D56A8101004 /* Features/POS/POSReservedLivePetsView.swift */,
 				A7C91D06FBE74D56A8101006 /* Features/POS/POSCustomerPickerSheet.swift */,
 				4FBD3394272B482F8C2B898E /* Features/POS/POSHistoryView.swift */,
+				C3FB814CF9559A6CAA71C5E3 /* Features/POS/ProformaInvoicesView.swift */,
+				D28AB224FF48D53ACEE40039 /* Features/POS/ProformaInvoiceModels.swift */,
+				7F5B587A120337C50D0BBAC2 /* Features/POS/ProformaInvoiceService.swift */,
+				E298C470F4454FD94A710943 /* Features/POS/ProformaInvoiceDocument.swift */,
 				F2C71BA02F97412900716298 /* Features/POS/PPScannerView.swift */,
 				A3305C321078444DA3DF3D16 /* Features/Inventory/InventoryView.swift */,
 				F23DDE842F8BEC360020D4F7 /* Features/Inventory/InventoryLotsSheet.swift */,
@@ -2718,6 +2730,10 @@
 				A7C91D03FBE74D56A8101003 /* Features/POS/POSReservedLivePetsView.swift in Sources */,
 				A7C91D05FBE74D56A8101005 /* Features/POS/POSCustomerPickerSheet.swift in Sources */,
 				6E66355C629845A1A238D102 /* Features/POS/POSHistoryView.swift in Sources */,
+				86DBFB6A5CE3C0327FB937CD /* Features/POS/ProformaInvoicesView.swift in Sources */,
+				80C8794ACA68F0A43EC54AD0 /* Features/POS/ProformaInvoiceModels.swift in Sources */,
+				170EBAAF9418ECB342DAED78 /* Features/POS/ProformaInvoiceService.swift in Sources */,
+				6AEED4E358248ED5428D0918 /* Features/POS/ProformaInvoiceDocument.swift in Sources */,
 				F2C71BA12F97412900716299 /* Features/POS/PPScannerView.swift in Sources */,
 				643F43D0DC3447FB834531FE /* Features/Inventory/InventoryView.swift in Sources */,
 				856578A2515F4223930349C4 /* Features/Customers/UsersListView.swift in Sources */,

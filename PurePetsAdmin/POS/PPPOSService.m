@@ -2,6 +2,7 @@
 #import "PPFirebaseCompat.h"
 #import "PPBranchContextManager.h"
 #import <os/log.h>
+#import <math.h>
 @import Firebase;
 @import FirebaseFirestore;
 @import FirebaseFunctions;
@@ -42,7 +43,30 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
     return result.copy;
 }
 
+@interface PPPOSCartItem ()
+@property (nonatomic, strong, nullable) NSNumber *sourceQuantity;
+@property (nonatomic, strong, nullable) NSNumber *sourceRefundedQuantity;
+@end
+
 @implementation PPPOSCartItem
+- (NSString *)receiptLineID {
+    return self.proformaLineID.length > 0 ? self.proformaLineID : self.itemID;
+}
+
+- (double)quantityValue {
+    return self.sourceQuantity ? self.sourceQuantity.doubleValue : (double)self.quantity;
+}
+
+- (double)refundedQuantityValue {
+    return self.sourceRefundedQuantity ? self.sourceRefundedQuantity.doubleValue : (double)self.refundedQuantity;
+}
+
+- (void)setRefundedQuantityValue:(double)value {
+    double captured = isfinite(value) ? round(MAX(0, value) * 1000.0) / 1000.0 : 0;
+    self.sourceRefundedQuantity = @(captured);
+    self.refundedQuantity = (NSInteger)captured;
+}
+
 - (instancetype)initWithDictionary:(NSDictionary *)dict {
     self = [super init];
     if (self) {
@@ -50,8 +74,14 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         _name = PPSafeString(dict[@"name"]);
         _price = PPSafeDouble(dict[@"unitPrice"] ?: dict[@"price"]);
         _quantity = MAX(1, [PPSafeNumber(dict[@"quantity"]) integerValue]);
+        double rawQuantity = PPSafeDouble(dict[@"quantity"]);
+        if (isfinite(rawQuantity) && rawQuantity > 0) _sourceQuantity = @(rawQuantity);
+        _proformaLineID = PPSafeString(dict[@"proformaLineId"]);
+        _lineSubtotalMinor = [PPSafeNumber(dict[@"lineSubtotalMinor"]) longLongValue];
+        _taxableMinor = [PPSafeNumber(dict[@"taxableMinor"]) longLongValue];
+        _taxMinor = [PPSafeNumber(dict[@"taxMinor"]) longLongValue];
         _lineTotal = dict[@"lineTotal"] == nil
-            ? _price * _quantity
+            ? _price * self.quantityValue
             : PPSafeDouble(dict[@"lineTotal"]);
         _inventoryMode = PPSafeString(dict[@"inventoryMode"]);
         _unitIDs = PPPOSStringArray(dict[@"unitIds"]);
@@ -69,6 +99,8 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         _baseUnitQuantity = [PPSafeNumber(dict[@"baseUnitQuantity"]) integerValue] ?: (_groupQuantity * _unitsPerGroup);
         _unitGroupPriceMinor = [PPSafeNumber(dict[@"unitGroupPriceMinor"]) integerValue] ?: (NSInteger)round(_price * 100.0);
         _refundedQuantity = [PPSafeNumber(dict[@"refundedQuantity"]) integerValue];
+        double rawRefundedQuantity = PPSafeDouble(dict[@"refundedQuantity"]);
+        if (isfinite(rawRefundedQuantity) && rawRefundedQuantity >= 0) _sourceRefundedQuantity = @(rawRefundedQuantity);
         _refundedUnitIds = PPPOSStringArray(dict[@"refundedUnitIds"]);
 
         _size = PPSafeString(dict[@"size"]);
@@ -85,6 +117,10 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
                      [_inventoryMode.uppercaseString isEqualToString:@"INDIVIDUAL_TRACKED"] ||
                      _unitIDs.count > 0 ||
                      _unitRingTags.count > 0;
+        _permitsFractionalRefund = _proformaLineID.length > 0 && !_isLivePet && _unitsPerGroup == 1 &&
+            ![PPSafeString(dict[@"quantityStep"]) isEqualToString:@"1"] &&
+            ![PPSafeString(dict[@"inventoryTrackingPolicy"]) isEqualToString:@"lot"] &&
+            PPSafeArray(dict[@"lotAllocations"]).count == 0;
 
         BOOL isRTL = [Language isRTL];
         if (_variantOptionName.length == 0 && _selectedOptionsSnapshot.count > 0) {
@@ -192,6 +228,9 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         _receiptID = docID ?: @"";
         _subtotal = PPSafeDouble(dict[@"subtotal"]);
         _discount = PPSafeDouble(dict[@"discount"]);
+        _tax = PPSafeDouble(dict[@"tax"]);
+        _refundedTax = PPSafeDouble(dict[@"refundedTax"]);
+        _proformaInvoiceID = PPSafeString(dict[@"proformaInvoiceId"]);
         _total = PPSafeDouble(dict[@"total"]);
         _cashReceived = PPSafeDouble(dict[@"cashReceived"]);
         _changeDue = PPSafeDouble(dict[@"changeDue"]);
@@ -230,8 +269,8 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         }
         if (totalRefunded <= 0.0 && _items.count > 0) {
             for (PPPOSCartItem *item in _items) {
-                if (item.refundedQuantity > 0) {
-                    totalRefunded += (double)item.refundedQuantity * item.price;
+                if (item.refundedQuantityValue > 0) {
+                    totalRefunded += item.refundedQuantityValue * item.price;
                 }
             }
         }
@@ -255,10 +294,10 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
             }
         }
 
-        if ([_status isEqualToString:@"completed"] || [_status isEqualToString:@"partially_refunded"]) {
+        if (_proformaInvoiceID.length == 0 && ([_status isEqualToString:@"completed"] || [_status isEqualToString:@"partially_refunded"])) {
             BOOL allItemsRefunded = (_items.count > 0);
             for (PPPOSCartItem *item in _items) {
-                if (item.refundedQuantity < item.quantity) {
+                if (item.refundedQuantityValue + 0.000001 < item.quantityValue) {
                     allItemsRefunded = NO;
                     break;
                 }

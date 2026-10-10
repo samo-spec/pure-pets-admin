@@ -296,6 +296,29 @@ extension UIViewController {
     }
 }
 
+@objc public final class AdminProformaInvoicesHostingController: UIViewController {
+    public override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .ppBackground
+        hidesBottomBarWhenPushed = true
+        let session = AdminSession(source: PPAdminSessionSnapshot())
+        pp_embedSwiftUI(AdminProformaInvoicesView(session: session, onDismiss: { [weak self] in
+            PPAdminNavigationFallback.popOrDismiss(from: self)
+        }))
+    }
+
+    public override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(true, animated: animated)
+        navigationController?.pp_enableSwipeToPop()
+    }
+
+    public override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        navigationController?.pp_enableSwipeToPop()
+    }
+}
+
 @objc public final class AdminBranchesHostingController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()

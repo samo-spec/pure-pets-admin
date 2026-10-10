@@ -3456,6 +3456,10 @@ void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
                                         titleKey:@"POS_History_Title"
                                      subtitleKey:@"POS_History_Subtitle"
                                         iconName:@"clock.arrow.circlepath"]];
+        [posItems addObject:[self pp_itemWithTag:@"proformaInvoices"
+                                        titleKey:@"Proforma_Title"
+                                     subtitleKey:@"Proforma_Subtitle"
+                                        iconName:@"doc.text"]];
     } else if ([self pp_canAccessAnyPermissions:@[kPermAdminAll, kStaffPermPosHistory]]) {
         [posItems addObject:[self pp_itemWithTag:@"posHistory"
                                         titleKey:@"POS_History_Title"
@@ -3764,6 +3768,11 @@ void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
     }
     if ([tag isEqualToString:@"posHistory"]) {
         UIViewController *vc = [AdminPOSHistoryHostingController new];
+        vc.hidesBottomBarWhenPushed = YES;
+        return vc;
+    }
+    if ([tag isEqualToString:@"proformaInvoices"]) {
+        UIViewController *vc = [AdminProformaInvoicesHostingController new];
         vc.hidesBottomBarWhenPushed = YES;
         return vc;
     }

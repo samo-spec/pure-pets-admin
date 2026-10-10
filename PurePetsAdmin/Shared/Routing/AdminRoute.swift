@@ -13,6 +13,7 @@ enum AdminRoute: Hashable, Identifiable {
     case providerAccounting
     case pointOfSale
     case pointOfSaleHistory
+    case proformaInvoices
     case users
     case staff
     case account
@@ -55,6 +56,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .providerAccounting: return "providerAccounting"
         case .pointOfSale: return "pos"
         case .pointOfSaleHistory: return "posHistory"
+        case .proformaInvoices: return "proformaInvoices"
         case .users: return "users"
         case .staff: return "staff"
         case .account: return "account"
@@ -101,6 +103,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .providerAccounting: return "Providers_Accounting_Title"
         case .pointOfSale: return "POS_Title"
         case .pointOfSaleHistory: return "POS_History_Title"
+        case .proformaInvoices: return "Proforma_Title"
         case .users: return "UsersSection"
         case .staff: return "Staff_Management"
         case .account: return "EditMyAccount_Title"
@@ -135,7 +138,7 @@ enum AdminRoute: Hashable, Identifiable {
     /// title or backend responsibility.
     var contextTitleKey: String {
         switch self {
-        case .paymentOrder, .payments, .paymentSettings, .fulfillment, .pointOfSale, .pointOfSaleHistory,
+        case .paymentOrder, .payments, .paymentSettings, .fulfillment, .pointOfSale, .pointOfSaleHistory, .proformaInvoices,
              .accessories, .food, .livePets, .wantedPets:
             return "CommandCenter_Work_Title"
         case .delivery, .providerApplications, .providerPlans, .providerFeatures, .providerAccounting,
@@ -165,6 +168,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .providerAccounting: return "chart.pie"
         case .pointOfSale: return "cart"
         case .pointOfSaleHistory: return "clock.arrow.circlepath"
+        case .proformaInvoices: return "doc.text"
         case .users: return "person.2"
         case .staff: return "person.3.sequence"
         case .account: return "person.crop.circle"
@@ -206,6 +210,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .providerAccounting: return ["payments.view", "payments.manage"]
         case .pointOfSale: return ["pos.view", "pos.sell"]
         case .pointOfSaleHistory: return ["pos.view", "pos.sell", "pos.history"]
+        case .proformaInvoices: return ["pos.view", "pos.sell"]
         case .users: return ["users.view", "users.manage", "users.block", "users.features.view", "users.features.manage", "users.subscriptions.view", "users.subscriptions.manage", "users.restrictions.view", "users.restrictions.manage"]
         case .staff: return ["staff.view", "staff.manage"]
         case .account, .settings: return []

@@ -2,19 +2,7 @@
 //  POSHistoryView.swift
 //  PurePetsAdmin
 //
-//  Sovereign POS Financial Command Ledger & Thermal Vault.
-//  Reinvented from absolute first principles:
-//  - Sovereign Financial Pulse Instrument with live liquidity figure
-//  - Interactive Cash vs Card proportional spectrum bar
-//  - Horizon Time Capsule Ribbon (Today, Yesterday, Week, Month, All Time)
-//  - Living Transaction Dossier Cards with tactile receipt slip styling
-//  - Instant copyable cryptopill receipt IDs with haptic feedback
-//  - Customer Contact Conduit (Direct Call & WhatsApp actions)
-//  - Itemized Specimen Strips with unit ring tags
-//  - Operational Shift Readiness Card (eliminating the low-density whitespace void)
-//  - Surgical Refund Studio with inventory restocking
-//  - High-consequence Void / Cancellation Sheet
-//  - Native Thermal Print Dispatch
+//  Branch sales journal and the existing receipt, refund, void, and sharing flows.
 //
 
 import SwiftUI
@@ -323,7 +311,8 @@ enum POSStatusFilter: String, CaseIterable, Identifiable {
 @MainActor
 final class POSHistoryViewModel: ObservableObject {
     @Published private(set) var receipts: [PPPOSReceipt] = []
-    @Published private(set) var isLoading = false
+    // No totals are confirmed before the first branch fetch starts on appearance.
+    @Published private(set) var isLoading = true
     @Published var errorMessage: String?
 
     // Filters
@@ -364,19 +353,19 @@ final class POSHistoryViewModel: ObservableObject {
                        error.localizedDescription.localizedCaseInsensitiveContains("permission") ||
                        error.localizedDescription.localizedCaseInsensitiveContains("insufficient") {
                         self.errorMessage = Language.get(
-                            "POS_History_PermissionDenied",
-                            alter: "لا تملك الصلاحية الكافية لعرض سجل مبيعات هذا الفرع (تتطلب صلاحية pos.history)."
+                            "POS_Journal_PermissionDenied",
+                            alter: "لا تملك صلاحية عرض إيصالات هذا الفرع."
                         )
                     } else if nsError.code == 14 ||
                               error.localizedDescription.localizedCaseInsensitiveContains("network") ||
                               error.localizedDescription.localizedCaseInsensitiveContains("unavailable") {
                         self.errorMessage = Language.get(
-                            "POS_History_NetworkError",
+                            "POS_Journal_NetworkError",
                             alter: "تعذر الاتصال بالخادم لتحميل سجل المبيعات. يرجى التحقق من اتصال الإنترنت."
                         )
                     } else {
                         self.errorMessage = Language.get(
-                            "POS_History_LoadFailed",
+                            "POS_Journal_LoadFailed",
                             alter: "تعذر تحميل سجل المبيعات حالياً. يرجى المحاولة مرة أخرى."
                         )
                     }
@@ -408,7 +397,7 @@ final class POSHistoryViewModel: ObservableObject {
     // MARK: - Filtered Receipts (Horizon + Query + Status + Payment)
 
     var filteredReceipts: [PPPOSReceipt] {
-        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).normalizedEnglishDigits.lowercased()
         return horizonReceipts.filter { receipt in
             // Payment filter
             guard selectedPaymentFilter.matches(method: receipt.paymentMethod) else { return false }
@@ -418,15 +407,15 @@ final class POSHistoryViewModel: ObservableObject {
 
             // Search query filter
             if !query.isEmpty {
-                let idMatch = receipt.receiptID.lowercased().contains(query)
-                let normIdMatch = POSReceiptFormat.receiptID(receipt.receiptID).lowercased().contains(query)
-                let customerNameMatch = receipt.customerName.lowercased().contains(query)
-                let customerPhoneMatch = receipt.customerPhone.lowercased().contains(query)
-                let cashierMatch = (receipt.cashierName ?? "").lowercased().contains(query)
+                let idMatch = receipt.receiptID.normalizedEnglishDigits.lowercased().contains(query)
+                let normIdMatch = POSReceiptFormat.receiptID(receipt.receiptID).normalizedEnglishDigits.lowercased().contains(query)
+                let customerNameMatch = receipt.customerName.normalizedEnglishDigits.lowercased().contains(query)
+                let customerPhoneMatch = receipt.customerPhone.normalizedEnglishDigits.lowercased().contains(query)
+                let cashierMatch = (receipt.cashierName ?? "").normalizedEnglishDigits.lowercased().contains(query)
                 let itemMatch = receipt.items.contains(where: { item in
-                    item.name.lowercased().contains(query) ||
-                    item.itemID.lowercased().contains(query) ||
-                    item.unitRingTags.contains(where: { $0.lowercased().contains(query) })
+                    item.name.normalizedEnglishDigits.lowercased().contains(query) ||
+                    item.itemID.normalizedEnglishDigits.lowercased().contains(query) ||
+                    item.unitRingTags.contains(where: { $0.normalizedEnglishDigits.lowercased().contains(query) })
                 })
                 return idMatch || normIdMatch || customerNameMatch || customerPhoneMatch || cashierMatch || itemMatch
             }
@@ -475,12 +464,12 @@ final class POSHistoryViewModel: ObservableObject {
         }.count
     }
 
-    var totalItemsSold: Int {
-        horizonReceipts.reduce(0) { sum, receipt in
+    var totalItemsSold: Double {
+        horizonReceipts.reduce(0.0) { sum, receipt in
             let st = receipt.status.lowercased()
             if st == "cancelled" || st == "voided" { return sum }
-            let itemsCount = receipt.items.reduce(0) { iSum, item in
-                iSum + max(0, item.quantity - item.refundedQuantity)
+            let itemsCount = receipt.items.reduce(0.0) { iSum, item in
+                iSum + POSReceiptFormat.quantizedQuantity(item.quantityValue - item.refundedQuantityValue)
             }
             return sum + itemsCount
         }
@@ -632,13 +621,112 @@ final class POSHistoryViewModel: ObservableObject {
     }
 }
 
-// MARK: - Sovereign POS History View
+// MARK: - Journal Primitives
+
+private struct POSJournalButtonStyle: ButtonStyle {
+    var filled = false
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(filled ? Color.white : AdminSurface.primary)
+            .background(
+                filled
+                    ? (configuration.isPressed ? AdminSurface.primaryPressed : AdminSurface.primary)
+                    : (configuration.isPressed ? AdminSurface.backgroundSecondary : Color.clear),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+            .opacity(isEnabled ? 1 : 0.5)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+/// Amounts stay in their own directional island; surrounding content keeps language direction.
+private struct POSJournalAmount: View {
+    let value: Double
+    let currency: String
+    var prominent = false
+    var amountFont: Font? = nil
+
+    private var currencyLabel: String {
+        currency.isEmpty || currency.uppercased() == "QAR"
+            ? Language.get("QAR", alter: "ر.ق")
+            : currency.uppercased()
+    }
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                amount
+                currencyText
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            .environment(\.layoutDirection, .leftToRight)
+            VStack(alignment: .leading, spacing: 2) {
+                amount
+                currencyText
+            }
+            .environment(\.layoutDirection, .leftToRight)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(POSReceiptFormat.currency(value, code: currency))
+    }
+
+    private var amount: some View {
+        Text(verbatim: value.englishDigits(decimals: 2))
+            .font(amountFont ?? (prominent ? AdminType.title : AdminType.headline))
+            .monospacedDigit()
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var currencyText: some View {
+        Text(currencyLabel)
+            .font(prominent ? AdminType.subheadline : AdminType.captionBold)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+private struct POSHistoryDayGroup: Identifiable {
+    let day: Date?
+    let receipts: [PPPOSReceipt]
+    var id: String { day.map { String($0.timeIntervalSince1970) } ?? "undated" }
+
+    var localizedTitle: String {
+        guard let day else { return Language.get("POS_Journal_Undated", alter: "التاريخ غير متوفر") }
+        if Calendar.current.isDateInToday(day) { return POSDateHorizon.today.localizedTitle }
+        if Calendar.current.isDateInYesterday(day) { return POSDateHorizon.yesterday.localizedTitle }
+        return day.formatted(
+            Date.FormatStyle(date: .complete, time: .omitted)
+                .locale(Locale(identifier: Language.isRTL() ? "ar_QA" : "en_US"))
+        )
+    }
+
+    static func make(from receipts: [PPPOSReceipt]) -> [Self] {
+        let calendar = Calendar.current
+        let groups = Dictionary(grouping: receipts) { receipt in
+            receipt.createdAt.map { calendar.startOfDay(for: $0) }
+        }
+        return groups.map { Self(day: $0.key, receipts: $0.value) }
+            .sorted {
+                switch ($0.day, $1.day) {
+                case let (lhs?, rhs?): return lhs > rhs
+                case (_?, nil): return true
+                default: return false
+                }
+            }
+    }
+}
+
+// MARK: - Branch Sales Journal
 
 struct AdminPOSHistoryView: View {
     let session: AdminSession
     var onDismiss: (() -> Void)? = nil
     var onStartFastSell: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var branchStore = BranchContextStore.shared
     @StateObject private var viewModel = POSHistoryViewModel()
 
@@ -650,8 +738,11 @@ struct AdminPOSHistoryView: View {
     @State private var receiptForLivePetReturn: PPPOSReceipt? = nil
     @State private var receiptForCancel: PPPOSReceipt? = nil
     @State private var copyToastText: String? = nil
+    @State private var copyToastID = UUID()
     @State private var isShowingFastSell: Bool = false
-    @State private var isSearchActive: Bool = false
+    @State private var isPeriodDetailsExpanded = false
+    @FocusState private var isSearchFocused: Bool
+    @ScaledMetric(relativeTo: .body) private var searchControlHeight: CGFloat = 44
 
     init(session: AdminSession, onDismiss: (() -> Void)? = nil, onStartFastSell: (() -> Void)? = nil) {
         self.session = session
@@ -661,42 +752,30 @@ struct AdminPOSHistoryView: View {
 
     var body: some View {
         ZStack {
-            AdminSurface.background.ignoresSafeArea()
+            AdminSurface.surface.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // 1. Sovereign Navigation Header with Vault Connectivity Beacon
                 navigationHeaderView
-
-                // 2. Compact Multi-Branch Switcher Bar
-                PPAdminBranchSwitcherBar(style: .compact)
-                    .padding(.top, 2)
-                    .padding(.bottom, 4)
-
-                // 3. Scrollable Financial Command Ledger
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: AdminSpacing.md) {
-                        // Sovereign Financial Pulse Instrument
-                        financialPulseInstrument
-
-                        // Faceted Search & Filter Intelligence Matrix
-                        filterMatrixView
-
-                        // Transaction Ledger Cards
+                    VStack(alignment: .leading, spacing: 24) {
+                        PPAdminBranchSwitcherBar(style: .journal, horizontalPadding: 0)
+                        periodStatement
+                        receiptLocator
                         ledgerSection
-
-                        // Operational Shift Readiness Card (Eliminates low-density empty void)
-                        if viewModel.filteredReceipts.count < 3 && !viewModel.isLoading {
-                            shiftReadinessCard
-                        }
                     }
+                    .frame(maxWidth: 760, alignment: .leading)
                     .padding(.horizontal, AdminSpacing.screenMargin)
-                    .padding(.vertical, AdminSpacing.sm)
+                    .padding(.top, 20)
+                    .padding(.bottom, 24)
+                    .frame(maxWidth: .infinity)
                 }
+                .scrollDismissesKeyboard(.interactively)
                 .refreshable {
-                    let impact = UIImpactFeedbackGenerator(style: .light)
-                    impact.impactOccurred()
                     viewModel.load(branchID: branchStore.activeBranch?.branchID)
-                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    // Keep the refresh indicator tied to this fetch, not a cosmetic delay.
+                    while viewModel.isLoading && !Task.isCancelled {
+                        try? await Task.sleep(nanoseconds: 100_000_000)
+                    }
                 }
             }
 
@@ -714,13 +793,28 @@ struct AdminPOSHistoryView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
                     .background(Color.black.opacity(0.85), in: Capsule())
-                    .padding(.bottom, 32)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.bottom, 16)
+                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                    .accessibilityElement(children: .combine)
+                    .allowsHitTesting(false)
                 }
                 .zIndex(100)
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if AdminRoute.pointOfSale.isAuthorized(for: session) && !isSearchFocused {
+                newSaleRail
+            }
+        }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .environment(\.locale, Locale(identifier: Language.isRTL() ? "ar_QA" : "en_US"))
+        .task(id: copyToastID) {
+            guard let text = copyToastText else { return }
+            do { try await Task.sleep(nanoseconds: 2_200_000_000) } catch { return }
+            if copyToastText == text {
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { copyToastText = nil }
+            }
+        }
         .onAppear {
             viewModel.load(branchID: branchStore.activeBranch?.branchID)
         }
@@ -845,597 +939,470 @@ struct AdminPOSHistoryView: View {
         }
     }
 
-    // MARK: - Navigation Header with Vault Beacon
+    // MARK: - Document Heading
 
     private var navigationHeaderView: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(spacing: 0) {
             Color.clear.frame(height: PPStatusBarHelper.statusBarHeight)
-
-            HStack(spacing: 12) {
-                // Back Button (RTL Safe)
+            HStack(alignment: .center, spacing: 12) {
                 AdminSquircleBackButton {
-                    if let onDismiss {
-                        onDismiss()
-                    } else {
-                        dismiss()
-                    }
+                    isSearchFocused = false
+                    if let onDismiss { onDismiss() } else { dismiss() }
                 }
-
-                // Title & Vault Connected Beacon
                 VStack(alignment: .leading, spacing: 2) {
                     Text(Language.get("POS_History_Title", alter: "سجل المبيعات"))
                         .font(AdminType.title3)
-                        .foregroundColor(AdminSurface.primaryText)
-
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(Color(uiColor: .systemGreen))
-                            .frame(width: 7, height: 7)
-                            .shadow(color: Color(uiColor: .systemGreen).opacity(0.6), radius: 4, x: 0, y: 0)
-
-                        Text(Language.get("POS_Vault_LiveStatus", alter: "متصل بالخزينة"))
-                            .font(AdminType.caption2Bold)
-                            .foregroundColor(Color(uiColor: .systemGreen))
-
-                        if let branch = branchStore.activeBranch?.localizedName() {
-                            Text("•")
-                                .foregroundColor(AdminSurface.secondaryText)
-                            Text(branch)
-                                .font(AdminType.caption2)
-                                .foregroundColor(AdminSurface.secondaryText)
-                                .lineLimit(1)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .accessibilityAddTraits(.isHeader)
+                    if !dynamicTypeSize.isAccessibilitySize {
+                        Text(loadStatus)
+                            .font(AdminType.caption)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Button {
+                    isSearchFocused = false
+                    viewModel.load(branchID: branchStore.activeBranch?.branchID)
+                } label: {
+                    Group {
+                        if viewModel.isLoading {
+                            ProgressView().tint(AdminSurface.primary)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 19, weight: .medium))
                         }
                     }
+                    .frame(width: 44, height: 44)
                 }
-
-                Spacer()
-
-                // Search Toggle Button
-                Button {
-                    let impact = UIImpactFeedbackGenerator(style: .light)
-                    impact.impactOccurred()
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                        isSearchActive.toggle()
-                    }
-                } label: {
-                    Image(systemName: isSearchActive ? "magnifyingglass.circle.fill" : "magnifyingglass")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(isSearchActive ? Color(uiColor: .ppPrimary) : AdminSurface.primaryText)
-                        .frame(width: 42, height: 42)
-                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
-                        )
-                        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
-                }
-                .buttonStyle(.plain)
-
-                // Refresh Button
-                if viewModel.isLoading {
-                    ProgressView()
-                        .tint(AdminSurface.primary)
-                        .scaleEffect(0.9)
-                        .frame(width: 42, height: 42)
-                } else {
-                    Button(action: {
-                        let impact = UIImpactFeedbackGenerator(style: .medium)
-                        impact.impactOccurred()
-                        viewModel.load(branchID: branchStore.activeBranch?.branchID)
-                    }) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundColor(AdminSurface.primaryText)
-                            .frame(width: 42, height: 42)
-                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
-                            )
-                            .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
-                }
+                .buttonStyle(POSReceiptActionStyle(cornerRadius: 14))
+                .disabled(viewModel.isLoading)
+                .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
+                .accessibilityValue(loadStatus)
             }
             .padding(.horizontal, AdminSpacing.screenMargin)
-            .padding(.top, AdminSpacing.sm)
-            .padding(.bottom, AdminSpacing.xs)
-
-            if let error = viewModel.errorMessage {
-                AdminErrorBanner(
-                    message: error,
-                    retry: { viewModel.load(branchID: branchStore.activeBranch?.branchID) }
-                )
-                .padding(.horizontal, AdminSpacing.screenMargin)
-                .padding(.top, 4)
-            }
+            .padding(.vertical, 8)
+            .frame(maxWidth: 1040)
         }
     }
 
-    // MARK: - Sovereign Financial Pulse Instrument
-
-    private var financialPulseInstrument: some View {
-        VStack(spacing: AdminSpacing.sm) {
-            // Horizon Time Capsule Ribbon
-            horizonPillSelector
-
-            // Hero Liquidity Figure & Activity Counter
-            VStack(spacing: 4) {
-                HStack(spacing: 4) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 12))
-                        .foregroundColor(Color(uiColor: .ppPrimary))
-                    Text(Language.get("POS_Telemetry_NetRevenue", alter: "صافي الإيرادات"))
-                        .font(AdminType.captionBold)
-                        .foregroundColor(AdminSurface.secondaryText)
-                }
-
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(verbatim: viewModel.totalRevenue.englishDigits(decimals: 2))
-                        .font(AdminType.largeTitle)
-                        .foregroundColor(AdminSurface.primaryText)
-                        .monospacedDigit()
-                        .minimumScaleFactor(0.6)
-                        .lineLimit(1)
-
-                    Text(Language.get("QAR", alter: "ر.ق"))
-                        .font(AdminType.headline)
-                        .foregroundColor(AdminSurface.secondaryText)
-                }
-
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(Color(uiColor: .systemGreen))
-                        .frame(width: 6, height: 6)
-                    Text(String(format: Language.get("POS_Telemetry_CompletedSales_Fmt", alter: "%@ عملية معتمدة"), viewModel.totalTransactions.englishDigits))
-                        .font(AdminType.caption2)
-                        .foregroundColor(AdminSurface.secondaryText)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 4)
-
-            // Dual-Channel Liquidity Splitter Spectrum Bar
-            spectrumBarView
-
-            Divider()
-                .background(AdminSurface.hairline)
-                .padding(.vertical, 2)
-
-            // Micro-Telemetry Dial Ribbon
-            HStack(spacing: 8) {
-                telemetryDial(
-                    symbol: "cart.fill",
-                    color: Color(uiColor: .systemTeal),
-                    title: Language.get("POS_Telemetry_AvgBasket", alter: "متوسط السلة"),
-                    value: viewModel.averageBasket.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق")
-                )
-
-                telemetryDial(
-                    symbol: "shippingbox.fill",
-                    color: Color(uiColor: .systemBlue),
-                    title: Language.get("POS_Telemetry_UnitsSold", alter: "القطع المباعة"),
-                    value: "\(viewModel.totalItemsSold.englishDigits) " + Language.get("POS_Items", alter: "قطع")
-                )
-
-                telemetryDial(
-                    symbol: "arrow.uturn.backward.circle.fill",
-                    color: viewModel.totalRefunded > 0 ? Color(uiColor: .systemOrange) : Color.gray,
-                    title: Language.get("POS_Telemetry_Refunds", alter: "المستردات"),
-                    value: viewModel.totalRefunded.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق")
-                )
-            }
-        }
-        .padding(AdminSpacing.base)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 4)
+    private var loadStatus: String {
+        if viewModel.isLoading { return Language.get("POS_Journal_Loading", alter: "جارٍ تحميل إيصالات الفرع…") }
+        if viewModel.errorMessage != nil { return Language.get("POS_Journal_Unavailable", alter: "تعذر تحميل الإيصالات") }
+        return Language.get("POS_Journal_Loaded", alter: "تم تحميل إيصالات الفرع")
     }
 
-    // MARK: - Horizon Time Capsule Ribbon
+    // MARK: - Period Statement
 
-    private var horizonPillSelector: some View {
-        HStack(spacing: 4) {
-            ForEach(POSDateHorizon.allCases, id: \.self) { horizon in
-                let isSelected = viewModel.selectedHorizon == horizon
-                Button {
-                    let impact = UIImpactFeedbackGenerator(style: .light)
-                    impact.impactOccurred()
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        viewModel.selectedHorizon = horizon
-                    }
+    private var periodStatement: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 16) {
+                    netRevenueLabel
+                    Spacer(minLength: 8)
+                    periodControl
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    netRevenueLabel
+                    periodControl
+                }
+            }
+            if !viewModel.isLoading && viewModel.errorMessage == nil {
+                POSJournalAmount(value: viewModel.totalRevenue, currency: "QAR", prominent: true)
+                    .foregroundStyle(AdminSurface.primary)
+                Text(String(
+                    format: Language.get("POS_Journal_ActivityFormat", alter: "%@ معاملات · %@ قطع مباعة"),
+                    viewModel.totalTransactions.englishDigits,
+                    POSReceiptFormat.quantity(viewModel.totalItemsSold)
+                ))
+                .font(AdminType.subheadline)
+                .foregroundStyle(AdminSurface.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+                DisclosureGroup(isExpanded: $isPeriodDetailsExpanded) {
+                    periodFacts
+                        .padding(.top, 12)
+                        .padding(.bottom, 4)
                 } label: {
-                    Text(horizon.localizedTitle)
-                        .font(isSelected ? AdminType.captionBold : AdminType.caption)
-                        .foregroundColor(isSelected ? .white : AdminSurface.secondaryText)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .frame(maxWidth: .infinity)
-                        .background(
-                            isSelected ?
-                                AnyView(Capsule().fill(Color(uiColor: .ppPrimary))) :
-                                AnyView(EmptyView())
-                        )
-                        .contentShape(Rectangle())
+                    Text(Language.get("POS_Journal_PeriodDetails", alter: "تفاصيل الفترة"))
+                        .font(AdminType.subheadlineBold)
+                        .frame(minHeight: 44, alignment: .leading)
                 }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(3)
-        .background(Color(uiColor: .ppBackgroundSecondary), in: Capsule())
-    }
-
-    // MARK: - Cash vs Card Spectrum Split Bar
-
-    private var spectrumBarView: some View {
-        VStack(spacing: 8) {
-            GeometryReader { geo in
-                let totalWidth = geo.size.width
-                let cashRatio = CGFloat(viewModel.cashRatio)
-                let cashWidth = max(8, min(totalWidth - 8, totalWidth * cashRatio))
-                let cardWidth = max(8, totalWidth - cashWidth)
-
-                HStack(spacing: 3) {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color(uiColor: .systemGreen))
-                        .frame(width: viewModel.totalRevenue > 0 ? cashWidth : totalWidth * 0.5, height: 9)
-
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color(uiColor: .systemIndigo))
-                        .frame(width: viewModel.totalRevenue > 0 ? cardWidth : totalWidth * 0.5, height: 9)
+                .tint(AdminSurface.primary)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: isPeriodDetailsExpanded)
+            } else if viewModel.isLoading {
+                HStack(spacing: 12) {
+                    ProgressView().tint(AdminSurface.primary)
+                    Text(Language.get("POS_Journal_Loading", alter: "جارٍ تحميل إيصالات الفرع…"))
+                        .font(AdminType.body)
+                        .foregroundStyle(AdminSurface.secondaryText)
                 }
+                .padding(.vertical, 12)
             }
-            .frame(height: 9)
-
-            // Interactive Split Filter Badges
-            HStack {
-                Button {
-                    let impact = UIImpactFeedbackGenerator(style: .light)
-                    impact.impactOccurred()
-                    withAnimation(.spring()) {
-                        viewModel.selectedPaymentFilter = (viewModel.selectedPaymentFilter == .cash) ? .all : .cash
-                    }
-                } label: {
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(Color(uiColor: .systemGreen))
-                            .frame(width: 7, height: 7)
-                        Text(Language.get("POS_Telemetry_Cash", alter: "نقدي"))
-                            .font(AdminType.caption2)
-                            .foregroundColor(AdminSurface.secondaryText)
-                        Text(verbatim: viewModel.cashRevenue.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
-                            .font(AdminType.captionBold)
-                            .foregroundColor(viewModel.selectedPaymentFilter == .cash ? Color(uiColor: .systemGreen) : AdminSurface.primaryText)
-                    }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(
-                        viewModel.selectedPaymentFilter == .cash ? Color(uiColor: .systemGreen).opacity(0.12) : Color.clear,
-                        in: Capsule()
-                    )
-                }
-                .buttonStyle(.plain)
-
-                Spacer()
-
-                Button {
-                    let impact = UIImpactFeedbackGenerator(style: .light)
-                    impact.impactOccurred()
-                    withAnimation(.spring()) {
-                        viewModel.selectedPaymentFilter = (viewModel.selectedPaymentFilter == .card) ? .all : .card
-                    }
-                } label: {
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(Color(uiColor: .systemIndigo))
-                            .frame(width: 7, height: 7)
-                        Text(Language.get("POS_Telemetry_Card", alter: "شبكة"))
-                            .font(AdminType.caption2)
-                            .foregroundColor(AdminSurface.secondaryText)
-                        Text(verbatim: viewModel.cardRevenue.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
-                            .font(AdminType.captionBold)
-                            .foregroundColor(viewModel.selectedPaymentFilter == .card ? Color(uiColor: .systemIndigo) : AdminSurface.primaryText)
-                    }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(
-                        viewModel.selectedPaymentFilter == .card ? Color(uiColor: .systemIndigo).opacity(0.12) : Color.clear,
-                        in: Capsule()
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
-    private func telemetryDial(
-        symbol: String,
-        color: Color,
-        title: String,
-        value: String
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 5) {
-                Image(systemName: symbol)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(color)
-                Text(title)
-                    .font(AdminType.caption2)
-                    .foregroundColor(AdminSurface.secondaryText)
-                    .lineLimit(1)
-            }
-
-            Text(verbatim: value)
-                .font(PPBrandFont.bold(size: 13, relativeTo: .subheadline))
-                .foregroundColor(AdminSurface.primaryText)
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+            Text(Language.get("POS_Journal_Scope", alter: "إجماليات الفترة محسوبة من أحدث ٢٥٠ إيصالًا للفرع كحد أقصى."))
+                .font(AdminType.caption)
+                .foregroundStyle(AdminSurface.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            Divider().overlay(AdminSurface.hairline)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(8)
-        .background(Color(uiColor: .ppBackgroundSecondary).opacity(0.7), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
-    // MARK: - Faceted Filter Matrix View
+    private var netRevenueLabel: some View {
+        Text(Language.get("POS_Telemetry_NetRevenue", alter: "صافي الإيرادات"))
+            .font(AdminType.subheadlineBold)
+            .foregroundStyle(AdminSurface.primaryText)
+            .fixedSize(horizontal: false, vertical: true)
+    }
 
-    private var filterMatrixView: some View {
-        VStack(spacing: AdminSpacing.xs) {
-            // Expandable Search Bar
-            if isSearchActive || !viewModel.searchQuery.isEmpty {
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(AdminSurface.secondaryText)
-
-                    TextField(
-                        Language.get("POS_Search_Placeholder", alter: "ابحث برقم الإيصال، اسم العميل، الهاتف، أو الصنف..."),
-                        text: $viewModel.searchQuery
-                    )
-                    .font(AdminType.body)
-                    .foregroundColor(AdminSurface.primaryText)
-
-                    if !viewModel.searchQuery.isEmpty {
-                        Button {
-                            viewModel.searchQuery = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 14))
-                                .foregroundColor(AdminSurface.secondaryText)
-                        }
-                        .buttonStyle(.plain)
-                    }
+    private var periodControl: some View {
+        Menu {
+            Picker(Language.get("POS_Journal_Period", alter: "الفترة"), selection: $viewModel.selectedHorizon) {
+                ForEach(POSDateHorizon.allCases) { horizon in
+                    Text(periodTitle(horizon)).tag(horizon)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
-                )
-                .transition(.opacity.combined(with: .move(edge: .top)))
             }
+        } label: {
+            Label {
+                Text(periodTitle(viewModel.selectedHorizon))
+                    .font(AdminType.subheadlineBold)
+            } icon: {
+                Image(systemName: "calendar")
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 10)
+            .frame(minHeight: 44)
+            .foregroundStyle(AdminSurface.primary)
+            .background(AdminSurface.backgroundSecondary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .accessibilityLabel(Language.get("POS_Journal_Period", alter: "الفترة"))
+        .accessibilityValue(periodTitle(viewModel.selectedHorizon))
+    }
 
-            // Filter Chips Scrollable Row
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    // Payment Filters
-                    ForEach(POSPaymentFilter.allCases, id: \.self) { filter in
-                        let isSelected = viewModel.selectedPaymentFilter == filter
-                        Button {
-                            let impact = UIImpactFeedbackGenerator(style: .light)
-                            impact.impactOccurred()
-                            viewModel.selectedPaymentFilter = filter
-                        } label: {
-                            HStack(spacing: 4) {
-                                if filter == .cash {
-                                    Image(systemName: "banknote.fill").font(.system(size: 10))
-                                } else if filter == .card {
-                                    Image(systemName: "creditcard.fill").font(.system(size: 10))
-                                }
-                                Text(filter.localizedTitle)
-                                    .font(AdminType.caption)
-                            }
-                            .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(
-                                isSelected ?
-                                    Color(uiColor: .ppPrimary) :
-                                    Color(uiColor: .ppBackgroundSecondary),
-                                in: Capsule()
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
+    private func periodTitle(_ horizon: POSDateHorizon) -> String {
+        switch horizon {
+        case .week: return Language.get("POS_Journal_Last7Days", alter: "آخر ٧ أيام")
+        case .month: return Language.get("POS_Journal_Last30Days", alter: "آخر ٣٠ يومًا")
+        case .all: return Language.get("POS_Journal_LatestReceipts", alter: "أحدث الإيصالات")
+        default: return horizon.localizedTitle
+        }
+    }
 
-                    Divider().frame(height: 16)
-
-                    // Status Filters
-                    ForEach(POSStatusFilter.allCases, id: \.self) { filter in
-                        let isSelected = viewModel.selectedStatusFilter == filter
-                        Button {
-                            let impact = UIImpactFeedbackGenerator(style: .light)
-                            impact.impactOccurred()
-                            viewModel.selectedStatusFilter = filter
-                        } label: {
-                            Text(filter.localizedTitle)
-                                .font(AdminType.caption)
-                                .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(
-                                    isSelected ?
-                                        Color(uiColor: .ppPrimary) :
-                                        Color(uiColor: .ppBackgroundSecondary),
-                                    in: Capsule()
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.vertical, 2)
+    @ViewBuilder
+    private var periodFacts: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 18) { periodFactContent }
+        } else {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 24, alignment: .leading)], alignment: .leading, spacing: 18) {
+                periodFactContent
             }
         }
     }
 
-    // MARK: - Ledger Cards Section
+    @ViewBuilder
+    private var periodFactContent: some View {
+        periodFact(title: Language.get("POS_Telemetry_Cash", alter: "نقدي"), amount: viewModel.cashRevenue)
+        // cardRevenue includes every non-cash payment, independently of the card filter.
+        periodFact(title: Language.get("POS_Journal_NonCash", alter: "غير نقدي"), amount: viewModel.cardRevenue)
+        periodFact(title: Language.get("POS_Telemetry_AvgBasket", alter: "متوسط السلة"), amount: viewModel.averageBasket)
+        periodFact(title: Language.get("POS_Telemetry_Refunds", alter: "المستردات"), amount: viewModel.totalRefunded)
+    }
+
+    private func periodFact(title: String, amount: Double) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(AdminType.caption)
+                .foregroundStyle(AdminSurface.secondaryText)
+            POSJournalAmount(value: amount, currency: "QAR")
+                .foregroundStyle(AdminSurface.primaryText)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: - Receipt Locator
+
+    private var receiptLocator: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .accessibilityHidden(true)
+                TextField(Language.get("POS_Journal_Search", alter: "ابحث عن إيصال"), text: $viewModel.searchQuery, prompt: Text(""))
+                    .font(AdminType.body)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .multilineTextAlignment(.leading)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.search)
+                    .focused($isSearchFocused)
+                    .onSubmit { isSearchFocused = false }
+                    .frame(minHeight: searchControlHeight)
+                    .overlay(alignment: .leading) {
+                        if viewModel.searchQuery.isEmpty {
+                            Text(Language.get("POS_Journal_Search", alter: "ابحث عن إيصال"))
+                                .font(AdminType.body)
+                                .foregroundStyle(AdminSurface.secondaryText)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .allowsHitTesting(false)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+                    .accessibilityLabel(Language.get("POS_Journal_Search", alter: "ابحث عن إيصال"))
+                    .accessibilityHint(Language.get("POS_Journal_SearchHint", alter: "رقم الإيصال، العميل، الهاتف، الصنف أو رقم الحلقة"))
+                if !viewModel.searchQuery.isEmpty {
+                    Button { viewModel.searchQuery = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(POSJournalButtonStyle())
+                    .accessibilityLabel(Language.get("Clear", alter: "مسح"))
+                }
+            }
+            .padding(.leading, 14)
+            .padding(.trailing, viewModel.searchQuery.isEmpty ? 14 : 2)
+            .padding(.vertical, 4)
+            .frame(minHeight: 52)
+            .background(AdminSurface.backgroundSecondary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+                : AnyLayout(HStackLayout(alignment: .center, spacing: 12))
+            layout {
+                Menu {
+                    Picker(Language.get("POS_Journal_Payment", alter: "الدفع"), selection: $viewModel.selectedPaymentFilter) {
+                        ForEach(POSPaymentFilter.allCases) { filter in
+                            Text(filter.localizedTitle).tag(filter)
+                        }
+                    }
+                } label: {
+                    filterLabel(title: Language.get("POS_Journal_Payment", alter: "الدفع"), value: viewModel.selectedPaymentFilter.localizedTitle, isFiltered: viewModel.selectedPaymentFilter != .all)
+                }
+                .accessibilityLabel(Language.get("POS_Journal_Payment", alter: "الدفع"))
+                .accessibilityValue(viewModel.selectedPaymentFilter.localizedTitle)
+                Menu {
+                    Picker(Language.get("POS_Journal_Status", alter: "الحالة"), selection: $viewModel.selectedStatusFilter) {
+                        ForEach(POSStatusFilter.allCases) { filter in
+                            Text(filter.localizedTitle).tag(filter)
+                        }
+                    }
+                } label: {
+                    filterLabel(title: Language.get("POS_Journal_Status", alter: "الحالة"), value: viewModel.selectedStatusFilter.localizedTitle, isFiltered: viewModel.selectedStatusFilter != .all)
+                }
+                .accessibilityLabel(Language.get("POS_Journal_Status", alter: "الحالة"))
+                .accessibilityValue(viewModel.selectedStatusFilter.localizedTitle)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if hasReceiptFilters {
+                Button {
+                    isSearchFocused = false
+                    viewModel.selectedPaymentFilter = .all
+                    viewModel.selectedStatusFilter = .all
+                    viewModel.searchQuery = ""
+                } label: {
+                    Label(Language.get("POS_Journal_ClearFilters", alter: "مسح الفلاتر"), systemImage: "xmark")
+                        .font(AdminType.captionBold)
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(POSJournalButtonStyle())
+            }
+        }
+    }
+
+    private var hasReceiptFilters: Bool {
+        viewModel.selectedPaymentFilter != .all || viewModel.selectedStatusFilter != .all || !viewModel.searchQuery.isEmpty
+    }
+
+    private func filterLabel(title: String, value: String, isFiltered: Bool) -> some View {
+        HStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(AdminType.caption).foregroundStyle(AdminSurface.secondaryText)
+                Text(value).font(AdminType.subheadlineBold)
+            }
+            Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+                .accessibilityHidden(true)
+        }
+        .foregroundStyle(isFiltered ? AdminSurface.primary : AdminSurface.primaryText)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
+        .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil, minHeight: 44, alignment: .leading)
+        .background(AdminSurface.backgroundSecondary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .contentShape(Rectangle())
+    }
+
+    // MARK: - Receipt Journal
 
     @ViewBuilder
     private var ledgerSection: some View {
-        if viewModel.isLoading && viewModel.receipts.isEmpty {
-            VStack(spacing: 12) {
-                ProgressView()
-                    .tint(AdminSurface.primary)
-                    .scaleEffect(1.2)
-                    .padding(.top, 30)
-                Text(Language.get("Loading", alter: "جاري التحميل..."))
-                    .font(AdminType.caption)
-                    .foregroundColor(AdminSurface.secondaryText)
+        if let error = viewModel.errorMessage {
+            journalNotice(symbol: "exclamationmark.triangle", title: Language.get("POS_Journal_ErrorTitle", alter: "تعذر تحميل إيصالات هذا الفرع"), message: error)
+            Button {
+                viewModel.load(branchID: branchStore.activeBranch?.branchID)
+            } label: {
+                Label(Language.get("Retry", alter: "إعادة المحاولة"), systemImage: "arrow.clockwise")
+                    .font(AdminType.headline)
+                    .padding(.horizontal, 18)
+                    .frame(minHeight: 48)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 30)
+            .buttonStyle(POSJournalButtonStyle(filled: true))
+            Text(Language.get("POS_Journal_ErrorHelp", alter: "حدّث للمحاولة مجددًا، أو اختر فرعًا آخر."))
+                .font(AdminType.caption)
+                .foregroundStyle(AdminSurface.secondaryText)
+        } else if viewModel.isLoading {
+            // The period statement owns progress. No unconfirmed zero totals or empty claim.
+            EmptyView()
         } else if viewModel.filteredReceipts.isEmpty {
-            if !viewModel.receipts.isEmpty {
-                VStack(spacing: 14) {
-                    AdminEmptyStateView(
-                        symbol: "line.3.horizontal.decrease.circle",
-                        title: Language.get("POS_History_NoFilterMatches", alter: "لا توجد معاملات في الفترة المحددة"),
-                        subtitle: String(format: Language.get("POS_History_HasOtherReceipts", alter: "يوجد %@ معاملة سابقة مسجلة في هذا الفرع خارج الفلتر الحالي."), viewModel.receipts.count.englishDigits)
-                    )
-
-                    Button {
-                        let impact = UIImpactFeedbackGenerator(style: .medium)
-                        impact.impactOccurred()
-                        withAnimation(.spring()) {
-                            viewModel.selectedHorizon = .all
-                            viewModel.selectedPaymentFilter = .all
-                            viewModel.selectedStatusFilter = .all
-                            viewModel.searchQuery = ""
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "clock.arrow.circlepath")
-                            Text(Language.get("POS_History_ShowAllReceipts", alter: "عرض كل المعاملات"))
-                        }
-                        .font(AdminType.subheadlineBold)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 10)
-                        .background(Color(uiColor: .ppPrimary), in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.top, 16)
+            if viewModel.receipts.isEmpty {
+                journalNotice(
+                    symbol: "receipt",
+                    title: Language.get("POS_History_Empty", alter: "لا توجد معاملات بيع"),
+                    message: Language.get("POS_Journal_EmptyHelp", alter: "لم تُرجع النتائج إيصالات لهذا الفرع. تحقق من اختيار الفرع أو ابدأ عملية بيع جديدة.")
+                )
             } else {
-                VStack(spacing: 12) {
-                    AdminEmptyStateView(
-                        symbol: "receipt.fill",
-                        title: Language.get("POS_History_Empty", alter: "لا توجد معاملات بيع"),
-                        subtitle: String(format: Language.get("POS_History_Empty_Branch_Sub", alter: "لم يتم تسجيل أي مبيعات في فرع '%@' حتى الآن. تأكد من اختيار الفرع المطلوب من شريط الفروع بالأعلى."), branchStore.currentBranchDisplayName)
-                    )
+                journalNotice(
+                    symbol: "magnifyingglass",
+                    title: Language.get("POS_Journal_NoMatches", alter: "لا توجد إيصالات مطابقة"),
+                    message: Language.get("POS_Journal_NoMatchesHelp", alter: "غيّر البحث أو الفلاتر، أو اعرض أحدث إيصالات هذا الفرع.")
+                )
+                Button {
+                    isSearchFocused = false
+                    viewModel.selectedHorizon = .all
+                    viewModel.selectedPaymentFilter = .all
+                    viewModel.selectedStatusFilter = .all
+                    viewModel.searchQuery = ""
+                } label: {
+                    Label(Language.get("POS_Journal_LatestReceipts", alter: "أحدث الإيصالات"), systemImage: "clock.arrow.circlepath")
+                        .font(AdminType.subheadlineBold)
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: 48)
                 }
-                .padding(.top, 16)
+                .buttonStyle(POSJournalButtonStyle())
             }
         } else {
-            LazyVStack(spacing: AdminSpacing.sm) {
-                ForEach(viewModel.filteredReceipts, id: \.receiptID) { receipt in
-                    POSTransactionCard(
-                        receipt: receipt,
-                        onTap: {
-                            let impact = UIImpactFeedbackGenerator(style: .light)
-                            impact.impactOccurred()
-                            selectedDossierReceipt = receipt
-                        },
-                        onPrint: {
-                            let impact = UIImpactFeedbackGenerator(style: .medium)
-                            impact.impactOccurred()
-                            receiptForThermalPrint = POSCompletedReceipt(receipt: receipt)
-                        },
-                        onCopyID: { id in
-                            UIPasteboard.general.string = id
-                            let notif = UINotificationFeedbackGenerator()
-                            notif.notificationOccurred(.success)
-                            showToast(Language.get("POS_Receipt_Copy_Success", alter: "تم نسخ رقم الإيصال إلى الحافظة"))
+            VStack(alignment: .leading, spacing: 10) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        receiptsHeading
+                        resultCount
+                        Spacer(minLength: 4)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        receiptsHeading
+                        resultCount
+                    }
+                }
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(POSHistoryDayGroup.make(from: viewModel.filteredReceipts)) { group in
+                        Section {
+                            ForEach(group.receipts, id: \.receiptID) { receipt in
+                                POSTransactionCard(
+                                    receipt: receipt,
+                                    onTap: {
+                                        isSearchFocused = false
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                        selectedDossierReceipt = receipt
+                                    },
+                                    onPrint: {
+                                        isSearchFocused = false
+                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                        receiptForThermalPrint = POSCompletedReceipt(receipt: receipt)
+                                    },
+                                    onCopyID: { id in
+                                        UIPasteboard.general.string = id
+                                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                                        showToast(Language.get("POS_Receipt_Copy_Success", alter: "تم نسخ رقم الإيصال إلى الحافظة"))
+                                    }
+                                )
+                                Divider().overlay(AdminSurface.hairline)
+                            }
+                        } header: {
+                            Text(group.localizedTitle)
+                                .font(AdminType.captionBold)
+                                .foregroundStyle(AdminSurface.secondaryText)
+                                .padding(.top, 10)
+                                .padding(.bottom, 4)
+                                .accessibilityAddTraits(.isHeader)
                         }
-                    )
+                    }
                 }
             }
         }
     }
 
-    // MARK: - Operational Shift Readiness Card (Eliminates Low-Density Whitespace Void)
+    private var receiptsHeading: some View {
+        Text(Language.get("POS_Journal_Receipts", alter: "الإيصالات"))
+            .font(AdminType.title3)
+            .foregroundStyle(AdminSurface.primaryText)
+            .accessibilityAddTraits(.isHeader)
+    }
 
-    private var shiftReadinessCard: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 12) {
-                Image(systemName: "storefront.fill")
-                    .font(.system(size: 24))
-                    .foregroundColor(Color(uiColor: .ppPrimary))
-                    .frame(width: 48, height: 48)
-                    .background(Color(uiColor: .ppPrimary).opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    private var resultCount: some View {
+        Text(String(format: Language.get("POS_Journal_ResultCountFormat", alter: "%@ إيصالات مطابقة"), viewModel.filteredReceipts.count.englishDigits))
+            .font(AdminType.caption)
+            .foregroundStyle(AdminSurface.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+    }
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(Language.get("POS_Shift_Summary_Title", alter: "حالة وردية المبيعات"))
-                        .font(AdminType.headline)
-                        .foregroundColor(AdminSurface.primaryText)
-
-                    Text(Language.get("POS_Shift_Summary_Desc", alter: "نقطة البيع جاهزة، والأسعار وعهد المخزون محدثة ومربوطة بالفرع الحالي."))
-                        .font(AdminType.caption)
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .lineLimit(2)
-                }
-
-                Spacer()
-            }
-
-            Button {
-                let impact = UIImpactFeedbackGenerator(style: .medium)
-                impact.impactOccurred()
-                if let onStartFastSell {
-                    onStartFastSell()
-                } else {
-                    isShowingFastSell = true
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 15, weight: .bold))
-                    Text(Language.get("POS_Shift_StartSale", alter: "تسجيل عملية بيع جديدة"))
-                        .font(AdminType.headline)
-                }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 44)
-                .background(Color(uiColor: .ppPrimary), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-            .buttonStyle(.plain)
+    private func journalNotice(symbol: String, title: String, message: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Image(systemName: symbol)
+                .font(.system(size: 28, weight: .light))
+                .foregroundStyle(AdminSurface.primary)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(AdminType.title2)
+                .foregroundStyle(AdminSurface.primaryText)
+                .accessibilityAddTraits(.isHeader)
+            Text(message)
+                .font(AdminType.body)
+                .foregroundStyle(AdminSurface.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(AdminSpacing.base)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
-        )
-        .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 14)
+    }
+
+    // MARK: - Sale Action
+
+    private var newSaleRail: some View {
+        VStack(spacing: 0) {
+            Divider().overlay(AdminSurface.hairline)
+            Button {
+                guard AdminRoute.pointOfSale.isAuthorized(for: session),
+                      branchStore.activeBranch != nil else { return }
+                isSearchFocused = false
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                if let onStartFastSell { onStartFastSell() } else { isShowingFastSell = true }
+            } label: {
+                Label(Language.get("POS_Journal_NewSale", alter: "بيع جديد"), systemImage: "plus")
+                    .font(AdminType.headline)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+            }
+            .buttonStyle(POSJournalButtonStyle(filled: true))
+            .disabled(branchStore.activeBranch == nil)
+            .frame(maxWidth: 520)
+            .padding(.horizontal, AdminSpacing.screenMargin)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .background(AdminSurface.surface)
     }
 
     private func showToast(_ text: String) {
-        withAnimation(.spring()) {
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+            copyToastID = UUID()
             copyToastText = text
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
-            withAnimation(.easeOut) {
-                if copyToastText == text {
-                    copyToastText = nil
-                }
-            }
-        }
+        UIAccessibility.post(notification: .announcement, argument: text)
     }
+
 }
 
 // MARK: - Living Transaction Dossier Card
@@ -1484,6 +1451,24 @@ private struct POSHistoryReceiptShareSheet: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
+/// Receipt utilities use quiet ink; their own disabled states remain legible.
+private struct POSReceiptActionStyle: ButtonStyle {
+    var surface: Color = AdminSurface.backgroundSecondary
+    var cornerRadius: CGFloat = 10
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(isEnabled ? AdminSurface.primaryText : AdminSurface.secondaryText)
+            .background(
+                configuration.isPressed ? AdminSurface.hairline : surface,
+                in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            )
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
 private struct POSTransactionCard: View {
     let receipt: PPPOSReceipt
     let onTap: () -> Void
@@ -1495,29 +1480,22 @@ private struct POSTransactionCard: View {
     @State private var feedbackMessage: String?
     @State private var isPreparingReceipt = false
     @State private var shareFailed = false
-    @State private var lastActionButtonTapTime: Date = .distantPast
-
-    private func handleCardTap() {
-        guard Date().timeIntervalSince(lastActionButtonTapTime) > 0.45 else { return }
-        onTap()
-    }
-
     var body: some View {
-        VStack(spacing: AdminSpacing.sm) {
-            receiptContent
+        VStack(alignment: .leading, spacing: 4) {
+            Button(action: onTap) {
+                receiptContent
+                    .padding(.vertical, 4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(POSJournalButtonStyle())
+            .accessibilityElement(children: .combine)
+            .accessibilityHint(Language.get("POS_Card_TapToView", alter: "فتح تفاصيل المعاملة وإجراءاتها"))
+            copyIdentity
             contactActions
         }
-        .padding(AdminSpacing.base)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
-        )
-        .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 2)
-        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .onTapGesture {
-            handleCardTap()
-        }
+        .padding(.vertical, 12)
+        .multilineTextAlignment(.leading)
         .sheet(item: $receiptShare, onDismiss: {
             if shareFailed {
                 shareFailed = false
@@ -1541,198 +1519,230 @@ private struct POSTransactionCard: View {
     }
 
     private var receiptContent: some View {
-        VStack(spacing: AdminSpacing.sm) {
-            // 1. Top Header: Cryptopill Slug + Timestamp + Status Badge
-            HStack(alignment: .center) {
-                // Monospaced Cryptopill Slug with Quick-Copy icon + context menu
-                HStack(spacing: 4) {
-                    Text(verbatim: POSReceiptFormat.receiptID(receipt.receiptID))
-                        .font(.system(size: 13, weight: .bold, design: .monospaced))
-                        .foregroundColor(Color(uiColor: .ppPrimary))
-
-                    Button {
-                        lastActionButtonTapTime = Date()
-                        onCopyID(receipt.receiptID)
-                    } label: {
-                        Image(systemName: "doc.on.doc")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(AdminSurface.secondaryText)
-                            .padding(2)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Language.get("POS_Action_CopyID", alter: "نسخ رقم الإيصال"))
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color(uiColor: .ppPrimary).opacity(0.08), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .contextMenu {
-                    Button {
-                        onCopyID(receipt.receiptID)
-                    } label: {
-                        Label(Language.get("POS_Action_CopyID", alter: "نسخ رقم الإيصال"), systemImage: "doc.on.doc")
-                    }
-                }
-
-                Spacer()
-
-                // Timestamp
-                if let date = receipt.createdAt {
-                    Text(formattedDate(date))
-                        .font(AdminType.caption2)
-                        .foregroundColor(AdminSurface.secondaryText)
-                }
-
-                // Status Badge
-                statusBadge
-            }
-
-            // 2. Customer identity. Contact actions remain available below every receipt.
-            if !receipt.customerName.isEmpty || !receipt.customerPhone.isEmpty {
-                HStack(spacing: 8) {
-                    Image(systemName: "person.crop.circle.fill")
-                        .font(.system(size: 13))
-                        .foregroundColor(Color(uiColor: .ppPrimary))
-
-                    Text(receipt.customerName.isEmpty ? receipt.customerPhone : receipt.customerName)
-                        .font(AdminType.captionBold)
-                        .foregroundColor(AdminSurface.primaryText)
-                        .lineLimit(1)
-
-                    Spacer()
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Color(uiColor: .ppBackgroundSecondary).opacity(0.5), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            }
-
-            // 3. Purchased Items Specimen Strip
-            if !receipt.items.isEmpty {
-                HStack(spacing: 6) {
-                    Image(systemName: "bag.fill")
-                        .font(.system(size: 11))
-                        .foregroundColor(AdminSurface.secondaryText)
-
-                    Text(itemsPreviewText)
-                        .font(AdminType.caption)
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .lineLimit(1)
-
-                    Spacer()
-
-                    if let cashier = receipt.cashierName, !cashier.isEmpty {
-                        Text(verbatim: String(format: Language.get("POS_Card_Cashier", alter: "الكاشير: %@"), cashier))
-                            .font(AdminType.caption2)
-                            .foregroundColor(AdminSurface.secondaryText)
-                    }
-                }
-            }
-
-            Divider().background(AdminSurface.hairline)
-
-            // 4. Bottom Line: Payment Badge + Items Count + Total + Thermal Print
-            HStack(alignment: .center, spacing: 8) {
-                paymentMethodBadge
-
-                Label(
-                    String(format: Language.get("POS_Card_Items_Count", alter: "%@ عناصر"), receipt.items.count.englishDigits),
-                    systemImage: "shippingbox.fill"
-                )
-                .font(AdminType.caption2)
-                .foregroundColor(AdminSurface.secondaryText)
-
-                Spacer()
-
-                // Grand Total Display
-                VStack(alignment: .trailing, spacing: 1) {
-                    Text(verbatim: receipt.total.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
-                        .font(PPBrandFont.bold(size: 19, relativeTo: .subheadline))
-                        .foregroundColor(receiptIsCancelled ? AdminSurface.secondaryText : AdminSurface.primaryText)
-                        .monospacedDigit()
-
+        VStack(alignment: .leading, spacing: 6) {
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+                : AnyLayout(HStackLayout(alignment: .top, spacing: 14))
+            layout {
+                Text(customerIdentity)
+                    .font(hasRecordedCustomer ? AdminType.headline : AdminType.subheadline)
+                    .foregroundStyle(hasRecordedCustomer ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .environment(\.layoutDirection, customerIsPhone ? .leftToRight : (Language.isRTL() ? .rightToLeft : .leftToRight))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 2) {
+                    POSJournalAmount(value: receipt.total, currency: receipt.currency, amountFont: AdminType.title3)
+                        .foregroundStyle(receiptIsCancelled ? AdminSurface.secondaryText : AdminSurface.primaryText)
                     if receipt.refundedAmount > 0 {
-                        Text(verbatim: "−" + receipt.refundedAmount.englishDigits(decimals: 2) + " " + Language.get("POS_Status_Refunded", alter: "مسترد"))
-                            .font(AdminType.caption2Bold)
-                            .foregroundColor(Color(uiColor: .systemOrange))
+                        Text(String(
+                            format: Language.get("POS_Journal_RefundAmountFormat", alter: "%@ مسترد"),
+                            "\u{2066}" + POSReceiptFormat.currency(receipt.refundedAmount, code: receipt.currency).normalizedEnglishDigits + "\u{2069}"
+                        ))
+                        .font(AdminType.captionBold)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+            }
 
-                // Direct Print Button
-                Button(action: {
-                    lastActionButtonTapTime = Date()
-                    onPrint()
-                }) {
-                    Image(systemName: "printer.fill")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(AdminSurface.primaryText)
-                        .frame(width: 34, height: 34)
-                        .background(Color(uiColor: .ppBackgroundSecondary), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 12) {
+                    statusText
+                    paymentText
+                    timestamp
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Language.get("POS_Action_PrintReceipt", alter: "طباعة"))
+                .fixedSize(horizontal: true, vertical: false)
+                VStack(alignment: .leading, spacing: 4) {
+                    statusText
+                    paymentText
+                    timestamp
+                }
+            }
+            if !receipt.items.isEmpty {
+                Text(itemsPreviewText)
+                    .font(AdminType.subheadline)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    itemsCount
+                    if let cashier = receipt.cashierName, !cashier.isEmpty { cashierText(cashier) }
+                    reviewAffordance
+                }
+                .fixedSize(horizontal: true, vertical: false)
+                VStack(alignment: .leading, spacing: 4) {
+                    itemsCount
+                    if let cashier = receipt.cashierName, !cashier.isEmpty { cashierText(cashier) }
+                    reviewAffordance
+                }
             }
         }
-        .contentShape(Rectangle())
+    }
+
+    private var reviewAffordance: some View {
+        HStack(spacing: 6) {
+            Text(Language.get("POS_Journal_OpenReceipt", alter: "مراجعة الإيصال"))
+                .font(AdminType.captionBold)
+            Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                .font(.system(size: 11, weight: .medium))
+                .accessibilityHidden(true)
+        }
+        .foregroundStyle(AdminSurface.primary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var hasRecordedCustomer: Bool {
+        !receipt.customerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+        !receipt.customerPhone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var customerIsPhone: Bool {
+        receipt.customerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !receipt.customerPhone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var customerIdentity: String {
+        let name = receipt.customerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !name.isEmpty { return name }
+        let phone = receipt.customerPhone.trimmingCharacters(in: .whitespacesAndNewlines)
+        return phone.isEmpty
+            ? Language.get("POS_Journal_CustomerUnrecorded", alter: "لم يُسجّل العميل")
+            : phone.normalizedEnglishDigits
+    }
+
+    private var itemsCount: some View {
+        Text(receipt.items.count == 1
+            ? Language.get("POS_Card_Item_Single", alter: "عنصر واحد")
+            : String(format: Language.get("POS_Card_Items_Count", alter: "%@ أصناف"), receipt.items.count.englishDigits))
+            .font(AdminType.caption)
+            .foregroundStyle(AdminSurface.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func cashierText(_ cashier: String) -> some View {
+        Text(String(format: Language.get("POS_Card_Cashier", alter: "الكاشير: %@"), cashier))
+            .font(AdminType.caption)
+            .foregroundStyle(AdminSurface.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var timestamp: some View {
+        Group {
+            if let date = receipt.createdAt {
+                Text(date.formatted(Date.FormatStyle(date: .omitted, time: .shortened)
+                    .locale(Locale(identifier: Language.isRTL() ? "ar_QA" : "en_US"))))
+                    .environment(\.layoutDirection, .leftToRight)
+            } else {
+                Text(Language.get("POS_Journal_Undated", alter: "التاريخ غير متوفر"))
+            }
+        }
+        .font(AdminType.caption)
+        .foregroundStyle(AdminSurface.secondaryText)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var copyIdentity: some View {
+        Button {
+            onCopyID(receipt.receiptID)
+        } label: {
+            HStack(alignment: .center, spacing: 8) {
+                Text(verbatim: POSReceiptFormat.receiptID(receipt.receiptID))
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .environment(\.layoutDirection, .leftToRight)
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 13, weight: .medium))
+                    .accessibilityHidden(true)
+            }
+            .frame(minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(POSJournalButtonStyle())
+        .accessibilityLabel(Language.get("POS_Journal_CopyID", alter: "نسخ رقم الإيصال"))
+        .accessibilityValue(receipt.receiptID)
+        .accessibilityHint(Language.get("POS_Journal_CopyHint", alter: "ينسخ رقم الإيصال كاملًا."))
     }
 
     private var contactActions: some View {
-        let layout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(spacing: 8))
-            : AnyLayout(HStackLayout(spacing: 8))
-
-        return layout {
-            Button(action: {
-                lastActionButtonTapTime = Date()
-                shareReceipt()
-            }) {
-                HStack(spacing: 7) {
-                    if isPreparingReceipt {
-                        ProgressView().tint(AdminSurface.primaryText)
-                    } else {
-                        Image("whatsapp")
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 18, height: 18)
-                            .accessibilityHidden(true)
-                    }
-                    Text(Language.get("WhatsApp", alter: "واتساب"))
-                        .font(AdminType.captionBold)
-                }
-                .foregroundStyle(AdminSurface.primaryText)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .background(POSReceiptWhatsAppSender.brandColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .contentShape(Rectangle())
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                printAction
+                whatsAppAction
+                callAction
             }
-            .buttonStyle(.plain)
-            .disabled(isPreparingReceipt || receiptShare != nil)
-            .accessibilityLabel(Language.get("POS_Action_WhatsAppReceipt", alter: "إرسال الإيصال عبر واتساب"))
-            .accessibilityHint(Language.get("POS_History_WhatsAppShareHint", alter: "فتح واتساب مع تجهيز الرسالة ونسخ صورة الفاتورة للصقها فوراً وإرسالها."))
-
-            Button(action: {
-                lastActionButtonTapTime = Date()
-                callCustomer()
-            }) {
-                Label(
-                    customerCallURL == nil
-                        ? Language.get("POS_History_CallNoPhone", alter: "اتصال · لا يوجد رقم")
-                        : Language.get("Call", alter: "اتصال"),
-                    systemImage: "phone.fill"
-                )
-                    .font(AdminType.captionBold)
-                    .foregroundStyle(customerCallURL == nil ? AdminSurface.secondaryText : AdminSurface.primaryText)
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .background(Color(uiColor: .ppBackgroundSecondary), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .contentShape(Rectangle())
+            .fixedSize(horizontal: true, vertical: false)
+            VStack(alignment: .leading, spacing: 4) {
+                printAction
+                whatsAppAction
+                callAction
             }
-            .buttonStyle(.plain)
-            .disabled(customerCallURL == nil)
-            .accessibilityLabel(Language.get("POS_Customer_Call", alter: "اتصال هاتفي"))
-            .accessibilityValue(customerCallURL == nil
-                ? Language.get("POS_History_NoCustomerPhone", alter: "لا يوجد رقم هاتف صالح لهذه المعاملة")
-                : receipt.customerPhone)
         }
+    }
+
+    private var printAction: some View {
+        Button(action: onPrint) {
+            Label(Language.get("POS_Journal_Print", alter: "طباعة"), systemImage: "printer")
+                .font(AdminType.captionBold)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(POSReceiptActionStyle())
+        .accessibilityLabel(Language.get("POS_Action_PrintReceipt", alter: "عرض الإيصال وطباعته"))
+    }
+
+    private var whatsAppAction: some View {
+        Button(action: shareReceipt) {
+            HStack(spacing: 7) {
+                if isPreparingReceipt {
+                    ProgressView().tint(AdminSurface.primary)
+                } else {
+                    Image("whatsapp")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 17, height: 17)
+                        .accessibilityHidden(true)
+                }
+                Text(Language.get("WhatsApp", alter: "واتساب"))
+                    .font(AdminType.captionBold)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(POSReceiptActionStyle(surface: POSReceiptWhatsAppSender.brandColor.opacity(0.12)))
+        .disabled(isPreparingReceipt || receiptShare != nil)
+        .accessibilityLabel(Language.get("POS_Action_WhatsAppReceipt", alter: "إرسال الإيصال عبر واتساب"))
+        .accessibilityHint(Language.get("POS_History_WhatsAppShareHint", alter: "فتح واتساب مع تجهيز الرسالة ونسخ صورة الفاتورة للصقها وإرسالها."))
+    }
+
+    private var callAction: some View {
+        Button(action: callCustomer) {
+            Label(
+                customerCallURL == nil
+                    ? Language.get("POS_History_CallNoPhone", alter: "اتصال · لا يوجد رقم")
+                    : Language.get("Call", alter: "اتصال"),
+                systemImage: "phone"
+            )
+            .font(AdminType.captionBold)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(POSReceiptActionStyle())
+        .disabled(customerCallURL == nil)
+        .accessibilityLabel(Language.get("POS_Customer_Call", alter: "اتصال هاتفي"))
+        .accessibilityValue(customerCallURL == nil
+            ? Language.get("POS_History_NoCustomerPhone", alter: "لا يوجد رقم هاتف صالح لهذه المعاملة")
+            : receipt.customerPhone)
     }
 
     private var customerCallURL: URL? {
@@ -1794,7 +1804,7 @@ private struct POSTransactionCard: View {
     }
 
     private var itemsPreviewText: String {
-        let names = receipt.items.prefix(2).map { "\($0.name) × \($0.quantity.englishDigits)" }
+        let names = receipt.items.prefix(2).map { "\($0.name) × \(POSReceiptFormat.quantity($0.quantityValue))" }
         let joined = names.joined(separator: " • ")
         if receipt.items.count > 2 {
             let extra = (receipt.items.count - 2).englishDigits
@@ -1803,61 +1813,48 @@ private struct POSTransactionCard: View {
         return joined
     }
 
-    private var statusBadge: some View {
+    private var statusText: some View {
         let status = receipt.status.lowercased()
+        let text: String
+        let symbol: String
+        let color: Color
         if status == "cancelled" || status == "voided" {
-            return AdminStatusBadge(
-                text: Language.get("POS_Status_Cancelled", alter: "ملغي"),
-                status: .error
-            )
+            text = Language.get("POS_Status_Cancelled", alter: "ملغي")
+            symbol = "xmark.circle"
+            color = AdminSurface.danger
         } else if status == "refunded" {
-            return AdminStatusBadge(
-                text: Language.get("POS_Status_Refunded", alter: "مسترد بالكامل"),
-                status: .warning
-            )
+            text = Language.get("POS_Status_Refunded", alter: "مسترد")
+            symbol = "arrow.uturn.backward.circle"
+            color = AdminSurface.secondaryText
         } else if status == "partially_refunded" || receipt.refundedAmount > 0 {
-            return AdminStatusBadge(
-                text: Language.get("POS_Status_PartiallyRefunded", alter: "مسترد جزئياً"),
-                status: .warning
-            )
+            text = Language.get("POS_Status_PartiallyRefunded", alter: "مسترد جزئيًا")
+            symbol = "arrow.uturn.backward.circle"
+            color = AdminSurface.secondaryText
+        } else if status == "completed" || status.isEmpty {
+            text = Language.get("POS_Status_Completed", alter: "مكتمل")
+            symbol = "checkmark.circle"
+            color = AdminSurface.secondaryText
         } else {
-            return AdminStatusBadge(
-                text: Language.get("POS_Status_Completed", alter: "مكتمل"),
-                status: .success
-            )
+            text = Language.get("POS_Journal_UnknownStatus", alter: "الحالة غير متوفرة")
+            symbol = "questionmark.circle"
+            color = AdminSurface.secondaryText
         }
+        return Label(text, systemImage: symbol)
+            .font(AdminType.captionBold)
+            .foregroundStyle(color)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
-    private var paymentMethodBadge: some View {
-        let method = receipt.paymentMethod.lowercased()
-        let text = POSReceiptFormat.paymentMethod(receipt.paymentMethod)
-        let status: AdminStatusBadge.Status
-        if method.contains("cash") {
-            status = .success
-        } else if method.contains("card") || method.contains("qib") || method.contains("pos") {
-            status = .info
-        } else if method.contains("cheque") || method.contains("fawry") {
-            status = .warning
-        } else {
-            status = .neutral
-        }
-        return AdminStatusBadge(text: text, status: status)
+    private var paymentText: some View {
+        Label(
+            POSReceiptFormat.paymentMethod(receipt.paymentMethod),
+            systemImage: receipt.paymentMethod.lowercased().contains("cash") ? "banknote" : "creditcard"
+        )
+        .font(AdminType.caption)
+        .foregroundStyle(AdminSurface.secondaryText)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
-    private func formattedDate(_ date: Date) -> String {
-        let calendar = Calendar.current
-        let formatter = DateFormatter()
-        if calendar.isDateInToday(date) {
-            formatter.timeStyle = .short
-            formatter.locale = Locale(identifier: Language.isRTL() ? "ar_QA" : "en_US")
-            return formatter.string(from: date)
-        } else {
-            formatter.dateStyle = .short
-            formatter.timeStyle = .short
-            formatter.locale = Locale(identifier: Language.isRTL() ? "ar_QA" : "en_US")
-            return formatter.string(from: date)
-        }
-    }
 }
 
 // MARK: - Transaction Dossier Sheet (Full-Screen Dual-Architecture Native Console)
@@ -1961,6 +1958,7 @@ private struct DossierPaymentBadge: View {
 private struct DossierItemRow: View {
     let item: PPPOSCartItem
     let isLast: Bool
+    let currency: String
 
     var body: some View {
         VStack(spacing: 8) {
@@ -1998,23 +1996,23 @@ private struct DossierItemRow: View {
                     }
 
                     HStack(spacing: 6) {
-                        Text(verbatim: "\(item.quantity.englishDigits) × \(item.price.englishDigits(decimals: 2)) \(Language.get("QAR", alter: "ر.ق"))")
+                        Text(verbatim: "\(POSReceiptFormat.quantity(item.quantityValue)) × \(POSReceiptFormat.currency(item.price, code: currency))")
                             .font(DossierFont.medium(12, relativeTo: .caption))
                             .foregroundColor(AdminSurface.secondaryText)
 
-                        if item.refundedQuantity > 0 {
-                            let remainingQuantity = max(0, item.quantity - item.refundedQuantity)
+                        if item.refundedQuantityValue > 0 {
+                            let remainingQuantity = POSReceiptFormat.quantizedQuantity(item.quantityValue - item.refundedQuantityValue)
                             let lineFullyRefunded = remainingQuantity == 0
                             let progressColor = lineFullyRefunded ? Color(uiColor: .systemGreen) : Color(uiColor: .systemOrange)
                             let progressText = lineFullyRefunded
                                 ? String(
-                                    format: Language.get("POS_Refund_ItemFullyRefunded", alter: "%d مسترد • مكتمل"),
-                                    item.refundedQuantity
+                                    format: Language.get("Proforma_ReceiptFullyRefundedQuantity", alter: nil),
+                                    POSReceiptFormat.quantity(item.refundedQuantityValue)
                                 )
                                 : String(
-                                    format: Language.get("POS_Refund_ItemProgress", alter: "%d مسترد • %d متبقي"),
-                                    item.refundedQuantity,
-                                    remainingQuantity
+                                    format: Language.get("Proforma_ReceiptRefundProgress", alter: nil),
+                                    POSReceiptFormat.quantity(item.refundedQuantityValue),
+                                    POSReceiptFormat.quantity(remainingQuantity)
                                 )
                             Text(verbatim: progressText)
                                 .font(DossierFont.bold(10, relativeTo: .caption2))
@@ -2048,8 +2046,8 @@ private struct DossierItemRow: View {
                 Spacer()
 
                 // Line Total
-                let lineTotal = item.lineTotal > 0 ? item.lineTotal : (item.price * Double(item.quantity))
-                Text(verbatim: lineTotal.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
+                let lineTotal = item.lineTotal > 0 ? item.lineTotal : (item.price * item.quantityValue)
+                Text(verbatim: POSReceiptFormat.currency(lineTotal, code: currency))
                     .font(DossierFont.bold(15, relativeTo: .subheadline))
                     .foregroundColor(AdminSurface.primaryText)
                     .monospacedDigit()
@@ -2180,15 +2178,21 @@ private struct DossierFinancialCard: View {
                 // Subtotal
                 dossierRow(
                     label: Language.get("POS_Subtotal", alter: "المجموع الفرعي"),
-                    value: (receipt.subtotal > 0 ? receipt.subtotal : receipt.total + receipt.discount).englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق")
+                    value: POSReceiptFormat.currency(receipt.subtotal > 0 ? receipt.subtotal : max(0, receipt.total + receipt.discount - receipt.tax), code: receipt.currency)
                 )
 
                 // Discount
                 if receipt.discount > 0 {
                     dossierRow(
                         label: Language.get("POS_Discount", alter: "الخصم"),
-                        value: "−" + receipt.discount.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"),
+                        value: "−" + POSReceiptFormat.currency(receipt.discount, code: receipt.currency),
                         valueColor: Color(uiColor: .systemGreen)
+                    )
+                }
+                if receipt.tax > 0 {
+                    dossierRow(
+                        label: Language.get("Proforma_ReceiptTax", alter: nil),
+                        value: POSReceiptFormat.currency(receipt.tax, code: receipt.currency)
                     )
                 }
 
@@ -2197,7 +2201,7 @@ private struct DossierFinancialCard: View {
                     if receipt.cashReceived > 0 {
                         dossierRow(
                             label: Language.get("POS_CashReceived", alter: "المبلغ المستلم نقداً"),
-                            value: receipt.cashReceived.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق")
+                            value: POSReceiptFormat.currency(receipt.cashReceived, code: receipt.currency)
                         )
                     }
                     if receipt.changeDue > 0 {
@@ -2207,7 +2211,7 @@ private struct DossierFinancialCard: View {
                                 .foregroundColor(AdminSurface.secondaryText)
                             Spacer()
                             HStack(spacing: 4) {
-                                Text(verbatim: receipt.changeDue.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
+                                Text(verbatim: POSReceiptFormat.currency(receipt.changeDue, code: receipt.currency))
                                     .font(DossierFont.bold(14, relativeTo: .body))
                                     .foregroundColor(Color(uiColor: .systemBlue))
                                     .monospacedDigit()
@@ -2222,12 +2226,12 @@ private struct DossierFinancialCard: View {
                 if effectiveRefundedAmount > 0 {
                     dossierRow(
                         label: Language.get("POS_Telemetry_Refunds", alter: "إجمالي المسترد"),
-                        value: "−" + effectiveRefundedAmount.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"),
+                        value: "−" + POSReceiptFormat.currency(effectiveRefundedAmount, code: receipt.currency),
                         valueColor: Color(uiColor: .systemOrange)
                     )
                     dossierRow(
                         label: Language.get("POS_Refund_NetRetained", alter: "صافي قيمة البيع المتبقية"),
-                        value: max(0, receipt.total - effectiveRefundedAmount).englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"),
+                        value: POSReceiptFormat.currency(max(0, receipt.total - effectiveRefundedAmount), code: receipt.currency),
                         valueColor: Color(uiColor: .systemBlue)
                     )
                 }
@@ -2244,7 +2248,7 @@ private struct DossierFinancialCard: View {
 
                     Spacer()
 
-                    Text(verbatim: receipt.total.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
+                    Text(verbatim: POSReceiptFormat.currency(receipt.total, code: receipt.currency))
                         .font(DossierFont.bold(22, relativeTo: .title2))
                         .foregroundColor(AdminSurface.primaryText)
                         .monospacedDigit()
@@ -2375,7 +2379,7 @@ private struct DossierStatusBanner: View {
                             .foregroundColor(AdminSurface.secondaryText)
                     }
                 } else if statusKind == .fullyRefunded || statusKind == .partiallyRefunded {
-                    Text(verbatim: "\(Language.get("POS_Telemetry_Refunds", alter: "المبلغ المسترد")): \(effectiveRefundedAmount.englishDigits(decimals: 2)) \(Language.get("QAR", alter: "ر.ق"))")
+                    Text(verbatim: "\(Language.get("POS_Telemetry_Refunds", alter: "المبلغ المسترد")): \(POSReceiptFormat.currency(effectiveRefundedAmount, code: receipt.currency))")
                         .font(DossierFont.bold(13, relativeTo: .caption))
                         .foregroundColor(AdminSurface.primaryText)
 
@@ -2646,7 +2650,8 @@ struct POSTransactionDossier_iPhone: View {
                                 ForEach(0..<receipt.items.count, id: \.self) { idx in
                                     DossierItemRow(
                                         item: receipt.items[idx],
-                                        isLast: idx == receipt.items.count - 1
+                                        isLast: idx == receipt.items.count - 1,
+                                        currency: receipt.currency
                                     )
                                 }
                             }
@@ -3007,7 +3012,8 @@ struct POSTransactionDossier_iPad: View {
                                         ForEach(0..<receipt.items.count, id: \.self) { idx in
                                             DossierItemRow(
                                                 item: receipt.items[idx],
-                                                isLast: idx == receipt.items.count - 1
+                                                isLast: idx == receipt.items.count - 1,
+                                        currency: receipt.currency
                                             )
                                         }
                                     }
@@ -3066,7 +3072,7 @@ struct POSTransactionDossierSheet: View {
 
     private var effectiveRefundedAmount: Double {
         if receipt.refundedAmount > 0 { return receipt.refundedAmount }
-        let sum = receipt.items.reduce(0.0) { $0 + (Double($1.refundedQuantity) * $1.price) }
+        let sum = receipt.items.reduce(0.0) { $0 + ($1.refundedQuantityValue * $1.price) }
         return sum
     }
 
@@ -3078,8 +3084,9 @@ struct POSTransactionDossierSheet: View {
     private var isFullyRefunded: Bool {
         let st = receipt.status.lowercased()
         if st == "refunded" { return true }
+        if !(receipt.proformaInvoiceID ?? "").isEmpty && st == "partially_refunded" { return false }
         if effectiveRefundedAmount >= receipt.total && receipt.total > 0 { return true }
-        return !receipt.items.isEmpty && receipt.items.allSatisfy { $0.refundedQuantity >= $0.quantity }
+        return !receipt.items.isEmpty && receipt.items.allSatisfy { $0.refundedQuantityValue + 0.000001 >= $0.quantityValue }
     }
 
     private var statusKind: DossierStatusKind {
@@ -3310,11 +3317,15 @@ struct POSRefundStudioSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var isFullRefund: Bool = true
-    @State private var itemQuantities: [String: Int] = [:]
+    @State private var itemQuantities: [String: Double] = [:]
     @State private var itemConditions: [String: String] = [:]
     @State private var selectedReason: String = ""
     @State private var customReason: String = ""
     @State private var isShowingLivePetCoordinator: Bool = false
+    @State private var quantityEditingID: String?
+    @State private var quantityEditingLimit = 0.0
+    @State private var quantityInput = ""
+    @State private var quantityInputError: String?
 
     private struct ReturnConditionOption: Identifiable {
         let id: String
@@ -3402,6 +3413,9 @@ struct POSRefundStudioSheet: View {
                         if let error = viewModel.reversalError {
                             AdminErrorBanner(message: error)
                         }
+                        if let error = quantityInputError {
+                            AdminErrorBanner(message: error)
+                        }
 
                         // Live Pet Return Banner (Routing Layer)
                         if receipt.hasIndividuallyTrackedLivePets {
@@ -3465,7 +3479,7 @@ struct POSRefundStudioSheet: View {
                                     .font(.system(size: 16, weight: .bold))
                             }
 
-                            let amountStr = calculatedRefundAmount.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق")
+                            let amountStr = POSReceiptFormat.currency(calculatedRefundAmount, code: receipt.currency)
                             Text(String(format: Language.get("POS_Refund_Confirm_Button", alter: "تأكيد الاسترداد المالي (%@)"), amountStr))
                                 .font(AdminType.headline)
                         }
@@ -3486,6 +3500,27 @@ struct POSRefundStudioSheet: View {
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .alert(Language.get("Proforma_RefundQuantity", alter: nil), isPresented: Binding(
+            get: { quantityEditingID != nil },
+            set: { if !$0 { quantityEditingID = nil } }
+        )) {
+            TextField(Language.get("Proforma_Quantity", alter: nil), text: $quantityInput)
+                .keyboardType(.decimalPad)
+            Button(Language.get("Proforma_ApplyQuantity", alter: nil)) {
+                guard let id = quantityEditingID else { return }
+                if let value = ProformaDecimal.parse(quantityInput, scale: 3),
+                   value >= 0, value <= (Decimal(string: POSReceiptFormat.quantity(quantityEditingLimit)) ?? 0) {
+                    itemQuantities[id] = POSReceiptFormat.quantizedQuantity(NSDecimalNumber(decimal: value).doubleValue)
+                    quantityInputError = nil
+                } else {
+                    quantityInputError = Language.get("Proforma_RefundQuantityError", alter: nil)
+                }
+                quantityEditingID = nil
+            }
+            Button(Language.get("Proforma_Close", alter: nil), role: .cancel) { quantityEditingID = nil }
+        } message: {
+            Text(String(format: Language.get("Proforma_RefundQuantityHint", alter: nil), POSReceiptFormat.quantity(quantityEditingLimit)))
+        }
         .fullScreenCover(isPresented: $isShowingLivePetCoordinator) {
             LivePetReturnCoordinatorView(
                 receipt: receipt,
@@ -3520,10 +3555,10 @@ struct POSRefundStudioSheet: View {
     private func initializeQuantities() {
         for item in receipt.items {
             let isLivePet = (item.inventoryMode?.uppercased() == "INDIVIDUAL_TRACKED") || !item.unitIDs.isEmpty
-            let available = max(0, item.quantity - item.refundedQuantity)
-            itemQuantities[item.itemID] = (isFullRefund && !isLivePet) ? available : 0
-            if itemConditions[item.itemID] == nil {
-                itemConditions[item.itemID] = "sellable"
+            let available = POSReceiptFormat.quantizedQuantity(item.quantityValue - item.refundedQuantityValue)
+            itemQuantities[item.receiptLineID] = (isFullRefund && !isLivePet) ? available : 0
+            if itemConditions[item.receiptLineID] == nil {
+                itemConditions[item.receiptLineID] = "sellable"
             }
         }
     }
@@ -3578,10 +3613,10 @@ struct POSRefundStudioSheet: View {
                 .foregroundColor(AdminSurface.secondaryText)
 
             VStack(spacing: 8) {
-                ForEach(receipt.items, id: \.itemID) { item in
+                ForEach(receipt.items, id: \.receiptLineID) { item in
                     let isLivePet = (item.inventoryMode?.uppercased() == "INDIVIDUAL_TRACKED") || !item.unitIDs.isEmpty
-                    let available = max(0, item.quantity - item.refundedQuantity)
-                    let currentQty = isFullRefund ? (isLivePet ? 0 : available) : (itemQuantities[item.itemID] ?? 0)
+                    let available = POSReceiptFormat.quantizedQuantity(item.quantityValue - item.refundedQuantityValue)
+                    let currentQty = isFullRefund ? (isLivePet ? 0 : available) : (itemQuantities[item.receiptLineID] ?? 0)
 
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
@@ -3613,8 +3648,8 @@ struct POSRefundStudioSheet: View {
                                 }
 
                                 Text(verbatim: isFullRefund
-                                    ? "\(item.price.englishDigits(decimals: 2)) \(Language.get("QAR", alter: "ر.ق")) • \(Language.get("Quantity", alter: "الكمية")): \(available.englishDigits)"
-                                    : "\(item.price.englishDigits(decimals: 2)) \(Language.get("QAR", alter: "ر.ق")) • \(Language.get("Available", alter: "المتاح")): \(available.englishDigits)")
+                                    ? "\(POSReceiptFormat.currency(item.price, code: receipt.currency)) • \(Language.get("Quantity", alter: "الكمية")): \(POSReceiptFormat.quantity(available))"
+                                    : "\(POSReceiptFormat.currency(item.price, code: receipt.currency)) • \(Language.get("Available", alter: "المتاح")): \(POSReceiptFormat.quantity(available))")
                                     .font(AdminType.caption)
                                     .foregroundColor(AdminSurface.secondaryText)
                             }
@@ -3638,7 +3673,7 @@ struct POSRefundStudioSheet: View {
                                 }
                                 .buttonStyle(.plain)
                             } else if isFullRefund {
-                                Text(verbatim: "\(available.englishDigits)")
+                                Text(verbatim: "\(POSReceiptFormat.quantity(available))")
                                     .font(AdminType.headline)
                                     .foregroundColor(Color(uiColor: .ppPrimary))
                                     .padding(.horizontal, 10)
@@ -3649,7 +3684,7 @@ struct POSRefundStudioSheet: View {
                                 HStack(spacing: 12) {
                                     Button {
                                         if currentQty > 0 {
-                                            itemQuantities[item.itemID] = currentQty - 1
+                                            itemQuantities[item.receiptLineID] = POSReceiptFormat.quantizedQuantity(currentQty - 1)
                                         }
                                     } label: {
                                         Image(systemName: "minus.circle.fill")
@@ -3659,13 +3694,27 @@ struct POSRefundStudioSheet: View {
                                     .buttonStyle(.plain)
                                     .disabled(currentQty <= 0)
 
-                                    Text(verbatim: currentQty.englishDigits)
-                                        .font(AdminType.headline)
-                                        .frame(minWidth: 24)
+                                    if item.permitsFractionalRefund {
+                                        Button {
+                                            quantityInput = POSReceiptFormat.quantity(currentQty)
+                                            quantityEditingLimit = available
+                                            quantityEditingID = item.receiptLineID
+                                        } label: {
+                                            Text(verbatim: POSReceiptFormat.quantity(currentQty))
+                                                .font(AdminType.headline)
+                                                .frame(minWidth: 44, minHeight: 44)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel(Language.get("Proforma_RefundQuantity", alter: nil))
+                                    } else {
+                                        Text(verbatim: POSReceiptFormat.quantity(currentQty))
+                                            .font(AdminType.headline)
+                                            .frame(minWidth: 24)
+                                    }
 
                                     Button {
                                         if currentQty < available {
-                                            itemQuantities[item.itemID] = currentQty + 1
+                                            itemQuantities[item.receiptLineID] = POSReceiptFormat.quantizedQuantity(min(available, currentQty + 1))
                                         }
                                     } label: {
                                         Image(systemName: "plus.circle.fill")
@@ -3688,10 +3737,10 @@ struct POSRefundStudioSheet: View {
                                 ScrollView(.horizontal, showsIndicators: false) {
                                     HStack(spacing: 6) {
                                         ForEach(returnConditionOptions) { opt in
-                                            let selectedCondition = itemConditions[item.itemID] ?? "sellable"
+                                            let selectedCondition = itemConditions[item.receiptLineID] ?? "sellable"
                                             let isSelected = selectedCondition == opt.id
                                             Button {
-                                                itemConditions[item.itemID] = opt.id
+                                                itemConditions[item.receiptLineID] = opt.id
                                             } label: {
                                                 HStack(spacing: 4) {
                                                     Image(systemName: opt.icon)
@@ -3776,7 +3825,7 @@ struct POSRefundStudioSheet: View {
 
                 Spacer()
 
-                Text(verbatim: calculatedRefundAmount.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
+                Text(verbatim: POSReceiptFormat.currency(calculatedRefundAmount, code: receipt.currency))
                     .font(.system(size: 20, weight: .bold, design: .rounded))
                     .foregroundColor(Color(uiColor: .systemOrange))
                     .monospacedDigit()
@@ -3787,12 +3836,15 @@ struct POSRefundStudioSheet: View {
     }
 
     private var calculatedRefundAmount: Double {
+        if !(receipt.proformaInvoiceID ?? "").isEmpty {
+            return min(proformaRefundComponents.amount, max(0, receipt.total - receipt.refundedAmount))
+        }
         var refundSubtotal: Double = 0
         if isFullRefund {
             for item in receipt.items {
                 let isLivePet = (item.inventoryMode?.uppercased() == "INDIVIDUAL_TRACKED") || !item.unitIDs.isEmpty
                 if !isLivePet {
-                    let available = max(0, item.quantity - item.refundedQuantity)
+                    let available = POSReceiptFormat.quantizedQuantity(item.quantityValue - item.refundedQuantityValue)
                     refundSubtotal = POSMoney.round(refundSubtotal + POSMoney.round(Double(available) * item.price))
                 }
             }
@@ -3800,7 +3852,7 @@ struct POSRefundStudioSheet: View {
             for item in receipt.items {
                 let isLivePet = (item.inventoryMode?.uppercased() == "INDIVIDUAL_TRACKED") || !item.unitIDs.isEmpty
                 if !isLivePet {
-                    let qty = itemQuantities[item.itemID] ?? 0
+                    let qty = itemQuantities[item.receiptLineID] ?? 0
                     refundSubtotal = POSMoney.round(refundSubtotal + POSMoney.round(Double(qty) * item.price))
                 }
             }
@@ -3811,7 +3863,7 @@ struct POSRefundStudioSheet: View {
         // canonicalReturnAmount = roundMoney(Math.max(0, refundSubtotal - proportionalDiscount))
         let originalSubtotal = receipt.subtotal > 0
             ? receipt.subtotal
-            : receipt.items.reduce(0.0) { $0 + POSMoney.round(Double($1.quantity) * $1.price) }
+            : receipt.items.reduce(0.0) { $0 + POSMoney.round($1.quantityValue * $1.price) }
         let discount = POSMoney.round(max(0.0, receipt.discount))
         let proportionalDiscount: Double
         if originalSubtotal > 0 && discount > 0 {
@@ -3824,10 +3876,44 @@ struct POSRefundStudioSheet: View {
         return min(canonicalReturnAmount, maxRefundable)
     }
 
+    /// Match the server's cumulative line allocation so successive decimal
+    /// refunds consume the saved net/tax cents without independent-rounding drift.
+    private var proformaRefundComponents: (amount: Double, tax: Double) {
+        var netMinor = Decimal.zero
+        var taxMinor = Decimal.zero
+        for item in receipt.items {
+            guard !item.isLivePet, item.unitIDs.isEmpty, item.quantityValue > 0 else { continue }
+            let remaining = POSReceiptFormat.quantizedQuantity(item.quantityValue - item.refundedQuantityValue)
+            let selected = isFullRefund ? remaining : min(remaining, itemQuantities[item.receiptLineID] ?? 0)
+            guard selected > 0 else { continue }
+            let whole = Decimal(string: POSReceiptFormat.quantity(item.quantityValue), locale: Locale(identifier: "en_US_POSIX")) ?? 0
+            let previous = Decimal(string: POSReceiptFormat.quantity(item.refundedQuantityValue), locale: Locale(identifier: "en_US_POSIX")) ?? 0
+            let quantity = Decimal(string: POSReceiptFormat.quantity(selected), locale: Locale(identifier: "en_US_POSIX")) ?? 0
+            guard whole > 0 else { continue }
+            func allocation(_ minor: Int64, at quantity: Decimal) -> Decimal {
+                var value = Decimal(minor) * quantity / whole
+                var rounded = Decimal.zero
+                NSDecimalRound(&rounded, &value, 0, .plain)
+                return rounded
+            }
+            netMinor += allocation(item.taxableMinor, at: previous + quantity) - allocation(item.taxableMinor, at: previous)
+            taxMinor += allocation(item.taxMinor, at: previous + quantity) - allocation(item.taxMinor, at: previous)
+        }
+        return (
+            NSDecimalNumber(decimal: (netMinor + taxMinor) / 100).doubleValue,
+            NSDecimalNumber(decimal: taxMinor / 100).doubleValue
+        )
+    }
+
     private var canSubmit: Bool {
         let amount = calculatedRefundAmount
         let reason = customReason.trimmingCharacters(in: .whitespacesAndNewlines)
-        return amount > 0 && reason.count >= 3
+        let hasReturnedQuantity = receipt.items.contains { item in
+            guard !item.isLivePet, item.unitIDs.isEmpty else { return false }
+            let remaining = POSReceiptFormat.quantizedQuantity(item.quantityValue - item.refundedQuantityValue)
+            return remaining > 0 && (isFullRefund || (itemQuantities[item.receiptLineID] ?? 0) > 0)
+        }
+        return (amount > 0 || (!(receipt.proformaInvoiceID ?? "").isEmpty && hasReturnedQuantity)) && reason.count >= 3
     }
 
     private func executeRefund() {
@@ -3838,13 +3924,13 @@ struct POSRefundStudioSheet: View {
         for item in receipt.items {
             let isLivePet = (item.inventoryMode?.uppercased() == "INDIVIDUAL_TRACKED") || !item.unitIDs.isEmpty
             guard !isLivePet else { continue }
-            let available = max(0, item.quantity - item.refundedQuantity)
-            let qty = isFullRefund ? available : (itemQuantities[item.itemID] ?? 0)
+            let available = POSReceiptFormat.quantizedQuantity(item.quantityValue - item.refundedQuantityValue)
+            let qty = POSReceiptFormat.quantizedQuantity(isFullRefund ? available : min(available, itemQuantities[item.receiptLineID] ?? 0))
             if qty > 0 {
-                let cond = itemConditions[item.itemID] ?? "sellable"
+                let cond = itemConditions[item.receiptLineID] ?? "sellable"
                 let disp = returnConditionOptions.first(where: { $0.id == cond })?.defaultDisposition ?? "return_to_stock"
                 let reasonCode = cond == "sellable" ? "customer_return_sellable" : "customer_return_\(cond)"
-                mapped.append([
+                var returnedItem: [String: Any] = [
                     "productId": item.itemID,
                     "quantity": qty,
                     "assertedUnitPrice": item.price,
@@ -3853,7 +3939,12 @@ struct POSRefundStudioSheet: View {
                     "disposition": disp,
                     "reasonCode": reasonCode,
                     "notes": finalReason
-                ])
+                ]
+                if let lineID = item.proformaLineID, !lineID.isEmpty {
+                    returnedItem["proformaLineId"] = lineID
+                    returnedItem["quantityGroupId"] = item.quantityGroupId ?? "single"
+                }
+                mapped.append(returnedItem)
             }
         }
         let itemsPayload: [[String: Any]]? = mapped.isEmpty ? nil : mapped
@@ -3867,6 +3958,9 @@ struct POSRefundStudioSheet: View {
             )
             if success {
                 // Update local receipt instance with refund facts
+                if !(receipt.proformaInvoiceID ?? "").isEmpty {
+                    receipt.refundedTax += proformaRefundComponents.tax
+                }
                 receipt.refundedAmount += amount
                 receipt.refundReason = finalReason
                 receipt.refundedAt = Date()
@@ -3882,11 +3976,15 @@ struct POSRefundStudioSheet: View {
                 for item in receipt.items {
                     let isLivePet = (item.inventoryMode?.uppercased() == "INDIVIDUAL_TRACKED") || !item.unitIDs.isEmpty
                     guard !isLivePet else { continue }
-                    let available = max(0, item.quantity - item.refundedQuantity)
-                    let qty = isFullRefund ? available : (itemQuantities[item.itemID] ?? 0)
+                    let available = POSReceiptFormat.quantizedQuantity(item.quantityValue - item.refundedQuantityValue)
+                    let qty = POSReceiptFormat.quantizedQuantity(isFullRefund ? available : min(available, itemQuantities[item.receiptLineID] ?? 0))
                     if qty > 0 {
-                        item.refundedQuantity += qty
+                        item.refundedQuantityValue += qty
                     }
+                }
+                if !(receipt.proformaInvoiceID ?? "").isEmpty {
+                    receipt.status = receipt.items.allSatisfy { $0.refundedQuantityValue + 0.000001 >= $0.quantityValue }
+                        ? "refunded" : "partially_refunded"
                 }
                 dismiss()
                 onSuccess(receipt)
@@ -4323,7 +4421,7 @@ struct POSCancelConfirmationSheet: View {
                         .font(AdminType.captionBold)
                         .foregroundColor(Color(uiColor: .systemRed))
 
-                    Text(verbatim: "−" + receipt.total.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
+                    Text(verbatim: "−" + POSReceiptFormat.currency(receipt.total, code: receipt.currency))
                         .font(.system(size: 30, weight: .black, design: .rounded))
                         .foregroundColor(Color(uiColor: .systemRed))
                         .monospacedDigit()
@@ -4384,7 +4482,7 @@ struct POSCancelConfirmationSheet: View {
             }
 
             VStack(spacing: 8) {
-                ForEach(receipt.items, id: \.itemID) { item in
+                ForEach(receipt.items, id: \.receiptLineID) { item in
                     HStack(spacing: 12) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -4432,7 +4530,7 @@ struct POSCancelConfirmationSheet: View {
                                         .background(Color(uiColor: .ppPrimary).opacity(0.1), in: Capsule())
                                 }
 
-                                Text(verbatim: item.price.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
+                                Text(verbatim: POSReceiptFormat.currency(item.price, code: receipt.currency))
                                     .font(AdminType.caption2)
                                     .foregroundColor(AdminSurface.secondaryText)
                             }
@@ -4441,14 +4539,14 @@ struct POSCancelConfirmationSheet: View {
                         Spacer()
 
                         VStack(alignment: .trailing, spacing: 2) {
-                            Text(String(format: Language.get("POS_Void_Restock_Unit", alter: "+%@ للمخزون"), item.quantity.englishDigits))
+                            Text(String(format: Language.get("POS_Void_Restock_Unit", alter: "+%@ للمخزون"), POSReceiptFormat.quantity(item.quantityValue)))
                                 .font(.system(size: 12, weight: .bold))
                                 .foregroundColor(Color(uiColor: .systemGreen))
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 3)
                                 .background(Color(uiColor: .systemGreen).opacity(0.12), in: Capsule())
 
-                            Text(verbatim: item.lineTotal.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
+                            Text(verbatim: POSReceiptFormat.currency(item.lineTotal, code: receipt.currency))
                                 .font(AdminType.captionBold)
                                 .foregroundColor(AdminSurface.primaryText)
                         }

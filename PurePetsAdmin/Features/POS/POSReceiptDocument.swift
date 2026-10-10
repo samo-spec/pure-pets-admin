@@ -15,7 +15,7 @@ struct POSCompletedReceipt: Identifiable, Sendable {
     struct Line: Identifiable, Sendable {
         let id: String
         let name: String
-        let quantity: Int
+        let quantity: Double
         let unitPrice: Double
         let lineTotal: Double
         let ringTags: [String]
@@ -23,7 +23,7 @@ struct POSCompletedReceipt: Identifiable, Sendable {
         let subSubKindItem: String?
         let unitSubSubKinds: [String]
         let unitSubSubKindItems: [String]
-        let refundedQuantity: Int
+        let refundedQuantity: Double
         let isLivePet: Bool
         let variantOptionName: String?
 
@@ -65,6 +65,7 @@ struct POSCompletedReceipt: Identifiable, Sendable {
     let lines: [Line]
     let subtotal: Double
     let discount: Double
+    let tax: Double
     let total: Double
     let cashReceived: Double
     let changeDue: Double
@@ -88,7 +89,8 @@ struct POSCompletedReceipt: Identifiable, Sendable {
     }
 
     var isFullyRefunded: Bool {
-        isRefunded && (refundedAmount >= (total - 0.01) || status.lowercased() == "refunded")
+        if status.lowercased() == "partially_refunded" { return false }
+        return isRefunded && (refundedAmount >= (total - 0.01) || status.lowercased() == "refunded")
     }
 
     var isPartiallyRefunded: Bool {
@@ -103,7 +105,7 @@ struct POSCompletedReceipt: Identifiable, Sendable {
         transactionID = receipt.receiptID
         createdAt = receipt.createdAt ?? Date()
         lines = receipt.items.enumerated().map { index, item in
-            let quantity = max(item.quantity, 1)
+            let quantity = max(item.quantityValue, 0.001)
             let derivedTotal = item.price * Double(quantity)
             let isLive = item.isLivePet || (item.inventoryMode?.uppercased() == "INDIVIDUAL_TRACKED") || !item.unitRingTags.isEmpty || !item.unitIDs.isEmpty
             let rawVariant = item.variantOptionName?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -128,13 +130,14 @@ struct POSCompletedReceipt: Identifiable, Sendable {
                 subSubKindItem: item.subSubKindItemName,
                 unitSubSubKinds: item.unitSubSubKinds,
                 unitSubSubKindItems: item.unitSubSubKindItems,
-                refundedQuantity: max(0, item.refundedQuantity),
+                refundedQuantity: max(0, item.refundedQuantityValue),
                 isLivePet: isLive,
                 variantOptionName: variantOption
             )
         }
-        subtotal = receipt.subtotal > 0 ? receipt.subtotal : receipt.total + receipt.discount
+        subtotal = receipt.subtotal > 0 ? receipt.subtotal : max(0, receipt.total + receipt.discount - receipt.tax)
         discount = max(receipt.discount, 0)
+        tax = max(receipt.tax, 0)
         total = receipt.total
         cashReceived = max(receipt.cashReceived, 0)
         changeDue = max(receipt.changeDue, 0)
@@ -159,6 +162,7 @@ struct POSCompletedReceipt: Identifiable, Sendable {
         transactionID: String,
         subtotal: Double = 0,
         discount: Double = 0,
+        tax: Double = 0,
         total: Double,
         currency: String,
         paymentMethod: String,
@@ -189,7 +193,7 @@ struct POSCompletedReceipt: Identifiable, Sendable {
             return Line(
                 id: "\(item.accessory.accessoryID)-\(index)",
                 name: item.accessory.name,
-                quantity: item.quantity,
+                quantity: Double(item.quantity),
                 unitPrice: item.unitPriceDisplay,
                 lineTotal: item.lineTotal,
                 ringTags: item.unitRingTags,
@@ -202,8 +206,9 @@ struct POSCompletedReceipt: Identifiable, Sendable {
                 variantOptionName: effective
             )
         }
-        self.subtotal = subtotal > 0 ? subtotal : total + discount
+        self.subtotal = subtotal > 0 ? subtotal : max(0, total + discount - tax)
         self.discount = max(discount, 0)
+        self.tax = max(tax, 0)
         self.total = total
         self.cashReceived = paymentMethod == "cash" ? max(cashReceived, total) : 0
         changeDue = paymentMethod == "cash" ? max(cashReceived - total, 0) : 0
@@ -510,7 +515,7 @@ struct POSCompletedReceiptSheet: View {
 
             ForEach(receipt.lines) { line in
                 HStack(alignment: .top, spacing: 10) {
-                    Text("\(line.quantity)×")
+                    Text("\(POSReceiptFormat.quantity(line.quantity))×")
                         .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .caption))
                         .foregroundColor(AdminSurface.primary)
                         .monospacedDigit()
@@ -564,7 +569,7 @@ struct POSCompletedReceiptSheet: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "arrow.uturn.backward.circle.fill")
                                     .font(.system(size: 10))
-                                Text(String(format: Language.get("POS_Receipt_RefundedUnits_Tag", alter: "مسترد: %d وحدة"), line.refundedQuantity))
+                                Text(String(format: Language.get("Proforma_ReceiptRefundedQuantity", alter: nil), POSReceiptFormat.quantity(line.refundedQuantity)))
                                     .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
                             }
                             .foregroundColor(Color(uiColor: .systemOrange))
@@ -598,6 +603,12 @@ struct POSCompletedReceiptSheet: View {
                 receiptValueRow(
                     Language.get("POS_Receipt_Discount", alter: "الخصم"),
                     value: "−" + POSReceiptFormat.currency(receipt.discount, code: receipt.currency)
+                )
+            }
+            if receipt.tax > 0 {
+                receiptValueRow(
+                    Language.get("Proforma_ReceiptTax", alter: nil),
+                    value: POSReceiptFormat.currency(receipt.tax, code: receipt.currency)
                 )
             }
 
@@ -935,6 +946,20 @@ private struct POSWhatsAppPressButtonStyle: ButtonStyle {
 
 @MainActor
 enum POSReceiptFormat {
+    static func quantizedQuantity(_ value: Double) -> Double {
+        guard value.isFinite else { return 0 }
+        return (max(0, value) * 1000).rounded() / 1000
+    }
+
+    static func quantity(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = false
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 3
+        return formatter.string(from: NSNumber(value: value)) ?? "0"
+    }
     static func currency(_ value: Double, code: String) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
@@ -1227,6 +1252,7 @@ enum POSReceiptPDFExporter {
         // Totals
         var totalRowCount = 2
         if receipt.discount > 0 { totalRowCount += 1 }
+        if receipt.tax > 0 { totalRowCount += 1 }
         if receipt.isRefunded { totalRowCount += 2 }
         if receipt.paymentMethod.lowercased() == "cash" { totalRowCount += 2 }
         dynamicHeight += CGFloat(totalRowCount - 1) * 18.0 + 30.0 + 12.0
@@ -1430,10 +1456,10 @@ enum POSReceiptPDFExporter {
 
             // 6. Items list
             for line in receipt.lines {
-                let qtyStr = "\(line.quantity)×"
+                let qtyStr = "\(POSReceiptFormat.quantity(line.quantity))×"
                 let priceStr = POSReceiptFormat.currency(line.lineTotal, code: receipt.currency)
 
-                let qtyWidth: CGFloat = 24.0
+                let qtyWidth: CGFloat = max(24, ceil((qtyStr as NSString).size(withAttributes: [.font: boldBodyFont]).width) + 2)
                 let priceWidth: CGFloat = 75.0
                 let nameWidth = cw - qtyWidth - priceWidth - 8.0
 
@@ -1500,7 +1526,7 @@ enum POSReceiptPDFExporter {
                 }
 
                 if line.refundedQuantity > 0 {
-                    let refStr = "• " + String(format: Language.get("POS_Receipt_RefundedUnits_Tag", alter: "مسترد: %d وحدة"), line.refundedQuantity)
+                    let refStr = "• " + String(format: Language.get("Proforma_ReceiptRefundedQuantity", alter: nil), POSReceiptFormat.quantity(line.refundedQuantity))
                     let refAttr: [NSAttributedString.Key: Any] = [
                         .font: microFont,
                         .foregroundColor: primaryColor,
@@ -1523,6 +1549,10 @@ enum POSReceiptPDFExporter {
 
             if receipt.discount > 0 {
                 drawRow(label: Language.get("POS_Receipt_Discount", alter: "الخصم"), value: "−" + POSReceiptFormat.currency(receipt.discount, code: receipt.currency), valueColor: primaryColor, y: currentY)
+                currentY += 16.0
+            }
+            if receipt.tax > 0 {
+                drawRow(label: Language.get("Proforma_ReceiptTax", alter: nil), value: POSReceiptFormat.currency(receipt.tax, code: receipt.currency), y: currentY)
                 currentY += 16.0
             }
 

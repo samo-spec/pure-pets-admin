@@ -125,11 +125,13 @@ fileprivate struct POSCustomerAppAccount: Identifiable {
 enum POSCustomerPickerPurpose {
     case posCart
     case wantedPetRequest
+    case proformaInvoice
 
     var title: String {
         switch self {
         case .posCart: return Language.get("POS_Customer_Title", alter: "دليل وربط العملاء")
         case .wantedPetRequest: return Language.get("WantedPets_Directory_Title", alter: "دليل العملاء")
+        case .proformaInvoice: return Language.get("Proforma_CustomerPicker_Title", alter: nil)
         }
     }
 
@@ -143,6 +145,8 @@ enum POSCustomerPickerPurpose {
             return canCreate
                 ? Language.get("WantedPets_Directory_Subtitle", alter: "اختر عميلاً أو أنشئ ملفاً جديداً لطلب الحيوان.")
                 : Language.get("WantedPets_Directory_Subtitle_ReadOnly", alter: "اختر عميلاً موجوداً لطلب الحيوان.")
+        case .proformaInvoice:
+            return Language.get(canCreate ? "Proforma_CustomerPicker_Subtitle" : "Proforma_CustomerPicker_ReadOnly", alter: nil)
         }
     }
 
@@ -150,6 +154,7 @@ enum POSCustomerPickerPurpose {
         switch self {
         case .posCart: return Language.get("POS_Customer_SelectToCart", alter: "ربط العميل بهذه السلة")
         case .wantedPetRequest: return Language.get("WantedPets_Directory_Select", alter: "استخدام هذا العميل")
+        case .proformaInvoice: return Language.get("Proforma_CustomerPicker_Select", alter: nil)
         }
     }
 
@@ -157,6 +162,7 @@ enum POSCustomerPickerPurpose {
         switch self {
         case .posCart: return Language.get("POS_Customer_SaveAndLink", alter: "حفظ وربط العميل بالسلة")
         case .wantedPetRequest: return Language.get("WantedPets_Directory_SaveAndSelect", alter: "حفظ واستخدام العميل")
+        case .proformaInvoice: return Language.get("Proforma_CustomerPicker_Save", alter: nil)
         }
     }
 
@@ -164,6 +170,7 @@ enum POSCustomerPickerPurpose {
         switch self {
         case .posCart: return Language.get("POS_Customer_SubmitCTA", alter: "حفظ وتحديد العميل للسلة")
         case .wantedPetRequest: return Language.get("WantedPets_Directory_SaveAndSelect", alter: "حفظ واستخدام العميل")
+        case .proformaInvoice: return Language.get("Proforma_CustomerPicker_Save", alter: nil)
         }
     }
 }

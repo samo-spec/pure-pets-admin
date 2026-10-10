@@ -36,6 +36,11 @@ struct AdminRouteDestinationView: View {
             AdminPOSHistoryView(session: session) {
                 router.presentedRoute = nil
             }
+        case .proformaInvoices:
+            AdminProformaInvoicesView(session: session) {
+                router.presentedRoute = nil
+            }
+            .id(session.uid)
         case .fulfillment:
             AdminFulfillmentListView(session: session) {
                 router.presentedRoute = nil

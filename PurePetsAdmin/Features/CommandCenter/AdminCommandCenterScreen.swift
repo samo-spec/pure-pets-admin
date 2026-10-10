@@ -357,17 +357,42 @@ public final class AdminCommandOrbitHostingController: UIViewController {
 
 }
 
+// MARK: - Apple-Grade Concentric Continuous Corner System
+
+/// Sovereign single source of truth for all corner radii across the Admin Command Center.
+/// Strictly enforces mathematical concentricity (R_inner = R_outer - padding)
+/// and Apple Human Interface Guidelines continuous squircle curvature (CACornerCurveContinuous).
+enum CommandCorner {
+    /// Hero focal containers, top navigation bar cockpit surface (24pt)
+    static let hero: CGFloat = 24
+
+    /// Primary sovereign cards, section decks, large panels, modal sheets (22pt — PPCornerCard)
+    static let container: CGFloat = 22
+
+    /// Action tiles, interactive sub-cards, module cards, primary rows, major buttons (16pt — PPCorner16)
+    static let tile: CGFloat = 16
+
+    /// Control elements, squircle icon wells, standard buttons, text inputs, search fields (12pt — PPCornerSmall)
+    static let control: CGFloat = 12
+
+    /// Badges, chips, tags, small indicator plates, counter plates (8pt)
+    static let chip: CGFloat = 8
+
+    /// Micro progress tracks, step markers, indicator notches, shimmer placeholders (4pt)
+    static let micro: CGFloat = 4
+}
+
 // MARK: - Command Center Presentation
 
 private enum AdminCommandMetric {
     static let pageMargin: CGFloat = 20
     static let sectionSpacing: CGFloat = 24
-    static let surfaceRadius: CGFloat = 22
-    static let heroRadius: CGFloat = 26
-    static let tightRadius: CGFloat = 14
+    static let surfaceRadius: CGFloat = CommandCorner.container
+    static let heroRadius: CGFloat = CommandCorner.hero
+    static let tightRadius: CGFloat = CommandCorner.tile
     static let minimumActionHeight: CGFloat = 52
     static let commandBarHeight: CGFloat = 58
-    static let commandBarRadius: CGFloat = 18
+    static let commandBarRadius: CGFloat = CommandCorner.tile
     static let spineHeight: CGFloat = 12
     static let rowMinimumHeight: CGFloat = 76
     static let tabBarBottomInset: CGFloat = 124
@@ -1485,9 +1510,9 @@ private struct CommandCenterChrome: View {
         .padding(.top, 8)
         .padding(.bottom, 4)
         .background(AdminSurface.surface,
-                    in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    in: RoundedRectangle(cornerRadius: CommandCorner.hero, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.hero, style: .continuous)
                 .strokeBorder(AdminSurface.hairline, lineWidth: contrast == .increased ? 1.5 : 0.75)
                 .allowsHitTesting(false)
         }
@@ -1511,9 +1536,9 @@ private struct CommandCenterChrome: View {
                         .background(AdminSurface.primary.opacity(0.08))
                 }
                 .frame(width: imageSide, height: imageSide)
-                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                         .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
                 }
                 .accessibilityHidden(true)
@@ -1607,7 +1632,7 @@ private struct CommandCenterChrome: View {
                     .padding(.horizontal, 9)
                     .frame(minWidth: 48, minHeight: 44)
                     .background(AdminSurface.primary.opacity(contrast == .increased ? 0.12 : 0.06),
-                                in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                                in: RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
                     .accessibilityHidden(true)
                 } else if !branchContextStore.availableBranches.isEmpty {
                     Image(systemName: "lock")
@@ -1709,10 +1734,10 @@ private struct CommandCenterChrome: View {
         .padding(.horizontal, isLandscapeIPad ? 18 : 14)
         .padding(.vertical, 10)
         .background(
-            CommandCenterCockpitBackground(readinessTone: readinessTone, cornerRadius: 24)
+            CommandCenterCockpitBackground(readinessTone: readinessTone, cornerRadius: CommandCorner.hero)
                 .allowsHitTesting(false)
         )
-        .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: CommandCorner.hero, style: .continuous))
         .zIndex(1)
     }
 
@@ -1734,7 +1759,7 @@ private struct CommandCenterChrome: View {
                         .foregroundStyle(canSwitchBranch ? Color.white : secondaryInk)
                 }
                 .frame(width: isLandscapeIPad ? 42 : 36, height: isLandscapeIPad ? 42 : 36)
-                .clipShape(RoundedRectangle(cornerRadius: isLandscapeIPad ? 13 : 10, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
                 .shadow(
                     color: canSwitchBranch ? Color(uiColor: .ppPrimary).opacity(0.24) : Color.clear,
                     radius: 6,
@@ -1876,10 +1901,10 @@ private struct CommandCenterChrome: View {
             .frame(height: 36)
             .background(
                 AdminSurface.control,
-                in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                in: RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                     .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
             )
             .contentShape(Rectangle())
@@ -1914,9 +1939,9 @@ private struct CommandCenterChrome: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .frame(width: 36, height: 36)
-                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                         .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
                 )
 
@@ -1997,10 +2022,10 @@ private struct CommandCenterChrome: View {
                 .frame(width: size, height: size)
                 .background(
                     AdminSurface.control,
-                    in: RoundedRectangle(cornerRadius: isRegular ? 11 : size / 2, style: .continuous)
+                    in: RoundedRectangle(cornerRadius: isRegular ? CommandCorner.control : size / 2, style: .continuous)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: isRegular ? 11 : size / 2, style: .continuous)
+                    RoundedRectangle(cornerRadius: isRegular ? CommandCorner.control : size / 2, style: .continuous)
                         .strokeBorder(isRegular ? AdminSurface.hairline : .clear, lineWidth: 0.75)
                 )
                 .contentShape(Rectangle())
@@ -2071,7 +2096,7 @@ private struct CommandCenterChrome: View {
 private struct CommandCardPressStyle: ButtonStyle {
     var scale: CGFloat = 0.982
     var pressedOpacity: CGFloat = 0.94
-    var cornerRadius: CGFloat = 18
+    var cornerRadius: CGFloat = CommandCorner.container
 
     func makeBody(configuration: Configuration) -> some View {
         let animatesScale = UIDevice.current.userInterfaceIdiom != .pad
@@ -2186,11 +2211,11 @@ private struct CommandSourceIssueSheet: View {
                 }
                 .padding(AdminSpacing.base)
                 .background(
-                    RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                    RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                         .fill(AdminSurface.control)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                    RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                         .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.75)
                 )
 
@@ -2206,7 +2231,7 @@ private struct CommandSourceIssueSheet: View {
                     .foregroundStyle(Color.white)
                     .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable)
                     .background(
-                        RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous)
+                        RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                             .fill(AdminSurface.primary)
                     )
                 }
@@ -2318,7 +2343,7 @@ private struct CommandEscalationHero: View {
             } label: {
                 heroCardBody
             }
-            .buttonStyle(CommandCardPressStyle(scale: 0.985, pressedOpacity: 0.95, cornerRadius: 20))
+            .buttonStyle(CommandCardPressStyle(scale: 0.985, pressedOpacity: 0.95, cornerRadius: CommandCorner.container))
             .accessibilityElement(children: .contain)
         } else {
             heroCardBody
@@ -2345,8 +2370,8 @@ private struct CommandEscalationHero: View {
         .padding(14)
         .background(heroAtmosphere)
         .overlay(heroGlassBorder)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous))
     }
 
     // MARK: - Atmospheric Canvas
@@ -2366,12 +2391,12 @@ private struct CommandEscalationHero: View {
                 endRadius: 220
             )
         }
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous))
         .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.05), radius: 14, x: 0, y: 5)
     }
 
     private var heroGlassBorder: some View {
-        RoundedRectangle(cornerRadius: 20, style: .continuous)
+        RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous)
             .strokeBorder(
                 LinearGradient(
                     colors: [
@@ -2651,7 +2676,7 @@ private struct CommandEscalationHero: View {
         .frame(minHeight: 56)
         .frame(maxWidth: .infinity)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
@@ -2664,7 +2689,7 @@ private struct CommandEscalationHero: View {
                 )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 .strokeBorder(model.situation.tone.accent.opacity(0.24), lineWidth: 0.8)
         )
         .accessibilityElement(children: .ignore)
@@ -2712,7 +2737,7 @@ private struct CommandEscalationHero: View {
     private func actionCatalyst(for signal: AdminCommandOrbitSignal) -> some View {
         HStack(spacing: 10) {
             ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                     .fill(Color.white.opacity(0.20))
                 Image(systemName: signal.symbolName)
                     .font(.system(size: 14, weight: .bold))
@@ -2761,7 +2786,7 @@ private struct CommandEscalationHero: View {
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, minHeight: 46)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
@@ -2775,7 +2800,7 @@ private struct CommandEscalationHero: View {
                 .shadow(color: signal.tier.tone.accent.opacity(0.32), radius: 6, x: 0, y: 2)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.28), lineWidth: 0.75)
         )
         .accessibilityLabel(model.primaryActionTitle)
@@ -2806,9 +2831,9 @@ private struct CommandEscalationHero: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: .ppSuccess).opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Color(uiColor: .ppSuccess).opacity(0.10), in: RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                 .strokeBorder(Color(uiColor: .ppSuccess).opacity(0.25), lineWidth: 0.75)
         )
     }
@@ -3121,7 +3146,7 @@ private struct CommandPOSHomePressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .background(AdminSurface.primaryText.opacity(configuration.isPressed ? 0.055 : 0),
-                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        in: RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
             .opacity(configuration.isPressed ? 0.84 : 1)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
     }
@@ -3175,8 +3200,6 @@ private struct CommandPOSDeck: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             VStack(alignment: .leading, spacing: 20) {
-                operatorHeader
-                rule
                 if usesColumns {
                     HStack(alignment: .top, spacing: 24) {
                         registerActions.frame(maxWidth: .infinity, alignment: .leading)
@@ -3190,9 +3213,9 @@ private struct CommandPOSDeck: View {
                 shiftSummary
             }
             .padding(isRegular ? 24 : 16)
-            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous)
                     .strokeBorder(AdminSurface.hairline, lineWidth: contrast == .increased ? 1.5 : 1)
                     .allowsHitTesting(false)
             }
@@ -3222,40 +3245,6 @@ private struct CommandPOSDeck: View {
         .accessibilityIdentifier("home.pos.section")
     }
 
-    private var operatorHeader: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                Label(currentBranchName, systemImage: "building.2")
-                    .font(AdminType.headline)
-                    .foregroundStyle(AdminSurface.primaryText)
-                Label(telemetryStore.activeStaffName, systemImage: "person.crop.circle")
-                    .font(AdminType.subheadline)
-                    .foregroundStyle(AdminSurface.secondaryText)
-            }
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Button { telemetryStore.retry() } label: {
-                ZStack {
-                    if telemetryStore.isRefreshing {
-                        ProgressView().tint(AdminSurface.primaryText)
-                    } else {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 17, weight: .semibold))
-                    }
-                }
-                .frame(width: 48, height: 48)
-                .foregroundStyle(AdminSurface.primaryText)
-                .background(AdminSurface.control, in: Circle())
-                .contentShape(Circle())
-            }
-            .buttonStyle(CommandPOSHomePressStyle())
-            .disabled(telemetryStore.isRefreshing || !hasBranch)
-            .accessibilityLabel(CommandPOSHomeCopy.text("Refresh"))
-            .accessibilityIdentifier("home.pos.refresh")
-        }
-    }
-
     private var registerActions: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
@@ -3269,7 +3258,7 @@ private struct CommandPOSDeck: View {
                                 .font(.system(size: 27, weight: .medium))
                                 .foregroundStyle(AdminSurface.primaryText)
                                 .frame(width: 52, height: 52)
-                                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
                                 .accessibilityHidden(true)
                         }
                         Label(accessTitle, systemImage: telemetryStore.canSell ? "checkmark.circle" : "eye")
@@ -3295,8 +3284,8 @@ private struct CommandPOSDeck: View {
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(AdminSurface.primary.opacity(colorScheme == .dark ? 0.14 : 0.065),
-                            in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                            in: RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
             }
             .buttonStyle(CommandPOSHomePressStyle())
             .keyboardShortcut("n", modifiers: .command)
@@ -3341,6 +3330,16 @@ private struct CommandPOSDeck: View {
                 onRoute("posHistory")
             }
             .keyboardShortcut("h", modifiers: .command)
+            if telemetryStore.canView || telemetryStore.canSell {
+                rule
+                CommandPOSHomeAction(title: Language.get("Proforma_Title", alter: nil),
+                                     detail: Language.get("Proforma_Subtitle", alter: nil),
+                                     symbol: "doc.text", identifier: "home.pos.proforma",
+                                     showsDetail: isRegular) {
+                    onRoute("proformaInvoices")
+                }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+            }
             rule
             CommandPOSHomeAction(title: CommandPOSHomeCopy.text("Expense"),
                                  detail: CommandPOSHomeCopy.text("ExpenseDetail"),
@@ -3560,7 +3559,7 @@ private struct CommandPOSHomeFigures: View {
             }
         }
         .padding(16)
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
         .accessibilityElement(children: .contain)
     }
 
@@ -4039,11 +4038,11 @@ private struct CommandPOSQuickExpenseView_iPhone: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                 .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                 .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.35 : 0.15), lineWidth: 0.75)
         )
     }
@@ -4106,11 +4105,11 @@ private struct CommandPOSQuickExpenseView_iPhone: View {
         }
         .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 .fill(colorScheme == .dark ? Color(white: 0.14) : Color.white)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 .strokeBorder(coral.opacity(colorScheme == .dark ? 0.35 : 0.20), lineWidth: 1.2)
         )
         .shadow(color: coral.opacity(colorScheme == .dark ? 0.18 : 0.06), radius: 8, y: 3)
@@ -4183,7 +4182,7 @@ private struct CommandPOSQuickExpenseView_iPhone: View {
                     } label: {
                         HStack(spacing: 6) {
                             ZStack {
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                RoundedRectangle(cornerRadius: CommandCorner.chip, style: .continuous)
                                     .fill(cat.iconBgColor)
                                     .frame(width: 30, height: 30)
 
@@ -4212,7 +4211,7 @@ private struct CommandPOSQuickExpenseView_iPhone: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                         .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                                 .fill(
                                     isSelected
                                         ? (colorScheme == .dark ? Color.blue.opacity(0.18) : Color(red: 0.94, green: 0.97, blue: 1.0))
@@ -4220,7 +4219,7 @@ private struct CommandPOSQuickExpenseView_iPhone: View {
                                 )
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                                 .strokeBorder(
                                     isSelected
                                         ? Color(red: 0.20, green: 0.60, blue: 1.0)
@@ -4261,7 +4260,7 @@ private struct CommandPOSQuickExpenseView_iPhone: View {
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 5)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    RoundedRectangle(cornerRadius: CommandCorner.chip, style: .continuous)
                                         .fill(
                                             isApplied
                                                 ? Color(red: 0.18, green: 0.56, blue: 0.98).opacity(0.12)
@@ -4269,7 +4268,7 @@ private struct CommandPOSQuickExpenseView_iPhone: View {
                                         )
                                 )
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    RoundedRectangle(cornerRadius: CommandCorner.chip, style: .continuous)
                                         .strokeBorder(
                                             isApplied ? Color(red: 0.18, green: 0.56, blue: 0.98).opacity(0.5) : Color(uiColor: .ppSurfaceBorder).opacity(0.25),
                                             lineWidth: 0.8
@@ -4319,21 +4318,21 @@ private struct CommandPOSQuickExpenseView_iPhone: View {
             .padding(.horizontal, 12)
             .frame(height: 46)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                     .fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.white)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                     .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.35), lineWidth: 0.8)
             )
         }
         .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 .fill(colorScheme == .dark ? Color(white: 0.14) : Color.white)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.35 : 0.15), lineWidth: 0.75)
         )
     }
@@ -4362,11 +4361,11 @@ private struct CommandPOSQuickExpenseView_iPhone: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                 .fill(coral.opacity(colorScheme == .dark ? 0.12 : 0.06))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                 .strokeBorder(coral.opacity(0.20), lineWidth: 0.75)
         )
     }
@@ -4397,7 +4396,7 @@ private struct CommandPOSQuickExpenseView_iPhone: View {
                 .multilineTextAlignment(.leading)
         }
         .padding(12)
-        .background(Color(uiColor: .ppError).opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+        .background(Color(uiColor: .ppError).opacity(0.12), in: RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
         .transition(.opacity)
     }
 
@@ -4412,7 +4411,7 @@ private struct CommandPOSQuickExpenseView_iPhone: View {
                 .multilineTextAlignment(.leading)
         }
         .padding(12)
-        .background(Color(red: 0.06, green: 0.78, blue: 0.56).opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+        .background(Color(red: 0.06, green: 0.78, blue: 0.56).opacity(0.12), in: RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
         .transition(.scale.combined(with: .opacity))
     }
 
@@ -4439,7 +4438,7 @@ private struct CommandPOSQuickExpenseView_iPhone: View {
             .frame(maxWidth: .infinity)
             .frame(height: 50)
             .background(
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                     .fill(coral)
             )
             .shadow(color: coral.opacity(0.35), radius: 8, y: 3)
@@ -4598,7 +4597,7 @@ private struct CommandPOSQuickExpenseView_iPad: View {
     private var stationHeaderCard: some View {
         HStack(spacing: 12) {
             ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                     .fill(coral.opacity(colorScheme == .dark ? 0.25 : 0.12))
                     .frame(width: 42, height: 42)
 
@@ -4640,11 +4639,11 @@ private struct CommandPOSQuickExpenseView_iPad: View {
         }
         .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.35 : 0.15), lineWidth: 0.8)
         )
     }
@@ -4723,11 +4722,11 @@ private struct CommandPOSQuickExpenseView_iPad: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 38)
                         .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                                 .fill(colorScheme == .dark ? Color.white.opacity(0.08) : Color.white)
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                                 .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.40 : 0.20), lineWidth: 0.8)
                         )
                     }
@@ -4738,11 +4737,11 @@ private struct CommandPOSQuickExpenseView_iPad: View {
         }
         .padding(18)
         .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 .fill(colorScheme == .dark ? Color(white: 0.13) : Color.white)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 .strokeBorder(coral.opacity(colorScheme == .dark ? 0.40 : 0.22), lineWidth: 1.2)
         )
         .shadow(color: coral.opacity(colorScheme == .dark ? 0.20 : 0.06), radius: 10, y: 4)
@@ -4768,7 +4767,7 @@ private struct CommandPOSQuickExpenseView_iPad: View {
                     } label: {
                         HStack(spacing: 7) {
                             ZStack {
-                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                RoundedRectangle(cornerRadius: CommandCorner.chip, style: .continuous)
                                     .fill(cat.iconBgColor)
                                     .frame(width: 32, height: 32)
 
@@ -4797,7 +4796,7 @@ private struct CommandPOSQuickExpenseView_iPad: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 54)
                         .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                                 .fill(
                                     isSelected
                                         ? (colorScheme == .dark ? Color.blue.opacity(0.18) : Color(red: 0.94, green: 0.97, blue: 1.0))
@@ -4805,7 +4804,7 @@ private struct CommandPOSQuickExpenseView_iPad: View {
                                 )
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                                 .strokeBorder(
                                     isSelected
                                         ? Color(red: 0.20, green: 0.60, blue: 1.0)
@@ -4846,7 +4845,7 @@ private struct CommandPOSQuickExpenseView_iPad: View {
                                 .padding(.horizontal, 11)
                                 .padding(.vertical, 6)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    RoundedRectangle(cornerRadius: CommandCorner.chip, style: .continuous)
                                         .fill(
                                             isApplied
                                                 ? Color(red: 0.18, green: 0.56, blue: 0.98).opacity(0.14)
@@ -4854,7 +4853,7 @@ private struct CommandPOSQuickExpenseView_iPad: View {
                                         )
                                 )
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    RoundedRectangle(cornerRadius: CommandCorner.chip, style: .continuous)
                                         .strokeBorder(
                                             isApplied ? Color(red: 0.18, green: 0.56, blue: 0.98).opacity(0.6) : Color(uiColor: .ppSurfaceBorder).opacity(0.25),
                                             lineWidth: 0.8
@@ -4910,21 +4909,21 @@ private struct CommandPOSQuickExpenseView_iPad: View {
             .padding(.horizontal, 14)
             .frame(height: 48)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                     .fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.white)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                     .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.35), lineWidth: 0.8)
             )
         }
         .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 .fill(colorScheme == .dark ? Color(white: 0.13) : Color.white)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.35 : 0.15), lineWidth: 0.8)
         )
     }
@@ -4940,7 +4939,7 @@ private struct CommandPOSQuickExpenseView_iPad: View {
                 .multilineTextAlignment(.leading)
         }
         .padding(14)
-        .background(Color(uiColor: .ppError).opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+        .background(Color(uiColor: .ppError).opacity(0.12), in: RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
         .transition(.opacity)
     }
 
@@ -4955,7 +4954,7 @@ private struct CommandPOSQuickExpenseView_iPad: View {
                 .multilineTextAlignment(.leading)
         }
         .padding(14)
-        .background(Color(red: 0.06, green: 0.78, blue: 0.56).opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+        .background(Color(red: 0.06, green: 0.78, blue: 0.56).opacity(0.12), in: RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
         .transition(.scale.combined(with: .opacity))
     }
 
@@ -4991,7 +4990,7 @@ private struct CommandPOSQuickExpenseView_iPad: View {
             .frame(maxWidth: .infinity)
             .frame(height: 52)
             .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                     .fill(coral)
             )
             .shadow(color: coral.opacity(0.35), radius: 10, y: 4)
@@ -5073,11 +5072,11 @@ private struct CommandPOSQuickExpenseView_iPad: View {
         }
         .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.35 : 0.15), lineWidth: 0.8)
         )
     }
@@ -5113,7 +5112,7 @@ private struct CommandPOSQuickExpenseView_iPad: View {
                 .frame(maxWidth: .infinity)
                 .padding(16)
                 .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                         .fill(colorScheme == .dark ? Color.white.opacity(0.03) : Color.black.opacity(0.02))
                 )
             } else {
@@ -5154,11 +5153,11 @@ private struct CommandPOSQuickExpenseView_iPad: View {
                             .padding(.horizontal, 10)
                             .padding(.vertical, 8)
                             .background(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                                     .fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.white)
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                                     .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.25), lineWidth: 0.6)
                             )
                         }
@@ -5169,11 +5168,11 @@ private struct CommandPOSQuickExpenseView_iPad: View {
         }
         .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.35 : 0.15), lineWidth: 0.8)
         )
     }
@@ -5192,11 +5191,11 @@ private struct CommandPOSQuickExpenseView_iPad: View {
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                 .fill(Color(red: 0.10, green: 0.74, blue: 0.54).opacity(0.08))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                 .strokeBorder(Color(red: 0.10, green: 0.74, blue: 0.54).opacity(0.20), lineWidth: 0.8)
         )
     }
@@ -5222,11 +5221,11 @@ private struct CommandPOSQuickExpenseView_iPad: View {
             .padding(.horizontal, 14)
             .frame(height: 44)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                     .fill(colorScheme == .dark ? Color.white.opacity(0.08) : Color.white)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                     .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.35), lineWidth: 0.8)
             )
         }
@@ -5709,18 +5708,18 @@ private struct CommandStockVaultCardTallLivePets: View {
             .padding(.vertical, 11)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                     .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                     .strokeBorder(accent.opacity(colorScheme == .dark ? 0.28 : 0.14), lineWidth: 0.75)
             )
             .shadow(color: accent.opacity(colorScheme == .dark ? 0.14 : 0.04), radius: 5, y: 2)
-            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
         }
-        .buttonStyle(CommandStockCardPressStyle())
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .buttonStyle(CommandStockCardPressStyle(cornerRadius: CommandCorner.tile))
+        .contentShape(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
         .frame(maxWidth: .infinity)
         .frame(height: targetHeight)
         .frame(maxHeight: targetHeight == nil ? .infinity : nil)
@@ -5757,7 +5756,7 @@ private struct CommandStockVaultCardCompactiPhone: View {
 
     private var iconSquircle: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                 .fill(iconGradient)
 
             Image(systemName: iconName)
@@ -5766,7 +5765,7 @@ private struct CommandStockVaultCardCompactiPhone: View {
         }
         .frame(width: 38, height: 38)
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                 .strokeBorder(accent.opacity(colorScheme == .dark ? 0.32 : 0.18), lineWidth: 0.75)
         )
     }
@@ -5839,18 +5838,18 @@ private struct CommandStockVaultCardCompactiPhone: View {
             .padding(.vertical, 11)
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                     .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                     .strokeBorder(accent.opacity(colorScheme == .dark ? 0.28 : 0.14), lineWidth: 0.75)
             )
             .shadow(color: accent.opacity(colorScheme == .dark ? 0.14 : 0.04), radius: 5, y: 2)
-            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
         }
-        .buttonStyle(CommandStockCardPressStyle())
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .buttonStyle(CommandStockCardPressStyle(cornerRadius: CommandCorner.tile))
+        .contentShape(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
     }
@@ -5884,7 +5883,7 @@ private struct CommandStockVaultCardiPhone: View {
 
     private var iconSquircle: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                 .fill(iconGradient)
 
             Image(systemName: iconName)
@@ -5893,7 +5892,7 @@ private struct CommandStockVaultCardiPhone: View {
         }
         .frame(width: 44, height: 44)
         .overlay(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                 .strokeBorder(accent.opacity(colorScheme == .dark ? 0.32 : 0.18), lineWidth: 0.75)
         )
     }
@@ -5949,18 +5948,18 @@ private struct CommandStockVaultCardiPhone: View {
             .padding(.horizontal, 13)
             .padding(.vertical, 11)
             .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                     .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                     .strokeBorder(accent.opacity(colorScheme == .dark ? 0.28 : 0.14), lineWidth: 0.75)
             )
             .shadow(color: accent.opacity(colorScheme == .dark ? 0.14 : 0.04), radius: 5, y: 2)
-            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
         }
-        .buttonStyle(CommandStockCardPressStyle())
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .buttonStyle(CommandStockCardPressStyle(cornerRadius: CommandCorner.tile))
+        .contentShape(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
     }
@@ -6056,7 +6055,7 @@ private struct CommandStockVaultCardiPad: View {
 
     private var iconSquircle: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                 .fill(iconGradient)
 
             Image(systemName: iconName)
@@ -6066,7 +6065,7 @@ private struct CommandStockVaultCardiPad: View {
         }
         .frame(width: 50, height: 50)
         .overlay(
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                 .strokeBorder(accent.opacity(colorScheme == .dark ? 0.32 : 0.18), lineWidth: 0.8)
         )
     }
@@ -6117,11 +6116,11 @@ private struct CommandStockVaultCardiPad: View {
         .frame(maxWidth: .infinity)
         .frame(height: 33)
         .background(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.chip, style: .continuous)
                 .fill(colorScheme == .dark ? Color.white.opacity(0.08) : Color(uiColor: .systemBackground))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.chip, style: .continuous)
                 .strokeBorder(accent.opacity(colorScheme == .dark ? 0.28 : 0.18), lineWidth: 0.7)
         )
         .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.12 : 0.03), radius: 2.5, y: 1)
@@ -6143,10 +6142,10 @@ private struct CommandStockVaultCardiPad: View {
             .frame(height: 154)
             .background(
                 ZStack {
-                    RoundedRectangle(cornerRadius: 17, style: .continuous)
+                    RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                         .fill(colorScheme == .dark ? Color(white: 0.13) : Color.white)
 
-                    RoundedRectangle(cornerRadius: 17, style: .continuous)
+                    RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [
@@ -6160,14 +6159,14 @@ private struct CommandStockVaultCardiPad: View {
                 }
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 17, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                     .strokeBorder(accent.opacity(colorScheme == .dark ? 0.26 : 0.14), lineWidth: 0.8)
             )
             .shadow(color: accent.opacity(colorScheme == .dark ? 0.18 : 0.05), radius: 6, y: 2.5)
-            .contentShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
         }
-        .buttonStyle(CommandStockCardPressStyle())
-        .contentShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .buttonStyle(CommandStockCardPressStyle(cornerRadius: CommandCorner.tile))
+        .contentShape(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
     }
@@ -6176,7 +6175,7 @@ private struct CommandStockVaultCardiPad: View {
 private struct CommandStockCardPressStyle: ButtonStyle {
     var scale: CGFloat = 0.982
     var pressedOpacity: CGFloat = 0.94
-    var cornerRadius: CGFloat = 16
+    var cornerRadius: CGFloat = CommandCorner.tile
     func makeBody(configuration: Configuration) -> some View {
         let animatesScale = UIDevice.current.userInterfaceIdiom != .pad
         return configuration.label
@@ -6311,8 +6310,8 @@ private struct CommandQuickActionsDeck: View {
             CommandQuickActionItem(
                 id: "services",
                 tag: "services",
-                title: Language.get("AdminQuickActions_Services", alter: nil),
-                subtitle: Language.get("AdminQuickActions_Services_Subtitle", alter: nil),
+                title: Language.get("AdminQuickActions_Services", alter: "إدارة الخدمات"),
+                subtitle: Language.get("AdminQuickActions_Services_Subtitle", alter: "الباقات والعروض"),
                 symbolName: "cross.case.fill",
                 accent: Color(uiColor: .ppQuickActionServices),
                 badgeCount: (serviceSignal?.count ?? 0) > 0 ? serviceSignal?.count : nil,
@@ -6401,24 +6400,12 @@ private struct CommandQuickActionsDeck: View {
         }
     }
 
-    // iPhone Operations Line (Responsive operations row)
+    // iPhone Operations Line (Unified Action Card Stack)
     private var iphoneOperationsMatrixView: some View {
-        Group {
-            if allDeckItems.count > 4 {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: spacing)], spacing: spacing) {
-                    ForEach(allDeckItems) { item in
-                        CommandQuickActionCard(item: item, isRegular: false) {
-                            onRoute(item.tag)
-                        }
-                    }
-                }
-            } else {
-                HStack(spacing: spacing) {
-                    ForEach(allDeckItems) { item in
-                        CommandQuickActionCard(item: item, isRegular: false) {
-                            onRoute(item.tag)
-                        }
-                    }
+        VStack(spacing: spacing) {
+            ForEach(allDeckItems) { item in
+                CommandQuickActionCard(item: item, isRegular: false) {
+                    onRoute(item.tag)
                 }
             }
         }
@@ -6429,33 +6416,24 @@ private struct CommandQuickActionsDeck: View {
         isLandscape && containerWidth >= 950
     }
 
-    // iPad Operations Line (Panoramic Horizon in Landscape, Balanced Matrix in Portrait)
+    // iPad Operations Line (Unified Responsive Grid: 3 columns in landscape, 2 columns in portrait)
     private var ipadOperationsMatrixView: some View {
-        Group {
-            if isLandscapeIPad {
-                HStack(spacing: spacing) {
-                    ForEach(allDeckItems) { item in
-                        CommandQuickActionCard(item: item, isRegular: true) {
-                            onRoute(item.tag)
-                        }
-                    }
+        let columns = isLandscapeIPad
+            ? [GridItem(.flexible(), spacing: spacing), GridItem(.flexible(), spacing: spacing), GridItem(.flexible(), spacing: spacing)]
+            : [GridItem(.flexible(), spacing: spacing), GridItem(.flexible(), spacing: spacing)]
+
+        return LazyVGrid(columns: columns, spacing: spacing) {
+            ForEach(allDeckItems) { item in
+                CommandQuickActionCard(item: item, isRegular: true) {
+                    onRoute(item.tag)
                 }
-                .frame(maxWidth: .infinity)
-            } else {
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    ForEach(allDeckItems) { item in
-                        CommandQuickActionCard(item: item, isRegular: true) {
-                            onRoute(item.tag)
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity)
             }
         }
+        .frame(maxWidth: .infinity)
     }
 }
 
-// MARK: - Sovereign Quick Action Card (Adaptive Ergonomic Single-Line Tile)
+// MARK: - Sovereign Quick Action Card (Studio-Crafted Unified View)
 
 private struct CommandQuickActionCard: View {
     let item: CommandQuickActionItem
@@ -6471,16 +6449,146 @@ private struct CommandQuickActionCard: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             action()
         }) {
-            Group {
-                if isRegular {
-                    regularContent
-                } else {
-                    compactSingleLineContent
+            HStack(spacing: 12) {
+                // 1. Tactile Icon Squircle with dual-tone ambient glow
+                ZStack {
+                    RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
+                        .fill(
+                            colorScheme == .dark
+                                ? item.accent.opacity(0.22)
+                                : item.accent.opacity(0.10)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
+                                .strokeBorder(
+                                    item.accent.opacity(colorScheme == .dark ? 0.32 : 0.18),
+                                    lineWidth: 0.75
+                                )
+                        )
+                        .shadow(
+                            color: item.accent.opacity(colorScheme == .dark ? 0.25 : 0.08),
+                            radius: 4,
+                            y: 1.5
+                        )
+
+                    CommandQuickActionIcon(item: item, size: isRegular ? 20 : 18.5)
+                }
+                .frame(width: isRegular ? 44 : 40, height: isRegular ? 44 : 40)
+                .accessibilityHidden(true)
+
+                // 2. Clear Semantic Text Hierarchy (Title + Subtitle)
+                VStack(alignment: .leading, spacing: 2.5) {
+                    Text(item.title)
+                        .font(Font.custom("Beiruti-Bold", size: isRegular ? 16 : 15, relativeTo: .subheadline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                        .minimumScaleFactor(0.85)
+                        .multilineTextAlignment(.leading)
+
+                    Text(item.subtitle)
+                        .font(Font.custom("Beiruti-Regular", size: isRegular ? 12 : 11.5, relativeTo: .caption))
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                        .minimumScaleFactor(0.80)
+                        .multilineTextAlignment(.leading)
+                }
+
+                Spacer(minLength: 6)
+
+                // 3. Trailing Telemetry Signal / Navigation Affordance
+                HStack(spacing: 6) {
+                    if let count = item.badgeCount, count > 0 {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(item.accent)
+                                .frame(width: 5, height: 5)
+                                .scaleEffect(isPulsing ? 1.25 : 0.85)
+
+                            Text("\(count)")
+                                .font(Font.custom("Beiruti-Bold", size: 12))
+                                .foregroundStyle(item.accent)
+                                .monospacedDigit()
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3.5)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(
+                                    colorScheme == .dark
+                                        ? item.accent.opacity(0.22)
+                                        : item.accent.opacity(0.10)
+                                )
+                        )
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .strokeBorder(item.accent.opacity(0.25), lineWidth: 0.75)
+                        )
+                    } else if item.isLive {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(item.accent)
+                                .frame(width: 4.5, height: 4.5)
+                                .scaleEffect(isPulsing ? 1.25 : 0.85)
+
+                            Text(Language.get("AdminQuickActions_Live", alter: "مباشر"))
+                                .font(Font.custom("Beiruti-Bold", size: 11))
+                                .foregroundStyle(item.accent)
+                        }
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(item.accent.opacity(colorScheme == .dark ? 0.20 : 0.08))
+                        )
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .strokeBorder(item.accent.opacity(0.22), lineWidth: 0.75)
+                        )
+                    }
+
+                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(AdminCommandInk.secondary.opacity(0.55))
+                        .accessibilityHidden(true)
                 }
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, isRegular ? 12 : 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(minHeight: isRegular ? 66 : 58)
+            .background(
+                ZStack {
+                    RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
+                        .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
+
+                    RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    item.accent.opacity(colorScheme == .dark ? 0.06 : 0.03),
+                                    Color.clear
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                }
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
+                    .strokeBorder(
+                        item.accent.opacity(colorScheme == .dark ? 0.20 : 0.12),
+                        lineWidth: 0.75
+                    )
+            )
+            .shadow(
+                color: item.accent.opacity(colorScheme == .dark ? 0.12 : 0.035),
+                radius: 4,
+                y: 1.5
+            )
+            .contentShape(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
         }
         .buttonStyle(CommandQuickActionCardStyle())
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .onAppear {
             if item.badgeCount != nil || item.isLive {
                 withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
@@ -6492,229 +6600,6 @@ private struct CommandQuickActionCard: View {
         .accessibilityLabel("\(item.title)، \(item.subtitle)")
         .accessibilityHint(Language.get("AdminCommandCenter_OpenHint", alter: "يفتح القسم"))
     }
-
-    // MARK: - iPhone Single-Line Compact Content (Vertical Ergonomic Tile)
-    private var compactSingleLineContent: some View {
-        VStack(spacing: 5) {
-            // Icon squircle with attached micro-badge
-            ZStack(alignment: .topTrailing) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(
-                            colorScheme == .dark
-                                ? item.accent.opacity(0.24)
-                                : Color.white.opacity(0.95)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.25 : 0.16), lineWidth: 0.75)
-                        )
-                        .shadow(color: item.accent.opacity(colorScheme == .dark ? 0.20 : 0.08), radius: 3, y: 1)
-
-                    CommandQuickActionIcon(item: item, size: 17)
-                }
-                .frame(width: 36, height: 36)
-
-                // Micro-badge badge overlay
-                if let count = item.badgeCount, count > 0 {
-                    Text("\(count)")
-                        .font(Font.custom("Beiruti-Bold", size: 10))
-                        .foregroundStyle(Color.white)
-                        .monospacedDigit()
-                        .padding(.horizontal, 4.5)
-                        .padding(.vertical, 1)
-                        .background(item.accent, in: Capsule())
-                        .overlay(
-                            Capsule()
-                                .strokeBorder(colorScheme == .dark ? Color.black : Color.white, lineWidth: 1.2)
-                        )
-                        .offset(x: Language.isRTL() ? -4 : 4, y: -4)
-                } else if item.isLive {
-                    Circle()
-                        .fill(item.accent)
-                        .frame(width: 6.5, height: 6.5)
-                        .scaleEffect(isPulsing ? 1.25 : 0.85)
-                        .overlay(
-                            Circle()
-                                .strokeBorder(colorScheme == .dark ? Color.black : Color.white, lineWidth: 1)
-                        )
-                        .offset(x: Language.isRTL() ? -2 : 2, y: -2)
-                }
-            }
-            .accessibilityHidden(true)
-
-            // Text Stack (Title + Subtitle)
-            VStack(spacing: 1.5) {
-                Text(item.title)
-                    .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .subheadline))
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-                    .multilineTextAlignment(.center)
-
-                Text(item.subtitle)
-                    .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
-                    .foregroundStyle(AdminCommandInk.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.70)
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity)
-        .frame(height: 98)
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
-
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                item.accent.opacity(colorScheme == .dark ? 0.05 : 0.025),
-                                Color.clear
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-            }
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.20 : 0.12), lineWidth: 0.75)
-        )
-        .shadow(
-            color: item.accent.opacity(colorScheme == .dark ? 0.14 : 0.04),
-            radius: 4,
-            y: 1.5
-        )
-        .contentShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-    }
-
-    // MARK: - iPad Panoramic Single-Line Content (Horizontal Executive Card)
-    private var regularContent: some View {
-        HStack(spacing: 10) {
-            ZStack(alignment: .topTrailing) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(
-                            colorScheme == .dark
-                                ? item.accent.opacity(0.24)
-                                : Color.white.opacity(0.95)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.25 : 0.16), lineWidth: 0.75)
-                        )
-                        .shadow(color: item.accent.opacity(colorScheme == .dark ? 0.20 : 0.08), radius: 3, y: 1)
-
-                    CommandQuickActionIcon(item: item, size: 18)
-                }
-                .frame(width: 38, height: 38)
-            }
-            .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.title)
-                    .font(Font.custom("Beiruti-Bold", size: 14.5, relativeTo: .subheadline))
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
-                    .minimumScaleFactor(0.8)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text(item.subtitle)
-                    .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
-                    .foregroundStyle(AdminCommandInk.secondary)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
-                    .minimumScaleFactor(0.75)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: 4)
-
-            // Trailing Telemetry Pill / Arrow Affordance
-            if let count = item.badgeCount, count > 0 {
-                HStack(spacing: 3) {
-                    Circle()
-                        .fill(item.accent)
-                        .frame(width: 5, height: 5)
-                        .scaleEffect(isPulsing ? 1.25 : 0.85)
-                    Text("\(count)")
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(item.accent)
-                        .monospacedDigit()
-                }
-                .padding(.horizontal, 6.5)
-                .padding(.vertical, 3)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(colorScheme == .dark ? item.accent.opacity(0.22) : Color.white.opacity(0.92))
-                )
-                .overlay(
-                    Capsule(style: .continuous)
-                        .strokeBorder(item.accent.opacity(0.18), lineWidth: 0.75)
-                )
-            } else if item.isLive {
-                HStack(spacing: 3) {
-                    Circle()
-                        .fill(item.accent)
-                        .frame(width: 4.5, height: 4.5)
-                        .scaleEffect(isPulsing ? 1.25 : 0.85)
-                    Text(Language.get("AdminQuickActions_Live", alter: "مباشر"))
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(item.accent)
-                }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(item.accent.opacity(colorScheme == .dark ? 0.18 : 0.08), in: Capsule(style: .continuous))
-                .overlay(
-                    Capsule(style: .continuous)
-                        .strokeBorder(item.accent.opacity(0.18), lineWidth: 0.75)
-                )
-            } else {
-                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
-                    .font(.system(size: 9.5, weight: .bold))
-                    .foregroundStyle(item.accent.opacity(0.55))
-                    .accessibilityHidden(true)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(minHeight: 76)
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
-
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                item.accent.opacity(colorScheme == .dark ? 0.03 : 0.012),
-                                Color.clear
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.18 : 0.10), lineWidth: 0.75)
-        )
-        .shadow(
-            color: item.accent.opacity(colorScheme == .dark ? 0.14 : 0.04),
-            radius: 4,
-            y: 1.5
-        )
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
 }
 
 private struct CommandQuickActionCardStyle: ButtonStyle {
@@ -6725,7 +6610,7 @@ private struct CommandQuickActionCardStyle: ButtonStyle {
         return configuration.label
             .scaleEffect(configuration.isPressed && animatesScale ? scale : 1.0)
             .opacity(configuration.isPressed ? pressedOpacity : 1.0)
-            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
             .animation(
                 animatesScale ? (configuration.isPressed ? .easeOut(duration: 0.08) : .spring(response: 0.28, dampingFraction: 0.72)) : nil,
                 value: configuration.isPressed
@@ -6796,7 +6681,7 @@ private struct CommandPriorityRunway: View {
                                 isLast: index == signals.count - 1
                             )
                         }
-                        .buttonStyle(CommandCardPressStyle(scale: 0.985, pressedOpacity: 0.95, cornerRadius: 18))
+                        .buttonStyle(CommandCardPressStyle(scale: 0.985, pressedOpacity: 0.95, cornerRadius: CommandCorner.tile))
                     }
                 }
             }
@@ -6815,14 +6700,14 @@ private struct CommandPriorityRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
             // Priority Leading Indicator Bar
-            RoundedRectangle(cornerRadius: 3, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.micro, style: .continuous)
                 .fill(signal.tier.tone.accent)
                 .frame(width: 4, height: 44)
                 .shadow(color: signal.tier.tone.accent.opacity(0.40), radius: 2, x: 0, y: 0)
 
             // Specimen Icon Container
             ZStack {
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                     .fill(signal.tier.tone.softFill)
                 Image(systemName: signal.symbolName)
                     .font(.system(size: 17, weight: .semibold))
@@ -6831,7 +6716,7 @@ private struct CommandPriorityRow: View {
             }
             .frame(width: 44, height: 44)
             .overlay(
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                     .strokeBorder(signal.tier.tone.accent.opacity(0.25), lineWidth: 0.75)
             )
             .accessibilityHidden(true)
@@ -6905,15 +6790,15 @@ private struct CommandPriorityRow: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 .fill(AdminSurface.control)
                 .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.25 : 0.03), radius: 8, x: 0, y: 2)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.60 : 0.35), lineWidth: 0.75)
         )
-        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(Language.get("AdminCommandCenter_OpenHint", alter: nil))
@@ -6996,7 +6881,7 @@ private struct CommandSourceLedger: View {
                 ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                     HStack(spacing: 14) {
                         ZStack {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                                 .fill(row.tone.softFill)
                             Image(systemName: row.symbol)
                                 .font(.system(size: 16, weight: .semibold))
@@ -7005,7 +6890,7 @@ private struct CommandSourceLedger: View {
                         }
                         .frame(width: 40, height: 40)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                                 .strokeBorder(row.tone.accent.opacity(0.25), lineWidth: 0.75)
                         )
                         .accessibilityHidden(true)
@@ -7035,12 +6920,12 @@ private struct CommandSourceLedger: View {
                 }
             }
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                     .fill(AdminSurface.control)
                     .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.20 : 0.03), radius: 8, x: 0, y: 2)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                     .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.60 : 0.35), lineWidth: 0.75)
             )
         }
@@ -7075,7 +6960,7 @@ private struct CommandRecoveryStrip: View {
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color(uiColor: .ppWarning))
                     .frame(width: 38, height: 38)
-                    .background(Color(uiColor: .ppWarning).opacity(0.15), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .background(Color(uiColor: .ppWarning).opacity(0.15), in: RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -7106,14 +6991,14 @@ private struct CommandRecoveryStrip: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 16)
                 .frame(maxWidth: .infinity, minHeight: 46)
-                .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
             }
             .buttonStyle(CommandPressStyle())
         }
         .padding(16)
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 .strokeBorder(Color(uiColor: .ppWarning).opacity(0.35), lineWidth: 0.75)
         )
         .accessibilityElement(children: .contain)
@@ -7157,7 +7042,7 @@ private struct CommandCenterSourcePanel: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(14)
-                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
             }
         }
     }
@@ -7195,11 +7080,11 @@ private struct CommandCenterStatePanel<Extra: View>: View {
     var body: some View {
         VStack(spacing: 18) {
             ZStack {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                     .fill(tone.softFill)
                     .frame(width: 64, height: 64)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                             .strokeBorder(tone.accent.opacity(0.30), lineWidth: 1.0)
                     )
 
@@ -7242,12 +7127,12 @@ private struct CommandCenterStatePanel<Extra: View>: View {
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, minHeight: 48)
                         .background(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                                 .fill(tone.actionFill)
                                 .shadow(color: tone.accent.opacity(0.35), radius: 8, x: 0, y: 3)
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                                 .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.75)
                         )
                 }
@@ -7259,12 +7144,12 @@ private struct CommandCenterStatePanel<Extra: View>: View {
         .padding(.horizontal, 24)
         .padding(.vertical, 28)
         .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous)
                 .fill(AdminSurface.control)
                 .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.25 : 0.04), radius: 10, x: 0, y: 3)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous)
                 .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.60 : 0.35), lineWidth: 0.75)
         )
         .accessibilityElement(children: action == nil ? .combine : .contain)
@@ -7400,7 +7285,7 @@ private struct AdminSectionHeader_iPhone<Accessory: View>: View {
             // Leading Badge / Emblem
             if let symbol = symbol {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                         .fill(themeColor.opacity(0.12))
                     Image(systemName: symbol)
                         .font(.system(size: 13, weight: .bold))
@@ -7409,7 +7294,7 @@ private struct AdminSectionHeader_iPhone<Accessory: View>: View {
                 }
                 .frame(width: 32, height: 32)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                         .strokeBorder(themeColor.opacity(0.18), lineWidth: 0.5)
                 )
                 .accessibilityHidden(true)
@@ -7502,7 +7387,7 @@ private struct AdminSectionHeader_iPhone<Accessory: View>: View {
                 Capsule(style: .continuous)
                     .fill(AdminSurface.control)
             } else {
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.micro, style: .continuous)
                     .fill(AdminSurface.control)
             }
 
@@ -7545,7 +7430,7 @@ private struct AdminSectionHeader_iPad<Accessory: View>: View {
             // Prominent Section Emblem Container
             if let symbol = symbol {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [
@@ -7563,7 +7448,7 @@ private struct AdminSectionHeader_iPad<Accessory: View>: View {
                 }
                 .frame(width: 42, height: 42)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                         .strokeBorder(themeColor.opacity(0.24), lineWidth: 0.75)
                 )
                 .shadow(color: themeColor.opacity(isHovered ? 0.28 : 0.10), radius: isHovered ? 6 : 3, x: 0, y: 1)
@@ -7659,7 +7544,7 @@ private struct AdminSectionHeader_iPad<Accessory: View>: View {
                 Capsule(style: .continuous)
                     .fill(AdminSurface.control)
             } else {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.micro, style: .continuous)
                     .fill(AdminSurface.control)
             }
 
@@ -7904,7 +7789,7 @@ private struct CommandAccountingSovereignCard: View {
             }
             .padding(18)
             .background(cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous))
             .overlay(cardBorder)
             .shadow(
                 color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.06),
@@ -7912,10 +7797,10 @@ private struct CommandAccountingSovereignCard: View {
                 x: 0,
                 y: 5
             )
-            .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous))
         }
-        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .buttonStyle(CommandCardPressStyle(scale: 0.985, pressedOpacity: 0.95, cornerRadius: 22))
+        .contentShape(RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous))
+        .buttonStyle(CommandCardPressStyle(scale: 0.985, pressedOpacity: 0.95, cornerRadius: CommandCorner.container))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(Language.isRTL() ? "اضغط لفتح الخزينة والتقارير المالية الكاملة" : "Tap to open complete financial command center")
@@ -7925,7 +7810,7 @@ private struct CommandAccountingSovereignCard: View {
         HStack(alignment: .center, spacing: 8) {
             // Glowing Symbol Squircle
             ZStack {
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [
@@ -7937,7 +7822,7 @@ private struct CommandAccountingSovereignCard: View {
                         )
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                             .strokeBorder(Color(red: 0.16, green: 0.72, blue: 0.44).opacity(0.40), lineWidth: 0.75)
                     )
 
@@ -8097,11 +7982,11 @@ private struct CommandAccountingSovereignCard: View {
         .padding(.horizontal, 11)
         .padding(.vertical, 9)
         .background(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                 .fill(colorScheme == .dark ? Color.white.opacity(0.04) : Color.black.opacity(0.025))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
+            RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                 .strokeBorder(tint.opacity(colorScheme == .dark ? 0.20 : 0.12), lineWidth: 0.5)
         )
     }
@@ -8178,7 +8063,7 @@ private struct CommandAccountingSovereignCard: View {
     }
 
     private var cardBorder: some View {
-        RoundedRectangle(cornerRadius: 22, style: .continuous)
+        RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous)
             .strokeBorder(
                 LinearGradient(
                     colors: [
@@ -8229,15 +8114,21 @@ private struct CommandHotelSovereignCard: View {
         }
         .padding(18)
         .background(cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous))
         .overlay(cardBorder)
         .shadow(
-            color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.06),
-            radius: 12,
+            color: Color(red: 0.58, green: 0.35, blue: 0.95).opacity(colorScheme == .dark ? 0.28 : 0.10),
+            radius: 14,
             x: 0,
             y: 5
         )
-        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .shadow(
+            color: Color.black.opacity(colorScheme == .dark ? 0.30 : 0.04),
+            radius: 8,
+            x: 0,
+            y: 2
+        )
+        .contentShape(RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous))
         .onTapGesture {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             onRoute()
@@ -8252,7 +8143,7 @@ private struct CommandHotelSovereignCard: View {
         HStack(alignment: .center, spacing: 8) {
             // Glowing Symbol Squircle
             ZStack {
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [
@@ -8264,7 +8155,7 @@ private struct CommandHotelSovereignCard: View {
                         )
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                             .strokeBorder(Color(red: 0.58, green: 0.35, blue: 0.95).opacity(0.40), lineWidth: 0.75)
                     )
 
@@ -8446,16 +8337,16 @@ private struct CommandHotelSovereignCard: View {
             .padding(.horizontal, 11)
             .padding(.vertical, 9)
             .background(
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .fill(colorScheme == .dark ? Color.white.opacity(0.04) : Color.black.opacity(0.025))
+                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
+                    .fill(colorScheme == .dark ? Color(red: 0.18, green: 0.12, blue: 0.30).opacity(0.70) : Color.white.opacity(0.72))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .strokeBorder(tint.opacity(colorScheme == .dark ? 0.20 : 0.12), lineWidth: 0.5)
+                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
+                    .strokeBorder(tint.opacity(colorScheme == .dark ? 0.35 : 0.22), lineWidth: 0.65)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
         }
-        .buttonStyle(CommandCardPressStyle(scale: 0.97, pressedOpacity: 0.92, cornerRadius: 13))
+        .buttonStyle(CommandCardPressStyle(scale: 0.97, pressedOpacity: 0.92, cornerRadius: CommandCorner.control))
     }
 
     // MARK: - Multi-Wing Horizon Bar
@@ -8536,33 +8427,69 @@ private struct CommandHotelSovereignCard: View {
     // MARK: - Visual Enclosure
     private var cardBackground: some View {
         ZStack {
-            AdminSurface.control
+            if colorScheme == .dark {
+                // Luxury Midnight Amethyst
+                Color(red: 0.13, green: 0.08, blue: 0.22)
 
-            LinearGradient(
-                colors: [
-                    Color(red: 0.58, green: 0.35, blue: 0.95).opacity(colorScheme == .dark ? 0.08 : 0.04),
-                    Color(red: 0.20, green: 0.65, blue: 0.95).opacity(colorScheme == .dark ? 0.06 : 0.02),
-                    Color.clear
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+                LinearGradient(
+                    stops: [
+                        .init(color: Color(red: 0.58, green: 0.35, blue: 0.95).opacity(0.26), location: 0.0),
+                        .init(color: Color(red: 0.32, green: 0.18, blue: 0.55).opacity(0.18), location: 0.50),
+                        .init(color: Color(red: 0.10, green: 0.07, blue: 0.18).opacity(0.95), location: 1.0)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                // Atmospheric Sky Blue Accent Shimmer
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.20, green: 0.65, blue: 0.95).opacity(0.12),
+                        Color.clear
+                    ],
+                    startPoint: .topTrailing,
+                    endPoint: .center
+                )
+            } else {
+                // Premium Royal Lavender Silk
+                Color(red: 0.95, green: 0.92, blue: 0.99)
+
+                LinearGradient(
+                    stops: [
+                        .init(color: Color(red: 0.93, green: 0.88, blue: 0.99), location: 0.0),
+                        .init(color: Color(red: 0.96, green: 0.93, blue: 1.0), location: 0.45),
+                        .init(color: Color(red: 0.91, green: 0.93, blue: 0.99), location: 1.0)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                // Specular Luminous Highlight
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.55),
+                        Color.clear
+                    ],
+                    startPoint: .top,
+                    endPoint: .center
+                )
+            }
         }
     }
 
     private var cardBorder: some View {
-        RoundedRectangle(cornerRadius: 22, style: .continuous)
+        RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous)
             .strokeBorder(
                 LinearGradient(
                     colors: [
-                        Color(red: 0.58, green: 0.35, blue: 0.95).opacity(colorScheme == .dark ? 0.40 : 0.25),
-                        Color(red: 0.20, green: 0.65, blue: 0.95).opacity(colorScheme == .dark ? 0.25 : 0.15),
-                        Color.white.opacity(colorScheme == .dark ? 0.08 : 0.40)
+                        Color(red: 0.58, green: 0.35, blue: 0.95).opacity(colorScheme == .dark ? 0.65 : 0.42),
+                        Color(red: 0.35, green: 0.60, blue: 0.95).opacity(colorScheme == .dark ? 0.45 : 0.26),
+                        Color(red: 0.58, green: 0.35, blue: 0.95).opacity(colorScheme == .dark ? 0.25 : 0.16)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 ),
-                lineWidth: 0.85
+                lineWidth: colorScheme == .dark ? 1.0 : 0.90
             )
     }
 
@@ -8636,6 +8563,22 @@ private struct CommandHotelDeck: View {
                 }
             }
         }
+        .background(
+            RoundedRectangle(cornerRadius: CommandCorner.hero, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.58, green: 0.35, blue: 0.95).opacity(colorScheme == .dark ? 0.09 : 0.04),
+                            Color(red: 0.35, green: 0.60, blue: 0.95).opacity(colorScheme == .dark ? 0.05 : 0.02),
+                            Color.clear
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .padding(-8)
+                .allowsHitTesting(false)
+        )
     }
 }
 
@@ -8665,10 +8608,10 @@ private struct CommandHotelQuickActionCard: View {
                 // Header: Symbol Squircle + Counter Telemetry Pill
                 HStack(alignment: .center) {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                             .fill(accent.opacity(colorScheme == .dark ? 0.22 : 0.12))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                                     .strokeBorder(
                                         accent.opacity(contrast == .increased ? 0.60 : (colorScheme == .dark ? 0.35 : 0.20)),
                                         lineWidth: 0.75
@@ -8745,17 +8688,23 @@ private struct CommandHotelQuickActionCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(minHeight: isRegular ? 116 : 106)
             .background(cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
             .overlay(cardBorder)
             .shadow(
-                color: Color.black.opacity(colorScheme == .dark ? 0.25 : 0.04),
+                color: Color(red: 0.58, green: 0.35, blue: 0.95).opacity(colorScheme == .dark ? 0.22 : 0.08),
                 radius: 8,
                 x: 0,
                 y: 3
             )
-            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .shadow(
+                color: Color.black.opacity(colorScheme == .dark ? 0.25 : 0.03),
+                radius: 4,
+                x: 0,
+                y: 1
+            )
+            .contentShape(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
         }
-        .buttonStyle(CommandCardPressStyle(scale: 0.98, pressedOpacity: 0.94, cornerRadius: 18))
+        .buttonStyle(CommandCardPressStyle(scale: 0.98, pressedOpacity: 0.94, cornerRadius: CommandCorner.tile))
         .onAppear {
             if count > 0 {
                 withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
@@ -8770,31 +8719,46 @@ private struct CommandHotelQuickActionCard: View {
 
     private var cardBackground: some View {
         ZStack {
-            AdminSurface.control
+            if colorScheme == .dark {
+                Color(red: 0.13, green: 0.08, blue: 0.22)
 
-            LinearGradient(
-                colors: [
-                    accent.opacity(colorScheme == .dark ? 0.08 : 0.035),
-                    Color.clear
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.58, green: 0.35, blue: 0.95).opacity(0.18),
+                        accent.opacity(0.12),
+                        Color(red: 0.10, green: 0.07, blue: 0.18)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            } else {
+                Color(red: 0.95, green: 0.92, blue: 0.99)
+
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.93, green: 0.89, blue: 0.99),
+                        accent.opacity(0.06),
+                        Color(red: 0.96, green: 0.94, blue: 1.0)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
         }
     }
 
     private var cardBorder: some View {
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
+        RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
             .strokeBorder(
                 LinearGradient(
                     colors: [
-                        accent.opacity(contrast == .increased ? 0.60 : (colorScheme == .dark ? 0.35 : 0.20)),
-                        accent.opacity(contrast == .increased ? 0.40 : (colorScheme == .dark ? 0.15 : 0.08))
+                        accent.opacity(contrast == .increased ? 0.70 : (colorScheme == .dark ? 0.50 : 0.35)),
+                        Color(red: 0.58, green: 0.35, blue: 0.95).opacity(colorScheme == .dark ? 0.35 : 0.20)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 ),
-                lineWidth: contrast == .increased ? 1.2 : 0.8
+                lineWidth: contrast == .increased ? 1.2 : 0.90
             )
     }
 }

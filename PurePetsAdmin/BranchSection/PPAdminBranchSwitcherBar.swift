@@ -13,6 +13,8 @@ public enum PPBranchSwitcherStyle: Equatable {
     case prominentHero
     /// An unboxed identity control for a hero that owns its surrounding surface.
     case embeddedHero
+    /// A document scope tab; its parent owns the journal's screen margins.
+    case journal
 }
 
 public struct PPAdminBranchSwitcherBar: View {
@@ -40,10 +42,12 @@ public struct PPAdminBranchSwitcherBar: View {
                 compactCapsule
             case .embeddedHero:
                 embeddedHeroIdentity
+            case .journal:
+                journalIndexTab
             }
         }
         .frame(maxWidth: .infinity)
-        .buttonStyle(BranchCapsulePressStyle())
+        .buttonStyle(BranchCapsulePressStyle(preservesGeometry: style == .journal))
         .padding(.horizontal, horizontalPadding)
         .disabled(!canSwitchBranch)
         .accessibilityElement(children: .ignore)
@@ -99,22 +103,25 @@ public struct PPAdminBranchSwitcherBar: View {
     }
 
     private var branchSwitcherAccessibilityLabel: String {
-        if style == .embeddedHero && !canSwitchBranch {
+        if style == .journal && !hasResolvedContext && !canSwitchBranch {
+            return Language.get("BranchPicker_Journal_NoBranch", alter: "لم يُحدد فرع")
+        }
+        if (style == .embeddedHero || style == .journal) && !canSwitchBranch {
             return branchContextLabel
         }
         return Language.get("BranchContext_Switcher_Title", alter: "تبديل فرع العمل")
     }
 
     private var branchSwitcherAccessibilityValue: String {
-        let name = style == .embeddedHero ? embeddedBranchName : contextStore.currentBranchDisplayName
-        guard let branchCode else {
+        let name = style == .journal ? journalBranchName : (style == .embeddedHero ? embeddedBranchName : contextStore.currentBranchDisplayName)
+        guard style != .journal, let branchCode else {
             return name
         }
         return "\(name), \(branchCode)"
     }
 
     private var branchSwitcherAccessibilityHint: String {
-        if style == .embeddedHero && contextStore.availableBranches.isEmpty {
+        if (style == .embeddedHero || style == .journal) && contextStore.availableBranches.isEmpty {
             return Language.get(
                 "BranchContext_NoBranches_Hint",
                 alter: "لا يوجد فرع عمل متاح لهذا الحساب حالياً."
@@ -141,7 +148,7 @@ public struct PPAdminBranchSwitcherBar: View {
     }
 
     private func configureBeaconMotion() {
-        guard style != .embeddedHero, !accessibilityReduceMotion, hasResolvedContext else {
+        guard style != .embeddedHero, style != .journal, !accessibilityReduceMotion, hasResolvedContext else {
             isBeaconPulsing = false
             return
         }
@@ -155,6 +162,101 @@ public struct PPAdminBranchSwitcherBar: View {
                 isBeaconPulsing = true
             }
         }
+    }
+
+    // MARK: - Journal Index Tab
+
+    private var journalBranchName: String {
+        if contextStore.availableBranches.isEmpty && contextStore.activeBranch == nil {
+            return Language.get("BranchPicker_Journal_NoBranch", alter: "لم يُحدد فرع")
+        }
+        return embeddedBranchName
+    }
+
+    private var journalActionLabel: String {
+        if canSwitchBranch {
+            return Language.get("BranchContext_Switch_Action", alter: "تبديل")
+        }
+        if contextStore.availableBranches.isEmpty {
+            return Language.get("BranchPicker_Journal_Unavailable", alter: "غير متاح")
+        }
+        return Language.get("BranchContext_SingleBranch_Locked", alter: "فرع معتمد")
+    }
+
+    private var journalIndexTab: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 0))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: 0))
+
+        return layout {
+            HStack(alignment: .center, spacing: 12) {
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    .fill(hasResolvedContext ? AdminSurface.primary : AdminSurface.secondaryText)
+                    .frame(width: 3, height: 26)
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("BranchPicker_Journal_Scope", alter: "إيصالات فرع"))
+                        .font(AdminType.caption)
+                        .foregroundStyle(AdminSurface.secondaryText)
+
+                    Text(journalBranchName)
+                        .font(AdminType.headline)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.leading, 14)
+            .padding(.trailing, 12)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if dynamicTypeSize.isAccessibilitySize {
+                Rectangle()
+                    .fill(AdminSurface.hairline)
+                    .frame(height: 1)
+                    .padding(.horizontal, 14)
+                    .accessibilityHidden(true)
+            } else {
+                Rectangle()
+                    .fill(AdminSurface.hairline)
+                    .frame(width: 1, height: 26)
+                    .accessibilityHidden(true)
+            }
+
+            Label {
+                Text(journalActionLabel)
+                    .font(AdminType.subheadlineBold)
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: canSwitchBranch ? "chevron.up.chevron.down" : "lock")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(canSwitchBranch ? AdminSurface.primary : AdminSurface.secondaryText)
+            .padding(.horizontal, 14)
+            .padding(.vertical, dynamicTypeSize.isAccessibilitySize ? 8 : 4)
+            .frame(minWidth: 44, minHeight: 44, alignment: .leading)
+            .accessibilityHidden(true)
+        }
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .background(AdminSurface.backgroundSecondary, in: journalTabShape)
+        .overlay {
+            journalTabShape.strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        }
+        .contentShape(journalTabShape)
+    }
+
+    private var journalTabShape: UnevenRoundedRectangle {
+        // A square binding edge and soft switching edge make the document's scope visible.
+        UnevenRoundedRectangle(
+            topLeadingRadius: 4,
+            bottomLeadingRadius: 4,
+            bottomTrailingRadius: 16,
+            topTrailingRadius: 16,
+            style: .continuous
+        )
     }
 
     // MARK: - Embedded Hero Identity
@@ -410,12 +512,13 @@ public struct PPAdminBranchSwitcherBar: View {
 // MARK: - Press Style for Smooth Physics
 
 fileprivate struct BranchCapsulePressStyle: ButtonStyle {
+    var preservesGeometry = false
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(
-                configuration.isPressed && !accessibilityReduceMotion
+                configuration.isPressed && !accessibilityReduceMotion && !preservesGeometry
                     ? AdminAnimation.pressScale
                     : 1.0
             )

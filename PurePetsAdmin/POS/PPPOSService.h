@@ -10,6 +10,15 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) double price;
 @property (nonatomic, assign) double lineTotal;
 @property (nonatomic, assign) NSInteger quantity;
+/// Exact receipt quantity. Legacy cart callers keep the integer property.
+@property (nonatomic, readonly) double quantityValue;
+@property (nonatomic, assign) double refundedQuantityValue;
+@property (nonatomic, copy, nullable) NSString *proformaLineID;
+@property (nonatomic, readonly) NSString *receiptLineID;
+@property (nonatomic, readonly) BOOL permitsFractionalRefund;
+@property (nonatomic, assign) long long lineSubtotalMinor;
+@property (nonatomic, assign) long long taxableMinor;
+@property (nonatomic, assign) long long taxMinor;
 @property (nonatomic, copy, nullable) NSString *inventoryMode;
 @property (nonatomic, copy) NSArray<NSString *> *unitIDs;
 @property (nonatomic, copy) NSArray<NSString *> *unitRingTags;
@@ -67,6 +76,9 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSArray<PPPOSCartItem *> *items;
 @property (nonatomic, assign) double subtotal;
 @property (nonatomic, assign) double discount;
+@property (nonatomic, assign) double tax;
+@property (nonatomic, assign) double refundedTax;
+@property (nonatomic, copy, nullable) NSString *proformaInvoiceID;
 @property (nonatomic, assign) double total;
 @property (nonatomic, assign) double cashReceived;
 @property (nonatomic, assign) double changeDue;

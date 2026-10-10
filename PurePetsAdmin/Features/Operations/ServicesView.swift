@@ -111,6 +111,7 @@ final class AdminServicesViewModel: ObservableObject {
     private var cursor: String?
     private var generation = 0
     private var active = false
+    private var cachedDataNoticeTask: Task<Void, Never>?
 
     init(
         openDetail: @escaping (PPServiceModel) -> Void,
@@ -151,6 +152,8 @@ final class AdminServicesViewModel: ObservableObject {
     func stopListening() {
         active = false
         generation += 1
+        cachedDataNoticeTask?.cancel()
+        cachedDataNoticeTask = nil
         lifetime.registration?.remove()
         lifetime.registration = nil
         isLoading = false
@@ -160,6 +163,9 @@ final class AdminServicesViewModel: ObservableObject {
     func refreshTriggered() {
         guard active, mutationID == nil else { return }
         generation += 1
+        cachedDataNoticeTask?.cancel()
+        cachedDataNoticeTask = nil
+        errorMessage = nil
         lifetime.registration?.remove()
         lifetime.registration = nil
         firstPage = []
@@ -195,6 +201,8 @@ final class AdminServicesViewModel: ObservableObject {
                         guard let self, self.active, self.generation == requestGeneration else { return }
                         self.isLoading = false
                         if let nsError = error as NSError?, nsError.code != 299 {
+                            self.cachedDataNoticeTask?.cancel()
+                            self.cachedDataNoticeTask = nil
                             self.errorMessage = nsError.localizedDescription
                             if nsError.code == 403 {
                                 self.canRead = false; self.canManage = false
@@ -207,7 +215,19 @@ final class AdminServicesViewModel: ObservableObject {
                         self.firstPage = services ?? []
                         self.hasLoaded = true
                         self.lastReceivedAt = Date()
-                        self.errorMessage = error?.localizedDescription
+                        if let nsError = error as NSError?, nsError.code == 299 {
+                            self.cachedDataNoticeTask?.cancel()
+                            let message = nsError.localizedDescription
+                            self.cachedDataNoticeTask = Task { @MainActor [weak self] in
+                                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                                guard let self, !Task.isCancelled, self.active else { return }
+                                self.errorMessage = message
+                            }
+                        } else {
+                            self.cachedDataNoticeTask?.cancel()
+                            self.cachedDataNoticeTask = nil
+                            self.errorMessage = nil
+                        }
                         if !self.hasAdditionalPages {
                             self.cursor = self.firstPage.last?.serviceID
                             self.hasMore = self.firstPage.count == self.pageSize
@@ -510,14 +530,20 @@ public struct AdminServicesView: View {
     }
 
     private func collection(inspector: Bool) -> some View {
-        ScrollView {
+        ScrollView(.vertical, showsIndicators: false) {
             LazyVStack(alignment: .leading, spacing: 14) {
                 if model.canRead {
                     if model.hasLoaded { reviewFocus }
                     search
                     if model.hasLoaded { filters }
                     if let error = model.errorMessage {
-                        PPServiceNotice(text: error, isError: true, actionTitle: PPServiceText("Retry"), action: model.refreshTriggered)
+                        PPServiceNotice(
+                            text: error,
+                            isError: true,
+                            actionTitle: PPServiceText("Retry"),
+                            action: { model.refreshTriggered() },
+                            onDismiss: { model.errorMessage = nil }
+                        )
                     }
                     if let message = model.successMessage {
                         PPServiceNotice(text: message, isError: false, actionTitle: PPServiceText("Dismiss")) { model.successMessage = nil }
@@ -826,7 +852,7 @@ private struct PPServiceInspector: View {
     let edit: () -> Void
     let moderate: () -> Void
     var body: some View {
-        ScrollView {
+        ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 24) {
                 Text(PPServiceText("Service_Workspace_SelectedRecord")).font(AdminType.captionBold).foregroundStyle(AdminSurface.secondaryText)
                 PPServiceArtwork(service: service, size: 96)
@@ -877,12 +903,41 @@ struct PPServiceNotice: View {
     var isError: Bool
     var actionTitle: String?
     var action: (() -> Void)?
+    var onDismiss: (() -> Void)?
+
+    init(
+        text: String,
+        isError: Bool = false,
+        actionTitle: String? = nil,
+        action: (() -> Void)? = nil,
+        onDismiss: (() -> Void)? = nil
+    ) {
+        self.text = text
+        self.isError = isError
+        self.actionTitle = actionTitle
+        self.action = action
+        self.onDismiss = onDismiss
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label { Text(text).fixedSize(horizontal: false, vertical: true) } icon: {
-                Image(systemName: isError ? "exclamationmark.circle" : "checkmark.circle")
-                    .foregroundStyle(isError ? AdminSurface.danger : AdminSurface.emerald)
-            }.font(AdminType.callout).foregroundStyle(AdminSurface.primaryText)
+            HStack(alignment: .top, spacing: 8) {
+                Label { Text(text).fixedSize(horizontal: false, vertical: true) } icon: {
+                    Image(systemName: isError ? "exclamationmark.circle" : "checkmark.circle")
+                        .foregroundStyle(isError ? AdminSurface.danger : AdminSurface.emerald)
+                }.font(AdminType.callout).foregroundStyle(AdminSurface.primaryText)
+                if let onDismiss {
+                    Spacer(minLength: 4)
+                    Button(action: onDismiss) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(PPServiceText("Dismiss"))
+                }
+            }
             if let actionTitle, let action {
                 Button(actionTitle, action: action).font(AdminType.headline).frame(minHeight: 44)
             }
