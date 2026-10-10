@@ -1307,6 +1307,8 @@ final class POSVariantPickerState: ObservableObject {
     @Published var members: [PetAccessory] = []
     @Published var primaryAccessory: PetAccessory?
     @Published var focusedAccessoryID: String?
+    @Published private(set) var scannedAccessoryID: String?
+    @Published private(set) var scannedQuantityGroupID: String?
 
     var isPresented: Bool { familyId != nil && !members.isEmpty }
 
@@ -1322,7 +1324,8 @@ final class POSVariantPickerState: ObservableObject {
         dimension.countOptionsLabel
     }
 
-    func open(familyId: String, members: [PetAccessory], primary: PetAccessory?, focusedAccessoryID: String? = nil) {
+    func open(familyId: String, members: [PetAccessory], primary: PetAccessory?, focusedAccessoryID: String? = nil,
+              isScannedMatch: Bool = false, scannedQuantityGroupID: String? = nil) {
         self.familyId = familyId
         self.members = members.sorted { lhs, rhs in
             lhs.variantSortOrder == rhs.variantSortOrder
@@ -1331,6 +1334,8 @@ final class POSVariantPickerState: ObservableObject {
         }
         self.primaryAccessory = primary ?? members.first(where: { $0.isDefaultVariant }) ?? members.first
         self.focusedAccessoryID = focusedAccessoryID ?? primary?.accessoryID
+        self.scannedAccessoryID = isScannedMatch ? self.focusedAccessoryID : nil
+        self.scannedQuantityGroupID = isScannedMatch ? scannedQuantityGroupID : nil
     }
 
     func close() {
@@ -1338,10 +1343,17 @@ final class POSVariantPickerState: ObservableObject {
         members = []
         primaryAccessory = nil
         focusedAccessoryID = nil
+        scannedAccessoryID = nil
+        scannedQuantityGroupID = nil
     }
 }
 
 // MARK: - POS Sell Unit Picker State
+
+private enum POSVariantPickerHandoff {
+    case sellUnit(PetAccessory, String?)
+    case exactAnimal(PetAccessory)
+}
 
 @MainActor
 final class POSSellUnitPickerState: ObservableObject {
@@ -1959,7 +1971,12 @@ final class POSFastSellViewModel: ObservableObject {
         group: POSQuantityGroupInfo? = nil,
         quantity: Int = 1
     ) -> Bool {
+        guard !accessory.pos_isIndividuallyTrackedLivePet else {
+            submitError = Language.get("POS_ExactAnimalRequired", alter: nil)
+            return false
+        }
         guard accessory.pos_isSellable else {
+            submitError = Language.get("POS_ItemUnavailable", alter: nil)
             POSLogger.warn("cart.add_rejected", category: "cart", message: "Cannot add '\(accessory.name)': not sellable in active branch", metadata: [
                 "productId": accessory.accessoryID,
                 "name": accessory.name
@@ -3012,6 +3029,7 @@ struct AdminPOSFastSellView: View {
     @StateObject private var unitPicker = POSUnitPickerState()
     @StateObject private var variantPicker = POSVariantPickerState()
     @StateObject private var sellUnitPicker = POSSellUnitPickerState()
+    @State private var pendingVariantHandoff: POSVariantPickerHandoff?
     @ObservedObject private var branchStore = BranchContextStore.shared
     @State private var isBranchPickerVisible = false
     @State private var showsReservedLivePets = false
@@ -3288,7 +3306,7 @@ struct AdminPOSFastSellView: View {
         .sheet(isPresented: Binding(
             get: { variantPicker.isPresented },
             set: { if !$0 { variantPicker.close() } }
-        )) {
+        ), onDismiss: completeVariantPickerHandoff) {
             variantPickerSheet
         }
         .sheet(isPresented: Binding(
@@ -3325,7 +3343,10 @@ struct AdminPOSFastSellView: View {
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .onAppear { viewModel.startListening() }
-        .onDisappear { viewModel.stopListening() }
+        .onDisappear {
+            pendingVariantHandoff = nil
+            viewModel.stopListening()
+        }
         .onChange(of: viewModel.submitError) { error in
             guard let error = error, !error.isEmpty else { return }
             PPAlertHelper.showError(
@@ -4349,7 +4370,9 @@ struct AdminPOSFastSellView: View {
             let members = viewModel.variantMembers(for: accessory)
             let familyId = (accessory.productFamilyId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            variantPicker.open(familyId: familyId, members: members, primary: accessory, focusedAccessoryID: accessory.accessoryID)
+            variantPicker.open(familyId: familyId, members: members, primary: accessory,
+                               focusedAccessoryID: accessory.accessoryID, isScannedMatch: true,
+                               scannedQuantityGroupID: matchedGroup?.id)
             return
         }
         if let g = matchedGroup {
@@ -4372,10 +4395,11 @@ struct AdminPOSFastSellView: View {
         unitPicker.open(product: accessory, preselected: preselected)
     }
 
-    private func openSellUnitPicker(for accessory: PetAccessory, cartItem: POSCartItem? = nil) {
+    private func openSellUnitPicker(for accessory: PetAccessory, cartItem: POSCartItem? = nil, selectedGroupID: String? = nil) {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         sellUnitPicker.open(
             product: accessory,
+            selectedGroupID: selectedGroupID,
             cartItem: cartItem,
             channel: viewModel.salesChannel
         )
@@ -5822,16 +5846,31 @@ private struct POSCustomCashSheet: View {
             variantPicker: variantPicker,
             viewModel: viewModel,
             currency: { formatCurrency($0) },
-            onSelectSellUnit: { accessory in
+            onSelectSellUnit: { accessory, selectedGroupID in
+                pendingVariantHandoff = .sellUnit(accessory, selectedGroupID)
                 variantPicker.close()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                    openSellUnitPicker(for: accessory)
-                }
+            },
+            onSelectExactAnimal: { accessory in
+                pendingVariantHandoff = .exactAnimal(accessory)
+                variantPicker.close()
             },
             onClose: {
+                pendingVariantHandoff = nil
                 variantPicker.close()
             }
         )
+    }
+
+    private func completeVariantPickerHandoff() {
+        guard let handoff = pendingVariantHandoff else { return }
+        pendingVariantHandoff = nil
+        guard !viewModel.isCheckoutBusy, !viewModel.isSaleExplicitlyDenied else { return }
+        switch handoff {
+        case .sellUnit(let accessory, let groupID):
+            openSellUnitPicker(for: accessory, selectedGroupID: groupID)
+        case .exactAnimal(let accessory):
+            openUnitPicker(for: accessory)
+        }
     }
 
     // MARK: - POS Sell Unit Picker Sheet
@@ -6343,11 +6382,16 @@ private struct POSVariantOptionPresentation {
     let member: PetAccessory
     let cartBaseUnits: Int
     let salesChannel: POSSalesChannel
+    var preferredGroupID: String? = nil
 
     var remainingStock: Int { max(0, member.pos_branchStock() - cartBaseUnits) }
     var hasMultipleSellUnits: Bool { member.pos_hasMultipleSellUnits(for: salesChannel) }
     var defaultGroup: POSQuantityGroupInfo? {
-        salesChannel == .wholesale ? member.pos_defaultWholesaleGroup() : member.pos_defaultRetailGroup()
+        if let preferredGroupID,
+           let group = member.pos_eligibleQuantityGroups(for: salesChannel).first(where: { $0.id == preferredGroupID }) {
+            return group
+        }
+        return salesChannel == .wholesale ? member.pos_defaultWholesaleGroup() : member.pos_defaultRetailGroup()
     }
     var price: Double {
         guard let group = defaultGroup else { return 0 }
@@ -6377,6 +6421,7 @@ private struct POSVariantOptionPresentation {
             : Language.get("POS_OutOfStock", alter: nil)
     }
     var unavailableHint: String {
+        if !member.pos_isSellable { return Language.get("POS_ItemUnavailable", alter: nil) }
         if salesChannel == .wholesale && !member.pos_supportsWholesale { return stockText }
         return String(format: Language.get("POS_InsufficientBranchStockForUnit", alter: nil), remainingStock)
     }
@@ -6386,122 +6431,76 @@ private struct POSVariantPickerSheet: View {
     @ObservedObject var variantPicker: POSVariantPickerState
     @ObservedObject var viewModel: POSFastSellViewModel
     let currency: (Double) -> String
-    let onSelectSellUnit: (PetAccessory) -> Void
+    let onSelectSellUnit: (PetAccessory, String?) -> Void
+    let onSelectExactAnimal: (PetAccessory) -> Void
     let onClose: () -> Void
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.verticalSizeClass) private var verticalSizeClass
-    @ScaledMetric(relativeTo: .body) private var rowHeightBudget: CGFloat = 136
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var actionError: String?
+    @ScaledMetric(relativeTo: .body) private var optionHeightBudget: CGFloat = 166
 
     private var cartBaseUnits: [String: Int] {
         viewModel.cartItems.reduce(into: [:]) { totals, item in
             totals[item.accessory.accessoryID, default: 0] += item.baseUnitQuantity
         }
     }
+
     private var detents: Set<PresentationDetent> {
-        if dynamicTypeSize.isAccessibilitySize || verticalSizeClass == .compact { return [.large] }
-        let height = min(600, max(320, 164 + CGFloat(variantPicker.members.count) * rowHeightBudget))
+        if dynamicTypeSize >= .xxxLarge || verticalSizeClass == .compact { return [.large] }
+        let height = min(660, max(360, 200 + CGFloat(variantPicker.members.count) * optionHeightBudget))
         return [.height(height), .large]
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Text(variantPicker.navigationTitle)
-                    .font(PPBrandFont.bold(size: 21, relativeTo: .title3))
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityAddTraits(.isHeader)
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(AdminSurface.secondaryText)
-                        .frame(width: 44, height: 44)
-                        .background(AdminSurface.control, in: Circle())
-                        .contentShape(Circle())
-                }
-                .buttonStyle(POSVariantPressStyle())
-                .accessibilityLabel(Language.get("Common_Close", alter: nil))
-                .accessibilityIdentifier("admin.pos.variants.close")
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 10)
-            .padding(.bottom, 8)
-
-            ScrollView {
-                ScrollViewReader { scrollProxy in
-                    VStack(alignment: .leading, spacing: 18) {
+            sheetHeader
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
                         if let primary = variantPicker.primaryAccessory {
                             productOverview(primary)
+                        }
+                        if viewModel.isSaleExplicitlyDenied {
+                            Label(Language.get("POS_CheckoutPermissionDenied", alter: nil), systemImage: "lock.fill")
+                                .font(PPBrandFont.medium(size: 14, relativeTo: .subheadline))
+                                .foregroundStyle(AdminSurface.danger)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if let actionError {
+                            Label(actionError, systemImage: "exclamationmark.circle.fill")
+                                .font(PPBrandFont.medium(size: 14, relativeTo: .subheadline))
+                                .foregroundStyle(AdminSurface.danger)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("admin.pos.variants.error")
                         }
                         if variantPicker.members.isEmpty {
                             emptyState
                         } else {
-                            let baseUnits = cartBaseUnits
-                            LazyVStack(spacing: 0) {
-                                ForEach(variantPicker.members, id: \.accessoryID) { member in
-                                    POSVariantRow(
-                                        member: member,
-                                        inCart: viewModel.quantityInCart(for: member.accessoryID),
-                                        cartBaseUnits: baseUnits[member.accessoryID, default: 0],
-                                        salesChannel: viewModel.salesChannel,
-                                        isFocusedTarget: member.accessoryID == variantPicker.focusedAccessoryID,
-                                        currency: currency,
-                                        onIncrement: {
-                                            if member.pos_hasMultipleSellUnits(for: viewModel.salesChannel) {
-                                                onSelectSellUnit(member)
-                                            } else {
-                                                let added = viewModel.addToCart(member)
-                                                if added {
-                                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                                } else {
-                                                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                                                }
-                                            }
-                                        },
-                                        onDecrement: {
-                                            viewModel.decrementQuantity(for: member.accessoryID)
-                                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                        }
-                                    )
-                                    .id(member.accessoryID)
-                                    if member.accessoryID != variantPicker.members.last?.accessoryID {
-                                        Rectangle()
-                                            .fill(AdminSurface.hairline)
-                                            .frame(height: 0.75)
-                                            .padding(.horizontal, 16)
-                                            .accessibilityHidden(true)
-                                    }
-                                }
-                            }
-                            .background(AdminSurface.surface,
-                                        in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
-                                    .allowsHitTesting(false)
-                            }
+                            optionList
                         }
                     }
-                    .padding(.horizontal, 18)
-                    .padding(.top, 4)
-                    .padding(.bottom, 24)
-                    .onAppear {
-                        if let targetID = variantPicker.focusedAccessoryID {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    scrollProxy.scrollTo(targetID, anchor: .center)
-                                }
-                            }
-                        }
-                    }
-                    .onChange(of: variantPicker.focusedAccessoryID) { newTarget in
-                        if let newTarget {
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                scrollProxy.scrollTo(newTarget, anchor: .center)
-                            }
+                    .frame(maxWidth: 640, alignment: .leading)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+                    .padding(.bottom, 28)
+                }
+                .task(id: variantPicker.focusedAccessoryID) {
+                    guard let target = variantPicker.focusedAccessoryID else { return }
+                    // Native lazy rows need one layout pass. View-owned work is
+                    // cancelled on dismissal or when the target changes.
+                    do { try await Task.sleep(nanoseconds: 100_000_000) }
+                    catch { return }
+                    guard !Task.isCancelled,
+                          variantPicker.focusedAccessoryID == target,
+                          variantPicker.members.contains(where: { $0.accessoryID == target }) else { return }
+                    if reduceMotion {
+                        proxy.scrollTo(target, anchor: .center)
+                    } else {
+                        withAnimation(.easeOut(duration: 0.22)) {
+                            proxy.scrollTo(target, anchor: .center)
                         }
                     }
                 }
@@ -6515,29 +6514,60 @@ private struct POSVariantPickerSheet: View {
         .accessibilityIdentifier("admin.pos.variants")
     }
 
+    private var sheetHeader: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text(variantPicker.navigationTitle)
+                .font(PPBrandFont.bold(size: 22, relativeTo: .title3))
+                .foregroundStyle(AdminSurface.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityAddTraits(.isHeader)
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .frame(width: 44, height: 44)
+                    .background(AdminSurface.control, in: Circle())
+                    .contentShape(Circle())
+            }
+            .buttonStyle(POSVariantPressStyle())
+            .accessibilityLabel(Language.get("Common_Close", alter: nil))
+            .accessibilityIdentifier("admin.pos.variants.close")
+        }
+        .frame(maxWidth: 640)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 4)
+    }
+
     private func productOverview(_ primary: PetAccessory) -> some View {
-        HStack(alignment: .top, spacing: 13) {
-            POSCatalogThumbnail(accessory: primary)
-                .frame(width: 60, height: 72)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: 16))
+        return layout {
+            POSCatalogThumbnail(accessory: primary, contentMode: .fit)
+                .frame(width: 76, height: 86)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+                }
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 7) {
                 Text(primary.name)
-                    .font(PPBrandFont.bold(size: 16, relativeTo: .subheadline))
+                    .font(PPBrandFont.bold(size: 18, relativeTo: .headline))
                     .foregroundStyle(AdminSurface.primaryText)
                     .fixedSize(horizontal: false, vertical: true)
-                let summaryLayout = dynamicTypeSize.isAccessibilitySize
-                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 3))
-                    : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 10))
-                summaryLayout {
-                    Text(String(format: Language.get("POS_VariantPicker_OptionsSummaryFormat", alter: nil), variantPicker.members.count))
-                    let totalStock = variantPicker.members.reduce(0) { $0 + $1.pos_branchStock() }
-                    Text(String(format: Language.get("POS_AvailableStockFormat", alter: nil), totalStock))
-                }
-                .font(PPBrandFont.medium(size: 12, relativeTo: .caption))
-                .foregroundStyle(AdminSurface.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
+                Text(String(format: Language.get("POS_VariantPicker_OptionsSummaryFormat", alter: nil), variantPicker.members.count))
+                    .font(PPBrandFont.bold(size: 13, relativeTo: .caption))
+                    .foregroundStyle(AdminSurface.primaryText)
+                let totalStock = variantPicker.members.reduce(0) { $0 + $1.pos_branchStock() }
+                Text(String(format: Language.get("POS_VariantPicker_BranchStockFormat", alter: nil), totalStock))
+                    .font(PPBrandFont.medium(size: 12, relativeTo: .caption))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .multilineTextAlignment(.leading)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -6545,8 +6575,66 @@ private struct POSVariantPickerSheet: View {
         .accessibilityElement(children: .combine)
     }
 
+    private var optionList: some View {
+        let baseUnits = cartBaseUnits
+        return LazyVStack(spacing: 0) {
+            ForEach(variantPicker.members, id: \.accessoryID) { member in
+                let matched = member.accessoryID == variantPicker.scannedAccessoryID
+                POSVariantRow(
+                    member: member,
+                    inCart: viewModel.quantityInCart(for: member.accessoryID),
+                    cartBaseUnits: baseUnits[member.accessoryID, default: 0],
+                    salesChannel: viewModel.salesChannel,
+                    isScannedMatch: matched,
+                    preferredGroupID: matched ? variantPicker.scannedQuantityGroupID : nil,
+                    isInteractionDisabled: viewModel.isCheckoutBusy || viewModel.isSaleExplicitlyDenied,
+                    currency: currency,
+                    onIncrement: { increment(member) },
+                    onDecrement: {
+                        guard !viewModel.isCheckoutBusy else { return }
+                        actionError = nil
+                        viewModel.decrementQuantity(for: member.accessoryID)
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+                )
+                .id(member.accessoryID)
+                if member.accessoryID != variantPicker.members.last?.accessoryID {
+                    Rectangle()
+                        .fill(AdminSurface.hairline)
+                        .frame(height: 0.75)
+                        .padding(.horizontal, 18)
+                        .accessibilityHidden(true)
+                }
+            }
+        }
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private func increment(_ member: PetAccessory) {
+        guard !viewModel.isCheckoutBusy, !viewModel.isSaleExplicitlyDenied else { return }
+        actionError = nil
+        if member.pos_isIndividuallyTrackedLivePet {
+            onSelectExactAnimal(member)
+        } else if member.pos_hasMultipleSellUnits(for: viewModel.salesChannel) {
+            let groupID = member.accessoryID == variantPicker.scannedAccessoryID
+                ? variantPicker.scannedQuantityGroupID : nil
+            onSelectSellUnit(member, groupID)
+        } else if viewModel.addToCart(member) {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } else {
+            actionError = viewModel.submitError ?? Language.get("POS_ItemUnavailable", alter: nil)
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        }
+    }
+
     private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Image(systemName: "shippingbox")
                 .font(.system(size: 28, weight: .light))
                 .foregroundStyle(AdminSurface.secondaryText)
@@ -6558,21 +6646,23 @@ private struct POSVariantPickerSheet: View {
                 .font(PPBrandFont.regular(size: 15, relativeTo: .body))
                 .foregroundStyle(AdminSurface.secondaryText)
         }
+        .fixedSize(horizontal: false, vertical: true)
         .multilineTextAlignment(.leading)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(20)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .padding(.vertical, 24)
     }
 }
 
-// MARK: - POS Variant Row
+// MARK: - POS Option Comparison Row
 
 private struct POSVariantRow: View {
     let member: PetAccessory
     let inCart: Int
     let cartBaseUnits: Int
     var salesChannel: POSSalesChannel = .retail
-    var isFocusedTarget: Bool = false
+    var isScannedMatch: Bool = false
+    var preferredGroupID: String? = nil
+    var isInteractionDisabled: Bool = false
     let currency: (Double) -> String
     let onIncrement: () -> Void
     let onDecrement: () -> Void
@@ -6580,180 +6670,276 @@ private struct POSVariantRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.layoutDirection) private var layoutDirection
+    @State private var isCodeExpanded = false
 
     private var option: POSVariantOptionPresentation {
-        POSVariantOptionPresentation(member: member, cartBaseUnits: cartBaseUnits, salesChannel: salesChannel)
-    }
-    private var actionInk: Color {
-        contrast == .increased ? AdminSurface.primaryText : Color(uiColor: .ppAccentText)
+        POSVariantOptionPresentation(member: member, cartBaseUnits: cartBaseUnits,
+                                     salesChannel: salesChannel, preferredGroupID: preferredGroupID)
     }
     private var secondaryInk: Color {
         contrast == .increased ? AdminSurface.primaryText : AdminSurface.secondaryText
     }
+    private var matchInk: Color {
+        Color(uiColor: .ppSuccess)
+    }
+    private var needsUnitSelection: Bool {
+        member.pos_isIndividuallyTrackedLivePet || option.hasMultipleSellUnits
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            let rowLayout = dynamicTypeSize >= .xxxLarge
-                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
-                : AnyLayout(HStackLayout(alignment: .center, spacing: 14))
-            rowLayout {
-                identity
+        VStack(alignment: .leading, spacing: 12) {
+            identity
+            commerce
+            if isCodeExpanded, let sku = productCode {
+                Text(sku)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .environment(\.layoutDirection, .leftToRight)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                commerce
-            }
-            if let sku = member.sku?.trimmingCharacters(in: .whitespacesAndNewlines), !sku.isEmpty {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(Language.get("POS_VariantPicker_ProductCode", alter: nil))
-                        .font(PPBrandFont.medium(size: 10, relativeTo: .caption2))
-                    Text(sku)
-                        .font(.system(.caption2, design: .monospaced))
-                        .environment(\.layoutDirection, .leftToRight)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .foregroundStyle(secondaryInk)
+                    .textSelection(.enabled)
+                    .transition(.opacity)
             }
         }
-        .padding(16)
-        .background(
-            ZStack {
-                if isFocusedTarget {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color(uiColor: .systemGreen).opacity(0.08))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .strokeBorder(Color(uiColor: .systemGreen).opacity(0.4), lineWidth: 1.5)
-                        )
-                } else if inCart > 0 {
-                    AdminSurface.primary.opacity(0.045)
-                } else {
-                    Color.clear
-                }
+        .multilineTextAlignment(.leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(isScannedMatch ? matchInk.opacity(0.045) : Color.clear)
+        .overlay(alignment: .leading) {
+            if isScannedMatch {
+                Capsule()
+                    .fill(matchInk)
+                    .frame(width: 3)
+                    .padding(.vertical, 20)
+                    .accessibilityHidden(true)
+                    .allowsHitTesting(false)
             }
-        )
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: inCart)
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: inCart)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: isCodeExpanded)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("admin.pos.variant.\(member.accessoryID)")
-        .accessibilityValue(isFocusedTarget ? Language.get("POS_Variant_MatchedBarcode", alter: "الخيار المطابق") : "")
     }
 
     private var identity: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .top, spacing: 8) {
-                if member.pos_hasRealColor, let color = member.pos_variantColor {
-                    Circle()
-                        .fill(Color(uiColor: color.uiColor))
-                        .frame(width: 22, height: 22)
-                        .overlay {
-                            Circle().strokeBorder(AdminSurface.primaryText.opacity(color.requiresContrastBorder ? 0.3 : 0.12), lineWidth: 1)
-                        }
-                        .accessibilityHidden(true)
-                }
-                Text(member.pos_variantDisplayName)
-                    .font(PPBrandFont.bold(size: 19, relativeTo: .headline))
+        VStack(alignment: .leading, spacing: 7) {
+            if isScannedMatch {
+                Label(Language.get("POS_Variant_MatchedBarcode", alter: nil), systemImage: "barcode.viewfinder")
+                    .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
                     .foregroundStyle(AdminSurface.primaryText)
                     .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityAddTraits(.isHeader)
-            }
-            if isFocusedTarget {
-                HStack(spacing: 5) {
-                    Image(systemName: "barcode.viewfinder")
-                        .font(.system(size: 11, weight: .bold))
-                    Text(Language.get("POS_Variant_MatchedBarcode", alter: "الخيار المطابق"))
-                        .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
-                }
-                .foregroundStyle(Color(uiColor: .systemGreen))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Color(uiColor: .systemGreen).opacity(0.12), in: Capsule())
+                    .accessibilityHint(Language.get("POS_VariantPicker_MatchHint", alter: nil))
             } else if member.isDefaultVariant {
                 Label(Language.get("Variant_Default_Badge", alter: nil), systemImage: "checkmark.seal")
-                    .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
-                    .foregroundStyle(actionInk)
+                    .font(PPBrandFont.medium(size: 12, relativeTo: .caption))
+                    .foregroundStyle(secondaryInk)
             }
-            Label(option.stockText, systemImage: option.isAvailable ? "checkmark.circle" : "minus.circle")
-                .font(PPBrandFont.medium(size: 12, relativeTo: .caption))
-                .foregroundStyle(option.isAvailable ? secondaryInk : Color(uiColor: .systemRed))
-                .fixedSize(horizontal: false, vertical: true)
+            let layout = dynamicTypeSize >= .xxxLarge
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
+                : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 14))
+            layout {
+                HStack(alignment: .firstTextBaseline, spacing: 9) {
+                    if member.pos_hasRealColor, let color = member.pos_variantColor {
+                        Circle()
+                            .fill(Color(uiColor: color.uiColor))
+                            .frame(width: 20, height: 20)
+                            .overlay {
+                                Circle().strokeBorder(AdminSurface.primaryText.opacity(color.requiresContrastBorder ? 0.4 : 0.16), lineWidth: 1)
+                            }
+                            .accessibilityHidden(true)
+                    }
+                    Text(member.pos_variantDisplayName)
+                        .font(PPBrandFont.bold(size: 21, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                priceSummary
+            }
         }
-        .multilineTextAlignment(.leading)
+    }
+
+    private var priceSummary: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(currency(option.price))
+                .font(PPBrandFont.bold(size: 21, relativeTo: .title3))
+                .foregroundStyle(AdminSurface.primaryText)
+                .environment(\.layoutDirection, .leftToRight)
+                .fixedSize(horizontal: false, vertical: true)
+            if let groupName = option.priceGroupName {
+                Text(groupName)
+                    .font(PPBrandFont.medium(size: 12, relativeTo: .caption))
+                    .foregroundStyle(secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private var commerce: some View {
-        VStack(alignment: dynamicTypeSize >= .xxxLarge ? .leading : .trailing, spacing: 7) {
-            VStack(alignment: dynamicTypeSize >= .xxxLarge ? .leading : .trailing, spacing: 2) {
-                Text(currency(option.price))
-                    .font(PPBrandFont.bold(size: 18, relativeTo: .headline))
-                    .foregroundStyle(actionInk)
-                    .environment(\.layoutDirection, .leftToRight)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let groupName = option.priceGroupName {
-                    Text(groupName)
-                        .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
-                        .foregroundStyle(secondaryInk)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .accessibilityElement(children: .combine)
-            if inCart > 0 {
-                VStack(alignment: .center, spacing: 3) {
-                    HStack(spacing: 0) {
-                        Button(action: onDecrement) {
-                            Image(systemName: inCart == 1 ? "trash" : "minus")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(inCart == 1 ? Color(uiColor: .systemRed) : AdminSurface.primaryText)
-                                .frame(width: 44, height: 44)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(POSVariantPressStyle())
-                        .accessibilityLabel(String(format: Language.get(inCart == 1 ? "POS_VariantPicker_RemoveFormat" : "POS_VariantPicker_DecreaseFormat", alter: nil), member.pos_variantDisplayName))
-                        Text(inCart.formatted(.number))
-                            .font(PPBrandFont.bold(size: 17, relativeTo: .body))
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .frame(minWidth: 28)
-                            .contentTransition(.numericText())
-                            .accessibilityHidden(true)
-                        incrementButton(compact: true)
-                    }
-                    .background(AdminSurface.control, in: Capsule())
-                    Text(String(format: Language.get("POS_VariantPicker_InCartFormat", alter: nil), inCart))
-                        .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
-                        .foregroundStyle(secondaryInk)
-                }
+        Group {
+            if dynamicTypeSize >= .xxxLarge {
+                stackedCommerce
             } else {
-                incrementButton(compact: false)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .center, spacing: 12) {
+                        stockStatus.fixedSize(horizontal: true, vertical: false)
+                        Spacer(minLength: 0)
+                        cartActions.fixedSize(horizontal: true, vertical: false)
+                    }
+                    stackedCommerce
+                }
             }
         }
     }
 
+    private var stackedCommerce: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            stockStatus
+            cartActions
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var stockStatus: some View {
+        HStack(alignment: .center, spacing: 6) {
+            Label(option.isAvailable ? option.stockText : option.unavailableHint,
+                  systemImage: option.isAvailable ? "checkmark.circle" : "minus.circle")
+                .font(PPBrandFont.medium(size: 13, relativeTo: .caption))
+                .foregroundStyle(option.isAvailable ? secondaryInk : AdminSurface.danger)
+                .fixedSize(horizontal: false, vertical: true)
+            if productCode != nil {
+                codeButton
+            }
+        }
+    }
+
+    private var cartActions: some View {
+        Group {
+            if inCart > 0 && !member.pos_isIndividuallyTrackedLivePet {
+                quantityControl
+            } else {
+                VStack(alignment: .leading, spacing: 5) {
+                    incrementButton(compact: false)
+                    if inCart > 0 {
+                        cartCount
+                    }
+                }
+            }
+        }
+    }
+
+    private var quantityControl: some View {
+        VStack(alignment: .center, spacing: 5) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 0) {
+                    decrementButton
+                    quantityText
+                    incrementButton(compact: true)
+                }
+                .background(AdminSurface.control, in: Capsule())
+                .fixedSize(horizontal: true, vertical: false)
+                VStack(spacing: 8) {
+                    quantityText
+                    HStack(spacing: 12) {
+                        decrementButton
+                        incrementButton(compact: true)
+                    }
+                    .background(AdminSurface.control, in: Capsule())
+                }
+            }
+            cartCount
+        }
+    }
+
+    private var quantityText: some View {
+        Text(inCart.formatted(.number))
+            .font(PPBrandFont.bold(size: 18, relativeTo: .body))
+            .foregroundStyle(AdminSurface.primaryText)
+            .monospacedDigit()
+            .frame(minWidth: 32)
+            .contentTransition(reduceMotion ? .identity : .numericText())
+            .accessibilityHidden(true)
+    }
+
+    private var decrementButton: some View {
+        Button(action: onDecrement) {
+            Image(systemName: inCart == 1 ? "trash" : "minus")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(inCart == 1 ? AdminSurface.danger : AdminSurface.primaryText)
+                .frame(width: 44, height: 46)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(POSVariantPressStyle())
+        .disabled(isInteractionDisabled)
+        .accessibilityLabel(String(format: Language.get(inCart == 1 ? "POS_VariantPicker_RemoveFormat" : "POS_VariantPicker_DecreaseFormat", alter: nil), member.pos_variantDisplayName))
+    }
+
+    private var cartCount: some View {
+        Text(String(format: Language.get("POS_VariantPicker_InCartFormat", alter: nil), inCart))
+            .font(PPBrandFont.medium(size: 12, relativeTo: .caption))
+            .foregroundStyle(secondaryInk)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
     private func incrementButton(compact: Bool) -> some View {
-        let title = option.hasMultipleSellUnits
-            ? Language.get("POS_VariantPicker_ChooseUnit", alter: nil)
-            : Language.get("POS_Add", alter: nil)
+        let title = member.pos_isIndividuallyTrackedLivePet
+            ? Language.get("POS_VariantPicker_SelectAnimal", alter: nil)
+            : Language.get(option.hasMultipleSellUnits ? "POS_VariantPicker_ChooseUnit" : "POS_Add", alter: nil)
+        // Existing tracked selections remain editable even after all stock is
+        // in the cart; the exact picker validates every available animal.
+        let canIncrement = !isInteractionDisabled && (option.isAvailable || (member.pos_isIndividuallyTrackedLivePet && inCart > 0))
         return Button(action: onIncrement) {
-            HStack(spacing: 5) {
-                Image(systemName: "plus")
+            HStack(spacing: 7) {
+                Image(systemName: needsUnitSelection ? (layoutDirection == .rightToLeft ? "chevron.left" : "chevron.right") : "plus")
                     .font(.system(size: 13, weight: .semibold))
+                    .accessibilityHidden(true)
                 if !compact {
                     Text(title)
-                        .font(PPBrandFont.bold(size: 14, relativeTo: .subheadline))
+                        .font(PPBrandFont.bold(size: 15, relativeTo: .subheadline))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .foregroundStyle(option.isAvailable ? Color.white : secondaryInk)
-            .padding(.horizontal, compact ? 0 : 14)
-            .frame(minWidth: compact ? 44 : 82, minHeight: 44)
-            .background(option.isAvailable ? AdminSurface.primary : AdminSurface.control, in: Capsule())
+            .foregroundStyle(canIncrement ? Color.white : secondaryInk)
+            .padding(.horizontal, compact ? 0 : 18)
+            .frame(minWidth: compact ? 44 : 100, minHeight: 46)
+            .background(canIncrement ? AdminSurface.primary : AdminSurface.control, in: Capsule())
             .contentShape(Capsule())
         }
         .buttonStyle(POSVariantPressStyle())
-        .disabled(!option.isAvailable)
-        .accessibilityLabel(compact && !option.hasMultipleSellUnits
-            ? String(format: Language.get("POS_VariantPicker_IncreaseFormat", alter: nil), member.pos_variantDisplayName)
-            : "\(title), \(member.pos_variantDisplayName)")
+        .disabled(!canIncrement)
+        .accessibilityLabel(member.pos_isIndividuallyTrackedLivePet && inCart > 0
+            ? String(format: Language.get("POS_VariantPicker_EditSelectionFormat", alter: nil), member.pos_variantDisplayName)
+            : compact && !needsUnitSelection
+                ? String(format: Language.get("POS_VariantPicker_IncreaseFormat", alter: nil), member.pos_variantDisplayName)
+                : "\(title), \(member.pos_variantDisplayName)")
         .accessibilityValue(option.stockText)
-        .accessibilityHint(option.isAvailable ? "" : option.unavailableHint)
+        .accessibilityHint(canIncrement || option.isAvailable ? "" : option.unavailableHint)
         .accessibilityIdentifier("admin.pos.variant.add.\(member.accessoryID)")
+    }
+
+    private var productCode: String? {
+        guard let sku = member.sku?.trimmingCharacters(in: .whitespacesAndNewlines), !sku.isEmpty else { return nil }
+        return sku
+    }
+
+    private var codeButton: some View {
+        Button {
+            isCodeExpanded.toggle()
+        } label: {
+            Image(systemName: isCodeExpanded ? "barcode.viewfinder" : "barcode")
+                .font(.system(size: 16, weight: .regular))
+                .foregroundStyle(isCodeExpanded ? AdminSurface.primaryText : secondaryInk)
+                .frame(width: 44, height: 44)
+                .background(isCodeExpanded ? AdminSurface.control : Color.clear, in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(POSVariantPressStyle())
+        .accessibilityLabel(Language.get(isCodeExpanded ? "POS_VariantPicker_HideCode" : "POS_VariantPicker_ShowCode", alter: nil))
+        .accessibilityIdentifier("admin.pos.variant.code.\(member.accessoryID)")
     }
 }
 

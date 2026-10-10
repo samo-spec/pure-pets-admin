@@ -123,6 +123,7 @@ final class AdminCommandCenterStore: ObservableObject {
     @Published var localeCode: String = Language.currentLanguageCode()
     @Published private(set) var canAccessHotel = false
     @Published private(set) var canOpenWantedPets = false
+    @Published private(set) var canOpenServices = false
     @Published private(set) var revision: Int = 0
 
     var onRoute: ((String) -> Void)?
@@ -201,6 +202,12 @@ final class AdminCommandCenterStore: ObservableObject {
     func applyWantedPetsAccess(_ allowed: Bool) {
         guard canOpenWantedPets != allowed else { return }
         canOpenWantedPets = allowed
+        revision += 1
+    }
+
+    func applyServicesAccess(_ allowed: Bool) {
+        guard canOpenServices != allowed else { return }
+        canOpenServices = allowed
         revision += 1
     }
 }
@@ -342,6 +349,10 @@ public final class AdminCommandOrbitHostingController: UIViewController {
 
     public func applyWantedPetsAccess(_ allowed: Bool) {
         store.applyWantedPetsAccess(allowed)
+    }
+
+    public func applyServicesAccess(_ allowed: Bool) {
+        store.applyServicesAccess(allowed)
     }
 
 }
@@ -764,6 +775,7 @@ struct AdminCommandCenterScreenView: View {
             // Deck 3: Operations Launchpad & Quick Actions Matrix
             CommandQuickActionsDeck(
                 signals: store.snapshot.signals,
+                canOpenServices: store.canOpenServices,
                 isRegular: isRegular,
                 isLandscape: isLandscape,
                 containerWidth: containerWidth,
@@ -6254,6 +6266,7 @@ private struct CommandQuickActionIcon: View {
 
 private struct CommandQuickActionsDeck: View {
     let signals: [AdminCommandOrbitSignal]
+    let canOpenServices: Bool
     var isRegular: Bool = false
     var isLandscape: Bool = false
     var containerWidth: CGFloat = 0
@@ -6268,6 +6281,7 @@ private struct CommandQuickActionsDeck: View {
     private var allDeckItems: [CommandQuickActionItem] {
         let fulfillmentSignal = signals.first { $0.id.contains("fulfillment") }
         let deliverySignal = signals.first { $0.id.contains("delivery") }
+        let serviceSignal = signals.first { $0.id == "services" }
         let userSignal = signals.first { $0.id.contains("user") }
 
         return [
@@ -6293,7 +6307,18 @@ private struct CommandQuickActionsDeck: View {
                 badgeCount: (deliverySignal?.count ?? 0) > 0 ? deliverySignal?.count : nil,
                 isLive: deliverySignal?.isLive ?? false
             ),
-            // 3. Customers Directory
+            // 3. Services Management
+            CommandQuickActionItem(
+                id: "services",
+                tag: "services",
+                title: Language.get("AdminQuickActions_Services", alter: nil),
+                subtitle: Language.get("AdminQuickActions_Services_Subtitle", alter: nil),
+                symbolName: "cross.case.fill",
+                accent: Color(uiColor: .ppQuickActionServices),
+                badgeCount: (serviceSignal?.count ?? 0) > 0 ? serviceSignal?.count : nil,
+                isLive: serviceSignal?.isLive ?? false
+            ),
+            // 4. Customers Directory
             CommandQuickActionItem(
                 id: "usersList",
                 tag: "usersList",
@@ -6304,7 +6329,7 @@ private struct CommandQuickActionsDeck: View {
                 badgeCount: (userSignal?.count ?? 0) > 0 ? userSignal?.count : nil,
                 isLive: userSignal?.isLive ?? false
             ),
-            // 4. Security & Audit Trail
+            // 5. Security & Audit Trail
             CommandQuickActionItem(
                 id: "audit",
                 tag: "audit",
@@ -6315,7 +6340,7 @@ private struct CommandQuickActionsDeck: View {
                 badgeCount: nil,
                 isLive: false
             )
-        ]
+        ].filter { $0.tag != "services" || canOpenServices }
     }
 
     private var activeSignalsCount: Int {
@@ -6376,12 +6401,24 @@ private struct CommandQuickActionsDeck: View {
         }
     }
 
-    // iPhone Operations Line (All 4 actions in 1 line)
+    // iPhone Operations Line (Responsive operations row)
     private var iphoneOperationsMatrixView: some View {
-        HStack(spacing: spacing) {
-            ForEach(allDeckItems) { item in
-                CommandQuickActionCard(item: item, isRegular: false) {
-                    onRoute(item.tag)
+        Group {
+            if allDeckItems.count > 4 {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: spacing)], spacing: spacing) {
+                    ForEach(allDeckItems) { item in
+                        CommandQuickActionCard(item: item, isRegular: false) {
+                            onRoute(item.tag)
+                        }
+                    }
+                }
+            } else {
+                HStack(spacing: spacing) {
+                    ForEach(allDeckItems) { item in
+                        CommandQuickActionCard(item: item, isRegular: false) {
+                            onRoute(item.tag)
+                        }
+                    }
                 }
             }
         }
@@ -6392,7 +6429,7 @@ private struct CommandQuickActionsDeck: View {
         isLandscape && containerWidth >= 950
     }
 
-    // iPad Operations Line (Panoramic Horizon in Landscape, 2x2 Balanced Matrix in Portrait)
+    // iPad Operations Line (Panoramic Horizon in Landscape, Balanced Matrix in Portrait)
     private var ipadOperationsMatrixView: some View {
         Group {
             if isLandscapeIPad {
@@ -6405,17 +6442,10 @@ private struct CommandQuickActionsDeck: View {
                 }
                 .frame(maxWidth: .infinity)
             } else {
-                VStack(spacing: 10) {
-                    let pairs = stride(from: 0, to: allDeckItems.count, by: 2).map {
-                        Array(allDeckItems[$0 ..< min($0 + 2, allDeckItems.count)])
-                    }
-                    ForEach(pairs.indices, id: \.self) { pairIndex in
-                        HStack(spacing: 10) {
-                            ForEach(pairs[pairIndex]) { item in
-                                CommandQuickActionCard(item: item, isRegular: true) {
-                                    onRoute(item.tag)
-                                }
-                            }
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                    ForEach(allDeckItems) { item in
+                        CommandQuickActionCard(item: item, isRegular: true) {
+                            onRoute(item.tag)
                         }
                     }
                 }
@@ -6433,6 +6463,7 @@ private struct CommandQuickActionCard: View {
     let action: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var isPulsing = false
 
     var body: some View {
@@ -6530,7 +6561,7 @@ private struct CommandQuickActionCard: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, 6)
+        .padding(.horizontal, 4)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
         .frame(height: 98)
@@ -6591,14 +6622,16 @@ private struct CommandQuickActionCard: View {
                 Text(item.title)
                     .font(Font.custom("Beiruti-Bold", size: 14.5, relativeTo: .subheadline))
                     .foregroundStyle(AdminSurface.primaryText)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                     .minimumScaleFactor(0.8)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Text(item.subtitle)
                     .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
                     .foregroundStyle(AdminCommandInk.secondary)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                     .minimumScaleFactor(0.75)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 4)
@@ -6652,7 +6685,7 @@ private struct CommandQuickActionCard: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: 76)
+        .frame(minHeight: 76)
         .background(
             ZStack {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)

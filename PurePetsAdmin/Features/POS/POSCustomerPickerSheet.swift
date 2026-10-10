@@ -386,6 +386,7 @@ final class POSCustomerPickerViewModel: ObservableObject {
     // Edit Form Fields & State
     @Published var editingCustomer: POSCustomerRecord? = nil
     @Published var editName: String = ""
+    @Published var editPhone: String = ""
     @Published var editEmail: String = ""
     @Published var editNote: String = ""
     @Published var editBranchId: String = ""
@@ -841,6 +842,7 @@ final class POSCustomerPickerViewModel: ObservableObject {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         editingCustomer = customer
         editName = customer.name
+        editPhone = customer.phone
         editEmail = customer.email
         editNote = customer.note ?? ""
         editBranchId = customer.branchId
@@ -851,6 +853,7 @@ final class POSCustomerPickerViewModel: ObservableObject {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         editingCustomer = nil
         editName = ""
+        editPhone = ""
         editEmail = ""
         editNote = ""
         editBranchId = ""
@@ -863,6 +866,13 @@ final class POSCustomerPickerViewModel: ObservableObject {
         let defaultName = Language.get("POS_Customer_DefaultName", alter: "عميل نقطة بيع")
         let finalName = trimmedName.isEmpty ? defaultName : trimmedName
 
+        let phone = editPhone.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = normalizePhone(phone)
+        guard normalized.count >= 6 else {
+            errorMessage = Language.get("POS_Customer_PhoneTooShort", alter: "يرجى إدخال رقم هاتف صحيح (٦ أرقام على الأقل).")
+            return
+        }
+
         isEditingSubmitting = true
         errorMessage = nil
 
@@ -874,6 +884,7 @@ final class POSCustomerPickerViewModel: ObservableObject {
                 let payload: [String: Any] = [
                     "customerId": customer.id,
                     "name": finalName,
+                    "phone": phone,
                     "email": self.editEmail.trimmingCharacters(in: .whitespacesAndNewlines),
                     "note": self.editNote.trimmingCharacters(in: .whitespacesAndNewlines),
                     "branchId": self.editBranchId
@@ -893,7 +904,7 @@ final class POSCustomerPickerViewModel: ObservableObject {
                 }
 
                 // Update local search results
-                if let idx = self.searchResults.firstIndex(where: { $0.id == updatedCustomer.id }) {
+                if let idx = self.searchResults.firstIndex(where: { $0.id == updatedCustomer.id || $0.id == customer.id }) {
                     self.searchResults[idx] = updatedCustomer
                 }
 
@@ -930,12 +941,16 @@ final class POSCustomerPickerViewModel: ObservableObject {
     // MARK: - Quick Actions
 
     func copyPhone(customer: POSCustomerRecord) {
-        UIPasteboard.general.string = customer.phone
-        copiedPhoneId = customer.id
+        copyPhone(phone: customer.phone, customerId: customer.id)
+    }
+
+    func copyPhone(phone: String, customerId: String) {
+        UIPasteboard.general.string = phone
+        copiedPhoneId = customerId
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         Task { [weak self] in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
-            if self?.copiedPhoneId == customer.id {
+            if self?.copiedPhoneId == customerId {
                 self?.copiedPhoneId = nil
             }
         }
@@ -2265,47 +2280,53 @@ private struct POSCustomerEditSheet: View {
                             }
                             .padding(.top, 12)
 
-                            // Phone Identity Locked Badge
-                            HStack(spacing: 10) {
-                                Image(systemName: "lock.fill")
-                                    .foregroundColor(.secondary)
-                                    .font(.system(size: 13))
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(Language.get("POS_Customer_PhoneField", alter: "رقم الهاتف (معرف الحساب الثابت)"))
-                                        .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption2))
-                                        .foregroundColor(AdminSurface.secondaryText)
-                                    Text(customer.phone)
-                                        .font(PPBrandFont.bold(14, relativeTo: .callout))
-                                        .foregroundColor(AdminSurface.primaryText)
-                                }
-
-                                Spacer()
-
-                                Button {
-                                    viewModel.copyPhone(customer: customer)
-                                } label: {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: viewModel.copiedPhoneId == customer.id ? "checkmark" : "doc.on.doc")
-                                            .font(.system(size: 11))
-                                        Text(viewModel.copiedPhoneId == customer.id
-                                             ? Language.get("POS_Customer_QuickAction_Copied", alter: "تم النسخ")
-                                             : Language.get("POS_Customer_QuickAction_Copy", alter: "نسخ"))
-                                            .font(Font.custom("Beiruti-Bold", size: 11.5, relativeTo: .caption))
-                                    }
-                                    .foregroundColor(viewModel.copiedPhoneId == customer.id ? .green : AdminSurface.primary)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 5)
-                                    .background(AdminSurface.control, in: Capsule())
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                            }
-                            .padding(12)
-                            .background(AdminSurface.control.opacity(0.6), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline))
-
                             // Form Fields
                             VStack(spacing: 12) {
+                                // Phone Field
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Text(Language.get("POS_Customer_PhoneField", alter: "رقم الهاتف *"))
+                                            .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
+                                            .foregroundColor(AdminSurface.primaryText)
+
+                                        Spacer()
+
+                                        if !viewModel.editPhone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                            Button {
+                                                viewModel.copyPhone(phone: viewModel.editPhone, customerId: customer.id)
+                                            } label: {
+                                                HStack(spacing: 4) {
+                                                    Image(systemName: viewModel.copiedPhoneId == customer.id ? "checkmark" : "doc.on.doc")
+                                                        .font(.system(size: 11))
+                                                    Text(viewModel.copiedPhoneId == customer.id
+                                                         ? Language.get("POS_Customer_QuickAction_Copied", alter: "تم النسخ")
+                                                         : Language.get("POS_Customer_QuickAction_Copy", alter: "نسخ الرقم"))
+                                                        .font(Font.custom("Beiruti-Bold", size: 11.5, relativeTo: .caption))
+                                                }
+                                                .foregroundColor(viewModel.copiedPhoneId == customer.id ? .green : AdminSurface.primary)
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 4)
+                                                .background(AdminSurface.control, in: Capsule())
+                                            }
+                                            .buttonStyle(PlainButtonStyle())
+                                        }
+                                    }
+
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "phone.fill")
+                                            .foregroundColor(AdminSurface.secondaryText)
+                                            .font(.system(size: 13))
+                                            .frame(width: 20)
+
+                                        TextField(Language.get("POS_Customer_PhonePlaceholder", alter: "5512 3456"), text: $viewModel.editPhone)
+                                            .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .body))
+                                            .keyboardType(.phonePad)
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 10)
+                                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline))
+                                }
                                 // Name Field
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(Language.get("POS_Customer_NameField", alter: "اسم العميل"))
@@ -3163,21 +3184,49 @@ private struct iPadCustomerSpatialCockpit: View {
                     }
                     .padding(.top, 8)
 
-                    // Phone Identity Locked
-                    HStack(spacing: 8) {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                        Text(Language.get("POS_Customer_PhoneField", alter: "رقم الهاتف:"))
-                            .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
-                            .foregroundColor(AdminSurface.secondaryText)
-                        Text(viewModel.editingCustomer?.phone ?? "")
-                            .font(PPBrandFont.bold(14, relativeTo: .callout))
-                            .foregroundColor(AdminSurface.primaryText)
-                        Spacer()
+                    // Phone Field
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(Language.get("POS_Customer_PhoneField", alter: "رقم الهاتف *"))
+                                .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
+                                .foregroundColor(AdminSurface.primaryText)
+                            Spacer()
+                            if !viewModel.editPhone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Button {
+                                    if let id = viewModel.editingCustomer?.id {
+                                        viewModel.copyPhone(phone: viewModel.editPhone, customerId: id)
+                                    }
+                                } label: {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: viewModel.copiedPhoneId == viewModel.editingCustomer?.id ? "checkmark" : "doc.on.doc")
+                                            .font(.system(size: 10))
+                                        Text(viewModel.copiedPhoneId == viewModel.editingCustomer?.id
+                                             ? Language.get("POS_Customer_QuickAction_Copied", alter: "تم النسخ")
+                                             : Language.get("POS_Customer_QuickAction_Copy", alter: "نسخ"))
+                                            .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
+                                    }
+                                    .foregroundColor(viewModel.copiedPhoneId == viewModel.editingCustomer?.id ? .green : AdminSurface.primary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(AdminSurface.control, in: Capsule())
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                        }
+                        HStack(spacing: 8) {
+                            Image(systemName: "phone.fill")
+                                .font(.system(size: 12))
+                                .foregroundColor(AdminSurface.secondaryText)
+                                .frame(width: 18)
+                            TextField(Language.get("POS_Customer_PhonePlaceholder", alter: "5512 3456"), text: $viewModel.editPhone)
+                                .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .body))
+                                .keyboardType(.phonePad)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(AdminSurface.hairline))
                     }
-                    .padding(10)
-                    .background(AdminSurface.control.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                     // Name Field
                     VStack(alignment: .leading, spacing: 4) {

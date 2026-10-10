@@ -2854,6 +2854,12 @@
 "POS_VariantPicker_OptionsSummaryFormat" = "%d options";
 "POS_VariantPicker_InCartFormat" = "%d in cart";
 "POS_VariantPicker_ProductCode" = "Product code";
+"POS_VariantPicker_BranchStockFormat" = "Branch stock: %d";
+"POS_VariantPicker_ShowCode" = "Show product code";
+"POS_VariantPicker_HideCode" = "Hide product code";
+"POS_VariantPicker_SelectAnimal" = "Choose animal";
+"POS_VariantPicker_MatchHint" = "This option matches the scanned code";
+"POS_VariantPicker_EditSelectionFormat" = "Change selected animals for %@";
 "POS_VariantPicker_ChooseUnit" = "Choose unit";
 "POS_VariantPicker_EmptyTitle" = "No options available";
 "POS_VariantPicker_EmptyMessage" = "Close and refresh the catalog to try again.";
@@ -3950,6 +3956,8 @@
 "AdminQuickActions_Fulfillment_Subtitle" = "Pack & Prepare";
 "AdminQuickActions_Delivery" = "Delivery Fleet";
 "AdminQuickActions_Delivery_Subtitle" = "Live Dispatch";
+"AdminQuickActions_Services" = "Manage Services";
+"AdminQuickActions_Services_Subtitle" = "Plans & Offers";
 "AdminQuickActions_Inventory" = "Stock & Items";
 "AdminQuickActions_Inventory_Subtitle" = "Catalog Levels";
 "AdminQuickActions_Users" = "Users";
@@ -11257,3 +11265,9 @@
 "Service_Store_Projection_Ready" = "Ready for Store";
 "Service_Target_Animals_Label" = "Target Animals:";
 "Service_Specialties_Label" = "Applied Specialties:";
+
+/* POS History Recovery & Branch Empty States */
+"POS_History_NoFilterMatches" = "No transactions in the selected period";
+"POS_History_HasOtherReceipts" = "There are %@ past transactions recorded in this branch outside the current filter.";
+"POS_History_ShowAllReceipts" = "Show All Transactions";
+"POS_History_Empty_Branch_Sub" = "No sales have been recorded in branch '%@' yet. Please verify that the correct branch is selected in the top bar.";

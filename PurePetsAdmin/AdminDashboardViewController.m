@@ -10,6 +10,7 @@
 #import "PPBannersListVC.h"
 // Legacy PPVetsListViewController replaced by SwiftUI PPVetsListHostingController
 #import "PPServicesListViewController.h"
+#import "ServicesSection/PPServiceManager.h"
 #import "PPAdminWebAppViewController.h"
 #import "UsersListVC.h"
 #import "UserManagementController.h"
@@ -2624,6 +2625,10 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
         [self pp_canAccessAnyPermissions:@[kStaffPermStockView, kStaffPermStockManage]];
 }
 
+- (BOOL)pp_commandCanOpenServices {
+    return [[PPServiceManager sharedManager] currentAdminCanReadServices];
+}
+
 - (NSString *)pp_commandModuleTitleForTag:(NSString *)tag {
     NSDictionary *item = [self pp_commandItemForTag:tag];
     NSString *title = [item[kPPDashboardItemTitleKey] isKindOfClass:NSString.class]
@@ -2852,6 +2857,7 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
                                                      animated:(self.view.window != nil && !UIAccessibilityIsReduceMotionEnabled())];
     [self.pp_commandOrbitController applyHotelAccess:[self pp_canAccessPermission:kStaffPermHotelView]];
     [self.pp_commandOrbitController applyWantedPetsAccess:[self pp_commandCanOpenWantedPets]];
+    [self.pp_commandOrbitController applyServicesAccess:[self pp_commandCanOpenServices]];
     [self pp_pushCommandReadiness];
 }
 
@@ -3550,6 +3556,10 @@ void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
         return;
     }
     if ([tag isEqualToString:@"wantedPets"] && ![self pp_commandCanOpenWantedPets]) {
+        return;
+    }
+    if ([tag isEqualToString:@"services"] && ![self pp_commandCanOpenServices]) {
+        [self pp_refreshCommandOrbitSnapshot];
         return;
     }
 

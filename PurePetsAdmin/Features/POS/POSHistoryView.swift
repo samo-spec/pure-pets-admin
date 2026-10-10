@@ -339,23 +339,24 @@ final class POSHistoryViewModel: ObservableObject {
     private var loadGeneration = UUID()
 
     func load(branchID: String?) {
-        let branchID = branchID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let trimmed = branchID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let activeID = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let effectiveBranchID = !trimmed.isEmpty ? trimmed : activeID
         let generation = UUID()
         loadGeneration = generation
         receipts = []
         isLoading = true
         errorMessage = nil
 
-        guard !branchID.isEmpty else {
+        guard !effectiveBranchID.isEmpty else {
             isLoading = false
             errorMessage = Language.get("BranchContext_SelectBranch_Prompt", alter: "يرجى تحديد الفرع")
             return
         }
 
-        PPPOSService.shared().fetchPOSHistory(branchID: branchID) { [weak self] receipts, error in
+        PPPOSService.shared().fetchPOSHistory(branchID: effectiveBranchID) { [weak self] receipts, error in
             Task { @MainActor in
-                guard let self, self.loadGeneration == generation,
-                      BranchContextStore.shared.activeBranch?.branchID == branchID else { return }
+                guard let self, self.loadGeneration == generation else { return }
                 self.isLoading = false
                 if let error {
                     let nsError = error as NSError
@@ -381,7 +382,19 @@ final class POSHistoryViewModel: ObservableObject {
                     }
                     return
                 }
-                self.receipts = receipts ?? []
+                let loaded = receipts ?? []
+                self.receipts = loaded
+
+                // Smart Horizon Default:
+                // If "Today" is selected, but there are no sales recorded today,
+                // and past sales exist in this branch, automatically switch to "All"
+                // so the invoices/history are immediately visible to the operator!
+                if self.selectedHorizon == .today && !loaded.isEmpty {
+                    let todayReceipts = loaded.filter { POSDateHorizon.today.matches(date: $0.createdAt) }
+                    if todayReceipts.isEmpty {
+                        self.selectedHorizon = .all
+                    }
+                }
             }
         }
     }
@@ -1287,14 +1300,47 @@ struct AdminPOSHistoryView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 30)
         } else if viewModel.filteredReceipts.isEmpty {
-            AdminEmptyStateView(
-                symbol: "receipt.fill",
-                title: Language.get("POS_History_Empty", alter: "لا توجد معاملات بيع"),
-                subtitle: viewModel.searchQuery.isEmpty ?
-                    Language.get("POS_History_Empty_Sub", alter: "ستظهر المعاملات المكتملة هنا فور إتمامها") :
-                    Language.get("POS_CatalogEmptyHint", alter: "غيّر عبارة البحث أو الفلاتر لعرض النتائج")
-            )
-            .padding(.top, 16)
+            if !viewModel.receipts.isEmpty {
+                VStack(spacing: 14) {
+                    AdminEmptyStateView(
+                        symbol: "line.3.horizontal.decrease.circle",
+                        title: Language.get("POS_History_NoFilterMatches", alter: "لا توجد معاملات في الفترة المحددة"),
+                        subtitle: String(format: Language.get("POS_History_HasOtherReceipts", alter: "يوجد %@ معاملة سابقة مسجلة في هذا الفرع خارج الفلتر الحالي."), viewModel.receipts.count.englishDigits)
+                    )
+
+                    Button {
+                        let impact = UIImpactFeedbackGenerator(style: .medium)
+                        impact.impactOccurred()
+                        withAnimation(.spring()) {
+                            viewModel.selectedHorizon = .all
+                            viewModel.selectedPaymentFilter = .all
+                            viewModel.selectedStatusFilter = .all
+                            viewModel.searchQuery = ""
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "clock.arrow.circlepath")
+                            Text(Language.get("POS_History_ShowAllReceipts", alter: "عرض كل المعاملات"))
+                        }
+                        .font(AdminType.subheadlineBold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+                        .background(Color(uiColor: .ppPrimary), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.top, 16)
+            } else {
+                VStack(spacing: 12) {
+                    AdminEmptyStateView(
+                        symbol: "receipt.fill",
+                        title: Language.get("POS_History_Empty", alter: "لا توجد معاملات بيع"),
+                        subtitle: String(format: Language.get("POS_History_Empty_Branch_Sub", alter: "لم يتم تسجيل أي مبيعات في فرع '%@' حتى الآن. تأكد من اختيار الفرع المطلوب من شريط الفروع بالأعلى."), branchStore.currentBranchDisplayName)
+                    )
+                }
+                .padding(.top, 16)
+            }
         } else {
             LazyVStack(spacing: AdminSpacing.sm) {
                 ForEach(viewModel.filteredReceipts, id: \.receiptID) { receipt in

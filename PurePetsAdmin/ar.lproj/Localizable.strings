@@ -3066,6 +3066,12 @@
 "POS_VariantPicker_OptionsSummaryFormat" = "%d خيارات";
 "POS_VariantPicker_InCartFormat" = "%d في السلة";
 "POS_VariantPicker_ProductCode" = "رمز المنتج";
+"POS_VariantPicker_BranchStockFormat" = "مخزون الفرع: %d";
+"POS_VariantPicker_ShowCode" = "عرض رمز المنتج";
+"POS_VariantPicker_HideCode" = "إخفاء رمز المنتج";
+"POS_VariantPicker_SelectAnimal" = "اختر الحيوان";
+"POS_VariantPicker_MatchHint" = "هذا الخيار يطابق الرمز الممسوح";
+"POS_VariantPicker_EditSelectionFormat" = "تغيير الحيوانات المحددة لـ %@";
 "POS_VariantPicker_ChooseUnit" = "اختر الوحدة";
 "POS_VariantPicker_EmptyTitle" = "لا توجد خيارات متاحة";
 "POS_VariantPicker_EmptyMessage" = "أغلق النافذة وحدّث الكتالوج للمحاولة مجدداً.";
@@ -3954,6 +3960,8 @@
 "AdminQuickActions_Fulfillment_Subtitle" = "معالجة وتحضير";
 "AdminQuickActions_Delivery" = "أسطول التوصيل";
 "AdminQuickActions_Delivery_Subtitle" = "إسناد ومتابعة";
+"AdminQuickActions_Services" = "إدارة الخدمات";
+"AdminQuickActions_Services_Subtitle" = "الباقات والعروض";
 "AdminQuickActions_Inventory" = "المخزون والمنتجات";
 "AdminQuickActions_Inventory_Subtitle" = "إدارة الكميات";
 "AdminQuickActions_Users" = "المستخدمين";
@@ -11287,3 +11295,9 @@
 "Service_Store_Projection_Ready" = "مفعل للمتجر";
 "Service_Target_Animals_Label" = "الحيوانات المستهدفة:";
 "Service_Specialties_Label" = "التصنيفات المطبقة:";
+
+/* POS History Recovery & Branch Empty States */
+"POS_History_NoFilterMatches" = "لا توجد معاملات في الفترة المحددة";
+"POS_History_HasOtherReceipts" = "يوجد %@ معاملة سابقة مسجلة في هذا الفرع خارج الفلتر الحالي.";
+"POS_History_ShowAllReceipts" = "عرض كل المعاملات";
+"POS_History_Empty_Branch_Sub" = "لم يتم تسجيل أي مبيعات في فرع '%@' حتى الآن. تأكد من اختيار الفرع المطلوب من شريط الفروع بالأعلى.";
