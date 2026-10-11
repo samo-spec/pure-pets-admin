@@ -3322,9 +3322,6 @@ struct POSRefundStudioSheet: View {
     @State private var selectedReason: String = ""
     @State private var customReason: String = ""
     @State private var isShowingLivePetCoordinator: Bool = false
-    @State private var quantityEditingID: String?
-    @State private var quantityEditingLimit = 0.0
-    @State private var quantityInput = ""
     @State private var quantityInputError: String?
 
     private struct ReturnConditionOption: Identifiable {
@@ -3500,27 +3497,6 @@ struct POSRefundStudioSheet: View {
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .alert(Language.get("Proforma_RefundQuantity", alter: nil), isPresented: Binding(
-            get: { quantityEditingID != nil },
-            set: { if !$0 { quantityEditingID = nil } }
-        )) {
-            TextField(Language.get("Proforma_Quantity", alter: nil), text: $quantityInput)
-                .keyboardType(.decimalPad)
-            Button(Language.get("Proforma_ApplyQuantity", alter: nil)) {
-                guard let id = quantityEditingID else { return }
-                if let value = ProformaDecimal.parse(quantityInput, scale: 3),
-                   value >= 0, value <= (Decimal(string: POSReceiptFormat.quantity(quantityEditingLimit)) ?? 0) {
-                    itemQuantities[id] = POSReceiptFormat.quantizedQuantity(NSDecimalNumber(decimal: value).doubleValue)
-                    quantityInputError = nil
-                } else {
-                    quantityInputError = Language.get("Proforma_RefundQuantityError", alter: nil)
-                }
-                quantityEditingID = nil
-            }
-            Button(Language.get("Proforma_Close", alter: nil), role: .cancel) { quantityEditingID = nil }
-        } message: {
-            Text(String(format: Language.get("Proforma_RefundQuantityHint", alter: nil), POSReceiptFormat.quantity(quantityEditingLimit)))
-        }
         .fullScreenCover(isPresented: $isShowingLivePetCoordinator) {
             LivePetReturnCoordinatorView(
                 receipt: receipt,
@@ -3696,9 +3672,7 @@ struct POSRefundStudioSheet: View {
 
                                     if item.permitsFractionalRefund {
                                         Button {
-                                            quantityInput = POSReceiptFormat.quantity(currentQty)
-                                            quantityEditingLimit = available
-                                            quantityEditingID = item.receiptLineID
+                                            promptQuantityEdit(for: item, currentQty: currentQty, available: available)
                                         } label: {
                                             Text(verbatim: POSReceiptFormat.quantity(currentQty))
                                                 .font(AdminType.headline)
@@ -3916,6 +3890,38 @@ struct POSRefundStudioSheet: View {
         return (amount > 0 || (!(receipt.proformaInvoiceID ?? "").isEmpty && hasReturnedQuantity)) && reason.count >= 3
     }
 
+    private func promptQuantityEdit(for item: POSReceiptItem, currentQty: Double, available: Double) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        let title = Language.get("Proforma_RefundQuantity", alter: "تعديل كمية الاسترداد")
+        let hint = String(format: Language.get("Proforma_RefundQuantityHint", alter: "الحد الأقصى المتاح للاسترداد: %@"), POSReceiptFormat.quantity(available))
+        let id = item.receiptLineID
+
+        PPAlertHelper.showTextField(
+            in: nil,
+            title: title,
+            subtitle: hint,
+            placeholder: Language.get("Proforma_Quantity", alter: "الكمية"),
+            initialText: POSReceiptFormat.quantity(currentQty),
+            confirmText: Language.get("Proforma_ApplyQuantity", alter: "تطبيق"),
+            cancelText: Language.get("Proforma_Close", alter: "إلغاء")
+        ) { text, didConfirm in
+            guard didConfirm, let text = text else { return }
+            if let value = ProformaDecimal.parse(text, scale: 3),
+               value >= 0, value <= (Decimal(string: POSReceiptFormat.quantity(available)) ?? 0) {
+                Task { @MainActor in
+                    self.itemQuantities[id] = POSReceiptFormat.quantizedQuantity(NSDecimalNumber(decimal: value).doubleValue)
+                    self.quantityInputError = nil
+                }
+            } else {
+                Task { @MainActor in
+                    let errorMsg = Language.get("Proforma_RefundQuantityError", alter: "الكمية المدخلة غير صالحة")
+                    self.quantityInputError = errorMsg
+                    PPAlertHelper.showError(in: nil, title: Language.get("Error", alter: "خطأ"), subtitle: errorMsg)
+                }
+            }
+        }
+    }
+
     private func executeRefund() {
         let finalReason = customReason.trimmingCharacters(in: .whitespacesAndNewlines)
         let amount = calculatedRefundAmount
@@ -3987,6 +3993,7 @@ struct POSRefundStudioSheet: View {
                         ? "refunded" : "partially_refunded"
                 }
                 dismiss()
+                NotificationCenter.default.post(name: Notification.Name("PPAccountingDataDidChangeNotification"), object: nil)
                 onSuccess(receipt)
             }
         }
@@ -4765,6 +4772,7 @@ struct POSCancelConfirmationSheet: View {
             let success = await viewModel.cancelTransaction(receipt: receipt, reason: reason)
             if success {
                 dismiss()
+                NotificationCenter.default.post(name: Notification.Name("PPAccountingDataDidChangeNotification"), object: nil)
                 onSuccess()
             }
         }

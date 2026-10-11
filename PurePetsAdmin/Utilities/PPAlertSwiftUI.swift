@@ -151,8 +151,12 @@ private final class PPAlertPresentation: NSObject {
         super.init()
         NotificationCenter.default.addObserver(self, selector: #selector(sceneDisconnected(_:)),
                                                name: UIScene.didDisconnectNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(becameActive),
+        NotificationCenter.default.addObserver(self, selector: #selector(becameActive(_:)),
                                                name: UIApplication.didBecomeActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(becameActive(_:)),
+                                               name: UIScene.didActivateNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(becameActive(_:)),
+                                               name: UIWindow.didBecomeVisibleNotification, object: nil)
     }
 
     func enqueue(_ request: PPAlertRequest) {
@@ -197,7 +201,7 @@ private final class PPAlertPresentation: NSObject {
         }
     }
 
-    @objc private func becameActive() {
+    @objc private func becameActive(_ notification: Notification) {
         for lane in lanes.values { lane.resume() }
     }
 }
@@ -268,7 +272,7 @@ private final class PPAlertLane {
     }
 
     private func finish(index: Int) {
-        guard let host = active, !host.request.isFinishing,
+        guard let host = active, host.request.isReady, !host.request.isFinishing,
               host.request.actions.contains(where: { $0.id == index }) else { return }
         let request = host.request
         request.isFinishing = true
@@ -286,7 +290,7 @@ private final class PPAlertLane {
     private func complete(_ request: PPAlertRequest, index: Int?, text: String) {
         active = nil
         request.choose = nil
-        if pending.isEmpty, let previousFocus {
+        if !isDisconnected, pending.isEmpty, let previousFocus {
             UIAccessibility.post(notification: .screenChanged, argument: previousFocus)
         }
         previousFocus = nil
@@ -396,6 +400,7 @@ private struct PPAlertSurface: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var inputFocused: Bool
     @AccessibilityFocusState private var headingFocused: Bool
+    @State private var contentHeight: CGFloat = 0
 
     var body: some View {
         GeometryReader { geometry in
@@ -407,7 +412,7 @@ private struct PPAlertSurface: View {
                     .contentShape(Rectangle())
                     .onTapGesture { cancelIfAllowed() }
                     .accessibilityHidden(true)
-                decisionSurface(padding: margin)
+                decisionSurface(padding: margin, availableHeight: max(0, geometry.size.height - margin * 2))
                     .frame(maxWidth: wide ? 520 : 440)
                     .frame(maxHeight: max(0, geometry.size.height - margin * 2),
                            alignment: wide ? .center : .bottom)
@@ -424,7 +429,8 @@ private struct PPAlertSurface: View {
                 else if request.isInput { inputFocused = true }
             } else { inputFocused = false }
         }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name(PPLanguageDidChangeNotification))) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name(PPLanguageDidChangeNotification))
+            .receive(on: RunLoop.main)) { _ in
             request.languageCode = Language.currentLanguageCode()
         }
         .onChange(of: request.isFinishing) { _, finishing in
@@ -433,16 +439,27 @@ private struct PPAlertSurface: View {
         .onDisappear { inputFocused = false }
     }
 
-    private func decisionSurface(padding: CGFloat) -> some View {
-        ViewThatFits(in: .vertical) {
-            content(padding: padding)
-                .fixedSize(horizontal: false, vertical: true)
+    private func decisionSurface(padding: CGFloat, availableHeight: CGFloat) -> some View {
+        // One input instance remains mounted when the keyboard, AX size, or
+        // orientation changes. Measuring its content avoids swapping focused
+        // TextFields between separate fitting/scrolling candidates.
+        ScrollViewReader { scroll in
             ScrollView(.vertical) {
                 content(padding: padding)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                        contentHeight = height
+                    }
             }
             .scrollBounceBehavior(.basedOnSize)
             .scrollDismissesKeyboard(.interactively)
+            .onChange(of: inputFocused) { _, focused in
+                if focused { scroll.scrollTo("pp.alert.input", anchor: .center) }
+            }
+            .onChange(of: availableHeight) { _, _ in
+                if inputFocused { scroll.scrollTo("pp.alert.input", anchor: .center) }
+            }
         }
+        .frame(height: min(contentHeight > 0 ? contentHeight : availableHeight, availableHeight))
         .background(Color(uiColor: .ppElevatedSurface))
         .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
         .overlay {
@@ -451,7 +468,7 @@ private struct PPAlertSurface: View {
                 .allowsHitTesting(false)
         }
         .shadow(color: Color(uiColor: .ppShadow).opacity(0.16), radius: 24, x: 0, y: 12)
-        .disabled(request.isFinishing)
+        .disabled(request.isFinishing || !request.isReady)
         .accessibilityIdentifier("pp.alert.surface")
     }
 
@@ -459,14 +476,14 @@ private struct PPAlertSurface: View {
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 20) {
                 statusSignature
-                    Text(verbatim: request.title.isEmpty ? request.semanticTitle : request.title)
-                        .font(PPBrandFont.bold(30, relativeTo: .title))
-                        .foregroundStyle(Color(uiColor: .ppTextPrimary))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityAddTraits(.isHeader)
-                        .accessibilityFocused($headingFocused)
+                Text(verbatim: request.title.isEmpty ? request.semanticTitle : request.title)
+                    .font(PPBrandFont.bold(30, relativeTo: .title))
+                    .foregroundStyle(Color(uiColor: .ppTextPrimary))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityFocused($headingFocused)
                 if !request.subtitle.isEmpty {
                     Text(verbatim: request.subtitle)
                         .font(PPBrandFont.regular(18, relativeTo: .body))
@@ -476,7 +493,7 @@ private struct PPAlertSurface: View {
                         .multilineTextAlignment(.leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                if request.isInput { inputSurface }
+                if request.isInput { inputSurface.id("pp.alert.input") }
             }
             Rectangle()
                 .fill(Color(uiColor: .ppSeparator))
@@ -502,12 +519,13 @@ private struct PPAlertSurface: View {
             .frame(width: 44, height: 44)
             .background(request.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .accessibilityHidden(true)
-            Text(verbatim: request.semanticTitle)
-                .font(PPBrandFont.medium(16, relativeTo: .subheadline))
-                .foregroundStyle(Color(uiColor: .ppTextPrimary))
-                .fixedSize(horizontal: false, vertical: true)
-                .multilineTextAlignment(.leading)
-                .accessibilityHidden(request.title.isEmpty)
+            if !request.title.isEmpty {
+                Text(verbatim: request.semanticTitle)
+                    .font(PPBrandFont.medium(16, relativeTo: .subheadline))
+                    .foregroundStyle(Color(uiColor: .ppTextPrimary))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(.leading)
+            }
             Spacer(minLength: 0)
         }
     }
@@ -524,7 +542,6 @@ private struct PPAlertSurface: View {
             Group {
                 if request.secureEntry {
                     SecureField("", text: $request.text)
-                        .textContentType(.password)
                 } else {
                     TextField("", text: $request.text)
                 }
@@ -588,6 +605,7 @@ private struct PPAlertSurface: View {
         }
         .buttonStyle(PPAlertButtonStyle(prominent: choice.isProminent, destructive: choice.isDestructive,
                                        reduceMotion: reduceMotion))
+        .hoverEffect(.highlight)
         .accessibilityIdentifier("pp.alert.action.\(choice.id)")
     }
 

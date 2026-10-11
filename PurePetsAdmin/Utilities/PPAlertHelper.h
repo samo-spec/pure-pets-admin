@@ -17,16 +17,20 @@ typedef void (^AlertCompletionBlock)(NSString * _Nullable text, BOOL didConfirm)
 typedef void (^PPAlertSimpleActionBlock)(void);
 @interface PPAlert : UIView
 
+/// UIKit-compatible adapter; construct directly on the main thread.
+/// PPAlertHelper conveniences also accept background-thread callers.
 - (instancetype)initWithType:(PPAlertType)type
                       title:(NSString *)title
                    subtitle:(NSString *)subtitle
-                       icon:(UIImage *)icon
+                       icon:(UIImage * _Nullable)icon
                 confirmTitle:(NSString * _Nullable)confirmTitle
                  cancelTitle:(NSString * _Nullable)cancelTitle
                confirmAction:(AlertCompletionBlock _Nullable)confirmAction
                 cancelAction:(void(^ _Nullable)(void))cancelAction;
 
-- (void)showInViewController:(UIViewController *)vc;
+/// Presentation is serialized per app window. Action callbacks run on main
+/// after dismissal; nil resolves the sole focused foreground app window.
+- (void)showInViewController:(UIViewController * _Nullable)vc;
  
 @end
 

@@ -1323,7 +1323,7 @@ struct AdminProformaInvoicesView: View {
                     if success {
                         self.showToast(Language.get("Proforma_Cancel_SuccessTitle", alter: "تم إلغاء الفاتورة المبدئية"))
                     } else if let error = self.store.error {
-                        PPAlertHelper.showError(in: nil, title: Language.get("Error", alter: "خطأ"), subtitle: error)
+                        await PPAlertHelper.showError(in: nil, title: Language.get("Error", alter: "خطأ"), subtitle: error)
                     }
                 }
             },
@@ -3503,7 +3503,7 @@ struct ProformaConversionSheet: View {
                 }
             }
         } else if let err = store.error {
-            PPAlertHelper.showError(in: nil, title: Language.get("Error", alter: "خطأ"), subtitle: err)
+            await PPAlertHelper.showError(in: nil, title: Language.get("Error", alter: "خطأ"), subtitle: err)
         }
     }
 }
@@ -3686,7 +3686,7 @@ struct ProformaCancelConfirmationSheet: View {
                         dismiss()
                         onSuccess()
                     } else if let error = store.error {
-                        PPAlertHelper.showError(in: nil, title: Language.get("Error", alter: "خطأ"), subtitle: error)
+                        await PPAlertHelper.showError(in: nil, title: Language.get("Error", alter: "خطأ"), subtitle: error)
                     }
                 }
             },

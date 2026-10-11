@@ -5562,7 +5562,6 @@ private struct POSSlideToSaleButton: View {
 
     private func invalidateIntent() {
         if dragIntent != nil { dragWasInvalidated = true }
-        showsConfirmation = false
         confirmationIntent = nil
         withAnimation(settleAnimation) { dragOffset = 0 }
     }

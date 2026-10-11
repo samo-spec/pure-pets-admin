@@ -3339,6 +3339,29 @@ private struct CommandPOSDeck: View {
         .accessibilityIdentifier("home.pos.section")
     }
 
+    private var posAccessBadge: some View {
+        HStack(spacing: 3.5) {
+            Image(systemName: telemetryStore.canSell ? "checkmark.circle.fill" : (telemetryStore.canView ? "eye.fill" : "lock.fill"))
+                .font(.system(size: 9.5, weight: .bold))
+                .foregroundStyle(telemetryStore.canSell ? Color(uiColor: .ppSuccess) : AdminSurface.secondaryText)
+
+            Text(accessTitle)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(
+                    telemetryStore.canSell
+                        ? (colorScheme == .dark ? Color(uiColor: .ppSuccess) : AdminSurface.primaryText)
+                        : AdminSurface.secondaryText
+                )
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 2.5)
+        .background(
+            (telemetryStore.canSell ? Color(uiColor: .ppSuccess) : AdminSurface.primaryText)
+                .opacity(colorScheme == .dark ? 0.16 : 0.08),
+            in: Capsule(style: .continuous)
+        )
+    }
+
     private var registerActions: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
@@ -3346,40 +3369,104 @@ private struct CommandPOSDeck: View {
                 telemetryStore.markNeedsReloadOnAppearance()
                 onRoute("pos")
             } label: {
-                VStack(alignment: .leading, spacing: 20) {
-                    HStack(alignment: .center, spacing: 12) {
-                        if !dynamicTypeSize.isAccessibilitySize {
-                            Image(systemName: "barcode.viewfinder")
-                                .font(.system(size: 27, weight: .medium))
-                                .foregroundStyle(AdminSurface.primaryText)
-                                .frame(width: 52, height: 52)
-                                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
-                                .accessibilityHidden(true)
+                Group {
+                    if dynamicTypeSize.isAccessibilitySize {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(alignment: .center, spacing: 8) {
+                                Text(CommandPOSHomeCopy.text(telemetryStore.canSell ? "StartSale" : "Browse"))
+                                    .font(AdminType.headlineBold)
+                                    .foregroundStyle(AdminSurface.primaryText)
+                                Spacer(minLength: 0)
+                                posAccessBadge
+                            }
+                            Text(CommandPOSHomeCopy.text(telemetryStore.canSell ? "SaleDetail" : "BrowseDetail"))
+                                .font(AdminType.caption)
+                                .foregroundStyle(AdminSurface.secondaryText)
                         }
-                        Label(accessTitle, systemImage: telemetryStore.canSell ? "checkmark.circle" : "eye")
-                            .font(AdminType.footnoteBold)
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 0)
-                        Image(systemName: arrow)
-                            .font(.system(size: 19, weight: .semibold))
-                            .foregroundStyle(AdminSurface.primaryText)
+                    } else {
+                        HStack(alignment: .center, spacing: 12) {
+                            ZStack(alignment: .bottomTrailing) {
+                                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
+                                    .fill(AdminSurface.surface)
+                                    .frame(width: 44, height: 44)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
+                                            .strokeBorder(
+                                                AdminSurface.hairline.opacity(colorScheme == .dark ? 0.45 : 0.85),
+                                                lineWidth: contrast == .increased ? 1.5 : 1
+                                            )
+                                    )
+                                    .shadow(
+                                        color: Color.black.opacity(colorScheme == .dark ? 0.28 : 0.04),
+                                        radius: 3,
+                                        x: 0,
+                                        y: 1.5
+                                    )
+
+                                Image(systemName: "barcode.viewfinder")
+                                    .font(.system(size: 20, weight: .semibold))
+                                    .foregroundStyle(AdminSurface.primaryText)
+                                    .frame(width: 44, height: 44)
+
+                                if telemetryStore.canSell {
+                                    Circle()
+                                        .fill(Color(uiColor: .ppSuccess))
+                                        .frame(width: 8, height: 8)
+                                        .overlay(
+                                            Circle()
+                                                .stroke(AdminSurface.surface, lineWidth: 1.5)
+                                        )
+                                        .offset(x: 1, y: 1)
+                                }
+                            }
                             .accessibilityHidden(true)
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack(alignment: .center, spacing: 8) {
+                                    Text(CommandPOSHomeCopy.text(telemetryStore.canSell ? "StartSale" : "Browse"))
+                                        .font(AdminType.headlineBold)
+                                        .foregroundStyle(AdminSurface.primaryText)
+                                        .fixedSize(horizontal: false, vertical: true)
+
+                                    posAccessBadge
+                                }
+
+                                Text(CommandPOSHomeCopy.text(telemetryStore.canSell ? "SaleDetail" : "BrowseDetail"))
+                                    .font(AdminType.caption)
+                                    .foregroundStyle(AdminSurface.secondaryText)
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
+                            Spacer(minLength: 4)
+
+                            ZStack {
+                                Circle()
+                                    .fill(AdminSurface.primary.opacity(colorScheme == .dark ? 0.12 : 0.06))
+                                    .frame(width: 28, height: 28)
+
+                                Image(systemName: arrow)
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(AdminSurface.primaryText)
+                            }
+                            .accessibilityHidden(true)
+                        }
                     }
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(CommandPOSHomeCopy.text(telemetryStore.canSell ? "StartSale" : "Browse"))
-                            .font(AdminType.title)
-                            .foregroundStyle(AdminSurface.primaryText)
-                        Text(CommandPOSHomeCopy.text(telemetryStore.canSell ? "SaleDetail" : "BrowseDetail"))
-                            .font(AdminType.callout)
-                            .foregroundStyle(AdminSurface.secondaryText)
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(20)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(AdminSurface.primary.opacity(colorScheme == .dark ? 0.14 : 0.065),
-                            in: RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
+                .background(
+                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.14 : 0.065),
+                    in: RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
+                        .strokeBorder(
+                            AdminSurface.primary.opacity(colorScheme == .dark ? 0.18 : 0.09),
+                            lineWidth: contrast == .increased ? 1.5 : 1
+                        )
+                }
                 .contentShape(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
             }
             .buttonStyle(CommandPOSHomePressStyle())
