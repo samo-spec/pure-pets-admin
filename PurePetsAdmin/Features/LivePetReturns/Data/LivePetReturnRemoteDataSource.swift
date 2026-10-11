@@ -48,6 +48,7 @@ public final class LivePetReturnRemoteDataSource: @unchecked Sendable {
         let rawItems = (data["items"] as? [[String: Any]]) ?? []
         let transactionDiscount = (data["discount"] as? Double) ?? 0.0
         let transactionSubtotal = (data["subtotal"] as? Double) ?? 0.0
+        let isConvertedProforma = !((data["proformaInvoiceId"] as? String) ?? "").isEmpty
 
         // Also check if any existing return cases exist for this transaction to mark already-returned units
         let existingCases = try await fetchExistingReturnCases(transactionId: trimmedId)
@@ -66,6 +67,7 @@ public final class LivePetReturnRemoteDataSource: @unchecked Sendable {
             let ringTag: String
             let unitPriceMinor: Int64
             let allocatedDiscountMinor: Int64
+            let netPaidMinor: Int64
             let alreadyReturned: Bool
             let isFinanciallyRefunded: Bool
             let existingCaseId: String?
@@ -87,6 +89,9 @@ public final class LivePetReturnRemoteDataSource: @unchecked Sendable {
 
             let productName = (rawItem["name"] as? String) ?? ""
             let baseItemPrice = (rawItem["unitPrice"] as? Double) ?? (rawItem["price"] as? Double) ?? 0.0
+            let capturedAllocations = isConvertedProforma
+                ? try Self.capturedProformaUnitAllocations(rawItem, unitIds: unitIds)
+                : [:]
 
             var priceByUnitId: [String: Double] = [:]
             for entry in unitPricesRaw {
@@ -98,10 +103,13 @@ public final class LivePetReturnRemoteDataSource: @unchecked Sendable {
             for (idx, uId) in unitIds.enumerated() {
                 let ringTag = idx < unitRingTags.count ? unitRingTags[idx] : uId
                 let unitPrice = priceByUnitId[uId] ?? baseItemPrice
-                let unitPriceMinor = Int64(round(unitPrice * 100.0))
+                let captured = capturedAllocations[uId]
+                let unitPriceMinor = captured?.grossMinor ?? Int64(round(unitPrice * 100.0))
 
                 let allocatedDiscountMinor: Int64
-                if transactionSubtotal > 0 && transactionDiscount > 0 {
+                if let captured {
+                    allocatedDiscountMinor = captured.discountMinor
+                } else if transactionSubtotal > 0 && transactionDiscount > 0 {
                     let proportion = unitPrice / transactionSubtotal
                     allocatedDiscountMinor = Int64(round(proportion * transactionDiscount * 100.0))
                 } else {
@@ -119,6 +127,7 @@ public final class LivePetReturnRemoteDataSource: @unchecked Sendable {
                     ringTag: ringTag,
                     unitPriceMinor: unitPriceMinor,
                     allocatedDiscountMinor: allocatedDiscountMinor,
+                    netPaidMinor: captured?.paidMinor ?? max(0, unitPriceMinor - allocatedDiscountMinor),
                     alreadyReturned: alreadyReturned,
                     isFinanciallyRefunded: isFinanciallyRefunded,
                     existingCaseId: existingCaseInfo?.caseId,
@@ -178,7 +187,7 @@ public final class LivePetReturnRemoteDataSource: @unchecked Sendable {
                 ((meta?.status?.uppercased() == "SOLD") && meta?.saleTransactionId == trimmedId)
             // Financial reversal never proves physical receipt. Only canonical custody/state does.
             let unitAlreadyReturned = lookup.alreadyReturned || !isStillOriginalSale
-            let netPaidMinor = max(0, lookup.unitPriceMinor - lookup.allocatedDiscountMinor)
+            let netPaidMinor = lookup.netPaidMinor
             let returnUnit = LivePetReturnUnit(
                 unitId: lookup.unitId,
                 productId: lookup.productId,
@@ -190,6 +199,7 @@ public final class LivePetReturnRemoteDataSource: @unchecked Sendable {
                 originalSaleTransactionId: trimmedId,
                 originalSalePriceMinor: lookup.unitPriceMinor,
                 allocatedDiscountMinor: lookup.allocatedDiscountMinor,
+                netPaidMinor: netPaidMinor,
                 refundableRemainingMinor: lookup.isFinanciallyRefunded ? 0 : netPaidMinor,
                 refundAmountMinor: lookup.isFinanciallyRefunded ? 0 : netPaidMinor,
                 currency: (data["currency"] as? String) ?? "QAR",
@@ -207,6 +217,101 @@ public final class LivePetReturnRemoteDataSource: @unchecked Sendable {
         }
 
         return resultUnits
+    }
+
+    // MARK: - Captured Proforma Exact-Unit Refund Projection
+
+    private struct CapturedUnitAllocation {
+        let grossMinor: Int64
+        let discountMinor: Int64
+        let paidMinor: Int64
+    }
+
+    /// Mirrors Infra proformaCalculations.refundAllocation. Net and tax are
+    /// allocated independently; stable unit-ID order owns remainder cents.
+    /// These preview values never replace the callable's financial authority.
+    private static func capturedProformaUnitAllocations(
+        _ item: [String: Any], unitIds: [String]
+    ) throws -> [String: CapturedUnitAllocation] {
+        let rawPrices = (item["unitPrices"] as? [[String: Any]]) ?? []
+        guard !unitIds.isEmpty, Set(unitIds).count == unitIds.count, rawPrices.count == unitIds.count else {
+            throw capturedAllocationError()
+        }
+        var prices: [(id: String, minor: Int64)] = []
+        for raw in rawPrices {
+            guard let id = raw["unitId"] as? String, unitIds.contains(id),
+                  let price = capturedMinor(raw["unitPrice"], scale: 2) else {
+                throw capturedAllocationError()
+            }
+            prices.append((id, price))
+        }
+        // Infra validates these IDs as ASCII and uses code-unit lexical order.
+        prices.sort { $0.id < $1.id }
+        guard Set(prices.map { $0.id }).count == unitIds.count,
+              let gross = capturedMinor(item["lineSubtotalMinor"]),
+              let taxable = capturedMinor(item["taxableMinor"]),
+              let tax = capturedMinor(item["taxMinor"]),
+              let total = capturedMinor(item["totalMinor"]),
+              prices.reduce(Decimal.zero, { $0 + Decimal($1.minor) }) == Decimal(gross),
+              taxable <= gross, taxable + tax == total else {
+            throw capturedAllocationError()
+        }
+        let weights = prices.map { $0.minor }
+        let nets = try capturedShares(taxable, weights: weights)
+        let taxes = try capturedShares(tax, weights: weights)
+        return Dictionary(uniqueKeysWithValues: prices.indices.map { index in
+            (prices[index].id, CapturedUnitAllocation(
+                grossMinor: prices[index].minor,
+                discountMinor: prices[index].minor - nets[index],
+                paidMinor: nets[index] + taxes[index]
+            ))
+        })
+    }
+
+    /// Decimal intermediates avoid Int64 multiplication overflow and binary
+    /// price rounding. Captured amounts fit Infra's 99,999,999,999 minor limit.
+    private static func capturedMinor(_ raw: Any?, scale: Int = 0) -> Int64? {
+        let text: String
+        if let value = raw as? NSNumber { text = value.stringValue }
+        else if let value = raw as? String { text = value }
+        else { return nil }
+        guard let amount = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")), !amount.isNaN else { return nil }
+        var scaled = amount * (scale == 2 ? Decimal(100) : Decimal(1))
+        var integral = Decimal.zero
+        NSDecimalRound(&integral, &scaled, 0, .down)
+        guard scaled == integral, integral >= 0, integral <= Decimal(99_999_999_999 as Int64) else { return nil }
+        return NSDecimalNumber(decimal: integral).int64Value
+    }
+
+    private static func capturedShares(_ amount: Int64, weights: [Int64]) throws -> [Int64] {
+        let total = weights.reduce(Decimal.zero) { $0 + Decimal($1) }
+        guard total > 0 else {
+            guard amount == 0 else { throw capturedAllocationError() }
+            return weights.map { _ in 0 }
+        }
+        var shares: [Int64] = []
+        var remainders: [Decimal] = []
+        for weight in weights {
+            let numerator = Decimal(amount) * Decimal(weight)
+            var quotient = numerator / total
+            var integral = Decimal.zero
+            NSDecimalRound(&integral, &quotient, 0, .down)
+            shares.append(NSDecimalNumber(decimal: integral).int64Value)
+            remainders.append(numerator - integral * total)
+        }
+        let missing = amount - shares.reduce(0, +)
+        guard missing >= 0, missing <= Int64(weights.count) else { throw capturedAllocationError() }
+        let ranked = weights.indices.sorted {
+            remainders[$0] == remainders[$1] ? $0 < $1 : remainders[$0] > remainders[$1]
+        }
+        for index in ranked.prefix(Int(missing)) { shares[index] += 1 }
+        return shares
+    }
+
+    private static func capturedAllocationError() -> NSError {
+        NSError(domain: "LivePetReturn", code: 422, userInfo: [
+            NSLocalizedDescriptionKey: Language.get("Proforma_ReturnAllocationUnavailable", alter: nil)
+        ])
     }
 
     // MARK: - Existing Return Cases for Transaction

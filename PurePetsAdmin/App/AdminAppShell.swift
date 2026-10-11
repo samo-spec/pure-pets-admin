@@ -219,9 +219,9 @@ struct AdminAppShell: View {
                 .navigationBarBackButtonHidden(true)
                 .navigationBarHidden(true)
                 .toolbar(.hidden, for: .navigationBar)
-                // Delivery owns native insets, including its search keyboard.
+                // Delivery and the proforma document workspace retain native insets.
                 // Legacy route containers retain their existing edge ownership.
-                .ignoresSafeArea(edges: route == .delivery ? [] : .all)
+                .ignoresSafeArea(edges: route == .delivery || route == .proformaInvoices ? [] : .all)
         } else {
             EmptyView()
         }

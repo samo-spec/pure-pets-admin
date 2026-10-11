@@ -151,6 +151,7 @@ final class BranchEditorState: ObservableObject {
     @Published var stockMode: PPBranchStockMode
     @Published var isActive: Bool
     @Published var isDefault: Bool
+    @Published var isConsumerAppStock: Bool
 
     // Enterprise Metadata
     @Published var operatingHours: String
@@ -180,6 +181,7 @@ final class BranchEditorState: ObservableObject {
         _stockMode = Published(initialValue: branch?.stockMode ?? .perAgent)
         _isActive = Published(initialValue: branch?.isActive ?? true)
         _isDefault = Published(initialValue: branch?.isDefault ?? false)
+        _isConsumerAppStock = Published(initialValue: branch?.isConsumerAppStock ?? false)
 
         _operatingHours = Published(initialValue: branch?.operatingHours ?? "")
         _taxNumber = Published(initialValue: branch?.taxNumber ?? "")
@@ -295,6 +297,7 @@ final class BranchEditorState: ObservableObject {
             "stockMode": stockMode == .branch ? "branch" : "perAgent",
             "isActive": isActive,
             "isDefault": isDefault,
+            "isConsumerAppStock": isConsumerAppStock,
             "updatedAt": FieldValue.serverTimestamp()
         ]
 
@@ -317,18 +320,51 @@ final class BranchEditorState: ObservableObject {
 
         let ref = Firestore.firestore().collection(kPPBranchesCol).document(docID)
 
-        if isDefault {
+        if isDefault || isConsumerAppStock {
             let batch = Firestore.firestore().batch()
             batch.setData(payload, forDocument: ref, merge: true)
 
-            Firestore.firestore().collection(kPPBranchesCol).whereField("isDefault", isEqualTo: true).getDocuments { [weak self] snapshot, _ in
-                guard let self else { return }
-                if let docs = snapshot?.documents {
-                    for doc in docs where doc.documentID != docID {
-                        batch.updateData(["isDefault": false], forDocument: doc.reference)
+            if isConsumerAppStock {
+                let configRef = Firestore.firestore().collection("AppConfigCol").document("ConsumerStockConfig")
+                batch.setData([
+                    "activeConsumerBranchId": docID,
+                    "activeConsumerBranchCode": trimmedCode.isEmpty ? "PP-\(docID.prefix(6).uppercased())" : trimmedCode,
+                    "activeConsumerBranchNameAr": trimmedAr,
+                    "activeConsumerBranchNameEn": trimmedEn,
+                    "updatedAt": FieldValue.serverTimestamp(),
+                    "updatedBy": uid
+                ], forDocument: configRef, merge: true)
+            }
+
+            let group = DispatchGroup()
+
+            if isDefault {
+                group.enter()
+                Firestore.firestore().collection(kPPBranchesCol).whereField("isDefault", isEqualTo: true).getDocuments { snapshot, _ in
+                    if let docs = snapshot?.documents {
+                        for doc in docs where doc.documentID != docID {
+                            batch.updateData(["isDefault": false], forDocument: doc.reference)
+                        }
                     }
+                    group.leave()
                 }
-                batch.commit { error in
+            }
+
+            if isConsumerAppStock {
+                group.enter()
+                Firestore.firestore().collection(kPPBranchesCol).whereField("isConsumerAppStock", isEqualTo: true).getDocuments { snapshot, _ in
+                    if let docs = snapshot?.documents {
+                        for doc in docs where doc.documentID != docID {
+                            batch.updateData(["isConsumerAppStock": false], forDocument: doc.reference)
+                        }
+                    }
+                    group.leave()
+                }
+            }
+
+            group.notify(queue: .main) {
+                batch.commit { [weak self] error in
+                    guard let self else { return }
                     DispatchQueue.main.async {
                         self.isSaving = false
                         if let error {
@@ -377,6 +413,7 @@ final class BranchEditorState: ObservableObject {
             "adminUid": uid,
             "stockMode": stockMode == .branch ? "branch" : "perAgent",
             "isDefault": isDefault,
+            "isConsumerAppStock": isConsumerAppStock,
             "isActive": isActive,
             "timestamp": FieldValue.serverTimestamp()
         ])
@@ -800,6 +837,25 @@ struct PPBranchEditorPadView: View {
                         .padding(.vertical, 3)
                         .background(Color(uiColor: .ppWarning).opacity(0.15), in: Capsule())
                     }
+
+                    if state.isConsumerAppStock {
+                        HStack(spacing: 4) {
+                            Image(systemName: "iphone")
+                            Text(Language.get("Branches_UserAppStock_Badge", alter: "تطبيق العملاء"))
+                        }
+                        .font(AdminType.caption2Bold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(
+                            LinearGradient(
+                                colors: [AdminSurface.primary, Color(uiColor: .ppAccent)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            in: Capsule()
+                        )
+                    }
                 }
 
                 Text(state.effectiveDisplayName)
@@ -1139,6 +1195,12 @@ struct BranchHeroIdentityCard: View {
                                 .font(AdminType.caption1)
                                 .foregroundColor(Color(uiColor: .ppWarning))
                         }
+
+                        if state.isConsumerAppStock {
+                            Image(systemName: "iphone.badge.play")
+                                .font(AdminType.caption1)
+                                .foregroundColor(AdminSurface.primary)
+                        }
                     }
 
                     Text(state.effectiveSubtitle)
@@ -1336,6 +1398,33 @@ struct BranchOperationalTogglesCard: View {
                         }
                     }
                     .tint(Color(uiColor: .ppWarning))
+
+                    Divider()
+
+                    // Consumer App Stock Toggle
+                    Toggle(isOn: $state.isConsumerAppStock) {
+                        HStack(spacing: 10) {
+                            ZStack {
+                                Circle()
+                                    .fill(AdminSurface.primary.opacity(0.15))
+                                    .frame(width: 36, height: 36)
+                                Image(systemName: "iphone.badge.play")
+                                    .font(AdminType.caption1)
+                                    .foregroundColor(AdminSurface.primary)
+                            }
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(Language.get("Branches_UserAppStock_Label", alter: "اعتماد مخزون الفرع لتطبيق المستخدمين"))
+                                    .font(AdminType.bodyBold)
+                                    .foregroundColor(AdminSurface.primaryText)
+
+                                Text(Language.get("Branches_UserAppStock_Help", alter: "يحدد مخزون هذا الفرع كمصدر المنتجات المعروضة والمباعة عبر تطبيق iOS"))
+                                    .font(AdminType.caption1)
+                                    .foregroundColor(AdminSurface.secondaryText)
+                            }
+                        }
+                    }
+                    .tint(AdminSurface.primary)
                 }
                 .padding(AdminSpacing.cardPadding)
             }

@@ -1025,7 +1025,13 @@ private struct POSSubmitFailure: Sendable {
 
     init(error: Error) {
         let nsError = error as NSError
-        let details = PPPOSService.exactUnitConflictDetails(forError: error)
+        var details = PPPOSService.exactUnitConflictDetails(forError: error)
+        if details.isEmpty {
+            if let dict = (nsError.userInfo["details"] as? [String: Any]) ??
+                          (nsError.userInfo["FIRFunctionsErrorDetailsKey"] as? [String: Any]) {
+                details = dict
+            }
+        }
         productID = (details["productId"] as? String) ?? ""
         productName = (details["productName"] as? String) ?? ""
         unitID = (details["unitId"] as? String) ?? ""
@@ -1047,7 +1053,11 @@ private struct POSSubmitFailure: Sendable {
         } else {
             authoritativePrice = nil
         }
-        isFunctionsError = nsError.domain == FunctionsErrorDomain || nsError.domain == "com.firebase.functions"
+        let domainStr = nsError.domain as String
+        isFunctionsError = domainStr == FunctionsErrorDomain ||
+                           domainStr == "com.firebase.functions" ||
+                           domainStr == "FIRFunctionsErrorDomain" ||
+                           domainStr.contains("Functions")
     }
 
     /// `functionsCode` is only meaningful for a Cloud Functions error. Without
@@ -1061,11 +1071,15 @@ private struct POSSubmitFailure: Sendable {
     /// internal error — leaves the outcome genuinely unknown.
     var isDefinitiveRejection: Bool {
         if !domainCode.isEmpty { return true }
-        guard isFunctionsError else { return false }
+        guard isFunctionsError else {
+            let c = functionsCode
+            return c == 400 || c == 403 || c == 404 || c == 409 || c == 422
+        }
         switch functionsCode {
-        // invalid-argument, not-found, permission-denied, failed-precondition,
-        // already-exists, unauthenticated.
-        case 3, 5, 6, 7, 9, 16:
+        // invalid-argument (3), not-found (5), already-exists (6),
+        // permission-denied (7), failed-precondition (9), aborted (10),
+        // out-of-range (11), unauthenticated (16).
+        case 3, 5, 6, 7, 9, 10, 11, 16:
             return true
         default:
             return false
@@ -1407,6 +1421,7 @@ final class POSFastSellViewModel: ObservableObject {
     @Published private(set) var allAccessories: [PetAccessory] = []
     @Published private(set) var cartItems: [POSCartItem] = []
     private var branchInventoryCancellable: AnyCancellable?
+    private var branchChangeCancellable: AnyCancellable?
 
     init() {
         branchInventoryCancellable = PPBranchInventoryService.shared.$inventoryMap
@@ -1415,6 +1430,15 @@ final class POSFastSellViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
+            }
+
+        branchChangeCancellable = BranchContextStore.shared.$activeBranch
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self = self else { return }
+                self.invalidateSubmissionCommand()
+                self.objectWillChange.send()
             }
     }
     @Published private(set) var selectedPaymentMethod: String = "cash"
@@ -1467,27 +1491,18 @@ final class POSFastSellViewModel: ObservableObject {
     }
 
     var canSellWholesale: Bool {
-        // 1. Official Platform Root & SuperAdmin/Admin User Session (never lock out the top-most root UID)
-        if let currentUid = Auth.auth().currentUser?.uid, currentUid == "PUIDPOFFICILAL20262214" {
-            return true
-        }
-        if let currentUser = UserManager.shared().currentUser, currentUser.isSuperAdmin || currentUser.isAdmin {
-            return true
-        }
+        guard let currentUID = Auth.auth().currentUser?.uid,
+              let staff = PPStaffAuth.shared().cachedCurrentStaff,
+              staff.uid == currentUID, staff.isActive() else { return false }
 
-        // 2. Canonical staff_users profile evaluation
-        guard let staff = PPStaffAuth.shared().cachedCurrentStaff else {
-            // Cold cache / snapshot still loading: fail open to avoid locking out a permitted cashier,
-            // identical to `isSaleExplicitlyDenied` behavior (the Cloud Function enforces the boundary).
-            return true
-        }
-
-        if staff.uid == "PUIDPOFFICILAL20262214" || staff.role == .superAdmin || staff.role == .owner || staff.isAdmin() || PPStaffAuth.isAdminRole(staff.role) {
-            return true
-        }
-
-        // 3. Permission check (pos.sell.wholesale or pos.sell)
-        return staff.hasPermission("pos.sell.wholesale") || staff.hasPermission("pos.sell")
+        // Infra grants inherited legacy authority only to the canonical root
+        // role. Enforced projections and ordinary staff need the explicit
+        // wholesale permission; retail selling authority never implies it.
+        let mode = staff.authorizationMode?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "legacy"
+        guard ["legacy", "shadow", "prepared", "enforced"].contains(mode) else { return false }
+        if staff.role == .superAdmin, mode != "enforced" { return true }
+        return staff.explicitPermissions.contains("pos.sell") &&
+            staff.explicitPermissions.contains("pos.sell.wholesale")
     }
 
     /// `true` only when the canonical `staff_users` record is loaded and
@@ -2317,6 +2332,13 @@ final class POSFastSellViewModel: ObservableObject {
     }
 
     private func localizedSubmitFailure(_ failure: POSSubmitFailure) -> String {
+        // Internal, timeout and transport failures can arrive after commit.
+        // Preserve that uncertainty in the operator's recovery instruction,
+        // matching the retained command key and durable pending record.
+        guard failure.isDefinitiveRejection else {
+            return Language.get("POS_SubmitOutcomeUnknown", alter: nil)
+        }
+
         switch failure.domainCode {
         case "POS_INSUFFICIENT_BRANCH_STOCK":
             return Language.get(
@@ -2374,6 +2396,16 @@ final class POSFastSellViewModel: ObservableObject {
                 "POS_QuantityGroupUnavailable",
                 alter: "وحدة البيع المحددة لم تعد متاحة. حدّث قائمة المنتجات ثم أعد المحاولة."
             )
+        case "COMMERCE_PRODUCT_UNAVAILABLE", "COMMERCE_PRODUCT_DELETED", "VARIANT_INACTIVE", "POS_PRODUCT_INACTIVE":
+            return Language.get(
+                "POS_ProductUnavailableOrDeleted",
+                alter: "أحد الأصناف في السلة لم يعد متاحاً للبيع أو تم حذفه من النظام. حدّث قائمة المنتجات وأعد الاختيار."
+            )
+        case "PRODUCT_EXPIRED", "INVENTORY_PRODUCT_EXPIRED", "POS_PRODUCT_EXPIRED":
+            return Language.get(
+                "POS_ProductExpired",
+                alter: "أحد الأصناف في السلة منتهي الصلاحية ولا يمكن بيعه. راجع تواريخ الصلاحية."
+            )
         default:
             break
         }
@@ -2388,9 +2420,27 @@ final class POSFastSellViewModel: ObservableObject {
         // Only a Cloud Functions error carries these codes. Reading them off a
         // transport or service-layer error would show the wrong recovery step.
         guard failure.isFunctionsError else {
+            if !failure.serverMessage.isEmpty && !failure.serverMessage.contains("The operation couldn") {
+                return failure.serverMessage
+            }
             return Language.get("POS_SubmitFailed", alter: "تعذر إتمام عملية البيع. حاول مرة أخرى.")
         }
         switch failure.functionsCode {
+        case 3:
+            // invalid-argument
+            if !failure.serverMessage.isEmpty && !failure.serverMessage.hasPrefix("3 ") && !failure.serverMessage.contains("INVALID_ARGUMENT") {
+                return failure.serverMessage
+            }
+            return Language.get(
+                "POS_CheckoutInvalidArgument",
+                alter: "بيانات عملية البيع غير متوافقة أو بها نقص. تحقق من الأصناف والكميات."
+            )
+        case 5:
+            // not-found
+            return Language.get(
+                "POS_ProductUnavailable",
+                alter: "لم يعد أحد عناصر السلة متاحًا. حدّث المنتجات وأعد اختيار العنصر."
+            )
         case 6:
             // already-exists: a sale is already stored under this command key
             // with a different payload, so this attempt did not commit but an
@@ -2410,6 +2460,45 @@ final class POSFastSellViewModel: ObservableObject {
                 "POS_CheckoutPermissionDenied",
                 alter: "ليست لديك صلاحية إتمام البيع في هذا الفرع. اختر فرعًا مسموحًا أو اطلب الصلاحية."
             )
+        case 9:
+            // failed-precondition
+            if message.contains("branch stock") || message.contains("مخزون الفرع") {
+                return Language.get(
+                    "POS_BranchStockUnavailable",
+                    alter: "مخزون الفرع غير كافٍ أو لم تتم مزامنته بعد. حدّث المخزون أو اختر فرعًا آخر ثم أعد المحاولة."
+                )
+            }
+            if message.contains("insufficient stock") || message.contains("stock") || message.contains("مخزون") {
+                return Language.get(
+                    "POS_StockChanged",
+                    alter: "تغيّرت الكمية المتاحة لهذا العنصر. حدّث المنتجات ثم أعد المحاولة."
+                )
+            }
+            if message.contains("expired") || message.contains("صلاحية") {
+                return Language.get(
+                    "POS_ProductExpired",
+                    alter: "أحد الأصناف في السلة منتهي الصلاحية ولا يمكن بيعه. راجع تواريخ الصلاحية."
+                )
+            }
+            if message.contains("cash") || message.contains("نقد") {
+                return Language.get(
+                    "POS_InsufficientCashReceived",
+                    alter: "المبلغ النقدي المستلم أقل من إجمالي الفاتورة."
+                )
+            }
+            if !failure.serverMessage.isEmpty && !failure.serverMessage.hasPrefix("9 ") && !failure.serverMessage.contains("FAILED_PRECONDITION") {
+                return failure.serverMessage
+            }
+            return Language.get(
+                "POS_PreconditionFailed",
+                alter: "تعذر إتمام العملية بسبب عدم توفر المخزون أو متطلبات الفاتورة. راجع بيانات السلة."
+            )
+        case 10:
+            // aborted
+            return Language.get(
+                "POS_CheckoutAborted",
+                alter: "حدث تعارض أثناء معالجة العملية في الخادم. يرجى إعادة المحاولة."
+            )
         case 14:
             return Language.get(
                 "POS_CheckoutNetworkUnavailable",
@@ -2421,6 +2510,9 @@ final class POSFastSellViewModel: ObservableObject {
                 alter: "انتهت جلسة تسجيل الدخول. سجّل الدخول مجددًا ثم أعد المحاولة."
             )
         default:
+            if !failure.serverMessage.isEmpty && !failure.serverMessage.contains("INTERNAL") && !failure.serverMessage.contains("UNKNOWN") {
+                return failure.serverMessage
+            }
             return Language.get("POS_SubmitFailed", alter: "تعذر إتمام عملية البيع. حاول مرة أخرى.")
         }
     }
@@ -5222,7 +5314,6 @@ private struct POSSlideToSaleButton: View {
     @State private var dragIntent: SaleIntent?
     @State private var dragWasInvalidated = false
     @State private var isSubmissionPending = false
-    @State private var showsConfirmation = false
     @State private var confirmationIntent: SaleIntent?
 
     /// A gesture or confirmation belongs to the amount and state it began with.
@@ -5266,25 +5357,6 @@ private struct POSSlideToSaleButton: View {
                 slideControl
             }
         }
-        .confirmationDialog(
-            Language.get("POS_ConfirmSaleTitle", alter: "تأكيد البيع"),
-            isPresented: $showsConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button(completeSaleText) {
-                guard let intent = confirmationIntent else { return }
-                commitSale(intent: intent, completedOffset: 0)
-                confirmationIntent = nil
-            }
-            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {
-                confirmationIntent = nil
-            }
-        } message: {
-            Text(String(
-                format: Language.get("POS_ConfirmSaleAmount_FMT", alter: "إتمام البيع بمبلغ %@؟"),
-                confirmationIntent?.amount ?? totalAmountText
-            ))
-        }
         .onChange(of: totalAmountText) { _ in invalidateIntent() }
         .onChange(of: hasItems) { _ in invalidateIntent() }
         .onChange(of: layoutDirection) { _ in invalidateIntent() }
@@ -5315,8 +5387,9 @@ private struct POSSlideToSaleButton: View {
     private var confirmationButton: some View {
         Button {
             guard canSubmit else { return }
-            confirmationIntent = currentIntent
-            showsConfirmation = true
+            let intent = currentIntent
+            confirmationIntent = intent
+            promptAccessibilitySaleConfirmation(intent: intent)
         } label: {
             HStack(alignment: .center, spacing: 14) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -5349,6 +5422,34 @@ private struct POSSlideToSaleButton: View {
         }
         .buttonStyle(.plain)
         .disabled(!canSubmit)
+    }
+
+    private func promptAccessibilitySaleConfirmation(intent: SaleIntent) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        let title = Language.get("POS_ConfirmSaleTitle", alter: "تأكيد البيع")
+        let message = String(
+            format: Language.get("POS_ConfirmSaleAmount_FMT", alter: "إتمام البيع بمبلغ %@؟"),
+            intent.amount
+        )
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: title,
+            subtitle: message,
+            confirmButton: completeSaleText,
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "checkmark.seal.fill"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else {
+                    self.confirmationIntent = nil
+                    return
+                }
+                self.commitSale(intent: intent, completedOffset: 0)
+                self.confirmationIntent = nil
+            },
+            cancelBlock: {
+                self.confirmationIntent = nil
+            }
+        )
     }
 
     private var slideControl: some View {

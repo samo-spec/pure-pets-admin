@@ -1643,6 +1643,7 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
         self.pp_commandOrbitController.view.userInteractionEnabled = YES;
         [self.view bringSubviewToFront:self.pp_commandOrbitController.view];
     }
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"AdminCommandCenterHomeDidAppearNotification" object:nil];
     if (self.pp_isCommandSpine) {
         return;
     }

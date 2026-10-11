@@ -7,12 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		86DBFB6A5CE3C0327FB937CD /* Features/POS/ProformaInvoicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3FB814CF9559A6CAA71C5E3 /* Features/POS/ProformaInvoicesView.swift */; };
-		80C8794ACA68F0A43EC54AD0 /* Features/POS/ProformaInvoiceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D28AB224FF48D53ACEE40039 /* Features/POS/ProformaInvoiceModels.swift */; };
-		170EBAAF9418ECB342DAED78 /* Features/POS/ProformaInvoiceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F5B587A120337C50D0BBAC2 /* Features/POS/ProformaInvoiceService.swift */; };
-		6AEED4E358248ED5428D0918 /* Features/POS/ProformaInvoiceDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = E298C470F4454FD94A710943 /* Features/POS/ProformaInvoiceDocument.swift */; };
+		0FA0F4A7616B40D6BEB51BEA /* PPAlertSwiftUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23C621F144EE4FDFBD3569A9 /* PPAlertSwiftUI.swift */; };
 		0E459C5F97C3462EBFC81034 /* Features/Providers/ProvidersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 174216D85CB0499686726B1E /* Features/Providers/ProvidersView.swift */; };
 		164CA91FA82D4B09B2BECE92 /* Features/Payments/PaymentDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B1FB3466EFD4302802B480D /* Features/Payments/PaymentDetailView.swift */; };
+		170EBAAF9418ECB342DAED78 /* Features/POS/ProformaInvoiceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F5B587A120337C50D0BBAC2 /* Features/POS/ProformaInvoiceService.swift */; };
 		1A501138C31C4AB198EC2143 /* Features/More/NotificationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4625C65E1CE495C9DE824C0 /* Features/More/NotificationsView.swift */; };
 		1AB1D8CA3A6342C1930B5817 /* App/AdminSpacing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A60804E52A24E6D85A922EC /* App/AdminSpacing.swift */; };
 		2260E2338E45DC3B89B24190 /* QBVideoIndicatorView.m in Sources */ = {isa = PBXBuildFile; fileRef = 294016D134F03A5C420FA7F3 /* QBVideoIndicatorView.m */; };
@@ -31,14 +29,17 @@
 		643F43D0DC3447FB834531FE /* Features/Inventory/InventoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3305C321078444DA3DF3D16 /* Features/Inventory/InventoryView.swift */; };
 		66213DB3EE11415A8153A6AA /* PPAddEditVetViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 2C97DB99BC4542DD8F31D494 /* PPAddEditVetViewController.m */; };
 		69B3BA40175D4AC2B16048A4 /* Features/Providers/AdminProviderAccountingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81B25BD5B8054D79BD8672B6 /* Features/Providers/AdminProviderAccountingView.swift */; };
+		6AEED4E358248ED5428D0918 /* Features/POS/ProformaInvoiceDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = E298C470F4454FD94A710943 /* Features/POS/ProformaInvoiceDocument.swift */; };
 		6C65E6AFB8534ED2B64E8AC0 /* PPVetManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 35927158F3DE4461BAA4F526 /* PPVetManager.m */; };
 		6E66355C629845A1A238D102 /* Features/POS/POSHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FBD3394272B482F8C2B898E /* Features/POS/POSHistoryView.swift */; };
 		77179C1043304FE69761CDBC /* PPPaymentManagementModels.m in Sources */ = {isa = PBXBuildFile; fileRef = 2386A136072F4716BF45E2BE /* PPPaymentManagementModels.m */; };
 		783A5E7AA010485BB961D6F6 /* Features/Operations/ModerationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24BFB2EE1EA34564A0AA48A2 /* Features/Operations/ModerationView.swift */; };
 		7B2B0A4587614F598546AF73 /* Features/Fulfillment/FulfillmentListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B1CA1A1E76443509AB78D14 /* Features/Fulfillment/FulfillmentListView.swift */; };
+		80C8794ACA68F0A43EC54AD0 /* Features/POS/ProformaInvoiceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D28AB224FF48D53ACEE40039 /* Features/POS/ProformaInvoiceModels.swift */; };
 		8173FC7D1C544D2C945552DD /* Features/More/AuditLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49E8B035587D46E78C90A618 /* Features/More/AuditLogView.swift */; };
 		856578A2515F4223930349C4 /* Features/Customers/UsersListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D509F65530B14AD38C2F4FB7 /* Features/Customers/UsersListView.swift */; };
 		86200C95A3CA4EA2AD869767 /* PPVetDetailViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = CEFE7BC8BF5E4D1DA7960E4A /* PPVetDetailViewController.m */; };
+		86DBFB6A5CE3C0327FB937CD /* Features/POS/ProformaInvoicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3FB814CF9559A6CAA71C5E3 /* Features/POS/ProformaInvoicesView.swift */; };
 		8B3EC4893F31BD779D1C4373 /* QBImagePickerController.m in Sources */ = {isa = PBXBuildFile; fileRef = 86ED84CAB52487E1E5197671 /* QBImagePickerController.m */; };
 		8D84A87ABF284DC5B78DA5AD /* Features/More/ListingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39AA9664DE0C4A44841DF0E5 /* Features/More/ListingsView.swift */; };
 		8D84A87ABF284DC5B78DA5AE /* Features/More/PPListingsCommandCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39AA9664DE0C4A44841DF0E6 /* Features/More/PPListingsCommandCenterView.swift */; };
@@ -420,10 +421,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		C3FB814CF9559A6CAA71C5E3 /* Features/POS/ProformaInvoicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/ProformaInvoicesView.swift; sourceTree = "<group>"; };
-		D28AB224FF48D53ACEE40039 /* Features/POS/ProformaInvoiceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/ProformaInvoiceModels.swift; sourceTree = "<group>"; };
-		7F5B587A120337C50D0BBAC2 /* Features/POS/ProformaInvoiceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/ProformaInvoiceService.swift; sourceTree = "<group>"; };
-		E298C470F4454FD94A710943 /* Features/POS/ProformaInvoiceDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/ProformaInvoiceDocument.swift; sourceTree = "<group>"; };
+		23C621F144EE4FDFBD3569A9 /* PPAlertSwiftUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPAlertSwiftUI.swift; sourceTree = "<group>"; };
 		037779E2FB6A43D1886C40F6 /* Features/Payments/PaymentSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Payments/PaymentSettingsView.swift; sourceTree = "<group>"; };
 		068FBBDA955D966F979652B5 /* QBVideoIconView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QBVideoIconView.m; sourceTree = "<group>"; };
 		"06EF09F7-BCB6-470D-A1D1-30D24BDBC726" /* PPListingsAdminViewController.m */ = {isa = PBXFileReference; explicitFileType = sourcecode.c.objc; fileEncoding = 4; name = PPListingsAdminViewController.m; path = CategoriesSection/PPListingsAdminViewController.m; sourceTree = "<group>"; };
@@ -476,6 +474,7 @@
 		7871FA36A67146949629E864 /* Features/More/AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/More/AccountView.swift; sourceTree = "<group>"; };
 		7A00759CF4579FBA409A2847 /* QBAssetsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QBAssetsViewController.m; sourceTree = "<group>"; };
 		7E5643B7071482941D64A720 /* QBCheckmarkView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBCheckmarkView.h; sourceTree = "<group>"; };
+		7F5B587A120337C50D0BBAC2 /* Features/POS/ProformaInvoiceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/ProformaInvoiceService.swift; sourceTree = "<group>"; };
 		81B25BD5B8054D79BD8672B6 /* Features/Providers/AdminProviderAccountingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Providers/AdminProviderAccountingView.swift; sourceTree = "<group>"; };
 		86ED84CAB52487E1E5197671 /* QBImagePickerController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QBImagePickerController.m; sourceTree = "<group>"; };
 		89D9BA66609441F18AB155D7 /* PPVetModel.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPVetModel.h; sourceTree = "<group>"; };
@@ -571,12 +570,14 @@
 		C1A000010000000000000102 /* PPAdminWebAppViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPAdminWebAppViewController.h; sourceTree = "<group>"; };
 		C1A000010000000000000103 /* PPAdminWebAppViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPAdminWebAppViewController.m; sourceTree = "<group>"; };
 		C1A000010000000000000104 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+		C3FB814CF9559A6CAA71C5E3 /* Features/POS/ProformaInvoicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/ProformaInvoicesView.swift; sourceTree = "<group>"; };
 		C537C8DF3ED9402BAAC1B22E /* App/AdminRouteBridges.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/AdminRouteBridges.swift; sourceTree = "<group>"; };
 		C67FD10A53834BD89FCDBB2D /* PPVetManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPVetManager.h; sourceTree = "<group>"; };
 		C8268E01E527FB23C2D72879 /* PPImageCollection.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPImageCollection.h; sourceTree = "<group>"; };
 		CD00877D6CBACF3A522F9088 /* PPImageCollectionRow.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPImageCollectionRow.m; sourceTree = "<group>"; };
 		CEFE7BC8BF5E4D1DA7960E4A /* PPVetDetailViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPVetDetailViewController.m; sourceTree = "<group>"; };
 		D12B4AC5DE1545E2883FAE15 /* Features/Delivery/DeliveryListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Delivery/DeliveryListView.swift; sourceTree = "<group>"; };
+		D28AB224FF48D53ACEE40039 /* Features/POS/ProformaInvoiceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/ProformaInvoiceModels.swift; sourceTree = "<group>"; };
 		D509F65530B14AD38C2F4FB7 /* Features/Customers/UsersListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Customers/UsersListView.swift; sourceTree = "<group>"; };
 		D70000012FA9000100D70001 /* Features/Pury/Models/PuryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Pury/Models/PuryModels.swift; sourceTree = "<group>"; };
 		D70000022FA9000100D70002 /* Features/Pury/Service/PuryAdminService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Pury/Service/PuryAdminService.swift; sourceTree = "<group>"; };
@@ -593,6 +594,7 @@
 		DE14AC5B600617327E026CDA /* QBImagePickerController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBImagePickerController.h; sourceTree = "<group>"; };
 		DF6A30E2669147BEB8C4CBC6 /* Shared/Components/AdminSharedComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/Components/AdminSharedComponents.swift; sourceTree = "<group>"; };
 		E052D77C53614E45BF9E1687 /* Features/More/SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/More/SettingsView.swift; sourceTree = "<group>"; };
+		E298C470F4454FD94A710943 /* Features/POS/ProformaInvoiceDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/ProformaInvoiceDocument.swift; sourceTree = "<group>"; };
 		E3B58C28B4FC29BF66823B12 /* QBVideoIconView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBVideoIconView.h; sourceTree = "<group>"; };
 		E6564A1528C24320B208A2D2 /* Features/Operations/BranchesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Operations/BranchesView.swift; sourceTree = "<group>"; };
 		EC26493C439637AD9C289661 /* Pods-PurePetsAdmin.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PurePetsAdmin.release.xcconfig"; path = "Target Support Files/Pods-PurePetsAdmin/Pods-PurePetsAdmin.release.xcconfig"; sourceTree = "<group>"; };
@@ -2147,6 +2149,7 @@
 			children = (
 				F2DFC95E303966C8009B75FF /* PPAlertHelper.h */,
 				F2DFC95F303966C8009B75FF /* PPAlertHelper.m */,
+				23C621F144EE4FDFBD3569A9 /* PPAlertSwiftUI.swift */,
 				F2DFC960303966C8009B75FF /* PPFileHelper.h */,
 				F2DFC961303966C8009B75FF /* PPFileHelper.m */,
 			);
@@ -2509,6 +2512,7 @@
 				F28AE1512E56AFEE007279F5 /* AdminDashboardViewController.m in Sources */,
 				C1A000010000000000000101 /* PPAdminWebAppViewController.m in Sources */,
 				F2DFC964303966C8009B75FF /* PPAlertHelper.m in Sources */,
+				0FA0F4A7616B40D6BEB51BEA /* PPAlertSwiftUI.swift in Sources */,
 				F2DFC965303966C8009B75FF /* PPFileHelper.m in Sources */,
 				77179C1043304FE69761CDBC /* PPPaymentManagementModels.m in Sources */,
 				425C070B41FB46F2A28B098B /* PPPaymentManagementService.m in Sources */,

@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import FirebaseAuth
 
 extension UIViewController {
     @discardableResult
@@ -297,14 +298,85 @@ extension UIViewController {
 }
 
 @objc public final class AdminProformaInvoicesHostingController: UIViewController {
+    private let sessionActivityIndicator = UIActivityIndicatorView(style: .large)
+    private var sessionRestoreGeneration = UUID()
+    private var isRestoringSession = false
+    private var hasInstalledProformaHost = false
+
+    public override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
+        super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
+        modalPresentationStyle = .fullScreen
+    }
+
+    public required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        modalPresentationStyle = .fullScreen
+    }
+
     public override func viewDidLoad() {
         super.viewDidLoad()
+        modalPresentationStyle = .fullScreen
         view.backgroundColor = .ppBackground
         hidesBottomBarWhenPushed = true
-        let session = AdminSession(source: PPAdminSessionSnapshot())
+        sessionActivityIndicator.translatesAutoresizingMaskIntoConstraints = false
+        sessionActivityIndicator.color = .ppPrimary
+        sessionActivityIndicator.accessibilityLabel = Language.get("Loading", alter: nil)
+        view.addSubview(sessionActivityIndicator)
+        NSLayoutConstraint.activate([
+            sessionActivityIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            sessionActivityIndicator.centerYAnchor.constraint(equalTo: view.centerYAnchor)
+        ])
+        restoreCanonicalSession()
+    }
+
+    private func restoreCanonicalSession() {
+        guard !isRestoringSession, !hasInstalledProformaHost else { return }
+        isRestoringSession = true
+        sessionActivityIndicator.startAnimating()
+        let generation = UUID()
+        sessionRestoreGeneration = generation
+
+        // The route factory has no session argument. Restore canonical staff authority
+        // before mounting the permission-gated document workspace.
+        PPAdminSessionBridge.restoreCurrentSession { [weak self] snapshot, error in
+            DispatchQueue.main.async {
+                guard let self, self.sessionRestoreGeneration == generation,
+                      !self.hasInstalledProformaHost else { return }
+                self.isRestoringSession = false
+                guard error == nil, let snapshot, !snapshot.uid.isEmpty,
+                      snapshot.uid == Auth.auth().currentUser?.uid else {
+                    self.presentSessionRestoreFailure(error)
+                    return
+                }
+                self.installProformaHost(session: AdminSession(source: snapshot))
+            }
+        }
+    }
+
+    private func installProformaHost(session: AdminSession) {
+        guard !hasInstalledProformaHost else { return }
+        hasInstalledProformaHost = true
+        sessionActivityIndicator.stopAnimating()
+        sessionActivityIndicator.removeFromSuperview()
         pp_embedSwiftUI(AdminProformaInvoicesView(session: session, onDismiss: { [weak self] in
             PPAdminNavigationFallback.popOrDismiss(from: self)
-        }))
+        }), respectsSafeArea: true)
+    }
+
+    private func presentSessionRestoreFailure(_ error: Error?) {
+        sessionActivityIndicator.stopAnimating()
+        let alert = UIAlertController(
+            title: Language.get("Proforma_Error_Title", alter: nil),
+            message: error?.localizedDescription ?? Language.get("Proforma_Error_Unauthenticated", alter: nil),
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: Language.get("Proforma_Retry", alter: nil), style: .default) { [weak self] _ in
+            self?.restoreCanonicalSession()
+        })
+        alert.addAction(UIAlertAction(title: Language.get("Proforma_Back", alter: nil), style: .cancel) { [weak self] _ in
+            PPAdminNavigationFallback.popOrDismiss(from: self)
+        })
+        present(alert, animated: true)
     }
 
     public override func viewWillAppear(_ animated: Bool) {
@@ -313,10 +385,6 @@ extension UIViewController {
         navigationController?.pp_enableSwipeToPop()
     }
 
-    public override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        navigationController?.pp_enableSwipeToPop()
-    }
 }
 
 @objc public final class AdminBranchesHostingController: UIViewController {

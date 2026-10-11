@@ -164,8 +164,9 @@ public final class ReturnUnitSelectionViewModel: ObservableObject {
     }
 
     public var canProceed: Bool {
-        !selectedUnitIds.isEmpty &&
-        maximumRefundMinor > 0 &&
+        let permitsPhysicalReturnWithoutReversal = financialResolution == .none || financialResolution == .manualSettlement
+        return !selectedUnitIds.isEmpty &&
+        (maximumRefundMinor > 0 || permitsPhysicalReturnWithoutReversal) &&
         (!customReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !selectedReasonPreset.isEmpty) &&
         isPartialRefundValid
     }

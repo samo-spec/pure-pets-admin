@@ -279,6 +279,11 @@ public final class AdminCommandOrbitHostingController: UIViewController {
         hostingController?.view.setNeedsLayout()
     }
 
+    public override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        NotificationCenter.default.post(name: NSNotification.Name("AdminCommandCenterHomeDidAppearNotification"), object: nil)
+    }
+
     public override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
         super.viewWillTransition(to: size, with: coordinator)
         coordinator.animate(alongsideTransition: { [weak self] _ in
@@ -658,6 +663,7 @@ struct AdminCommandCenterScreenView: View {
         .onAppear {
             refresh()
             triggerEntranceAnimation()
+            NotificationCenter.default.post(name: NSNotification.Name("AdminCommandCenterHomeDidAppearNotification"), object: nil)
         }
         .onChange(of: phase) { newPhase in
             if newPhase == .ready || newPhase == .allClear {
@@ -2931,6 +2937,7 @@ final class CommandPOSShiftTelemetryStore: ObservableObject {
     @Published private(set) var refundsCount: Int = 0
     @Published private(set) var lastFetchDate: Date? = nil
     @Published private(set) var isRefreshing: Bool = false
+    @Published var needsReloadOnNextAppearance: Bool = false
 
     private(set) var activeBranchID: String = ""
     private var activeFetchID: UUID?
@@ -3028,9 +3035,37 @@ final class CommandPOSShiftTelemetryStore: ObservableObject {
         fetchShiftTelemetry()
     }
 
+    func markNeedsReloadOnAppearance() {
+        needsReloadOnNextAppearance = true
+    }
+
+    func handleHomeAppearance() {
+        guard needsReloadOnNextAppearance else { return }
+        needsReloadOnNextAppearance = false
+        reload(forced: true)
+    }
+
+    func reload(forced: Bool = true) {
+        let branchID = BranchContextStore.shared.activeBranch?.branchID ?? activeBranchID
+        let trimmed = branchID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            activeBranchID = trimmed
+        }
+        if forced {
+            activeFetchID = nil
+        }
+        fetchShiftTelemetry()
+    }
+
+    func manualRefresh() {
+        guard !isRefreshing else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        reload(forced: true)
+    }
+
     func retry() {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        fetchShiftTelemetry()
+        reload(forced: true)
     }
 
     private func clearTelemetry() {
@@ -3191,13 +3226,60 @@ private struct CommandPOSDeck: View {
     private var hasFigures: Bool { hasBranch && telemetryStore.lastFetchDate != nil }
     private var arrow: String { Language.isRTL() ? "arrow.left" : "arrow.right" }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+    private var posHeaderView: some View {
+        HStack(alignment: .center, spacing: 12) {
             Text(CommandPOSHomeCopy.text("Title"))
                 .font(AdminType.title2)
                 .foregroundStyle(AdminSurface.primaryText)
                 .accessibilityAddTraits(.isHeader)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 8)
+
+            Button {
+                telemetryStore.manualRefresh()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 13, weight: .semibold))
+                        .rotationEffect(.degrees(telemetryStore.isRefreshing ? 360 : 0))
+                        .animation(
+                            telemetryStore.isRefreshing && !reduceMotion
+                                ? Animation.linear(duration: 0.9).repeatForever(autoreverses: false)
+                                : .default,
+                            value: telemetryStore.isRefreshing
+                        )
+                    if isRegular && !dynamicTypeSize.isAccessibilitySize {
+                        Text(CommandPOSHomeCopy.text("Refresh"))
+                            .font(AdminType.footnoteBold)
+                    }
+                }
+                .foregroundStyle(telemetryStore.isRefreshing ? AdminSurface.secondaryText : AdminSurface.primary)
+                .padding(.horizontal, isRegular ? 12 : 10)
+                .padding(.vertical, 7)
+                .frame(minHeight: 36)
+                .background(
+                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.12 : 0.08),
+                    in: Capsule()
+                )
+                .overlay(
+                    Capsule()
+                        .strokeBorder(AdminSurface.primary.opacity(0.18), lineWidth: 1)
+                )
+                .contentShape(Capsule())
+            }
+            .buttonStyle(CommandPOSHomePressStyle())
+            .disabled(telemetryStore.isRefreshing)
+            .accessibilityLabel(CommandPOSHomeCopy.text("Refresh"))
+            .accessibilityHint(Language.isRTL() ? "إعادة تحميل مبيعات الوردية الحالية" : "Reload current shift sales data")
+            .accessibilityIdentifier("home.pos.refreshButton")
+            .keyboardShortcut("r", modifiers: [.command, .shift])
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            posHeaderView
 
             VStack(alignment: .leading, spacing: 20) {
                 if usesColumns {
@@ -3234,9 +3316,21 @@ private struct CommandPOSDeck: View {
         }
         .onAppear {
             telemetryStore.updateBranch(branchID: branchStore.activeBranch?.branchID ?? "")
+            telemetryStore.handleHomeAppearance()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("AdminCommandCenterHomeDidAppearNotification")).receive(on: RunLoop.main)) { _ in
+            telemetryStore.handleHomeAppearance()
         }
         .onReceive(branchStore.$activeBranch) { branch in
             telemetryStore.updateBranch(branchID: branch?.branchID ?? "")
+        }
+        .onChange(of: showsQuickExpenseSheet) { isShowing in
+            if !isShowing {
+                telemetryStore.handleHomeAppearance()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("PPAccountingDataDidChangeNotification")).receive(on: RunLoop.main)) { _ in
+            telemetryStore.reload(forced: true)
         }
         .fullScreenCover(isPresented: $showsQuickExpenseSheet) {
             CommandPOSQuickExpenseSheet(currentBranchName: currentBranchName, onRoute: onRoute)
@@ -3249,6 +3343,7 @@ private struct CommandPOSDeck: View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                telemetryStore.markNeedsReloadOnAppearance()
                 onRoute("pos")
             } label: {
                 VStack(alignment: .leading, spacing: 20) {
@@ -3297,6 +3392,7 @@ private struct CommandPOSDeck: View {
             if isRegular {
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    telemetryStore.markNeedsReloadOnAppearance()
                     onRoute("pos")
                 } label: {
                     Label(CommandPOSHomeCopy.text("QuickScan"), systemImage: "viewfinder")
@@ -3327,6 +3423,7 @@ private struct CommandPOSDeck: View {
                                  detail: CommandPOSHomeCopy.text("ReceiptsDetail"),
                                  symbol: "doc.text.magnifyingglass", identifier: "home.pos.receipts",
                                  showsDetail: isRegular) {
+                telemetryStore.markNeedsReloadOnAppearance()
                 onRoute("posHistory")
             }
             .keyboardShortcut("h", modifiers: .command)
@@ -3336,6 +3433,7 @@ private struct CommandPOSDeck: View {
                                      detail: Language.get("Proforma_Subtitle", alter: nil),
                                      symbol: "doc.text", identifier: "home.pos.proforma",
                                      showsDetail: isRegular) {
+                    telemetryStore.markNeedsReloadOnAppearance()
                     onRoute("proformaInvoices")
                 }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
@@ -3345,6 +3443,7 @@ private struct CommandPOSDeck: View {
                                  detail: CommandPOSHomeCopy.text("ExpenseDetail"),
                                  symbol: "plus.circle", identifier: "home.pos.expense",
                                  showsDetail: isRegular) {
+                telemetryStore.markNeedsReloadOnAppearance()
                 showsQuickExpenseSheet = true
             }
             .keyboardShortcut("e", modifiers: .command)
@@ -3353,6 +3452,7 @@ private struct CommandPOSDeck: View {
                 CommandPOSHomeAction(title: CommandPOSHomeCopy.text("Wanted"),
                                      detail: CommandPOSHomeCopy.text("WantedDetail"),
                                      symbol: "pawprint", identifier: "pos.wantedPets.entry") {
+                    telemetryStore.markNeedsReloadOnAppearance()
                     onRoute("wantedPets")
                 }
                 .accessibilityHint(Language.get("WantedPets_POS_Entry_Hint", alter: ""))
@@ -3889,6 +3989,7 @@ private final class CommandPOSQuickExpensePresenter: ObservableObject {
                         self.showSuccessBanner = true
                     }
                     self.loadShiftTelemetry()
+                    NotificationCenter.default.post(name: Notification.Name("PPAccountingDataDidChangeNotification"), object: nil)
                     try? await Task.sleep(nanoseconds: 850_000_000)
                     guard !Task.isCancelled else { return }
                     self.onExpenseSuccess?()

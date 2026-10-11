@@ -332,6 +332,7 @@ static NSString *const kSwitchCellID = @"PPSwitchCell";
         self.draft[@"phone"] = self.branch.phone ?: @"";
         self.draft[@"code"] = self.branch.code ?: @"";
         self.draft[@"isDefault"] = @(self.branch.isDefault);
+        self.draft[@"isConsumerAppStock"] = @(self.branch.isConsumerAppStock);
         NSString *raw = [self.branch stockModeRawValue];
         self.selectedStockIndex = [raw isEqualToString:@"branch"] ? 0 : 1;
     } else {
@@ -341,6 +342,7 @@ static NSString *const kSwitchCellID = @"PPSwitchCell";
         self.draft[@"phone"] = @"";
         self.draft[@"code"] = [self generateCode];
         self.draft[@"isDefault"] = @(NO);
+        self.draft[@"isConsumerAppStock"] = @(NO);
         self.selectedStockIndex = 1;
     }
     self.draft[@"stockMode"] = self.stockModeValues[self.selectedStockIndex];
@@ -459,6 +461,9 @@ static NSString *const kSwitchCellID = @"PPSwitchCell";
     if (section == 2) {
         return self.selectedStockIndex == 0 ? kLang(@"Branches_Stock_Shared_Help") : kLang(@"Branches_Stock_Separate_Help");
     }
+    if (section == 3) {
+        return kLang(@"Branches_UserAppStock_Help");
+    }
     return nil;
 }
 
@@ -467,7 +472,7 @@ static NSString *const kSwitchCellID = @"PPSwitchCell";
         case 0: return 3;
         case 1: return 2;
         case 2: return 1;
-        case 3: return 1;
+        case 3: return 2;
         default: return 0;
     }
 }
@@ -489,9 +494,15 @@ static NSString *const kSwitchCellID = @"PPSwitchCell";
 
     if (indexPath.section == 3) {
         PPSwitchCell *cell = [tableView dequeueReusableCellWithIdentifier:kSwitchCellID forIndexPath:indexPath];
-        [cell configureWithTitle:kLang(@"Branches_Default_Label") on:[self.draft[@"isDefault"] boolValue]];
-        [cell.toggle removeTarget:nil action:NULL forControlEvents:UIControlEventValueChanged];
-        [cell.toggle addTarget:self action:@selector(defaultChanged:) forControlEvents:UIControlEventValueChanged];
+        if (indexPath.row == 0) {
+            [cell configureWithTitle:kLang(@"Branches_Default_Label") on:[self.draft[@"isDefault"] boolValue]];
+            [cell.toggle removeTarget:nil action:NULL forControlEvents:UIControlEventValueChanged];
+            [cell.toggle addTarget:self action:@selector(defaultChanged:) forControlEvents:UIControlEventValueChanged];
+        } else {
+            [cell configureWithTitle:kLang(@"Branches_UserAppStock_Label") on:[self.draft[@"isConsumerAppStock"] boolValue]];
+            [cell.toggle removeTarget:nil action:NULL forControlEvents:UIControlEventValueChanged];
+            [cell.toggle addTarget:self action:@selector(consumerStockChanged:) forControlEvents:UIControlEventValueChanged];
+        }
         return cell;
     }
 
@@ -534,6 +545,11 @@ static NSString *const kSwitchCellID = @"PPSwitchCell";
     [PPFunc pp_playTapEffect];
 }
 
+- (void)consumerStockChanged:(UISwitch *)sender {
+    self.draft[@"isConsumerAppStock"] = @(sender.on);
+    [PPFunc pp_playTapEffect];
+}
+
 #pragma mark - Save
 
 - (void)didTapSave {
@@ -556,8 +572,10 @@ static NSString *const kSwitchCellID = @"PPSwitchCell";
 
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         FIRFirestore *db = [FIRFirestore firestore];
+        dispatch_group_t group = dispatch_group_create();
 
         if ([self.draft[@"isDefault"] boolValue]) {
+            dispatch_group_enter(group);
             FIRQuery *q = [[db collectionWithPath:kPPBranchesCol] queryWhereField:@"isDefault" isEqualTo:@(YES)];
             [q getDocumentsWithCompletion:^(FIRQuerySnapshot *snap, NSError *err) {
                 for (FIRDocumentSnapshot *doc in snap.documents) {
@@ -566,11 +584,27 @@ static NSString *const kSwitchCellID = @"PPSwitchCell";
                          updateData:@{@"isDefault": @(NO), @"updatedAt": [FIRFieldValue fieldValueForServerTimestamp]}];
                     }
                 }
-                [self executeSave:db];
+                dispatch_group_leave(group);
             }];
-        } else {
-            [self executeSave:db];
         }
+
+        if ([self.draft[@"isConsumerAppStock"] boolValue]) {
+            dispatch_group_enter(group);
+            FIRQuery *q = [[db collectionWithPath:kPPBranchesCol] queryWhereField:@"isConsumerAppStock" isEqualTo:@(YES)];
+            [q getDocumentsWithCompletion:^(FIRQuerySnapshot *snap, NSError *err) {
+                for (FIRDocumentSnapshot *doc in snap.documents) {
+                    if (![doc.documentID isEqualToString:self.branch.branchID]) {
+                        [[[db collectionWithPath:kPPBranchesCol] documentWithPath:doc.documentID]
+                         updateData:@{@"isConsumerAppStock": @(NO), @"updatedAt": [FIRFieldValue fieldValueForServerTimestamp]}];
+                    }
+                }
+                dispatch_group_leave(group);
+            }];
+        }
+
+        dispatch_group_notify(group, dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            [self executeSave:db];
+        });
     });
 }
 
@@ -589,6 +623,7 @@ static NSString *const kSwitchCellID = @"PPSwitchCell";
     payload[@"phone"] = self.draft[@"phone"] ?: @"";
     payload[@"stockMode"] = stockRaw;
     payload[@"isDefault"] = self.draft[@"isDefault"] ?: @(NO);
+    payload[@"isConsumerAppStock"] = self.draft[@"isConsumerAppStock"] ?: @(NO);
     payload[@"isActive"] = @(YES);
     payload[@"updatedAt"] = [FIRFieldValue fieldValueForServerTimestamp];
 
@@ -597,12 +632,34 @@ static NSString *const kSwitchCellID = @"PPSwitchCell";
         payload[@"createdAt"] = [FIRFieldValue fieldValueForServerTimestamp];
         payload[@"createdBy"] = uid;
 
-        [[[db collectionWithPath:kPPBranchesCol] documentWithAutoID]
-         setData:payload completion:^(NSError *error) {
+        FIRDocumentReference *newDocRef = [[db collectionWithPath:kPPBranchesCol] documentWithAutoID];
+        if ([self.draft[@"isConsumerAppStock"] boolValue]) {
+            NSMutableDictionary *cfg = [NSMutableDictionary dictionary];
+            cfg[@"activeConsumerBranchId"] = newDocRef.documentID;
+            cfg[@"activeConsumerBranchCode"] = payload[@"code"] ?: @"";
+            cfg[@"activeConsumerBranchNameAr"] = nameAr;
+            cfg[@"activeConsumerBranchNameEn"] = nameEn;
+            cfg[@"updatedAt"] = [FIRFieldValue fieldValueForServerTimestamp];
+            cfg[@"updatedBy"] = uid;
+            [[[db collectionWithPath:@"AppConfigCol"] documentWithPath:@"ConsumerStockConfig"] setData:cfg merge:YES];
+        }
+
+        [newDocRef setData:payload completion:^(NSError *error) {
             [self handleSaveCompletion:error];
         }];
     } else {
         NSString *docID = self.branch.branchID;
+        if ([self.draft[@"isConsumerAppStock"] boolValue]) {
+            NSMutableDictionary *cfg = [NSMutableDictionary dictionary];
+            cfg[@"activeConsumerBranchId"] = docID;
+            cfg[@"activeConsumerBranchCode"] = self.draft[@"code"] ?: @"";
+            cfg[@"activeConsumerBranchNameAr"] = nameAr;
+            cfg[@"activeConsumerBranchNameEn"] = nameEn;
+            cfg[@"updatedAt"] = [FIRFieldValue fieldValueForServerTimestamp];
+            cfg[@"updatedBy"] = uid;
+            [[[db collectionWithPath:@"AppConfigCol"] documentWithPath:@"ConsumerStockConfig"] setData:cfg merge:YES];
+        }
+
         [[[db collectionWithPath:kPPBranchesCol] documentWithPath:docID]
          updateData:payload completion:^(NSError *error) {
             [self handleSaveCompletion:error];

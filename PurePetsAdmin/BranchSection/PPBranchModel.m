@@ -23,6 +23,7 @@ static NSString * const kFldAddress     = @"address";
 static NSString * const kFldPhone       = @"phone";
 static NSString * const kFldIsActive    = @"isActive";
 static NSString * const kFldIsDefault   = @"isDefault";
+static NSString * const kFldIsConsumerAppStock = @"isConsumerAppStock";
 static NSString * const kFldStockMode   = @"stockMode";
 static NSString * const kFldManagerId   = @"managerId";
 static NSString * const kFldOperatingHours = @"operatingHours";
@@ -58,6 +59,9 @@ static NSString * const kStockModeBranch   = @"branch";
             kFldPhone,
             kFldIsActive,
             kFldIsDefault,
+            kFldIsConsumerAppStock,
+            @"isUserAppStock",
+            @"isConsumerStockBranch",
             kFldStockMode,
             kFldManagerId,
             kFldOperatingHours,
@@ -96,6 +100,7 @@ static NSString * const kStockModeBranch   = @"branch";
     m.phone     = PPSafeString(d[kFldPhone]);
     m.isActive  = [d[kFldIsActive]  boolValue];
     m.isDefault = [d[kFldIsDefault] boolValue];
+    m.isConsumerAppStock = [d[kFldIsConsumerAppStock] boolValue] || [d[@"isUserAppStock"] boolValue] || [d[@"isConsumerStockBranch"] boolValue];
     m.stockMode = [self stockModeFromRaw:PPSafeString(d[kFldStockMode])];
 
     m.managerId        = PPSafeString(d[kFldManagerId]);
@@ -153,6 +158,7 @@ static NSString * const kStockModeBranch   = @"branch";
     d[kFldPhone]     = PPSafeString(self.phone);
     d[kFldIsActive]  = @(self.isActive);
     d[kFldIsDefault] = @(self.isDefault);
+    d[kFldIsConsumerAppStock] = @(self.isConsumerAppStock);
     d[kFldStockMode] = [self stockModeRawValue];
 
     if (self.managerId.length)      d[kFldManagerId]      = self.managerId;
@@ -213,7 +219,12 @@ static NSString * const kStockModeBranch   = @"branch";
     copy.phone      = self.phone;
     copy.isActive   = self.isActive;
     copy.isDefault  = self.isDefault;
+    copy.isConsumerAppStock = self.isConsumerAppStock;
     copy.stockMode  = self.stockMode;
+    copy.managerId  = self.managerId;
+    copy.operatingHours = self.operatingHours;
+    copy.taxNumber  = self.taxNumber;
+    copy.crNumber   = self.crNumber;
     copy.createdAt  = self.createdAt;
     copy.updatedAt  = self.updatedAt;
     copy.createdBy  = self.createdBy;

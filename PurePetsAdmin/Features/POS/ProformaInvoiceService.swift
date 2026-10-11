@@ -19,7 +19,12 @@ struct ProformaContext: Sendable {
 @MainActor
 final class ProformaInvoiceService {
     private let functions = Functions.functions(region: "us-central1")
-    private struct Response: @unchecked Sendable { let value: [String: Any] }
+
+    /// Decoding outside actor isolation creates a fresh, uniquely transferred object graph for
+    /// Firebase's `sending Any` API. The retained draft/recovery dictionaries never cross it.
+    nonisolated private static func transferredJSONObject(from data: Data) throws -> sending Any {
+        try JSONSerialization.jsonObject(with: data)
+    }
 
     func call(action: String, branchId: String, id: String? = nil, version: Int? = nil,
               commandId: String? = nil, payload: [String: Any]? = nil,
@@ -31,27 +36,41 @@ final class ProformaInvoiceService {
         let callable = functions.httpsCallable("proformaInvoiceCommand")
         callable.timeoutInterval = 45
         do {
-            let response = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Response, Error>) in
-                callable.call(envelope) { result, error in
-                    if let error { continuation.resume(throwing: error) }
-                    else if let wire = result?.data as? [String: Any] { continuation.resume(returning: Response(value: wire)) }
-                    else { continuation.resume(throwing: ProformaFailure.invalidResponse) }
+            guard JSONSerialization.isValidJSONObject(envelope) else { throw ProformaFailure.invalidInput }
+            let requestData: Data
+            do { requestData = try JSONSerialization.data(withJSONObject: envelope) }
+            catch { throw ProformaFailure.invalidInput }
+            let responseData = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
+                do {
+                    callable.call(try Self.transferredJSONObject(from: requestData)) { result, error in
+                        if let error { continuation.resume(throwing: error); return }
+                        guard let wire = result?.data as? [String: Any], JSONSerialization.isValidJSONObject(wire) else {
+                            continuation.resume(throwing: ProformaFailure.invalidResponse); return
+                        }
+                        do { continuation.resume(returning: try JSONSerialization.data(withJSONObject: wire)) }
+                        catch { continuation.resume(throwing: ProformaFailure.invalidResponse) }
+                    }
+                } catch {
+                    continuation.resume(throwing: ProformaFailure.invalidInput)
                 }
             }
-            guard response.value["ok"] as? Bool == true else { throw ProformaFailure.invalidResponse }
-            return response.value
+            guard let response = try JSONSerialization.jsonObject(with: responseData) as? [String: Any],
+                  response["ok"] as? Bool == true else { throw ProformaFailure.invalidResponse }
+            return response
         } catch let known as ProformaFailure { throw known }
         catch let error as NSError {
             guard error.domain == FunctionsErrorDomain else { throw ProformaFailure.unavailable }
             let details = error.userInfo[FunctionsErrorDetailsKey] as? [String: Any] ?? [:]
             let domainCode = details["domainCode"] as? String ?? ""
             if domainCode.contains("EXPIRED") { throw ProformaFailure.expired }
-            if domainCode.contains("PRICE") || domainCode.contains("STOCK") || domainCode.contains("INVENTORY") { throw ProformaFailure.stockOrPricing }
+            if domainCode.contains("CUSTOMER") || domainCode.contains("INCOMPLETE") { throw ProformaFailure.invalidInput }
+            if domainCode.contains("PRICE") || domainCode.contains("STOCK") || domainCode.contains("INVENTORY") || domainCode.contains("UNIT") || domainCode.contains("PRODUCT") { throw ProformaFailure.stockOrPricing }
             switch FunctionsErrorCode(rawValue: error.code) {
             case .unauthenticated: throw ProformaFailure.unauthenticated
             case .permissionDenied: throw ProformaFailure.denied
             case .aborted, .alreadyExists: throw ProformaFailure.conflict
             case .invalidArgument, .outOfRange: throw ProformaFailure.invalidInput
+            case .notFound: throw action == "context" ? ProformaFailure.unavailable : ProformaFailure.invalidInput
             case .failedPrecondition: throw ProformaFailure.stockOrPricing
             default: throw ProformaFailure.unavailable
             }
@@ -128,11 +147,13 @@ final class ProformaInvoiceStore: ObservableObject {
         isLoading = true; error = nil; errorIsConflict = false
         defer { if generation == token { isLoading = false } }
         do {
+            // Recover local uncertainty before any network request can fail or expose new actions.
+            let restored = try restoreRecovery(branchId: branchId)
             let response = try await service.call(action: "context", branchId: branchId)
             let loadedContext = try ProformaContext(wire: response)
             guard generation == token, self.branchId == branchId else { return }
             context = loadedContext
-            if try restoreRecovery(branchId: branchId) {
+            if restored {
                 if confirmationPending { await confirmAccepted(branchId: branchId) }
                 else if let id = pending?.id {
                     let recovered = try await service.invoice(branchId: branchId, id: id)
@@ -197,7 +218,8 @@ final class ProformaInvoiceStore: ObservableObject {
     }
 
     func searchCatalog(_ query: String, append: Bool = false) async {
-        guard let draft, !isLocked else { return }
+        let branch = draft?.branchId ?? branchId
+        guard !branch.isEmpty, !isLocked else { return }
         if append && catalogLoading { return }
         let token = append ? catalogGeneration : UUID()
         catalogGeneration = token
@@ -207,17 +229,25 @@ final class ProformaInvoiceStore: ObservableObject {
         var extras: [String: Any] = ["pageSize": 25, "query": query.trimmingCharacters(in: .whitespacesAndNewlines)]
         if append, let cursor = catalogCursor { extras["cursor"] = cursor }
         do {
-            let result = try await service.call(action: "catalog", branchId: draft.branchId, extras: extras)
+            let result = try await service.call(action: "catalog", branchId: branch, extras: extras)
             guard token == catalogGeneration else { return }
             guard let items = result["items"] as? [[String: Any]] else { throw ProformaFailure.invalidResponse }
             let loaded = try items.map(ProformaCatalogItem.init(wire:))
-            catalog.append(contentsOf: loaded.filter { item in !catalog.contains(where: { $0.id == item.id }) })
+            var seen = Set(catalog.map(\.id))
+            var uniqueNew: [ProformaCatalogItem] = []
+            for item in loaded {
+                if !seen.contains(item.id) {
+                    seen.insert(item.id)
+                    uniqueNew.append(item)
+                }
+            }
+            catalog.append(contentsOf: uniqueNew)
             catalogCursor = result["nextCursor"] as? String
         } catch { if token == catalogGeneration { catalogError = error.localizedDescription } }
     }
 
     func add(_ item: ProformaCatalogItem) {
-        guard var draft, !isLocked, let context, item.currency == draft.currency else { return }
+        guard var draft, !isLocked, item.currency == draft.currency else { return }
         let selectedIDs = Set(draft.items.flatMap(\.unitIds))
         if selectedIDs.union(item.unitIds).count > 50 {
             error = ProformaFailure.invalidInput.localizedDescription; return
@@ -239,18 +269,68 @@ final class ProformaInvoiceStore: ObservableObject {
                     }
                 }
                 draft.items[index].quantity = String(draft.items[index].unitIds.count)
-                let sum = draft.items[index].unitPrices.reduce(Decimal(0)) { $0 + (ProformaDecimal.parse($1.unitPrice, scale: 2) ?? 0) }
-                draft.items[index].unitPrice = ProformaDecimal.string(ProformaDecimal.rounded(sum / Decimal(draft.items[index].unitIds.count)))
+                let count = draft.items[index].unitIds.count
+                if count > 0 {
+                    let sum = draft.items[index].unitPrices.reduce(Decimal(0)) { $0 + (ProformaDecimal.parse($1.unitPrice, scale: 2) ?? 0) }
+                    draft.items[index].unitPrice = ProformaDecimal.string(ProformaDecimal.rounded(sum / Decimal(count)))
+                }
             }
         } else {
-            guard draft.items.count < context.maxItems else { error = ProformaFailure.invalidInput.localizedDescription; return }
+            let maxAllowed = context?.maxItems ?? 50
+            guard draft.items.count < maxAllowed else { error = ProformaFailure.invalidInput.localizedDescription; return }
             draft.items.append(ProformaLine(catalog: item))
         }
         self.draft = draft
     }
 
+    func cancelInvoice(_ invoice: ProformaInvoice) async -> Bool {
+        guard !isLocked else { return false }
+        isMutating = true
+        error = nil
+        errorIsConflict = false
+        defer { isMutating = false }
+        do {
+            let commandId = UUID().uuidString
+            let result = try await service.call(
+                action: "cancel",
+                branchId: invoice.branchId,
+                id: invoice.id,
+                version: invoice.version,
+                commandId: commandId,
+                payload: [:]
+            )
+            guard let wire = result["invoice"] as? [String: Any] else {
+                throw ProformaFailure.invalidResponse
+            }
+            let updated = try ProformaInvoice(wire: wire)
+            if let index = invoices.firstIndex(where: { $0.id == updated.id }) {
+                invoices[index] = updated
+            } else {
+                invoices.insert(updated, at: 0)
+            }
+            if selected?.id == updated.id {
+                selected = updated
+                draft = ProformaDraft(updated)
+                savedDraft = draft
+            }
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            return true
+        } catch {
+            self.error = error.localizedDescription
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return false
+        }
+    }
+
     func perform(_ action: String, paymentMethod: String? = nil, cashReceived: String? = nil) async {
-        guard !isLocked, !isLoading, let draft else { return }
+        guard !isLocked, !isLoading else { return }
+        if action == "cancel" {
+            if let target = selected ?? (draft != nil ? invoices.first(where: { $0.id == draft!.invoiceID }) : nil) {
+                _ = await cancelInvoice(target)
+                return
+            }
+        }
+        guard let draft else { return }
         do {
             if action != "save" {
                 guard !hasUnsavedChanges, let selected else { throw ProformaFailure.invalidInput }
@@ -266,7 +346,7 @@ final class ProformaInvoiceStore: ObservableObject {
                 guard let method = paymentMethod, ["cash", "card"].contains(method) else { throw ProformaFailure.invalidInput }
                 var payment: [String: Any] = ["paymentMethod": method]
                 if method == "cash" {
-                    guard let cashReceived, let amount = ProformaDecimal.parse(cashReceived, scale: 2),
+                    guard let cashReceived, let amount = ProformaDecimal.parse(cashReceived, scale: 2), amount <= Decimal(string: "999999999.99")!,
                           let selected, amount >= ProformaDecimal.minor(selected.totals.totalMinor) else { throw ProformaFailure.invalidInput }
                     payment["cashReceived"] = ProformaDecimal.string(amount)
                 }
@@ -274,8 +354,6 @@ final class ProformaInvoiceStore: ObservableObject {
             } else { payload = [:] }
             pending = PendingCommand(action: action, branchId: draft.branchId, id: draft.invoiceID,
                                      version: draft.version, commandId: UUID().uuidString, payload: payload)
-            do { try persistRecovery(branchId: draft.branchId) }
-            catch { pending = nil; throw ProformaFailure.unavailable }
             await executePending()
         } catch { self.error = error.localizedDescription }
     }
@@ -287,6 +365,8 @@ final class ProformaInvoiceStore: ObservableObject {
         isMutating = true; error = nil; errorIsConflict = false
         defer { isMutating = false }
         do {
+            // Every retry proves durable intent first. Storage failure never issues a remote command.
+            try persistRecovery(branchId: command.branchId)
             let result = try await service.call(action: command.action, branchId: command.branchId,
                                                 id: command.id, version: command.version,
                                                 commandId: command.commandId, payload: command.payload)
@@ -315,9 +395,13 @@ final class ProformaInvoiceStore: ObservableObject {
         defer { if confirmationGeneration == token { isConfirming = false } }
         do {
             let observed = try await service.invoice(branchId: branchId, id: id)
+            let restoredContext: ProformaContext
+            if let context { restoredContext = context }
+            else { restoredContext = try ProformaContext(wire: await service.call(action: "context", branchId: branchId)) }
             guard confirmationGeneration == token, acceptedID == id, acceptedVersion == version,
                   acceptedStatus == status else { return }
             guard observed.version >= version, observed.version != version || observed.status == status else { throw ProformaFailure.conflict }
+            context = restoredContext
             accept(observed); confirmationPending = false; acceptedID = nil; acceptedVersion = nil; acceptedStatus = nil
             error = nil
             removeRecovery(branchId: branchId)

@@ -124,7 +124,17 @@ final class AdminBranchesViewModel: ObservableObject {
     var activeCount: Int { branches.filter { $0.isActive }.count }
     var inactiveCount: Int { branches.filter { !$0.isActive }.count }
     var defaultBranch: PPBranchModel? { branches.first { $0.isDefault } }
+    var consumerStockBranch: PPBranchModel? {
+        branches.first { $0.isConsumerAppStock } ?? defaultBranch
+    }
     var totalAgentsCount: Int { agentCounts.values.reduce(0, +) }
+
+    func isConsumerStockBranch(_ branch: PPBranchModel) -> Bool {
+        if let current = consumerStockBranch {
+            return current.branchID == branch.branchID
+        }
+        return branch.isDefault
+    }
 
     init() {
         evaluatePermissions()
@@ -318,6 +328,71 @@ final class AdminBranchesViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    func setConsumerStockBranch(_ branch: PPBranchModel, completion: @escaping @MainActor @Sendable (Bool, String?) -> Void) {
+        let targetID = branch.branchID
+        guard !targetID.isEmpty else { return }
+        guard canManage else {
+            completion(false, Language.get("PPAlert_Error_Permission_Message", alter: "Missing or insufficient permissions."))
+            return
+        }
+
+        let batch = Firestore.firestore().batch()
+
+        for b in branches {
+            let bID = b.branchID
+            guard !bID.isEmpty else { continue }
+            let ref = Firestore.firestore().collection(kPPBranchesCol).document(bID)
+            if bID == targetID {
+                batch.updateData([
+                    "isConsumerAppStock": true,
+                    "updatedAt": FieldValue.serverTimestamp()
+                ], forDocument: ref)
+            } else if b.isConsumerAppStock {
+                batch.updateData([
+                    "isConsumerAppStock": false,
+                    "updatedAt": FieldValue.serverTimestamp()
+                ], forDocument: ref)
+            }
+        }
+
+        // Project/update single point config in AppConfigCol/ConsumerStockConfig
+        let configRef = Firestore.firestore().collection("AppConfigCol").document("ConsumerStockConfig")
+        let uid = Auth.auth().currentUser?.uid ?? ""
+        batch.setData([
+            "branchId": targetID,
+            "branchCode": branch.code,
+            "nameAr": branch.nameAr,
+            "nameEn": branch.nameEn,
+            "updatedAt": FieldValue.serverTimestamp(),
+            "updatedBy": uid
+        ], forDocument: configRef, merge: true)
+
+        batch.commit { [weak self] error in
+            DispatchQueue.main.async {
+                if let error {
+                    completion(false, error.localizedDescription)
+                } else {
+                    self?.writeConsumerStockAuditLog(branch: branch)
+                    completion(true, Language.get("Branches_UserAppStock_Success", alter: "تم اعتماد مخزون هذا الفرع لتطبيق المستخدمين بنجاح."))
+                }
+            }
+        }
+    }
+
+    private func writeConsumerStockAuditLog(branch: PPBranchModel) {
+        let uid = Auth.auth().currentUser?.uid ?? "unknown_admin"
+        Firestore.firestore().collection("auditLogs").document().setData([
+            "action": "branch_set_consumer_stock",
+            "targetCollection": kPPBranchesCol,
+            "targetId": branch.branchID,
+            "adminUid": uid,
+            "branchCode": branch.code,
+            "branchNameAr": branch.nameAr,
+            "branchNameEn": branch.nameEn,
+            "timestamp": FieldValue.serverTimestamp()
+        ])
     }
 
     func deleteBranch(_ branch: PPBranchModel, completion: @escaping @MainActor @Sendable (Bool, String?) -> Void) {
@@ -548,7 +623,14 @@ private struct BranchesiPhoneLayout: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            navigationHeader
+            VStack(spacing: 0) {
+                Color.clear.frame(height: PPStatusBarHelper.statusBarHeight)
+                navigationHeader
+            }
+            .background(
+                AdminSurface.background
+                    .ignoresSafeArea(edges: .top)
+            )
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 16) {
@@ -867,6 +949,7 @@ private struct BranchesiPhoneLayout: View {
                         agentCount: viewModel.agentCount(for: branch.branchID),
                         canManage: viewModel.canManage,
                         isSelected: false,
+                        isConsumerStock: viewModel.isConsumerStockBranch(branch),
                         onTap: {
                             if viewModel.canManage {
                                 onEditBranch(branch)
@@ -877,11 +960,32 @@ private struct BranchesiPhoneLayout: View {
                         },
                         onSetDefault: {
                             confirmSetDefault(branch)
+                        },
+                        onSetConsumerStock: {
+                            confirmSetConsumerStock(branch)
                         }
                     )
                 }
             }
         }
+    }
+
+    private func confirmSetConsumerStock(_ branch: PPBranchModel) {
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("Branches_UserAppStock_Title", alter: "مخزون تطبيق المستخدمين"),
+            subtitle: String(format: Language.get("Branches_UserAppStock_Confirm_Format", alter: "هل تريد اعتماد مخزون فرع \"%@\" ليظهر ويُستخدم في تطبيق المستخدمين (iOS)؟"), branch.localizedName()),
+            confirmButton: Language.get("Confirm", alter: "تأكيد"),
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "iphone.badge.play"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                viewModel.setConsumerStockBranch(branch) { success, msg in
+                    onShowToast(msg ?? "", !success)
+                }
+            },
+            cancelBlock: nil
+        )
     }
 
     private func confirmSetDefault(_ branch: PPBranchModel) {
@@ -940,41 +1044,47 @@ private struct BranchesiPadStudioLayout: View {
     @State private var isRefreshing = false
 
     var body: some View {
-        HStack(spacing: 0) {
-            // Left Wing: Sovereign Branch Roster & Filter Deck
-            VStack(spacing: 0) {
-                leftWingHeader
-                leftWingCommandBar
-                leftWingRosterList
-                leftWingFooterCTA
-            }
-            .frame(width: 400)
-            .background(AdminSurface.surface)
-            .overlay(
-                Rectangle()
-                    .fill(Color(uiColor: .ppSurfaceBorder).opacity(0.8))
-                    .frame(width: 1),
-                alignment: Language.isRTL() ? .leading : .trailing
-            )
+        VStack(spacing: 0) {
+            Color.clear.frame(height: PPStatusBarHelper.statusBarHeight)
 
-            // Right Wing: Branch Tactical Intelligence & Live Inspector
-            VStack(spacing: 0) {
-                if let selected = viewModel.selectedBranch() {
-                    BranchStudioInspectorView(
-                        branch: selected,
-                        agentCount: viewModel.agentCount(for: selected.branchID),
-                        canManage: viewModel.canManage,
-                        onEdit: { onEditBranch(selected) },
-                        onToggleActive: { confirmToggleActive(selected) },
-                        onSetDefault: { confirmSetDefault(selected) },
-                        onShowToast: onShowToast
-                    )
-                } else {
-                    studioEmptyInspector
+            HStack(spacing: 0) {
+                // Left Wing: Sovereign Branch Roster & Filter Deck
+                VStack(spacing: 0) {
+                    leftWingHeader
+                    leftWingCommandBar
+                    leftWingRosterList
+                    leftWingFooterCTA
                 }
+                .frame(width: 400)
+                .background(AdminSurface.surface)
+                .overlay(
+                    Rectangle()
+                        .fill(Color(uiColor: .ppSurfaceBorder).opacity(0.8))
+                        .frame(width: 1),
+                    alignment: Language.isRTL() ? .leading : .trailing
+                )
+
+                // Right Wing: Branch Tactical Intelligence & Live Inspector
+                VStack(spacing: 0) {
+                    if let selected = viewModel.selectedBranch() {
+                        BranchStudioInspectorView(
+                            branch: selected,
+                            agentCount: viewModel.agentCount(for: selected.branchID),
+                            canManage: viewModel.canManage,
+                            isConsumerStock: viewModel.isConsumerStockBranch(selected),
+                            onEdit: { onEditBranch(selected) },
+                            onToggleActive: { confirmToggleActive(selected) },
+                            onSetDefault: { confirmSetDefault(selected) },
+                            onSetConsumerStock: { confirmSetConsumerStock(selected) },
+                            onShowToast: onShowToast
+                        )
+                    } else {
+                        studioEmptyInspector
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(AdminSurface.background)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(AdminSurface.background)
         }
     }
 
@@ -1125,13 +1235,15 @@ private struct BranchesiPadStudioLayout: View {
                             agentCount: viewModel.agentCount(for: branch.branchID),
                             canManage: viewModel.canManage,
                             isSelected: isSelected,
+                            isConsumerStock: viewModel.isConsumerStockBranch(branch),
                             onTap: {
                                 let impact = UIImpactFeedbackGenerator(style: .light)
                                 impact.impactOccurred()
                                 viewModel.selectedBranchID = branch.branchID
                             },
                             onToggleActive: { confirmToggleActive(branch) },
-                            onSetDefault: { confirmSetDefault(branch) }
+                            onSetDefault: { confirmSetDefault(branch) },
+                            onSetConsumerStock: { confirmSetConsumerStock(branch) }
                         )
                     }
                 }
@@ -1203,6 +1315,24 @@ private struct BranchesiPadStudioLayout: View {
         .padding(32)
     }
 
+    private func confirmSetConsumerStock(_ branch: PPBranchModel) {
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("Branches_UserAppStock_Title", alter: "مخزون تطبيق المستخدمين"),
+            subtitle: String(format: Language.get("Branches_UserAppStock_Confirm_Format", alter: "هل تريد اعتماد مخزون فرع \"%@\" ليظهر ويُستخدم في تطبيق المستخدمين (iOS)؟"), branch.localizedName()),
+            confirmButton: Language.get("Confirm", alter: "تأكيد"),
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "iphone.badge.play"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                viewModel.setConsumerStockBranch(branch) { success, msg in
+                    onShowToast(msg ?? "", !success)
+                }
+            },
+            cancelBlock: nil
+        )
+    }
+
     private func confirmSetDefault(_ branch: PPBranchModel) {
         PPAlertHelper.showConfirmation(
             in: nil,
@@ -1254,9 +1384,11 @@ private struct SovereignBranchCard: View {
     let agentCount: Int
     let canManage: Bool
     let isSelected: Bool
+    let isConsumerStock: Bool
     let onTap: () -> Void
     let onToggleActive: () -> Void
     let onSetDefault: () -> Void
+    let onSetConsumerStock: () -> Void
 
     var body: some View {
         Button(action: onTap) {
@@ -1294,6 +1426,12 @@ private struct SovereignBranchCard: View {
             if canManage {
                 Button(action: onTap) {
                     Label(Language.get("Edit", alter: "تعديل"), systemImage: "pencil")
+                }
+
+                if !isConsumerStock {
+                    Button(action: onSetConsumerStock) {
+                        Label(Language.get("Branches_SetUserAppStock", alter: "اعتماد لمخزون تطبيق العملاء"), systemImage: "iphone.badge.play")
+                    }
                 }
 
                 if !branch.isDefault {
@@ -1354,10 +1492,34 @@ private struct SovereignBranchCard: View {
                 .foregroundColor(branch.isActive ? AdminSurface.primaryText : AdminSurface.secondaryText)
                 .lineLimit(1)
 
+            if isConsumerStock {
+                consumerStockBadge
+            }
+
             if branch.isDefault {
                 defaultBadge
             }
         }
+    }
+
+    private var consumerStockBadge: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "iphone.badge.play")
+                .font(BranchType.microBold)
+            Text(Language.get("Branches_UserAppStock_Badge", alter: "مخزون تطبيق العملاء"))
+                .font(BranchType.badgePill)
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 2)
+        .background(
+            LinearGradient(
+                colors: [Color(uiColor: .systemTeal), Color(uiColor: .systemBlue)],
+                startPoint: .leading,
+                endPoint: .trailing
+            ),
+            in: Capsule()
+        )
     }
 
     private var defaultBadge: some View {
@@ -1436,9 +1598,11 @@ private struct BranchStudioInspectorView: View {
     let branch: PPBranchModel
     let agentCount: Int
     let canManage: Bool
+    let isConsumerStock: Bool
     let onEdit: () -> Void
     let onToggleActive: () -> Void
     let onSetDefault: () -> Void
+    let onSetConsumerStock: () -> Void
     let onShowToast: (String, Bool) -> Void
 
     var body: some View {
@@ -1446,6 +1610,7 @@ private struct BranchStudioInspectorView: View {
             VStack(spacing: 20) {
                 heroStudioBanner
                 telemetryGrid
+                consumerStockCard
                 stockArchitectureCard
                 workforceCard
                 locationContactCard
@@ -1490,6 +1655,26 @@ private struct BranchStudioInspectorView: View {
                             .padding(.horizontal, 10)
                             .padding(.vertical, 3)
                             .background(Color(uiColor: .ppWarning), in: Capsule())
+                    }
+
+                    if isConsumerStock {
+                        HStack(spacing: 4) {
+                            Image(systemName: "iphone")
+                                .font(BranchType.microBold)
+                            Text(Language.get("Branches_UserAppStock_Badge", alter: "مخزون تطبيق العملاء"))
+                                .font(BranchType.captionBold)
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 3)
+                        .background(
+                            LinearGradient(
+                                colors: [AdminSurface.primary, Color(uiColor: .ppAccent)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            in: Capsule()
+                        )
                     }
                 }
 
@@ -1637,6 +1822,87 @@ private struct BranchStudioInspectorView: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                )
+        )
+    }
+
+    // MARK: Consumer Stock Card
+    private var consumerStockCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(isConsumerStock ? AdminSurface.primary.opacity(0.12) : AdminSurface.control)
+                        .frame(width: 42, height: 42)
+
+                    Image(systemName: isConsumerStock ? "iphone.badge.play" : "iphone")
+                        .font(BranchType.headline)
+                        .foregroundColor(isConsumerStock ? AdminSurface.primary : AdminSurface.secondaryText)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 8) {
+                        Text(Language.get("Branches_Studio_UserAppStockTitle", alter: "مخزون تطبيق المستخدمين (iOS)"))
+                            .font(BranchType.title3)
+                            .foregroundColor(AdminSurface.primaryText)
+
+                        if isConsumerStock {
+                            HStack(spacing: 4) {
+                                Image(systemName: "checkmark.seal.fill")
+                                    .font(BranchType.microBold)
+                                Text(Language.get("Branches_Studio_ActiveUserAppStock", alter: "الفرع المعتمد حالياً"))
+                                    .font(BranchType.captionBold)
+                            }
+                            .foregroundColor(Color(uiColor: .ppSuccess))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+                        }
+                    }
+
+                    Text(Language.get("Branches_Studio_UserAppStockSubtitle", alter: "يحدد أي مخزون فرع يتم عرضه والبيع منه لعملاء تطبيق الآيفون"))
+                        .font(BranchType.caption)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+
+                Spacer()
+
+                if canManage && !isConsumerStock {
+                    Button(action: onSetConsumerStock) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(BranchType.captionBold)
+                            Text(Language.get("Branches_Studio_SetUserAppStock", alter: "اعتماد لهذا التطبيق"))
+                                .font(BranchType.buttonTitle)
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .frame(height: 38)
+                        .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .shadow(color: AdminSurface.primary.opacity(0.25), radius: 4, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                    .hoverEffect(.lift)
+                }
+            }
+
+            Text(Language.get("Branches_UserAppStock_Help", alter: "هذا الخيار يحدد الفرع الذي يقرأ منه تطبيق المستخدمين المنتجات والكميات المتاحة للشراء أونلاين."))
+                .font(BranchType.body)
+                .foregroundColor(AdminSurface.secondaryText)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(AdminSurface.surface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(
+                            isConsumerStock
+                                ? AdminSurface.primary.opacity(0.4)
+                                : Color(uiColor: .ppSurfaceBorder).opacity(0.8),
+                            lineWidth: isConsumerStock ? 1.4 : 0.8
+                        )
                 )
         )
     }

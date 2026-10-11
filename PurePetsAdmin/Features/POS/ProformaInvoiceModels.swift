@@ -101,6 +101,7 @@ struct ProformaLine: Identifiable, Equatable, Sendable {
     var unitPrices: [ProformaUnitPrice]
     var discount: ProformaDiscount
     var taxRate: String
+    var imageUrl: String? = nil
     var lineSubtotalMinor: Int = 0
     var lineDiscountMinor: Int = 0
     var globalDiscountMinor: Int = 0
@@ -120,6 +121,7 @@ struct ProformaLine: Identifiable, Equatable, Sendable {
         quantityGroupId = catalog.quantityGroupId; groupName = catalog.groupName; quantity = "1"; unitPrice = catalog.unitPrice
         unitIds = catalog.unitIds; unitPrices = catalog.unitPrices
         discount = ProformaDiscount(); taxRate = "0"
+        imageUrl = catalog.imageUrl
     }
     init(wire: [String: Any]) throws {
         id = try ProformaWire.string(wire, "lineId")
@@ -140,6 +142,15 @@ struct ProformaLine: Identifiable, Equatable, Sendable {
         let rawDiscount = wire["discount"] as? [String: Any] ?? [:]
         discount = ProformaDiscount(type: rawDiscount["type"] as? String ?? "none", value: rawDiscount["value"] as? String ?? "0")
         taxRate = try ProformaWire.decimalString(wire, "taxRate", scale: 2)
+        if let direct = wire["imageUrl"] as? String ?? wire["imageURL"] as? String ?? wire["image"] as? String, !direct.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            imageUrl = direct.trimmingCharacters(in: .whitespacesAndNewlines)
+        } else if let arr = wire["imageURLsArray"] as? [String], let first = arr.first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            imageUrl = first.trimmingCharacters(in: .whitespacesAndNewlines)
+        } else if let arr = wire["images"] as? [String], let first = arr.first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            imageUrl = first.trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            imageUrl = nil
+        }
         lineSubtotalMinor = try ProformaWire.integer(wire, "lineSubtotalMinor")
         lineDiscountMinor = try ProformaWire.integer(wire, "lineDiscountMinor")
         globalDiscountMinor = try ProformaWire.integer(wire, "globalDiscountMinor")
@@ -164,20 +175,38 @@ struct ProformaCatalogItem: Identifiable, Sendable {
     let availableQuantity: String
     let unitIds: [String]
     let unitPrices: [ProformaUnitPrice]
+    let imageUrl: String?
+    let isLivePet: Bool
     init(wire: [String: Any]) throws {
         id = try ProformaWire.string(wire, "id"); productId = try ProformaWire.string(wire, "productId")
         name = try ProformaWire.localizedName(wire); sku = wire["sku"] as? String ?? ""
         barcode = wire["barcode"] as? String ?? ""; inventoryMode = wire["inventoryMode"] as? String ?? ""
-        quantityStep = wire["quantityStep"] as? String ?? ((wire["isLivePet"] as? Bool == true || wire["inventoryTrackingPolicy"] as? String == "lot") ? "1" : "0.001")
+        isLivePet = wire["isLivePet"] as? Bool ?? false
+        quantityStep = wire["quantityStep"] as? String ?? ((isLivePet || wire["inventoryTrackingPolicy"] as? String == "lot") ? "1" : "0.001")
         unitsPerGroup = (wire["unitsPerGroup"] as? NSNumber)?.intValue ?? 1
         quantityGroupId = try ProformaWire.string(wire, "quantityGroupId")
         groupName = wire[Language.isRTL() ? "quantityGroupNameAr" : "quantityGroupNameEn"] as? String ?? ""
         unitPrice = try ProformaWire.decimalString(wire, "unitPrice", scale: 2)
         currency = try ProformaWire.string(wire, "currency")
-        availableQuantity = (wire["availableQuantity"] as? NSNumber)?.stringValue ?? "0"
+        if let num = wire["availableQuantity"] as? NSNumber {
+            availableQuantity = num.stringValue
+        } else if let str = wire["availableQuantity"] as? String {
+            availableQuantity = str
+        } else {
+            availableQuantity = "0"
+        }
         unitIds = wire["unitIds"] as? [String] ?? []
         unitPrices = try (wire["unitPrices"] as? [[String: Any]] ?? []).map {
             ProformaUnitPrice(unitId: try ProformaWire.string($0, "unitId"), unitPrice: try ProformaWire.decimalString($0, "unitPrice", scale: 2))
+        }
+        if let direct = wire["imageUrl"] as? String ?? wire["imageURL"] as? String ?? wire["image"] as? String, !direct.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            imageUrl = direct.trimmingCharacters(in: .whitespacesAndNewlines)
+        } else if let arr = wire["imageURLsArray"] as? [String], let first = arr.first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            imageUrl = first.trimmingCharacters(in: .whitespacesAndNewlines)
+        } else if let arr = wire["images"] as? [String], let first = arr.first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            imageUrl = first.trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            imageUrl = nil
         }
     }
 }
@@ -202,11 +231,38 @@ struct ProformaTotals: Equatable, Sendable {
     }
 }
 
+/// Formats any proforma number into a clean, unified presentation string (e.g. PF-261011-D0AF17).
+/// Gracefully handles legacy 52-character hashes, 8-digit years, and truncates long identifiers
+/// so they fit single-line headers, navigation bars, and PDF print headers.
+public func proformaDisplayNumber(_ number: String) -> String {
+    let clean = number.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !clean.isEmpty else { return clean }
+    let parts = clean.split(separator: "-")
+    if parts.count >= 3, parts[0] == "PF" {
+        var dateStr = String(parts[1])
+        if dateStr.count == 8 {
+            dateStr = String(dateStr.dropFirst(2))
+        }
+        let hexPart = parts[2]
+        let shortHex = String(hexPart.prefix(6)).uppercased()
+        return "PF-\(dateStr)-\(shortHex)"
+    }
+    if clean.count > 18 {
+        if clean.hasPrefix("PF-") {
+            return "\(clean.prefix(11))…\(clean.suffix(4))"
+        }
+        return String(clean.prefix(16))
+    }
+    return clean
+}
+
 struct ProformaInvoice: Identifiable, Equatable, Sendable {
     let id: String
     let number: String
+    var displayNumber: String { proformaDisplayNumber(number) }
     let version: Int
     let branchId: String
+    let branchName: String
     let status: ProformaStatus
     let isExpired: Bool
     let customer: ProformaCustomer?
@@ -224,6 +280,7 @@ struct ProformaInvoice: Identifiable, Equatable, Sendable {
         id = try ProformaWire.string(wire, "id"); number = try ProformaWire.string(wire, "number")
         version = try ProformaWire.integer(wire, "version", positive: true)
         branchId = try ProformaWire.string(wire, "branchId")
+        branchName = wire[Language.isRTL() ? "branchNameAr" : "branchNameEn"] as? String ?? wire["branchName"] as? String ?? ""
         guard let parsed = ProformaStatus(rawValue: try ProformaWire.string(wire, "status")) else { throw ProformaFailure.invalidResponse }
         status = parsed; isExpired = wire["isExpired"] as? Bool ?? false
         customer = try (wire["customer"] as? [String: Any]).map(ProformaCustomer.init(wire:))
@@ -244,6 +301,7 @@ struct ProformaDraft: Equatable, Sendable {
     var invoiceID: String?
     var version: Int?
     var number: String?
+    var displayNumber: String? { number.map { proformaDisplayNumber($0) } }
     var branchId: String
     var currency: String
     var customer: ProformaCustomer?
@@ -318,7 +376,12 @@ struct ProformaDraft: Equatable, Sendable {
                 remainders.append((index, ideal - floor))
             }
             remainders.sort { $0.1 == $1.1 ? $0.0 < $1.0 : $0.1 > $1.1 }
-            for index in 0..<(global - shares.reduce(0, +)) { shares[remainders[index].0] += 1 }
+            let deficit = global - shares.reduce(0, +)
+            if !remainders.isEmpty && deficit > 0 {
+                for index in 0..<deficit {
+                    shares[remainders[index % remainders.count].0] += 1
+                }
+            }
         }
         let tax = net.indices.reduce(0) { $0 + cents(ProformaDecimal.minor(net[$1] - shares[$1]) * taxRates[$1] / 100) }
         let total = netSum - global + tax
@@ -349,7 +412,8 @@ enum ProformaWire {
     static func localizedName(_ wire: [String: Any]) throws -> String {
         let selected = (wire[Language.isRTL() ? "nameAr" : "nameEn"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         if !selected.isEmpty { return selected }
-        return try string(wire, "name")
+        let fallback = (wire["name"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return fallback.isEmpty ? Language.get("Proforma_UnnamedProduct", alter: nil) : fallback
     }
     static func string(_ wire: [String: Any], _ key: String) throws -> String {
         guard let value = wire[key] as? String, !value.isEmpty else { throw ProformaFailure.invalidResponse }

@@ -47,6 +47,7 @@ typedef NS_ENUM(NSInteger, PPBranchStockMode) {
 // ── State ─────────────────────────────────────────────────────────────────
 @property (nonatomic, assign) BOOL isActive;
 @property (nonatomic, assign) BOOL isDefault;   ///< Only one branch should be default at a time
+@property (nonatomic, assign) BOOL isConsumerAppStock; ///< Used for consumer iOS user app stock
 @property (nonatomic, assign) PPBranchStockMode stockMode;
 
 // ── Enterprise Metadata ──────────────────────────────────────────────────

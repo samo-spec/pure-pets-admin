@@ -205,6 +205,60 @@ struct PPProformaPDFShareSheet: UIViewControllerRepresentable {
     }
 }
 
+/// Native printing via UIPrintInteractionController without requiring modal dismissal.
+@MainActor
+enum PPProformaPDFPrinter {
+    static func print(data: Data, jobName: String, completion: ((Error?) -> Void)? = nil) {
+        guard UIPrintInteractionController.isPrintingAvailable else {
+            completion?(PPProformaPDFError.renderingFailed)
+            return
+        }
+        let controller = UIPrintInteractionController.shared
+        let info = UIPrintInfo(dictionary: nil)
+        info.outputType = .general
+        info.jobName = jobName
+        controller.printInfo = info
+        controller.printingItem = data
+
+        guard let presenter = topViewController() else {
+            completion?(PPProformaPDFError.renderingFailed)
+            return
+        }
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            controller.present(from: presenter.view.bounds, in: presenter.view, animated: true) { _, _, error in
+                completion?(error)
+            }
+        } else {
+            controller.present(animated: true) { _, _, error in
+                completion?(error)
+            }
+        }
+    }
+
+    private static func topViewController(from root: UIViewController? = keyWindow?.rootViewController) -> UIViewController? {
+        if let presented = root?.presentedViewController {
+            return topViewController(from: presented)
+        }
+        if let navigation = root as? UINavigationController {
+            return topViewController(from: navigation.visibleViewController ?? navigation.topViewController)
+        }
+        if let tabs = root as? UITabBarController {
+            return topViewController(from: tabs.selectedViewController)
+        }
+        return root
+    }
+
+    private static var keyWindow: UIWindow? {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }?
+            .windows.first { $0.isKeyWindow }
+            ?? UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .first?.windows.first
+    }
+}
+
 @MainActor
 enum PPProformaPDFRenderer {
     static func render(snapshot: PPProformaPDFSnapshot) throws -> Data {
@@ -262,6 +316,7 @@ private enum PPProformaPDFCommand {
     case text(NSAttributedString, CGRect)
     case fill(CGRect, UIColor)
     case rule(CGRect, UIColor)
+    case image(UIImage, CGRect)
 
     func draw(in context: CGContext) {
         switch self {
@@ -277,6 +332,12 @@ private enum PPProformaPDFCommand {
         case let .fill(rect, color), let .rule(rect, color):
             context.setFillColor(color.cgColor)
             context.fill(rect)
+        case let .image(image, rect):
+            context.saveGState()
+            UIGraphicsPushContext(context)
+            image.draw(in: rect)
+            UIGraphicsPopContext()
+            context.restoreGState()
         }
     }
 }
@@ -305,11 +366,7 @@ private final class PPProformaPDFComposer {
 
     func compose() throws -> [[PPProformaPDFCommand]] {
         try startPage()
-        try detail(label: "Proforma_PDF_Branch", value: snapshot.branchName)
-        try detail(label: "Proforma_PDF_Issued", value: date(snapshot.issuedAt), technical: true)
-        try detail(label: "Proforma_PDF_ValidUntil", value: snapshot.validUntil.map { date($0, dateOnly: true) } ?? loc("Proforma_PDF_NoValidity"), technical: snapshot.validUntil != nil)
-        try detail(label: "Proforma_PDF_Currency", value: snapshot.currency, technical: true)
-        y += 10
+        try metadataBar()
         try heading("Proforma_PDF_Customer")
         try flow(text(snapshot.customerName.isEmpty ? loc("Proforma_PDF_UnnamedCustomer") : snapshot.customerName, size: 13, bold: true))
         if !snapshot.customerPhone.isEmpty { try flow(text(snapshot.customerPhone, size: 11, technical: true)) }
@@ -336,24 +393,40 @@ private final class PPProformaPDFComposer {
         guard pages.count < 200 else { throw PPProformaPDFError.renderingFailed }
         pages.append([])
         y = margin
+
+        let logo = UIImage(named: "LogoV5") ?? UIImage(named: "AD_LOGO")
+        let logoSize: CGFloat = 72
+        let logoX = isRTL ? margin : (margin + width - logoSize)
+        let textX = isRTL ? (margin + logoSize + 20) : margin
+        let textWidth = width - logoSize - 20
+
+        if let logo = logo {
+            append(.image(logo, CGRect(x: logoX, y: y + 2, width: logoSize, height: logoSize)))
+        }
+
         let brand = text(loc("Proforma_PDF_Brand"), size: 23, bold: true, color: rose)
         let title = text(loc("Proforma_PDF_Title"), size: 17, bold: true)
-        append(.text(brand, CGRect(x: margin, y: y, width: width, height: 31)))
+        append(.text(brand, CGRect(x: textX, y: y, width: textWidth, height: 31)))
         y += 35
-        append(.text(title, CGRect(x: margin, y: y, width: width, height: 26)))
+        append(.text(title, CGRect(x: textX, y: y, width: textWidth, height: 26)))
         y += 29
         let identity = text("\(snapshot.number)  ·  \(loc("Proforma_PDF_Revision")) \(snapshot.revision)", size: 10, color: secondary, technical: true)
-        let identityHeight = measured(identity, width: width)
-        append(.text(identity, CGRect(x: margin, y: y, width: width, height: identityHeight)))
+        let identityHeight = measured(identity, width: textWidth)
+        append(.text(identity, CGRect(x: textX, y: y, width: textWidth, height: identityHeight)))
         y += identityHeight + 4
         let state = text(snapshot.statusTitle, size: 11, bold: true, color: rose)
-        let stateHeight = measured(state, width: width)
-        append(.text(state, CGRect(x: margin, y: y, width: width, height: stateHeight)))
+        let stateHeight = measured(state, width: textWidth)
+        append(.text(state, CGRect(x: textX, y: y, width: textWidth, height: stateHeight)))
         y += stateHeight + 6
         let notice = text(loc("Proforma_PDF_Nonbinding"), size: 10, bold: true, color: secondary)
-        let noticeHeight = measured(notice, width: width)
-        append(.text(notice, CGRect(x: margin, y: y, width: width, height: noticeHeight)))
+        let noticeHeight = measured(notice, width: textWidth)
+        append(.text(notice, CGRect(x: textX, y: y, width: textWidth, height: noticeHeight)))
         y += noticeHeight + 10
+
+        if logo != nil {
+            y = max(y, margin + logoSize + 12)
+        }
+
         append(.rule(CGRect(x: margin, y: y, width: width, height: 0.7), hairline))
         y += 14
         if repeatingColumns { try columnHeader() }
@@ -376,10 +449,79 @@ private final class PPProformaPDFComposer {
         y += h + 8
     }
 
-    private func detail(label: String, value: String, technical: Bool = false) throws {
-        try flow(text(loc(label), size: 9, bold: true, color: secondary))
-        try flow(text(value.isEmpty ? loc("Proforma_PDF_NotProvided") : value, size: 11, technical: technical))
-        y += 3
+    private func metadataBar() throws {
+        struct MetaItem {
+            let labelKey: String
+            let value: String
+            let technical: Bool
+        }
+
+        let items: [MetaItem] = [
+            MetaItem(
+                labelKey: "Proforma_PDF_Branch",
+                value: snapshot.branchName.isEmpty ? loc("Proforma_PDF_NotProvided") : snapshot.branchName,
+                technical: false
+            ),
+            MetaItem(
+                labelKey: "Proforma_PDF_Issued",
+                value: date(snapshot.issuedAt),
+                technical: true
+            ),
+            MetaItem(
+                labelKey: "Proforma_PDF_ValidUntil",
+                value: snapshot.validUntil.map { date($0, dateOnly: true) } ?? loc("Proforma_PDF_NoValidity"),
+                technical: snapshot.validUntil != nil
+            ),
+            MetaItem(
+                labelKey: "Proforma_PDF_Currency",
+                value: snapshot.currency.isEmpty ? loc("Proforma_PDF_NotProvided") : snapshot.currency,
+                technical: true
+            )
+        ]
+
+        let columnCount = CGFloat(items.count)
+        let colWidth = width / columnCount
+        let innerPadding: CGFloat = 8
+        let availableWidth = colWidth - (innerPadding * 2)
+
+        let prepared = items.map { item -> (labelAttr: NSAttributedString, valueAttr: NSAttributedString, labelH: CGFloat, valueH: CGFloat) in
+            let labelAttr = text(loc(item.labelKey), size: 9, bold: true, color: secondary)
+            let valueAttr = text(item.value, size: 11, bold: false, technical: item.technical)
+            let labelH = measured(labelAttr, width: availableWidth)
+            let valueH = measured(valueAttr, width: availableWidth)
+            return (labelAttr, valueAttr, labelH, valueH)
+        }
+
+        let maxLabelH = prepared.map { $0.labelH }.max() ?? 14
+        let maxValueH = prepared.map { $0.valueH }.max() ?? 16
+        let labelValueSpacing: CGFloat = 3
+        let verticalPadding: CGFloat = 8
+        let barHeight = max(44, verticalPadding + maxLabelH + labelValueSpacing + maxValueH + verticalPadding)
+
+        try ensure(barHeight + 10)
+
+        // Subtle background container and borders
+        append(.fill(CGRect(x: margin, y: y, width: width, height: barHeight), rowTint))
+        append(.rule(CGRect(x: margin, y: y, width: width, height: 0.5), hairline))
+        append(.rule(CGRect(x: margin, y: y + barHeight, width: width, height: 0.5), hairline))
+
+        // Vertical dividers between columns
+        for d in 1..<items.count {
+            let divX = isRTL ? (margin + width - CGFloat(d) * colWidth) : (margin + CGFloat(d) * colWidth)
+            append(.rule(CGRect(x: divX, y: y + 6, width: 0.5, height: barHeight - 12), hairline))
+        }
+
+        // Column contents
+        for (index, col) in prepared.enumerated() {
+            let colX = isRTL ? (margin + width - CGFloat(index + 1) * colWidth) : (margin + CGFloat(index) * colWidth)
+            let textX = colX + innerPadding
+            let labelY = y + verticalPadding
+            let valueY = labelY + maxLabelH + labelValueSpacing
+            append(.text(col.labelAttr, CGRect(x: textX, y: labelY, width: availableWidth, height: col.labelH)))
+            append(.text(col.valueAttr, CGRect(x: textX, y: valueY, width: availableWidth, height: col.valueH)))
+        }
+
+        y += barHeight + 14
     }
 
     /// CoreText returns UTF-16 cluster boundaries. The exact same frame geometry

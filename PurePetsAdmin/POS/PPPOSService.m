@@ -668,13 +668,21 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
 
 + (BOOL)isExactUnitSelectionConflictError:(NSError *)error {
     if (!error) return NO;
-    if (![error.domain isEqualToString:FIRFunctionsErrorDomain] &&
-        ![error.domain isEqualToString:@"com.firebase.functions"]) return NO;
+    NSString *domain = error.domain;
+    if (![domain isEqualToString:FIRFunctionsErrorDomain] &&
+        ![domain isEqualToString:@"FIRFunctionsErrorDomain"] &&
+        ![domain isEqualToString:@"com.firebase.functions"] &&
+        ![domain containsString:@"Functions"]) return NO;
     NSDictionary *details = [self exactUnitConflictDetailsForError:error];
     NSString *domainCode = [PPSafeString(details[@"domainCode"]) uppercaseString];
     if ([domainCode hasPrefix:@"POS_INVENTORY_UNIT_"] ||
         [domainCode isEqualToString:@"POS_PRODUCT_NOT_FOUND"] ||
         [domainCode isEqualToString:@"POS_INSUFFICIENT_STOCK"] ||
+        [domainCode isEqualToString:@"POS_INSUFFICIENT_BRANCH_STOCK"] ||
+        [domainCode isEqualToString:@"COMMERCE_PRODUCT_UNAVAILABLE"] ||
+        [domainCode isEqualToString:@"COMMERCE_PRODUCT_DELETED"] ||
+        [domainCode isEqualToString:@"VARIANT_INACTIVE"] ||
+        [domainCode containsString:@"EXPIRED"] ||
         [domainCode isEqualToString:@"POS_PRICE_DISCREPANCY"]) {
         return YES;
     }
@@ -687,13 +695,17 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         [message containsString:@"no longer available"] ||
         [message containsString:@"product is unavailable"] ||
         [message containsString:@"insufficient stock"] ||
+        [message containsString:@"insufficient branch stock"] ||
+        [message containsString:@"expired"] ||
         [message containsString:@"price does not match"] ||
         [message containsString:@"canonical catalog price"];
 }
 
 + (NSDictionary<NSString *, id> *)exactUnitConflictDetailsForError:(NSError *)error {
     if (!error || ![error.userInfo isKindOfClass:NSDictionary.class]) return @{};
-    id details = error.userInfo[FIRFunctionsErrorDetailsKey] ?: error.userInfo[@"details"];
+    id details = error.userInfo[@"details"]
+              ?: error.userInfo[@"FIRFunctionsErrorDetailsKey"]
+              ?: error.userInfo[FIRFunctionsErrorDetailsKey];
     return [details isKindOfClass:NSDictionary.class] ? (NSDictionary<NSString *, id> *)details : @{};
 }
 

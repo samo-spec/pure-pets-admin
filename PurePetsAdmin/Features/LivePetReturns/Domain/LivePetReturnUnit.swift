@@ -64,6 +64,7 @@ public struct LivePetReturnUnit: Identifiable, Codable, Hashable, Sendable {
         originalSaleTransactionId: String,
         originalSalePriceMinor: Int64,
         allocatedDiscountMinor: Int64 = 0,
+        netPaidMinor: Int64? = nil,
         refundableRemainingMinor: Int64? = nil,
         refundAmountMinor: Int64? = nil,
         currency: String = "QAR",
@@ -92,8 +93,11 @@ public struct LivePetReturnUnit: Identifiable, Codable, Hashable, Sendable {
         self.allocatedDiscountMinor = normalizedDiscount
 
         let calculatedNet = normalizedPrice - normalizedDiscount
-        self.netPaidMinor = calculatedNet
-        let remaining = max(0, min(refundableRemainingMinor ?? calculatedNet, calculatedNet))
+        // Canonical converted-invoice allocations include the captured tax.
+        // Historical sale/return documents retain their gross-minus-discount fallback.
+        let capturedNet = max(0, netPaidMinor ?? calculatedNet)
+        self.netPaidMinor = capturedNet
+        let remaining = max(0, min(refundableRemainingMinor ?? capturedNet, capturedNet))
         self.refundableRemainingMinor = remaining
         self.refundAmountMinor = min(max(0, refundAmountMinor ?? remaining), remaining)
         self.currency = currency
@@ -174,6 +178,7 @@ public struct LivePetReturnUnit: Identifiable, Codable, Hashable, Sendable {
         let originalSaleTransactionId = try container.decode(String.self, forKey: .originalSaleTransactionId)
         let originalSalePriceMinor = try container.decode(Int64.self, forKey: .originalSalePriceMinor)
         let allocatedDiscountMinor = try container.decodeIfPresent(Int64.self, forKey: .allocatedDiscountMinor) ?? 0
+        let netPaidMinor = try container.decodeIfPresent(Int64.self, forKey: .netPaidMinor)
         let refundableRemainingMinor = try container.decodeIfPresent(Int64.self, forKey: .refundableRemainingMinor)
         let refundAmountMinor = try container.decodeIfPresent(Int64.self, forKey: .refundAmountMinor)
         let currency = try container.decodeIfPresent(String.self, forKey: .currency) ?? "QAR"
@@ -199,6 +204,7 @@ public struct LivePetReturnUnit: Identifiable, Codable, Hashable, Sendable {
             originalSaleTransactionId: originalSaleTransactionId,
             originalSalePriceMinor: originalSalePriceMinor,
             allocatedDiscountMinor: allocatedDiscountMinor,
+            netPaidMinor: netPaidMinor,
             refundableRemainingMinor: refundableRemainingMinor,
             refundAmountMinor: refundAmountMinor,
             currency: currency,
@@ -328,6 +334,7 @@ public struct LivePetReturnUnit: Identifiable, Codable, Hashable, Sendable {
             originalSaleTransactionId: originalSaleTxnId,
             originalSalePriceMinor: originalPriceMinor,
             allocatedDiscountMinor: discountMinor,
+            netPaidMinor: (dict["netPaidMinor"] as? Int64) ?? (dict["netPaidMinor"] as? Int).map { Int64($0) },
             refundableRemainingMinor: (dict["refundableRemainingMinor"] as? Int64) ?? (dict["refundableRemainingMinor"] as? Int).map { Int64($0) },
             refundAmountMinor: (dict["refundAmountMinor"] as? Int64) ?? (dict["refundAmountMinor"] as? Int).map { Int64($0) },
             currency: (dict["currency"] as? String) ?? "QAR",

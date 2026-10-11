@@ -3174,6 +3174,19 @@
 "Branches_Error_Subtitle" = "We couldn't load branches. Check your connection and try again.";
 "Branches_Retry" = "Try Again";
 "Branches_Default_Confirm_Format" = "Set \"%@\" as the primary default branch?";
+"Branches_UserAppStock_Badge" = "iOS User Stock";
+"Branches_UserAppStock_Label" = "iOS User App Stock";
+"Branches_UserAppStock_Help" = "Use this branch's inventory as the available stock for consumers in the Pure Pets iOS app.";
+"Branches_UserAppStock_Title" = "iOS User App Stock";
+"Branches_UserAppStock_Subtitle" = "The branch whose inventory is shown and sold in the iOS consumer app";
+"Branches_UserAppStock_Confirm_Format" = "Do you want to set the stock of branch \"%@\" as the active stock for the iOS user app?";
+"Branches_SetUserAppStock" = "Set as iOS User App Stock";
+"Branches_UserAppStock_ActiveBadge" = "Active iOS User Stock";
+"Branches_UserAppStock_Success" = "Successfully set this branch's stock for the iOS user app.";
+"Branches_Studio_UserAppStockTitle" = "iOS User App Stock";
+"Branches_Studio_UserAppStockSubtitle" = "The branch whose inventory is published to consumer users in the marketplace";
+"Branches_Studio_ActiveUserAppStock" = "This branch is currently active for the iOS user app";
+"Branches_Studio_SetUserAppStock" = "Set as iOS User App Stock Branch";
 "ConfirmDelete_Branch_Format" = "Are you sure you want to permanently delete \"%@\"? This action cannot be undone.";
 "Branches_Deactivate_Confirm_Format" = "Do you want to deactivate \"%@\"? This branch will not appear in sales until reactivated.";
 "Branches_Cannot_Delete_Default" = "Cannot delete the primary default branch.";
@@ -4252,6 +4265,12 @@
 "POS_CheckoutPermissionDenied" = "You do not have permission to complete sales for this branch. Choose an authorized branch or request access.";
 "POS_CheckoutNetworkUnavailable" = "The sales service could not be reached. Check the connection and retry; retrying will not duplicate the sale.";
 "POS_CheckoutSessionExpired" = "Your sign-in session expired. Sign in again, then retry.";
+"POS_ProductUnavailableOrDeleted" = "An item in the cart is no longer available or was deleted. Refresh the product list and select again.";
+"POS_ProductExpired" = "An item in the cart has expired and cannot be sold. Check expiry dates.";
+"POS_CheckoutInvalidArgument" = "The sale data is invalid or incomplete. Verify cart items and quantities.";
+"POS_PreconditionFailed" = "The sale could not be completed due to inventory availability or order preconditions. Check your cart.";
+"POS_CheckoutAborted" = "A transaction conflict occurred on the server. Please try again.";
+"POS_InsufficientCashReceived" = "Cash received is less than the total bill amount.";
 
 /* ===================== POS Exact-Animal Multi-Select (Console parity) ===================== */
 "POS_ExactAnimalTitle" = "Select exact animals";
@@ -9652,7 +9671,7 @@
 /* MARK: - POS checkout transaction safety */
 "POS_CashReceivedBelowTotal_Format" = "Cash received (%.2f QAR) is less than the sale total (%.2f QAR). Correct the amount and try again.";
 "POS_ItemStockExceeded_Format" = "The quantity for (%@) exceeds available branch stock (%d available).";
-"POS_SubmitOutcomeUnknown" = "The sale was not confirmed. It may already have been recorded — check the sales history before selling again. Retrying is safe and will not create a duplicate sale.";
+"POS_SubmitOutcomeUnknown" = "The sale was not confirmed and may already be recorded. Check sales history for this transaction before retrying or starting another sale.";
 "POS_UnconfirmedSaleTitle" = "Unconfirmed sale";
 "POS_UnconfirmedSaleNotice_Format" = "A previous sale of %.2f QAR was never confirmed (command %@). Review the sales history before selling the same items again.";
 "POS_Receipt_TotalMismatchNotice" = "The sale was recorded with the total held by the server, which differs from the total shown in the cart. Review the item prices.";
@@ -11428,11 +11447,61 @@
 "Proforma_Status_issued" = "Issued";
 "Proforma_Status_converted" = "Converted";
 "Proforma_Status_cancelled" = "Cancelled";
+"Proforma_Cancel_SuccessTitle" = "Proforma invoice %@ has been cancelled";
+"Proforma_Cancelled_Hint" = "This proforma invoice is void and cannot be converted to a sale.";
 "Proforma_Status_expired" = "Expired";
 "Proforma_CustomerPicker_Title" = "Select invoice customer";
 "Proforma_CustomerPicker_Subtitle" = "Select an existing customer or create a customer profile for this proforma.";
 "Proforma_CustomerPicker_ReadOnly" = "Select an existing customer for this proforma.";
 "Proforma_CustomerPicker_Select" = "Use this customer";
+"Proforma_AllKinds" = "All Species";
+"Proforma_AllKinds_Subtitle" = "Browse all branch products";
+"Proforma_Species_Filter" = "Filter by Species";
+"Proforma_QuickAdd" = "Quick Add";
+"Proforma_InDraft" = "In Draft";
+"Proforma_Units" = "Units";
+"Proforma_StockAvailable" = "Available: %@";
+"Proforma_StockLow" = "Low Stock: %@";
+"Proforma_StockZero" = "Out of Stock";
+"Proforma_Presafe7Days" = "+7 Days";
+"Proforma_Presafe14Days" = "+14 Days";
+"Proforma_Presafe30Days" = "+30 Days";
+"Proforma_PresafeCustom" = "Custom Date";
+"Proforma_Telemetry_Active" = "Active Quotes";
+"Proforma_Telemetry_TotalValue" = "Total Value";
+"Proforma_Telemetry_Drafts" = "Drafts";
+"Proforma_Telemetry_Issued" = "Issued";
+"Proforma_Telemetry_Converted" = "Converted";
+"Proforma_Telemetry_Expired" = "Expired";
+"Proforma_SearchPlaceholder" = "Search invoice number or customer…";
+"Proforma_ItemAddedFeedback" = "Item added to invoice";
+"Proforma_ItemRemovedFeedback" = "Item removed";
+"Proforma_PaymentMethodPrompt" = "Select payment method to complete the real sale";
+"Proforma_QuickTenderExact" = "Exact Total";
+"Proforma_QuickTenderPlus10" = "+10 QAR";
+"Proforma_QuickTenderPlus50" = "+50 QAR";
+"Proforma_QuickTenderPlus100" = "+100 QAR";
+"Proforma_QuickTenderPlus500" = "+500 QAR";
+"Proforma_Studio_Title" = "Invoice Proforma Studio";
+"Proforma_Studio_Subtitle" = "Craft and manage commercial quotes seamlessly";
+"Proforma_LineItems_Title" = "Invoice Line Items & Products";
+"Proforma_LineItems_Count" = "%ld items";
+"Proforma_CommercialTerms_Title" = "Commercial Terms & Validity";
+"Proforma_FinancialSummary_Title" = "Executive Financial Summary";
+"Proforma_Device_iPadStudio" = "Unified Workbench (iPadOS)";
+"Proforma_Device_iPhoneFocus" = "Focused Document (iOS)";
+"Proforma_ShimmerLoading" = "Loading invoice details…";
+"Proforma_Empty_Search" = "No Matching Results";
+"Proforma_Empty_Search_Detail" = "Try searching with a different keyword or select another species.";
+"Proforma_Catalog_Title" = "Branch Catalog & Accessories";
+"Proforma_Catalog_Subtitle" = "Select eligible items and packages for this invoice";
+"Proforma_Filter_Species_All" = "All";
+"Proforma_Filter_Species_Dogs" = "Dogs";
+"Proforma_Filter_Species_Cats" = "Cats";
+"Proforma_Filter_Species_Birds" = "Birds";
+"Proforma_Filter_Species_SmallAnimals" = "Small Animals";
+"Proforma_Filter_Species_Fish" = "Fish";
+"Proforma_Filter_Species_Reptiles" = "Reptiles";
 "Proforma_CustomerPicker_Save" = "Save and use customer";
 
 /* Proforma document and decimal receipt output */
@@ -11476,3 +11545,42 @@
 "Proforma_RefundQuantityHint" = "Available to refund: %@. You can enter up to three decimal places.";
 "Proforma_RecoveryHint" = "An interrupted command was recovered. Retry the same command to confirm its result before continuing.";
 "Proforma_GroupPrice" = "Package price";
+"Proforma_UnnamedProduct" = "Unnamed product";
+"Proforma_BranchUnavailable" = "Branch name unavailable";
+
+"Proforma_ReturnAllocationUnavailable" = "The captured refund amounts for this invoice could not be confirmed. Reload the sale receipt and try again.";
+"Proforma_Copied" = "Copied";
+"Proforma_CopyNumber" = "Copy quote number";
+
+// Proforma Invoices — NextGen POS Journal UI Parity
+"Proforma_Dossier_Title" = "Proforma Invoice Dossier";
+"Proforma_Journal_NetVolume" = "Total Quotations";
+"Proforma_Journal_ActivityFormat" = "%@ proforma invoices · %@ items quoted";
+"Proforma_Journal_PeriodDetails" = "Period Details";
+"Proforma_Journal_Scope" = "Proforma totals calculated from the latest invoices recorded for this branch.";
+"Proforma_Journal_Invoices" = "Proforma Invoices";
+"Proforma_Journal_ResultCountFormat" = "%@ matching invoices";
+"Proforma_Journal_NewDraft" = "New Proforma Invoice";
+"Proforma_Journal_Search" = "Search proforma invoices";
+"Proforma_Journal_SearchHint" = "Invoice number, customer, phone or item";
+"Proforma_Journal_NoMatches" = "No matching invoices";
+"Proforma_Journal_NoMatchesHelp" = "Change search or filters, or view all branch invoices.";
+"Proforma_Journal_OpenInvoice" = "Review Invoice";
+"Proforma_Card_TapToView" = "Open invoice details and actions";
+"Proforma_Action_WhatsApp" = "Send Invoice via WhatsApp";
+"Proforma_Copy_Success" = "Invoice number copied to clipboard";
+"Proforma_Dossier_Items_Section" = "Quoted Line Items";
+"Proforma_Dossier_Customer_Section" = "Customer Details";
+"Proforma_Dossier_Financial_Section" = "Financial Breakdown";
+"Proforma_Dossier_Terms_Section" = "Commercial Terms & Validity";
+"Proforma_Dossier_Audit_Section" = "Audit & Version Information";
+"Proforma_Action_ConvertToSale" = "Convert to Sale";
+"Proforma_Action_EditDraft" = "Edit Invoice";
+"Proforma_Journal_AllInvoices" = "All Invoices";
+"Proforma_Filter_All" = "All Statuses";
+"Proforma_Validity_All" = "All Horizons";
+"Proforma_Validity_Active" = "Active / Valid";
+"Proforma_Validity_Expired" = "Expired";
+
+/* PPAlert SwiftUI: persistent label for prompts without caller placeholder. */
+"Alert_Input_Accessibility_Label" = "Text";

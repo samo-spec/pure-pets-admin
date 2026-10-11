@@ -3224,6 +3224,19 @@
 "Branches_Error_Subtitle" = "تعذّر تحميل الفروع. تحقق من اتصالك وحاول مرة أخرى.";
 "Branches_Retry" = "حاول مرة أخرى";
 "Branches_Default_Confirm_Format" = "هل تريد تعيين الفرع \"%@\" كفرع رئيسي افتراضي؟";
+"Branches_UserAppStock_Badge" = "مخزون تطبيق العملاء";
+"Branches_UserAppStock_Label" = "مخزون تطبيق المستخدمين (iOS)";
+"Branches_UserAppStock_Help" = "اعتماد مخزون هذا الفرع كمخزون متاح للمستخدمين في تطبيق Pure Pets للعملاء.";
+"Branches_UserAppStock_Title" = "مخزون تطبيق المستخدمين";
+"Branches_UserAppStock_Subtitle" = "الفرع الذي يُعرض مخزونه للمستخدمين في تطبيق iOS ويتم الشراء منه";
+"Branches_UserAppStock_Confirm_Format" = "هل تريد اعتماد مخزون فرع \"%@\" ليظهر ويُستخدم في تطبيق المستخدمين (iOS)؟";
+"Branches_SetUserAppStock" = "اعتماد كمخزون تطبيق العملاء";
+"Branches_UserAppStock_ActiveBadge" = "المخزون المعتمد لتطبيق iOS";
+"Branches_UserAppStock_Success" = "تم اعتماد مخزون هذا الفرع لتطبيق المستخدمين بنجاح.";
+"Branches_Studio_UserAppStockTitle" = "مخزون تطبيق المستخدمين (iOS)";
+"Branches_Studio_UserAppStockSubtitle" = "الفرع الذي يُعرض مخزونه للمستخدمين في متجر التطبيق ويتم خصم المبيعات منه";
+"Branches_Studio_ActiveUserAppStock" = "هذا الفرع هو المعتمد حالياً لتطبيق المستخدمين";
+"Branches_Studio_SetUserAppStock" = "اعتماد مخزون هذا الفرع لتطبيق المستخدمين";
 "ConfirmDelete_Branch_Format" = "هل أنت متأكد من رغبتك في حذف الفرع \"%@\" نهائياً؟ لن تتمكن من استرجاع هذا الفرع بعد الحذف.";
 "Branches_Deactivate_Confirm_Format" = "هل تريد تعطيل الفرع \"%@\"؟ لن يظهر هذا الفرع في عمليات البيع حتى يتم تنشيطه مجدداً.";
 "Branches_Cannot_Delete_Default" = "لا يمكن حذف الفرع الرئيسي الافتراضي.";
@@ -4314,6 +4327,12 @@
 "POS_CheckoutPermissionDenied" = "ليست لديك صلاحية إتمام البيع في هذا الفرع. اختر فرعًا مسموحًا أو اطلب الصلاحية.";
 "POS_CheckoutNetworkUnavailable" = "تعذر الوصول إلى خدمة البيع. تحقق من الاتصال ثم أعد المحاولة؛ لن يتكرر البيع عند إعادة المحاولة.";
 "POS_CheckoutSessionExpired" = "انتهت جلسة تسجيل الدخول. سجّل الدخول مجددًا ثم أعد المحاولة.";
+"POS_ProductUnavailableOrDeleted" = "أحد الأصناف في السلة لم يعد متاحاً للبيع أو تم حذفه من النظام. حدّث قائمة المنتجات وأعد الاختيار.";
+"POS_ProductExpired" = "أحد الأصناف في السلة منتهي الصلاحية ولا يمكن بيعه. راجع تواريخ الصلاحية.";
+"POS_CheckoutInvalidArgument" = "بيانات عملية البيع غير متوافقة أو بها نقص. تحقق من الأصناف والكميات.";
+"POS_PreconditionFailed" = "تعذر إتمام العملية بسبب عدم توفر المخزون أو متطلبات الفاتورة. راجع بيانات السلة.";
+"POS_CheckoutAborted" = "حدث تعارض أثناء معالجة العملية في الخادم. يرجى إعادة المحاولة.";
+"POS_InsufficientCashReceived" = "المبلغ النقدي المستلم أقل من إجمالي الفاتورة.";
 
 /* ===================== POS Exact-Animal Multi-Select (Console parity) ===================== */
 "POS_ExactAnimalTitle" = "اختيار الحيوانات المحددة";
@@ -9721,7 +9740,7 @@
 /* MARK: - POS checkout transaction safety */
 "POS_CashReceivedBelowTotal_Format" = "المبلغ المستلم (%.2f ر.ق) أقل من إجمالي البيع (%.2f ر.ق). صحّح المبلغ ثم أعد المحاولة.";
 "POS_ItemStockExceeded_Format" = "كمية الصنف (%@) تتجاوز المخزون المتوفر في الفرع (%d متوفر).";
-"POS_SubmitOutcomeUnknown" = "لم يتأكد اكتمال البيع. قد تكون العملية سُجلت بالفعل — تحقق من سجل المبيعات قبل إعادة البيع. إعادة المحاولة آمنة ولن تُنشئ عملية مكررة.";
+"POS_SubmitOutcomeUnknown" = "لم يتأكد اكتمال البيع وقد تكون العملية سُجلت بالفعل. راجع سجل المبيعات لهذه العملية قبل إعادة المحاولة أو بدء بيع جديد.";
 "POS_UnconfirmedSaleTitle" = "بيع غير مؤكد";
 "POS_UnconfirmedSaleNotice_Format" = "عملية بيع سابقة بقيمة %.2f ر.ق لم يتأكد اكتمالها (رقم الأمر %@). راجع سجل المبيعات قبل إعادة بيع نفس الأصناف.";
 "POS_Receipt_TotalMismatchNotice" = "تم اعتماد البيع بالإجمالي المسجل في النظام، وهو يختلف عن الإجمالي المعروض في السلة. راجع أسعار الأصناف.";
@@ -11458,11 +11477,61 @@
 "Proforma_Status_issued" = "صادرة";
 "Proforma_Status_converted" = "محوّلة";
 "Proforma_Status_cancelled" = "ملغاة";
+"Proforma_Cancel_SuccessTitle" = "تم إلغاء الفاتورة المبدئية %@ بنجاح";
+"Proforma_Cancelled_Hint" = "تم إبطال هذه الفاتورة المبدئية ولا يمكن تحويلها إلى بيع.";
 "Proforma_Status_expired" = "منتهية";
 "Proforma_CustomerPicker_Title" = "اختر عميل الفاتورة";
 "Proforma_CustomerPicker_Subtitle" = "اختر عميلاً مسجلاً أو أنشئ ملف عميل لهذه الفاتورة المبدئية.";
 "Proforma_CustomerPicker_ReadOnly" = "اختر عميلاً مسجلاً لهذه الفاتورة المبدئية.";
 "Proforma_CustomerPicker_Select" = "استخدام هذا العميل";
+"Proforma_AllKinds" = "كل الفصائل";
+"Proforma_AllKinds_Subtitle" = "عرض كافة منتجات الفرع";
+"Proforma_Species_Filter" = "تصفية حسب الفصيلة";
+"Proforma_QuickAdd" = "إضافة سريعة";
+"Proforma_InDraft" = "في المسودة";
+"Proforma_Units" = "وحدات";
+"Proforma_StockAvailable" = "متوفر: %@";
+"Proforma_StockLow" = "مخزون محدود: %@";
+"Proforma_StockZero" = "نفد من الفرع";
+"Proforma_Presafe7Days" = "+٧ أيام";
+"Proforma_Presafe14Days" = "+١٤ يوماً";
+"Proforma_Presafe30Days" = "+٣٠ يوماً";
+"Proforma_PresafeCustom" = "تاريخ مخصص";
+"Proforma_Telemetry_Active" = "الفواتير النشطة";
+"Proforma_Telemetry_TotalValue" = "إجمالي القيمة";
+"Proforma_Telemetry_Drafts" = "المسودات";
+"Proforma_Telemetry_Issued" = "الصادرة";
+"Proforma_Telemetry_Converted" = "المحوّلة";
+"Proforma_Telemetry_Expired" = "منتهية";
+"Proforma_SearchPlaceholder" = "ابحث برقم الفاتورة أو العميل…";
+"Proforma_ItemAddedFeedback" = "تمت إضافة المنتج إلى الفاتورة";
+"Proforma_ItemRemovedFeedback" = "تم حذف المنتج";
+"Proforma_PaymentMethodPrompt" = "حدد وسيلة استلام الدفع لإتمام البيع الفعلي";
+"Proforma_QuickTenderExact" = "المبلغ المطلوب تماماً";
+"Proforma_QuickTenderPlus10" = "+١٠ ر.ق";
+"Proforma_QuickTenderPlus50" = "+٥٠ ر.ق";
+"Proforma_QuickTenderPlus100" = "+١٠٠ ر.ق";
+"Proforma_QuickTenderPlus500" = "+٥٠٠ ر.ق";
+"Proforma_Studio_Title" = "استوديو تجهيز الفاتورة";
+"Proforma_Studio_Subtitle" = "صياغة وتعديل عروض الأسعار باحترافية";
+"Proforma_LineItems_Title" = "بنود الفاتورة والمنتجات";
+"Proforma_LineItems_Count" = "%ld منتجات";
+"Proforma_CommercialTerms_Title" = "الشروط التجارية والصلاحية";
+"Proforma_FinancialSummary_Title" = "الملخص المالي النهائي";
+"Proforma_Device_iPadStudio" = "منصة العمل المتكاملة (iPadOS)";
+"Proforma_Device_iPhoneFocus" = "عرض المستند المركز (iOS)";
+"Proforma_ShimmerLoading" = "جارٍ تحميل تفاصيل الفاتورة…";
+"Proforma_Empty_Search" = "لا توجد نتائج مطابقة";
+"Proforma_Empty_Search_Detail" = "جرّب البحث بكلمة مختلفة أو اختر فصيلة أخرى.";
+"Proforma_Catalog_Title" = "قائمة منتجات ومستلزمات الفرع";
+"Proforma_Catalog_Subtitle" = "اختر المنتجات والعبوات المناسبة للفاتورة";
+"Proforma_Filter_Species_All" = "الكل";
+"Proforma_Filter_Species_Dogs" = "كلاب";
+"Proforma_Filter_Species_Cats" = "قطط";
+"Proforma_Filter_Species_Birds" = "طيور";
+"Proforma_Filter_Species_SmallAnimals" = "حيوانات صغيرة";
+"Proforma_Filter_Species_Fish" = "أسماك";
+"Proforma_Filter_Species_Reptiles" = "زواحف";
 "Proforma_CustomerPicker_Save" = "حفظ واستخدام العميل";
 
 /* Proforma document and decimal receipt output */
@@ -11506,3 +11575,42 @@
 "Proforma_RefundQuantityHint" = "المتاح للاسترداد: %@. يمكن إدخال حتى ثلاث منازل عشرية.";
 "Proforma_RecoveryHint" = "استُعيد أمر توقّف قبل تأكيده. أعد محاولة الأمر نفسه لتأكيد النتيجة قبل المتابعة.";
 "Proforma_GroupPrice" = "سعر العبوة";
+"Proforma_UnnamedProduct" = "منتج دون اسم";
+"Proforma_BranchUnavailable" = "اسم الفرع غير متاح";
+
+"Proforma_ReturnAllocationUnavailable" = "تعذّر تأكيد مبالغ الإرجاع المحفوظة لهذه الفاتورة. أعد تحميل إيصال البيع ثم حاول مجدداً.";
+"Proforma_Copied" = "تم النسخ";
+"Proforma_CopyNumber" = "نسخ رقم عرض السعر";
+
+// Proforma Invoices — NextGen POS Journal UI Parity
+"Proforma_Dossier_Title" = "ملف الفاتورة المبدئية";
+"Proforma_Journal_NetVolume" = "إجمالي عروض الأسعار";
+"Proforma_Journal_ActivityFormat" = "%@ فواتير مبدئية · %@ قطع مدرجة";
+"Proforma_Journal_PeriodDetails" = "تفاصيل الفترة";
+"Proforma_Journal_Scope" = "إجماليات الفواتير المبدئية محسوبة من أحدث الفواتير المسجلة لهذا الفرع.";
+"Proforma_Journal_Invoices" = "الفواتير المبدئية";
+"Proforma_Journal_ResultCountFormat" = "%@ فواتير مطابقة";
+"Proforma_Journal_NewDraft" = "فاتورة مبدئية جديدة";
+"Proforma_Journal_Search" = "ابحث عن فاتورة مبدئية";
+"Proforma_Journal_SearchHint" = "رقم الفاتورة، العميل، الهاتف أو الصنف";
+"Proforma_Journal_NoMatches" = "لا توجد فواتير مطابقة";
+"Proforma_Journal_NoMatchesHelp" = "غيّر البحث أو الفلاتر، أو اعرض كل فواتير هذا الفرع.";
+"Proforma_Journal_OpenInvoice" = "مراجعة الفاتورة";
+"Proforma_Card_TapToView" = "فتح تفاصيل الفاتورة وإجراءاتها";
+"Proforma_Action_WhatsApp" = "إرسال الفاتورة عبر واتساب";
+"Proforma_Copy_Success" = "تم نسخ رقم الفاتورة إلى الحافظة";
+"Proforma_Dossier_Items_Section" = "العناصر المدرجة";
+"Proforma_Dossier_Customer_Section" = "بيانات العميل";
+"Proforma_Dossier_Financial_Section" = "التفاصيل المالية";
+"Proforma_Dossier_Terms_Section" = "شروط وصلاحية العرض";
+"Proforma_Dossier_Audit_Section" = "معلومات التدقيق والنسخة";
+"Proforma_Action_ConvertToSale" = "تحويل إلى بيع";
+"Proforma_Action_EditDraft" = "تعديل الفاتورة";
+"Proforma_Journal_AllInvoices" = "كل الفواتير";
+"Proforma_Filter_All" = "كل الحالات";
+"Proforma_Validity_All" = "كل الفترات";
+"Proforma_Validity_Active" = "سارية الصلاحية";
+"Proforma_Validity_Expired" = "منتهية الصلاحية";
+
+/* PPAlert SwiftUI: persistent label for prompts without caller placeholder. */
+"Alert_Input_Accessibility_Label" = "النص المطلوب";
