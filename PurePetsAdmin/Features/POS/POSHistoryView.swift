@@ -2178,7 +2178,7 @@ private struct DossierFinancialCard: View {
                 // Subtotal
                 dossierRow(
                     label: Language.get("POS_Subtotal", alter: "المجموع الفرعي"),
-                    value: POSReceiptFormat.currency(receipt.subtotal > 0 ? receipt.subtotal : max(0, receipt.total + receipt.discount - receipt.tax), code: receipt.currency)
+                    value: POSReceiptFormat.currency(receipt.subtotal > 0 ? receipt.subtotal : max(0, receipt.total + receipt.discount - receipt.tax - receipt.deliveryFee), code: receipt.currency)
                 )
 
                 // Discount
@@ -2187,6 +2187,14 @@ private struct DossierFinancialCard: View {
                         label: Language.get("POS_Discount", alter: "الخصم"),
                         value: "−" + POSReceiptFormat.currency(receipt.discount, code: receipt.currency),
                         valueColor: Color(uiColor: .systemGreen)
+                    )
+                }
+
+                // Delivery Fee
+                if receipt.deliveryFee > 0 {
+                    dossierRow(
+                        label: Language.get("POS_DeliveryFee", alter: "رسوم التوصيل"),
+                        value: "+" + POSReceiptFormat.currency(receipt.deliveryFee, code: receipt.currency)
                     )
                 }
                 if receipt.tax > 0 {
@@ -3890,7 +3898,7 @@ struct POSRefundStudioSheet: View {
         return (amount > 0 || (!(receipt.proformaInvoiceID ?? "").isEmpty && hasReturnedQuantity)) && reason.count >= 3
     }
 
-    private func promptQuantityEdit(for item: POSReceiptItem, currentQty: Double, available: Double) {
+    private func promptQuantityEdit(for item: PPPOSCartItem, currentQty: Double, available: Double) {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         let title = Language.get("Proforma_RefundQuantity", alter: "تعديل كمية الاسترداد")
         let hint = String(format: Language.get("Proforma_RefundQuantityHint", alter: "الحد الأقصى المتاح للاسترداد: %@"), POSReceiptFormat.quantity(available))

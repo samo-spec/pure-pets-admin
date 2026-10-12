@@ -256,7 +256,16 @@ public func proformaDisplayNumber(_ number: String) -> String {
     return clean
 }
 
-struct ProformaInvoice: Identifiable, Equatable, Sendable {
+struct ProformaInvoice: Identifiable, Hashable, Equatable, Sendable {
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(version)
+    }
+
+    static func == (lhs: ProformaInvoice, rhs: ProformaInvoice) -> Bool {
+        lhs.id == rhs.id && lhs.version == rhs.version && lhs.status == rhs.status && lhs.updatedAt == rhs.updatedAt
+    }
+
     let id: String
     let number: String
     var displayNumber: String { proformaDisplayNumber(number) }

@@ -3346,14 +3346,14 @@ private struct CommandPOSDeck: View {
                 .foregroundStyle(telemetryStore.canSell ? Color(uiColor: .ppSuccess) : AdminSurface.secondaryText)
 
             Text(accessTitle)
-                .font(.system(size: 11, weight: .semibold))
+                .font(PPBeirutiFont.bold(12, relativeTo: .caption))
                 .foregroundStyle(
                     telemetryStore.canSell
                         ? (colorScheme == .dark ? Color(uiColor: .ppSuccess) : AdminSurface.primaryText)
                         : AdminSurface.secondaryText
                 )
         }
-        .padding(.horizontal, 7)
+        .padding(.horizontal, 7.5)
         .padding(.vertical, 2.5)
         .background(
             (telemetryStore.canSell ? Color(uiColor: .ppSuccess) : AdminSurface.primaryText)
@@ -3388,7 +3388,7 @@ private struct CommandPOSDeck: View {
                             ZStack(alignment: .bottomTrailing) {
                                 RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                                     .fill(AdminSurface.surface)
-                                    .frame(width: 44, height: 44)
+                                    .frame(width: 48, height: 48)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                                             .strokeBorder(
@@ -3404,14 +3404,14 @@ private struct CommandPOSDeck: View {
                                     )
 
                                 Image(systemName: "barcode.viewfinder")
-                                    .font(.system(size: 20, weight: .semibold))
+                                    .font(.system(size: 21, weight: .semibold))
                                     .foregroundStyle(AdminSurface.primaryText)
-                                    .frame(width: 44, height: 44)
+                                    .frame(width: 48, height: 48)
 
                                 if telemetryStore.canSell {
                                     Circle()
                                         .fill(Color(uiColor: .ppSuccess))
-                                        .frame(width: 8, height: 8)
+                                        .frame(width: 8.5, height: 8.5)
                                         .overlay(
                                             Circle()
                                                 .stroke(AdminSurface.surface, lineWidth: 1.5)
@@ -3421,7 +3421,7 @@ private struct CommandPOSDeck: View {
                             }
                             .accessibilityHidden(true)
 
-                            VStack(alignment: .leading, spacing: 3) {
+                            VStack(alignment: .leading, spacing: 4) {
                                 HStack(alignment: .center, spacing: 8) {
                                     Text(CommandPOSHomeCopy.text(telemetryStore.canSell ? "StartSale" : "Browse"))
                                         .font(AdminType.headlineBold)
@@ -3443,7 +3443,7 @@ private struct CommandPOSDeck: View {
                             ZStack {
                                 Circle()
                                     .fill(AdminSurface.primary.opacity(colorScheme == .dark ? 0.12 : 0.06))
-                                    .frame(width: 28, height: 28)
+                                    .frame(width: 30, height: 30)
 
                                 Image(systemName: arrow)
                                     .font(.system(size: 12, weight: .bold))
@@ -3453,9 +3453,9 @@ private struct CommandPOSDeck: View {
                         }
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 15)
+                .padding(.vertical, 14)
+                .frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
                 .background(
                     AdminSurface.primary.opacity(colorScheme == .dark ? 0.14 : 0.065),
                     in: RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
@@ -8305,16 +8305,16 @@ private struct CommandHotelSovereignCard: View {
         .clipShape(RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous))
         .overlay(cardBorder)
         .shadow(
-            color: Color(red: 0.58, green: 0.35, blue: 0.95).opacity(colorScheme == .dark ? 0.28 : 0.10),
-            radius: 14,
+            color: Color.black.opacity(colorScheme == .dark ? 0.28 : 0.05),
+            radius: 10,
             x: 0,
-            y: 5
+            y: 3
         )
         .shadow(
-            color: Color.black.opacity(colorScheme == .dark ? 0.30 : 0.04),
-            radius: 8,
+            color: Color.black.opacity(colorScheme == .dark ? 0.18 : 0.02),
+            radius: 4,
             x: 0,
-            y: 2
+            y: 1
         )
         .contentShape(RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous))
         .onTapGesture {
@@ -8526,7 +8526,7 @@ private struct CommandHotelSovereignCard: View {
             .padding(.vertical, 9)
             .background(
                 RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
-                    .fill(colorScheme == .dark ? Color(red: 0.18, green: 0.12, blue: 0.30).opacity(0.70) : Color.white.opacity(0.72))
+                    .fill(colorScheme == .dark ? AdminSurface.control.opacity(0.70) : AdminSurface.background.opacity(0.75))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
@@ -8615,69 +8615,26 @@ private struct CommandHotelSovereignCard: View {
     // MARK: - Visual Enclosure
     private var cardBackground: some View {
         ZStack {
-            if colorScheme == .dark {
-                // Luxury Midnight Amethyst
-                Color(red: 0.13, green: 0.08, blue: 0.22)
+            AdminSurface.surface
 
-                LinearGradient(
-                    stops: [
-                        .init(color: Color(red: 0.58, green: 0.35, blue: 0.95).opacity(0.26), location: 0.0),
-                        .init(color: Color(red: 0.32, green: 0.18, blue: 0.55).opacity(0.18), location: 0.50),
-                        .init(color: Color(red: 0.10, green: 0.07, blue: 0.18).opacity(0.95), location: 1.0)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-
-                // Atmospheric Sky Blue Accent Shimmer
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.20, green: 0.65, blue: 0.95).opacity(0.12),
-                        Color.clear
-                    ],
-                    startPoint: .topTrailing,
-                    endPoint: .center
-                )
-            } else {
-                // Premium Royal Lavender Silk
-                Color(red: 0.95, green: 0.92, blue: 0.99)
-
-                LinearGradient(
-                    stops: [
-                        .init(color: Color(red: 0.93, green: 0.88, blue: 0.99), location: 0.0),
-                        .init(color: Color(red: 0.96, green: 0.93, blue: 1.0), location: 0.45),
-                        .init(color: Color(red: 0.91, green: 0.93, blue: 0.99), location: 1.0)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-
-                // Specular Luminous Highlight
-                LinearGradient(
-                    colors: [
-                        Color.white.opacity(0.55),
-                        Color.clear
-                    ],
-                    startPoint: .top,
-                    endPoint: .center
-                )
-            }
+            LinearGradient(
+                colors: [
+                    Color(red: 0.58, green: 0.35, blue: 0.95).opacity(colorScheme == .dark ? 0.05 : 0.02),
+                    Color.clear
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         }
     }
 
     private var cardBorder: some View {
         RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous)
             .strokeBorder(
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.58, green: 0.35, blue: 0.95).opacity(colorScheme == .dark ? 0.65 : 0.42),
-                        Color(red: 0.35, green: 0.60, blue: 0.95).opacity(colorScheme == .dark ? 0.45 : 0.26),
-                        Color(red: 0.58, green: 0.35, blue: 0.95).opacity(colorScheme == .dark ? 0.25 : 0.16)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                lineWidth: colorScheme == .dark ? 1.0 : 0.90
+                colorScheme == .dark
+                    ? Color(red: 0.58, green: 0.35, blue: 0.95).opacity(0.24)
+                    : AdminSurface.hairline,
+                lineWidth: colorScheme == .dark ? 1.0 : 0.85
             )
     }
 
@@ -8751,22 +8708,7 @@ private struct CommandHotelDeck: View {
                 }
             }
         }
-        .background(
-            RoundedRectangle(cornerRadius: CommandCorner.hero, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.58, green: 0.35, blue: 0.95).opacity(colorScheme == .dark ? 0.09 : 0.04),
-                            Color(red: 0.35, green: 0.60, blue: 0.95).opacity(colorScheme == .dark ? 0.05 : 0.02),
-                            Color.clear
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .padding(-8)
-                .allowsHitTesting(false)
-        )
+        .background(Color.clear)
     }
 }
 
@@ -8879,16 +8821,10 @@ private struct CommandHotelQuickActionCard: View {
             .clipShape(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
             .overlay(cardBorder)
             .shadow(
-                color: Color(red: 0.58, green: 0.35, blue: 0.95).opacity(colorScheme == .dark ? 0.22 : 0.08),
-                radius: 8,
+                color: Color.black.opacity(colorScheme == .dark ? 0.22 : 0.04),
+                radius: 6,
                 x: 0,
-                y: 3
-            )
-            .shadow(
-                color: Color.black.opacity(colorScheme == .dark ? 0.25 : 0.03),
-                radius: 4,
-                x: 0,
-                y: 1
+                y: 2
             )
             .contentShape(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
         }
@@ -8907,46 +8843,17 @@ private struct CommandHotelQuickActionCard: View {
 
     private var cardBackground: some View {
         ZStack {
-            if colorScheme == .dark {
-                Color(red: 0.13, green: 0.08, blue: 0.22)
+            AdminSurface.surface
 
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.58, green: 0.35, blue: 0.95).opacity(0.18),
-                        accent.opacity(0.12),
-                        Color(red: 0.10, green: 0.07, blue: 0.18)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            } else {
-                Color(red: 0.95, green: 0.92, blue: 0.99)
-
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.93, green: 0.89, blue: 0.99),
-                        accent.opacity(0.06),
-                        Color(red: 0.96, green: 0.94, blue: 1.0)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            }
+            accent.opacity(colorScheme == .dark ? 0.05 : 0.02)
         }
     }
 
     private var cardBorder: some View {
         RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
             .strokeBorder(
-                LinearGradient(
-                    colors: [
-                        accent.opacity(contrast == .increased ? 0.70 : (colorScheme == .dark ? 0.50 : 0.35)),
-                        Color(red: 0.58, green: 0.35, blue: 0.95).opacity(colorScheme == .dark ? 0.35 : 0.20)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                lineWidth: contrast == .increased ? 1.2 : 0.90
+                accent.opacity(contrast == .increased ? 0.60 : (colorScheme == .dark ? 0.28 : 0.14)),
+                lineWidth: contrast == .increased ? 1.2 : 0.85
             )
     }
 }

@@ -76,6 +76,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSArray<PPPOSCartItem *> *items;
 @property (nonatomic, assign) double subtotal;
 @property (nonatomic, assign) double discount;
+@property (nonatomic, assign) double deliveryFee;
 @property (nonatomic, assign) double tax;
 @property (nonatomic, assign) double refundedTax;
 @property (nonatomic, copy, nullable) NSString *proformaInvoiceID;
@@ -165,6 +166,21 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)submitPOSOrderWithItems:(NSArray<NSDictionary *> *)items
                        subtotal:(double)subtotal
                        discount:(double)discount
+                          total:(double)total
+                  paymentMethod:(NSString *)paymentMethod
+                   cashReceived:(nullable NSNumber *)cashReceived
+                      commandID:(NSString *)commandID
+                   customerName:(nullable NSString *)customerName
+                  customerPhone:(nullable NSString *)customerPhone
+                  posCustomerID:(nullable NSString *)posCustomerID
+                       branchID:(nullable NSString *)branchID
+                   salesChannel:(nullable NSString *)salesChannel
+                     completion:(void(^)(PPPOSSubmitResult * _Nullable result,
+                                         NSError * _Nullable error))completion;
+- (void)submitPOSOrderWithItems:(NSArray<NSDictionary *> *)items
+                       subtotal:(double)subtotal
+                       discount:(double)discount
+                    deliveryFee:(double)deliveryFee
                           total:(double)total
                   paymentMethod:(NSString *)paymentMethod
                    cashReceived:(nullable NSNumber *)cashReceived

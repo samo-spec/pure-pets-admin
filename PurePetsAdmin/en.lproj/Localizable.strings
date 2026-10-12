@@ -4869,6 +4869,21 @@
 "POS_NetTotal" = "Net Total To Pay";
 "POS_ApplyDiscount" = "Apply Discount";
 
+// 🚚 POS Fast Sell Delivery Fee
+"POS_DeliveryFee" = "Delivery Fee";
+"POS_AddDeliveryFee" = "Delivery Fee";
+"POS_RemoveDeliveryFee" = "Remove Delivery Fee";
+"POS_Receipt_DeliveryFee" = "Delivery Fee";
+"POS_Checkout_DeliveryFeeValue" = "Delivery · %@";
+"POS_DeliveryFee_Title" = "Delivery Fee";
+"POS_DeliveryFee_Subtitle" = "Set delivery fee for this order";
+"POS_DeliveryFee_Presets" = "Quick Presets";
+"POS_DeliveryFee_CustomAmount" = "Custom Amount";
+"POS_DeliveryFee_Apply" = "Apply Delivery Fee";
+"POS_DeliveryFee_Clear" = "Clear Delivery Fee (Free)";
+"POS_DeliveryFee_Free" = "Free";
+"POS_DeliveryFee_Pill" = "(incl. delivery %@)";
+
 // 🔍 POS Omni Search & Filter
 "POS_CatalogTypeAll" = "All";
 "POS_Search_All_Prompt" = "Search all products by name or ID...";

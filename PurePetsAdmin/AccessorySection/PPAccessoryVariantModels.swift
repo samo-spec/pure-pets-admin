@@ -2831,4 +2831,147 @@ public extension PetAccessory {
 
         return uniqueDimensions.contains(.multiple) ? .multiple : .custom
     }
+
+    // MARK: - POS Option Identity & Fingerprinting
+
+    /// Canonical fingerprint of this product's options/variant configuration.
+    /// If two accessories share the same accessoryID, this fingerprint determines
+    /// whether they represent the identical option line or distinct option lines in the cart.
+    var pos_optionsFingerprint: String {
+        var components: [String] = []
+
+        // 1. Structured selectedOptionsSnapshot (array of dictionaries)
+        if let snapshot = selectedOptionsSnapshot, !snapshot.isEmpty {
+            var snapshotPairs: [String] = []
+            for option in snapshot {
+                let optKey = (option["optionKey"] as? String ?? option["optionId"] as? String ?? "")
+                    .lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+                let valId = (option["valueId"] as? String ?? option["canonicalValue"] as? String ?? "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !optKey.isEmpty && !valId.isEmpty {
+                    snapshotPairs.append("\(optKey)=\(valId)")
+                } else if !valId.isEmpty {
+                    snapshotPairs.append(valId)
+                }
+            }
+            if !snapshotPairs.isEmpty {
+                snapshotPairs.sort()
+                components.append("snapshot:" + snapshotPairs.joined(separator: "&"))
+            }
+        }
+
+        // 2. Raw selectedOptions dictionary
+        if let options = selectedOptions, !options.isEmpty {
+            var optPairs: [String] = []
+            for (k, v) in options {
+                let key = "\(k)".lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+                let val = "\(v)".trimmingCharacters(in: .whitespacesAndNewlines)
+                if !key.isEmpty && !val.isEmpty {
+                    optPairs.append("\(key)=\(val)")
+                }
+            }
+            if !optPairs.isEmpty {
+                optPairs.sort()
+                components.append("options:" + optPairs.joined(separator: "&"))
+            }
+        }
+
+        // 3. Normalized variantCombinationKey (e.g. "color=red|size=m")
+        if let combo = variantCombinationKey?.trimmingCharacters(in: .whitespacesAndNewlines), !combo.isEmpty {
+            let pairs = combo.components(separatedBy: "|").compactMap { part -> String? in
+                let kv = part.components(separatedBy: "=")
+                if kv.count == 2 {
+                    let k = kv[0].lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+                    let v = kv[1].trimmingCharacters(in: .whitespacesAndNewlines)
+                    return (!k.isEmpty && !v.isEmpty) ? "\(k)=\(v)" : nil
+                }
+                let trimmed = part.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : trimmed
+            }.sorted()
+            if !pairs.isEmpty {
+                components.append("combo:" + pairs.joined(separator: "&"))
+            }
+        }
+
+        // 4. Variant Color identifier or hex
+        if let color = pos_variantColor {
+            let id = color.identifier.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            let hex = color.hex.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            if !id.isEmpty && id != "standard" && id != "default" && id != "neutral" {
+                components.append("color:\(id)")
+            } else if !hex.isEmpty && hex != "#cccccc" && hex != "#7f7f7f" && hex != "#ffffff" {
+                components.append("color:\(hex)")
+            }
+        }
+
+        // 5. Size property
+        if let s = size?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+            components.append("size:\(s.lowercased())")
+        }
+
+        // 6. Weight property
+        if let w = weightText?.trimmingCharacters(in: .whitespacesAndNewlines), !w.isEmpty {
+            components.append("weight:\(w.lowercased())")
+        } else if let numW = weight, numW.doubleValue > 0 {
+            components.append("weight:\(numW)")
+        }
+
+        // 7. Sku if distinct variant SKU exists
+        if let skuStr = sku?.trimmingCharacters(in: .whitespacesAndNewlines), !skuStr.isEmpty {
+            components.append("sku:\(skuStr.lowercased())")
+        }
+
+        // 8. Variant display name fallback if it provides distinct info
+        let dispName = pos_variantDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !dispName.isEmpty && dispName != accessoryID && dispName != name && dispName != nameEn && !dispName.lowercased().contains("catalog_") {
+            components.append("disp:\(dispName.lowercased())")
+        }
+
+        return components.joined(separator: ";")
+    }
+
+    /// Returns true if this accessory has the exact same option values and variant configuration
+    /// as another accessory.
+    func pos_hasSameOptions(as other: PetAccessory) -> Bool {
+        // If neither has variant options configured, they match.
+        if !self.hasVariantOptions && !other.hasVariantOptions {
+            return true
+        }
+
+        // If one has variant options and the other does not, they do not match.
+        if self.hasVariantOptions != other.hasVariantOptions {
+            return false
+        }
+
+        // Compare their canonical option fingerprints
+        let fp1 = self.pos_optionsFingerprint
+        let fp2 = other.pos_optionsFingerprint
+
+        if !fp1.isEmpty && !fp2.isEmpty {
+            return fp1 == fp2
+        }
+
+        // Fallback: compare combinationKey, selectedOptions, color, and display name directly
+        if let c1 = self.variantCombinationKey, let c2 = other.variantCombinationKey, !c1.isEmpty || !c2.isEmpty {
+            return c1 == c2
+        }
+
+        if let so1 = self.selectedOptions, let so2 = other.selectedOptions, !so1.isEmpty || !so2.isEmpty {
+            return (so1 as NSDictionary).isEqual(to: so2 as [AnyHashable: Any])
+        }
+
+        let d1 = self.pos_variantDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let d2 = other.pos_variantDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return d1 == d2
+    }
+
+    /// A unique key identifying this specific accessory variant option for SwiftUI lists and lookups.
+    var pos_variantRowKey: String {
+        let fp = pos_optionsFingerprint
+        if !fp.isEmpty {
+            return "\(accessoryID)#\(fp)"
+        }
+        return accessoryID
+    }
 }
+

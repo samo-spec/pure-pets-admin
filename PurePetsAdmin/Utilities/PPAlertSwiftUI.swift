@@ -406,17 +406,23 @@ private struct PPAlertSurface: View {
         GeometryReader { geometry in
             let margin: CGFloat = geometry.size.width < 360 ? 16 : 24
             let wide = geometry.size.width >= 600
+            let bottomMargin: CGFloat = wide ? margin : max(geometry.safeAreaInsets.bottom, 24) + 48
+            let topOffset: CGFloat = wide ? -44 : -16
+            let verticalAllowance: CGFloat = margin + bottomMargin + abs(topOffset)
             ZStack {
                 Color.black.opacity(0.36)
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
                     .onTapGesture { cancelIfAllowed() }
                     .accessibilityHidden(true)
-                decisionSurface(padding: margin, availableHeight: max(0, geometry.size.height - margin * 2))
+                decisionSurface(padding: margin, availableHeight: max(0, geometry.size.height - verticalAllowance))
                     .frame(maxWidth: wide ? 520 : 440)
-                    .frame(maxHeight: max(0, geometry.size.height - margin * 2),
+                    .frame(maxHeight: max(0, geometry.size.height - verticalAllowance),
                            alignment: wide ? .center : .bottom)
-                    .padding(margin)
+                    .padding(.horizontal, margin)
+                    .padding(.top, margin)
+                    .padding(.bottom, bottomMargin)
+                    .offset(y: topOffset)
                     .frame(maxWidth: .infinity, maxHeight: .infinity,
                            alignment: wide ? .center : .bottom)
             }
@@ -429,8 +435,12 @@ private struct PPAlertSurface: View {
                 else if request.isInput { inputFocused = true }
             } else { inputFocused = false }
         }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name(PPLanguageDidChangeNotification))
-            .receive(on: RunLoop.main)) { _ in
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: NSNotification.Name.PPLanguageDidChange
+            )
+            .receive(on: RunLoop.main)
+) { _ in
             request.languageCode = Language.currentLanguageCode()
         }
         .onChange(of: request.isFinishing) { _, finishing in

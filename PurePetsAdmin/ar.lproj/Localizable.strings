@@ -4928,6 +4928,21 @@
 "POS_NetTotal" = "الإجمالي الصافي للدفع";
 "POS_ApplyDiscount" = "تطبيق الخصم";
 
+// 🚚 POS Fast Sell Delivery Fee
+"POS_DeliveryFee" = "رسوم التوصيل";
+"POS_AddDeliveryFee" = "رسوم توصيل";
+"POS_RemoveDeliveryFee" = "إلغاء رسوم التوصيل";
+"POS_Receipt_DeliveryFee" = "رسوم التوصيل";
+"POS_Checkout_DeliveryFeeValue" = "توصيل · %@";
+"POS_DeliveryFee_Title" = "رسوم التوصيل";
+"POS_DeliveryFee_Subtitle" = "تحديد رسوم التوصيل للطلب";
+"POS_DeliveryFee_Presets" = "القيم السريعة";
+"POS_DeliveryFee_CustomAmount" = "مبلغ مخصص";
+"POS_DeliveryFee_Apply" = "تطبيق رسوم التوصيل";
+"POS_DeliveryFee_Clear" = "إلغاء رسوم التوصيل (مجاناً)";
+"POS_DeliveryFee_Free" = "مجاني";
+"POS_DeliveryFee_Pill" = "(شامل توصيل %@)";
+
 // 🔍 POS Omni Search & Filter
 "POS_CatalogTypeAll" = "الكل";
 "POS_Search_All_Prompt" = "ابحث بالاسم أو المعرف في كل المنتجات...";

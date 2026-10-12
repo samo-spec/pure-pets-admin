@@ -228,6 +228,7 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         _receiptID = docID ?: @"";
         _subtotal = PPSafeDouble(dict[@"subtotal"]);
         _discount = PPSafeDouble(dict[@"discount"]);
+        _deliveryFee = PPSafeDouble(dict[@"deliveryFee"]);
         _tax = PPSafeDouble(dict[@"tax"]);
         _refundedTax = PPSafeDouble(dict[@"refundedTax"]);
         _proformaInvoiceID = PPSafeString(dict[@"proformaInvoiceId"]);
@@ -943,6 +944,36 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
                        branchID:(NSString *)branchID
                    salesChannel:(NSString *)salesChannel
                      completion:(void(^)(PPPOSSubmitResult *, NSError *))completion {
+    [self submitPOSOrderWithItems:items
+                         subtotal:subtotal
+                         discount:discount
+                      deliveryFee:0.0
+                            total:total
+                    paymentMethod:paymentMethod
+                     cashReceived:cashReceived
+                        commandID:commandID
+                     customerName:customerName
+                    customerPhone:customerPhone
+                    posCustomerID:posCustomerID
+                         branchID:branchID
+                     salesChannel:salesChannel
+                       completion:completion];
+}
+
+- (void)submitPOSOrderWithItems:(NSArray<NSDictionary *> *)items
+                       subtotal:(double)subtotal
+                       discount:(double)discount
+                    deliveryFee:(double)deliveryFee
+                          total:(double)total
+                  paymentMethod:(NSString *)paymentMethod
+                   cashReceived:(NSNumber *)cashReceived
+                      commandID:(NSString *)commandID
+                   customerName:(NSString *)customerName
+                  customerPhone:(NSString *)customerPhone
+                  posCustomerID:(NSString *)posCustomerID
+                       branchID:(NSString *)branchID
+                   salesChannel:(NSString *)salesChannel
+                     completion:(void(^)(PPPOSSubmitResult *, NSError *))completion {
     NSString *traceID = [PPPOSLogger generateTraceID];
     NSDate *startedAt = [NSDate date];
 
@@ -995,6 +1026,7 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
 
     double roundedSubtotal = round(subtotal * 100.0) / 100.0;
     double roundedDiscount = round(discount * 100.0) / 100.0;
+    double roundedDeliveryFee = round(deliveryFee * 100.0) / 100.0;
     double roundedTotal = round(total * 100.0) / 100.0;
 
     NSString *effectiveBranchID = branchID;
@@ -1015,6 +1047,10 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         @"source": @"admin_ios",
         @"salesChannel": effectiveSalesChannel,
     } mutableCopy];
+
+    if (roundedDeliveryFee > 0) {
+        salePayload[@"deliveryFee"] = @(roundedDeliveryFee);
+    }
     
     if (effectiveBranchID.length > 0) {
         // `processTransaction` has always accepted `branchID` as the
@@ -1049,6 +1085,7 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
     startMeta[@"paymentMethod"] = paymentMethod ?: @"cash";
     startMeta[@"subtotal"] = @(roundedSubtotal);
     startMeta[@"discount"] = @(roundedDiscount);
+    if (roundedDeliveryFee > 0) startMeta[@"deliveryFee"] = @(roundedDeliveryFee);
     startMeta[@"total"] = @(roundedTotal);
     startMeta[@"itemsCount"] = @(mappedItems.count);
     startMeta[@"bulkItemsCount"] = @(bulkItemsCount);
@@ -1062,8 +1099,9 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
                                            event:@"order.submit.start"
                                          traceID:traceID
                                         metadata:startMeta
-                                         message:[NSString stringWithFormat:@"Submitting POS order (%lu items, %.2f QAR via %@, cmd: %@)",
-                                                  (unsigned long)mappedItems.count, roundedTotal, paymentMethod, commandID ?: @"none"]];
+                                         message:[NSString stringWithFormat:@"Submitting POS order (%lu items, %.2f QAR via %@, cmd: %@%@)",
+                                                  (unsigned long)mappedItems.count, roundedTotal, paymentMethod, commandID ?: @"none",
+                                                  roundedDeliveryFee > 0 ? [NSString stringWithFormat:@", delivery fee: %.2f", roundedDeliveryFee] : @""]];
 
     NSDictionary *data = @{
         @"action": @"create",

@@ -1457,6 +1457,7 @@ final class POSFastSellViewModel: ObservableObject {
 
     @Published var selectedCustomer: POSCustomerRecord? = nil
     @Published var appliedDiscount: POSDiscount? = nil
+    @Published var deliveryFee: Double = 0.0
 
     // Commercial Channel & Wholesale Reconciliation
     @Published var salesChannel: POSSalesChannel = .retail
@@ -1643,6 +1644,24 @@ final class POSFastSellViewModel: ObservableObject {
         guard appliedDiscount != nil else { return }
         appliedDiscount = nil
         POSLogger.info("discount.cleared", category: "pricing", message: "Discount cleared from cart (Total: \(cartTotal) QAR)")
+        invalidateSubmissionCommand()
+    }
+
+    func setDeliveryFee(_ fee: Double) {
+        let rounded = max(0, POSMoney.round(fee))
+        guard !POSMoney.matches(deliveryFee, rounded) else { return }
+        deliveryFee = rounded
+        POSLogger.info("delivery_fee.applied", category: "pricing", message: "Set delivery fee: \(rounded) QAR (Final Total: \(cartTotal) QAR)", metadata: [
+            "fee": rounded,
+            "cartTotal": cartTotal
+        ])
+        invalidateSubmissionCommand()
+    }
+
+    func clearDeliveryFee() {
+        guard deliveryFee > 0 else { return }
+        deliveryFee = 0.0
+        POSLogger.info("delivery_fee.cleared", category: "pricing", message: "Delivery fee cleared from cart (Total: \(cartTotal) QAR)")
         invalidateSubmissionCommand()
     }
 
@@ -1888,7 +1907,7 @@ final class POSFastSellViewModel: ObservableObject {
     }
 
     var cartTotal: Double {
-        max(0, POSMoney.round(cartSubtotal - discountAmount))
+        max(0, POSMoney.round(cartSubtotal - discountAmount + deliveryFee))
     }
 
     var cartItemCount: Int {
@@ -1970,11 +1989,32 @@ final class POSFastSellViewModel: ObservableObject {
             .reduce(0) { $0 + $1.quantity }
     }
 
+    func quantityInCart(for accessory: PetAccessory) -> Int {
+        cartItems.filter {
+            $0.accessory.accessoryID == accessory.accessoryID &&
+            $0.accessory.pos_hasSameOptions(as: accessory)
+        }.reduce(0) { $0 + $1.quantity }
+    }
+
     func cartIndex(for accessoryID: String, quantityGroupID: String? = nil) -> Int? {
         if let gID = quantityGroupID {
             return cartItems.firstIndex { $0.accessory.accessoryID == accessoryID && $0.quantityGroupID == gID }
         }
         return cartItems.firstIndex { $0.accessory.accessoryID == accessoryID }
+    }
+
+    func cartIndex(matching accessory: PetAccessory, quantityGroupID: String? = nil) -> Int? {
+        if let gID = quantityGroupID {
+            return cartItems.firstIndex {
+                $0.accessory.accessoryID == accessory.accessoryID &&
+                $0.accessory.pos_hasSameOptions(as: accessory) &&
+                $0.quantityGroupID == gID
+            }
+        }
+        return cartItems.firstIndex {
+            $0.accessory.accessoryID == accessory.accessoryID &&
+            $0.accessory.pos_hasSameOptions(as: accessory)
+        }
     }
 
     /// Quantity-tracked add. Individually tracked live pets never reach here —
@@ -2035,7 +2075,7 @@ final class POSFastSellViewModel: ObservableObject {
             return false
         }
 
-        if let idx = cartIndex(for: accessory.accessoryID, quantityGroupID: activeGroup.id) {
+        if let idx = cartIndex(matching: accessory, quantityGroupID: activeGroup.id) {
             cartItems[idx].quantity += quantity
             let updated = cartItems.remove(at: idx)
             cartItems.append(updated)
@@ -2099,7 +2139,12 @@ final class POSFastSellViewModel: ObservableObject {
             return false
         }
 
-        if let existingIdx = cartItems.firstIndex(where: { $0.accessory.accessoryID == accessory.accessoryID && $0.quantityGroupID == newGroup.id && $0.id != cartItemID }) {
+        if let existingIdx = cartItems.firstIndex(where: {
+            $0.accessory.accessoryID == accessory.accessoryID &&
+            $0.accessory.pos_hasSameOptions(as: accessory) &&
+            $0.quantityGroupID == newGroup.id &&
+            $0.id != cartItemID
+        }) {
             cartItems[existingIdx].quantity += newQuantity
             cartItems.remove(at: idx)
         } else {
@@ -2185,6 +2230,7 @@ final class POSFastSellViewModel: ObservableObject {
         let total = cartTotal
         cartItems = []
         appliedDiscount = nil
+        deliveryFee = 0.0
         attachedCheque = nil
         POSLogger.info("cart.cleared", category: "cart", message: "Cleared cart (\(count) items, previously \(total) QAR)")
         invalidateSubmissionCommand()
@@ -2282,6 +2328,14 @@ final class POSFastSellViewModel: ObservableObject {
 
     func decrementQuantity(for accessoryID: String) {
         guard let item = cartItems.first(where: { $0.accessory.accessoryID == accessoryID }) else { return }
+        decreaseQuantity(item)
+    }
+
+    func decrementQuantity(for accessory: PetAccessory) {
+        guard let item = cartItems.first(where: {
+            $0.accessory.accessoryID == accessory.accessoryID &&
+            $0.accessory.pos_hasSameOptions(as: accessory)
+        }) else { return }
         decreaseQuantity(item)
     }
 
@@ -2567,6 +2621,7 @@ final class POSFastSellViewModel: ObservableObject {
         // consumer — assertion payload, receipt, tender validation — agrees.
         let submittedSubtotal = cartSubtotal
         let submittedDiscount = discountAmount
+        let submittedDeliveryFee = deliveryFee
         let submittedTotal = cartTotal
         let isCashSale = selectedPaymentMethod == "cash"
 
@@ -2699,6 +2754,7 @@ final class POSFastSellViewModel: ObservableObject {
             "itemsCount": items.count,
             "subtotal": submittedSubtotal,
             "discount": submittedDiscount,
+            "deliveryFee": submittedDeliveryFee,
             "total": submittedTotal,
             "paymentMethod": submittedPaymentMethod,
             "acceptedCash": acceptedCash,
@@ -2723,6 +2779,7 @@ final class POSFastSellViewModel: ObservableObject {
             withItems: items,
             subtotal: submittedSubtotal,
             discount: submittedDiscount,
+            deliveryFee: submittedDeliveryFee,
             total: submittedTotal,
             paymentMethod: submittedPaymentMethod,
             cashReceived: isCashSale ? NSNumber(value: acceptedCash) : nil,
@@ -2845,6 +2902,7 @@ final class POSFastSellViewModel: ObservableObject {
                     transactionID: transactionID,
                     subtotal: submittedSubtotal,
                     discount: submittedDiscount,
+                    deliveryFee: submittedDeliveryFee,
                     total: authoritativeTotal,
                     currency: serverCurrency,
                     paymentMethod: submittedPaymentMethod,
@@ -2920,6 +2978,7 @@ final class POSFastSellViewModel: ObservableObject {
         searchText = ""
         attachedCheque = nil
         appliedDiscount = nil
+        deliveryFee = 0.0
         selectedCustomer = nil
         submitError = nil
         priceDiscrepancy = nil
@@ -3130,6 +3189,7 @@ struct AdminPOSFastSellView: View {
     @State private var showsItemPicker = false
     @State private var isShowingScanner = false
     @State private var showsDiscountSheet = false
+    @State private var showsDeliveryFeeSheet = false
     @State private var showsCategoryLens = false
     @State private var lastScannedCode: String?
     /// Products a scanned code resolved to when it matched more than one.
@@ -3236,6 +3296,10 @@ struct AdminPOSFastSellView: View {
                         onOpenDiscount: {
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                             showsDiscountSheet = true
+                        },
+                        onOpenDeliveryFee: {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            showsDeliveryFeeSheet = true
                         },
                         onClearCart: {
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -3360,6 +3424,25 @@ struct AdminPOSFastSellView: View {
                 },
                 onDismiss: {
                     showsDiscountSheet = false
+                }
+            )
+        }
+        .sheet(isPresented: $showsDeliveryFeeSheet) {
+            POSDeliveryFeeSheet(
+                subtotal: viewModel.cartSubtotal,
+                discountAmount: viewModel.discountAmount,
+                currentFee: viewModel.deliveryFee,
+                currency: { formatCurrency($0) },
+                onApply: { fee in
+                    viewModel.setDeliveryFee(fee)
+                    showsDeliveryFeeSheet = false
+                },
+                onRemove: {
+                    viewModel.clearDeliveryFee()
+                    showsDeliveryFeeSheet = false
+                },
+                onDismiss: {
+                    showsDeliveryFeeSheet = false
                 }
             )
         }
@@ -4645,6 +4728,7 @@ private struct POSApexFlightDeck: View {
     let availableHeight: CGFloat
     let onOpenUnitPicker: (PetAccessory) -> Void
     let onOpenDiscount: () -> Void
+    let onOpenDeliveryFee: () -> Void
     let onClearCart: () -> Void
     var onTapQuantity: ((POSCartItem) -> Void)? = nil
     var onOpenSellUnitPicker: ((POSCartItem) -> Void)? = nil
@@ -4778,6 +4862,16 @@ private struct POSApexFlightDeck: View {
                 isTrayExpanded = false
             }
         }
+        .onChange(of: viewModel.cartItems.count) { newCount in
+            if newCount > 1 {
+                isCartExpanded = true
+            }
+        }
+        .onChange(of: isTrayExpanded) { expanded in
+            if expanded && viewModel.cartItems.count > 1 {
+                isCartExpanded = true
+            }
+        }
         // An explicit tender is money the cashier entered. Keep it when the
         // total changes; a shortage must never silently become exact payment.
     }
@@ -4798,9 +4892,16 @@ private struct POSApexFlightDeck: View {
 
     private var amountHeading: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(Language.get("POS_Checkout_AmountDue", alter: "Amount due"))
-                .font(AdminType.captionBold)
-                .foregroundColor(AdminSurface.secondaryText)
+            HStack(spacing: 6) {
+                Text(Language.get("POS_Checkout_AmountDue", alter: "Amount due"))
+                    .font(AdminType.captionBold)
+                    .foregroundColor(AdminSurface.secondaryText)
+                if viewModel.deliveryFee > 0 {
+                    Text(String(format: Language.get("POS_DeliveryFee_Pill", alter: "(شامل توصيل %@)"), "\u{2066}\(currency(viewModel.deliveryFee))\u{2069}"))
+                        .font(AdminType.caption)
+                        .foregroundColor(Color(red: 0.1, green: 0.55, blue: 0.95))
+                }
+            }
             Text(currency(viewModel.cartTotal))
                 .font(PPBrandFont.bold(26, relativeTo: .title2))
                 .monospacedDigit()
@@ -4938,14 +5039,24 @@ private struct POSApexFlightDeck: View {
                 onTapQuantity: onTapQuantity,
                 onOpenSellUnitPicker: onOpenSellUnitPicker
             )
-            if viewModel.discountAmount > 0 {
-                Text(currency(viewModel.cartSubtotal))
-                    .font(AdminType.caption)
-                    .strikethrough()
-                    .foregroundColor(AdminSurface.secondaryText)
-                    .environment(\.layoutDirection, .leftToRight)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityLabel(Language.get("POS_Subtotal", alter: "Subtotal") + " " + currency(viewModel.cartSubtotal))
+            if viewModel.discountAmount > 0 || viewModel.deliveryFee > 0 {
+                HStack(spacing: 8) {
+                    if viewModel.discountAmount > 0 {
+                        Text(currency(viewModel.cartSubtotal))
+                            .font(AdminType.caption)
+                            .strikethrough()
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .environment(\.layoutDirection, .leftToRight)
+                            .accessibilityLabel(Language.get("POS_Subtotal", alter: "Subtotal") + " " + currency(viewModel.cartSubtotal))
+                    }
+                    if viewModel.deliveryFee > 0 {
+                        Text(String(format: Language.get("POS_Checkout_DeliveryFeeValue", alter: "توصيل · %@"), "\u{2066}\(currency(viewModel.deliveryFee))\u{2069}"))
+                            .font(AdminType.captionBold)
+                            .foregroundColor(Color(red: 0.1, green: 0.55, blue: 0.95))
+                            .environment(\.layoutDirection, .leftToRight)
+                    }
+                    Spacer()
+                }
             }
             HStack(spacing: 8) {
                 Button(action: onOpenDiscount) {
@@ -4964,10 +5075,32 @@ private struct POSApexFlightDeck: View {
                     Button { viewModel.clearDiscount() } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(AdminSurface.secondaryText)
-                            .frame(width: 44, height: 44)
+                            .frame(width: 32, height: 44)
                     }
                     .accessibilityLabel(Language.get("POS_RemoveDiscount", alter: "Remove discount"))
                 }
+
+                Button(action: onOpenDeliveryFee) {
+                    Label {
+                        Text(viewModel.deliveryFee > 0
+                             ? String(format: Language.get("POS_Checkout_DeliveryFeeValue", alter: "Delivery · %@"), "\u{2066}\(currency(viewModel.deliveryFee))\u{2069}")
+                             : Language.get("POS_AddDeliveryFee", alter: "Delivery fee"))
+                            .font(AdminType.footnoteBold)
+                            .multilineTextAlignment(.leading)
+                    } icon: { Image(systemName: "box.truck") }
+                    .frame(minHeight: 44)
+                    .foregroundColor(viewModel.deliveryFee > 0 ? Color(red: 0.1, green: 0.55, blue: 0.95) : accentInk)
+                }
+                .buttonStyle(.plain)
+                if viewModel.deliveryFee > 0 {
+                    Button { viewModel.clearDeliveryFee() } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .frame(width: 32, height: 44)
+                    }
+                    .accessibilityLabel(Language.get("POS_RemoveDeliveryFee", alter: "Remove delivery fee"))
+                }
+
                 Spacer(minLength: 0)
                 if viewModel.cartItems.count > 1 {
                     Button {
@@ -6595,12 +6728,12 @@ private struct POSVariantPickerSheet: View {
                     catch { return }
                     guard !Task.isCancelled,
                           variantPicker.focusedAccessoryID == target,
-                          variantPicker.members.contains(where: { $0.accessoryID == target }) else { return }
+                          let matchedMember = variantPicker.members.first(where: { $0.accessoryID == target || $0.pos_variantRowKey == target }) else { return }
                     if reduceMotion {
-                        proxy.scrollTo(target, anchor: .center)
+                        proxy.scrollTo(matchedMember.pos_variantRowKey, anchor: .center)
                     } else {
                         withAnimation(.easeOut(duration: 0.22)) {
-                            proxy.scrollTo(target, anchor: .center)
+                            proxy.scrollTo(matchedMember.pos_variantRowKey, anchor: .center)
                         }
                     }
                 }
@@ -6678,11 +6811,11 @@ private struct POSVariantPickerSheet: View {
     private var optionList: some View {
         let baseUnits = cartBaseUnits
         return LazyVStack(spacing: 0) {
-            ForEach(variantPicker.members, id: \.accessoryID) { member in
+            ForEach(variantPicker.members, id: \.pos_variantRowKey) { member in
                 let matched = member.accessoryID == variantPicker.scannedAccessoryID
                 POSVariantRow(
                     member: member,
-                    inCart: viewModel.quantityInCart(for: member.accessoryID),
+                    inCart: viewModel.quantityInCart(for: member),
                     cartBaseUnits: baseUnits[member.accessoryID, default: 0],
                     salesChannel: viewModel.salesChannel,
                     isScannedMatch: matched,
@@ -6693,12 +6826,12 @@ private struct POSVariantPickerSheet: View {
                     onDecrement: {
                         guard !viewModel.isCheckoutBusy else { return }
                         actionError = nil
-                        viewModel.decrementQuantity(for: member.accessoryID)
+                        viewModel.decrementQuantity(for: member)
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
                 )
-                .id(member.accessoryID)
-                if member.accessoryID != variantPicker.members.last?.accessoryID {
+                .id(member.pos_variantRowKey)
+                if member.pos_variantRowKey != variantPicker.members.last?.pos_variantRowKey {
                     Rectangle()
                         .fill(AdminSurface.hairline)
                         .frame(height: 0.75)
@@ -8487,15 +8620,29 @@ private struct POSCartCardRow: View {
             return item.accessory.pos_hasRealColor ? item.accessory.pos_variantColor?.localizedName : nil
         }
         let description = item.accessory.pos_smartVariantDescription?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let desc = description, isValidOptionCandidate(desc) {
+            return desc
+        }
         let fallback = item.accessory.pos_variantDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let value = description.flatMap { $0.isEmpty ? nil : $0 } ?? fallback
+        if isValidOptionCandidate(fallback) {
+            return fallback
+        }
+        let resolved = item.accessory.resolvedOptionDisplayTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let res = resolved, isValidOptionCandidate(res) {
+            return res
+        }
+        return nil
+    }
+
+    private func isValidOptionCandidate(_ value: String) -> Bool {
         guard !value.isEmpty,
               value != item.accessory.name,
+              value != item.accessory.nameEn,
               value != item.accessory.accessoryID,
               value != item.accessory.sku,
               !value.lowercased().contains("catalog_"),
-              !value.lowercased().hasPrefix("catalog") else { return nil }
-        return value
+              !value.lowercased().hasPrefix("catalog") else { return false }
+        return true
     }
 
     @ViewBuilder
@@ -9385,6 +9532,334 @@ struct POSDiscountSheet: View {
                     .frame(minHeight: 38)
                     .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
+            }
+        }
+    }
+}
+
+// MARK: - POS Delivery Fee Sheet
+
+struct POSDeliveryFeeSheet: View {
+    let subtotal: Double
+    let discountAmount: Double
+    let currentFee: Double
+    let currency: (Double) -> String
+    let onApply: (Double) -> Void
+    let onRemove: () -> Void
+    let onDismiss: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var feeText: String = ""
+    @State private var selectedPreset: Double? = nil
+    @FocusState private var isFieldFocused: Bool
+
+    private let presets: [Double] = [0, 10, 15, 20, 25, 30, 50]
+    private var blueAccent: Color { Color(red: 0.1, green: 0.55, blue: 0.95) }
+
+    private var parsedFee: Double {
+        POSMoney.parse(feeText)
+    }
+
+    private var calculatedTotal: Double {
+        max(0, POSMoney.round(subtotal - discountAmount + parsedFee))
+    }
+
+    init(
+        subtotal: Double,
+        discountAmount: Double,
+        currentFee: Double,
+        currency: @escaping (Double) -> String,
+        onApply: @escaping (Double) -> Void,
+        onRemove: @escaping () -> Void,
+        onDismiss: @escaping () -> Void
+    ) {
+        self.subtotal = subtotal
+        self.discountAmount = discountAmount
+        self.currentFee = currentFee
+        self.currency = currency
+        self.onApply = onApply
+        self.onRemove = onRemove
+        self.onDismiss = onDismiss
+
+        if currentFee > 0 {
+            _feeText = State(initialValue: String(format: "%.2f", currentFee))
+            _selectedPreset = State(initialValue: currentFee)
+        } else {
+            _feeText = State(initialValue: "")
+            _selectedPreset = State(initialValue: 0)
+        }
+    }
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                AdminSurface.background.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: 16) {
+                        // 1. Live Telemetry Summary Card
+                        telemetrySummaryCard
+
+                        // 2. Presets Grid / Row
+                        presetsSection
+
+                        // 3. Custom Fee Input & Steppers
+                        customValueSection
+
+                        // 4. Action Buttons
+                        actionSection
+                    }
+                    .padding(16)
+                }
+                .posScrollDismissesKeyboardCompat()
+            }
+            .navigationTitle(Language.get("POS_DeliveryFee_Title", alter: "رسوم التوصيل"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(action: onDismiss) {
+                        Text(Language.get("Close", alter: "إغلاق"))
+                            .font(AdminType.bodyBold)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                }
+            }
+        }
+        .navigationViewStyle(.stack)
+    }
+
+    private var telemetrySummaryCard: some View {
+        VStack(spacing: 10) {
+            HStack {
+                Text(Language.get("POS_Subtotal", alter: "المجموع الفرعي"))
+                    .font(AdminType.subheadline)
+                    .foregroundColor(AdminSurface.secondaryText)
+                Spacer()
+                Text(currency(subtotal))
+                    .font(AdminType.subheadlineBold)
+                    .foregroundColor(AdminSurface.primaryText)
+                    .environment(\.layoutDirection, .leftToRight)
+            }
+
+            if discountAmount > 0 {
+                HStack {
+                    Text(Language.get("POS_Discount", alter: "الخصم"))
+                        .font(AdminType.subheadline)
+                        .foregroundColor(Color(uiColor: .systemGreen))
+                    Spacer()
+                    Text("−" + currency(discountAmount))
+                        .font(AdminType.subheadlineBold)
+                        .foregroundColor(Color(uiColor: .systemGreen))
+                        .environment(\.layoutDirection, .leftToRight)
+                }
+            }
+
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "box.truck.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(blueAccent)
+                    Text(Language.get("POS_DeliveryFee", alter: "رسوم التوصيل"))
+                        .font(AdminType.subheadlineBold)
+                        .foregroundColor(blueAccent)
+                }
+                Spacer()
+                Text(parsedFee > 0 ? "+" + currency(parsedFee) : Language.get("POS_DeliveryFee_Free", alter: "مجاني"))
+                    .font(AdminType.subheadlineBold)
+                    .foregroundColor(parsedFee > 0 ? blueAccent : AdminSurface.secondaryText)
+                    .environment(\.layoutDirection, .leftToRight)
+            }
+
+            Divider().background(AdminSurface.hairline)
+
+            HStack(alignment: .firstTextBaseline) {
+                Text(Language.get("POS_Checkout_AmountDue", alter: "إجمالي الطلب"))
+                    .font(AdminType.headlineBold)
+                    .foregroundColor(AdminSurface.primaryText)
+                Spacer()
+                Text(currency(calculatedTotal))
+                    .font(Font.custom("Beiruti-Bold", size: 24, relativeTo: .title2))
+                    .foregroundColor(AdminSurface.primary)
+                    .monospacedDigit()
+                    .environment(\.layoutDirection, .leftToRight)
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(blueAccent.opacity(0.2), lineWidth: 1)
+        )
+    }
+
+    private var presetsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(Language.get("POS_DeliveryFee_Presets", alter: "القيم السريعة"))
+                .font(AdminType.captionBold)
+                .foregroundColor(AdminSurface.secondaryText)
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 75), spacing: 8)], spacing: 8) {
+                ForEach(presets, id: \.self) { preset in
+                    let isSelected: Bool = {
+                        if let sel = selectedPreset {
+                            return POSMoney.matches(sel, preset)
+                        }
+                        return POSMoney.matches(parsedFee, preset)
+                    }()
+
+                    Button {
+                        UISelectionFeedbackGenerator().selectionChanged()
+                        selectedPreset = preset
+                        if preset == 0 {
+                            feeText = "0.00"
+                        } else {
+                            feeText = String(format: "%.2f", preset)
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            if preset == 0 {
+                                Text(Language.get("POS_DeliveryFee_Free", alter: "مجاني"))
+                                    .font(AdminType.footnoteBold)
+                            } else {
+                                Text(String(format: "%.0f", preset))
+                                    .font(AdminType.subheadlineBold)
+                                Text(Language.get("QAR", alter: "ر.ق"))
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 42)
+                        .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
+                        .background(
+                            isSelected ? blueAccent : AdminSurface.control,
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(isSelected ? Color.clear : AdminSurface.hairline, lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private var customValueSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(Language.get("POS_DeliveryFee_CustomAmount", alter: "مبلغ مخصص"))
+                .font(AdminType.captionBold)
+                .foregroundColor(AdminSurface.secondaryText)
+
+            HStack(spacing: 12) {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    let next = max(0, parsedFee - 5)
+                    selectedPreset = nil
+                    feeText = String(format: "%.2f", next)
+                } label: {
+                    Image(systemName: "minus")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .frame(width: 44, height: 48)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                HStack(spacing: 8) {
+                    Image(systemName: "box.truck.fill")
+                        .foregroundColor(blueAccent)
+                        .font(.system(size: 18))
+
+                    TextField("0.00", text: $feeText)
+                        .font(Font.custom("Beiruti-Bold", size: 26, relativeTo: .title2))
+                        .keyboardType(.decimalPad)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                        .focused($isFieldFocused)
+                        .onChange(of: feeText) { newText in
+                            let val = POSMoney.parse(newText)
+                            selectedPreset = presets.first { POSMoney.matches($0, val) }
+                        }
+
+                    Text(Language.get("QAR", alter: "ر.ق"))
+                        .font(AdminType.calloutBold)
+                        .foregroundColor(AdminSurface.secondaryText)
+
+                    if !feeText.isEmpty {
+                        Button {
+                            feeText = ""
+                            selectedPreset = 0
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 48)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(isFieldFocused ? blueAccent : AdminSurface.hairline, lineWidth: 1)
+                )
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    let next = parsedFee + 5
+                    selectedPreset = nil
+                    feeText = String(format: "%.2f", next)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .frame(width: 44, height: 48)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private var actionSection: some View {
+        VStack(spacing: 10) {
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onApply(parsedFee)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                    Text(Language.get("POS_DeliveryFee_Apply", alter: "تطبيق رسوم التوصيل"))
+                }
+                .font(AdminType.bodyBold)
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+                .background(blueAccent, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .buttonStyle(.plain)
+
+            if currentFee > 0 || parsedFee > 0 {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onRemove()
+                } label: {
+                    Text(Language.get("POS_DeliveryFee_Clear", alter: "إلغاء رسوم التوصيل (مجاناً)"))
+                        .font(AdminType.subheadlineBold)
+                        .foregroundColor(AdminSurface.danger)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(AdminSurface.hairline, lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
             }
         }
     }

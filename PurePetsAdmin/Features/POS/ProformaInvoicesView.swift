@@ -642,56 +642,172 @@ struct AdminProformaInvoicesView: View {
     }
 
     var body: some View {
-        ZStack {
-            AdminSurface.surface.ignoresSafeArea()
+        NavigationStack {
+            ZStack {
+                AdminSurface.surface.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                navigationHeaderView
+                VStack(spacing: 0) {
+                    navigationHeaderView
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 24) {
-                        PPAdminBranchSwitcherBar(style: .journal, horizontalPadding: 0)
-                        periodStatement
-                        receiptLocator
-                        ledgerSection
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 24) {
+                            PPAdminBranchSwitcherBar(style: .journal, horizontalPadding: 0)
+                            periodStatement
+                            receiptLocator
+                            ledgerSection
+                        }
+                        .frame(maxWidth: 760, alignment: .leading)
+                        .padding(.horizontal, AdminSpacing.screenMargin)
+                        .padding(.top, 20)
+                        .padding(.bottom, 24)
+                        .frame(maxWidth: .infinity)
                     }
-                    .frame(maxWidth: 760, alignment: .leading)
-                    .padding(.horizontal, AdminSpacing.screenMargin)
-                    .padding(.top, 20)
-                    .padding(.bottom, 24)
-                    .frame(maxWidth: .infinity)
+                    .scrollDismissesKeyboard(.interactively)
+                    .refreshable {
+                        await store.load(branchId: activeBranchID)
+                    }
                 }
-                .scrollDismissesKeyboard(.interactively)
-                .refreshable {
-                    await store.load(branchId: activeBranchID)
+
+                // Copy Toast Notification
+                if let toast = copyToastText {
+                    VStack {
+                        Spacer()
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(Color(uiColor: .ppSuccess))
+                            Text(toast)
+                                .font(AdminType.captionBold)
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color.black.opacity(0.85), in: Capsule())
+                        .padding(.bottom, 16)
+                        .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                        .accessibilityElement(children: .combine)
+                        .allowsHitTesting(false)
+                    }
+                    .zIndex(100)
                 }
             }
-
-            // Copy Toast Notification
-            if let toast = copyToastText {
-                VStack {
-                    Spacer()
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(Color(uiColor: .ppSuccess))
-                        Text(toast)
-                            .font(AdminType.captionBold)
-                            .foregroundColor(.white)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Color.black.opacity(0.85), in: Capsule())
-                    .padding(.bottom, 16)
-                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
-                    .accessibilityElement(children: .combine)
-                    .allowsHitTesting(false)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if canWrite && !isSearchFocused {
+                    newDraftRail
                 }
-                .zIndex(100)
             }
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if canWrite && !isSearchFocused {
-                newDraftRail
+            .navigationBarHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
+            // Push Navigation: Transaction Dossier
+            .navigationDestination(item: $selectedDossierInvoice) { invoice in
+                ProformaTransactionDossierSheet(
+                    invoice: invoice,
+                    session: session,
+                    store: store,
+                    onPrint: {},
+                    onWhatsApp: {
+                        ProformaWhatsAppSender.send(for: invoice) { errMsg in
+                            showToast(errMsg)
+                        }
+                    },
+                    onEdit: {
+                        selectedDossierInvoice = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            Task {
+                                await store.open(invoice)
+                                isShowingEditor = true
+                            }
+                        }
+                    },
+                    onConvert: {
+                        selectedDossierInvoice = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            invoiceForConversion = invoice
+                        }
+                    },
+                    onCancel: {
+                        selectedDossierInvoice = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            promptCancelInvoice(invoice)
+                        }
+                    },
+                    onViewReceipt: {
+                        fetchActualSale(for: invoice)
+                    },
+                    onCopied: { text in
+                        showToast(text)
+                    },
+                    onDismiss: {
+                        selectedDossierInvoice = nil
+                    }
+                )
+                .navigationBarHidden(true)
+                .toolbar(.hidden, for: .navigationBar)
+            }
+            // Push Navigation: Proforma Studio Editor
+            .navigationDestination(isPresented: $isShowingEditor) {
+                ProformaEditorStudioSheet(
+                    session: session,
+                    store: store,
+                    kindsProvider: kindsProvider,
+                    activeBranchID: activeBranchID,
+                    canWrite: canWrite,
+                    onClose: {
+                        isShowingEditor = false
+                    },
+                    onPreview: { _ in },
+                    onConvert: { inv in
+                        isShowingEditor = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            invoiceForConversion = inv
+                        }
+                    },
+                    onCancelInvoice: { inv in
+                        isShowingEditor = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            promptCancelInvoice(inv)
+                        }
+                    },
+                    onToast: { msg in
+                        showToast(msg)
+                    }
+                )
+                .navigationBarHidden(true)
+                .toolbar(.hidden, for: .navigationBar)
+            }
+            // Conversion Sheet
+            .sheet(item: $invoiceForConversion) { invoice in
+                ProformaConversionSheet(
+                    invoice: invoice,
+                    store: store,
+                    onSuccess: { completedReceipt in
+                        invoiceForConversion = nil
+                        showToast(Language.get("Proforma_Convert_SuccessTitle", alter: "تم تحويل الفاتورة إلى بيع بنجاح"))
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            actualReceiptForView = completedReceipt
+                        }
+                    }
+                )
+            }
+            // Cancel Confirmation Sheet
+            .sheet(item: $invoiceForCancel) { invoice in
+                ProformaCancelConfirmationSheet(
+                    invoice: invoice,
+                    store: store,
+                    onSuccess: {
+                        invoiceForCancel = nil
+                        showToast(Language.get("Proforma_Cancel_SuccessTitle", alter: "تم إلغاء الفاتورة المبدئية"))
+                    }
+                )
+            }
+            // Actual POS Sale Receipt Sheet
+            .sheet(item: $actualReceiptForView) { receipt in
+                POSCompletedReceiptSheet(receipt: receipt)
+            }
+            // PDF Preview & Share Sheet
+            .proformaPDFPresenter(previewDocument: $previewDocument, shareDocument: $shareDocument)
+            .enableSwipeToPop {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                if let onDismiss { onDismiss() } else { dismiss() }
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
@@ -706,111 +822,6 @@ struct AdminProformaInvoicesView: View {
         .task(id: activeBranchID) {
             guard session.hasAnyPermission(["pos.view", "pos.sell"]) else { return }
             await store.load(branchId: activeBranchID)
-        }
-        // Full Screen Transaction Dossier
-        .fullScreenCover(item: $selectedDossierInvoice) { invoice in
-            ProformaTransactionDossierSheet(
-                invoice: invoice,
-                session: session,
-                store: store,
-                onPrint: {},
-                onWhatsApp: {
-                    ProformaWhatsAppSender.send(for: invoice) { errMsg in
-                        showToast(errMsg)
-                    }
-                },
-                onEdit: {
-                    selectedDossierInvoice = nil
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        Task {
-                            await store.open(invoice)
-                            isShowingEditor = true
-                        }
-                    }
-                },
-                onConvert: {
-                    selectedDossierInvoice = nil
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        invoiceForConversion = invoice
-                    }
-                },
-                onCancel: {
-                    selectedDossierInvoice = nil
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        promptCancelInvoice(invoice)
-                    }
-                },
-                onViewReceipt: {
-                    fetchActualSale(for: invoice)
-                },
-                onCopied: { text in
-                    showToast(text)
-                }
-            )
-        }
-        // Full Screen Proforma Studio Editor
-        .fullScreenCover(isPresented: $isShowingEditor) {
-            ProformaEditorStudioSheet(
-                session: session,
-                store: store,
-                kindsProvider: kindsProvider,
-                activeBranchID: activeBranchID,
-                canWrite: canWrite,
-                onClose: {
-                    isShowingEditor = false
-                },
-                onPreview: { _ in },
-                onConvert: { inv in
-                    isShowingEditor = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        invoiceForConversion = inv
-                    }
-                },
-                onCancelInvoice: { inv in
-                    isShowingEditor = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        promptCancelInvoice(inv)
-                    }
-                },
-                onToast: { msg in
-                    showToast(msg)
-                }
-            )
-        }
-        // Conversion Sheet
-        .sheet(item: $invoiceForConversion) { invoice in
-            ProformaConversionSheet(
-                invoice: invoice,
-                store: store,
-                onSuccess: { completedReceipt in
-                    invoiceForConversion = nil
-                    showToast(Language.get("Proforma_Convert_SuccessTitle", alter: "تم تحويل الفاتورة إلى بيع بنجاح"))
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                        actualReceiptForView = completedReceipt
-                    }
-                }
-            )
-        }
-        // Cancel Confirmation Sheet
-        .sheet(item: $invoiceForCancel) { invoice in
-            ProformaCancelConfirmationSheet(
-                invoice: invoice,
-                store: store,
-                onSuccess: {
-                    invoiceForCancel = nil
-                    showToast(Language.get("Proforma_Cancel_SuccessTitle", alter: "تم إلغاء الفاتورة المبدئية"))
-                }
-            )
-        }
-        // Actual POS Sale Receipt Sheet
-        .sheet(item: $actualReceiptForView) { receipt in
-            POSCompletedReceiptSheet(receipt: receipt)
-        }
-        // PDF Preview & Share Sheet
-        .proformaPDFPresenter(previewDocument: $previewDocument, shareDocument: $shareDocument)
-        .enableSwipeToPop {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            if let onDismiss { onDismiss() } else { dismiss() }
         }
     }
 
@@ -1544,7 +1555,7 @@ private struct ProformaTransactionCard: View {
             // Direct Call Customer Button (if phone exists)
             if let phone = invoice.customer?.phone, !phone.isEmpty, let url = URL(string: "tel://\(phone.filter("0123456789+".contains))") {
                 Button {
-                    UIApplication.shared.open(url)
+                    UIApplication.shared.open(url, options: [:], completionHandler: nil)
                 } label: {
                     Label(Language.get("Call", alter: "اتصال"), systemImage: "phone")
                         .font(AdminType.captionBold)
@@ -1585,6 +1596,7 @@ struct ProformaTransactionDossierSheet: View {
     let onCancel: () -> Void
     let onViewReceipt: () -> Void
     let onCopied: (String) -> Void
+    var onDismiss: (() -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -1630,7 +1642,7 @@ struct ProformaTransactionDossierSheet: View {
                         UIPasteboard.general.string = invoice.id
                         onCopied(Language.get("Proforma_Copy_Success", alter: "تم نسخ معرّف الفاتورة إلى الحافظة"))
                     },
-                    onDismiss: { dismiss() }
+                    onDismiss: { onDismiss?() ?? dismiss() }
                 )
             } else {
                 ProformaTransactionDossier_iPhone(
@@ -1647,11 +1659,12 @@ struct ProformaTransactionDossierSheet: View {
                         UIPasteboard.general.string = invoice.id
                         onCopied(Language.get("Proforma_Copy_Success", alter: "تم نسخ معرّف الفاتورة إلى الحافظة"))
                     },
-                    onDismiss: { dismiss() }
+                    onDismiss: { onDismiss?() ?? dismiss() }
                 )
             }
         }
         .proformaPDFPresenter(previewDocument: $previewDocument, shareDocument: $shareDocument)
+        .enableSwipeToPop { onDismiss?() ?? dismiss() }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .environment(\.locale, Locale(identifier: Language.isRTL() ? "ar_QA" : "en_US"))
     }
@@ -1691,7 +1704,7 @@ private struct ProformaTransactionDossier_iPhone: View {
             VStack(spacing: 0) {
                 // Header Bar
                 HStack(alignment: .center, spacing: 12) {
-                    AdminSquircleCloseButton { onDismiss() }
+                    AdminSquircleBackButton { onDismiss() }
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(Language.get("Proforma_Dossier_Title", alter: "ملف الفاتورة المبدئية"))
@@ -1757,7 +1770,7 @@ private struct ProformaTransactionDossier_iPhone: View {
                             isPreparingWhatsApp: false,
                             onCall: {
                                 if let phone = invoice.customer?.phone, let url = URL(string: "tel://\(phone.filter("0123456789+".contains))") {
-                                    UIApplication.shared.open(url)
+                                    UIApplication.shared.open(url, options: [:], completionHandler: nil)
                                 }
                             },
                             onWhatsApp: onWhatsApp
@@ -1888,7 +1901,7 @@ private struct ProformaTransactionDossier_iPad: View {
             VStack(spacing: 0) {
                 // Cockpit Header
                 HStack(alignment: .center, spacing: 16) {
-                    AdminSquircleCloseButton { onDismiss() }
+                    AdminSquircleBackButton { onDismiss() }
                         .keyboardShortcut(.escape, modifiers: [])
 
                     VStack(alignment: .leading, spacing: 3) {
@@ -1967,7 +1980,7 @@ private struct ProformaTransactionDossier_iPad: View {
                                     isPreparingWhatsApp: false,
                                     onCall: {
                                         if let phone = invoice.customer?.phone, let url = URL(string: "tel://\(phone.filter("0123456789+".contains))") {
-                                            UIApplication.shared.open(url)
+                                            UIApplication.shared.open(url, options: [:], completionHandler: nil)
                                         }
                                     },
                                     onWhatsApp: onWhatsApp
@@ -2550,7 +2563,7 @@ struct ProformaEditorStudioSheet: View {
             VStack(spacing: 0) {
                 // Header
                 HStack(spacing: 12) {
-                    AdminSquircleCloseButton {
+                    AdminSquircleBackButton {
                         if store.hasUnsavedChanges {
                             promptDiscardConfirmation()
                         } else {
@@ -2696,7 +2709,7 @@ struct ProformaEditorStudioSheet: View {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             }
         }
-        .fullScreenCover(isPresented: $catalogPicker) {
+        .sheet(isPresented: $catalogPicker) {
             ProformaCatalogSheet(
                 store: store,
                 kindsProvider: kindsProvider,
@@ -2704,6 +2717,13 @@ struct ProformaEditorStudioSheet: View {
             )
         }
         .proformaPDFPresenter(previewDocument: $previewDocument, shareDocument: $shareDocument)
+        .enableSwipeToPop {
+            if store.hasUnsavedChanges {
+                promptDiscardConfirmation()
+            } else {
+                onClose()
+            }
+        }
     }
 
     private func promptDiscardConfirmation() {
@@ -3292,9 +3312,48 @@ struct ProformaConversionSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+        ZStack {
+            AdminSurface.background.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Sovereign Sheet Header Bar (Pixel-perfect, zero UIKit glass hijacking)
+                HStack(alignment: .center, spacing: 12) {
+                    if Language.isRTL() {
+                        AdminSquircleCloseButton { dismiss() }
+                            .disabled(isConverting || store.isLocked)
+
+                        Spacer()
+
+                        Text(Language.get("Proforma_Convert", alter: "تحويل إلى بيع"))
+                            .font(PPBeirutiFont.bold(18, relativeTo: .headline))
+                            .foregroundStyle(AdminSurface.primaryText)
+
+                        Spacer()
+
+                        Color.clear
+                            .frame(width: 44, height: 44)
+                    } else {
+                        Color.clear
+                            .frame(width: 44, height: 44)
+
+                        Spacer()
+
+                        Text(Language.get("Proforma_Convert", alter: "تحويل إلى بيع"))
+                            .font(PPBeirutiFont.bold(18, relativeTo: .headline))
+                            .foregroundStyle(AdminSurface.primaryText)
+
+                        Spacer()
+
+                        AdminSquircleCloseButton { dismiss() }
+                            .disabled(isConverting || store.isLocked)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                .padding(.bottom, 10)
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
                     // Document Header
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 4) {
@@ -3447,24 +3506,12 @@ struct ProformaConversionSheet: View {
                 }
                 .padding(24)
             }
-            .navigationTitle(Language.get("Proforma_Convert", alter: "تحويل إلى بيع"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text(Language.get("Proforma_Convert", alter: "تحويل إلى بيع"))
-                        .font(PPBeirutiFont.bold(18, relativeTo: .headline))
-                        .foregroundStyle(AdminSurface.primaryText)
-                }
-                ToolbarItem(placement: .cancellationAction) {
-                    AdminSquircleCloseButton { dismiss() }
-                        .disabled(isConverting || store.isLocked)
-                }
-            }
-            .onAppear {
-                cashReceived = ProformaDecimal.string(invoiceTotalDecimal)
-            }
         }
     }
+    .onAppear {
+        cashReceived = ProformaDecimal.string(invoiceTotalDecimal)
+    }
+}
 
     private func promptConversionConfirmation() {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -3569,8 +3616,47 @@ struct ProformaCancelConfirmationSheet: View {
     @State private var isCancelling = false
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 20) {
+        ZStack {
+            AdminSurface.background.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Sovereign Modal Header Bar (Pixel-perfect, zero UIKit glass hijacking)
+                HStack(alignment: .center, spacing: 12) {
+                    if Language.isRTL() {
+                        AdminSquircleCloseButton { dismiss() }
+                            .disabled(isCancelling)
+
+                        Spacer()
+
+                        Text(Language.get("Proforma_CancelInvoice", alter: "إلغاء الفاتورة"))
+                            .font(PPBeirutiFont.bold(18, relativeTo: .headline))
+                            .foregroundStyle(AdminSurface.primaryText)
+
+                        Spacer()
+
+                        Color.clear
+                            .frame(width: 44, height: 44)
+                    } else {
+                        Color.clear
+                            .frame(width: 44, height: 44)
+
+                        Spacer()
+
+                        Text(Language.get("Proforma_CancelInvoice", alter: "إلغاء الفاتورة"))
+                            .font(PPBeirutiFont.bold(18, relativeTo: .headline))
+                            .foregroundStyle(AdminSurface.primaryText)
+
+                        Spacer()
+
+                        AdminSquircleCloseButton { dismiss() }
+                            .disabled(isCancelling)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                .padding(.bottom, 10)
+
+                VStack(spacing: 20) {
                 Image(systemName: "xmark.octagon.fill")
                     .font(.system(size: 52))
                     .foregroundColor(AdminSurface.danger)
@@ -3650,20 +3736,9 @@ struct ProformaCancelConfirmationSheet: View {
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
             }
-            .navigationTitle(Language.get("Proforma_CancelInvoice", alter: "إلغاء الفاتورة"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text(Language.get("Proforma_CancelInvoice", alter: "إلغاء الفاتورة"))
-                        .font(PPBeirutiFont.bold(18, relativeTo: .headline))
-                        .foregroundStyle(AdminSurface.primaryText)
-                }
-                ToolbarItem(placement: .cancellationAction) {
-                    AdminSquircleCloseButton { dismiss() }
-                }
-            }
         }
     }
+}
 
     private func promptDestructiveCancel() {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()

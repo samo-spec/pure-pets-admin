@@ -280,4 +280,65 @@ final class POSMoneyInfraParityRegressionTests: XCTestCase {
         XCTAssertEqual(POSMoney.sum([Double.nan, 10.0]), 10.0, accuracy: 0.0001)
         XCTAssertFalse(POSMoney.matches(Double.nan, Double.nan))
     }
+
+    // MARK: - 7. POS Multi-Option Identity & Capping
+
+    func testOptionsFingerprintDifferentiatesOptions() {
+        let item1 = PetAccessory()
+        item1.accessoryID = "acc_collar_1"
+        item1.name = "Collar"
+        item1.size = "S"
+
+        let item2 = PetAccessory()
+        item2.accessoryID = "acc_collar_1"
+        item2.name = "Collar"
+        item2.size = "L"
+
+        XCTAssertNotEqual(item1.pos_optionsFingerprint, item2.pos_optionsFingerprint)
+        XCTAssertFalse(item1.pos_hasSameOptions(as: item2))
+        XCTAssertNotEqual(item1.pos_variantRowKey, item2.pos_variantRowKey)
+    }
+
+    func testOptionsFingerprintMatchesIdenticalOptions() {
+        let item1 = PetAccessory()
+        item1.accessoryID = "acc_shirt_1"
+        item1.name = "Shirt"
+        item1.variantCombinationKey = "color=red|size=m"
+
+        let item2 = PetAccessory()
+        item2.accessoryID = "acc_shirt_1"
+        item2.name = "Shirt"
+        item2.variantCombinationKey = "size=m|color=red" // reversed order in raw string
+
+        // Canonical fingerprint normalizes and sorts key-value pairs
+        XCTAssertEqual(item1.pos_optionsFingerprint, item2.pos_optionsFingerprint)
+        XCTAssertTrue(item1.pos_hasSameOptions(as: item2))
+        XCTAssertEqual(item1.pos_variantRowKey, item2.pos_variantRowKey)
+    }
+
+    func testNonVariantItemsMatch() {
+        let item1 = PetAccessory()
+        item1.accessoryID = "acc_food_1"
+        item1.name = "Dog Food"
+
+        let item2 = PetAccessory()
+        item2.accessoryID = "acc_food_1"
+        item2.name = "Dog Food"
+
+        XCTAssertTrue(item1.pos_hasSameOptions(as: item2))
+    }
+
+    func testOneVariantAndOneNonVariantDoNotMatch() {
+        let item1 = PetAccessory()
+        item1.accessoryID = "acc_bed_1"
+        item1.name = "Pet Bed"
+
+        let item2 = PetAccessory()
+        item2.accessoryID = "acc_bed_1"
+        item2.name = "Pet Bed"
+        item2.size = "XL"
+
+        XCTAssertFalse(item1.pos_hasSameOptions(as: item2))
+    }
 }
+

@@ -566,35 +566,91 @@ public struct AdminSquircleBackButton: View {
     }
 }
 
-/// Flagship 44x44 continuous squircle close button matching the Sovereign Design System for modals and sheets.
+/// Dedicated tactile spring button style for sovereign dismiss / close actions.
+public struct SovereignDismissButtonStyle: ButtonStyle {
+    public init() {}
+
+    public func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.92 : 1.0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.65), value: configuration.isPressed)
+    }
+}
+
+/// Category-defining 44x44 tactile squircle dismiss button.
+/// Studio-crafted from first principles. Rejects generic clear/frosted glass in favor of
+/// a crisp, solid, tactile physical keycap with chiseled micro-border, specular rim, and responsive spring physics.
 public struct AdminSquircleCloseButton: View {
     public var action: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
 
     public init(action: @escaping () -> Void) {
         self.action = action
     }
 
+    private var borderGradient: LinearGradient {
+        if colorScheme == .dark {
+            return LinearGradient(
+                colors: [
+                    Color.white.opacity(0.20),
+                    Color(uiColor: .ppSurfaceBorder)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        } else {
+            return LinearGradient(
+                colors: [
+                    Color.white.opacity(0.90),
+                    Color(uiColor: .ppSurfaceBorder).opacity(0.75)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+    }
+
     public var body: some View {
         Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
             action()
         } label: {
             ZStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                // 1. Solid Opaque Keycap Foundation (100% Solid - Absolutely No Clear Glass)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(AdminSurface.surface)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
-                    )
+
+                // 2. Chiseled Micro-Border with Top Specular Highlight
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(borderGradient, lineWidth: 1.0)
+
+                // 3. Precision Balanced "✕" Glyph
                 Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(AdminSurface.primaryText)
             }
-            .frame(width: 44, height: 44)
-            .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+            .frame(width: 38, height: 38)
+            .shadow(
+                color: colorScheme == .dark ? Color.black.opacity(0.35) : Color.black.opacity(0.06),
+                radius: 4,
+                x: 0,
+                y: 1.5
+            )
+            .shadow(
+                color: colorScheme == .dark ? Color.black.opacity(0.20) : Color.black.opacity(0.03),
+                radius: 1,
+                x: 0,
+                y: 0.5
+            )
+            .frame(width: 44, height: 44) // 44x44 Apple HIG Tap Target
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SovereignDismissButtonStyle())
+        .hoverEffect(.lift)
+        .keyboardShortcut(.escape, modifiers: [])
         .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
+        .accessibilityHint(Language.get("Dismiss_Hint", alter: "إغلاق هذه النافذة"))
     }
 }
 

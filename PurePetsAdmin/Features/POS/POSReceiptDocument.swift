@@ -65,6 +65,7 @@ struct POSCompletedReceipt: Identifiable, Sendable {
     let lines: [Line]
     let subtotal: Double
     let discount: Double
+    let deliveryFee: Double
     let tax: Double
     let total: Double
     let cashReceived: Double
@@ -135,8 +136,9 @@ struct POSCompletedReceipt: Identifiable, Sendable {
                 variantOptionName: variantOption
             )
         }
-        subtotal = receipt.subtotal > 0 ? receipt.subtotal : max(0, receipt.total + receipt.discount - receipt.tax)
+        subtotal = receipt.subtotal > 0 ? receipt.subtotal : max(0, receipt.total + receipt.discount - receipt.tax - receipt.deliveryFee)
         discount = max(receipt.discount, 0)
+        deliveryFee = max(receipt.deliveryFee, 0)
         tax = max(receipt.tax, 0)
         total = receipt.total
         cashReceived = max(receipt.cashReceived, 0)
@@ -162,6 +164,7 @@ struct POSCompletedReceipt: Identifiable, Sendable {
         transactionID: String,
         subtotal: Double = 0,
         discount: Double = 0,
+        deliveryFee: Double = 0,
         tax: Double = 0,
         total: Double,
         currency: String,
@@ -206,8 +209,9 @@ struct POSCompletedReceipt: Identifiable, Sendable {
                 variantOptionName: effective
             )
         }
-        self.subtotal = subtotal > 0 ? subtotal : max(0, total + discount - tax)
+        self.subtotal = subtotal > 0 ? subtotal : max(0, total + discount - tax - deliveryFee)
         self.discount = max(discount, 0)
+        self.deliveryFee = max(deliveryFee, 0)
         self.tax = max(tax, 0)
         self.total = total
         self.cashReceived = paymentMethod == "cash" ? max(cashReceived, total) : 0
@@ -603,6 +607,12 @@ struct POSCompletedReceiptSheet: View {
                 receiptValueRow(
                     Language.get("POS_Receipt_Discount", alter: "الخصم"),
                     value: "−" + POSReceiptFormat.currency(receipt.discount, code: receipt.currency)
+                )
+            }
+            if receipt.deliveryFee > 0 {
+                receiptValueRow(
+                    Language.get("POS_Receipt_DeliveryFee", alter: "رسوم التوصيل"),
+                    value: "+" + POSReceiptFormat.currency(receipt.deliveryFee, code: receipt.currency)
                 )
             }
             if receipt.tax > 0 {
@@ -1549,6 +1559,10 @@ enum POSReceiptPDFExporter {
 
             if receipt.discount > 0 {
                 drawRow(label: Language.get("POS_Receipt_Discount", alter: "الخصم"), value: "−" + POSReceiptFormat.currency(receipt.discount, code: receipt.currency), valueColor: primaryColor, y: currentY)
+                currentY += 16.0
+            }
+            if receipt.deliveryFee > 0 {
+                drawRow(label: Language.get("POS_Receipt_DeliveryFee", alter: "رسوم التوصيل"), value: "+" + POSReceiptFormat.currency(receipt.deliveryFee, code: receipt.currency), y: currentY)
                 currentY += 16.0
             }
             if receipt.tax > 0 {
