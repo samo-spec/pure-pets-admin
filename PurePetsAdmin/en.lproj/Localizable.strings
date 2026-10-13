@@ -11602,6 +11602,9 @@
 
 /* POS customer credit: scoped checkout and durable recovery. */
 "POS_Credit_Title" = "Customer credit / Pay later";
+"POS_Credit_PaymentMethod" = "Pay later";
+"POS_Credit_StaffSessionRequired" = "Sign in with an active staff account to use customer credit.";
+"POS_Credit_BranchRequired" = "Select a working branch to use customer credit.";
 "POS_Credit_Loading" = "Checking customer eligibility…";
 "POS_Credit_Complete" = "Complete credit sale";
 "POS_Credit_Review" = "Review credit sale";

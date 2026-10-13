@@ -11632,6 +11632,9 @@
 
 /* POS customer credit: scoped checkout and durable recovery. */
 "POS_Credit_Title" = "على الحساب / دفع لاحقاً";
+"POS_Credit_PaymentMethod" = "على الحساب";
+"POS_Credit_StaffSessionRequired" = "سجّل الدخول بحساب موظف نشط لاستخدام البيع على الحساب.";
+"POS_Credit_BranchRequired" = "اختر فرع العمل لاستخدام البيع على الحساب.";
 "POS_Credit_Loading" = "جارٍ التحقق من أهلية العميل…";
 "POS_Credit_Complete" = "إتمام البيع على الحساب";
 "POS_Credit_Review" = "مراجعة البيع على الحساب";

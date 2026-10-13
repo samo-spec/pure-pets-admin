@@ -1424,6 +1424,7 @@ final class POSFastSellViewModel: ObservableObject {
     @Published private(set) var cartItems: [POSCartItem] = []
     private var branchInventoryCancellable: AnyCancellable?
     private var branchChangeCancellable: AnyCancellable?
+    private var creditAuthorizationCancellable: AnyCancellable?
 
     init() {
         branchInventoryCancellable = PPBranchInventoryService.shared.$inventoryMap
@@ -1440,6 +1441,19 @@ final class POSFastSellViewModel: ObservableObject {
             .sink { [weak self] _ in
                 guard let self = self else { return }
                 self.invalidateSubmissionCommand()
+                self.invalidateCreditContext()
+                self.hideCreditReceiptOnSessionChange()
+                self.objectWillChange.send()
+            }
+
+        // The session root owns the staff listener. Re-evaluate its canonical
+        // projection when grants change, without opening another subscription.
+        creditAuthorizationCancellable = NotificationCenter.default.publisher(
+            for: Notification.Name("PPAdminCommandAuthorizationDidChangeNotification")
+        )
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
                 self.invalidateCreditContext()
                 self.hideCreditReceiptOnSessionChange()
                 self.objectWillChange.send()
@@ -1941,10 +1955,11 @@ final class POSFastSellViewModel: ObservableObject {
     var paymentMethods: [(key: String, title: String, icon: String)] { [
         ("cash", "POS_Cash", "banknote.fill"),
         ("card", "POS_Card", "creditcard.fill"),
+        ("credit", "POS_Credit_PaymentMethod", "person.crop.rectangle.badge.checkmark"),
         ("cheque", "POS_Cheque", "doc.text.fill"),
         ("fawry", "POS_Fawry", "wallet.pass.fill"),
         ("bank_transfer", "POS_BankTransfer", "arrow.up.forward.app.fill")
-    ] + ((canIssueCredit || selectedPaymentMethod == "credit") ? [("credit", "POS_Credit_Title", "person.crop.rectangle.badge.checkmark")] : []) }
+    ] }
 
     func startListening() {
         PPBranchInventoryService.shared.startListeningIfNeeded()
@@ -2413,13 +2428,20 @@ final class POSFastSellViewModel: ObservableObject {
 
     // MARK: - Customer credit (server-owned money, durable local intent)
 
-    var canIssueCredit: Bool {
-        guard let uid = Auth.auth().currentUser?.uid,
-              let branchID = BranchContextStore.shared.activeBranch?.branchID,
+    private var creditAccessIssueKey: String? {
+        guard let uid = Auth.auth().currentUser?.uid, !uid.isEmpty,
               let staff = PPStaffAuth.shared().cachedCurrentStaff,
-              staff.uid == uid, staff.isActive() else { return false }
-        return staff.hasPermission("pos.credit.issue", inBranch: branchID) && staff.hasPermission("pos.sell", inBranch: branchID)
+              staff.uid == uid, staff.isActive() else { return "POS_Credit_StaffSessionRequired" }
+        guard let branchID = BranchContextStore.shared.activeBranch?.branchID, !branchID.isEmpty else {
+            return "POS_Credit_BranchRequired"
+        }
+        guard staff.hasPermission("pos.credit.issue", inBranch: branchID),
+              staff.hasPermission("pos.sell", inBranch: branchID) else { return "POS_Credit_PermissionDenied" }
+        return nil
     }
+
+    var canIssueCredit: Bool { creditAccessIssueKey == nil }
+    var creditAccessMessage: String? { creditAccessIssueKey.map { Language.get($0, alter: nil) } }
 
     var creditHasLiveItems: Bool {
         cartItems.contains { $0.accessory.isLivePet || $0.isIndividuallyTracked || !$0.unitRingTags.isEmpty }
@@ -2462,7 +2484,7 @@ final class POSFastSellViewModel: ObservableObject {
         invalidateCreditContext()
         guard canIssueCredit, let actorUID = Auth.auth().currentUser?.uid,
               let branchID = BranchContextStore.shared.activeBranch?.branchID else {
-            creditError = Language.get("POS_Credit_PermissionDenied", alter: nil)
+            creditError = creditAccessMessage ?? Language.get("POS_Credit_PermissionDenied", alter: nil)
             return
         }
         guard let customer = selectedCustomer, customer.source == "directory", !customer.id.isEmpty else {
@@ -2707,6 +2729,8 @@ final class POSFastSellViewModel: ObservableObject {
 
     func selectPaymentMethod(_ paymentMethod: String) {
         guard paymentMethods.contains(where: { $0.key == paymentMethod }) else { return }
+        // Credit stays discoverable when denied, but cannot become a tender.
+        guard paymentMethod != "credit" || canIssueCredit else { return }
         guard selectedPaymentMethod != paymentMethod else { return }
         let previous = selectedPaymentMethod
         selectedPaymentMethod = paymentMethod
@@ -5160,7 +5184,13 @@ private struct POSApexFlightDeck: View {
     private var selectedMethod: (key: String, title: String, icon: String) {
         viewModel.paymentMethods.first { $0.key == viewModel.selectedPaymentMethod } ?? viewModel.paymentMethods[0]
     }
-    private var usesOtherMethod: Bool { !["cash", "card"].contains(viewModel.selectedPaymentMethod) }
+    private var primaryPaymentMethods: [(key: String, title: String, icon: String)] {
+        viewModel.paymentMethods.filter { ["cash", "card", "credit"].contains($0.key) }
+    }
+    private var otherPaymentMethods: [(key: String, title: String, icon: String)] {
+        viewModel.paymentMethods.filter { !["cash", "card", "credit"].contains($0.key) }
+    }
+    private var usesOtherMethod: Bool { otherPaymentMethods.contains { $0.key == viewModel.selectedPaymentMethod } }
     private var tenderSuggestions: [Double] {
         Array([50.0, 100, 200, 500, 1000].filter { $0 > viewModel.cartTotal }.prefix(2))
     }
@@ -5181,6 +5211,10 @@ private struct POSApexFlightDeck: View {
                             paymentDetail
                         } else {
                             compactPaymentRow
+                        }
+                        if let message = viewModel.creditAccessMessage {
+                            paymentNote(icon: "lock.fill", text: message)
+                                .accessibilityIdentifier("pos.checkout.creditAccess")
                         }
                         if scrollsCompletion { completionControl }
                     } else {
@@ -5358,6 +5392,9 @@ private struct POSApexFlightDeck: View {
                 Button { selectMethod(method.key) } label: {
                     Label(Language.get(method.title, alter: method.key), systemImage: viewModel.selectedPaymentMethod == method.key ? "checkmark" : method.icon)
                 }
+                .disabled(method.key == "credit" && !viewModel.canIssueCredit)
+                .accessibilityHint(method.key == "credit" ? (viewModel.creditAccessMessage ?? "") : "")
+                .accessibilityIdentifier("pos.checkout.compactMethod.\(method.key)")
             }
         } label: {
             HStack(spacing: 6) {
@@ -5528,19 +5565,22 @@ private struct POSApexFlightDeck: View {
                 .foregroundColor(AdminSurface.secondaryText)
             let columns = dynamicTypeSize.isAccessibilitySize
                 ? [GridItem(.flexible())]
-                : [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())]
+                : [GridItem(.flexible()), GridItem(.flexible())]
             LazyVGrid(columns: columns, spacing: 8) {
-                ForEach(viewModel.paymentMethods.prefix(2), id: \.key) { method in
+                ForEach(primaryPaymentMethods, id: \.key) { method in
                     Button { selectMethod(method.key) } label: {
                         methodLabel(title: Language.get(method.title, alter: method.key), icon: method.icon,
-                                    selected: viewModel.selectedPaymentMethod == method.key)
+                                    selected: viewModel.selectedPaymentMethod == method.key,
+                                    enabled: method.key != "credit" || viewModel.canIssueCredit)
                     }
                     .buttonStyle(.plain)
+                    .disabled(method.key == "credit" && !viewModel.canIssueCredit)
+                    .accessibilityHint(method.key == "credit" ? (viewModel.creditAccessMessage ?? "") : "")
                     .accessibilityAddTraits(viewModel.selectedPaymentMethod == method.key ? .isSelected : [])
                     .accessibilityIdentifier("pos.checkout.method.\(method.key)")
                 }
                 Menu {
-                    ForEach(viewModel.paymentMethods.dropFirst(2), id: \.key) { method in
+                    ForEach(otherPaymentMethods, id: \.key) { method in
                         Button { selectMethod(method.key) } label: {
                             Label(Language.get(method.title, alter: method.key), systemImage: viewModel.selectedPaymentMethod == method.key ? "checkmark" : method.icon)
                         }
@@ -5561,14 +5601,14 @@ private struct POSApexFlightDeck: View {
         }
     }
 
-    private func methodLabel(title: String, icon: String, selected: Bool, disclosure: Bool = false) -> some View {
+    private func methodLabel(title: String, icon: String, selected: Bool, disclosure: Bool = false, enabled: Bool = true) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon).font(.system(size: 15, weight: .semibold))
             Text(title).font(AdminType.subheadlineBold).fixedSize(horizontal: false, vertical: true)
             if disclosure { Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold)) }
         }
         .multilineTextAlignment(.center)
-        .foregroundColor(selected ? accentInk : AdminSurface.primaryText)
+        .foregroundColor(enabled ? (selected ? accentInk : AdminSurface.primaryText) : AdminSurface.secondaryText)
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity, minHeight: 44)
@@ -5583,6 +5623,7 @@ private struct POSApexFlightDeck: View {
 
     private func selectMethod(_ key: String) {
         guard !viewModel.isCheckoutBusy, key != viewModel.selectedPaymentMethod else { return }
+        guard key != "credit" || viewModel.canIssueCredit else { return }
         UISelectionFeedbackGenerator().selectionChanged()
         withAnimation(motion) { viewModel.selectPaymentMethod(key) }
         // Keep the cash entry when briefly consulting another payment method.
