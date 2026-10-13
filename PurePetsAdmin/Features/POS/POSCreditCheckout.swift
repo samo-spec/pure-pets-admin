@@ -180,63 +180,73 @@ struct POSCreditCheckoutSheet: View {
         }
     }
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var currentStep: Int {
+        guard model.creditContext != nil else { return 0 }
+        return reviewing ? 2 : 1
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 20) {
+                    if !isRecovery {
+                        introduction
+                        journey
+                    }
                     if isRecovery {
-                        recovery
+                        panel { recovery }
                     } else if model.isLoadingCreditContext {
-                        ProgressView(label("POS_Credit_Loading")).frame(maxWidth: .infinity, minHeight: 160)
+                        loadingState
                     } else if let context = model.creditContext {
-                        summary(context)
-                        if reviewing { agreement(context) } else { terms(context) }
-                        if let message = localError ?? model.creditError { messageView(message) }
-                        Button(reviewing ? label("POS_Credit_Complete") : label("POS_Credit_Review")) {
-                            editingAmount = false
-                            do {
-                                let settlement = try settlement(context)
-                                if reviewing {
-                                    guard accepted else { return }
-                                    if model.submitCreditOrder(settlement: settlement) { localError = nil }
-                                } else { reviewing = true; localError = nil }
-                            } catch { localError = label("POS_Credit_InvalidTerms") }
+                        readyState(context)
+                        panel { summary(context) }
+                        panel {
+                            if reviewing {
+                                agreement(context)
+                            } else {
+                                terms(context)
+                            }
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(AdminSurface.primary)
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                        .disabled(model.isCheckoutBusy || (reviewing && !accepted))
-                        .accessibilityIdentifier("pos.credit.confirm")
-                        if reviewing {
-                            Button(label("POS_Credit_EditTerms")) { reviewing = false; accepted = false }
-                                .frame(minHeight: 44).disabled(model.isCheckoutBusy)
+                        if let message = localError ?? model.creditError {
+                            notice(message, color: AdminSurface.crimson, symbol: "exclamationmark.circle")
                         }
                     } else {
-                        messageView(model.creditError ?? label("POS_Credit_SelectCustomer"))
-                        Button(label("POS_Credit_ChooseCustomer")) { showsCustomerPicker = true }.frame(minHeight: 44)
-                        if model.selectedCustomer != nil {
-                            Button(label("POS_Credit_Reload")) { model.loadCreditContext() }.frame(minHeight: 44)
-                        }
+                        selectionState
                     }
                 }
-                .padding(20)
                 .frame(maxWidth: 640, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.top, 24)
+                .padding(.bottom, 26)
                 .frame(maxWidth: .infinity)
             }
             .scrollDismissesKeyboard(.interactively)
-            .background(AdminSurface.background)
-            .navigationTitle(label("POS_Credit_Title"))
+            .background(AdminSurface.background.ignoresSafeArea())
+            .navigationTitle(label("POS_Credit_PaymentMethod"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(label("POS_Credit_Close")) { dismiss() }.disabled(model.isCheckoutBusy)
+                    Button(label("POS_Credit_Close")) { dismiss() }
+                        .disabled(model.isCheckoutBusy)
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button(label("POS_Credit_Done")) { editingAmount = false }
                 }
             }
-            .overlay { if model.isSubmitting { ProgressView().padding(22).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16)) } }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if !isRecovery && !model.isLoadingCreditContext && (model.creditContext != nil || model.canIssueCredit) { actionDock }
+            }
+            .overlay {
+                if model.isSubmitting {
+                    ProgressView()
+                        .padding(22)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                        .accessibilityLabel(label("POS_Credit_Loading"))
+                }
+            }
             .interactiveDismissDisabled(model.isCheckoutBusy)
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
             .onAppear { model.loadCreditContext() }
@@ -254,6 +264,259 @@ struct POSCreditCheckoutSheet: View {
                 }
             }
         }
+    }
+
+    private var introduction: some View {
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text(label("POS_Credit_Title"))
+                    .font(AdminType.title)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(label("POS_Credit_CheckoutHint"))
+                    .font(AdminType.body)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "creditcard.fill")
+                .font(.system(size: 25, weight: .medium))
+                .foregroundStyle(AdminSurface.primary)
+                .frame(width: 58, height: 58)
+                .background(AdminSurface.primarySoft, in: RoundedRectangle(cornerRadius: 20))
+                .accessibilityHidden(true)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var journey: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                stage("POS_Credit_StepCustomer", number: 0)
+                Rectangle().fill(AdminSurface.hairline).frame(maxWidth: .infinity).frame(height: 1)
+                stage("POS_Credit_StepTerms", number: 1)
+                Rectangle().fill(AdminSurface.hairline).frame(maxWidth: .infinity).frame(height: 1)
+                stage("POS_Credit_StepReview", number: 2)
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                stage("POS_Credit_StepCustomer", number: 0)
+                stage("POS_Credit_StepTerms", number: 1)
+                stage("POS_Credit_StepReview", number: 2)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: currentStep)
+    }
+
+    private func stage(_ key: String, number: Int) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: number < currentStep ? "checkmark.circle.fill" :
+                    number == currentStep ? "circle.inset.filled" : "circle")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(number <= currentStep ? AdminSurface.primary : AdminSurface.secondaryText)
+            Text(label(key))
+                .font(number == currentStep ? AdminType.subheadlineBold : AdminType.subheadline)
+                .foregroundStyle(number == currentStep ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label(key))
+        .accessibilityValue(label(number < currentStep ? "POS_Credit_StepDone" :
+                                  number == currentStep ? "POS_Credit_StepCurrent" : "POS_Credit_StepUpcoming"))
+    }
+
+    private var loadingState: some View {
+        panel {
+            HStack(alignment: .center, spacing: 18) {
+                ProgressView().tint(AdminSurface.primary).controlSize(.large)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(label("POS_Credit_Loading")).font(AdminType.title3)
+                    Text(label("POS_Credit_LoadingDetail"))
+                        .font(AdminType.body)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
+        }
+        .accessibilityIdentifier("pos.credit.loading")
+    }
+
+    private var selectionState: some View {
+        panel {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .top, spacing: 14) {
+                    Image(systemName: model.selectedCustomer == nil ?
+                          "person.crop.circle.badge.plus" : "person.crop.circle.badge.exclamationmark")
+                        .font(.system(size: 28, weight: .regular))
+                        .foregroundStyle(model.selectedCustomer == nil ? AdminSurface.primary : AdminSurface.amber)
+                        .frame(width: 54, height: 54)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 17))
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(label(model.selectedCustomer == nil ? "POS_Credit_NeedsCustomer" : "POS_Credit_NeedsVerification"))
+                            .font(AdminType.title2)
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let customer = model.selectedCustomer {
+                            Text(customer.name)
+                                .font(AdminType.bodyBold)
+                                .foregroundStyle(AdminSurface.secondaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                if let message = model.creditError ?? model.creditAccessMessage {
+                    notice(message, color: AdminSurface.amber, symbol: "info.circle")
+                } else {
+                    Text(label("POS_Credit_SelectCustomer"))
+                        .font(AdminType.body)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if model.selectedCustomer != nil && model.canIssueCredit {
+                    Text(label("POS_Credit_RefreshHelp"))
+                        .font(AdminType.footnote)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .accessibilityIdentifier("pos.credit.needsContext")
+    }
+
+    private func readyState(_ context: POSCreditContext) -> some View {
+        panel {
+            HStack(alignment: .center, spacing: 13) {
+                Image(systemName: "doc.text.magnifyingglass")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(AdminSurface.primary)
+                    .frame(width: 48, height: 48)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(label("POS_Credit_ContextReady"))
+                        .font(AdminType.footnoteBold)
+                        .foregroundStyle(AdminSurface.primary)
+                    Text(context.customerName)
+                        .font(AdminType.title3)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .accessibilityIdentifier("pos.credit.contextReady")
+    }
+
+    private func panel<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(20)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline.opacity(0.65), lineWidth: 0.7)
+                    .allowsHitTesting(false)
+            }
+    }
+
+    private func notice(_ message: String, color: Color, symbol: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: symbol)
+                .foregroundStyle(color)
+                .font(.system(size: 17, weight: .semibold))
+                .accessibilityHidden(true)
+            Text(message)
+                .font(AdminType.body)
+                .foregroundStyle(AdminSurface.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: 15))
+        .accessibilityElement(children: .combine)
+    }
+
+    private var actionDock: some View {
+        VStack(spacing: 8) {
+            if let context = model.creditContext {
+                Button {
+                    editingAmount = false
+                    do {
+                        let settlement = try settlement(context)
+                        if reviewing {
+                            guard accepted else { return }
+                            if model.submitCreditOrder(settlement: settlement) { localError = nil }
+                        } else {
+                            reviewing = true
+                            localError = nil
+                        }
+                    } catch {
+                        localError = label("POS_Credit_InvalidTerms")
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        Text(label(reviewing ? "POS_Credit_Complete" : "POS_Credit_Review"))
+                            .font(AdminType.headlineBold)
+                        Spacer(minLength: 0)
+                        Image(systemName: reviewing ? "checkmark.seal.fill" : "arrow.forward")
+                    }
+                    .padding(.horizontal, 22)
+                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .foregroundStyle(.white)
+                    .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 18))
+                }
+                .buttonStyle(.plain)
+                .disabled(model.isCheckoutBusy || (reviewing && !accepted))
+                .opacity(model.isCheckoutBusy || (reviewing && !accepted) ? 0.45 : 1)
+                .accessibilityIdentifier("pos.credit.confirm")
+                if reviewing {
+                    Button(label("POS_Credit_EditTerms")) {
+                        reviewing = false
+                        accepted = false
+                    }
+                    .font(AdminType.bodyBold)
+                    .foregroundStyle(AdminSurface.primary)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .disabled(model.isCheckoutBusy)
+                }
+            } else if !model.isLoadingCreditContext && model.canIssueCredit {
+                Button {
+                    if model.selectedCustomer == nil {
+                        showsCustomerPicker = true
+                    } else {
+                        model.loadCreditContext()
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        Text(label(model.selectedCustomer == nil ? "POS_Credit_ChooseCustomer" : "POS_Credit_Reload"))
+                            .font(AdminType.headlineBold)
+                        Spacer(minLength: 0)
+                        Image(systemName: model.selectedCustomer == nil ? "person.crop.circle.badge.plus" : "arrow.clockwise")
+                    }
+                    .padding(.horizontal, 22)
+                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .foregroundStyle(.white)
+                    .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 18))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("pos.credit.nextStep")
+                if model.selectedCustomer != nil {
+                    Button(label("POS_Credit_ChooseCustomer")) { showsCustomerPicker = true }
+                        .font(AdminType.bodyBold)
+                        .foregroundStyle(AdminSurface.primary)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+            }
+        }
+        .frame(maxWidth: 640)
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+        .frame(maxWidth: .infinity)
+        .background(.regularMaterial)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: currentStep)
     }
 
     private var recovery: some View {
@@ -282,77 +545,123 @@ struct POSCreditCheckoutSheet: View {
         }
     }
     private func summary(_ context: POSCreditContext) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(context.customerName).font(AdminType.title2).fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 16) {
+            Text(label("POS_Credit_SaleSnapshot"))
+                .font(AdminType.headlineBold)
+                .foregroundStyle(AdminSurface.primaryText)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(label("POS_Credit_Remaining"))
+                    .font(AdminType.subheadline)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                HStack {
+                    Text(money(amountDueMinor))
+                        .font(AdminType.title)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .monospacedDigit()
+                        .environment(\.layoutDirection, .leftToRight)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.75)
+                        .accessibilityIdentifier("pos.credit.amountDue")
+                    Spacer(minLength: 0)
+                }
+            }
+            Divider()
             moneyRow("POS_Credit_Total", totalMinor)
             moneyRow("POS_Credit_CollectedNow", pending ? 0 : (depositMinor ?? 0))
             if pending { moneyRow("POS_Credit_Pending", depositMinor ?? 0) }
-            Divider()
-            moneyRow("POS_Credit_Remaining", amountDueMinor, prominent: true)
             Text(String(format: label("POS_Credit_ExistingBalance"), money(context.outstandingMinor), money(context.limitMinor)))
-                .font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
-            if context.overdueMinor > 0 || context.outstandingMinor + amountDueMinor > context.limitMinor || delivery || model.deliveryFee > 0 || model.creditHasLiveItems {
-                messageView(label("POS_Credit_ApprovalRequired"))
+                .font(AdminType.footnote)
+                .foregroundStyle(AdminSurface.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            let (projectedBalance, overflow) = context.outstandingMinor.addingReportingOverflow(amountDueMinor)
+            if context.overdueMinor > 0 || overflow ||
+               projectedBalance > context.limitMinor ||
+               delivery || model.deliveryFee > 0 || model.creditHasLiveItems {
+                notice(label("POS_Credit_ApprovalRequired"), color: AdminSurface.amber, symbol: "exclamationmark.shield")
             }
         }
     }
     private func terms(_ context: POSCreditContext) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 18) {
+            Text(label("POS_Credit_ConfigureTerms"))
+                .font(AdminType.headlineBold)
+                .foregroundStyle(AdminSurface.primaryText)
             field("POS_Credit_Deposit", text: $depositText, keyboard: .decimalPad)
             if (depositMinor ?? 0) > 0 {
                 if allowedMethods.isEmpty {
-                    messageView(label("POS_Credit_NoTender"))
+                    notice(label("POS_Credit_NoTender"), color: AdminSurface.amber, symbol: "info.circle")
                 } else {
-                Picker(label("POS_Credit_DepositMethod"), selection: $method) {
-                    ForEach(allowedMethods, id: \.self) { value in
-                        Text(POSReceiptFormat.paymentMethod(value)).tag(value)
+                    Picker(label("POS_Credit_DepositMethod"), selection: $method) {
+                        ForEach(allowedMethods, id: \.self) { value in
+                            Text(POSReceiptFormat.paymentMethod(value)).tag(value)
+                        }
                     }
-                }
-                .frame(minHeight: 44)
+                    .frame(minHeight: 44)
                 }
                 if method != "cash" {
                     field("POS_Credit_Reference", text: $reference)
-                    Text(label("POS_Credit_PendingHint")).font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
+                    Text(label("POS_Credit_PendingHint"))
+                        .font(AdminType.footnote)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            Divider()
             Toggle(label("POS_Credit_Delivery"), isOn: $delivery).frame(minHeight: 44)
             Toggle(label("POS_Credit_Installments"), isOn: $usesInstallments).frame(minHeight: 44)
             if usesInstallments {
                 ForEach($installments) { $entry in
-                    VStack(alignment: .leading, spacing: 8) {
-                        DatePicker(label("POS_Credit_DueDate"), selection: $entry.date, displayedComponents: .date).frame(minHeight: 44)
+                    VStack(alignment: .leading, spacing: 10) {
+                        DatePicker(label("POS_Credit_DueDate"), selection: $entry.date, displayedComponents: .date)
+                            .frame(minHeight: 44)
                         field("POS_Credit_InstallmentAmount", text: $entry.amount, keyboard: .decimalPad)
                         if installments.count > 1 {
-                            Button(role: .destructive) { installments.removeAll { $0.id == entry.id } } label: { Text(label("POS_Credit_RemoveInstallment")) }
-                                .frame(minHeight: 44)
+                            Button(role: .destructive) {
+                                installments.removeAll { $0.id == entry.id }
+                            } label: {
+                                Text(label("POS_Credit_RemoveInstallment"))
+                            }
+                            .frame(minHeight: 44)
                         }
                     }
-                    .padding(12).background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14))
+                    .padding(14)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16))
                 }
                 if installments.count < 24 {
-                    Button(label("POS_Credit_AddInstallment")) { installments.append(POSCreditInstallmentDraft()) }.frame(minHeight: 44)
+                    Button {
+                        installments.append(POSCreditInstallmentDraft())
+                    } label: {
+                        Label(label("POS_Credit_AddInstallment"), systemImage: "plus.circle.fill")
+                    }
+                    .frame(minHeight: 44)
                 }
             } else {
-                DatePicker(label("POS_Credit_DueDate"), selection: $dueDate, displayedComponents: .date).frame(minHeight: 44)
+                DatePicker(label("POS_Credit_DueDate"), selection: $dueDate, displayedComponents: .date)
+                    .frame(minHeight: 44)
             }
         }
+        .tint(AdminSurface.primary)
         .environment(\.timeZone, TimeZone(identifier: context.timeZone) ?? .current)
         .environment(\.calendar, Calendar(identifier: .gregorian))
     }
     private func agreement(_ context: POSCreditContext) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(label("POS_Credit_Agreement")).font(AdminType.headlineBold)
-            Text(agreementWording(context)).font(AdminType.body).fixedSize(horizontal: false, vertical: true)
-            Toggle(label("POS_Credit_AcceptTerms"), isOn: $accepted).frame(minHeight: 44)
+            Text(label("POS_Credit_Agreement"))
+                .font(AdminType.headlineBold)
+                .foregroundStyle(AdminSurface.primaryText)
+            Text(agreementWording(context))
+                .font(AdminType.body)
+                .foregroundStyle(AdminSurface.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+            Toggle(label("POS_Credit_AcceptTerms"), isOn: $accepted)
+                .tint(AdminSurface.primary)
+                .frame(minHeight: 44)
                 .accessibilityIdentifier("pos.credit.acceptTerms")
         }
     }
     private func messageView(_ value: String) -> some View {
-        Label(value, systemImage: "info.circle")
-            .font(AdminType.callout).foregroundStyle(AdminSurface.primaryText)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14))
+        notice(value, color: AdminSurface.amber, symbol: "info.circle")
     }
     private func moneyRow(_ key: String, _ value: Int, prominent: Bool = false) -> some View {
         HStack(alignment: .firstTextBaseline) {
@@ -364,11 +673,18 @@ struct POSCreditCheckoutSheet: View {
         .accessibilityElement(children: .combine)
     }
     private func field(_ key: String, text: Binding<String>, keyboard: UIKeyboardType = .default) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label(key)).font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
-            TextField(label(key), text: text).keyboardType(keyboard).textFieldStyle(.roundedBorder)
+        VStack(alignment: .leading, spacing: 8) {
+            Text(label(key))
+                .font(AdminType.footnoteBold)
+                .foregroundStyle(AdminSurface.secondaryText)
+            TextField(label(key), text: text)
+                .keyboardType(keyboard)
+                .font(AdminType.body)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 50)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14))
                 .focused($editingAmount)
-                .frame(minHeight: 44).accessibilityLabel(label(key))
+                .accessibilityLabel(label(key))
         }
     }
     private func day(_ date: Date, _ context: POSCreditContext) -> String {

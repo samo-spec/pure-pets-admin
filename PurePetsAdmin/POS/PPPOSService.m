@@ -1098,6 +1098,7 @@ static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items)
                        branchID:(NSString *)branchID
                    salesChannel:(NSString *)salesChannel
                      completion:(void(^)(PPPOSSubmitResult *, NSError *))completion {
+    
     [self submitPOSOrderWithItems:items
                          subtotal:subtotal
                          discount:discount
@@ -1112,6 +1113,7 @@ static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items)
                          branchID:branchID
                      salesChannel:salesChannel
                        completion:completion];
+    
 }
 
 - (void)submitPOSOrderWithItems:(NSArray<NSDictionary *> *)items

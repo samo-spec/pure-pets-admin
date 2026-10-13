@@ -11631,6 +11631,19 @@
 "Alert_Input_Accessibility_Label" = "النص المطلوب";
 
 /* POS customer credit: scoped checkout and durable recovery. */
+"POS_Credit_StepDone" = "مكتمل";
+"POS_Credit_StepCurrent" = "الخطوة الحالية";
+"POS_Credit_StepUpcoming" = "لم تبدأ بعد";
+"POS_Credit_StepCustomer" = "العميل";
+"POS_Credit_StepTerms" = "شروط السداد";
+"POS_Credit_StepReview" = "التأكيد";
+"POS_Credit_LoadingDetail" = "نراجع حساب العميل وشروط الائتمان الخاصة بالفرع.";
+"POS_Credit_NeedsCustomer" = "ابدأ باختيار العميل";
+"POS_Credit_NeedsVerification" = "تعذّر التحقق من شروط العميل";
+"POS_Credit_RefreshHelp" = "راجع بيانات العميل والفرع ثم أعد التحقق، أو اختر عميلاً آخر.";
+"POS_Credit_ContextReady" = "تم تحميل شروط العميل";
+"POS_Credit_SaleSnapshot" = "ملخص البيع";
+"POS_Credit_ConfigureTerms" = "ترتيب السداد";
 "POS_Credit_Title" = "على الحساب / دفع لاحقاً";
 "POS_Credit_PaymentMethod" = "على الحساب";
 "POS_Credit_StaffSessionRequired" = "سجّل الدخول بحساب موظف نشط لاستخدام البيع على الحساب.";
@@ -11678,7 +11691,35 @@
 "POS_Credit_CheckoutHint" = "اختر العميل ثم راجع الدفعة الأولى والمبلغ المستحق واتفاق السداد.";
 "POS_Credit_AtSale" = "المبالغ والاتفاق عند إتمام هذا البيع";
 "POS_Credit_Done" = "تم";
-"POS_Credit_NoTender" = "لا توجد وسيلة دفعة أولى مفعّلة لهذا الفرع. اختر دفعة بقيمة صفر أو اطلب تفعيل وسيلة معتمدة.";
+"POS_Credit_Disabled" = "خدمة البيع على الحساب غير مفعّلة في هذا الفرع حالياً. راجع إعدادات وسياسة الفرع.";
+"POS_Credit_CustomerRequired" = "يلزم اختيار عميل مسجّل في دليل العملاء لإتمام البيع على الحساب.";
+"POS_Credit_Ineligible" = "حساب العميل أو الفرع غير نشط حالياً ولا يمكن البيع على الحساب.";
+"POS_Credit_ManageAccount" = "إدارة الحساب وسياسة الائتمان";
+"POS_Credit_ChangeCustomer" = "تغيير العميل";
+"POS_Credit_RetryVerification" = "إعادة التحقق من الأهلية";
+"POS_Credit_CreditLimit" = "الحد الائتماني";
+"POS_Credit_CurrentBalance" = "الرصيد المستحق";
+"POS_Credit_AvailableCredit" = "الرصيد المتاح";
+"POS_Credit_FinancedAmount" = "المبلغ المؤجل";
+"POS_Credit_PayFullOnDue" = "سداد كامل بتاريخ محدد";
+"POS_Credit_PayInstallments" = "أقساط مجدولة";
+"POS_Credit_Preset7Days" = "بعد أسبوع";
+"POS_Credit_Preset15Days" = "بعد 15 يوماً";
+"POS_Credit_Preset30Days" = "بعد شهر";
+"POS_Credit_Preset60Days" = "بعد شهرين";
+"POS_Credit_PresetNoDeposit" = "بدون دفعة (0 ر.ق)";
+"POS_Credit_Preset25" = "25% دفعة أولى";
+"POS_Credit_Preset50" = "50% دفعة أولى";
+"POS_Credit_CartOverview" = "تفاصيل السلة الحالية";
+"POS_Credit_TotalFinanced" = "إجمالي السلة المطلوب تأجيله";
+"POS_Credit_CustomerBadge_Verified" = "عميل مؤهل";
+"POS_Credit_CustomerBadge_NeedsPolicy" = "بانتظار سياسة الائتمان";
+"POS_Credit_SupervisorBadge" = "يتطلب موافقة المشرف";
+"POS_Credit_Step1_Short" = "العميل والأهلية";
+"POS_Credit_Step2_Short" = "ترتيب الأقساط";
+"POS_Credit_Step3_Short" = "التأكيد والاعتماد";
+"POS_Credit_NextToTerms" = "متابعة لتحديد شروط السداد";
+"POS_Credit_NextToReview" = "مراجعة وتأكيد الاتفاق";
 "POS_Credit_CartChanged" = "تغيّر سعر الصنف أو توفره. أغلق هذه المراجعة، وأعد اختيار الصنف في السلة، ثم راجع شروط السداد من جديد.";
 
 /* POS customer credit account and collections */

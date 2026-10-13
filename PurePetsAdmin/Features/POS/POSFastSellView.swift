@@ -1029,7 +1029,9 @@ private struct POSSubmitFailure: Sendable {
         var details = PPPOSService.exactUnitConflictDetails(forError: error)
         if details.isEmpty {
             if let dict = (nsError.userInfo["details"] as? [String: Any]) ??
-                          (nsError.userInfo["FIRFunctionsErrorDetailsKey"] as? [String: Any]) {
+                          (nsError.userInfo["FIRFunctionsErrorDetailsKey"] as? [String: Any]) ??
+                          (nsError.userInfo[AnyHashable("details")] as? [String: Any]) ??
+                          (nsError.userInfo[AnyHashable("FIRFunctionsErrorDetailsKey")] as? [String: Any]) {
                 details = dict
             }
         }
@@ -1037,7 +1039,26 @@ private struct POSSubmitFailure: Sendable {
         productName = (details["productName"] as? String) ?? ""
         unitID = (details["unitId"] as? String) ?? ""
         ringTag = (details["ringTag"] as? String) ?? ""
-        domainCode = ((details["domainCode"] as? String) ?? "").uppercased()
+        var extractedDomain = ((details["domainCode"] as? String) ?? (details["code"] as? String) ?? "").uppercased()
+        if extractedDomain.isEmpty {
+            let desc = nsError.localizedDescription.uppercased()
+            if desc.contains("POS_CREDIT_POLICY_REQUIRED") || desc.contains("CREDIT POLICY MUST BE APPROVED") || desc.contains("سياسة") {
+                extractedDomain = "POS_CREDIT_POLICY_REQUIRED"
+            } else if desc.contains("POS_CREDIT_DISABLED") || desc.contains("CREDIT ISSUANCE IS NOT CONFIGURED") {
+                extractedDomain = "POS_CREDIT_DISABLED"
+            } else if desc.contains("POS_CREDIT_CUSTOMER_REQUIRED") || desc.contains("CANONICAL POS CUSTOMER IS REQUIRED") {
+                extractedDomain = "POS_CREDIT_CUSTOMER_REQUIRED"
+            } else if desc.contains("POS_CREDIT_INELIGIBLE") || desc.contains("IS NOT ACTIVE") {
+                extractedDomain = "POS_CREDIT_INELIGIBLE"
+            } else if desc.contains("POS_CREDIT_APPROVAL_REQUIRED") {
+                extractedDomain = "POS_CREDIT_APPROVAL_REQUIRED"
+            } else if desc.contains("POS_CREDIT_VERSION_CONFLICT") {
+                extractedDomain = "POS_CREDIT_VERSION_CONFLICT"
+            } else if desc.contains("POS_CREDIT_RECONCILIATION_REQUIRED") {
+                extractedDomain = "POS_CREDIT_RECONCILIATION_REQUIRED"
+            }
+        }
+        domainCode = extractedDomain
         creditApprovalRequestJSON = (details["approvalRequest"] as? [String: Any]).flatMap { try? JSONSerialization.data(withJSONObject: $0, options: .sortedKeys) }
         functionsCode = nsError.code
         serverMessage = nsError.localizedDescription
@@ -2531,6 +2552,9 @@ final class POSFastSellViewModel: ObservableObject {
         case "POS_CREDIT_POLICY_REQUIRED": key = "POS_Credit_PolicyRequired"
         case "POS_CREDIT_VERSION_CONFLICT": key = "POS_Credit_ReloadRequired"
         case "POS_CREDIT_RECONCILIATION_REQUIRED": key = "POS_Credit_ReconciliationRequired"
+        case "POS_CREDIT_DISABLED": key = "POS_Credit_Disabled"
+        case "POS_CREDIT_CUSTOMER_REQUIRED": key = "POS_Credit_CustomerRequired"
+        case "POS_CREDIT_INELIGIBLE": key = "POS_Credit_Ineligible"
         default:
             if failure?.functionsCode == 7 { key = "POS_Credit_PermissionDenied" }
             else if failure?.functionsCode == 10 { key = "POS_Credit_ReloadRequired" }

@@ -11601,6 +11601,19 @@
 "Alert_Input_Accessibility_Label" = "Text";
 
 /* POS customer credit: scoped checkout and durable recovery. */
+"POS_Credit_StepDone" = "Completed";
+"POS_Credit_StepCurrent" = "Current step";
+"POS_Credit_StepUpcoming" = "Not started";
+"POS_Credit_StepCustomer" = "Customer";
+"POS_Credit_StepTerms" = "Payment terms";
+"POS_Credit_StepReview" = "Confirm";
+"POS_Credit_LoadingDetail" = "Checking the customer's account and this branch's credit terms.";
+"POS_Credit_NeedsCustomer" = "Start with a customer";
+"POS_Credit_NeedsVerification" = "Customer terms need verification";
+"POS_Credit_RefreshHelp" = "Check the customer and branch details, then retry, or choose another customer.";
+"POS_Credit_ContextReady" = "Customer terms loaded";
+"POS_Credit_SaleSnapshot" = "Sale overview";
+"POS_Credit_ConfigureTerms" = "Payment arrangement";
 "POS_Credit_Title" = "Customer credit / Pay later";
 "POS_Credit_PaymentMethod" = "Pay later";
 "POS_Credit_StaffSessionRequired" = "Sign in with an active staff account to use customer credit.";
@@ -11648,7 +11661,35 @@
 "POS_Credit_CheckoutHint" = "Choose the customer, then review the initial payment, amount due and payment agreement.";
 "POS_Credit_AtSale" = "Amounts and agreement when this sale was completed";
 "POS_Credit_Done" = "Done";
-"POS_Credit_NoTender" = "No initial-payment method is enabled for this branch. Enter zero or ask for an approved method to be configured.";
+"POS_Credit_Disabled" = "Customer credit sales are currently disabled for this branch.";
+"POS_Credit_CustomerRequired" = "A registered customer from the directory is required for credit sales.";
+"POS_Credit_Ineligible" = "The customer account or branch is currently inactive for credit sales.";
+"POS_Credit_ManageAccount" = "Manage Credit Account & Policy";
+"POS_Credit_ChangeCustomer" = "Change Customer";
+"POS_Credit_RetryVerification" = "Recheck Eligibility";
+"POS_Credit_CreditLimit" = "Credit Limit";
+"POS_Credit_CurrentBalance" = "Outstanding Balance";
+"POS_Credit_AvailableCredit" = "Available Credit";
+"POS_Credit_FinancedAmount" = "Financed on Credit";
+"POS_Credit_PayFullOnDue" = "Full on Due Date";
+"POS_Credit_PayInstallments" = "Installment Plan";
+"POS_Credit_Preset7Days" = "+7 Days";
+"POS_Credit_Preset15Days" = "+15 Days";
+"POS_Credit_Preset30Days" = "+30 Days";
+"POS_Credit_Preset60Days" = "+60 Days";
+"POS_Credit_PresetNoDeposit" = "No Deposit (0 QAR)";
+"POS_Credit_Preset25" = "25% Deposit";
+"POS_Credit_Preset50" = "50% Deposit";
+"POS_Credit_CartOverview" = "Current Cart Details";
+"POS_Credit_TotalFinanced" = "Total Financed on Credit";
+"POS_Credit_CustomerBadge_Verified" = "Verified Customer";
+"POS_Credit_CustomerBadge_NeedsPolicy" = "Credit Policy Required";
+"POS_Credit_SupervisorBadge" = "Supervisor Approval Required";
+"POS_Credit_Step1_Short" = "Customer & Eligibility";
+"POS_Credit_Step2_Short" = "Payment Terms";
+"POS_Credit_Step3_Short" = "Review & Confirm";
+"POS_Credit_NextToTerms" = "Proceed to Payment Terms";
+"POS_Credit_NextToReview" = "Review Credit Agreement";
 "POS_Credit_CartChanged" = "An item’s price or availability changed. Close this review, reselect the item in the cart, then review payment terms again.";
 
 /* POS customer credit account and collections */
