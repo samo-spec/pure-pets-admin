@@ -233,11 +233,11 @@ final class POSCreditAccountModel: ObservableObject {
         catch { storageFailed = true; self.error = POSCreditAccountCopy.text("StorageFailed") }
     }
     func base() -> [String: Any] { ["contractVersion": 1, "customerId": customerID, "branchId": branchID, "currency": "QAR"] }
-    func call(_ operation: String, body: [String: Any], completion: @escaping ([String: Any], Data) throws -> Void) {
+    func call(_ operation: String, body: [String: Any], completion: @escaping @MainActor ([String: Any], Data) throws -> Void) {
         do { try call(operation, data: JSONSerialization.data(withJSONObject: body, options: .sortedKeys), completion: completion) }
         catch { self.error = POSCreditAccountCopy.text("Invalid") }
     }
-    func call(_ operation: String, data: Data, completion: @escaping ([String: Any], Data) throws -> Void) throws {
+    func call(_ operation: String, data: Data, completion: @escaping @MainActor ([String: Any], Data) throws -> Void) throws {
         guard canRead, !busy else { return }
         busy = true; error = nil
         let ticket = UUID(); requestID = ticket
@@ -904,6 +904,7 @@ private struct POSCreditTermsSheet: View {
 
 /// Uses the current Firebase Auth session. No password/code is persisted, and
 /// only a refreshed signed token with the server-approved factor is accepted.
+@MainActor
 struct POSCreditStepUpSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var password = ""
@@ -943,21 +944,59 @@ struct POSCreditStepUpSheet: View {
             do {
                 if let resolver {
                     let assertion = TOTPMultiFactorGenerator.assertionForSignIn(withEnrollmentID: enrollment, oneTimePassword: otp)
-                    let result = try await resolver.resolveSignIn(with: assertion)
-                    guard result.user.uid == actorUID else { throw POSCreditPendingStore.StoreError.invalidRecord }
+                    let signedInUID = try await resolveStepUp(using: resolver, assertion: assertion)
+                    guard signedInUID == actorUID else { throw POSCreditPendingStore.StoreError.invalidRecord }
                 } else {
-                    do { _ = try await user.reauthenticate(with: EmailAuthProvider.credential(withEmail: email, password: secret)) }
+                    do {
+                        let signedInUID = try await reauthenticateForStepUp(user, credential: EmailAuthProvider.credential(withEmail: email, password: secret))
+                        guard signedInUID == actorUID else { throw POSCreditPendingStore.StoreError.invalidRecord }
+                    }
                     catch {
-                        guard let next = (error as NSError).userInfo[AuthErrors.userInfoMultiFactorResolverKey] as? MultiFactorResolver,
+                        guard Auth.auth().currentUser?.uid == actorUID,
+                              let next = (error as NSError).userInfo[AuthErrors.userInfoMultiFactorResolverKey] as? MultiFactorResolver,
                               let hint = next.hints.first(where: { $0.factorID == "totp" }) else { throw error }
                         resolver = next; enrollment = hint.uid; return
                     }
                 }
                 guard let current = Auth.auth().currentUser, current.uid == actorUID else { throw POSCreditPendingStore.StoreError.invalidRecord }
-                let token = try await current.getIDTokenResult(forcingRefresh: true)
-                guard (token.claims["firebase"] as? [String: Any])?["sign_in_second_factor"] as? String == "totp" else { throw POSCreditPendingStore.StoreError.invalidRecord }
+                let secondFactor = try await refreshedSecondFactor(for: current)
+                guard Auth.auth().currentUser?.uid == actorUID, secondFactor == "totp" else { throw POSCreditPendingStore.StoreError.invalidRecord }
                 dismiss()
             } catch { self.error = t("StepUpUnavailable") }
+        }
+    }
+
+    // Firebase 12.12.1's async overloads cross executors with non-Sendable
+    // session objects. Start its callback APIs on this actor and resume with
+    // scalar results only; resolver failures are not guaranteed on main.
+    private func resolveStepUp(using resolver: MultiFactorResolver, assertion: MultiFactorAssertion) async throws -> String {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
+            resolver.resolveSignIn(with: assertion) { result, error in
+                if let error { continuation.resume(throwing: error) }
+                else if let uid = result?.user.uid { continuation.resume(returning: uid) }
+                else { continuation.resume(throwing: POSCreditPendingStore.StoreError.invalidRecord) }
+            }
+        }
+    }
+
+    private func reauthenticateForStepUp(_ user: User, credential: AuthCredential) async throws -> String {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
+            user.reauthenticate(with: credential) { result, error in
+                if let error { continuation.resume(throwing: error) }
+                else if let uid = result?.user.uid { continuation.resume(returning: uid) }
+                else { continuation.resume(throwing: POSCreditPendingStore.StoreError.invalidRecord) }
+            }
+        }
+    }
+
+    private func refreshedSecondFactor(for user: User) async throws -> String? {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String?, Error>) in
+            user.getIDTokenResult(forcingRefresh: true) { token, error in
+                if let error { continuation.resume(throwing: error) }
+                else if let token {
+                    continuation.resume(returning: (token.claims["firebase"] as? [String: Any])?["sign_in_second_factor"] as? String)
+                } else { continuation.resume(throwing: POSCreditPendingStore.StoreError.invalidRecord) }
+            }
         }
     }
 }
