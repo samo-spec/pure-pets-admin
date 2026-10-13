@@ -6,6 +6,7 @@
 //
 
 #import "AppDelegate.h"
+#import "Development/PPLocalCreditEmulator.h"
 #import "SceneDelegate.h"
 #import <sys/utsname.h>
 #import "FirebaseInstallations/FIRInstallations.h"
@@ -171,6 +172,10 @@ extern BOOL PP_TouchDotsEnabled;
 }
 
 - (void)pp_resolveCurrentFCMTokenWithCompletion:(void (^)(NSString * _Nullable token))completion {
+    if ([PPLocalCreditEmulator isEnabled]) {
+        if (completion) completion(nil);
+        return;
+    }
     NSString *resolvedToken = PPAdminRouteTrimmedString(self.fcmToken);
     if (resolvedToken.length == 0) {
         resolvedToken = PPAdminRouteTrimmedString([FIRMessaging messaging].FCMToken);
@@ -235,7 +240,7 @@ extern BOOL PP_TouchDotsEnabled;
     );
 
     // --- Push ---
-    [application registerForRemoteNotifications];
+    if (![PPLocalCreditEmulator isEnabled]) [application registerForRemoteNotifications];
 
     // Set Firebase Messaging delegate
     [FIRMessaging messaging].delegate = self;
@@ -284,6 +289,7 @@ extern BOOL PP_TouchDotsEnabled;
 #pragma mark - Remote Notifications Registration
 
 - (void)registerForRemoteNotifications {
+    if ([PPLocalCreditEmulator isEnabled]) return; // APNs/FCM are outside the local fixture environment.
     if ([UNUserNotificationCenter class] != nil) {
         // iOS 10 or later
         UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
@@ -382,6 +388,7 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
 #pragma mark - Handle Token
 
 - (void)pp_registerForAdminTokenSync {
+    if ([PPLocalCreditEmulator isEnabled]) return;
     __weak typeof(self) weakSelf = self;
     [self pp_resolveCurrentFCMTokenWithCompletion:^(NSString * _Nullable token) {
         __strong typeof(weakSelf) strongSelf = weakSelf;

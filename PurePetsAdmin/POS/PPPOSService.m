@@ -43,6 +43,50 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
     return result.copy;
 }
 
+static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items) {
+    NSMutableArray *mappedItems = [NSMutableArray array];
+    for (NSDictionary *item in items) {
+        NSString *productID = PPSafeString(item[@"itemID"] ?: item[@"itemId"] ?: item[@"productId"]);
+        NSString *inventoryMode = PPSafeString(item[@"inventoryMode"]);
+        NSMutableDictionary *mapped = [@{
+            @"productId": productID,
+            @"quantity": item[@"quantity"] ?: @(1),
+        } mutableCopy];
+        if (item[@"salesChannel"]) mapped[@"salesChannel"] = item[@"salesChannel"];
+        if (item[@"quantityGroupId"]) mapped[@"quantityGroupId"] = item[@"quantityGroupId"];
+        if (item[@"quantityGroupName"]) mapped[@"quantityGroupName"] = item[@"quantityGroupName"];
+        if (item[@"unitsPerGroup"]) mapped[@"unitsPerGroup"] = item[@"unitsPerGroup"];
+        if (item[@"groupQuantity"]) mapped[@"groupQuantity"] = item[@"groupQuantity"];
+        if (item[@"baseUnitQuantity"]) mapped[@"baseUnitQuantity"] = item[@"baseUnitQuantity"];
+        if (item[@"assertedGroupPriceMinor"]) mapped[@"assertedGroupPriceMinor"] = item[@"assertedGroupPriceMinor"];
+        if (item[@"lineTotalMinor"]) mapped[@"lineTotalMinor"] = item[@"lineTotalMinor"];
+        if (item[@"lotId"]) mapped[@"lotId"] = item[@"lotId"];
+        if (item[@"lotNumber"]) mapped[@"lotNumber"] = item[@"lotNumber"];
+        if (item[@"variantOptionName"]) mapped[@"variantOptionName"] = item[@"variantOptionName"];
+        if (item[@"variantDisplayName"]) mapped[@"variantDisplayName"] = item[@"variantDisplayName"];
+        if (item[@"selectedOptionsSnapshot"]) mapped[@"selectedOptionsSnapshot"] = item[@"selectedOptionsSnapshot"];
+        if (item[@"variantColorName"]) mapped[@"variantColorName"] = item[@"variantColorName"];
+        if (item[@"variantColorNameEn"]) mapped[@"variantColorNameEn"] = item[@"variantColorNameEn"];
+        if (item[@"variantAxis"]) mapped[@"variantAxis"] = item[@"variantAxis"];
+        if (item[@"size"]) mapped[@"size"] = item[@"size"];
+        if (item[@"weightText"]) mapped[@"weightText"] = item[@"weightText"];
+        if (item[@"isVariant"]) mapped[@"isVariant"] = item[@"isVariant"];
+        if (item[@"name"]) mapped[@"name"] = item[@"name"];
+
+        if ([inventoryMode isEqualToString:PPPOSIndividualInventoryMode]) {
+            mapped[@"inventoryMode"] = PPPOSIndividualInventoryMode;
+            NSArray *uids = [item[@"unitIds"] isKindOfClass:NSArray.class] ? item[@"unitIds"] : @[];
+            mapped[@"unitIds"] = uids;
+            mapped[@"unitPrices"] = [item[@"unitPrices"] isKindOfClass:NSArray.class] ? item[@"unitPrices"] : @[];
+        } else {
+            mapped[@"unitPrice"] = item[@"price"] ?: item[@"unitPrice"] ?: @(0);
+        }
+        [mappedItems addObject:mapped];
+    }
+
+    return mappedItems.copy;
+}
+
 @interface PPPOSCartItem ()
 @property (nonatomic, strong, nullable) NSNumber *sourceQuantity;
 @property (nonatomic, strong, nullable) NSNumber *sourceRefundedQuantity;
@@ -242,6 +286,17 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         _status = PPSafeString(dict[@"status"]);
         if (_status.length == 0) _status = @"completed";
         _customerName = PPSafeString(dict[@"customerName"]);
+        _customerID = PPSafeString(dict[@"customerId"]);
+        if (_customerID.length == 0) _customerID = PPSafeString(dict[@"posCustomerId"]);
+        _creditContractVersion = [PPSafeNumber(dict[@"creditContractVersion"]) integerValue];
+        _amountPaidMinor = [PPSafeNumber(dict[@"amountPaidMinor"]) longLongValue];
+        _amountDueMinor = [PPSafeNumber(dict[@"amountDueMinor"]) longLongValue];
+        _pendingAmountMinor = [PPSafeNumber(dict[@"pendingAmountMinor"]) longLongValue];
+        _creditedMinor = [PPSafeNumber(dict[@"creditedMinor"]) longLongValue];
+        _refundedMinor = [PPSafeNumber(dict[@"refundedMinor"]) longLongValue];
+        _refundLiabilityMinor = [PPSafeNumber(dict[@"refundLiabilityMinor"]) longLongValue];
+        _writtenOffMinor = [PPSafeNumber(dict[@"writtenOffMinor"]) longLongValue];
+        _paymentStatus = PPSafeString(dict[@"paymentStatus"]);
         _customerPhone = PPSafeString(dict[@"customerPhone"]);
         _note = PPSafeString(dict[@"note"]);
         _source = PPSafeString(dict[@"source"]);
@@ -714,7 +769,12 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
                   payload:(id)payload
                completion:(void (^ _Nullable)(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error))completion {
     FIRUser *currentUser = [FIRAuth auth].currentUser;
+    NSString *originalActorUID = currentUser.uid.copy;
     void (^executeCall)(void) = ^{
+        if (originalActorUID.length == 0 || ![[FIRAuth auth].currentUser.uid isEqualToString:originalActorUID]) {
+            if (completion) completion(nil, PPPOSServiceError(403, @"The POS session changed before dispatch."));
+            return;
+        }
         FIRHTTPSCallable *callable = [[FIRFunctions functions] HTTPSCallableWithName:name];
         callable.timeoutInterval = 30.0;
         [callable callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
@@ -723,7 +783,7 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
                 if (userToRefresh) {
                     NSLog(@"[PPPOSService] Callable %@ failed with unauthenticated. Forcing token refresh and retrying...", name);
                     [userToRefresh getIDTokenResultForcingRefresh:YES completion:^(FIRAuthTokenResult * _Nullable tokenResult, NSError * _Nullable refreshError) {
-                        if (!refreshError) {
+                        if (!refreshError && [[FIRAuth auth].currentUser.uid isEqualToString:originalActorUID]) {
                             [callable callWithObject:payload completion:completion];
                             return;
                         }
@@ -743,6 +803,100 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
     } else {
         executeCall();
     }
+}
+
+- (void)callCreditOperation:(NSString *)operation requestJSON:(NSData *)requestJSON actorUID:(NSString *)actorUID completion:(void(^)(NSData * _Nullable, NSError * _Nullable))completion {
+    NSSet *allowed = [NSSet setWithArray:@[@"getCustomerReceivables", @"getPosCreditDetail", @"recordPosCollection", @"confirmPosCollectionClearing", @"rejectPosCollectionTender", @"reversePosCollection", @"changeCreditTerms", @"approvePosCreditChange", @"posCreditPolicyCommand", @"posCreditReviewCommand", @"posCreditAdjustmentCommand", @"getPosCreditReport"]];
+    if (![allowed containsObject:operation] || requestJSON.length > 256000 || actorUID.length == 0 || ![[FIRAuth auth].currentUser.uid isEqualToString:actorUID]) {
+        if (completion) completion(nil, PPPOSServiceError(403, @"Credit operation or session is invalid."));
+        return;
+    }
+    NSError *error = nil;
+    id request = [NSJSONSerialization JSONObjectWithData:requestJSON options:0 error:&error];
+    if (![request isKindOfClass:NSDictionary.class]) {
+        if (completion) completion(nil, error ?: PPPOSServiceError(400, @"Credit request is invalid."));
+        return;
+    }
+    [self pp_invokeCallable:operation payload:request completion:^(FIRHTTPSCallableResult *result, NSError *callError) {
+        if (![[FIRAuth auth].currentUser.uid isEqualToString:actorUID]) {
+            if (completion) completion(nil, PPPOSServiceError(403, @"The credit session changed."));
+            return;
+        }
+        if (callError) { if (completion) completion(nil, callError); return; }
+        NSError *encodingError = nil;
+        NSData *json = [result.data isKindOfClass:NSDictionary.class] ? [NSJSONSerialization dataWithJSONObject:result.data options:NSJSONWritingSortedKeys error:&encodingError] : nil;
+        if (completion) completion(json, encodingError ?: (json ? nil : PPPOSServiceError(502, @"Credit response is invalid.")));
+    }];
+}
+
+- (void)fetchCreditCheckoutContextForCustomerID:(NSString *)customerID
+                                      branchID:(NSString *)branchID
+                                    completion:(void(^)(NSData *, NSError *))completion {
+    NSString *actorUID = [FIRAuth auth].currentUser.uid.copy;
+    NSDictionary *payload = @{ @"contractVersion": @1, @"customerId": customerID ?: @"", @"branchId": branchID ?: @"" };
+    [self pp_invokeCallable:@"getPosCreditCheckoutContext" payload:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (actorUID.length == 0 || ![[FIRAuth auth].currentUser.uid isEqualToString:actorUID]) {
+            if (completion) completion(nil, PPPOSServiceError(403, @"The credit session changed."));
+            return;
+        }
+        if (error) { if (completion) completion(nil, error); return; }
+        NSDictionary *data = [result.data isKindOfClass:NSDictionary.class] ? result.data : nil;
+        NSError *encodingError = nil;
+        NSData *json = [data[@"ok"] boolValue] ? [NSJSONSerialization dataWithJSONObject:data options:0 error:&encodingError] : nil;
+        if (completion) completion(json, encodingError ?: (json ? nil : PPPOSServiceError(502, @"Invalid credit context.")));
+    }];
+}
+
+- (NSData *)prepareCreditSaleWithItems:(NSArray<NSDictionary *> *)items
+                              subtotal:(double)subtotal discount:(double)discount deliveryFee:(double)deliveryFee
+                                 total:(double)total commandID:(NSString *)commandID branchID:(NSString *)branchID
+                          salesChannel:(NSString *)salesChannel settlement:(NSDictionary *)settlement error:(NSError **)error {
+    if (!branchID.length || !commandID.length || ![settlement[@"type"] isEqual:@"credit"] || items.count == 0) {
+        if (error) *error = PPPOSServiceError(400, @"An explicit credit command, branch and settlement are required.");
+        return nil;
+    }
+    NSMutableDictionary *payload = [@{ @"items": PPPOSMappedItems(items), @"paymentMethod": @"credit", @"status": @"completed",
+        @"subtotal": @(round(subtotal * 100.0) / 100.0), @"discount": @(round(discount * 100.0) / 100.0),
+        @"total": @(round(total * 100.0) / 100.0), @"currency": @"QAR", @"source": @"admin_ios",
+        @"branchId": branchID, @"salesChannel": salesChannel ?: @"retail", @"settlement": settlement } mutableCopy];
+    if (deliveryFee > 0) payload[@"deliveryFee"] = @(round(deliveryFee * 100.0) / 100.0);
+    NSString *sessionID = [[NSUserDefaults standardUserDefaults] stringForKey:@"PPActiveBranchSessionID"];
+    if (sessionID.length) { payload[@"sessionId"] = sessionID; payload[@"branchSessionId"] = sessionID; }
+    return [NSJSONSerialization dataWithJSONObject:@{ @"action": @"create", @"commandId": commandID, @"payload": payload } options:NSJSONWritingSortedKeys error:error];
+}
+
+- (void)submitFrozenCreditSale:(NSData *)requestJSON actorUID:(NSString *)actorUID completion:(void(^)(PPPOSSubmitResult *, NSError *))completion {
+    NSError *decodingError = nil;
+    NSDictionary *request = [NSJSONSerialization JSONObjectWithData:requestJSON options:0 error:&decodingError];
+    NSDictionary *payload = [request isKindOfClass:NSDictionary.class] && [request[@"payload"] isKindOfClass:NSDictionary.class] ? request[@"payload"] : nil;
+    NSDictionary *settlement = [payload[@"settlement"] isKindOfClass:NSDictionary.class] ? payload[@"settlement"] : nil;
+    if (decodingError || ![actorUID isEqualToString:[FIRAuth auth].currentUser.uid] ||
+        ![payload[@"paymentMethod"] isEqual:@"credit"] || ![settlement[@"type"] isEqual:@"credit"] || ![request[@"action"] isEqual:@"create"] ||
+        ![payload[@"branchId"] isEqual:[PPBranchContextManager sharedManager].activeBranch.branchID]) {
+        if (completion) completion(nil, PPPOSServiceError(409, @"Restore the original staff and branch before credit recovery."));
+        return;
+    }
+    [self pp_invokeCallable:@"processTransaction" payload:request completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (![[FIRAuth auth].currentUser.uid isEqualToString:actorUID]) {
+            if (completion) completion(nil, PPPOSServiceError(403, @"The credit session changed."));
+            return;
+        }
+        if (error) { if (completion) completion(nil, error); return; }
+        NSDictionary *data = [result.data isKindOfClass:NSDictionary.class] ? result.data : nil;
+        NSString *transactionID = PPSafeString(data[@"transactionId"]);
+        if (![data[@"ok"] boolValue] || [data[@"creditContractVersion"] integerValue] != 1 || !transactionID.length ||
+            ![data[@"currency"] isEqual:@"QAR"] || ![data[@"branchId"] isEqual:payload[@"branchId"]] || ![data[@"customerId"] isEqual:settlement[@"customerId"]]) {
+            if (completion) completion(nil, PPPOSServiceError(502, @"Credit result requires authoritative recovery."));
+            return;
+        }
+        NSError *encodingError = nil;
+        NSData *json = [NSJSONSerialization dataWithJSONObject:data options:0 error:&encodingError];
+        if (!json) { if (completion) completion(nil, encodingError); return; }
+        PPPOSSubmitResult *value = [PPPOSSubmitResult new]; value.transactionID = transactionID;
+        value.total = PPSafeDouble(data[@"total"]); value.currency = @"QAR";
+        value.idempotent = [data[@"idempotent"] boolValue]; value.creditResultJSON = json;
+        if (completion) completion(value, nil);
+    }];
 }
 
 - (void)listAvailableUnitsForProductID:(NSString *)productID
@@ -977,52 +1131,16 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
     NSString *traceID = [PPPOSLogger generateTraceID];
     NSDate *startedAt = [NSDate date];
 
-    NSMutableArray *mappedItems = [NSMutableArray array];
-    NSInteger bulkItemsCount = 0;
-    NSInteger exactUnitItemsCount = 0;
-    NSInteger totalUnitsTracked = 0;
-
-    for (NSDictionary *item in items) {
-        NSString *productID = PPSafeString(item[@"itemID"] ?: item[@"itemId"] ?: item[@"productId"]);
-        NSString *inventoryMode = PPSafeString(item[@"inventoryMode"]);
-        NSMutableDictionary *mapped = [@{
-            @"productId": productID,
-            @"quantity": item[@"quantity"] ?: @(1),
-        } mutableCopy];
-        if (item[@"salesChannel"]) mapped[@"salesChannel"] = item[@"salesChannel"];
-        if (item[@"quantityGroupId"]) mapped[@"quantityGroupId"] = item[@"quantityGroupId"];
-        if (item[@"quantityGroupName"]) mapped[@"quantityGroupName"] = item[@"quantityGroupName"];
-        if (item[@"unitsPerGroup"]) mapped[@"unitsPerGroup"] = item[@"unitsPerGroup"];
-        if (item[@"groupQuantity"]) mapped[@"groupQuantity"] = item[@"groupQuantity"];
-        if (item[@"baseUnitQuantity"]) mapped[@"baseUnitQuantity"] = item[@"baseUnitQuantity"];
-        if (item[@"assertedGroupPriceMinor"]) mapped[@"assertedGroupPriceMinor"] = item[@"assertedGroupPriceMinor"];
-        if (item[@"lineTotalMinor"]) mapped[@"lineTotalMinor"] = item[@"lineTotalMinor"];
-        if (item[@"lotId"]) mapped[@"lotId"] = item[@"lotId"];
-        if (item[@"lotNumber"]) mapped[@"lotNumber"] = item[@"lotNumber"];
-        if (item[@"variantOptionName"]) mapped[@"variantOptionName"] = item[@"variantOptionName"];
-        if (item[@"variantDisplayName"]) mapped[@"variantDisplayName"] = item[@"variantDisplayName"];
-        if (item[@"selectedOptionsSnapshot"]) mapped[@"selectedOptionsSnapshot"] = item[@"selectedOptionsSnapshot"];
-        if (item[@"variantColorName"]) mapped[@"variantColorName"] = item[@"variantColorName"];
-        if (item[@"variantColorNameEn"]) mapped[@"variantColorNameEn"] = item[@"variantColorNameEn"];
-        if (item[@"variantAxis"]) mapped[@"variantAxis"] = item[@"variantAxis"];
-        if (item[@"size"]) mapped[@"size"] = item[@"size"];
-        if (item[@"weightText"]) mapped[@"weightText"] = item[@"weightText"];
-        if (item[@"isVariant"]) mapped[@"isVariant"] = item[@"isVariant"];
-        if (item[@"name"]) mapped[@"name"] = item[@"name"];
-
-        if ([inventoryMode isEqualToString:PPPOSIndividualInventoryMode]) {
-            mapped[@"inventoryMode"] = PPPOSIndividualInventoryMode;
-            NSArray *uids = [item[@"unitIds"] isKindOfClass:NSArray.class] ? item[@"unitIds"] : @[];
-            mapped[@"unitIds"] = uids;
-            mapped[@"unitPrices"] = [item[@"unitPrices"] isKindOfClass:NSArray.class] ? item[@"unitPrices"] : @[];
+    NSArray<NSDictionary *> *mappedItems = PPPOSMappedItems(items);
+    NSInteger exactUnitItemsCount = 0, totalUnitsTracked = 0;
+    for (NSDictionary *item in mappedItems) {
+        if ([item[@"inventoryMode"] isEqualToString:PPPOSIndividualInventoryMode]) {
             exactUnitItemsCount++;
-            totalUnitsTracked += uids.count;
-        } else {
-            mapped[@"unitPrice"] = item[@"price"] ?: item[@"unitPrice"] ?: @(0);
-            bulkItemsCount++;
+            NSArray *unitIDs = [item[@"unitIds"] isKindOfClass:NSArray.class] ? (NSArray *)item[@"unitIds"] : nil;
+            totalUnitsTracked += unitIDs.count;
         }
-        [mappedItems addObject:mapped];
     }
+    NSInteger bulkItemsCount = mappedItems.count - exactUnitItemsCount;
 
     double roundedSubtotal = round(subtotal * 100.0) / 100.0;
     double roundedDiscount = round(discount * 100.0) / 100.0;
@@ -1252,6 +1370,16 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
 
 - (void)fetchPOSReceiptForTransactionID:(NSString *)transactionID
                              completion:(void(^)(PPPOSReceipt *, NSError *))completion {
+    [self pp_fetchReceiptForTransactionID:transactionID source:FIRFirestoreSourceDefault completion:completion];
+}
+
+- (void)fetchConfirmedCreditReceiptForTransactionID:(NSString *)transactionID
+                                        completion:(void(^)(PPPOSReceipt *, NSError *))completion {
+    [self pp_fetchReceiptForTransactionID:transactionID source:FIRFirestoreSourceServer completion:completion];
+}
+
+- (void)pp_fetchReceiptForTransactionID:(NSString *)transactionID source:(FIRFirestoreSource)source
+                            completion:(void(^)(PPPOSReceipt *, NSError *))completion {
     NSString *trimmedID = [transactionID stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (trimmedID.length == 0) {
         NSError *err = PPPOSServiceError(400, @"transactionId is required.");
@@ -1276,7 +1404,7 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
 
     FIRDocumentReference *reference = [[[FIRFirestore firestore] collectionWithPath:@"transactions"]
                                        documentWithPath:trimmedID];
-    [reference getDocumentWithCompletion:^(FIRDocumentSnapshot * _Nullable snapshot, NSError * _Nullable error) {
+    [reference getDocumentWithSource:source completion:^(FIRDocumentSnapshot * _Nullable snapshot, NSError * _Nullable error) {
         NSInteger durationMs = PPPOSElapsedMilliseconds(startedAt);
         if (error) {
             [[PPPOSLogger sharedLogger] errorWithCategory:@"receipt"

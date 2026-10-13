@@ -1867,7 +1867,12 @@ private struct iPhoneCustomerSensoryDeck: View {
                 } else {
                     LazyVStack(spacing: 10) {
                         ForEach(viewModel.searchResults) { customer in
-                            iPhoneCustomerResultCard(customer: customer)
+                            VStack(spacing: 4) {
+                                iPhoneCustomerResultCard(customer: customer)
+                                if customer.source == "directory" {
+                                    POSCreditAccountLink(customerID: customer.id, branchID: BranchContextStore.shared.activeBranch?.branchID ?? "")
+                                }
+                            }
                         }
                     }
                 }
@@ -2774,7 +2779,12 @@ private struct iPadCustomerSpatialCockpit: View {
                 } else {
                     LazyVStack(spacing: 8) {
                         ForEach(viewModel.searchResults) { customer in
-                            iPadCustomerListCard(customer: customer)
+                            VStack(spacing: 4) {
+                                iPadCustomerListCard(customer: customer)
+                                if customer.source == "directory" {
+                                    POSCreditAccountLink(customerID: customer.id, branchID: BranchContextStore.shared.activeBranch?.branchID ?? "")
+                                }
+                            }
                         }
                     }
                     .padding(.bottom, 12)

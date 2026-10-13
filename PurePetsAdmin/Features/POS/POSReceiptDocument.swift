@@ -81,6 +81,7 @@ struct POSCompletedReceipt: Identifiable, Sendable {
     let refundReason: String?
     let refundedAt: Date?
     let refundedBy: String?
+    let creditSummary: POSCreditReceiptSummary?
 
     var id: String { transactionID }
     var formattedReceiptID: String { POSReceiptFormat.receiptID(transactionID) }
@@ -102,7 +103,10 @@ struct POSCompletedReceipt: Identifiable, Sendable {
         max(0.0, total - refundedAmount)
     }
 
-    init(receipt: PPPOSReceipt) {
+    init(receipt: PPPOSReceipt) { self.init(receipt: receipt, creditSummary: nil) }
+
+    init(receipt: PPPOSReceipt, creditSummary: POSCreditReceiptSummary?) {
+        self.creditSummary = creditSummary
         transactionID = receipt.receiptID
         createdAt = receipt.createdAt ?? Date()
         lines = receipt.items.enumerated().map { index, item in
@@ -146,7 +150,7 @@ struct POSCompletedReceipt: Identifiable, Sendable {
         paymentMethod = receipt.paymentMethod
         currency = receipt.currency.isEmpty ? "QAR" : receipt.currency
         status = receipt.status.isEmpty ? "completed" : receipt.status
-        customerName = receipt.customerName
+        customerName = creditSummary?.customerName ?? receipt.customerName
         customerPhone = receipt.customerPhone
         note = receipt.note
         isAuthoritative = true
@@ -178,6 +182,7 @@ struct POSCompletedReceipt: Identifiable, Sendable {
         refundedAt: Date? = nil,
         refundedBy: String? = nil
     ) {
+        creditSummary = nil
         self.transactionID = transactionID
         createdAt = Date()
         lines = cartItems.enumerated().map { index, item in
@@ -666,6 +671,16 @@ struct POSCompletedReceiptSheet: View {
                     value: POSReceiptFormat.currency(receipt.changeDue, code: receipt.currency)
                 )
             }
+            if let credit = receipt.creditSummary {
+                Divider()
+                Text(Language.get("POS_Credit_AtSale", alter: nil)).font(AdminType.footnote)
+                receiptValueRow(Language.get("POS_Credit_CollectedNow", alter: nil), value: POSReceiptFormat.currency(Double(credit.amountPaidMinor) / 100, code: receipt.currency))
+                receiptValueRow(Language.get("POS_Credit_Pending", alter: nil), value: POSReceiptFormat.currency(Double(credit.pendingAmountMinor) / 100, code: receipt.currency))
+                receiptValueRow(Language.get("POS_Credit_Remaining", alter: nil), value: POSReceiptFormat.currency(Double(credit.amountDueMinor) / 100, code: receipt.currency))
+                Text(credit.wording).font(AdminType.body).frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .environment(\.layoutDirection, credit.agreement.locale == "ar" ? .rightToLeft : .leftToRight)
+            }
         }
     }
 
@@ -1002,6 +1017,7 @@ enum POSReceiptFormat {
     static func paymentMethod(_ value: String) -> String {
         switch value.lowercased() {
         case "cash": return Language.get("POS_Cash", alter: "نقدي")
+        case "credit": return Language.get("POS_Credit_Title", alter: nil)
         case "card", "qib": return Language.get("POS_Card", alter: "بطاقة")
         case "cheque": return Language.get("POS_Cheque", alter: "شيك")
         case "fawry": return Language.get("POS_Fawry", alter: "فوري")
@@ -1213,6 +1229,15 @@ enum POSReceiptPDFExporter {
         trailingStyle.alignment = rtl ? .left : .right
         trailingStyle.baseWritingDirection = rtl ? .rightToLeft : .leftToRight
 
+        let agreementStyle = NSMutableParagraphStyle()
+        agreementStyle.alignment = receipt.creditSummary?.agreement.locale == "ar" ? .right : .left
+        agreementStyle.baseWritingDirection = receipt.creditSummary?.agreement.locale == "ar" ? .rightToLeft : .leftToRight
+        let agreementAttributes: [NSAttributedString.Key: Any] = [.font: bodyFont, .foregroundColor: textColor, .paragraphStyle: agreementStyle]
+        let agreementText = receipt.creditSummary.map { Language.get("POS_Credit_AtSale", alter: nil) + "\n" + $0.wording } ?? ""
+        let agreementHeight = agreementText.isEmpty ? 0 : ceil((agreementText as NSString).boundingRect(
+            with: CGSize(width: contentWidth, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: agreementAttributes, context: nil).height) + 8
+
         // Measure dynamic height
         var dynamicHeight: CGFloat = margin
 
@@ -1265,7 +1290,9 @@ enum POSReceiptPDFExporter {
         if receipt.tax > 0 { totalRowCount += 1 }
         if receipt.isRefunded { totalRowCount += 2 }
         if receipt.paymentMethod.lowercased() == "cash" { totalRowCount += 2 }
+        if receipt.creditSummary != nil { totalRowCount += 3 }
         dynamicHeight += CGFloat(totalRowCount - 1) * 18.0 + 30.0 + 12.0
+        dynamicHeight += agreementHeight
 
         // Customer details if present
         if !receipt.customerName.isEmpty || !receipt.customerPhone.isEmpty || !receipt.note.isEmpty {
@@ -1635,6 +1662,15 @@ enum POSReceiptPDFExporter {
                 currentY += 16.0
                 drawRow(label: Language.get("POS_Receipt_ChangeDue", alter: "الباقي"), value: POSReceiptFormat.currency(receipt.changeDue, code: receipt.currency), y: currentY)
                 currentY += 16.0
+            }
+
+            if let credit = receipt.creditSummary {
+                for (key, amount) in [("POS_Credit_CollectedNow", credit.amountPaidMinor), ("POS_Credit_Pending", credit.pendingAmountMinor), ("POS_Credit_Remaining", credit.amountDueMinor)] {
+                    drawRow(label: Language.get(key, alter: nil), value: POSReceiptFormat.currency(Double(amount) / 100, code: receipt.currency), y: currentY)
+                    currentY += 18
+                }
+                (agreementText as NSString).draw(with: CGRect(x: m, y: currentY, width: cw, height: agreementHeight), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: agreementAttributes, context: nil)
+                currentY += agreementHeight
             }
 
             // 8. Customer Details if present

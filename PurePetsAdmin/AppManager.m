@@ -9,6 +9,7 @@
 
 
 #import "AppManager.h"
+#import "Development/PPLocalCreditEmulator.h"
 @import FirebaseCore;
 @import FirebaseAppCheck;
 @import Firebase;
@@ -375,6 +376,11 @@ static BOOL PPAppCheckErrorLooksLikeAppAttestFailure(NSError *error) {
 - (void)configureFirebase {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
+        if ([PPLocalCreditEmulator configureIfEnabled]) {
+            [FUM startAuthListenerWithChangeBlock:^(FIRUser * _Nullable authUser, UserModel * _Nullable userModel) { }];
+            [PPLocalCreditEmulator signInFixture];
+            return;
+        }
         [FIRAppCheck setAppCheckProviderFactory:[[PPAppCheckProviderFactory alloc] init]];
         if (PPShouldUseDebugAppCheckProvider()) {
             NSLog(@"[AppCheck] Debug provider active. If requests are still blocked, register the printed debug token in Firebase Console > App Check > Manage debug tokens.");

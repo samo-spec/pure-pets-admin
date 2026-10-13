@@ -69,6 +69,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) double total;
 @property (nonatomic, copy) NSString *currency;
 @property (nonatomic, assign, getter=isIdempotent) BOOL idempotent;
+/// Immutable credit issuance result. Nil for the five existing ordinary tenders.
+@property (nonatomic, copy, nullable) NSData *creditResultJSON;
 @end
 
 @interface PPPOSReceipt : NSObject
@@ -87,6 +89,16 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy) NSString *currency;
 @property (nonatomic, copy) NSString *status;
 @property (nonatomic, copy) NSString *customerName;
+@property (nonatomic, copy, nullable) NSString *customerID;
+@property (nonatomic, assign) NSInteger creditContractVersion;
+@property (nonatomic, assign) long long amountPaidMinor;
+@property (nonatomic, assign) long long amountDueMinor;
+@property (nonatomic, assign) long long pendingAmountMinor;
+@property (nonatomic, assign) long long creditedMinor;
+@property (nonatomic, assign) long long refundedMinor;
+@property (nonatomic, assign) long long refundLiabilityMinor;
+@property (nonatomic, assign) long long writtenOffMinor;
+@property (nonatomic, copy, nullable) NSString *paymentStatus;
 @property (nonatomic, copy) NSString *customerPhone;
 @property (nonatomic, copy) NSString *note;
 @property (nonatomic, copy) NSString *source;
@@ -113,8 +125,32 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface PPPOSService : NSObject
 + (instancetype)shared;
+- (void)callCreditOperation:(NSString *)operation
+               requestJSON:(NSData *)requestJSON
+                  actorUID:(NSString *)actorUID
+                completion:(void(^)(NSData * _Nullable responseJSON, NSError * _Nullable error))completion
+    NS_SWIFT_NAME(callCreditOperation(_:request:actorUID:completion:));
 + (BOOL)isExactUnitSelectionConflictError:(NSError *)error;
 + (NSDictionary<NSString *, id> *)exactUnitConflictDetailsForError:(NSError *)error;
+- (void)fetchCreditCheckoutContextForCustomerID:(NSString *)customerID
+                                      branchID:(NSString *)branchID
+                                    completion:(void(^)(NSData * _Nullable contextJSON, NSError * _Nullable error))completion
+    NS_SWIFT_NAME(fetchCreditCheckoutContext(customerID:branchID:completion:));
+- (nullable NSData *)prepareCreditSaleWithItems:(NSArray<NSDictionary *> *)items
+                                      subtotal:(double)subtotal
+                                      discount:(double)discount
+                                   deliveryFee:(double)deliveryFee
+                                         total:(double)total
+                                     commandID:(NSString *)commandID
+                                      branchID:(NSString *)branchID
+                                  salesChannel:(NSString *)salesChannel
+                                    settlement:(NSDictionary *)settlement
+                                         error:(NSError * _Nullable * _Nullable)error
+    NS_SWIFT_NAME(prepareCreditSale(items:subtotal:discount:deliveryFee:total:commandID:branchID:salesChannel:settlement:));
+- (void)submitFrozenCreditSale:(NSData *)requestJSON
+                     actorUID:(NSString *)actorUID
+                   completion:(void(^)(PPPOSSubmitResult * _Nullable result, NSError * _Nullable error))completion
+    NS_SWIFT_NAME(submitFrozenCreditSale(_:actorUID:completion:));
 - (void)listAvailableUnitsForProductID:(NSString *)productID
                                cursor:(nullable NSString *)cursor
                            completion:(void(^)(NSArray<PPPOSInventoryUnit *> * _Nullable units,
@@ -199,6 +235,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)fetchPOSReceiptForTransactionID:(NSString *)transactionID
                              completion:(void(^)(PPPOSReceipt * _Nullable receipt,
                                                  NSError * _Nullable error))completion;
+- (void)fetchConfirmedCreditReceiptForTransactionID:(NSString *)transactionID
+                                        completion:(void(^)(PPPOSReceipt * _Nullable receipt, NSError * _Nullable error))completion
+    NS_SWIFT_NAME(fetchConfirmedCreditReceipt(forTransactionID:completion:));
 - (void)cancelTransaction:(NSString *)transactionId
            expectedStatus:(nullable NSString *)expectedStatus
                    reason:(NSString *)reason

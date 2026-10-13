@@ -430,7 +430,7 @@ final class POSHistoryViewModel: ObservableObject {
         horizonReceipts.reduce(0.0) { sum, receipt in
             let status = receipt.status.lowercased()
             if status == "cancelled" || status == "voided" { return sum }
-            let net = max(0.0, receipt.total - receipt.refundedAmount)
+            let net = max(0.0, receipt.total - (receipt.creditContractVersion == 1 ? Double(receipt.creditedMinor) / 100 : receipt.refundedAmount))
             return sum + net
         }
     }
@@ -439,7 +439,7 @@ final class POSHistoryViewModel: ObservableObject {
         horizonReceipts.reduce(0.0) { sum, receipt in
             let status = receipt.status.lowercased()
             if status == "cancelled" || status == "voided" { return sum }
-            guard receipt.paymentMethod.lowercased().contains("cash") else { return sum }
+            guard receipt.creditContractVersion != 1, receipt.paymentMethod.lowercased() == "cash" else { return sum }
             return sum + max(0.0, receipt.total - receipt.refundedAmount)
         }
     }
@@ -448,13 +448,20 @@ final class POSHistoryViewModel: ObservableObject {
         horizonReceipts.reduce(0.0) { sum, receipt in
             let status = receipt.status.lowercased()
             if status == "cancelled" || status == "voided" { return sum }
-            guard !receipt.paymentMethod.lowercased().contains("cash") else { return sum }
+            guard receipt.creditContractVersion != 1, ["card", "qib"].contains(receipt.paymentMethod.lowercased()) else { return sum }
             return sum + max(0.0, receipt.total - receipt.refundedAmount)
         }
     }
 
+    var otherTenderRevenue: Double {
+        horizonReceipts.reduce(0.0) { total, receipt in
+            guard receipt.creditContractVersion != 1, !["cash", "card", "qib"].contains(receipt.paymentMethod.lowercased()), !["cancelled", "voided"].contains(receipt.status.lowercased()) else { return total }
+            return total + max(0, receipt.total - receipt.refundedAmount)
+        }
+    }
+
     var totalRefunded: Double {
-        horizonReceipts.reduce(0.0) { $0 + $1.refundedAmount }
+        horizonReceipts.reduce(0.0) { $0 + ($1.creditContractVersion == 1 ? Double($1.refundedMinor) / 100 : $1.refundedAmount) }
     }
 
     var totalTransactions: Int {
@@ -481,7 +488,7 @@ final class POSHistoryViewModel: ObservableObject {
     }
 
     var cashRatio: Double {
-        let gross = cashRevenue + cardRevenue
+        let gross = cashRevenue + cardRevenue + otherTenderRevenue
         guard gross > 0 else { return 0.5 }
         return cashRevenue / gross
     }
@@ -1103,8 +1110,9 @@ struct AdminPOSHistoryView: View {
     @ViewBuilder
     private var periodFactContent: some View {
         periodFact(title: Language.get("POS_Telemetry_Cash", alter: "نقدي"), amount: viewModel.cashRevenue)
-        // cardRevenue includes every non-cash payment, independently of the card filter.
-        periodFact(title: Language.get("POS_Journal_NonCash", alter: "غير نقدي"), amount: viewModel.cardRevenue)
+        periodFact(title: POSCreditAccountCopy.text("card"), amount: viewModel.cardRevenue)
+        periodFact(title: POSCreditAccountCopy.text("OtherTenderSales"), amount: viewModel.otherTenderRevenue)
+        POSCreditReportLink(branchID: branchStore.activeBranch?.branchID ?? "")
         periodFact(title: Language.get("POS_Telemetry_AvgBasket", alter: "متوسط السلة"), amount: viewModel.averageBasket)
         periodFact(title: Language.get("POS_Telemetry_Refunds", alter: "المستردات"), amount: viewModel.totalRefunded)
     }
@@ -3230,6 +3238,12 @@ struct POSTransactionDossierSheet: View {
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .sheet(item: $receiptShare) { share in
             POSHistoryReceiptShareSheet(share: share) {}
+        }
+        .safeAreaInset(edge: .bottom) {
+            if receipt.creditContractVersion == 1, let customerID = receipt.customerID, let branchID = receipt.branchID {
+                POSCreditAccountLink(customerID: customerID, branchID: branchID)
+                    .padding(.horizontal).background(AdminSurface.background)
+            }
         }
         .fullScreenCover(item: $selectedReturnCaseForDetail) { rCase in
             ReturnCaseDetailView(returnCaseId: rCase.returnCaseId, initialCase: rCase)

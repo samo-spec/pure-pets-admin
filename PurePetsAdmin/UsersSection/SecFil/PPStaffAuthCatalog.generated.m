@@ -9,7 +9,7 @@
 
 NSString * const PPStaffIAMPolicyVersion = @"2.0.0-draft.1";
 NSString * const PPStaffIAMSchemaVersion = @"2.0.0";
-NSString * const PPStaffIAMPolicySHA256 = @"519642d699a53e335a062885bce9ea6b17b634d7fc91a8a14452ad1f03ab0b2f";
+NSString * const PPStaffIAMPolicySHA256 = @"90ed3ce47f0501a1183236c2f85aa4609683e58858bf902252a14080725007d9";
 
 #pragma mark - Role Definitions
 
@@ -190,6 +190,15 @@ NSString * const kStaffPermCommunityModerationResolve = @"community.moderation.r
 NSString * const kStaffPermCommunityConfigurationManage = @"community.configuration.manage";
 NSString * const kStaffPermCommunityAnalyticsView = @"community.analytics.view";
 NSString * const kStaffPermCommunityAuditView = @"community.audit.view";
+NSString * const kStaffPermPosCreditIssue = @"pos.credit.issue";
+NSString * const kStaffPermPosCreditCollect = @"pos.credit.collect";
+NSString * const kStaffPermPosCreditRead = @"pos.credit.read";
+NSString * const kStaffPermPosCreditTermsManage = @"pos.credit_terms.manage";
+NSString * const kStaffPermPosCreditApprove = @"pos.credit.approve";
+NSString * const kStaffPermPosCreditReverse = @"pos.credit.reverse";
+NSString * const kStaffPermPosCreditClear = @"pos.credit.clear";
+NSString * const kStaffPermPosCreditWriteoff = @"pos.credit.writeoff";
+NSString * const kStaffPermPosCreditRefund = @"pos.credit.refund";
 
 #pragma mark - Catalog Accessor Implementations
 
@@ -382,6 +391,15 @@ NSArray<NSString *> * PPStaffAllPermissionKeys(void) {
             kStaffPermCommunityConfigurationManage,
             kStaffPermCommunityAnalyticsView,
             kStaffPermCommunityAuditView,
+            kStaffPermPosCreditIssue,
+            kStaffPermPosCreditCollect,
+            kStaffPermPosCreditRead,
+            kStaffPermPosCreditTermsManage,
+            kStaffPermPosCreditApprove,
+            kStaffPermPosCreditReverse,
+            kStaffPermPosCreditClear,
+            kStaffPermPosCreditWriteoff,
+            kStaffPermPosCreditRefund,
         ];
     });
     return keys;
@@ -502,6 +520,15 @@ NSArray<NSDictionary<NSString *, id> *> * PPStaffPermissionModules(void) {
                    @{ @"key": @"pos.sell", @"labelEn": @"Sell via POS", @"labelAr": @"بيع عبر نقطة البيع", @"riskTier": @"T1", @"protected": @NO },
                    @{ @"key": @"pos.sell.wholesale", @"labelEn": @"Sell wholesale via POS", @"labelAr": @"بيع بنمط الجملة عبر نقطة البيع", @"riskTier": @"T1", @"protected": @NO },
                    @{ @"key": @"pos.history", @"labelEn": @"View POS history", @"labelAr": @"عرض سجل نقطة البيع", @"riskTier": @"T0", @"protected": @NO },
+                   @{ @"key": @"pos.credit.issue", @"labelEn": @"Issue POS customer credit", @"labelAr": @"إصدار بيع آجل للعميل", @"riskTier": @"T1", @"protected": @NO },
+                   @{ @"key": @"pos.credit.collect", @"labelEn": @"Collect POS customer debt", @"labelAr": @"تحصيل مديونية العميل", @"riskTier": @"T1", @"protected": @NO },
+                   @{ @"key": @"pos.credit.read", @"labelEn": @"View POS customer receivables", @"labelAr": @"عرض مديونيات العملاء", @"riskTier": @"T0", @"protected": @NO },
+                   @{ @"key": @"pos.credit_terms.manage", @"labelEn": @"Manage POS credit policies and terms", @"labelAr": @"إدارة سياسات وشروط البيع الآجل", @"riskTier": @"T2", @"protected": @NO },
+                   @{ @"key": @"pos.credit.approve", @"labelEn": @"Approve POS credit exceptions and limits", @"labelAr": @"اعتماد استثناءات وحدود البيع الآجل", @"riskTier": @"T3", @"protected": @YES },
+                   @{ @"key": @"pos.credit.reverse", @"labelEn": @"Reverse POS customer collections", @"labelAr": @"عكس تحصيلات العملاء", @"riskTier": @"T3", @"protected": @YES },
+                   @{ @"key": @"pos.credit.clear", @"labelEn": @"Clear or reject POS collection tenders", @"labelAr": @"تأكيد أو رفض تسوية تحصيلات العملاء", @"riskTier": @"T3", @"protected": @YES },
+                   @{ @"key": @"pos.credit.writeoff", @"labelEn": @"Write off POS customer debt", @"labelAr": @"شطب مديونيات العملاء", @"riskTier": @"T3", @"protected": @YES },
+                   @{ @"key": @"pos.credit.refund", @"labelEn": @"Adjust or refund POS customer credit", @"labelAr": @"تسوية أو استرداد البيع الآجل", @"riskTier": @"T3", @"protected": @YES },
                ] },
             @{ @"key": @"branches",
                @"labelEn": @"Branches",

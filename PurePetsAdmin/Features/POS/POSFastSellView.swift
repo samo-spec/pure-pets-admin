@@ -1018,6 +1018,7 @@ private struct POSSubmitFailure: Sendable {
     let unitID: String
     let ringTag: String
     let domainCode: String
+    let creditApprovalRequestJSON: Data?
     let functionsCode: Int
     let serverMessage: String
     let submittedPrice: Double?
@@ -1037,6 +1038,7 @@ private struct POSSubmitFailure: Sendable {
         unitID = (details["unitId"] as? String) ?? ""
         ringTag = (details["ringTag"] as? String) ?? ""
         domainCode = ((details["domainCode"] as? String) ?? "").uppercased()
+        creditApprovalRequestJSON = (details["approvalRequest"] as? [String: Any]).flatMap { try? JSONSerialization.data(withJSONObject: $0, options: .sortedKeys) }
         functionsCode = nsError.code
         serverMessage = nsError.localizedDescription
         if let sub = details["submittedPrice"] as? NSNumber {
@@ -1438,6 +1440,8 @@ final class POSFastSellViewModel: ObservableObject {
             .sink { [weak self] _ in
                 guard let self = self else { return }
                 self.invalidateSubmissionCommand()
+                self.invalidateCreditContext()
+                self.hideCreditReceiptOnSessionChange()
                 self.objectWillChange.send()
             }
     }
@@ -1448,6 +1452,21 @@ final class POSFastSellViewModel: ObservableObject {
     @Published var submitError: String?
     @Published private(set) var completedReceipt: POSCompletedReceipt?
     @Published private(set) var receiptNotice: String?
+    @Published var showsCreditCheckout = false
+    @Published private(set) var creditContext: POSCreditContext?
+    @Published private(set) var isLoadingCreditContext = false
+    @Published private(set) var creditError: String?
+    @Published private(set) var creditRecovery: POSCreditPendingStore.Record?
+    @Published private(set) var creditRecoveryError: String?
+    private var creditContextRequestID = UUID()
+    private var creditContextActorUID: String?
+    private var creditReceiptReady: POSCompletedReceipt?
+    // Matches AdminSessionStore's Firebase listener lifetime convention.
+    private nonisolated(unsafe) var creditAuthListener: AuthStateDidChangeListenerHandle?
+
+    deinit {
+        if let creditAuthListener { Auth.auth().removeStateDidChangeListener(creditAuthListener) }
+    }
 
     /// Filter, search, and live catalog presentation states.
     @Published var catalogFilter: POSCatalogFilter = .all
@@ -1455,7 +1474,9 @@ final class POSFastSellViewModel: ObservableObject {
     @Published private(set) var isCatalogLoading = true
     @Published private(set) var catalogErrorMessage: String?
 
-    @Published var selectedCustomer: POSCustomerRecord? = nil
+    @Published var selectedCustomer: POSCustomerRecord? = nil {
+        didSet { invalidateCreditContext() }
+    }
     @Published var appliedDiscount: POSDiscount? = nil
     @Published var deliveryFee: Double = 0.0
 
@@ -1917,17 +1938,29 @@ final class POSFastSellViewModel: ObservableObject {
     var isCheckoutBusy: Bool { isSubmitting || isPreparingReceipt }
     var hasExpiredItems: Bool { cartItems.contains { $0.isExpired } }
 
-    let paymentMethods: [(key: String, title: String, icon: String)] = [
+    var paymentMethods: [(key: String, title: String, icon: String)] { [
         ("cash", "POS_Cash", "banknote.fill"),
         ("card", "POS_Card", "creditcard.fill"),
         ("cheque", "POS_Cheque", "doc.text.fill"),
         ("fawry", "POS_Fawry", "wallet.pass.fill"),
         ("bank_transfer", "POS_BankTransfer", "arrow.up.forward.app.fill")
-    ]
+    ] + ((canIssueCredit || selectedPaymentMethod == "credit") ? [("credit", "POS_Credit_Title", "person.crop.rectangle.badge.checkmark")] : []) }
 
     func startListening() {
         PPBranchInventoryService.shared.startListeningIfNeeded()
         surfacePendingCommandIfNeeded()
+        restoreCreditCommand()
+        if creditAuthListener == nil {
+            creditAuthListener = Auth.auth().addStateDidChangeListener { [weak self] _, user in
+                let uid = user?.uid
+                Task { @MainActor in
+                    guard let self else { return }
+                    if self.creditContextActorUID != uid { self.invalidateCreditContext() }
+                    self.hideCreditReceiptOnSessionChange()
+                    self.objectWillChange.send()
+                }
+            }
+        }
         listener?.remove()
         listener = nil
         // Invalidate any snapshot already in flight from the previous
@@ -1977,6 +2010,8 @@ final class POSFastSellViewModel: ObservableObject {
     }
 
     func stopListening() {
+        if let creditAuthListener { Auth.auth().removeStateDidChangeListener(creditAuthListener) }
+        creditAuthListener = nil
         // Bump the generation first so an in-flight snapshot callback cannot
         // land after teardown.
         catalogListenerGeneration = UUID()
@@ -2376,6 +2411,300 @@ final class POSFastSellViewModel: ObservableObject {
         invalidateSubmissionCommand()
     }
 
+    // MARK: - Customer credit (server-owned money, durable local intent)
+
+    var canIssueCredit: Bool {
+        guard let uid = Auth.auth().currentUser?.uid,
+              let branchID = BranchContextStore.shared.activeBranch?.branchID,
+              let staff = PPStaffAuth.shared().cachedCurrentStaff,
+              staff.uid == uid, staff.isActive() else { return false }
+        return staff.hasPermission("pos.credit.issue", inBranch: branchID) && staff.hasPermission("pos.sell", inBranch: branchID)
+    }
+
+    var creditHasLiveItems: Bool {
+        cartItems.contains { $0.accessory.isLivePet || $0.isIndividuallyTracked || !$0.unitRingTags.isEmpty }
+    }
+
+    private func invalidateCreditContext() {
+        creditContextRequestID = UUID()
+        creditContextActorUID = nil
+        creditContext = nil
+        isLoadingCreditContext = false
+    }
+
+    private func creditSessionMatches(_ record: POSCreditPendingStore.Record) -> Bool {
+        record.actorUID == Auth.auth().currentUser?.uid && record.branchID == BranchContextStore.shared.activeBranch?.branchID
+    }
+
+    private func hideCreditReceiptOnSessionChange() {
+        guard let record = creditRecovery, !creditSessionMatches(record) else { return }
+        creditReceiptReady = nil
+        if completedReceipt?.creditSummary != nil { completedReceipt = nil }
+        receiptRequestID = nil
+        isPreparingReceipt = false
+        creditError = Language.get("POS_Credit_SessionRequired", alter: nil)
+    }
+
+    private func restoreCreditCommand() {
+        do {
+            creditRecovery = try POSCreditPendingStore.load()
+            creditRecoveryError = nil
+            hideCreditReceiptOnSessionChange()
+        } catch {
+            // A corrupt or inaccessible financial intent must never be erased
+            // automatically: the original request may already have committed.
+            creditRecoveryError = Language.get("POS_Credit_StorageFailed", alter: nil)
+        }
+    }
+
+    func loadCreditContext() {
+        guard creditRecovery == nil, creditRecoveryError == nil else { return }
+        invalidateCreditContext()
+        guard canIssueCredit, let actorUID = Auth.auth().currentUser?.uid,
+              let branchID = BranchContextStore.shared.activeBranch?.branchID else {
+            creditError = Language.get("POS_Credit_PermissionDenied", alter: nil)
+            return
+        }
+        guard let customer = selectedCustomer, customer.source == "directory", !customer.id.isEmpty else {
+            creditError = Language.get("POS_Credit_SelectCustomer", alter: nil)
+            return
+        }
+        let generation = creditContextRequestID
+        creditContextActorUID = actorUID
+        isLoadingCreditContext = true
+        creditError = nil
+        PPPOSService.shared().fetchCreditCheckoutContext(customerID: customer.id, branchID: branchID) { [weak self] data, error in
+            let context = data.flatMap { try? JSONDecoder().decode(POSCreditContext.self, from: $0) }
+            let failure = error.map(POSSubmitFailure.init)
+            Task { @MainActor in
+                guard let self, self.creditContextRequestID == generation else { return }
+                self.isLoadingCreditContext = false
+                guard Auth.auth().currentUser?.uid == actorUID,
+                      BranchContextStore.shared.activeBranch?.branchID == branchID,
+                      self.selectedCustomer?.id == customer.id else { self.invalidateCreditContext(); return }
+                if let context, context.customerId == customer.id, context.branchId == branchID,
+                   context.currency == "QAR", context.policyVersion > 0, context.accountVersion >= 0,
+                   TimeZone(identifier: context.timeZone) != nil {
+                    self.creditContext = context
+                } else {
+                    self.creditError = self.creditFailureMessage(failure)
+                }
+            }
+        }
+    }
+
+    @discardableResult
+    func submitCreditOrder(settlement: [String: Any]) -> Bool {
+        guard selectedPaymentMethod == "credit" else { return false }
+        return submitOrder(creditSettlement: settlement)
+    }
+
+    private func creditFailureMessage(_ failure: POSSubmitFailure?) -> String {
+        if failure?.domainCode == "POS_PRICE_DISCREPANCY" || failure?.isExactUnitConflict == true {
+            return Language.get("POS_Credit_CartChanged", alter: nil)
+        }
+        let key: String
+        switch failure?.domainCode {
+        case "POS_CREDIT_APPROVAL_REQUIRED", "POS_CREDIT_APPROVAL_INVALID": key = "POS_Credit_ApprovalRequired"
+        case "POS_CREDIT_POLICY_REQUIRED": key = "POS_Credit_PolicyRequired"
+        case "POS_CREDIT_VERSION_CONFLICT": key = "POS_Credit_ReloadRequired"
+        case "POS_CREDIT_RECONCILIATION_REQUIRED": key = "POS_Credit_ReconciliationRequired"
+        default:
+            if failure?.functionsCode == 7 { key = "POS_Credit_PermissionDenied" }
+            else if failure?.functionsCode == 10 { key = "POS_Credit_ReloadRequired" }
+            else { key = "POS_Credit_Unavailable" }
+        }
+        return Language.get(key, alter: nil)
+    }
+
+    func recoverCreditSale() {
+        guard !isCheckoutBusy else { return }
+        restoreCreditCommand()
+        guard var record = creditRecovery else { return }
+        guard creditSessionMatches(record) else {
+            creditError = Language.get("POS_Credit_SessionRequired", alter: nil)
+            return
+        }
+        creditError = nil
+        // Even a locally saved confirmation is replayed through the server so
+        // current permission/contact scope is rechecked before private terms
+        // are displayed. This returns the immutable original issuance result.
+        do {
+            guard record.attempts < Int.max else { throw POSCreditPendingStore.StoreError.invalidRecord }
+            record.attempts += 1
+            try POSCreditPendingStore.save(record)
+            creditRecovery = record
+            isSubmitting = true
+            let token = UUID()
+            inFlightSubmissionToken = token
+            dispatchCreditCommand(record, token: token)
+        } catch { creditRecoveryError = Language.get("POS_Credit_StorageFailed", alter: nil) }
+    }
+
+    func cancelCreditIssue() {
+        guard !isCheckoutBusy, let record = creditRecovery, creditSessionMatches(record), record.confirmedResultJSON == nil,
+              let proposal = try? JSONSerialization.jsonObject(with: record.requestJSON) as? [String: Any],
+              let envelope = try? JSONDecoder().decode(POSCreditPendingStore.Envelope.self, from: record.requestJSON) else { return }
+        let customerID = envelope.payload.settlement.customerId
+        let body: [String: Any] = ["contractVersion": 1, "action": "cancelIssue", "kind": "processTransaction", "commandId": record.commandID,
+            "customerId": customerID, "branchId": record.branchID, "currency": "QAR", "proposal": proposal]
+        guard let request = try? JSONSerialization.data(withJSONObject: body, options: .sortedKeys) else { return }
+        isSubmitting = true; creditError = nil
+        let token = UUID(); inFlightSubmissionToken = token
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 40_000_000_000)
+            guard let self, self.inFlightSubmissionToken == token else { return }
+            self.inFlightSubmissionToken = nil; self.isSubmitting = false
+            self.creditError = Language.get("POS_Credit_RecoveryUnknown", alter: nil)
+        }
+        PPPOSService.shared().callCreditOperation("posCreditReviewCommand", request: request, actorUID: record.actorUID) { [weak self] data, error in
+            Task { @MainActor in
+                guard let self, self.inFlightSubmissionToken == token else { return }
+                self.inFlightSubmissionToken = nil; self.isSubmitting = false
+                guard self.creditSessionMatches(record) else { return }
+                guard error == nil, let data, let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any], value["ok"] as? Bool == true,
+                      value["commandId"] as? String == record.commandID, value["branchId"] as? String == record.branchID,
+                      value["customerId"] as? String == customerID, value["currency"] as? String == "QAR" else {
+                    self.creditError = Language.get("POS_Credit_RecoveryUnknown", alter: nil); return
+                }
+                if value["status"] as? String == "committed" { self.recoverCreditSale(); return }
+                guard value["status"] as? String == "cancelled" else { self.creditError = Language.get("POS_Credit_RecoveryUnknown", alter: nil); return }
+                do {
+                    // The durable server tombstone fences late requests even if
+                    // the app terminates before this local file is removed.
+                    try POSCreditPendingStore.clear(commandID: record.commandID)
+                    self.creditRecovery = nil; self.creditRecoveryError = nil
+                    self.invalidateSubmissionCommand(); self.invalidateCreditContext()
+                    self.creditError = POSCreditAccountCopy.text("Cancelled")
+                } catch { self.creditRecoveryError = Language.get("POS_Credit_StorageFailed", alter: nil) }
+            }
+        }
+    }
+
+    func requestCreditIssueApproval() {
+        guard !isCheckoutBusy, let record = creditRecovery, creditSessionMatches(record),
+              let data = record.approvalRequestJSON,
+              let proposal = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let customer = proposal["customerId"] as? String else { return }
+        let body: [String: Any] = ["contractVersion": 1, "action": "request", "kind": "issue", "commandId": record.commandID,
+            "customerId": customer, "branchId": record.branchID, "currency": "QAR", "proposal": proposal]
+        guard let request = try? JSONSerialization.data(withJSONObject: body, options: .sortedKeys) else { return }
+        isSubmitting = true
+        let token = UUID(); inFlightSubmissionToken = token
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 40_000_000_000)
+            guard let self, self.inFlightSubmissionToken == token else { return }
+            self.inFlightSubmissionToken = nil; self.isSubmitting = false
+            self.creditError = Language.get("POS_Credit_RecoveryUnknown", alter: nil)
+        }
+        PPPOSService.shared().callCreditOperation("posCreditReviewCommand", request: request, actorUID: record.actorUID) { [weak self] response, error in
+            Task { @MainActor in
+                guard let self, self.inFlightSubmissionToken == token else { return }
+                self.inFlightSubmissionToken = nil; self.isSubmitting = false
+                guard self.creditSessionMatches(record) else { return }
+                self.creditError = POSCreditAccountCopy.text(error == nil && response != nil ? "ApprovalRequested" : "LoadFailed")
+            }
+        }
+    }
+
+    private func dispatchCreditCommand(_ record: POSCreditPendingStore.Record, token: UUID) {
+        // Auth/App Check token acquisition can precede the callable timeout.
+        // Bound the presentation too; a late response leaves the same durable
+        // command available for server-authorized replay, never a fresh sale.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 40_000_000_000)
+            guard let self, self.inFlightSubmissionToken == token else { return }
+            self.inFlightSubmissionToken = nil
+            self.isSubmitting = false
+            self.creditError = Language.get(record.confirmedResultJSON == nil ? "POS_Credit_RecoveryUnknown" : "POS_Credit_RecoveryConfirmed", alter: nil)
+        }
+        PPPOSService.shared().submitFrozenCreditSale(record.requestJSON, actorUID: record.actorUID) { [weak self] result, error in
+            let resultJSON = result?.creditResultJSON
+            let failure = error.map(POSSubmitFailure.init)
+            Task { @MainActor in
+                guard let self, self.inFlightSubmissionToken == token else { return }
+                self.inFlightSubmissionToken = nil
+                self.isSubmitting = false
+                guard self.creditSessionMatches(record) else {
+                    self.creditError = Language.get("POS_Credit_SessionRequired", alter: nil)
+                    return
+                }
+                if let failure {
+                    if let proposal = failure.creditApprovalRequestJSON {
+                        do {
+                            var awaiting = record; awaiting.approvalRequestJSON = proposal
+                            try POSCreditPendingStore.save(awaiting); self.creditRecovery = awaiting
+                            self.creditError = self.creditFailureMessage(failure)
+                        } catch { self.creditRecoveryError = Language.get("POS_Credit_StorageFailed", alter: nil) }
+                        return
+                    }
+                    // A rejection never clears financial uncertainty locally.
+                    // Retry identical bytes or obtain a terminal server cancellation.
+                    self.creditError = self.creditFailureMessage(failure)
+                    return
+                }
+                do {
+                    guard let resultJSON else { throw POSCreditPendingStore.StoreError.invalidRecord }
+                    let summary = try POSCreditReceiptSummary.confirmed(resultJSON, for: record)
+                    var confirmed = record
+                    confirmed.confirmedResultJSON = resultJSON
+                    try POSCreditPendingStore.save(confirmed)
+                    self.creditRecovery = confirmed
+                    self.invalidateSubmissionCommand()
+                    NotificationCenter.default.post(name: Notification.Name("PPAccountingDataDidChangeNotification"), object: nil)
+                    self.fetchCreditReceipt(summary, record: confirmed)
+                } catch {
+                    // Keep the original bytes and command even if confirmation
+                    // could not be decoded or safely persisted.
+                    self.creditError = Language.get("POS_Credit_RecoveryUnknown", alter: nil)
+                }
+            }
+        }
+    }
+
+    private func fetchCreditReceipt(_ summary: POSCreditReceiptSummary, record: POSCreditPendingStore.Record) {
+        isPreparingReceipt = true
+        let requestID = UUID()
+        receiptRequestID = requestID
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            guard let self, self.receiptRequestID == requestID else { return }
+            self.receiptRequestID = nil
+            self.isPreparingReceipt = false
+            self.creditError = Language.get("POS_Credit_ReceiptRetry", alter: nil)
+        }
+        PPPOSService.shared().fetchConfirmedCreditReceipt(forTransactionID: summary.transactionId) { [weak self] receipt, error in
+            let projection = receipt.map { POSCompletedReceipt(receipt: $0, creditSummary: summary) }
+            let valid = error == nil && projection?.transactionID == summary.transactionId && projection?.paymentMethod == "credit"
+            Task { @MainActor in
+                guard let self, self.receiptRequestID == requestID else { return }
+                self.receiptRequestID = nil
+                self.isPreparingReceipt = false
+                guard self.creditSessionMatches(record) else {
+                    self.creditError = Language.get("POS_Credit_SessionRequired", alter: nil)
+                    return
+                }
+                guard valid, let projection, POSMoney.minorUnits(projection.total) == summary.totalMinor else {
+                    self.creditError = Language.get("POS_Credit_ReceiptRetry", alter: nil)
+                    return
+                }
+                self.creditError = nil
+                self.receiptNotice = String(format: Language.get("POS_Credit_Completed", alter: nil),
+                    POSReceiptFormat.currency(Double(summary.amountDueMinor) / 100, code: summary.currency))
+                if self.showsCreditCheckout {
+                    self.creditReceiptReady = projection
+                    self.showsCreditCheckout = false
+                } else { self.completedReceipt = projection }
+            }
+        }
+    }
+
+    func presentCreditReceiptIfReady() {
+        guard let record = creditRecovery, creditSessionMatches(record), let ready = creditReceiptReady else { return }
+        creditReceiptReady = nil
+        completedReceipt = ready
+    }
+
     func selectPaymentMethod(_ paymentMethod: String) {
         guard paymentMethods.contains(where: { $0.key == paymentMethod }) else { return }
         guard selectedPaymentMethod != paymentMethod else { return }
@@ -2575,8 +2904,25 @@ final class POSFastSellViewModel: ObservableObject {
     ///   means nothing is in flight and the caller's commit affordance must
     ///   settle back to its idle state.
     @discardableResult
-    func submitOrder(cashReceived: Double? = nil) -> Bool {
+    func submitOrder(cashReceived: Double? = nil, creditSettlement: [String: Any]? = nil) -> Bool {
         guard !cartItems.isEmpty, !isCheckoutBusy, completedReceipt == nil else { return false }
+        restoreCreditCommand()
+        // Applies to every tender intentionally: switching an uncertain credit
+        // sale to cash could charge the same cart twice. The original five
+        // tenders are unchanged when there is no unresolved credit command.
+        guard creditRecovery == nil, creditRecoveryError == nil else {
+            showsCreditCheckout = true
+            return false
+        }
+        if selectedPaymentMethod == "credit" {
+            guard creditSettlement != nil, canIssueCredit,
+                  creditContextActorUID == Auth.auth().currentUser?.uid,
+                  creditContext?.customerId == selectedCustomer?.id,
+                  creditContext?.branchId == BranchContextStore.shared.activeBranch?.branchID else {
+                creditError = Language.get("POS_Credit_ReloadRequired", alter: nil)
+                return false
+            }
+        } else if creditSettlement != nil { return false }
         guard !isSaleExplicitlyDenied else {
             submitError = Language.get(
                 "POS_CheckoutPermissionDenied",
@@ -2748,6 +3094,34 @@ final class POSFastSellViewModel: ObservableObject {
         let posCustomerID = selectedCustomer?.id
         let activeBranchId = BranchContextStore.shared.activeBranch?.branchID
         let submittedPaymentMethod = selectedPaymentMethod
+
+        if let creditSettlement {
+            // The exact same cart mapping feeds ordinary and credit checkout.
+            // Persist the immutable command before any network dispatch.
+            guard let actorUID = Auth.auth().currentUser?.uid, let branchID = activeBranchId else {
+                isSubmitting = false
+                inFlightSubmissionToken = nil
+                creditError = Language.get("POS_Credit_SessionRequired", alter: nil)
+                return false
+            }
+            do {
+                let request = try PPPOSService.shared().prepareCreditSale(items: items, subtotal: submittedSubtotal,
+                    discount: submittedDiscount, deliveryFee: submittedDeliveryFee, total: submittedTotal,
+                    commandID: commandID, branchID: branchID, salesChannel: salesChannel.rawValue, settlement: creditSettlement)
+                let record = POSCreditPendingStore.Record(actorUID: actorUID, branchID: branchID, commandID: commandID,
+                    requestJSON: request, createdAt: Date(), attempts: 1)
+                try POSCreditPendingStore.save(record)
+                creditRecovery = record
+                dispatchCreditCommand(record, token: submissionToken)
+                return true
+            } catch {
+                isSubmitting = false
+                inFlightSubmissionToken = nil
+                creditError = Language.get("POS_Credit_StorageFailed", alter: nil)
+                restoreCreditCommand()
+                return false
+            }
+        }
 
         var checkoutMetadata: [String: Any] = [
             "commandId": commandID,
@@ -2971,6 +3345,15 @@ final class POSFastSellViewModel: ObservableObject {
     /// discount and customer attribution — a money and audit defect, since the
     /// operator had no indication a discount was still armed.
     func acknowledgeCompletedReceipt() {
+        guard let acknowledged = completedReceipt else { return }
+        if acknowledged.creditSummary != nil, let record = creditRecovery,
+           creditSessionMatches(record), record.confirmedResultJSON != nil {
+            do {
+                try POSCreditPendingStore.clear(commandID: record.commandID)
+                creditRecovery = nil
+                creditRecoveryError = nil
+            } catch { creditRecoveryError = Language.get("POS_Credit_StorageFailed", alter: nil) }
+        }
         receiptRequestID = nil
         completedReceipt = nil
         receiptNotice = nil
@@ -2980,6 +3363,7 @@ final class POSFastSellViewModel: ObservableObject {
         appliedDiscount = nil
         deliveryFee = 0.0
         selectedCustomer = nil
+        if selectedPaymentMethod == "credit" { selectedPaymentMethod = "cash" }
         submitError = nil
         priceDiscrepancy = nil
         unsupportedWholesaleCartItems = []
@@ -3269,6 +3653,16 @@ struct AdminPOSFastSellView: View {
                 VStack(spacing: 0) {
                     commandDeck(availableWidth: geometry.size.width, availableHeight: geometry.size.height - topClearance)
 
+                    if viewModel.creditRecovery != nil || viewModel.creditRecoveryError != nil {
+                        Button { viewModel.showsCreditCheckout = true } label: {
+                            Label(Language.get("POS_Credit_RecoveryTitle", alter: nil), systemImage: "arrow.triangle.2.circlepath")
+                                .font(AdminType.calloutBold).fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).padding(.horizontal, 16)
+                        }
+                        .disabled(viewModel.isCheckoutBusy)
+                        .accessibilityIdentifier("pos.credit.recovery")
+                    }
+
                     commandCatalogSeparator
 
                     // `catalogGrid` owns its own empty presentation, and
@@ -3399,6 +3793,9 @@ struct AdminPOSFastSellView: View {
                     showsCustomerPicker = false
                 }
             )
+        }
+        .sheet(isPresented: $viewModel.showsCreditCheckout, onDismiss: { viewModel.presentCreditReceiptIfReady() }) {
+            POSCreditCheckoutSheet(model: viewModel)
         }
         .sheet(isPresented: $showsCategoryLens) {
             POSCategoryLensSheet(viewModel: viewModel)
@@ -5195,6 +5592,9 @@ private struct POSApexFlightDeck: View {
     @ViewBuilder private var paymentDetail: some View {
         if isCash { cashTenderAssistantStrip }
         else if viewModel.selectedPaymentMethod == "cheque" { chequeAttachmentStrip }
+        else if viewModel.selectedPaymentMethod == "credit" {
+            paymentNote(icon: selectedMethod.icon, text: Language.get("POS_Credit_CheckoutHint", alter: nil))
+        }
         else {
             paymentNote(
                 icon: selectedMethod.icon,
@@ -5353,6 +5753,15 @@ private struct POSApexFlightDeck: View {
             } else if hasShortfall {
                 paymentNote(icon: "exclamationmark.circle", text: Language.get("POS_Checkout_ShortfallHint", alter: "Enter the remaining cash or choose another payment method."))
             }
+            if viewModel.creditRecovery != nil || viewModel.creditRecoveryError != nil || viewModel.selectedPaymentMethod == "credit" {
+                Button { viewModel.showsCreditCheckout = true } label: {
+                    Label(Language.get(viewModel.creditRecovery != nil || viewModel.creditRecoveryError != nil ? "POS_Credit_Recover" : "POS_Credit_Review", alter: nil), systemImage: "doc.text")
+                        .font(AdminType.headlineBold).fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                }
+                .buttonStyle(.borderedProminent).tint(AdminSurface.primary)
+                .disabled(viewModel.isCheckoutBusy || (viewModel.creditRecovery == nil && viewModel.creditRecoveryError == nil && (!hasItems || viewModel.hasExpiredItems || !viewModel.canIssueCredit)))
+            } else {
             POSSlideToSaleButton(
                 hasItems: hasItems && !viewModel.hasExpiredItems && !hasShortfall,
                 isCheckoutBusy: viewModel.isCheckoutBusy,
@@ -5370,6 +5779,7 @@ private struct POSApexFlightDeck: View {
                 }
             )
             .id(checkoutIntentIdentity)
+            }
         }
     }
 
