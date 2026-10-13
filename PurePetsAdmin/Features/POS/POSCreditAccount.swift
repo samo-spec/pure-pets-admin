@@ -576,8 +576,30 @@ struct POSCreditAccountSheet: View {
             }
             .navigationTitle(t("Title"))
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button(t("Close")) { dismiss() } }
-                ToolbarItemGroup(placement: .keyboard) { Spacer(); Button(t("Done")) { editing = false } }
+                ToolbarItem(placement: .principal) {
+                    Text(t("Title"))
+                        .font(PPBrandFont.bold(18, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Text(t("Close"))
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primary)
+                    }
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button {
+                        editing = false
+                    } label: {
+                        Text(t("Done"))
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primary)
+                    }
+                }
             }
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
             .onChange(of: branch.activeBranch?.branchID) { _ in dismiss() }
@@ -865,7 +887,17 @@ private struct POSCreditServicingSheet: View {
                 }
             }
             .navigationTitle(t("Service"))
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button(t("Close")) { dismiss() } } }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Text(t("Close"))
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primary)
+                    }
+                }
+            }
             .onChange(of: reason) { _ in accepted = false }.onChange(of: evidence) { _ in accepted = false }.onChange(of: amount) { _ in accepted = false }
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
@@ -894,8 +926,19 @@ private struct POSCreditTermsSheet: View {
                 Toggle(t("AcceptTerms"), isOn: $accepted)
                 Button(t("ChangeTerms")) { model.changeTerms(invoice, due: dateKey, reason: reason); dismiss() }
                     .disabled(model.busy || model.pending != nil || !accepted || reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || reason.count > 500 || dateKey < model.asOf || model.context?.agreementTemplate == nil || invoice.agreement == nil).frame(minHeight: 44)
-            }.navigationTitle(t("ChangeTerms"))
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button(t("Close")) { dismiss() } } }
+            }
+            .navigationTitle(t("ChangeTerms"))
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Text(t("Close"))
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primary)
+                    }
+                }
+            }
                 .onChange(of: date) { _ in accepted = false }.onChange(of: reason) { _ in accepted = false }
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
@@ -928,8 +971,23 @@ struct POSCreditStepUpSheet: View {
                 } else { SecureField(t("Password"), text: $password).textContentType(.password) }
                 Button(t("Verify")) { authenticate() }.disabled(busy || (resolver == nil ? password.isEmpty : code.count != 6 || enrollment.isEmpty)).frame(minHeight: 44)
                 if busy { ProgressView() }
-            }.navigationTitle(t("StepUp"))
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button(t("Close")) { password = ""; code = ""; resolver = nil; dismiss() }.disabled(busy) } }
+            }
+            .navigationTitle(t("StepUp"))
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        password = ""
+                        code = ""
+                        resolver = nil
+                        dismiss()
+                    } label: {
+                        Text(t("Close"))
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primary)
+                    }
+                    .disabled(busy)
+                }
+            }
                 .interactiveDismissDisabled(busy)
                 .onDisappear { password = ""; code = ""; resolver = nil }
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)

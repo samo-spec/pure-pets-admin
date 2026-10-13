@@ -121,8 +121,19 @@ struct POSCreditAdjustmentSheet: View {
                     }
                 }.disabled(!valid).frame(minHeight: 44)
                 Button(t("StepUp")) { verifying = true }.frame(minHeight: 44)
-            }.navigationTitle(t("AdjustBalance"))
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button(t("Close")) { dismiss() } } }
+            }
+            .navigationTitle(t("AdjustBalance"))
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Text(t("Close"))
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primary)
+                    }
+                }
+            }
                 .task { operation = operations.first ?? ""; model.loadAdjustmentContext(invoice) }
                 .onChange(of: operation) { _ in accepted = false; sourceID = "" }
                 .onChange(of: amount) { _ in accepted = false }.onChange(of: reason) { _ in accepted = false }.onChange(of: evidence) { _ in accepted = false }
@@ -220,8 +231,19 @@ private struct POSCreditReportSheet: View {
                     }
                     if cursor != nil { Text(t("MoreAvailable")); Button(t("More")) { load(more: true) }.disabled(busy) }
                 }
-            }.navigationTitle(t("Reports"))
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button(t("Close")) { dismiss() } } }
+            }
+            .navigationTitle(t("Reports"))
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Text(t("Close"))
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primary)
+                    }
+                }
+            }
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
                 .onChange(of: branch.activeBranch?.branchID) { _ in dismiss() }
                 .onAppear {

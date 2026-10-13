@@ -11690,6 +11690,7 @@
 "POS_Credit_Step3_Short" = "Review & Confirm";
 "POS_Credit_NextToTerms" = "Proceed to Payment Terms";
 "POS_Credit_NextToReview" = "Review Credit Agreement";
+"POS_Credit_SplitEvenly" = "Split evenly";
 "POS_Credit_CartChanged" = "An item’s price or availability changed. Close this review, reselect the item in the cart, then review payment terms again.";
 
 /* POS customer credit account and collections */

@@ -1029,9 +1029,7 @@ private struct POSSubmitFailure: Sendable {
         var details = PPPOSService.exactUnitConflictDetails(forError: error)
         if details.isEmpty {
             if let dict = (nsError.userInfo["details"] as? [String: Any]) ??
-                          (nsError.userInfo["FIRFunctionsErrorDetailsKey"] as? [String: Any]) ??
-                          (nsError.userInfo[AnyHashable("details")] as? [String: Any]) ??
-                          (nsError.userInfo[AnyHashable("FIRFunctionsErrorDetailsKey")] as? [String: Any]) {
+                          (nsError.userInfo["FIRFunctionsErrorDetailsKey"] as? [String: Any]) {
                 details = dict
             }
         }
@@ -4282,8 +4280,8 @@ struct AdminPOSFastSellView: View {
         } label: {
             VStack(alignment: .leading, spacing: 5) {
                 Text(Language.get("POS_Header_Title", alter: nil))
-                    .font(Language.isRTL() ? PPBrandFont.bold(29, relativeTo: .title2) : .system(size: commandEnglishTitleSize, weight: .bold))
-                    .tracking(Language.isRTL() ? 0 : -0.7)
+                    .font(PPBrandFont.bold(Language.isRTL() ? 29 : 24, relativeTo: .title2))
+                    .tracking(Language.isRTL() ? 0 : -0.5)
                     .foregroundStyle(commandInk)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 5) {
@@ -4296,11 +4294,11 @@ struct AdminPOSFastSellView: View {
                             .accessibilityHidden(true)
                     }
                     Text(branchDisplayName)
-                        .font(Language.isRTL() ? PPBrandFont.regular(15, relativeTo: .caption) : .system(size: commandEnglishBranchSize))
+                        .font(PPBrandFont.regular(Language.isRTL() ? 15 : 13, relativeTo: .caption))
                         .fixedSize(horizontal: false, vertical: true)
                     if !branchDisplayCode.isEmpty {
                         Text(verbatim: branchDisplayCode.normalizedEnglishDigits)
-                            .font(.system(size: Language.isRTL() ? commandEnglishBranchSize : commandEnglishBranchSize * 0.8))
+                            .font(PPBrandFont.medium(Language.isRTL() ? 12 : 11, relativeTo: .caption2))
                             .environment(\.layoutDirection, .leftToRight)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -6384,6 +6382,11 @@ private struct POSCustomCashSheet: View {
             .navigationTitle(Language.get("POS_CustomCashTitle", alter: "مبلغ نقدي مخصص"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(Language.get("POS_CustomCashTitle", alter: "مبلغ نقدي مخصص"))
+                        .font(PPBrandFont.bold(18, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
                         onDismiss()
@@ -6482,6 +6485,11 @@ private struct POSCustomCashSheet: View {
             .navigationTitle(Language.get("POS_QuickSearch", alter: "البحث السريع"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(Language.get("POS_QuickSearch", alter: "البحث السريع"))
+                        .font(PPBrandFont.bold(18, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(Language.get("Cancel", alter: "إلغاء")) {
                         showsItemPicker = false
@@ -7010,6 +7018,11 @@ private struct POSSellUnitPickerSheet: View {
             .navigationTitle(Language.get("POS_SelectSellUnit_Title", alter: "وحدات ومجموعات البيع"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(Language.get("POS_SelectSellUnit_Title", alter: "وحدات ومجموعات البيع"))
+                        .font(PPBrandFont.bold(18, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         onClose()
@@ -9611,6 +9624,11 @@ struct POSDiscountSheet: View {
             .navigationTitle(Language.get("POS_Discount_Title", alter: "تطبيق الخصم"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(Language.get("POS_Discount_Title", alter: "تطبيق الخصم"))
+                        .font(PPBrandFont.bold(18, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
                         onDismiss()
@@ -10091,6 +10109,11 @@ struct POSDeliveryFeeSheet: View {
             .navigationTitle(Language.get("POS_DeliveryFee_Title", alter: "رسوم التوصيل"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(Language.get("POS_DeliveryFee_Title", alter: "رسوم التوصيل"))
+                        .font(PPBrandFont.bold(18, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button(action: onDismiss) {
                         Text(Language.get("Close", alter: "إغلاق"))

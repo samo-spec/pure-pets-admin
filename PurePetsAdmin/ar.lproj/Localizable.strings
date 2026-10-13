@@ -11720,6 +11720,7 @@
 "POS_Credit_Step3_Short" = "التأكيد والاعتماد";
 "POS_Credit_NextToTerms" = "متابعة لتحديد شروط السداد";
 "POS_Credit_NextToReview" = "مراجعة وتأكيد الاتفاق";
+"POS_Credit_SplitEvenly" = "تقسيم بالتساوي";
 "POS_Credit_CartChanged" = "تغيّر سعر الصنف أو توفره. أغلق هذه المراجعة، وأعد اختيار الصنف في السلة، ثم راجع شروط السداد من جديد.";
 
 /* POS customer credit account and collections */

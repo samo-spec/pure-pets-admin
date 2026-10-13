@@ -958,12 +958,12 @@ struct AdminPOSHistoryView: View {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(Language.get("POS_History_Title", alter: "سجل المبيعات"))
-                        .font(AdminType.title3)
+                        .font(PPBrandFont.bold(20, relativeTo: .title3))
                         .foregroundStyle(AdminSurface.primaryText)
                         .accessibilityAddTraits(.isHeader)
                     if !dynamicTypeSize.isAccessibilitySize {
                         Text(loadStatus)
-                            .font(AdminType.caption)
+                            .font(PPBrandFont.regular(12, relativeTo: .caption))
                             .foregroundStyle(AdminSurface.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)
                     }

@@ -950,6 +950,19 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
         appearance.backgroundColor = UIColor.clearColor;
         appearance.shadowColor = UIColor.clearColor;
         appearance.shadowImage = [[UIImage alloc] init];
+        
+        UIFont *titleFont = [UIFont fontWithName:@"Beiruti-Bold" size:18.0] ?: [UIFont boldSystemFontOfSize:18.0];
+        UIFont *largeFont = [UIFont fontWithName:@"Beiruti-Bold" size:28.0] ?: [UIFont boldSystemFontOfSize:28.0];
+        UIColor *titleColor = [UIColor colorNamed:@"TextPrimary"] ?: [UIColor labelColor];
+        appearance.titleTextAttributes = @{
+            NSFontAttributeName: [UIFontMetrics.defaultMetrics scaledFontForFont:titleFont],
+            NSForegroundColorAttributeName: titleColor
+        };
+        appearance.largeTitleTextAttributes = @{
+            NSFontAttributeName: [UIFontMetrics.defaultMetrics scaledFontForFont:largeFont],
+            NSForegroundColorAttributeName: titleColor
+        };
+        
         [UINavigationBar appearance].standardAppearance = appearance;
         [UINavigationBar appearance].scrollEdgeAppearance = appearance;
         [UINavigationBar appearance].compactAppearance = appearance;
