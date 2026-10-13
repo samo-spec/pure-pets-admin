@@ -4,6 +4,7 @@ import UIKit
 import FirebaseAuth
 import CryptoKit
 
+@MainActor
 enum POSCreditAccountCopy {
     static func text(_ key: String) -> String { Language.get("POS_CreditAccount_" + key, alter: nil) }
     static func money(_ value: Int) -> String { POSReceiptFormat.currency(Double(value) / 100, code: "QAR") }
@@ -229,12 +230,12 @@ final class POSCreditAccountModel: ObservableObject {
     deinit { if let authListener { Auth.auth().removeStateDidChangeListener(authListener) } }
     func restore() {
         do { pending = try POSCreditAccountCommandStore.load(actorUID: actorUID); storageFailed = false }
-        catch { storageFailed = true; error = POSCreditAccountCopy.text("StorageFailed") }
+        catch { storageFailed = true; self.error = POSCreditAccountCopy.text("StorageFailed") }
     }
     func base() -> [String: Any] { ["contractVersion": 1, "customerId": customerID, "branchId": branchID, "currency": "QAR"] }
     func call(_ operation: String, body: [String: Any], completion: @escaping ([String: Any], Data) throws -> Void) {
         do { try call(operation, data: JSONSerialization.data(withJSONObject: body, options: .sortedKeys), completion: completion) }
-        catch { error = POSCreditAccountCopy.text("Invalid") }
+        catch { self.error = POSCreditAccountCopy.text("Invalid") }
     }
     func call(_ operation: String, data: Data, completion: @escaping ([String: Any], Data) throws -> Void) throws {
         guard canRead, !busy else { return }
@@ -313,7 +314,7 @@ final class POSCreditAccountModel: ObservableObject {
             let record = POSCreditAccountCommandStore.Record(operation: operation, actorUID: actorUID, branchID: branchID, customerID: customerID, commandID: command, request: data, createdAt: Date())
             try POSCreditAccountCommandStore.save(record)
             pending = record; recover()
-        } catch { error = POSCreditAccountCopy.text("StorageFailed") }
+        } catch { self.error = POSCreditAccountCopy.text("StorageFailed") }
     }
     func recover() {
         guard canRecover, !busy, let original = pending else { return }
@@ -328,7 +329,7 @@ final class POSCreditAccountModel: ObservableObject {
                 self.pending = confirmed; self.showResult(response)
                 NotificationCenter.default.post(name: Notification.Name("PPAccountingDataDidChangeNotification"), object: nil)
             }
-        } catch { error = POSCreditAccountCopy.text("StorageFailed") }
+        } catch { self.error = POSCreditAccountCopy.text("StorageFailed") }
     }
     private func showResult(_ data: Data) {
         guard canRecover, let value = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
@@ -340,7 +341,7 @@ final class POSCreditAccountModel: ObservableObject {
     func acknowledge() {
         guard canRecover, let record = pending, record.result != nil else { return }
         do { try POSCreditAccountCommandStore.acknowledge(record); pending = nil; notice = nil; if kind == "administration" { loadAdministration() } else { load(kind: kind) } }
-        catch { error = POSCreditAccountCopy.text("StorageFailed") }
+        catch { self.error = POSCreditAccountCopy.text("StorageFailed") }
     }
     func receipt(_ collection: POSCreditAccountCollection) {
         var body = base(); body["kind"] = "receipt"; body["collectionId"] = collection.id; body["eventId"] = collection.lastEventId
@@ -745,13 +746,13 @@ struct POSCreditAccountSheet: View {
 private enum POSCreditAccountPDF {
     static func export(_ lines: [String]) throws -> URL {
         let page = CGRect(x: 0, y: 0, width: 595, height: 842)
-        let data = UIGraphicsPDFRenderer(bounds: page).pdfData { context in
+        let data: Data = UIGraphicsPDFRenderer(bounds: page).pdfData { context in
             context.beginPage(); var y: CGFloat = 36
             for line in lines {
                 let paragraph = NSMutableParagraphStyle(); paragraph.alignment = Language.isRTL() ? .right : .left
                 paragraph.baseWritingDirection = Language.isRTL() ? .rightToLeft : .leftToRight
                 let text = NSAttributedString(string: line, attributes: [.font: UIFont.preferredFont(forTextStyle: .body), .paragraphStyle: paragraph, .foregroundColor: UIColor.black])
-                let height = ceil(text.boundingRect(with: CGSize(width: 523, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil).height) + 12
+                let height = ceil(text.boundingRect(with: CGSize(width: 523, height: CGFloat.greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil).height) + 12
                 if y + height > 806 { context.beginPage(); y = 36 }
                 text.draw(in: CGRect(x: 36, y: y, width: 523, height: height)); y += height
             }
@@ -783,6 +784,7 @@ private enum POSCreditJSON: Decodable {
         else if let v = try? value.decode([String: POSCreditJSON].self) { self = .object(v) }
         else { self = .array(try value.decode([POSCreditJSON].self)) }
     }
+    @MainActor
     func reviewLines() -> [String] {
         let labels = ["totalMinor": "Total", "amountMinor": "Amount", "dueDateKey": "NextDue", "method": "Method", "reference": "Reference", "reason": "Reason", "invoiceId": "Invoice", "collectionId": "Collection", "sourceAdjustmentId": "OriginalAdjustment", "evidenceReference": "Evidence", "itemIndex": "ItemID", "unitIds": "ExactUnits", "name": "Item", "productId": "ItemID", "quantity": "Quantity", "unitPriceMinor": "UnitPrice", "unitPrice": "UnitPrice", "fulfillment": "Fulfillment", "exceptions": "Exceptions"]
         switch self {
@@ -818,7 +820,7 @@ struct POSCreditAdministrationPage: Decodable {
         let reviewId: String; let kind: String; let makerUid: String; let status: String
         private let proposal: POSCreditJSON
         var id: String { reviewId }
-        var lines: [String] { proposal.reviewLines() }
+        @MainActor var lines: [String] { proposal.reviewLines() }
     }
     let branchId: String; let customerId: String; let policy: Policy
     let rows: [Review]; let policyProposals: [PolicyProposal]; let morePolicies: Bool; let nextCursor: String?
