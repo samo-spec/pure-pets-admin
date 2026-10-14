@@ -1044,6 +1044,7 @@ enum AdminType {
     static let largeTitle = Font.custom("Beiruti-Bold", size: 38, relativeTo: .largeTitle)
     static let title = Font.custom("Beiruti-Bold", size: 32, relativeTo: .largeTitle)
     static let title2 = Font.custom("Beiruti-Bold", size: 24, relativeTo: .title2)
+    static let title2Bold = Font.custom("Beiruti-Bold", size: 24, relativeTo: .title2)
     static let title3 = Font.custom("Beiruti-Bold", size: 20, relativeTo: .title3)
     static let title3Bold = Font.custom("Beiruti-Bold", size: 20, relativeTo: .title3)
     static let headline = Font.custom("Beiruti-Bold", size: 17, relativeTo: .headline)

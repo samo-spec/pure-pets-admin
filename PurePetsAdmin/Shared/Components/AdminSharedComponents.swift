@@ -1333,8 +1333,12 @@ struct POSBarcodeScannerScreen: View {
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .preferredColorScheme(.dark)
-        .onPreferenceChange(BarcodeAperturePreferenceKey.self) { apertureFrame = $0 }
-        .onPreferenceChange(BarcodeCameraPreferenceKey.self) { cameraFrame = $0 }
+        .onPreferenceChange(BarcodeAperturePreferenceKey.self) { frame in
+            DispatchQueue.main.async { apertureFrame = frame }
+        }
+        .onPreferenceChange(BarcodeCameraPreferenceKey.self) { frame in
+            DispatchQueue.main.async { cameraFrame = frame }
+        }
         .onAppear {
             hasFinished = false
             isVisible = true

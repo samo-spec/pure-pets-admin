@@ -7103,6 +7103,13 @@
 "StaffPermTitle_payments_manage" = "إدارة بوابات الدفع والمعاملات";
 "StaffPermTitle_payments_refund" = "تنفيذ استرداد المبالغ للعملاء";
 "StaffPermTitle_pos_sell" = "تنفيذ مبيعات الكاشير ونقاط البيع";
+"StaffPermTitle_pos_credit_read" = "استعراض مديونيات وحسابات العملاء الآجلة";
+"StaffPermTitle_pos_credit_terms_manage" = "إدارة وتعديل سياسات وشروط البيع الآجل";
+"StaffPermTitle_pos_credit_issue" = "إصدار وتمرير البيع الآجل للعملاء";
+"StaffPermTitle_pos_credit_terms_issue" = "تفويض إصدار شروط البيع الآجل";
+"StaffPermTitle_pos_credit_approve" = "اعتماد حدود واستثناءات البيع الآجل";
+"StaffPermTitle_pos_credit_terms_approve" = "اعتماد شروط واستثناءات الآجل";
+"StaffPermTitle_pos_credit_collect" = "تحصيل وسداد مديونيات العملاء";
 "StaffPermTitle_delivery_cod_reconcile" = "تحصيل ومطابقة الدفع عند الاستلام";
 "StaffPermTitle_accounting_view" = "الدفاتر والقيود المحاسبية";
 "StaffPermTitle_orders_view" = "استعراض طلبات الشراء والمبيعات";
@@ -11912,3 +11919,75 @@
 "POS_CreditAccount_Issue_sale_projection" = "أرصدة البيع غير متطابقة";
 "POS_CreditAccount_Issue_missing_journal" = "القيد الأصلي مفقود";
 "POS_CreditAccount_Issue_journal_mismatch" = "القيد الأصلي يحتاج إلى مطابقة";
+
+/* Credit checkout progress accessibility */
+"POS_Credit_Progress" = "مراحل البيع على الحساب";
+"POS_Credit_StepAccessibility" = "الخطوة %1$@ من %2$@، %3$@";
+
+/* Customer credit policy direct editor */
+"POS_Credit_SetPolicyCTA" = "إعداد واعتماد سياسة البيع الآجل";
+"POS_Credit_PolicyEditorTitle" = "سياسة وتسهيلات البيع الآجل";
+"POS_Credit_SaveAndApproveCTA" = "حفظ واعتماد سياسة الائتمان";
+"POS_Credit_OpenFullLedger" = "عرض سجل الحساب والمديونيات";
+"POS_Credit_EnableSales" = "تفعيل البيع الآجل للعميل";
+"POS_Credit_EnableSalesHint" = "السماح للعميل بالشراء الآجل وسداد الفاتورة لاحقاً";
+"POS_Credit_LimitLabel" = "سقف الائتمان (ر.ق)";
+"POS_Credit_ReasonLabel" = "ملاحظات الاعتماد والاتفاق";
+"POS_Credit_ReasonPlaceholder" = "مثال: اعتماد سقف ائتمان للعميل بالاتفاق...";
+"POS_Credit_StatusApproved" = "سياسة الائتمان معتمدة ونشطة";
+"POS_Credit_CurrentLimitSub" = "السقف المعتمد حالياً: %@";
+"POS_Credit_DefaultPolicyReason" = "اعتماد سياسة وتسهيلات البيع الآجل للعميل";
+"POS_Credit_PolicySaved" = "تم حفظ واعتماد سياسة وتسهيلات الائتمان بنجاح.";
+"POS_Customer_CreditSectionTitle" = "سياسة وتسهيلات البيع الآجل";
+"POS_Customer_ManageCreditCTA" = "إعداد سياسة وسقف الائتمان";
+"POS_Customer_CreditConfiguredBadge" = "الآجل مفعل";
+"POS_Customer_CreditNotConfiguredBadge" = "غير معتمد";
+
+/* Customer picker: native directory presentation */
+"POS_Customer_Directory_Heading" = "اختر العميل";
+"POS_Customer_Directory_New" = "عميل جديد";
+"POS_Customer_Directory_Back" = "العودة إلى دليل العملاء";
+"POS_Customer_Directory_ClearSearch" = "مسح البحث";
+"POS_Customer_Directory_DismissMessage" = "إخفاء الرسالة";
+"POS_Customer_Directory_All" = "دليل العملاء";
+"POS_Customer_Directory_Results" = "نتائج البحث";
+"POS_Customer_Directory_Saved" = "نسخة محفوظة على الجهاز";
+"POS_Customer_Directory_Loading" = "جارٍ تحميل دليل العملاء…";
+"POS_Customer_Directory_Empty" = "لا يوجد عملاء لعرضهم بعد";
+"POS_Customer_Directory_EmptyDetail" = "اسحب للتحديث أو ابحث عن العميل بالاسم أو رقم الهاتف.";
+
+/* POS credit account statement and administration presentation */
+"POS_CreditAccount_NoDueDate" = "لا يوجد موعد استحقاق محدد";
+"POS_CreditAccount_ManageTab" = "الإدارة";
+"POS_CreditAccount_EmptyInvoices" = "لا توجد فواتير لعرضها في هذا الحساب.";
+"POS_CreditAccount_EmptyCollections" = "لا توجد عمليات تحصيل لعرضها حتى الآن.";
+"POS_CreditAccount_EmptyFilter" = "لا تطابق أي من الفواتير المحمّلة هذا الفلتر.";
+"POS_CreditAccount_ShowAllInvoices" = "عرض جميع الفواتير";
+"POS_CreditAccount_InstallmentSchedule" = "أرصدة الأقساط";
+"POS_CreditAccount_CollectionHelp" = "افتح الفاتورة وأدخل المبلغ المراد تحصيله، ثم راجع الإجمالي المحدد قبل التأكيد.";
+"POS_CreditAccount_CurrentPolicy" = "سياسة الائتمان الحالية";
+"POS_CreditAccount_VerificationHelp" = "تحقّق من هويتك قبل التغييرات الحساسة. التحقّق وحده لا يرسل طلبًا ولا يعتمد إجراءً.";
+"POS_CreditAccount_ReasonPlaceholder" = "وضّح سبب هذا الطلب";
+"POS_CreditAccount_ReasonHelp" = "يلزم توضيح السبب لإرسال الطلب أو الموافقة عليه. الحد الأقصى ٥٠٠ حرف.";
+"POS_CreditAccount_EditPolicy" = "اقتراح تعديل السياسة";
+"POS_CreditAccount_EnableCredit" = "تفعيل الائتمان لهذا الحساب";
+"POS_CreditAccount_ReviewQueue" = "طلبات المراجعة";
+"POS_CreditAccount_SelectedForCollection" = "محدد للتحصيل";
+"POS_CreditAccount_NoCollectionMethod" = "لا تتوفر وسيلة دفع للتحصيل في هذا الفرع.";
+"POS_CreditAccount_ReasonTooLong" = "اختصر السبب إلى ٥٠٠ حرف أو أقل.";
+
+/* POS identity verification: native two-stage presentation */
+"POS_CreditAccount_StepUpPasswordProgress" = "الخطوة ١ من ٢: كلمة المرور";
+"POS_CreditAccount_StepUpCodeProgress" = "الخطوة ٢ من ٢: تطبيق المصادقة";
+"POS_CreditAccount_StepUpPasswordTitle" = "ابدأ بكلمة المرور";
+"POS_CreditAccount_StepUpCodeTitle" = "رمز تطبيق المصادقة";
+"POS_CreditAccount_StepUpPasswordHelp" = "أدخل كلمة مرور حساب الموظف الحالي، ثم أكّد هويتك عبر تطبيق المصادقة المسجّل.";
+"POS_CreditAccount_StepUpCodeHelp" = "افتح تطبيق المصادقة المسجّل وأدخل الرمز الحالي المكوّن من ٦ أرقام.";
+"POS_CreditAccount_StepUpFinancialBoundary" = "هذه الخطوة لتأكيد هويتك فقط، ولا ترسل أو تعتمد أي عملية مالية.";
+"POS_CreditAccount_StepUpErrorTitle" = "أعد محاولة تأكيد الهوية";
+"POS_CreditAccount_StepUpCodePlaceholder" = "أدخل ٦ أرقام";
+"POS_CreditAccount_StepUpPasswordPlaceholder" = "أدخل كلمة المرور";
+"POS_CreditAccount_StepUpRegisteredAuthenticator" = "تطبيق المصادقة المسجّل";
+"POS_CreditAccount_StepUpCheckingPassword" = "جارٍ التحقّق من كلمة المرور…";
+"POS_CreditAccount_StepUpCheckingCode" = "جارٍ التحقّق من الرمز…";
+"POS_CreditAccount_StepUpContinue" = "متابعة";

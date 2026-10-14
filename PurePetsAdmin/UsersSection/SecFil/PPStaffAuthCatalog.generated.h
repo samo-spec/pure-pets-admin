@@ -203,6 +203,8 @@ extern NSString * const kStaffPermPosCreditReverse;
 extern NSString * const kStaffPermPosCreditClear;
 extern NSString * const kStaffPermPosCreditWriteoff;
 extern NSString * const kStaffPermPosCreditRefund;
+extern NSString * const kStaffPermPosCreditTermsIssue;
+extern NSString * const kStaffPermPosCreditTermsApprove;
 
 #pragma mark - Catalog Accessors
 

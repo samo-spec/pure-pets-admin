@@ -147,7 +147,12 @@ static NSArray<NSString *> *PPStaffCanonicalPermissionKeys(id value) {
 
 BOOL PPStaffMatchesPermission(NSArray<NSString *> *granted, NSString *perm) {
     if (!perm.length || !granted.count) return NO;
-    return [granted containsObject:perm];
+    if ([granted containsObject:perm]) return YES;
+    if ([perm isEqualToString:@"pos.credit.issue"] && [granted containsObject:@"pos.credit_terms.issue"]) return YES;
+    if ([perm isEqualToString:@"pos.credit_terms.issue"] && [granted containsObject:@"pos.credit.issue"]) return YES;
+    if ([perm isEqualToString:@"pos.credit.approve"] && [granted containsObject:@"pos.credit_terms.approve"]) return YES;
+    if ([perm isEqualToString:@"pos.credit_terms.approve"] && [granted containsObject:@"pos.credit.approve"]) return YES;
+    return NO;
 }
 
 - (BOOL)hasPermission:(NSString *)perm {

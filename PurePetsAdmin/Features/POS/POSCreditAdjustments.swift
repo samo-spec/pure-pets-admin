@@ -120,10 +120,17 @@ struct POSCreditAdjustmentSheet: View {
                         dismiss()
                     }
                 }.disabled(!valid).frame(minHeight: 44)
-                Button(t("StepUp")) { verifying = true }.frame(minHeight: 44)
+                if model.needsStepUp && model.canAdjust {
+                    Button(t("StepUp")) { verifying = true }.frame(minHeight: 44)
+                }
             }
             .navigationTitle(t("AdjustBalance"))
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(t("AdjustBalance"))
+                        .font(PPBrandFont.bold(18, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
                         dismiss()
@@ -139,7 +146,7 @@ struct POSCreditAdjustmentSheet: View {
                 .onChange(of: amount) { _ in accepted = false }.onChange(of: reason) { _ in accepted = false }.onChange(of: evidence) { _ in accepted = false }
                 .onChange(of: collectionID) { _ in accepted = false; sourceID = "" }.onChange(of: sourceID) { _ in accepted = false }
                 .onChange(of: itemMode) { _ in accepted = false }.onChange(of: quantities) { _ in accepted = false }.onChange(of: units) { _ in accepted = false }
-                .sheet(isPresented: $verifying) { POSCreditStepUpSheet() }
+                .sheet(isPresented: $verifying, onDismiss: { model.needsStepUp = false }) { POSCreditStepUpSheet() }
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
     }
@@ -234,6 +241,11 @@ private struct POSCreditReportSheet: View {
             }
             .navigationTitle(t("Reports"))
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(t("Reports"))
+                        .font(PPBrandFont.bold(18, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
                         dismiss()

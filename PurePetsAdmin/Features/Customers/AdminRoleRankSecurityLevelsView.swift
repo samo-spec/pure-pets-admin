@@ -230,14 +230,25 @@ public final class SecurityPermissionCatalog: @unchecked Sendable {
             ),
             SecurityPermissionModule(
                 key: "pos",
-                titleAr: "نقاط البيع والمبيعات المباشرة",
-                titleEn: "Point of Sale (POS)",
+                titleAr: "نقاط البيع والمبيعات المباشرة والآجل",
+                titleEn: "Point of Sale (POS) & Customer Credit",
                 icon: "cart.fill",
                 permissions: [
                     SecurityPermissionItem(key: "pos.view", titleAr: "عرض شاشات البيع المباشر", titleEn: "View POS Screen", moduleKey: "pos", isHighRisk: false),
                     SecurityPermissionItem(key: "pos.sell", titleAr: "إجراء عمليات البيع وإصدار الفواتير", titleEn: "Execute Sales & Receipts", moduleKey: "pos", isHighRisk: false),
                     SecurityPermissionItem(key: "pos.sell.wholesale", titleAr: "إجراء مبيعات الجملة عبر نقطة البيع", titleEn: "Execute Wholesale POS Sales", moduleKey: "pos", isHighRisk: false),
-                    SecurityPermissionItem(key: "pos.history", titleAr: "استعراض سجل مبيعات الصندوق", titleEn: "Review Register History", moduleKey: "pos", isHighRisk: false)
+                    SecurityPermissionItem(key: "pos.history", titleAr: "استعراض سجل مبيعات الصندوق", titleEn: "Review Register History", moduleKey: "pos", isHighRisk: false),
+                    SecurityPermissionItem(key: "pos.credit.read", titleAr: "عرض مديونيات وحسابات العملاء الآجلة (pos.credit.read)", titleEn: "View POS Customer Credit & Receivables", moduleKey: "pos", isHighRisk: false),
+                    SecurityPermissionItem(key: "pos.credit_terms.manage", titleAr: "إدارة وتعديل سياسات وشروط البيع الآجل (pos.credit_terms.manage)", titleEn: "Manage Credit Policies & Terms", moduleKey: "pos", isHighRisk: false),
+                    SecurityPermissionItem(key: "pos.credit.issue", titleAr: "إصدار وتمرير البيع الآجل للعميل (pos.credit.issue)", titleEn: "Issue POS Customer Credit", moduleKey: "pos", isHighRisk: false),
+                    SecurityPermissionItem(key: "pos.credit_terms.issue", titleAr: "تفويض إصدار البيع الآجل (pos.credit_terms.issue)", titleEn: "Authorize Credit Terms Issuance", moduleKey: "pos", isHighRisk: false),
+                    SecurityPermissionItem(key: "pos.credit.approve", titleAr: "اعتماد استثناءات وحدود البيع الآجل (pos.credit.approve)", titleEn: "Approve Credit Exceptions & Limits", moduleKey: "pos", isHighRisk: true),
+                    SecurityPermissionItem(key: "pos.credit_terms.approve", titleAr: "اعتماد شروط واستثناءات الآجل (pos.credit_terms.approve)", titleEn: "Approve Credit Terms Exceptions", moduleKey: "pos", isHighRisk: true),
+                    SecurityPermissionItem(key: "pos.credit.collect", titleAr: "تحصيل وسداد مديونية العميل (pos.credit.collect)", titleEn: "Collect POS Customer Debt", moduleKey: "pos", isHighRisk: false),
+                    SecurityPermissionItem(key: "pos.credit.reverse", titleAr: "عكس تحصيلات وتسويات العملاء (pos.credit.reverse)", titleEn: "Reverse Customer Collections", moduleKey: "pos", isHighRisk: true),
+                    SecurityPermissionItem(key: "pos.credit.clear", titleAr: "تأكيد أو رفض تسوية سندات التحصيل (pos.credit.clear)", titleEn: "Clear or Reject Collection Tenders", moduleKey: "pos", isHighRisk: true),
+                    SecurityPermissionItem(key: "pos.credit.writeoff", titleAr: "شطب مديونيات العملاء المتعثرة (pos.credit.writeoff)", titleEn: "Write Off POS Customer Debt", moduleKey: "pos", isHighRisk: true),
+                    SecurityPermissionItem(key: "pos.credit.refund", titleAr: "تسوية أو استرداد البيع الآجل (pos.credit.refund)", titleEn: "Adjust or Refund Customer Credit", moduleKey: "pos", isHighRisk: true)
                 ]
             ),
             SecurityPermissionModule(
@@ -456,7 +467,9 @@ public struct PlatformRoleModel: Identifiable, Hashable, Sendable {
                 permissions: Set([
                     "dashboard.view", "staff.view", "users.view", "users.manage", "stock.view", "stock.manage", "stock.create",
                     "listings.view", "listings.manage", "listings.moderate", "payments.view", "delivery.view", "delivery.dispatch",
-                    "delivery.override", "delivery.cod.reconcile", "pos.view", "pos.sell", "pos.history", "branches.view",
+                    "delivery.override", "delivery.cod.reconcile", "pos.view", "pos.sell", "pos.history",
+                    "pos.credit.read", "pos.credit_terms.manage", "pos.credit.issue", "pos.credit_terms.issue",
+                    "pos.credit.approve", "pos.credit_terms.approve", "pos.credit.collect", "branches.view",
                     "support.view", "support.manage", "services.view", "services.manage", "hotel.view", "hotel.manage",
                     "categories.view", "categories.manage", "moderation.view", "moderation.manage", "notifications.view", "notifications.send"
                 ]),
@@ -499,7 +512,8 @@ public struct PlatformRoleModel: Identifiable, Hashable, Sendable {
                 accentHex: "#2563EB",
                 permissions: Set([
                     "dashboard.view", "staff.view", "users.view", "stock.view", "stock.manage", "payments.view",
-                    "pos.view", "pos.sell", "pos.history", "branches.view", "hotel.view", "hotel.manage",
+                    "pos.view", "pos.sell", "pos.history", "pos.credit.read", "pos.credit_terms.manage",
+                    "pos.credit.issue", "pos.credit_terms.issue", "pos.credit.collect", "branches.view", "hotel.view", "hotel.manage",
                     "hotel.checkin", "services.view", "support.view"
                 ]),
                 assignedStaffUids: staffRoleMap[PPStaffRole.branchManager.rawValue] ?? []
@@ -665,7 +679,7 @@ public struct PlatformRoleModel: Identifiable, Hashable, Sendable {
                 iconName: "cart.fill",
                 accentHex: "#10B981",
                 permissions: Set([
-                    "pos.view", "pos.sell", "pos.history", "stock.view", "users.view"
+                    "pos.view", "pos.sell", "pos.history", "pos.credit.read", "pos.credit.issue", "pos.credit_terms.issue", "stock.view", "users.view"
                 ]),
                 assignedStaffUids: staffRoleMap[PPStaffRole.sales.rawValue] ?? []
             ),
@@ -2314,7 +2328,7 @@ public struct RoleRankEditorSheet: View {
                 }
                 presetButton(title: Language.get("RoleRank_Preset_Ops", alter: "عمليات ومخزون")) {
                     selectedPermissions = Set([
-                        "dashboard.view", "stock.view", "stock.manage", "pos.view", "pos.sell", "delivery.view", "branches.view"
+                        "dashboard.view", "stock.view", "stock.manage", "pos.view", "pos.sell", "pos.credit.read", "pos.credit_terms.manage", "pos.credit.issue", "pos.credit_terms.issue", "delivery.view", "branches.view"
                     ])
                 }
                 presetButton(title: Language.get("RoleRank_Preset_ReadOnly", alter: "رصد فقط")) {

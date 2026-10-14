@@ -132,9 +132,11 @@ struct AdminAppShell: View {
         }
         .onPreferenceChange(PPNavScrollOffsetPreferenceKey.self) { offset in
             let progress = min(max(-offset / 70.0, 0.0), 1.0)
-            tabScrollProgress[selectedTab] = progress
-            withAnimation(.interpolatingSpring(stiffness: 220, damping: 26)) {
-                scrollProgress = progress
+            DispatchQueue.main.async {
+                tabScrollProgress[selectedTab] = progress
+                withAnimation(.interpolatingSpring(stiffness: 220, damping: 26)) {
+                    scrollProgress = progress
+                }
             }
         }
         .onReceive(
@@ -144,9 +146,11 @@ struct AdminAppShell: View {
         ) { notif in
             if let progressNum = notif.userInfo?["progress"] as? NSNumber {
                 let progress = CGFloat(progressNum.doubleValue)
-                tabScrollProgress[selectedTab] = progress
-                withAnimation(.interpolatingSpring(stiffness: 220, damping: 26)) {
-                    scrollProgress = progress
+                DispatchQueue.main.async {
+                    tabScrollProgress[selectedTab] = progress
+                    withAnimation(.interpolatingSpring(stiffness: 220, damping: 26)) {
+                        scrollProgress = progress
+                    }
                 }
             }
         }

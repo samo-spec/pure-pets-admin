@@ -3780,7 +3780,9 @@ struct AdminPOSFastSellView: View {
         .coordinateSpace(name: POSFastSellSpace.root)
         .onPreferenceChange(POSCartAnchorKey.self) { frame in
             if frame.height > 0, abs(checkoutReservedHeight - frame.height) > 0.5 {
-                checkoutReservedHeight = frame.height
+                DispatchQueue.main.async {
+                    checkoutReservedHeight = frame.height
+                }
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
@@ -3960,7 +3962,11 @@ struct AdminPOSFastSellView: View {
             )
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
-        .onAppear { viewModel.startListening() }
+        .onAppear {
+            DispatchQueue.main.async {
+                viewModel.startListening()
+            }
+        }
         .onDisappear {
             pendingVariantHandoff = nil
             viewModel.stopListening()
@@ -4211,9 +4217,11 @@ struct AdminPOSFastSellView: View {
                     .padding(.bottom, isTransactionContextCollapsed ? 0 : 16)
                     .onPreferenceChange(POSTransactionContextHeightKey.self) { height in
                         guard height > 0, abs(height - (transactionContextHeight ?? 0)) > 0.5 else { return }
-                        var transaction = Transaction()
-                        transaction.disablesAnimations = true
-                        withTransaction(transaction) { transactionContextHeight = height }
+                        DispatchQueue.main.async {
+                            var transaction = Transaction()
+                            transaction.disablesAnimations = true
+                            withTransaction(transaction) { transactionContextHeight = height }
+                        }
                     }
                     .zIndex(1)
                 omniSearchAndFilterBar
@@ -5255,7 +5263,11 @@ private struct POSApexFlightDeck: View {
             // and short windows scroll the complete surface without clipping.
             .frame(height: min(contentHeight, maximumDetailsHeight))
             .onPreferenceChange(POSCheckoutContentHeightKey.self) { height in
-                if height > 0, abs(contentHeight - height) > 0.5 { contentHeight = height }
+                if height > 0, abs(contentHeight - height) > 0.5 {
+                    DispatchQueue.main.async {
+                        contentHeight = height
+                    }
+                }
             }
             if hasItems && !scrollsCompletion {
                 completionControl
@@ -5267,7 +5279,11 @@ private struct POSApexFlightDeck: View {
                         }
                     }
                     .onPreferenceChange(POSCheckoutFooterHeightKey.self) { height in
-                        if height > 0, abs(footerHeight - height) > 0.5 { footerHeight = height }
+                        if height > 0, abs(footerHeight - height) > 0.5 {
+                            DispatchQueue.main.async {
+                                footerHeight = height
+                            }
+                        }
                     }
             }
         }

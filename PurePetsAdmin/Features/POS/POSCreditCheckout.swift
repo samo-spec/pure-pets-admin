@@ -149,6 +149,8 @@ struct POSCreditCheckoutSheet: View {
     @ObservedObject var model: POSFastSellViewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .largeTitle) private var heroAmountSize: CGFloat = 44
 
     @State private var depositText = "0.00"
     @State private var method = "cash"
@@ -162,6 +164,7 @@ struct POSCreditCheckoutSheet: View {
     @State private var localError: String?
     @State private var showsCustomerPicker = false
     @State private var showsCreditAccountSheet = false
+    @State private var showsPolicyEditorSheet = false
     @State private var isRefreshingEligibility = false
     @State private var selectedDepositPreset: Int? = 0
     @State private var selectedDueDatePreset: Int? = 30
@@ -185,6 +188,7 @@ struct POSCreditCheckoutSheet: View {
 
     private var canManageCreditAccount: Bool {
         guard !activeBranchID.isEmpty else { return false }
+        if let staff = PPStaffAuth.shared().cachedCurrentStaff, staff.isAdmin() { return true }
         return POSCreditAccountCopy.permitted("pos.credit.read", branchID: activeBranchID)
     }
 
@@ -212,8 +216,7 @@ struct POSCreditCheckoutSheet: View {
             ScrollView {
                 VStack(spacing: 20) {
                     if !isRecovery {
-                        heroFinancingCard
-                        journeyTracker
+                        creditOverview
                     }
 
                     if isRecovery {
@@ -246,13 +249,20 @@ struct POSCreditCheckoutSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    VStack(spacing: 2) {
-                        Text(label("POS_Credit_Title"))
-                            .font(PPBrandFont.bold(18, relativeTo: .headline))
+                    VStack(spacing: AdminSpacing.xxs) {
+                        Text(label("POS_Credit_PaymentMethod"))
+                            .font(PPBrandFont.bold(Language.isRTL() ? 18 : 16, relativeTo: .headline))
                             .foregroundStyle(AdminSurface.primaryText)
-                        Text("\(activeBranchName) · \(model.cartItems.count) \(label("POS_Items"))")
-                            .font(PPBrandFont.regular(13, relativeTo: .caption))
-                            .foregroundStyle(AdminSurface.secondaryText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .accessibilityLabel(label("POS_Credit_Title"))
+                            .accessibilityAddTraits(.isHeader)
+                        // Recovery omits the overview, so retain its branch/cart context here.
+                        if isRecovery {
+                            Text("\(activeBranchName) · \(label("POS_Items")): \(headerNumber(model.cartItems.count))")
+                                .font(PPBrandFont.regular(Language.isRTL() ? 13 : 11, relativeTo: .caption))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                        }
                     }
                 }
                 ToolbarItem(placement: .cancellationAction) {
@@ -260,18 +270,15 @@ struct POSCreditCheckoutSheet: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         dismiss()
                     } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 13, weight: .bold))
-                            Text(label("POS_Credit_Close"))
-                                .font(AdminType.calloutBold)
-                        }
-                        .foregroundStyle(AdminSurface.crimson)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(AdminSurface.crimson.opacity(0.1), in: Capsule())
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .frame(minWidth: AdminTouchTarget.minimum, minHeight: AdminTouchTarget.minimum)
+                            .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(label("POS_Credit_Close"))
+                    .accessibilityIdentifier("pos.credit.close")
                     .disabled(model.isCheckoutBusy)
                 }
                 ToolbarItemGroup(placement: .keyboard) {
@@ -331,143 +338,253 @@ struct POSCreditCheckoutSheet: View {
                     POSCreditAccountSheet(customerID: customer.id, branchID: activeBranchID)
                 }
             }
+            .sheet(isPresented: $showsPolicyEditorSheet, onDismiss: { model.loadCreditContext() }) {
+                if let customer = model.selectedCustomer, !activeBranchID.isEmpty {
+                    POSCustomerCreditPolicySheet(
+                        customerID: customer.id,
+                        customerName: customer.name,
+                        customerPhone: customer.phone,
+                        branchID: activeBranchID,
+                        branchName: activeBranchName
+                    ) {
+                        model.loadCreditContext()
+                    }
+                }
+            }
         }
     }
 
-    // MARK: - Hero Financing Horizon
+    // MARK: - Credit Overview
+
+    private var creditOverview: some View {
+        VStack(spacing: 0) {
+            heroFinancingCard
+            Rectangle()
+                .fill(AdminSurface.hairline)
+                .frame(height: AdminStroke.hairline)
+                .padding(.horizontal, AdminSpacing.lg)
+                .accessibilityHidden(true)
+            journeyTracker
+                .padding(AdminSpacing.base)
+        }
+        .background {
+            RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
+                .fill(AdminSurface.surface)
+                .overlay {
+                    RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
+                        .fill(LinearGradient(
+                            colors: [AdminSurface.primary.opacity(0.055), .clear],
+                            startPoint: .top,
+                            endPoint: .center
+                        ))
+                }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("pos.credit.overview")
+    }
+
+    private var headerLocale: Locale {
+        Locale(identifier: Language.isRTL() ? "ar_QA" : "en_QA")
+    }
+
+    private func headerNumber(_ value: Int) -> String {
+        value.formatted(.number.locale(headerLocale))
+    }
 
     private var heroFinancingCard: some View {
-        VStack(spacing: 12) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(label("POS_Credit_TotalFinanced"))
-                        .font(AdminType.caption)
-                        .foregroundStyle(AdminSurface.secondaryText)
-                    Text(money(totalMinor))
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .monospacedDigit()
-                        .environment(\.layoutDirection, .leftToRight)
-                        .accessibilityIdentifier("pos.credit.amountDue")
-                }
-                Spacer(minLength: 12)
-                VStack(alignment: .trailing, spacing: 6) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "creditcard.circle.fill")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(AdminSurface.primary)
-                        Text(label("POS_Credit_PaymentMethod"))
-                            .font(AdminType.footnoteBold)
-                            .foregroundStyle(AdminSurface.primary)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(AdminSurface.primary.opacity(0.12), in: Capsule())
-
-                    if model.salesChannel == .wholesale {
-                        Text(label("POS_Channel_Wholesale"))
-                            .font(AdminType.caption)
-                            .foregroundStyle(AdminSurface.amber)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(AdminSurface.amber.opacity(0.12), in: Capsule())
-                    }
-                }
+        VStack(spacing: AdminSpacing.base) {
+            VStack(spacing: AdminSpacing.xs) {
+                Text(label("POS_Credit_TotalFinanced"))
+                    .font(AdminType.footnote)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityHidden(true)
+                Text(money(totalMinor))
+                    .font(.system(size: heroAmountSize, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .monospacedDigit()
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                    .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.6)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity)
+                    .environment(\.layoutDirection, .leftToRight)
+                    .accessibilityLabel(label("POS_Credit_TotalFinanced"))
+                    .accessibilityValue(money(totalMinor))
+                    .accessibilityIdentifier("pos.credit.amountDue")
             }
 
-            if model.creditHasLiveItems || delivery {
-                Divider().opacity(0.6)
-                HStack(spacing: 12) {
+            heroContext
+
+            if model.salesChannel == .wholesale || model.creditHasLiveItems || delivery {
+                // Qualifiers wrap independently without competing with the amount.
+                VStack(spacing: AdminSpacing.sm) {
+                    if model.salesChannel == .wholesale {
+                        heroQualifier(label("POS_Channel_Wholesale"), symbol: "shippingbox", color: AdminSurface.secondaryText)
+                    }
                     if model.creditHasLiveItems {
-                        HStack(spacing: 5) {
-                            Image(systemName: "pawprint.fill")
-                                .font(.system(size: 11, weight: .bold))
-                            Text(label("POS_Credit_SupervisorBadge"))
-                                .font(AdminType.caption)
-                        }
-                        .foregroundStyle(AdminSurface.amber)
+                        heroQualifier(label("POS_Credit_SupervisorBadge"), symbol: "pawprint.fill", color: AdminSurface.amber)
                     }
                     if delivery {
-                        HStack(spacing: 5) {
-                            Image(systemName: "shippingbox.fill")
-                                .font(.system(size: 11, weight: .bold))
-                            Text(label("POS_Credit_Delivery"))
-                                .font(AdminType.caption)
-                        }
-                        .foregroundStyle(AdminSurface.primary)
+                        heroQualifier(label("POS_Credit_Delivery"), symbol: "shippingbox.fill", color: AdminSurface.primary)
                     }
-                    Spacer()
                 }
             }
         }
-        .padding(18)
-        .background(
-            LinearGradient(
-                colors: [AdminSurface.surface, AdminSurface.control.opacity(0.6)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 22, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(AdminSurface.hairline.opacity(0.7), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.04), radius: 12, y: 4)
+        .padding(AdminSpacing.lg)
+    }
+
+    private var heroContext: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: AdminSpacing.md) {
+                heroBranch
+                Circle()
+                    .fill(AdminSurface.secondaryText)
+                    .frame(width: 3, height: 3)
+                    .accessibilityHidden(true)
+                heroItemCount
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            VStack(spacing: AdminSpacing.xs) {
+                heroBranch
+                heroItemCount
+            }
+        }
+        .font(AdminType.footnote)
+        .foregroundStyle(AdminSurface.secondaryText)
+        .multilineTextAlignment(.center)
+    }
+
+    private var heroBranch: some View {
+        HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.xs) {
+            Image(systemName: "building.2")
+                .font(.footnote)
+                .accessibilityHidden(true)
+            Text(activeBranchName)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var heroItemCount: some View {
+        Text("\(label("POS_Items")): \(headerNumber(model.cartItems.count))")
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func heroQualifier(_ title: String, symbol: String, color: Color) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.sm) {
+            Image(systemName: symbol)
+                .font(.footnote.weight(.semibold))
+                .accessibilityHidden(true)
+            Text(title)
+                .font(AdminType.footnoteBold)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(color)
     }
 
     // MARK: - 3-Step Journey Stepper
 
-    private var journeyTracker: some View {
-        HStack(spacing: 8) {
-            stepIndicator(index: 0, title: label("POS_Credit_Step1_Short"), symbol: "person.text.rectangle")
-            stepConnector(isActive: currentStep >= 1)
-            stepIndicator(index: 1, title: label("POS_Credit_Step2_Short"), symbol: "calendar.badge.clock")
-            stepConnector(isActive: currentStep >= 2)
-            stepIndicator(index: 2, title: label("POS_Credit_Step3_Short"), symbol: "checkmark.seal")
-        }
-        .padding(.horizontal, 4)
-        .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.75), value: currentStep)
+    private var journeyTitles: [String] {
+        [label("POS_Credit_Step1_Short"), label("POS_Credit_Step2_Short"), label("POS_Credit_Step3_Short")]
     }
 
-    private func stepIndicator(index: Int, title: String, symbol: String) -> some View {
+    private var journeyTracker: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: AdminSpacing.base) {
+                    ForEach(journeyTitles.indices, id: \.self) { index in
+                        stepIndicator(index: index, vertical: true)
+                    }
+                }
+            } else {
+                HStack(alignment: .top, spacing: 0) {
+                    ForEach(journeyTitles.indices, id: \.self) { index in
+                        stepIndicator(index: index, vertical: false)
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(label("POS_Credit_Progress"))
+        .accessibilityIdentifier("pos.credit.progress")
+    }
+
+    private func stepIndicator(index: Int, vertical: Bool) -> some View {
+        let layout = vertical
+            ? AnyLayout(HStackLayout(alignment: .center, spacing: AdminSpacing.md))
+            : AnyLayout(VStackLayout(alignment: .center, spacing: AdminSpacing.sm))
+
+        return layout {
+            ZStack {
+                if !vertical {
+                    HStack(spacing: 0) {
+                        stepConnector(isActive: index <= currentStep)
+                            .opacity(index == 0 ? 0 : 1)
+                        Color.clear.frame(width: 44, height: 2)
+                        stepConnector(isActive: index < currentStep)
+                            .opacity(index == journeyTitles.count - 1 ? 0 : 1)
+                    }
+                    .accessibilityHidden(true)
+                }
+                stepMarker(index: index)
+            }
+            .frame(width: vertical ? 36 : nil, height: 36)
+
+            Text(journeyTitles[index])
+                .font(AdminType.footnoteBold)
+                .foregroundStyle(index == currentStep ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                .multilineTextAlignment(vertical ? .leading : .center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: vertical ? .leading : .center)
+                .padding(.horizontal, vertical ? 0 : AdminSpacing.xs)
+        }
+        .frame(maxWidth: .infinity, alignment: vertical ? .leading : .center)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(journeyTitles[index])
+        .accessibilityValue(String(
+            format: label("POS_Credit_StepAccessibility"),
+            headerNumber(index + 1), headerNumber(journeyTitles.count),
+            label(index < currentStep ? "POS_Credit_StepDone" : index == currentStep ? "POS_Credit_StepCurrent" : "POS_Credit_StepUpcoming")
+        ))
+        .accessibilityIdentifier("pos.credit.step.\(index)")
+    }
+
+    private func stepMarker(index: Int) -> some View {
         let isDone = index < currentStep
         let isCurrent = index == currentStep
 
-        return HStack(spacing: 6) {
-            ZStack {
-                Circle()
-                    .fill(isDone ? AdminSurface.emerald : isCurrent ? AdminSurface.primary : AdminSurface.control)
-                    .frame(width: 24, height: 24)
-                if isDone {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.white)
-                } else {
-                    Image(systemName: symbol)
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(isCurrent ? .white : AdminSurface.secondaryText)
-                }
+        return ZStack {
+            Circle()
+                .strokeBorder(isCurrent ? AdminSurface.primary.opacity(0.3) : .clear, lineWidth: AdminStroke.thin)
+                .frame(width: 36, height: 36)
+            Circle()
+                .fill(isCurrent ? AdminSurface.primary : isDone ? AdminSurface.primary.opacity(0.1) : AdminSurface.control)
+                .frame(width: 28, height: 28)
+            if isDone {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+            } else {
+                Text(headerNumber(index + 1))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(isCurrent ? .white : AdminSurface.secondaryText)
             }
-            Text(title)
-                .font(isCurrent ? AdminType.footnoteBold : AdminType.footnote)
-                .foregroundStyle(isCurrent ? AdminSurface.primaryText : AdminSurface.secondaryText)
-                .lineLimit(1)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(isCurrent ? AdminSurface.surface : Color.clear, in: Capsule())
-        .overlay(
-            Capsule()
-                .strokeBorder(isCurrent ? AdminSurface.primary.opacity(0.3) : Color.clear, lineWidth: 1)
-        )
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: currentStep)
+        .accessibilityHidden(true)
     }
 
     private func stepConnector(isActive: Bool) -> some View {
-        Rectangle()
-            .fill(isActive ? AdminSurface.emerald : AdminSurface.hairline)
-            .frame(height: 2)
+        Capsule()
+            .fill(isActive ? AdminSurface.primary.opacity(0.35) : AdminSurface.hairline)
+            .frame(height: AdminStroke.thin)
             .frame(maxWidth: .infinity)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isActive)
     }
 
     // MARK: - Customer & Eligibility State Views
@@ -548,23 +665,41 @@ struct POSCreditCheckoutSheet: View {
 
                     // Tactical resolution buttons
                     VStack(spacing: 10) {
+                        // Direct Entry: Set Customer Terms & Credit Policy
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            showsPolicyEditorSheet = true
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "checkmark.shield.fill")
+                                    .font(.system(size: 16, weight: .bold))
+                                Text(Language.get("POS_Credit_SetPolicyCTA", alter: "إعداد واعتماد سياسة البيع الآجل"))
+                                Spacer()
+                                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                                    .font(.caption.weight(.bold))
+                            }
+                            .font(AdminType.subheadlineBold)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 16)
+                            .frame(maxWidth: .infinity, minHeight: 50)
+                            .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 14))
+                            .shadow(color: AdminSurface.primary.opacity(0.24), radius: 8, y: 3)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("pos.credit.setPolicy")
+
                         if canManageCreditAccount {
                             Button {
-                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 showsCreditAccountSheet = true
                             } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "slider.horizontal.3")
+                                HStack(spacing: 6) {
+                                    Image(systemName: "list.bullet.rectangle.portrait")
                                     Text(label("POS_Credit_ManageAccount"))
-                                    Spacer()
-                                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
-                                        .font(.caption.weight(.bold))
                                 }
-                                .font(AdminType.subheadlineBold)
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 16)
-                                .frame(maxWidth: .infinity, minHeight: 48)
-                                .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 14))
+                                .font(AdminType.footnoteBold)
+                                .foregroundStyle(AdminSurface.secondaryText)
+                                .frame(maxWidth: .infinity, minHeight: 38)
                             }
                             .buttonStyle(.plain)
                         }

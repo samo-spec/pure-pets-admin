@@ -82,6 +82,7 @@
 		A72D13A3A310632E0D519B88 /* QBAssetsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 7A00759CF4579FBA409A2847 /* QBAssetsViewController.m */; };
 		C6ED1400A1000000C6ED1401 /* Features/POS/POSCreditCheckout.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6ED1400A1000000C6ED1402 /* Features/POS/POSCreditCheckout.swift */; };
 		C6ED1600A1000000C6ED1601 /* Features/POS/POSCreditAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6ED1600A1000000C6ED1602 /* Features/POS/POSCreditAccount.swift */; };
+		C6ED1700A1000000C6ED1701 /* Features/POS/POSCustomerCreditPolicySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6ED1700A1000000C6ED1702 /* Features/POS/POSCustomerCreditPolicySheet.swift */; };
 		9C878157BB7D259686C9F874 /* Features/POS/POSCreditAdjustments.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46324EE101E83364FD4A2E5D /* Features/POS/POSCreditAdjustments.swift */; };
 		A7C91D01FBE74D56A8101001 /* Features/POS/POSReceiptDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C91D02FBE74D56A8101002 /* Features/POS/POSReceiptDocument.swift */; };
 		A7C91D03FBE74D56A8101003 /* Features/POS/POSReservedLivePetsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C91D04FBE74D56A8101004 /* Features/POS/POSReservedLivePetsView.swift */; };
@@ -524,6 +525,7 @@
 		A6C0F1022FA9000100A6CF02 /* Features/Hotel/AdminHotelOperationalPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Hotel/AdminHotelOperationalPolicy.swift; sourceTree = "<group>"; };
 		C6ED1400A1000000C6ED1402 /* Features/POS/POSCreditCheckout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/POSCreditCheckout.swift; sourceTree = "<group>"; };
 		C6ED1600A1000000C6ED1602 /* Features/POS/POSCreditAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/POSCreditAccount.swift; sourceTree = "<group>"; };
+		C6ED1700A1000000C6ED1702 /* Features/POS/POSCustomerCreditPolicySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/POSCustomerCreditPolicySheet.swift; sourceTree = "<group>"; };
 		46324EE101E83364FD4A2E5D /* Features/POS/POSCreditAdjustments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/POSCreditAdjustments.swift; sourceTree = "<group>"; };
 		A7C91D02FBE74D56A8101002 /* Features/POS/POSReceiptDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/POSReceiptDocument.swift; sourceTree = "<group>"; };
 		A7C91D04FBE74D56A8101004 /* Features/POS/POSReservedLivePetsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/POSReservedLivePetsView.swift; sourceTree = "<group>"; };
@@ -1442,6 +1444,7 @@
 				A7C91D02FBE74D56A8101002 /* Features/POS/POSReceiptDocument.swift */,
 				C6ED1400A1000000C6ED1402 /* Features/POS/POSCreditCheckout.swift */,
 				C6ED1600A1000000C6ED1602 /* Features/POS/POSCreditAccount.swift */,
+				C6ED1700A1000000C6ED1702 /* Features/POS/POSCustomerCreditPolicySheet.swift */,
 				46324EE101E83364FD4A2E5D /* Features/POS/POSCreditAdjustments.swift */,
 				A7C91D04FBE74D56A8101004 /* Features/POS/POSReservedLivePetsView.swift */,
 				A7C91D06FBE74D56A8101006 /* Features/POS/POSCustomerPickerSheet.swift */,
@@ -2748,6 +2751,7 @@
 				A7C91D01FBE74D56A8101001 /* Features/POS/POSReceiptDocument.swift in Sources */,
 				C6ED1400A1000000C6ED1401 /* Features/POS/POSCreditCheckout.swift in Sources */,
 				C6ED1600A1000000C6ED1601 /* Features/POS/POSCreditAccount.swift in Sources */,
+				C6ED1700A1000000C6ED1701 /* Features/POS/POSCustomerCreditPolicySheet.swift in Sources */,
 				9C878157BB7D259686C9F874 /* Features/POS/POSCreditAdjustments.swift in Sources */,
 				A7C91D03FBE74D56A8101003 /* Features/POS/POSReservedLivePetsView.swift in Sources */,
 				A7C91D05FBE74D56A8101005 /* Features/POS/POSCustomerPickerSheet.swift in Sources */,

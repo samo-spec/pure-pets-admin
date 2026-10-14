@@ -321,45 +321,57 @@ public final class AdminCommandOrbitHostingController: UIViewController {
         signals: [AdminCommandOrbitSignalDescriptor],
         animated: Bool
     ) {
-        store.apply(
-            displayName: displayName,
-            avatarURL: avatarURL,
-            roleName: roleName,
-            capabilityCount: capabilityCount,
-            signals: signals,
-            animated: animated
-        )
+        DispatchQueue.main.async { [weak self] in
+            self?.store.apply(
+                displayName: displayName,
+                avatarURL: avatarURL,
+                roleName: roleName,
+                capabilityCount: capabilityCount,
+                signals: signals,
+                animated: animated
+            )
+        }
     }
 
     /// Compatibility seam for existing Objective-C callers that do not supply
     /// profile presentation data. It preserves the latest known identity.
     public func applyRoleName(_ roleName: String?, capabilityCount: Int, signals: [AdminCommandOrbitSignalDescriptor], animated: Bool) {
-        applyIdentityDisplayName(
-            store.snapshot.displayName,
-            avatarURL: store.snapshot.avatarURL,
-            roleName: roleName,
-            capabilityCount: capabilityCount,
-            signals: signals,
-            animated: animated
-        )
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.store.apply(
+                displayName: self.store.snapshot.displayName,
+                avatarURL: self.store.snapshot.avatarURL,
+                roleName: roleName,
+                capabilityCount: capabilityCount,
+                signals: signals,
+                animated: animated
+            )
+        }
     }
 
     public func applyReadinessWithLoadingAreas(_ loadingAreas: [String], failedAreas: [String], updatedAt: Date?) {
-        store.applyReadiness(loadingAreas: loadingAreas, failedAreas: failedAreas, updatedAt: updatedAt)
+        DispatchQueue.main.async { [weak self] in
+            self?.store.applyReadiness(loadingAreas: loadingAreas, failedAreas: failedAreas, updatedAt: updatedAt)
+        }
     }
 
     public func applyHotelAccess(_ allowed: Bool) {
-        store.applyHotelAccess(allowed)
+        DispatchQueue.main.async { [weak self] in
+            self?.store.applyHotelAccess(allowed)
+        }
     }
 
     public func applyWantedPetsAccess(_ allowed: Bool) {
-        store.applyWantedPetsAccess(allowed)
+        DispatchQueue.main.async { [weak self] in
+            self?.store.applyWantedPetsAccess(allowed)
+        }
     }
 
     public func applyServicesAccess(_ allowed: Bool) {
-        store.applyServicesAccess(allowed)
+        DispatchQueue.main.async { [weak self] in
+            self?.store.applyServicesAccess(allowed)
+        }
     }
-
 }
 
 // MARK: - Apple-Grade Concentric Continuous Corner System
@@ -661,9 +673,11 @@ struct AdminCommandCenterScreenView: View {
                 .environment(\.locale, locale)
         }
         .onAppear {
-            refresh()
-            triggerEntranceAnimation()
-            NotificationCenter.default.post(name: NSNotification.Name("AdminCommandCenterHomeDidAppearNotification"), object: nil)
+            DispatchQueue.main.async {
+                refresh()
+                triggerEntranceAnimation()
+                NotificationCenter.default.post(name: NSNotification.Name("AdminCommandCenterHomeDidAppearNotification"), object: nil)
+            }
         }
         .onChange(of: phase) { newPhase in
             if newPhase == .ready || newPhase == .allClear {
@@ -675,32 +689,35 @@ struct AdminCommandCenterScreenView: View {
                 .publisher(for: Notification.Name("LanguageDidChangeNotification"))
                 .receive(on: RunLoop.main)
         ) { _ in
-            store.localeCode = Language.currentLanguageCode()
+            DispatchQueue.main.async {
+                store.localeCode = Language.currentLanguageCode()
+            }
         }
         .onReceive(
             NotificationCenter.default
                 .publisher(for: NSNotification.Name.PPActiveBranchDidChange)
                 .receive(on: RunLoop.main)
         ) { _ in
-            refresh()
+            DispatchQueue.main.async {
+                refresh()
+            }
         }
         .onReceive(
             NotificationCenter.default
                 .publisher(for: Notification.Name("PPAdminCommandAuthorizationDidChangeNotification"))
                 .receive(on: RunLoop.main)
         ) { _ in
-            refresh()
+            DispatchQueue.main.async {
+                refresh()
+            }
         }
     }
 
     private func triggerEntranceAnimation() {
         guard !sectionsAppeared else { return }
-        if reduceMotion {
+        DispatchQueue.main.async {
+            guard !sectionsAppeared else { return }
             sectionsAppeared = true
-        } else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) {
-                sectionsAppeared = true
-            }
         }
     }
 
@@ -1378,14 +1395,16 @@ private struct CommandCenterCockpitBackground: View {
             .allowsHitTesting(false)
             .onAppear {
                 guard !reduceMotion else { return }
-                withAnimation(.easeInOut(duration: 7.2).repeatForever(autoreverses: true)) {
-                    breatheBrand = true
-                }
-                withAnimation(.easeInOut(duration: 5.8).repeatForever(autoreverses: true)) {
-                    breatheTelemetry = true
-                }
-                withAnimation(.easeInOut(duration: 9.5).repeatForever(autoreverses: true)) {
-                    sheenSweep = true
+                DispatchQueue.main.async {
+                    withAnimation(.easeInOut(duration: 7.2).repeatForever(autoreverses: true)) {
+                        breatheBrand = true
+                    }
+                    withAnimation(.easeInOut(duration: 5.8).repeatForever(autoreverses: true)) {
+                        breatheTelemetry = true
+                    }
+                    withAnimation(.easeInOut(duration: 9.5).repeatForever(autoreverses: true)) {
+                        sheenSweep = true
+                    }
                 }
             }
     }
@@ -1888,7 +1907,9 @@ private struct CommandCenterChrome: View {
                 .strokeBorder(readinessTone.accent.opacity(0.25), lineWidth: 0.75)
         )
         .onAppear {
-            pulseBeacon = true
+            DispatchQueue.main.async {
+                pulseBeacon = true
+            }
         }
     }
 
@@ -2567,16 +2588,21 @@ private struct CommandEscalationHero: View {
 
     private func startLivePulse() {
         guard !reduceMotion, !livePulse else { return }
-        withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) {
-            livePulse = true
+        DispatchQueue.main.async {
+            guard !self.reduceMotion, !self.livePulse else { return }
+            withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) {
+                self.livePulse = true
+            }
         }
     }
 
     private func stopLivePulse() {
-        var transaction = Transaction(animation: nil)
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            livePulse = false
+        DispatchQueue.main.async {
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                self.livePulse = false
+            }
         }
     }
 
@@ -3229,7 +3255,7 @@ private struct CommandPOSDeck: View {
     private var posHeaderView: some View {
         HStack(alignment: .center, spacing: 12) {
             Text(CommandPOSHomeCopy.text("Title"))
-                .font(AdminType.title2)
+                .font(PPBrandFont.bold(Language.isRTL() ? 28 : 24, relativeTo: .title2))
                 .foregroundStyle(AdminSurface.primaryText)
                 .accessibilityAddTraits(.isHeader)
                 .fixedSize(horizontal: false, vertical: true)
@@ -3312,25 +3338,39 @@ private struct CommandPOSDeck: View {
             }
         }
         .onPreferenceChange(CommandPOSSectionWidthKey.self) { width in
-            if abs(measuredWidth - width) > 0.5 { measuredWidth = width }
+            if abs(measuredWidth - width) > 0.5 {
+                DispatchQueue.main.async {
+                    measuredWidth = width
+                }
+            }
         }
         .onAppear {
-            telemetryStore.updateBranch(branchID: branchStore.activeBranch?.branchID ?? "")
-            telemetryStore.handleHomeAppearance()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("AdminCommandCenterHomeDidAppearNotification")).receive(on: RunLoop.main)) { _ in
-            telemetryStore.handleHomeAppearance()
-        }
-        .onReceive(branchStore.$activeBranch) { branch in
-            telemetryStore.updateBranch(branchID: branch?.branchID ?? "")
-        }
-        .onChange(of: showsQuickExpenseSheet) { isShowing in
-            if !isShowing {
+            DispatchQueue.main.async {
+                telemetryStore.updateBranch(branchID: branchStore.activeBranch?.branchID ?? "")
                 telemetryStore.handleHomeAppearance()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("AdminCommandCenterHomeDidAppearNotification")).receive(on: RunLoop.main)) { _ in
+            DispatchQueue.main.async {
+                telemetryStore.handleHomeAppearance()
+            }
+        }
+        .onReceive(branchStore.$activeBranch) { branch in
+            DispatchQueue.main.async {
+                telemetryStore.updateBranch(branchID: branch?.branchID ?? "")
+            }
+        }
+        .onChange(of: showsQuickExpenseSheet) { isShowing in
+            if !isShowing {
+                DispatchQueue.main.async {
+                    telemetryStore.handleHomeAppearance()
+                }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("PPAccountingDataDidChangeNotification")).receive(on: RunLoop.main)) { _ in
-            telemetryStore.reload(forced: true)
+            DispatchQueue.main.async {
+                telemetryStore.reload(forced: true)
+            }
         }
         .fullScreenCover(isPresented: $showsQuickExpenseSheet) {
             CommandPOSQuickExpenseSheet(currentBranchName: currentBranchName, onRoute: onRoute)
@@ -4194,7 +4234,9 @@ private struct CommandPOSQuickExpenseView_iPhone: View {
         .navigationViewStyle(.stack)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
-            presenter.loadShiftTelemetry()
+            DispatchQueue.main.async {
+                presenter.loadShiftTelemetry()
+            }
         }
     }
 
@@ -4778,7 +4820,9 @@ private struct CommandPOSQuickExpenseView_iPad: View {
         .navigationViewStyle(.stack)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
-            presenter.loadShiftTelemetry()
+            DispatchQueue.main.async {
+                presenter.loadShiftTelemetry()
+            }
         }
     }
 
@@ -5554,12 +5598,16 @@ private struct CommandStockDeck: View {
         .frame(maxWidth: .infinity)
         .onPreferenceChange(CommandStockStackedHeightKey.self) { newHeight in
             if newHeight > 0 && abs(stackedCardsHeight - newHeight) > 0.5 {
-                stackedCardsHeight = newHeight
+                DispatchQueue.main.async {
+                    stackedCardsHeight = newHeight
+                }
             }
         }
         .onPreferenceChange(CommandStockSectionWidthKey.self) { newWidth in
             if newWidth > 0 && abs(measuredSectionWidth - newWidth) > 0.5 {
-                measuredSectionWidth = newWidth
+                DispatchQueue.main.async {
+                    measuredSectionWidth = newWidth
+                }
             }
         }
         .accessibilityElement(children: .contain)
@@ -6779,8 +6827,10 @@ private struct CommandQuickActionCard: View {
         .buttonStyle(CommandQuickActionCardStyle())
         .onAppear {
             if item.badgeCount != nil || item.isLive {
-                withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
-                    isPulsing = true
+                DispatchQueue.main.async {
+                    withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                        isPulsing = true
+                    }
                 }
             }
         }
@@ -7551,8 +7601,10 @@ private struct AdminSectionHeader_iPhone<Accessory: View>: View {
         }
         .onAppear {
             guard !reduceMotion else { return }
-            withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
-                shimmerPhase = 1.0
+            DispatchQueue.main.async {
+                withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+                    shimmerPhase = 1.0
+                }
             }
         }
         .accessibilityElement(children: .combine)
@@ -7708,8 +7760,10 @@ private struct AdminSectionHeader_iPad<Accessory: View>: View {
         }
         .onAppear {
             guard !reduceMotion else { return }
-            withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
-                shimmerPhase = 1.0
+            DispatchQueue.main.async {
+                withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+                    shimmerPhase = 1.0
+                }
             }
         }
         .accessibilityElement(children: .combine)
@@ -8042,8 +8096,10 @@ private struct CommandAccountingSovereignCard: View {
                     .padding(.vertical, 2)
                     .background(Color(red: 0.16, green: 0.78, blue: 0.48).opacity(0.12), in: Capsule())
                     .onAppear {
-                        withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
-                            isPulsing = true
+                        DispatchQueue.main.async {
+                            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                                isPulsing = true
+                            }
                         }
                     }
                 }
@@ -8373,8 +8429,10 @@ private struct CommandHotelSovereignCard: View {
                     .padding(.vertical, 2)
                     .background(Color(red: 0.35, green: 0.80, blue: 0.55).opacity(0.12), in: Capsule())
                     .onAppear {
-                        withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
-                            isPulsing = true
+                        DispatchQueue.main.async {
+                            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                                isPulsing = true
+                            }
                         }
                     }
                 }
@@ -8831,8 +8889,10 @@ private struct CommandHotelQuickActionCard: View {
         .buttonStyle(CommandCardPressStyle(scale: 0.98, pressedOpacity: 0.94, cornerRadius: CommandCorner.tile))
         .onAppear {
             if count > 0 {
-                withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
-                    isPulsing = true
+                DispatchQueue.main.async {
+                    withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                        isPulsing = true
+                    }
                 }
             }
         }

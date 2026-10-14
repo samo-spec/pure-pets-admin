@@ -2378,7 +2378,11 @@ public struct PPGlobalNavigationScrollShell<Content: View>: View {
                 }
                 .coordinateSpace(name: PPNavScrollCoordinateSpace.name)
                 .onPreferenceChange(PPNavScrollOffsetPreferenceKey.self) { value in
-                    scrollOffset = value
+                    DispatchQueue.main.async {
+                        if abs(scrollOffset - value) > 0.5 {
+                            scrollOffset = value
+                        }
+                    }
                 }
 
                 if showsTopFade {

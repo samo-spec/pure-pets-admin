@@ -1104,8 +1104,9 @@ private struct POSCustomerIdentityCell: View {
     let selectionHint: String
     let onSelect: () -> Void
     let onEdit: (() -> Void)?
+    var creditBranchID: String? = nil
     @Environment(\.dynamicTypeSize) private var typeSize
-    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.layoutDirection) private var direction
 
     private var note: String { (customer.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
     private var isUnavailable: Bool {
@@ -1114,82 +1115,72 @@ private struct POSCustomerIdentityCell: View {
     }
 
     var body: some View {
-        Group {
-            if typeSize.isAccessibilitySize {
-                VStack(spacing: 0) {
-                    selectionButton
-                    if onEdit != nil {
-                        Divider().padding(.horizontal, 16)
-                        editButton
+        VStack(alignment: .leading, spacing: 0) {
+            selectionButton
+            if creditBranchID != nil || onEdit != nil {
+                let layout = typeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 0))
+                    : AnyLayout(HStackLayout(alignment: .center, spacing: AdminSpacing.base))
+                layout {
+                    if let branchID = creditBranchID {
+                        POSCreditAccountLink(customerID: customer.id, branchID: branchID, compact: true)
                     }
+                    if onEdit != nil { editButton }
                 }
-            } else {
-                HStack(spacing: 0) {
-                    selectionButton
-                    if onEdit != nil {
-                        Rectangle().fill(AdminSurface.hairline).frame(width: 1, height: 28)
-                            .accessibilityHidden(true)
-                        editButton.padding(.horizontal, 6)
-                    }
-                }
+                .padding(.leading, typeSize.isAccessibilitySize ? AdminSpacing.base : 72)
+                .padding(.trailing, AdminSpacing.base)
+                .padding(.bottom, AdminSpacing.xs)
             }
         }
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(isSelected ? AdminSurface.primary :
-                    (contrast == .increased ? AdminSurface.secondaryText : AdminSurface.hairline),
-                    lineWidth: isSelected ? 1.5 : 1)
-                .allowsHitTesting(false)
-        }
+        .background(isSelected ? AdminSurface.primary.opacity(0.045) : Color.clear)
         .accessibilityElement(children: .contain)
     }
 
     private var selectionButton: some View {
         Button(action: onSelect) {
-            HStack(alignment: .top, spacing: 11) {
+            HStack(alignment: .top, spacing: AdminSpacing.md) {
                 if !typeSize.isAccessibilitySize {
                     Text(customer.initials)
-                        .font(PPBrandFont.bold(15, relativeTo: .caption))
-                        .foregroundColor(AdminSurface.primary)
-                        .frame(width: 32, height: 32)
-                        .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                        .font(PPBrandFont.bold(19, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primary)
+                        .frame(width: 44, height: 44)
+                        .background(AdminSurface.primary.opacity(0.07), in: Circle())
                         .accessibilityHidden(true)
                 }
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                    HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.sm) {
                         Text(customer.name)
                             .font(PPBrandFont.bold(20, relativeTo: .headline))
-                            .foregroundColor(AdminSurface.primaryText)
+                            .foregroundStyle(AdminSurface.primaryText)
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        Image(systemName: isSelected ? "checkmark.circle.fill" : "chevron.forward")
-                            .font(.system(size: isSelected ? 17 : 11, weight: .semibold))
-                            .foregroundColor(isSelected ? AdminSurface.primary : AdminSurface.secondaryText)
+                        Image(systemName: isSelected ? "checkmark" : "chevron.forward")
+                            .font(.system(size: isSelected ? 16 : 11, weight: isSelected ? .bold : .semibold))
+                            .foregroundStyle(isSelected ? AdminSurface.primary : AdminSurface.secondaryText)
                             .accessibilityHidden(true)
                     }
-                    VStack(alignment: .leading, spacing: 4) {
-                        if !customer.phone.isEmpty { contactLine(customer.phone, icon: "phone", isEmail: false) }
-                        if !customer.email.isEmpty { contactLine(customer.email, icon: "envelope", isEmail: true) }
-                    }
+                    if !customer.phone.isEmpty { contactLine(customer.phone, icon: "phone", isEmail: false) }
+                    if !customer.email.isEmpty { contactLine(customer.email, icon: "envelope", isEmail: true) }
+                    if !branchName.isEmpty { metadataLine(branchName, icon: "mappin") }
                     if customer.isLinkedAppUser {
                         metadataLine(Language.get("POS_Customer_AppUserBadge", alter: nil), icon: "person.crop.circle")
                     }
                     if isUnavailable { metadataLine(Language.get("POS_Customer_InactiveContact", alter: nil), icon: "lock") }
-                    if !branchName.isEmpty { metadataLine(branchName, icon: "mappin") }
                     if !note.isEmpty {
                         Text(note)
-                            .font(PPBrandFont.regular(13, relativeTo: .footnote))
-                            .foregroundColor(AdminSurface.secondaryText)
+                            .font(AdminType.footnote)
+                            .foregroundStyle(AdminSurface.secondaryText)
                             .multilineTextAlignment(.leading)
                             .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
-            .padding(14)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(.horizontal, AdminSpacing.base)
+            .padding(.top, AdminSpacing.base)
+            .padding(.bottom, creditBranchID != nil || onEdit != nil ? AdminSpacing.xs : AdminSpacing.base)
+            .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(POSCustomerContactPressStyle())
@@ -1202,45 +1193,45 @@ private struct POSCustomerIdentityCell: View {
             .filter { !$0.isEmpty }.joined(separator: ", "))
         .accessibilityHint(selectionHint)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        .accessibilityIdentifier("pos.customer.select.\(customer.id)")
     }
 
     private func contactLine(_ value: String, icon: String, isEmail: Bool) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 5) {
-            if !Language.isRTL() { Image(systemName: icon).font(.system(size: 10, weight: .medium)) }
+        // The whole technical line reads LTR; its physical edge follows the surrounding language.
+        HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.xs) {
+            if direction != .rightToLeft { Image(systemName: icon).font(.caption) }
             Text(value)
-                .font(isEmail ? PPBrandFont.medium(13.5, relativeTo: .footnote) : PPBrandFont.bold(15, relativeTo: .subheadline))
-                .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                .font(isEmail ? AdminType.footnote : AdminType.subheadline)
+                .multilineTextAlignment(direction == .rightToLeft ? .trailing : .leading)
                 .fixedSize(horizontal: false, vertical: true)
-            if Language.isRTL() { Image(systemName: icon).font(.system(size: 10, weight: .medium)) }
+            if direction == .rightToLeft { Image(systemName: icon).font(.caption) }
         }
-        .frame(maxWidth: .infinity, alignment: Language.isRTL() ? .trailing : .leading)
+        .frame(maxWidth: .infinity, alignment: direction == .rightToLeft ? .trailing : .leading)
         .environment(\.layoutDirection, .leftToRight)
-        .foregroundColor(AdminSurface.secondaryText)
+        .foregroundStyle(AdminSurface.secondaryText)
     }
 
     private func metadataLine(_ value: String, icon: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 5) {
-            Image(systemName: icon).font(.system(size: 10, weight: .medium))
-            Text(value).font(PPBrandFont.medium(13, relativeTo: .footnote))
+        HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.xs) {
+            Image(systemName: icon).font(.caption)
+                .accessibilityHidden(true)
+            Text(value)
+                .font(AdminType.footnote)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .foregroundColor(AdminSurface.secondaryText)
+        .foregroundStyle(AdminSurface.secondaryText)
     }
 
     private var editButton: some View {
         Button { onEdit?() } label: {
-            HStack(spacing: 7) {
-                Image(systemName: "pencil.line").font(.system(size: 16, weight: .medium))
-                if typeSize.isAccessibilitySize {
-                    Text(Language.get("POS_Customer_EditButton", alter: nil))
-                        .font(PPBrandFont.bold(16, relativeTo: .callout))
-                }
-            }
-            .foregroundColor(AdminSurface.primary)
-            .frame(minWidth: 44, maxWidth: typeSize.isAccessibilitySize ? .infinity : nil, minHeight: 44)
-            .padding(.vertical, typeSize.isAccessibilitySize ? 4 : 0)
-            .contentShape(Rectangle())
+            Label(Language.get("POS_Customer_EditButton", alter: nil), systemImage: "pencil.line")
+                .font(AdminType.footnoteBold)
+                .foregroundStyle(AdminSurface.secondaryText)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minHeight: AdminTouchTarget.minimum, alignment: .leading)
+                .contentShape(Rectangle())
         }
         .buttonStyle(POSCustomerContactPressStyle())
         .disabled(isUnavailable)
@@ -1591,6 +1582,16 @@ private struct POSCustomerAccountAttachmentSheet: View {
 // MARK: - IPHONE: SENSORY DECK ARCHITECTURE
 // MARK: - ==========================================
 
+private struct RecentCustomerCardHeightPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        let next = nextValue()
+        if next > value {
+            value = next
+        }
+    }
+}
+
 private struct iPhoneCustomerSensoryDeck: View {
     @ObservedObject var viewModel: POSCustomerPickerViewModel
     let currentSelected: POSCustomerRecord?
@@ -1601,57 +1602,48 @@ private struct iPhoneCustomerSensoryDeck: View {
     let onSelect: (POSCustomerRecord) -> Void
     let dismiss: () -> Void
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.layoutDirection) private var direction
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
     @FocusState private var isSearchFocused: Bool
+    @State private var recentCardsMaxHeight: CGFloat = 148
+
+    private func text(_ key: String) -> String { Language.get(key, alter: nil) }
+    private var locale: Locale { Locale(identifier: Language.isRTL() ? "ar_QA" : "en_QA") }
+    private var isBusy: Bool { viewModel.isSubmitting || viewModel.isEditingSubmitting || viewModel.isAttachingUser }
+    private var navigationTitle: String {
+        if viewModel.activeTab == .create { return text("POS_Customer_Directory_New") }
+        switch purpose {
+        case .posCart: return text("POS_Customer_Directory_Heading")
+        default: return purpose.title
+        }
+    }
 
     var body: some View {
         NavigationView {
-            ZStack {
-                AdminSurface.background.ignoresSafeArea()
-
-                VStack(spacing: 0) {
-                    // Header Bar
-                    AdminSovereignNavigationBar(
-                        title: purpose.title,
-                        subtitle: purpose.subtitle(canCreate: canCreateCustomer),
-                        statusDotColor: Color(uiColor: .ppSuccess),
-                        isModal: true,
-                        onBack: {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            dismiss()
-                        }
-                    ) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(AdminSurface.primary.opacity(0.12))
-                                .frame(width: 44, height: 44)
-                            Image(systemName: "person.2.badge.gearshape.fill")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(AdminSurface.primary)
-                        }
-                    }
-
-                    // Mode Switcher Tabs
-                    tabSwitcher
-                    Divider().background(AdminSurface.hairline)
-
-                    // Error & Success Banners
-                    if let error = viewModel.errorMessage {
-                        errorBanner(error)
-                    }
-                    if let success = viewModel.successFeedbackMessage {
-                        successBanner(success)
-                    }
-
-                    // Dynamic Sensory Body
-                    switch viewModel.activeTab {
-                    case .search:
-                        iPhoneSearchChamber
-                    case .create:
-                        iPhoneCreateChamber
-                    }
+            VStack(spacing: 0) {
+                navigationHeader
+                switch viewModel.activeTab {
+                case .search:
+                    iPhoneSearchChamber
+                case .create:
+                    iPhoneCreateChamber
                 }
             }
+            .background(AdminSurface.background.ignoresSafeArea())
             .navigationBarHidden(true)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button(text("Done")) {
+                        isSearchFocused = false
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+                    .font(AdminType.calloutBold)
+                }
+            }
+            .interactiveDismissDisabled(isBusy)
             .sheet(item: $viewModel.editingCustomer) { customer in
                 POSCustomerEditSheet(
                     viewModel: viewModel,
@@ -1665,359 +1657,458 @@ private struct iPhoneCustomerSensoryDeck: View {
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
             }
         }
+        .navigationViewStyle(.stack)
     }
 
-    // MARK: - Tab Switcher
-
-    private var tabSwitcher: some View {
-        HStack(spacing: 6) {
-            ForEach(canCreateCustomer ? POSCustomerPickerTab.allCases : [.search]) { tab in
-                let selected = viewModel.activeTab == tab
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
-                        viewModel.activeTab = tab
-                        if tab == .create && !viewModel.searchText.isEmpty {
-                            let trimmedSearch = viewModel.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-                            if viewModel.isPhoneQuery && viewModel.newPhone.isEmpty {
-                                viewModel.newPhone = trimmedSearch
-                                viewModel.checkDuplicatePhone(trimmedSearch)
-                            } else if !viewModel.isPhoneQuery && viewModel.newName.isEmpty {
-                                viewModel.newName = trimmedSearch
-                            }
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: tab.icon)
-                            .font(.system(size: 13, weight: .semibold))
-                        Text(tab.title)
-                            .font(Font.custom(selected ? "Beiruti-Bold" : "Beiruti-Medium", size: 14, relativeTo: .subheadline))
-                    }
-                    .foregroundColor(selected ? .white : AdminSurface.secondaryText)
-                    .frame(maxWidth: .infinity, minHeight: 38)
-                    .background(
-                        selected ? AdminSurface.primary : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    )
+    private var navigationHeader: some View {
+        HStack(alignment: .center, spacing: AdminSpacing.md) {
+            if viewModel.activeTab == .create {
+                Button { switchMode(.search) } label: {
+                    Image(systemName: "chevron.backward")
+                        .font(.system(size: 17, weight: .semibold))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(POSCustomerContactPressStyle())
+                .foregroundStyle(AdminSurface.primary)
+                .accessibilityLabel(text("POS_Customer_Directory_Back"))
+                .disabled(isBusy)
             }
-        }
-        .padding(4)
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .padding(.horizontal, 16)
-        .padding(.bottom, 10)
-    }
-
-    // MARK: - Feedback Banners
-
-    private func errorBanner(_ message: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.circle.fill")
-                .foregroundColor(.red)
-            Text(message)
-                .font(Font.custom("Beiruti-Medium", size: 12.5, relativeTo: .caption))
-                .foregroundColor(AdminSurface.primaryText)
+            Text(navigationTitle)
+                .font(typeSize.isAccessibilitySize ? AdminType.headlineBold : PPBrandFont.bold(25, relativeTo: .title2))
+                .foregroundStyle(AdminSurface.primaryText)
+                .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
-            Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityAddTraits(.isHeader)
             Button {
-                viewModel.errorMessage = nil
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                dismiss()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(AdminSurface.secondaryText)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .frame(width: 44, height: 44)
+                    .background(AdminSurface.surface, in: Circle())
+                    .contentShape(Circle())
             }
+            .buttonStyle(POSCustomerContactPressStyle())
+            .accessibilityLabel(text("POS_Close"))
+            .accessibilityIdentifier("pos.customer.close")
+            .disabled(isBusy)
         }
-        .padding(10)
-        .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.top, AdminSpacing.md)
+        .padding(.bottom, AdminSpacing.sm)
     }
 
-    private func successBanner(_ message: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundColor(.green)
-            Text(message)
-                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
-                .foregroundColor(AdminSurface.primaryText)
-            Spacer()
-            Button {
-                viewModel.successFeedbackMessage = nil
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(AdminSurface.secondaryText)
+    private func switchMode(_ tab: POSCustomerPickerTab) {
+        guard !isBusy, tab != .create || canCreateCustomer else { return }
+        isSearchFocused = false
+        if tab == .create && !viewModel.searchText.isEmpty {
+            let query = viewModel.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if viewModel.isPhoneQuery && viewModel.newPhone.isEmpty {
+                viewModel.newPhone = query
+                viewModel.checkDuplicatePhone(query)
+            } else if !viewModel.isPhoneQuery && viewModel.newName.isEmpty {
+                viewModel.newName = query
             }
         }
-        .padding(10)
-        .background(Color.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        // No entrance sequence or reordering of the directory when a query changes.
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+            viewModel.activeTab = tab
+        }
     }
-
-    // MARK: - iPhone Search Chamber
 
     private var iPhoneSearchChamber: some View {
         ScrollView {
-            VStack(spacing: 14) {
-                // Search Input Capsule
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .font(.system(size: 16, weight: .medium))
-
-                    TextField(Language.get("POS_Customer_DirectorySearchPlaceholder", alter: "ابحث بالاسم أو رقم الهاتف..."), text: $viewModel.searchText)
-                        .font(Font.custom("Beiruti-Regular", size: 15, relativeTo: .body))
-                        .foregroundColor(AdminSurface.primaryText)
-                        .focused($isSearchFocused)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled(true)
-                        .onChange(of: viewModel.searchText, perform: { newValue in
-                            viewModel.handleSearchQueryChanged(newValue)
-                        })
-
-                    // Query Mode Intelligence Badge
-                    if !viewModel.searchText.isEmpty {
-                        HStack(spacing: 4) {
-                            Image(systemName: viewModel.isPhoneQuery ? "phone.badge.waveform" : "person.text.rectangle")
-                                .font(.system(size: 10))
-                            Text(viewModel.isPhoneQuery
-                                 ? Language.get("POS_Customer_FilterPhoneMode", alter: "رقم هاتف")
-                                 : Language.get("POS_Customer_FilterNameMode", alter: "اسم العميل"))
-                                .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
-                        }
-                        .foregroundColor(viewModel.isPhoneQuery ? .orange : AdminSurface.primary)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(
-                            (viewModel.isPhoneQuery ? Color.orange : AdminSurface.primary).opacity(0.12),
-                            in: Capsule()
-                        )
-
-                        Button {
-                            viewModel.searchText = ""
-                            viewModel.handleSearchQueryChanged("")
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(AdminSurface.secondaryText)
-                                .font(.system(size: 15))
-                        }
-                    }
-
-                    if viewModel.isLoading {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                            .tint(AdminSurface.primary)
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(isSearchFocused ? AdminSurface.primary : AdminSurface.hairline, lineWidth: isSearchFocused ? 1.5 : 1)
-                )
-
-                if canAttachAppUser {
-                    POSCustomerAttachUserButton(action: onAttachAppUser)
+            VStack(alignment: .leading, spacing: AdminSpacing.lg) {
+                VStack(alignment: .leading, spacing: AdminSpacing.md) {
+                    Text(purpose.subtitle(canCreate: canCreateCustomer))
+                        .font(AdminType.subheadline)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    searchField
+                    if canCreateCustomer || canAttachAppUser { directoryActions }
                 }
 
-                // Recent Walk-Ins Shelf
+                feedbackMessages
+
                 if viewModel.searchText.isEmpty && !viewModel.recentCustomers.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Image(systemName: "clock.arrow.circlepath")
-                                .font(.system(size: 12))
-                                .foregroundColor(AdminSurface.secondaryText)
-                            Text(Language.get("POS_Customer_RecentWalkIns", alter: "عملاء حديثون"))
-                                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
-                                .foregroundColor(AdminSurface.secondaryText)
-                            Spacer()
-                            syncStatusBadge
-                        }
-
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(viewModel.recentCustomers) { customer in
-                                    iPhoneRecentCustomerChip(customer: customer)
-                                }
-                            }
-                        }
-                    }
+                    recentCustomers
                 }
 
-                // Search Results Header & Sync Status (when search is active or recents empty)
-                if !viewModel.searchText.isEmpty || viewModel.recentCustomers.isEmpty {
-                    HStack {
-                        if !viewModel.searchText.isEmpty {
-                            Text(String(format: Language.get("POS_Catalog_ResultCount_Format", alter: "%ld نتيجة"), viewModel.searchResults.count))
-                                .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
-                                .foregroundColor(AdminSurface.secondaryText)
+                VStack(alignment: .leading, spacing: AdminSpacing.md) {
+                    directorySummary
+                    if viewModel.searchResults.isEmpty {
+                        if viewModel.isLoading {
+                            loadingDirectory
+                        } else if viewModel.errorMessage == nil {
+                            iPhoneEmptySearchState
                         }
-                        Spacer()
-                        syncStatusBadge
-                    }
-                }
-
-                // Customer Results Stream
-                if viewModel.searchResults.isEmpty && !viewModel.isLoading {
-                    iPhoneEmptySearchState
-                } else {
-                    LazyVStack(spacing: 10) {
-                        ForEach(viewModel.searchResults) { customer in
-                            VStack(spacing: 4) {
+                    } else {
+                        LazyVStack(spacing: 0) {
+                            ForEach(viewModel.searchResults) { customer in
                                 iPhoneCustomerResultCard(customer: customer)
-                                if customer.source == "directory" {
-                                    POSCreditAccountLink(customerID: customer.id, branchID: BranchContextStore.shared.activeBranch?.branchID ?? "")
+                                if customer.id != viewModel.searchResults.last?.id && customer.id != currentSelected?.id {
+                                    Rectangle()
+                                        .fill(contrast == .increased ? AdminSurface.secondaryText : AdminSurface.hairline)
+                                        .frame(height: AdminStroke.hairline)
+                                        .padding(.leading, typeSize.isAccessibilitySize ? AdminSpacing.base : 72)
+                                        .padding(.trailing, AdminSpacing.base)
+                                        .accessibilityHidden(true)
                                 }
                             }
                         }
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous))
                     }
                 }
             }
-            .padding(16)
+            .padding(.horizontal, AdminSpacing.screenMargin)
+            .padding(.top, AdminSpacing.xs)
+            .padding(.bottom, AdminSpacing.lg)
         }
-        .refreshable {
-            await viewModel.refreshFromFirestoreAsync()
+        .scrollDismissesKeyboard(.interactively)
+        .refreshable { await viewModel.refreshFromFirestoreAsync() }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: AdminSpacing.sm) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 18, weight: .medium))
+                .foregroundStyle(isSearchFocused ? AdminSurface.primary : AdminSurface.secondaryText)
+                .accessibilityHidden(true)
+            TextField(text("POS_Customer_DirectorySearchPlaceholder"), text: $viewModel.searchText)
+                .font(AdminType.body)
+                .foregroundStyle(AdminSurface.primaryText)
+                .multilineTextAlignment(viewModel.isPhoneQuery && direction == .rightToLeft ? .trailing : .leading)
+                .environment(\.layoutDirection, viewModel.isPhoneQuery ? .leftToRight : direction)
+                .focused($isSearchFocused)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .submitLabel(.search)
+                .onSubmit { isSearchFocused = false }
+                .onChange(of: viewModel.searchText) { viewModel.handleSearchQueryChanged($0) }
+                .accessibilityLabel(text("POS_Customer_DirectorySearchPlaceholder"))
+                .accessibilityIdentifier("pos.customer.search")
+            if !viewModel.searchText.isEmpty {
+                Button { viewModel.searchText = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 17))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(POSCustomerContactPressStyle())
+                .accessibilityLabel(text("POS_Customer_Directory_ClearSearch"))
+            }
+        }
+        .padding(.leading, AdminSpacing.base)
+        .padding(.trailing, viewModel.searchText.isEmpty ? AdminSpacing.base : AdminSpacing.xs)
+        .padding(.vertical, AdminSpacing.sm)
+        .frame(minHeight: 54)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .strokeBorder(isSearchFocused ? AdminSurface.primary :
+                    (contrast == .increased ? AdminSurface.secondaryText : AdminSurface.hairline), lineWidth: isSearchFocused ? 1.5 : 1)
+                .allowsHitTesting(false)
         }
     }
 
-    @ViewBuilder
-    private var syncStatusBadge: some View {
+    private var directoryActions: some View {
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: AdminSpacing.sm))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: AdminSpacing.md))
+        return layout {
+            if canCreateCustomer {
+                Button { switchMode(.create) } label: {
+                    Label(text("POS_Customer_Directory_New"), systemImage: "person.badge.plus")
+                        .font(AdminType.calloutBold)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .foregroundStyle(AdminSurface.primary)
+                .buttonStyle(POSCustomerContactPressStyle())
+            }
+            if canAttachAppUser {
+                Button(action: onAttachAppUser) {
+                    Label(text("POS_Customer_AttachUser_Title"), systemImage: "link")
+                        .font(AdminType.footnoteBold)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .foregroundStyle(AdminSurface.secondaryText)
+                .buttonStyle(POSCustomerContactPressStyle())
+                .accessibilityHint(text("POS_Customer_AttachUser_Description"))
+            }
+        }
+    }
+
+    @ViewBuilder private var feedbackMessages: some View {
+        if let error = viewModel.errorMessage {
+            feedbackBanner(error, isError: true) { viewModel.errorMessage = nil }
+        }
+        if let success = viewModel.successFeedbackMessage {
+            feedbackBanner(success, isError: false) { viewModel.successFeedbackMessage = nil }
+        }
+    }
+
+    private func feedbackBanner(_ message: String, isError: Bool, dismissMessage: @escaping () -> Void) -> some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+            HStack(alignment: .top, spacing: AdminSpacing.sm) {
+                Image(systemName: isError ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                    .foregroundStyle(isError ? AdminSurface.crimson : AdminSurface.emerald)
+                    .padding(.top, AdminSpacing.md)
+                    .accessibilityHidden(true)
+                Text(message)
+                    .font(AdminType.subheadline)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, AdminSpacing.md)
+                Button(action: dismissMessage) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(POSCustomerContactPressStyle())
+                .accessibilityLabel(text("POS_Customer_Directory_DismissMessage"))
+            }
+            if isError && viewModel.activeTab == .search {
+                Button(text("Retry")) { viewModel.handleSearchQueryChanged(viewModel.searchText) }
+                    .font(AdminType.calloutBold)
+                    .foregroundStyle(AdminSurface.primary)
+                    .frame(minHeight: 44)
+                    .disabled(viewModel.isSyncingWithFirestore)
+            }
+        }
+        .padding(.horizontal, AdminSpacing.md)
+        .background((isError ? AdminSurface.crimson : AdminSurface.emerald).opacity(0.06), in: RoundedRectangle(cornerRadius: AdminRadius.card))
+    }
+
+    private var directorySummary: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+            HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.sm) {
+                Text(text(viewModel.searchText.isEmpty ? "POS_Customer_Directory_All" : "POS_Customer_Directory_Results"))
+                    .font(AdminType.headlineBold)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .accessibilityAddTraits(.isHeader)
+                Text(viewModel.searchResults.count.formatted(.number.locale(locale)))
+                    .font(AdminType.subheadline)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .monospacedDigit()
+                Spacer(minLength: 0)
+            }
+            if !viewModel.searchText.isEmpty {
+                Text(text(viewModel.isPhoneQuery ? "POS_Customer_FilterPhoneMode" : "POS_Customer_FilterNameMode"))
+                    .font(AdminType.caption)
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+            syncStatusBadge
+        }
+        .multilineTextAlignment(.leading)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder private var syncStatusBadge: some View {
         if viewModel.isSyncingWithFirestore {
-            HStack(spacing: 5) {
-                ProgressView()
-                    .scaleEffect(0.6)
-                    .frame(width: 12, height: 12)
-                Text(Language.get("POS_Customer_Syncing", alter: "جارٍ التحقق والتحديث..."))
-                    .font(Font.custom("Beiruti-Medium", size: 11, relativeTo: .caption2))
-                    .foregroundColor(AdminSurface.secondaryText)
+            HStack(spacing: AdminSpacing.sm) {
+                ProgressView().tint(AdminSurface.primary)
+                Text(text("POS_Customer_Syncing"))
+                    .font(AdminType.caption)
+                    .foregroundStyle(AdminSurface.secondaryText)
             }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(AdminSurface.control, in: Capsule())
-            .transition(.opacity)
         } else if viewModel.lastSyncDate != nil {
-            HStack(spacing: 4) {
-                Image(systemName: "checkmark.icloud.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(Color(uiColor: .ppSuccess))
-                Text(Language.get("POS_Customer_CacheSynced", alter: "محدث ومحفوظ محلياً"))
-                    .font(Font.custom("Beiruti-Medium", size: 11, relativeTo: .caption2))
-                    .foregroundColor(AdminSurface.secondaryText)
-            }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(AdminSurface.control, in: Capsule())
-            .transition(.opacity)
+            Label(text("POS_Customer_Directory_Saved"), systemImage: "internaldrive")
+                .font(AdminType.caption)
+                .foregroundStyle(AdminSurface.secondaryText)
         }
     }
 
-    // MARK: - Recent Chip
+    private var recentCustomers: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.md) {
+            Text(text("POS_Customer_RecentWalkIns"))
+                .font(AdminType.headlineBold)
+                .foregroundStyle(AdminSurface.primaryText)
+                .accessibilityAddTraits(.isHeader)
+            if typeSize.isAccessibilitySize {
+                VStack(spacing: AdminSpacing.sm) {
+                    ForEach(viewModel.recentCustomers) { iPhoneRecentCustomerChip(customer: $0) }
+                }
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: AdminSpacing.md) {
+                        ForEach(viewModel.recentCustomers) { iPhoneRecentCustomerChip(customer: $0) }
+                    }
+                    .onPreferenceChange(RecentCustomerCardHeightPreferenceKey.self) { newHeight in
+                        if newHeight > recentCardsMaxHeight {
+                            recentCardsMaxHeight = newHeight
+                        }
+                    }
+                }
+                .onChange(of: viewModel.recentCustomers) { _ in
+                    recentCardsMaxHeight = 148
+                }
+            }
+        }
+    }
+
+    private func unavailable(_ customer: POSCustomerRecord) -> Bool {
+        ["blocked", "banned", "disabled", "deactivated", "deleted", "suspended", "archived", "inactive"]
+            .contains(customer.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
+
+    private func select(_ customer: POSCustomerRecord) {
+        guard !unavailable(customer), !isBusy else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        viewModel.rememberCustomer(customer)
+        onSelect(customer)
+        dismiss()
+    }
 
     private func iPhoneRecentCustomerChip(customer: POSCustomerRecord) -> some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            viewModel.rememberCustomer(customer)
-            onSelect(customer)
-            dismiss()
-        } label: {
-            HStack(spacing: 8) {
-                ZStack {
-                    Circle()
-                        .fill(customer.avatarColor)
-                        .frame(width: 28, height: 28)
+        Button { select(customer) } label: {
+            VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+                HStack {
                     Text(customer.initials)
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(.white)
+                        .font(PPBrandFont.bold(20, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primary)
+                        .frame(width: 44, height: 44)
+                        .background(AdminSurface.surface, in: Circle())
+                        .accessibilityHidden(true)
+                    Spacer(minLength: 0)
+                    if currentSelected?.id == customer.id {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(AdminSurface.primary)
+                            .accessibilityHidden(true)
+                    }
                 }
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(customer.name)
-                        .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
-                        .foregroundColor(AdminSurface.primaryText)
-                        .lineLimit(1)
+                Text(customer.name)
+                    .font(AdminType.subheadlineBold)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .multilineTextAlignment(direction == .rightToLeft ? .trailing : .leading)
+                    .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: typeSize.isAccessibilitySize ? nil : 42,
+                        alignment: direction == .rightToLeft ? .topTrailing : .topLeading
+                    )
+                if !customer.phone.isEmpty {
                     Text(customer.phone)
-                        .font(PPBrandFont.medium(11, relativeTo: .caption2))
-                        .foregroundColor(AdminSurface.secondaryText)
+                        .font(AdminType.footnote)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .multilineTextAlignment(direction == .rightToLeft ? .trailing : .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: direction == .rightToLeft ? .trailing : .leading)
+                        .environment(\.layoutDirection, .leftToRight)
                 }
+                if unavailable(customer) {
+                    Label(text("POS_Customer_InactiveContact"), systemImage: "lock")
+                        .font(AdminType.caption)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(AdminSurface.hairline))
+            .padding(AdminSpacing.md)
+            .frame(width: typeSize.isAccessibilitySize ? nil : 152, alignment: .leading)
+            .frame(
+                maxWidth: typeSize.isAccessibilitySize ? .infinity : nil,
+                minHeight: typeSize.isAccessibilitySize ? nil : max(recentCardsMaxHeight, 148),
+                alignment: .topLeading
+            )
+            .background(
+                GeometryReader { geo in
+                    Color.clear.preference(
+                        key: RecentCustomerCardHeightPreferenceKey.self,
+                        value: geo.size.height
+                    )
+                }
+            )
+            .background(AdminSurface.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: AdminRadius.card))
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(POSCustomerContactPressStyle())
+        .disabled(unavailable(customer))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(customer.name)
+        .accessibilityValue([customer.phone, unavailable(customer) ? text("POS_Customer_InactiveContact") : ""].filter { !$0.isEmpty }.joined(separator: ", "))
+        .accessibilityHint(purpose.selectTitle)
+        .accessibilityAddTraits(currentSelected?.id == customer.id ? [.isSelected] : [])
+        .accessibilityIdentifier("pos.customer.recent.\(customer.id)")
     }
 
-    // MARK: - iPhone Customer Card with Edit Button
-
     private func iPhoneCustomerResultCard(customer: POSCustomerRecord) -> some View {
-        POSCustomerIdentityCell(
+        let branchID = BranchContextStore.shared.activeBranch?.branchID ?? ""
+        let canReadCredit = customer.source == "directory" && !customer.id.isEmpty &&
+            POSCreditAccountCopy.permitted("pos.credit.read", branchID: branchID)
+        return POSCustomerIdentityCell(
             customer: customer,
             branchName: viewModel.branchDisplayName(for: customer.branchId),
             isSelected: currentSelected?.id == customer.id,
             selectionHint: purpose.selectTitle,
-            onSelect: {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                viewModel.rememberCustomer(customer)
-                onSelect(customer)
-                dismiss()
-            },
-            onEdit: canCreateCustomer ? { viewModel.startEditing(customer: customer) } : nil
+            onSelect: { select(customer) },
+            onEdit: canCreateCustomer ? { viewModel.startEditing(customer: customer) } : nil,
+            creditBranchID: canReadCredit ? branchID : nil
         )
     }
 
-    // MARK: - iPhone Empty Search State
+    private var loadingDirectory: some View {
+        HStack(alignment: .center, spacing: AdminSpacing.md) {
+            ProgressView().tint(AdminSurface.primary)
+            Text(text("POS_Customer_Directory_Loading"))
+                .font(AdminType.body)
+                .foregroundStyle(AdminSurface.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(AdminSpacing.lg)
+        .accessibilityElement(children: .combine)
+    }
 
     private var iPhoneEmptySearchState: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "person.crop.circle.badge.questionmark")
-                .font(.system(size: 42, weight: .light))
-                .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
-                .padding(.top, 24)
-
-            VStack(spacing: 4) {
-                Text(Language.get("POS_Customer_NoMatchTitle", alter: "لا توجد نتائج مطابقة"))
-                    .font(Font.custom("Beiruti-Bold", size: 16.5, relativeTo: .headline))
-                    .foregroundColor(AdminSurface.primaryText)
-                if !viewModel.searchText.isEmpty {
-                    Text(String(format: Language.get("POS_Customer_NoMatchSub", alter: "لم نجد عميلاً باسم أو هاتف '%@'."), viewModel.searchText))
-                        .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .caption))
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .multilineTextAlignment(.center)
+        VStack(alignment: .leading, spacing: AdminSpacing.md) {
+            Image(systemName: viewModel.searchText.isEmpty ? "person.crop.rectangle.stack" : "magnifyingglass")
+                .font(.system(size: 30, weight: .light))
+                .foregroundStyle(AdminSurface.primary)
+                .accessibilityHidden(true)
+            Text(text(viewModel.searchText.isEmpty ? "POS_Customer_Directory_Empty" : "POS_Customer_NoMatchTitle"))
+                .font(AdminType.title3Bold)
+                .foregroundStyle(AdminSurface.primaryText)
+            Text(viewModel.searchText.isEmpty
+                 ? text("POS_Customer_Directory_EmptyDetail")
+                 : String(format: text("POS_Customer_NoMatchSub"), viewModel.searchText))
+                .font(AdminType.body)
+                .foregroundStyle(AdminSurface.secondaryText)
+            if canCreateCustomer {
+                Button { switchMode(.create) } label: {
+                    Label(text("POS_Customer_Directory_New"), systemImage: "plus")
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.primary)
+                        .frame(minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
                 }
-            }
-
-            if canCreateCustomer && !viewModel.searchText.isEmpty {
-                Button {
-                    let trimmedSearch = viewModel.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if viewModel.isPhoneQuery {
-                        viewModel.newPhone = trimmedSearch
-                        viewModel.checkDuplicatePhone(trimmedSearch)
-                    } else {
-                        viewModel.newName = trimmedSearch
-                    }
-                    viewModel.activeTab = .create
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text(String(format: Language.get("POS_Customer_CreateInstantCTA", alter: "إضافة «%@» كعميل جديد"), viewModel.searchText))
-                            .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .callout))
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(AdminSurface.primary, in: Capsule())
-                }
-                .padding(.top, 6)
+                .buttonStyle(POSCustomerContactPressStyle())
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
+        .multilineTextAlignment(.leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(AdminSpacing.lg)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous))
     }
 
     // MARK: - iPhone Create Chamber
@@ -2025,6 +2116,7 @@ private struct iPhoneCustomerSensoryDeck: View {
     private var iPhoneCreateChamber: some View {
         ScrollView {
             VStack(spacing: 16) {
+                feedbackMessages
                 // Live Monogram Hero Preview
                 ZStack {
                     Circle()
@@ -2100,10 +2192,14 @@ private struct iPhoneCustomerSensoryDeck: View {
                             TextField(Language.get("POS_Customer_PhonePlaceholder", alter: "5512 3456"), text: $viewModel.newPhone)
                                 .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .body))
                                 .keyboardType(.phonePad)
+                                .textContentType(.telephoneNumber)
+                                .multilineTextAlignment(.leading)
+                                .accessibilityLabel(text("POS_Customer_PhoneField"))
                                 .onChange(of: viewModel.newPhone, perform: { newValue in
                                     viewModel.checkDuplicatePhone(newValue)
                                 })
                         }
+                        .environment(\.layoutDirection, .leftToRight)
                         .padding(6)
                         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline))
@@ -2137,6 +2233,7 @@ private struct iPhoneCustomerSensoryDeck: View {
                                                 .foregroundColor(active ? .white : AdminSurface.primaryText)
                                                 .padding(.horizontal, 10)
                                                 .padding(.vertical, 6)
+                                                .frame(minHeight: AdminTouchTarget.minimum)
                                                 .background(active ? AdminSurface.primary : AdminSurface.surface, in: Capsule())
                                                 .overlay(Capsule().stroke(AdminSurface.hairline))
                                         }
@@ -2191,6 +2288,7 @@ private struct iPhoneCustomerSensoryDeck: View {
             }
             .padding(16)
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private func iPhoneFormField(
@@ -2214,7 +2312,11 @@ private struct iPhoneCustomerSensoryDeck: View {
                 TextField(placeholder, text: text)
                     .font(Font.custom("Beiruti-Regular", size: 14.5, relativeTo: .body))
                     .keyboardType(keyboardType)
+                    .multilineTextAlignment(keyboardType == .emailAddress && direction == .rightToLeft ? .trailing : .leading)
+                    .environment(\.layoutDirection, keyboardType == .emailAddress ? .leftToRight : direction)
+                    .textInputAutocapitalization(keyboardType == .emailAddress ? .never : .sentences)
                     .autocorrectionDisabled(true)
+                    .accessibilityLabel(title)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
@@ -2234,6 +2336,7 @@ private struct POSCustomerEditSheet: View {
     let purpose: POSCustomerPickerPurpose
     let onSelectAndDismiss: (POSCustomerRecord) -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var showsCreditPolicySheet = false
 
     var body: some View {
         NavigationView {
@@ -2425,6 +2528,53 @@ private struct POSCustomerEditSheet: View {
                                     .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                                     .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline))
                                 }
+
+                                // Credit Policy & Terms Section
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack {
+                                        Text(Language.get("POS_Customer_CreditSectionTitle", alter: "سياسة وتسهيلات البيع الآجل"))
+                                            .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
+                                            .foregroundColor(AdminSurface.primaryText)
+                                        Spacer()
+                                    }
+
+                                    HStack(alignment: .top, spacing: 10) {
+                                        Image(systemName: "checkmark.shield.fill")
+                                            .foregroundColor(AdminSurface.primary)
+                                            .font(.system(size: 16))
+                                            .padding(.top, 2)
+
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(Language.get("POS_Credit_NeedsVerification", alter: "Customer terms need verification"))
+                                                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .subheadline))
+                                                .foregroundColor(AdminSurface.primaryText)
+                                            Text(Language.get("POS_Credit_PolicyRequired", alter: "This customer needs an approved credit policy for this branch before selling on credit."))
+                                                .font(Font.custom("Beiruti-Regular", size: 11.5, relativeTo: .caption))
+                                                .foregroundColor(AdminSurface.secondaryText)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                        }
+
+                                        Spacer(minLength: 0)
+                                    }
+                                    .padding(12)
+                                    .background(AdminSurface.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline))
+
+                                    Button {
+                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                        showsCreditPolicySheet = true
+                                    } label: {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "slider.horizontal.3")
+                                            Text(Language.get("POS_Customer_ManageCreditCTA", alter: "إعداد سياسة وسقف الائتمان"))
+                                                .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .callout))
+                                        }
+                                        .foregroundColor(AdminSurface.primary)
+                                        .frame(maxWidth: .infinity, minHeight: 40)
+                                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+                                }
                             }
 
                             // Action Buttons
@@ -2477,6 +2627,17 @@ private struct POSCustomerEditSheet: View {
                 }
             }
             .navigationBarHidden(true)
+            .sheet(isPresented: $showsCreditPolicySheet) {
+                let branchID = BranchContextStore.shared.activeBranch?.branchID ?? ""
+                let branchName = BranchContextStore.shared.activeBranch?.localizedName() ?? ""
+                POSCustomerCreditPolicySheet(
+                    customerID: customer.id,
+                    customerName: customer.name,
+                    customerPhone: customer.phone,
+                    branchID: branchID,
+                    branchName: branchName
+                ) {}
+            }
         }
     }
 }
@@ -2496,6 +2657,7 @@ private struct iPadCustomerSpatialCockpit: View {
     let dismiss: () -> Void
 
     @FocusState private var isSearchFocused: Bool
+    @State private var showsCreditPolicySheet = false
 
     var body: some View {
         ZStack {
@@ -2546,6 +2708,19 @@ private struct iPadCustomerSpatialCockpit: View {
             )
             .shadow(color: Color.black.opacity(0.24), radius: 30, y: 12)
             .padding(24)
+            .sheet(isPresented: $showsCreditPolicySheet) {
+                if let customer = viewModel.editingCustomer ?? viewModel.highlightedCustomer {
+                    let branchID = BranchContextStore.shared.activeBranch?.branchID ?? ""
+                    let branchName = BranchContextStore.shared.activeBranch?.localizedName() ?? ""
+                    POSCustomerCreditPolicySheet(
+                        customerID: customer.id,
+                        customerName: customer.name,
+                        customerPhone: customer.phone,
+                        branchID: branchID,
+                        branchName: branchName
+                    ) {}
+                }
+            }
         }
     }
 
@@ -2916,7 +3091,7 @@ private struct iPadCustomerSpatialCockpit: View {
         .background(isHighlighted ? AdminSurface.primary.opacity(0.08) : AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(isHighlighted ? AdminSurface.primary : (isCurrentPOS ? Color.green.opacity(0.6) : AdminSurface.hairline), lineWidth: isHighlighted ? 1.5 : 1)
+                .stroke(isHighlighted ? AdminSurface.primary : (isCurrentPOS ? Color.clear : AdminSurface.hairline), lineWidth: isHighlighted ? 1.5 : (isCurrentPOS ? 0 : 1))
         )
     }
 
@@ -3041,6 +3216,45 @@ private struct iPadCustomerSpatialCockpit: View {
                                     icon: "note.text"
                                 )
                             }
+
+                            // Credit & Terms Card in Dossier
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "banknote.fill")
+                                            .foregroundColor(AdminSurface.primary)
+                                            .font(.system(size: 13))
+                                        Text(Language.get("POS_Customer_CreditSectionTitle", alter: "سياسة وتسهيلات البيع الآجل"))
+                                            .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
+                                            .foregroundColor(AdminSurface.primaryText)
+                                    }
+                                    Spacer()
+                                    Button {
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                        showsCreditPolicySheet = true
+                                    } label: {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "slider.horizontal.3")
+                                                .font(.system(size: 11))
+                                            Text(Language.get("POS_Customer_ManageCreditCTA", alter: "إعداد الائتمان"))
+                                                .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                                        }
+                                        .foregroundColor(AdminSurface.primary)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(AdminSurface.primary.opacity(0.1), in: Capsule())
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+                                }
+
+                                Text(Language.get("POS_Credit_PolicyRequired", alter: "This customer needs an approved credit policy for this branch before selling on credit."))
+                                    .font(Font.custom("Beiruti-Regular", size: 11.5, relativeTo: .caption))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(10)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(AdminSurface.hairline))
                         }
                         .padding(.horizontal, 16)
                     }
@@ -3312,6 +3526,53 @@ private struct iPadCustomerSpatialCockpit: View {
                             .padding(.vertical, 8)
                             .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(AdminSurface.hairline))
+                    }
+
+                    // Credit Policy & Terms Section
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(Language.get("POS_Customer_CreditSectionTitle", alter: "سياسة وتسهيلات البيع الآجل"))
+                                .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
+                                .foregroundColor(AdminSurface.primaryText)
+                            Spacer()
+                        }
+
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "checkmark.shield.fill")
+                                .foregroundColor(AdminSurface.primary)
+                                .font(.system(size: 15))
+                                .padding(.top, 2)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(Language.get("POS_Credit_NeedsVerification", alter: "Customer terms need verification"))
+                                    .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .subheadline))
+                                    .foregroundColor(AdminSurface.primaryText)
+                                Text(Language.get("POS_Credit_PolicyRequired", alter: "This customer needs an approved credit policy for this branch before selling on credit."))
+                                    .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
+                            Spacer(minLength: 0)
+                        }
+                        .padding(10)
+                        .background(AdminSurface.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(AdminSurface.hairline))
+
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            showsCreditPolicySheet = true
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "slider.horizontal.3")
+                                Text(Language.get("POS_Customer_ManageCreditCTA", alter: "إعداد سياسة وسقف الائتمان"))
+                                    .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .callout))
+                            }
+                            .foregroundColor(AdminSurface.primary)
+                            .frame(maxWidth: .infinity, minHeight: 38)
+                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
                 }
                 .padding(16)

@@ -11026,7 +11026,9 @@ public struct PPItemActionsHubView: View {
             .frame(height: streamContentHeight > 0 ? min(streamContentHeight, geometry.size.height * 0.78) : nil)
             .onPreferenceChange(PPActionHubContentHeightKey.self) { val in
                 if val > 0 {
-                    streamContentHeight = val
+                    DispatchQueue.main.async {
+                        streamContentHeight = val
+                    }
                 }
             }
 

@@ -145,7 +145,8 @@ struct PPCustomerAccountModel: Identifiable, Hashable, Sendable {
             [Color(red: 0.45, green: 0.15, blue: 0.70), Color(red: 0.65, green: 0.28, blue: 0.88)], // Amethyst Purple
             [Color(red: 0.10, green: 0.60, blue: 0.65), Color(red: 0.20, green: 0.75, blue: 0.78)]  // Deep Teal
         ]
-        let index = abs(id.hashValue) % palettes.count
+        let safeHash = id.utf8.reduce(0) { ($0 &* 31) &+ Int($1) }
+        let index = abs(safeHash % palettes.count)
         return palettes[index]
     }
 
@@ -671,41 +672,24 @@ struct AdminUsersListView: View {
                 .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.toastMessage)
             }
 
-            // Push Navigation Link for Customer Dossier View
-            NavigationLink(
-                destination: Group {
-                    if let customer = viewModel.activeDossierCustomer {
-                        AdminCustomerDossierView(
-                            customer: customer,
-                            viewModel: viewModel,
-                            onDismiss: {
-                                viewModel.activeDossierCustomer = nil
-                            }
-                        )
-                    }
-                },
-                isActive: Binding(
-                    get: { viewModel.activeDossierCustomer != nil },
-                    set: { if !$0 { viewModel.activeDossierCustomer = nil } }
-                )
-            ) {
-                EmptyView()
-            }
-            .hidden()
-
-            NavigationLink(
-                destination: AdminAddCustomerSheet(
-                    viewModel: viewModel,
-                    isPushMode: true,
-                    onBack: {
-                        viewModel.isAddCustomerSheetPresented = false
-                    }
-                ),
-                isActive: $viewModel.isAddCustomerSheetPresented
-            ) {
-                EmptyView()
-            }
-            .hidden()
+        }
+        .fullScreenCover(item: $viewModel.activeDossierCustomer) { customer in
+            AdminCustomerDossierView(
+                customer: customer,
+                viewModel: viewModel,
+                onDismiss: {
+                    viewModel.activeDossierCustomer = nil
+                }
+            )
+        }
+        .fullScreenCover(isPresented: $viewModel.isAddCustomerSheetPresented) {
+            AdminAddCustomerSheet(
+                viewModel: viewModel,
+                isPushMode: false,
+                onBack: {
+                    viewModel.isAddCustomerSheetPresented = false
+                }
+            )
         }
         .ignoresSafeArea()
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
@@ -713,20 +697,34 @@ struct AdminUsersListView: View {
 
     // MARK: - 1. Sovereign Command Header
 
+    private var sovereignSubtitleText: String {
+        if viewModel.attentionCount > 0 {
+            let alertTemplate = Language.get("MissionControl_Customers_Subtitle_Alert_Format", alter: "تتطلب مراجعة (%d) • إجمالي %d")
+            let formattedAttention = NumberFormatter.localizedString(from: NSNumber(value: viewModel.attentionCount), number: .decimal)
+            let formattedTotal = NumberFormatter.localizedString(from: NSNumber(value: viewModel.totalCount), number: .decimal)
+            if alertTemplate.contains("%@") {
+                return String(format: alertTemplate, formattedAttention, formattedTotal)
+            } else {
+                return String(format: alertTemplate, viewModel.attentionCount, viewModel.totalCount)
+            }
+        } else {
+            let stableTemplate = Language.get("MissionControl_Customers_Subtitle_Stable_Format", alter: "البيانات مستقرة ومؤكدة • %d عميل")
+            let formattedTotal = NumberFormatter.localizedString(from: NSNumber(value: viewModel.totalCount), number: .decimal)
+            if stableTemplate.contains("%@") {
+                return String(format: stableTemplate, formattedTotal)
+            } else {
+                return String(format: stableTemplate, viewModel.totalCount)
+            }
+        }
+    }
+
     private var sovereignHeaderView: some View {
         let hasAttention = viewModel.attentionCount > 0
         let statusColor: Color = hasAttention ? Color(uiColor: .ppWarning) : Color(uiColor: .ppSuccess)
-        let subtitleText: String = {
-            if hasAttention {
-                return String(format: Language.get("MissionControl_Customers_Subtitle_Alert_Format", alter: "تتطلب مراجعة (%d) • إجمالي %d"), viewModel.attentionCount, viewModel.totalCount)
-            } else {
-                return String(format: Language.get("MissionControl_Customers_Subtitle_Stable_Format", alter: "البيانات مستقرة ومؤكدة • %d عميل"), viewModel.totalCount)
-            }
-        }()
 
         return AdminSovereignNavigationBar(
             title: Language.get("MissionControl_Customers_Title", alter: "حسابات العملاء"),
-            subtitle: subtitleText,
+            subtitle: sovereignSubtitleText,
             statusDotColor: statusColor,
             onBack: {
                 if let onDismiss {
@@ -850,6 +848,18 @@ struct AdminUsersListView: View {
 
     // MARK: - 3. Attention Triage Banner
 
+    private var attentionBannerTitle: String {
+        let countFormatted = NumberFormatter.localizedString(from: NSNumber(value: viewModel.attentionCount), number: .decimal)
+        let template = Language.get("MissionControl_Customers_Signal_Attention_Format", alter: "تحتاج إلى مراجعة: %@")
+        if template.contains("%@") {
+            return String(format: template, countFormatted)
+        } else if template.contains("%d") || template.contains("%ld") || template.contains("%lld") {
+            return String(format: template, viewModel.attentionCount)
+        } else {
+            return "\(template): \(countFormatted)"
+        }
+    }
+
     @ViewBuilder
     private var attentionTriageBanner: some View {
         Button {
@@ -869,7 +879,7 @@ struct AdminUsersListView: View {
                         .foregroundColor(Color(uiColor: .ppWarning))
                 }
 
-                Text(String(format: Language.get("MissionControl_Customers_Signal_Attention_Format", alter: "توجد %d حسابات بحاجة لمراجعة القيود أو التوثيق"), viewModel.attentionCount))
+                Text(attentionBannerTitle)
                     .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
                     .foregroundColor(Color(uiColor: .ppWarning))
                     .lineLimit(1)
@@ -1064,206 +1074,235 @@ private struct CustomerAccountCardView: View {
     let onToggleBlock: () -> Void
 
     var body: some View {
-        Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 10) {
-                // Header Row: Avatar, Identity, Status Pill, Chevron
-                HStack(alignment: .top, spacing: 12) {
-                    avatarVitrine
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                avatarVitrine
+                identityInfoColumn
+                Spacer(minLength: 4)
+                actionsColumn
+            }
 
-                    VStack(alignment: .leading, spacing: 3.5) {
-                        // Display Name
-                        HStack(spacing: 5) {
-                            Text(customer.displayTitle)
-                                .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline))
-                                .foregroundColor(AdminSurface.primaryText)
-                                .lineLimit(1)
+            if customer.hasRestrictions {
+                restrictionsChip
+            }
+        }
+        .padding(13)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(cardBorder)
+        .shadow(color: Color.black.opacity(0.03), radius: 6, y: 2)
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .onTapGesture(perform: onTap)
+        .contextMenu {
+            contextMenuItems
+        }
+    }
 
-                            if customer.isVerified {
-                                Image(systemName: "checkmark.seal.fill")
-                                    .font(.system(size: 13))
-                                    .foregroundColor(Color(red: 0.12, green: 0.50, blue: 0.90))
-                            }
-                        }
+    private var cardBorder: some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .stroke(customer.requiresAttention ? Color(uiColor: .ppWarning).opacity(0.35) : AdminSurface.hairline, lineWidth: 1)
+    }
 
-                        // Contact Row 1: Phone (with Territory Flag)
-                        if !customer.phone.isEmpty {
-                            HStack(spacing: 5) {
-                                Image(systemName: "phone.fill")
-                                    .font(.system(size: 9))
-                                    .foregroundColor(AdminSurface.secondaryText.opacity(0.75))
+    private var identityInfoColumn: some View {
+        VStack(alignment: .leading, spacing: 3.5) {
+            // Display Name
+            HStack(spacing: 5) {
+                Text(customer.displayTitle)
+                    .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline))
+                    .foregroundColor(AdminSurface.primaryText)
+                    .lineLimit(1)
 
-                                if let flag = customer.countryFlag {
-                                    Text(flag)
-                                        .font(.system(size: 11))
-                                }
-
-                                Text(customer.prettyPhone)
-                                    .font(Font.custom("Beiruti-Medium", size: 12, relativeTo: .subheadline))
-                                    .foregroundColor(AdminSurface.primaryText.opacity(0.90))
-                                    .monospacedDigit()
-                                    .lineLimit(1)
-                            }
-                        }
-
-                        // Contact Row 2: Email (Clean, no violent truncation)
-                        if !customer.email.isEmpty {
-                            HStack(spacing: 5) {
-                                Image(systemName: "envelope.fill")
-                                    .font(.system(size: 9))
-                                    .foregroundColor(AdminSurface.secondaryText.opacity(0.65))
-
-                                Text(customer.email)
-                                    .font(Font.custom("Beiruti-Regular", size: 11.5, relativeTo: .caption))
-                                    .foregroundColor(AdminSurface.secondaryText)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                            }
-                        }
-
-                        // Compact Monospace UID Chip with 1-tap copy
-                        Button(action: onCopyUID) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "number")
-                                    .font(.system(size: 8.5, weight: .bold))
-                                Text(customer.shortUID)
-                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                                Image(systemName: "doc.on.doc.fill")
-                                    .font(.system(size: 7.5))
-                            }
-                            .foregroundColor(AdminSurface.secondaryText.opacity(0.85))
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2)
-                            .background(AdminSurface.control, in: Capsule())
-                            .overlay(Capsule().stroke(AdminSurface.hairline, lineWidth: 0.5))
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .accessibilityLabel(String(format: Language.get("Copy_UID_Format", alter: "نسخ المعرف %@"), customer.shortUID))
-                    }
-
-                    Spacer(minLength: 4)
-
-                    // Right Side: Status Badge & Communication Dial
-                    VStack(alignment: .trailing, spacing: 8) {
-                        statusBadge
-
-                        HStack(spacing: 6) {
-                            // Quick WhatsApp link if phone exists
-                            if !customer.phone.isEmpty {
-                                Button {
-                                    openWhatsApp(customer.phone)
-                                } label: {
-                                    ZStack {
-                                        Circle()
-                                            .fill(Color(red: 0.15, green: 0.78, blue: 0.42).opacity(0.12))
-                                            .frame(width: 32, height: 32)
-
-                                        Image("whatsapp")
-                                            .renderingMode(.template)
-                                            .resizable()
-                                            .scaledToFit()
-                                            .frame(width: 14, height: 14)
-                                            .foregroundColor(Color(red: 0.15, green: 0.78, blue: 0.42))
-                                    }
-                                    .frame(width: 44, height: 44)
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                                .accessibilityLabel(Language.get("WhatsApp", alter: "محادثة واتساب"))
-                            }
-
-                            // Quick Call button if phone exists
-                            if !customer.phone.isEmpty {
-                                Button {
-                                    openCall(customer.phone)
-                                } label: {
-                                    ZStack {
-                                        Circle()
-                                            .fill(AdminSurface.primary.opacity(0.10))
-                                            .frame(width: 32, height: 32)
-
-                                        Image(systemName: "phone.fill")
-                                            .font(.system(size: 11, weight: .bold))
-                                            .foregroundColor(AdminSurface.primary)
-                                    }
-                                    .frame(width: 44, height: 44)
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                                .accessibilityLabel(Language.get("Call", alter: "اتصال هاتفي"))
-                            }
-
-                            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(AdminSurface.secondaryText.opacity(0.5))
-                                .padding(.trailing, 2)
-                        }
-                    }
-                }
-
-                // Active Restrictions Warning Chip if any
-                if customer.hasRestrictions {
-                    HStack(spacing: 5) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 10))
-                            .foregroundColor(Color(uiColor: .ppWarning))
-                        Text(String(format: Language.get("Customer_Restrictions_Count", alter: "توجد %d قيود تشغيلية نشطة على الحساب"), customer.activeRestrictionsCount))
-                            .font(Font.custom("Beiruti-Bold", size: 10.5, relativeTo: .caption2))
-                            .foregroundColor(Color(uiColor: .ppWarning))
-                        Spacer()
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3.5)
-                    .background(Color(uiColor: .ppWarning).opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                if customer.isVerified {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 13))
+                        .foregroundColor(Color(red: 0.12, green: 0.50, blue: 0.90))
                 }
             }
-            .padding(13)
-            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(customer.requiresAttention ? Color(uiColor: .ppWarning).opacity(0.35) : AdminSurface.hairline, lineWidth: 1)
-            )
-            .shadow(color: Color.black.opacity(0.03), radius: 6, y: 2)
+
+            // Contact Row 1: Phone (with Territory Flag)
+            if !customer.phone.isEmpty {
+                HStack(spacing: 5) {
+                    Image(systemName: "phone.fill")
+                        .font(.system(size: 9))
+                        .foregroundColor(AdminSurface.secondaryText.opacity(0.75))
+
+                    if let flag = customer.countryFlag {
+                        Text(flag)
+                            .font(.system(size: 11))
+                    }
+
+                    Text(customer.prettyPhone)
+                        .font(Font.custom("Beiruti-Medium", size: 12, relativeTo: .subheadline))
+                        .foregroundColor(AdminSurface.primaryText.opacity(0.90))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                }
+            }
+
+            // Contact Row 2: Email (Clean, no violent truncation)
+            if !customer.email.isEmpty {
+                HStack(spacing: 5) {
+                    Image(systemName: "envelope.fill")
+                        .font(.system(size: 9))
+                        .foregroundColor(AdminSurface.secondaryText.opacity(0.65))
+
+                    Text(customer.email)
+                        .font(Font.custom("Beiruti-Regular", size: 11.5, relativeTo: .caption))
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+
+            // Compact Monospace UID Chip with 1-tap copy
+            uidChip
+        }
+    }
+
+    private var uidChip: some View {
+        Button(action: onCopyUID) {
+            HStack(spacing: 4) {
+                Image(systemName: "number")
+                    .font(.system(size: 8.5, weight: .bold))
+                Text(customer.shortUID)
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                Image(systemName: "doc.on.doc.fill")
+                    .font(.system(size: 7.5))
+            }
+            .foregroundColor(AdminSurface.secondaryText.opacity(0.85))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(AdminSurface.control, in: Capsule())
+            .overlay(Capsule().stroke(AdminSurface.hairline, lineWidth: 0.5))
         }
         .buttonStyle(PlainButtonStyle())
-        .contextMenu {
-            Button(action: onTap) {
-                Label(Language.get("View_Dossier", alter: "عرض السجل الشامل"), systemImage: "person.crop.circle.badge.questionmark")
-            }
+        .accessibilityLabel(String(format: Language.get("Copy_UID_Format", alter: "نسخ المعرف %@"), customer.shortUID))
+    }
 
-            if !customer.phone.isEmpty {
-                Button { openCall(customer.phone) } label: {
-                    Label(Language.get("Call", alter: "اتصال هاتفي"), systemImage: "phone.fill")
+    private var actionsColumn: some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            statusBadge
+
+            HStack(spacing: 6) {
+                if !customer.phone.isEmpty {
+                    quickWhatsAppButton
+                    quickCallButton
                 }
-                Button { openWhatsApp(customer.phone) } label: {
-                    Label {
-                        Text(Language.get("WhatsApp", alter: "محادثة واتساب"))
-                    } icon: {
-                        Image("whatsapp")
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 16, height: 16)
-                    }
+
+                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AdminSurface.secondaryText.opacity(0.5))
+                    .padding(.trailing, 2)
+            }
+        }
+    }
+
+    private var quickWhatsAppButton: some View {
+        Button {
+            openWhatsApp(customer.phone)
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(Color(red: 0.15, green: 0.78, blue: 0.42).opacity(0.12))
+                    .frame(width: 32, height: 32)
+
+                Image("whatsapp")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 14, height: 14)
+                    .foregroundColor(Color(red: 0.15, green: 0.78, blue: 0.42))
+            }
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel(Language.get("WhatsApp", alter: "محادثة واتساب"))
+    }
+
+    private var quickCallButton: some View {
+        Button {
+            openCall(customer.phone)
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(AdminSurface.primary.opacity(0.10))
+                    .frame(width: 32, height: 32)
+
+                Image(systemName: "phone.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(AdminSurface.primary)
+            }
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel(Language.get("Call", alter: "اتصال هاتفي"))
+    }
+
+    private var restrictionsChip: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 10))
+                .foregroundColor(Color(uiColor: .ppWarning))
+            Text(restrictionsText)
+                .font(Font.custom("Beiruti-Bold", size: 10.5, relativeTo: .caption2))
+                .foregroundColor(Color(uiColor: .ppWarning))
+            Spacer()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3.5)
+        .background(Color(uiColor: .ppWarning).opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var restrictionsText: String {
+        let restrTemplate = Language.get("Customer_Restrictions_Count", alter: "توجد %d قيود تشغيلية نشطة على الحساب")
+        let formatted = NumberFormatter.localizedString(from: NSNumber(value: customer.activeRestrictionsCount), number: .decimal)
+        if restrTemplate.contains("%@") {
+            return String(format: restrTemplate, formatted)
+        } else {
+            return String(format: restrTemplate, customer.activeRestrictionsCount)
+        }
+    }
+
+    @ViewBuilder
+    private var contextMenuItems: some View {
+        Button(action: onTap) {
+            Label(Language.get("View_Dossier", alter: "عرض السجل الشامل"), systemImage: "person.crop.circle.badge.questionmark")
+        }
+
+        if !customer.phone.isEmpty {
+            Button { openCall(customer.phone) } label: {
+                Label(Language.get("Call", alter: "اتصال هاتفي"), systemImage: "phone.fill")
+            }
+            Button { openWhatsApp(customer.phone) } label: {
+                Label {
+                    Text(Language.get("WhatsApp", alter: "محادثة واتساب"))
+                } icon: {
+                    Image("whatsapp")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 16, height: 16)
                 }
             }
+        }
 
-            Button(action: onCopyUID) {
-                Label(Language.get("Copy_UID", alter: "نسخ معرّف الحساب (UID)"), systemImage: "doc.on.doc")
-            }
+        Button(action: onCopyUID) {
+            Label(Language.get("Copy_UID", alter: "نسخ معرّف الحساب (UID)"), systemImage: "doc.on.doc")
+        }
 
-            Button(action: onToggleVerify) {
-                Label(
-                    customer.isVerified ? Language.get("Unverify", alter: "إلغاء التوثيق") : Language.get("Verify", alter: "توثيق الحساب"),
-                    systemImage: customer.isVerified ? "shield.slash" : "shield.checkmark"
-                )
-            }
+        Button(action: onToggleVerify) {
+            Label(
+                customer.isVerified ? Language.get("Unverify", alter: "إلغاء التوثيق") : Language.get("Verify", alter: "توثيق الحساب"),
+                systemImage: customer.isVerified ? "shield.slash" : "shield.checkmark"
+            )
+        }
 
-            Button(action: onToggleBlock) {
-                Label(
-                    customer.status == .blocked ? Language.get("Unblock", alter: "رفع الحظر") : Language.get("Block", alter: "حظر الحساب"),
-                    systemImage: customer.status == .blocked ? "lock.open" : "nosign"
-                )
-            }
+        Button(action: onToggleBlock) {
+            Label(
+                customer.status == .blocked ? Language.get("Unblock", alter: "رفع الحظر") : Language.get("Block", alter: "حظر الحساب"),
+                systemImage: customer.status == .blocked ? "lock.open" : "nosign"
+            )
         }
     }
 
@@ -2540,6 +2579,14 @@ private struct CustomerEmptyStateView: View {
     let query: String
     let onReset: () -> Void
 
+    private var emptyBodyText: String {
+        if query.isEmpty {
+            return Language.get("MissionControl_Customers_SourceEmpty_Body", alter: "لا توجد سجلات عملاء نشطة في قاعدة البيانات حالياً.")
+        }
+        let template = Language.get("MissionControl_Customers_FilteredEmpty_Body", alter: "لم نجد حساباً يطابق البحث '%@'.")
+        return template.contains("%@") ? String(format: template, query) : template
+    }
+
     var body: some View {
         VStack(spacing: 14) {
             Image(systemName: query.isEmpty ? "person.2.slash" : "magnifyingglass")
@@ -2554,9 +2601,7 @@ private struct CustomerEmptyStateView: View {
                     .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline))
                     .foregroundColor(AdminSurface.primaryText)
 
-                Text(query.isEmpty
-                     ? Language.get("MissionControl_Customers_SourceEmpty_Body", alter: "لا توجد سجلات عملاء نشطة في قاعدة البيانات حالياً.")
-                     : String(format: Language.get("MissionControl_Customers_FilteredEmpty_Body", alter: "لم نجد حساباً يطابق البحث '%@'."), query))
+                Text(emptyBodyText)
                     .font(Font.custom("Beiruti-Regular", size: 12.5, relativeTo: .caption))
                     .foregroundColor(AdminSurface.secondaryText)
                     .multilineTextAlignment(.center)

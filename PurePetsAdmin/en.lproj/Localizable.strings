@@ -7044,6 +7044,13 @@
 "StaffPermTitle_payments_manage" = "Manage payment gateways and transactions";
 "StaffPermTitle_payments_refund" = "Execute customer refunds";
 "StaffPermTitle_pos_sell" = "Execute POS cashier sales";
+"StaffPermTitle_pos_credit_read" = "View POS customer credit & receivables";
+"StaffPermTitle_pos_credit_terms_manage" = "Manage POS credit policies & terms";
+"StaffPermTitle_pos_credit_issue" = "Issue POS customer credit sales";
+"StaffPermTitle_pos_credit_terms_issue" = "Authorize credit terms issuance";
+"StaffPermTitle_pos_credit_approve" = "Approve credit limits and exceptions";
+"StaffPermTitle_pos_credit_terms_approve" = "Approve credit terms exceptions";
+"StaffPermTitle_pos_credit_collect" = "Collect and settle customer debts";
 "StaffPermTitle_delivery_cod_reconcile" = "Collect and reconcile COD payments";
 "StaffPermTitle_accounting_view" = "Accounting books and entries";
 "StaffPermTitle_orders_view" = "View purchase and sales orders";
@@ -11882,3 +11889,75 @@
 "POS_CreditAccount_Issue_sale_projection" = "Sale totals are out of sync";
 "POS_CreditAccount_Issue_missing_journal" = "Original journal is missing";
 "POS_CreditAccount_Issue_journal_mismatch" = "Original journal needs reconciliation";
+
+/* Credit checkout progress accessibility */
+"POS_Credit_Progress" = "Pay later progress";
+"POS_Credit_StepAccessibility" = "Step %1$@ of %2$@, %3$@";
+
+/* Customer credit policy direct editor */
+"POS_Credit_SetPolicyCTA" = "Set Customer Credit Policy";
+"POS_Credit_PolicyEditorTitle" = "Customer Credit Policy";
+"POS_Credit_SaveAndApproveCTA" = "Save & Approve Credit Policy";
+"POS_Credit_OpenFullLedger" = "View Full Ledger & Administration";
+"POS_Credit_EnableSales" = "Enable Credit Sales";
+"POS_Credit_EnableSalesHint" = "Allow this customer to purchase on credit and pay later";
+"POS_Credit_LimitLabel" = "Credit Limit (QAR)";
+"POS_Credit_ReasonLabel" = "Approval Notes & Terms";
+"POS_Credit_ReasonPlaceholder" = "e.g. Approved credit limit for business client...";
+"POS_Credit_StatusApproved" = "Credit Policy Approved & Active";
+"POS_Credit_CurrentLimitSub" = "Current limit: %@";
+"POS_Credit_DefaultPolicyReason" = "Approved customer credit policy";
+"POS_Credit_PolicySaved" = "Credit policy saved and approved successfully.";
+"POS_Customer_CreditSectionTitle" = "Customer Credit & Terms";
+"POS_Customer_ManageCreditCTA" = "Set Credit Policy & Limit";
+"POS_Customer_CreditConfiguredBadge" = "Credit Enabled";
+"POS_Customer_CreditNotConfiguredBadge" = "Credit Not Set";
+
+/* Customer picker: native directory presentation */
+"POS_Customer_Directory_Heading" = "Choose a customer";
+"POS_Customer_Directory_New" = "New customer";
+"POS_Customer_Directory_Back" = "Back to customer directory";
+"POS_Customer_Directory_ClearSearch" = "Clear search";
+"POS_Customer_Directory_DismissMessage" = "Dismiss message";
+"POS_Customer_Directory_All" = "Customer directory";
+"POS_Customer_Directory_Results" = "Search results";
+"POS_Customer_Directory_Saved" = "Saved on this device";
+"POS_Customer_Directory_Loading" = "Loading the customer directory…";
+"POS_Customer_Directory_Empty" = "No customers to show yet";
+"POS_Customer_Directory_EmptyDetail" = "Pull to refresh, or search for a customer by name or phone.";
+
+/* POS credit account statement and administration presentation */
+"POS_CreditAccount_NoDueDate" = "No due date scheduled";
+"POS_CreditAccount_ManageTab" = "Manage";
+"POS_CreditAccount_EmptyInvoices" = "No invoices to display for this account.";
+"POS_CreditAccount_EmptyCollections" = "No payment collections to display yet.";
+"POS_CreditAccount_EmptyFilter" = "No loaded invoices match this filter.";
+"POS_CreditAccount_ShowAllInvoices" = "Show all invoices";
+"POS_CreditAccount_InstallmentSchedule" = "Installment balances";
+"POS_CreditAccount_CollectionHelp" = "Open an invoice and enter the amount to collect. Review the selected total before confirming.";
+"POS_CreditAccount_CurrentPolicy" = "Current credit policy";
+"POS_CreditAccount_VerificationHelp" = "Verify your identity before sensitive changes. Verification alone does not submit or approve a request.";
+"POS_CreditAccount_ReasonPlaceholder" = "Explain the reason for this request";
+"POS_CreditAccount_ReasonHelp" = "A reason is required to submit or approve a request. Up to 500 characters.";
+"POS_CreditAccount_EditPolicy" = "Propose a policy change";
+"POS_CreditAccount_EnableCredit" = "Enable credit for this account";
+"POS_CreditAccount_ReviewQueue" = "Requests for review";
+"POS_CreditAccount_SelectedForCollection" = "Selected for collection";
+"POS_CreditAccount_NoCollectionMethod" = "No payment method is available for collections in this branch.";
+"POS_CreditAccount_ReasonTooLong" = "Shorten the reason to 500 characters or fewer.";
+
+/* POS identity verification: native two-stage presentation */
+"POS_CreditAccount_StepUpPasswordProgress" = "Step 1 of 2: password";
+"POS_CreditAccount_StepUpCodeProgress" = "Step 2 of 2: authenticator";
+"POS_CreditAccount_StepUpPasswordTitle" = "Start with your password";
+"POS_CreditAccount_StepUpCodeTitle" = "Your authenticator code";
+"POS_CreditAccount_StepUpPasswordHelp" = "Enter the password for your current staff account, then confirm with your registered authenticator.";
+"POS_CreditAccount_StepUpCodeHelp" = "Open your registered authenticator and enter its current 6-digit code.";
+"POS_CreditAccount_StepUpFinancialBoundary" = "This confirms your identity only. No financial action is submitted or approved.";
+"POS_CreditAccount_StepUpErrorTitle" = "Verification needs another attempt";
+"POS_CreditAccount_StepUpCodePlaceholder" = "Enter 6 digits";
+"POS_CreditAccount_StepUpPasswordPlaceholder" = "Enter your password";
+"POS_CreditAccount_StepUpRegisteredAuthenticator" = "Registered authenticator";
+"POS_CreditAccount_StepUpCheckingPassword" = "Checking password…";
+"POS_CreditAccount_StepUpCheckingCode" = "Verifying code…";
+"POS_CreditAccount_StepUpContinue" = "Continue";

@@ -199,6 +199,8 @@ NSString * const kStaffPermPosCreditReverse = @"pos.credit.reverse";
 NSString * const kStaffPermPosCreditClear = @"pos.credit.clear";
 NSString * const kStaffPermPosCreditWriteoff = @"pos.credit.writeoff";
 NSString * const kStaffPermPosCreditRefund = @"pos.credit.refund";
+NSString * const kStaffPermPosCreditTermsIssue = @"pos.credit_terms.issue";
+NSString * const kStaffPermPosCreditTermsApprove = @"pos.credit_terms.approve";
 
 #pragma mark - Catalog Accessor Implementations
 
@@ -400,6 +402,8 @@ NSArray<NSString *> * PPStaffAllPermissionKeys(void) {
             kStaffPermPosCreditClear,
             kStaffPermPosCreditWriteoff,
             kStaffPermPosCreditRefund,
+            kStaffPermPosCreditTermsIssue,
+            kStaffPermPosCreditTermsApprove,
         ];
     });
     return keys;
