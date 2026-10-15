@@ -20,6 +20,12 @@ struct AdminRouteDestinationView: View {
             AdminUsersListView {
                 router.presentedRoute = nil
             }
+        case .customerManagement:
+            POSCustomerPickerSheet(
+                canCreateCustomer: session.hasPermission("pos.sell"),
+                onDismiss: { router.presentedRoute = nil }
+            )
+            .id(session.uid)
         case .branches:
             AdminBranchesView {
                 router.presentedRoute = nil

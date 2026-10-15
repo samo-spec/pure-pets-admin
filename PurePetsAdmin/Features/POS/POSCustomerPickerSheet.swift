@@ -126,12 +126,16 @@ enum POSCustomerPickerPurpose {
     case posCart
     case wantedPetRequest
     case proformaInvoice
+    case customerManagement
+
+    var isManagingCustomers: Bool { self == .customerManagement }
 
     var title: String {
         switch self {
         case .posCart: return Language.get("POS_Customer_Title", alter: "دليل وربط العملاء")
         case .wantedPetRequest: return Language.get("WantedPets_Directory_Title", alter: "دليل العملاء")
         case .proformaInvoice: return Language.get("Proforma_CustomerPicker_Title", alter: nil)
+        case .customerManagement: return Language.get("POS_Customer_Management_Title", alter: nil)
         }
     }
 
@@ -147,6 +151,8 @@ enum POSCustomerPickerPurpose {
                 : Language.get("WantedPets_Directory_Subtitle_ReadOnly", alter: "اختر عميلاً موجوداً لطلب الحيوان.")
         case .proformaInvoice:
             return Language.get(canCreate ? "Proforma_CustomerPicker_Subtitle" : "Proforma_CustomerPicker_ReadOnly", alter: nil)
+        case .customerManagement:
+            return Language.get(canCreate ? "POS_Customer_Management_Subtitle" : "POS_Customer_Management_ReadOnly", alter: nil)
         }
     }
 
@@ -155,6 +161,7 @@ enum POSCustomerPickerPurpose {
         case .posCart: return Language.get("POS_Customer_SelectToCart", alter: "ربط العميل بهذه السلة")
         case .wantedPetRequest: return Language.get("WantedPets_Directory_Select", alter: "استخدام هذا العميل")
         case .proformaInvoice: return Language.get("Proforma_CustomerPicker_Select", alter: nil)
+        case .customerManagement: return Language.get("POS_Customer_Management_OpenProfile", alter: nil)
         }
     }
 
@@ -163,6 +170,7 @@ enum POSCustomerPickerPurpose {
         case .posCart: return Language.get("POS_Customer_SaveAndLink", alter: "حفظ وربط العميل بالسلة")
         case .wantedPetRequest: return Language.get("WantedPets_Directory_SaveAndSelect", alter: "حفظ واستخدام العميل")
         case .proformaInvoice: return Language.get("Proforma_CustomerPicker_Save", alter: nil)
+        case .customerManagement: return Language.get("Save", alter: nil)
         }
     }
 
@@ -171,6 +179,7 @@ enum POSCustomerPickerPurpose {
         case .posCart: return Language.get("POS_Customer_SubmitCTA", alter: "حفظ وتحديد العميل للسلة")
         case .wantedPetRequest: return Language.get("WantedPets_Directory_SaveAndSelect", alter: "حفظ واستخدام العميل")
         case .proformaInvoice: return Language.get("Proforma_CustomerPicker_Save", alter: nil)
+        case .customerManagement: return Language.get("Save", alter: nil)
         }
     }
 }
@@ -780,6 +789,30 @@ final class POSCustomerPickerViewModel: ObservableObject {
 
     // MARK: - Create Customer
 
+    /// Keeps standalone management in the existing directory after a save or
+    /// duplicate lookup; selection callers continue to own their own dismissal.
+    func showManagedCustomer(_ customer: POSCustomerRecord) {
+        searchTask?.cancel()
+        directoryGeneration += 1
+        isLoading = false
+        isSyncingWithFirestore = false
+        errorMessage = nil
+        activeTab = .search
+        searchText = ""
+        searchResults = POSCustomerCacheStore.shared.getCachedCustomers()
+        searchResults.removeAll { $0.id == customer.id }
+        searchResults.insert(customer, at: 0)
+        searchResults = Array(searchResults.prefix(500))
+        cachedDirectoryCount = searchResults.count
+        highlightedCustomer = customer
+        newName = ""
+        newPhone = ""
+        newEmail = ""
+        newNote = ""
+        selectedBranchId = ""
+        duplicateMatch = nil
+    }
+
     func submitCreateCustomer(onSuccess: @escaping (POSCustomerRecord) -> Void) {
         let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         let phone = newPhone.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1249,7 +1282,8 @@ struct POSCustomerPickerSheet: View {
     let currentSelected: POSCustomerRecord?
     let canCreateCustomer: Bool
     let purpose: POSCustomerPickerPurpose
-    let onSelect: (POSCustomerRecord) -> Void
+    let onSelect: ((POSCustomerRecord) -> Void)?
+    private let onDismiss: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = POSCustomerPickerViewModel()
@@ -1266,6 +1300,16 @@ struct POSCustomerPickerSheet: View {
         self.canCreateCustomer = canCreateCustomer
         self.purpose = purpose
         self.onSelect = onSelect
+        self.onDismiss = nil
+    }
+
+    /// Standalone entry from People; there is no cart or selection callback.
+    init(canCreateCustomer: Bool, onDismiss: @escaping () -> Void) {
+        self.currentSelected = nil
+        self.canCreateCustomer = canCreateCustomer
+        self.purpose = .customerManagement
+        self.onSelect = nil
+        self.onDismiss = onDismiss
     }
 
     var body: some View {
@@ -1284,7 +1328,7 @@ struct POSCustomerPickerSheet: View {
                         canAttachAppUser: canCreateCustomer && viewModel.canAttachAppUser,
                         onAttachAppUser: showAccountPicker,
                         onSelect: onSelect,
-                        dismiss: { dismiss() }
+                        dismiss: close
                     )
                 } else {
                     iPhoneCustomerSensoryDeck(
@@ -1295,7 +1339,7 @@ struct POSCustomerPickerSheet: View {
                         canAttachAppUser: canCreateCustomer && viewModel.canAttachAppUser,
                         onAttachAppUser: showAccountPicker,
                         onSelect: onSelect,
-                        dismiss: { dismiss() }
+                        dismiss: close
                     )
                 }
             }
@@ -1326,6 +1370,11 @@ struct POSCustomerPickerSheet: View {
               viewModel.attachmentCandidate == nil else { return }
         pendingAccount = nil
         isAccountPickerPresented = true
+    }
+
+    private func close() {
+        if let onDismiss { onDismiss() }
+        else { dismiss() }
     }
 }
 
@@ -1599,7 +1648,7 @@ private struct iPhoneCustomerSensoryDeck: View {
     let purpose: POSCustomerPickerPurpose
     let canAttachAppUser: Bool
     let onAttachAppUser: () -> Void
-    let onSelect: (POSCustomerRecord) -> Void
+    let onSelect: ((POSCustomerRecord) -> Void)?
     let dismiss: () -> Void
 
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -1648,9 +1697,10 @@ private struct iPhoneCustomerSensoryDeck: View {
                 POSCustomerEditSheet(
                     viewModel: viewModel,
                     customer: customer,
+                    canEdit: canCreateCustomer,
                     purpose: purpose,
                     onSelectAndDismiss: { updated in
-                        onSelect(updated)
+                        onSelect?(updated)
                         dismiss()
                     }
                 )
@@ -1972,8 +2022,12 @@ private struct iPhoneCustomerSensoryDeck: View {
     private func select(_ customer: POSCustomerRecord) {
         guard !unavailable(customer), !isBusy else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        if purpose.isManagingCustomers {
+            viewModel.startEditing(customer: customer)
+            return
+        }
         viewModel.rememberCustomer(customer)
-        onSelect(customer)
+        onSelect?(customer)
         dismiss()
     }
 
@@ -2061,7 +2115,7 @@ private struct iPhoneCustomerSensoryDeck: View {
             isSelected: currentSelected?.id == customer.id,
             selectionHint: purpose.selectTitle,
             onSelect: { select(customer) },
-            onEdit: canCreateCustomer ? { viewModel.startEditing(customer: customer) } : nil,
+            onEdit: canCreateCustomer && !purpose.isManagingCustomers ? { viewModel.startEditing(customer: customer) } : nil,
             creditBranchID: canReadCredit ? branchID : nil
         )
     }
@@ -2139,9 +2193,14 @@ private struct iPhoneCustomerSensoryDeck: View {
                 if let match = viewModel.duplicateMatch {
                     Button {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        viewModel.rememberCustomer(match)
-                        onSelect(match)
-                        dismiss()
+                        if purpose.isManagingCustomers {
+                            viewModel.showManagedCustomer(match)
+                            viewModel.startEditing(customer: match)
+                        } else {
+                            viewModel.rememberCustomer(match)
+                            onSelect?(match)
+                            dismiss()
+                        }
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "person.crop.circle.badge.exclamationmark")
@@ -2150,7 +2209,7 @@ private struct iPhoneCustomerSensoryDeck: View {
                                 Text(Language.get("POS_Customer_DuplicateFound", alter: "عميل مسجل مسبقاً بهذا الرقم!"))
                                     .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
                                     .foregroundColor(AdminSurface.primaryText)
-                                Text(String(format: Language.get("POS_Customer_DuplicateSub", alter: "اضغط هنا لاختيار '%@' مباشرة."), match.name))
+                                Text(String(format: Language.get(purpose.isManagingCustomers ? "POS_Customer_Management_Duplicate" : "POS_Customer_DuplicateSub", alter: nil), match.name))
                                     .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption2))
                                     .foregroundColor(.orange)
                             }
@@ -2256,8 +2315,12 @@ private struct iPhoneCustomerSensoryDeck: View {
                 // Submit Button
                 Button {
                     viewModel.submitCreateCustomer { createdCustomer in
-                        onSelect(createdCustomer)
-                        dismiss()
+                        if purpose.isManagingCustomers {
+                            viewModel.showManagedCustomer(createdCustomer)
+                        } else {
+                            onSelect?(createdCustomer)
+                            dismiss()
+                        }
                     }
                 } label: {
                     HStack(spacing: 8) {
@@ -2333,6 +2396,7 @@ private struct iPhoneCustomerSensoryDeck: View {
 private struct POSCustomerEditSheet: View {
     @ObservedObject var viewModel: POSCustomerPickerViewModel
     let customer: POSCustomerRecord
+    let canEdit: Bool
     let purpose: POSCustomerPickerPurpose
     let onSelectAndDismiss: (POSCustomerRecord) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -2346,8 +2410,8 @@ private struct POSCustomerEditSheet: View {
                 VStack(spacing: 0) {
                     // Header Bar
                     AdminSovereignNavigationBar(
-                        title: Language.get("POS_Customer_EditTitle", alter: "تعديل ملف العميل"),
-                        subtitle: Language.get("POS_Customer_EditSubtitle", alter: "تحديث بيانات الاتصال والفرع والملاحظات التشغيلية."),
+                        title: Language.get(canEdit ? "POS_Customer_EditTitle" : "POS_Customer_CustomerDossier", alter: nil),
+                        subtitle: Language.get(canEdit ? "POS_Customer_EditSubtitle" : "POS_Customer_Management_ProfileReadOnly", alter: nil),
                         statusDotColor: Color(uiColor: .ppSuccess),
                         isModal: true,
                         onBack: {
@@ -2359,7 +2423,7 @@ private struct POSCustomerEditSheet: View {
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
                                 .fill(AdminSurface.primary.opacity(0.12))
                                 .frame(width: 44, height: 44)
-                            Image(systemName: "pencil")
+                            Image(systemName: canEdit ? "pencil" : "person.crop.circle")
                                 .font(.system(size: 18, weight: .semibold))
                                 .foregroundColor(AdminSurface.primary)
                         }
@@ -2436,6 +2500,7 @@ private struct POSCustomerEditSheet: View {
                                         TextField(Language.get("POS_Customer_PhonePlaceholder", alter: "5512 3456"), text: $viewModel.editPhone)
                                             .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .body))
                                             .keyboardType(.phonePad)
+                                            .disabled(!canEdit)
                                     }
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 10)
@@ -2454,6 +2519,7 @@ private struct POSCustomerEditSheet: View {
                                             .frame(width: 20)
                                         TextField(Language.get("POS_Customer_NamePlaceholder", alter: "الاسم الكامل"), text: $viewModel.editName)
                                             .font(Font.custom("Beiruti-Regular", size: 14.5, relativeTo: .body))
+                                            .disabled(!canEdit)
                                     }
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 10)
@@ -2474,6 +2540,7 @@ private struct POSCustomerEditSheet: View {
                                         TextField("customer@example.com", text: $viewModel.editEmail)
                                             .font(Font.custom("Beiruti-Regular", size: 14.5, relativeTo: .body))
                                             .keyboardType(.emailAddress)
+                                            .disabled(!canEdit)
                                     }
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 10)
@@ -2504,6 +2571,7 @@ private struct POSCustomerEditSheet: View {
                                                             .overlay(Capsule().stroke(AdminSurface.hairline))
                                                     }
                                                     .buttonStyle(PlainButtonStyle())
+                                                    .disabled(!canEdit)
                                                 }
                                             }
                                         }
@@ -2522,6 +2590,7 @@ private struct POSCustomerEditSheet: View {
                                             .frame(width: 20)
                                         TextField(Language.get("POS_Customer_NotePlaceholder", alter: "ملاحظات تشغيلية..."), text: $viewModel.editNote)
                                             .font(Font.custom("Beiruti-Regular", size: 14.5, relativeTo: .body))
+                                            .disabled(!canEdit)
                                     }
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 10)
@@ -2530,97 +2599,103 @@ private struct POSCustomerEditSheet: View {
                                 }
 
                                 // Credit Policy & Terms Section
-                                VStack(alignment: .leading, spacing: 8) {
-                                    HStack {
-                                        Text(Language.get("POS_Customer_CreditSectionTitle", alter: "سياسة وتسهيلات البيع الآجل"))
-                                            .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
-                                            .foregroundColor(AdminSurface.primaryText)
-                                        Spacer()
-                                    }
-
-                                    HStack(alignment: .top, spacing: 10) {
-                                        Image(systemName: "checkmark.shield.fill")
-                                            .foregroundColor(AdminSurface.primary)
-                                            .font(.system(size: 16))
-                                            .padding(.top, 2)
-
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(Language.get("POS_Credit_NeedsVerification", alter: "Customer terms need verification"))
-                                                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .subheadline))
+                                if canEdit {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        HStack {
+                                            Text(Language.get("POS_Customer_CreditSectionTitle", alter: "سياسة وتسهيلات البيع الآجل"))
+                                                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
                                                 .foregroundColor(AdminSurface.primaryText)
-                                            Text(Language.get("POS_Credit_PolicyRequired", alter: "This customer needs an approved credit policy for this branch before selling on credit."))
-                                                .font(Font.custom("Beiruti-Regular", size: 11.5, relativeTo: .caption))
-                                                .foregroundColor(AdminSurface.secondaryText)
-                                                .fixedSize(horizontal: false, vertical: true)
+                                            Spacer()
                                         }
 
-                                        Spacer(minLength: 0)
-                                    }
-                                    .padding(12)
-                                    .background(AdminSurface.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline))
+                                        HStack(alignment: .top, spacing: 10) {
+                                            Image(systemName: "checkmark.shield.fill")
+                                                .foregroundColor(AdminSurface.primary)
+                                                .font(.system(size: 16))
+                                                .padding(.top, 2)
 
-                                    Button {
-                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                        showsCreditPolicySheet = true
-                                    } label: {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: "slider.horizontal.3")
-                                            Text(Language.get("POS_Customer_ManageCreditCTA", alter: "إعداد سياسة وسقف الائتمان"))
-                                                .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .callout))
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(Language.get("POS_Credit_NeedsVerification", alter: "Customer terms need verification"))
+                                                    .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .subheadline))
+                                                    .foregroundColor(AdminSurface.primaryText)
+                                                Text(Language.get("POS_Credit_PolicyRequired", alter: "This customer needs an approved credit policy for this branch before selling on credit."))
+                                                    .font(Font.custom("Beiruti-Regular", size: 11.5, relativeTo: .caption))
+                                                    .foregroundColor(AdminSurface.secondaryText)
+                                                    .fixedSize(horizontal: false, vertical: true)
+                                            }
+
+                                            Spacer(minLength: 0)
                                         }
-                                        .foregroundColor(AdminSurface.primary)
-                                        .frame(maxWidth: .infinity, minHeight: 40)
-                                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                        .padding(12)
+                                        .background(AdminSurface.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline))
+
+                                        Button {
+                                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                            showsCreditPolicySheet = true
+                                        } label: {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: "slider.horizontal.3")
+                                                Text(Language.get("POS_Customer_ManageCreditCTA", alter: "إعداد سياسة وسقف الائتمان"))
+                                                    .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .callout))
+                                            }
+                                            .foregroundColor(AdminSurface.primary)
+                                            .frame(maxWidth: .infinity, minHeight: 40)
+                                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                        }
+                                        .buttonStyle(PlainButtonStyle())
                                     }
-                                    .buttonStyle(PlainButtonStyle())
                                 }
                             }
 
                             // Action Buttons
-                            VStack(spacing: 10) {
-                                // Primary Save Button
-                                Button {
-                                    viewModel.submitUpdateCustomer(andSelect: false) { _ in
-                                        dismiss()
-                                    }
-                                } label: {
-                                    HStack(spacing: 8) {
-                                        if viewModel.isEditingSubmitting {
-                                            ProgressView().tint(.white).scaleEffect(0.9)
-                                        } else {
-                                            Image(systemName: "checkmark.circle.fill")
-                                                .font(.system(size: 15, weight: .bold))
+                            if canEdit {
+                                VStack(spacing: 10) {
+                                    // Primary Save Button
+                                    Button {
+                                        viewModel.submitUpdateCustomer(andSelect: false) { _ in
+                                            dismiss()
                                         }
-                                        Text(Language.get("POS_Customer_EditCTA", alter: "حفظ وتحديث ملف العميل"))
-                                            .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline))
+                                    } label: {
+                                        HStack(spacing: 8) {
+                                            if viewModel.isEditingSubmitting {
+                                                ProgressView().tint(.white).scaleEffect(0.9)
+                                            } else {
+                                                Image(systemName: "checkmark.circle.fill")
+                                                    .font(.system(size: 15, weight: .bold))
+                                            }
+                                            Text(Language.get("POS_Customer_EditCTA", alter: "حفظ وتحديث ملف العميل"))
+                                                .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline))
+                                        }
+                                        .foregroundColor(.white)
+                                        .frame(maxWidth: .infinity, minHeight: 48)
+                                        .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                                     }
-                                    .foregroundColor(.white)
-                                    .frame(maxWidth: .infinity, minHeight: 48)
-                                    .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                }
-                                .disabled(viewModel.isEditingSubmitting)
+                                    .disabled(viewModel.isEditingSubmitting)
 
-                                // Save and Link CTA
-                                Button {
-                                    viewModel.submitUpdateCustomer(andSelect: true) { updated in
-                                        onSelectAndDismiss(updated)
+                                    // Save and Link CTA
+                                    if !purpose.isManagingCustomers {
+                                        Button {
+                                            viewModel.submitUpdateCustomer(andSelect: true) { updated in
+                                                onSelectAndDismiss(updated)
+                                            }
+                                        } label: {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: "arrowshape.turn.up.backward.fill")
+                                                    .font(.system(size: 13))
+                                                Text(purpose.saveAndSelectTitle)
+                                                    .font(Font.custom("Beiruti-Bold", size: 14.5, relativeTo: .callout))
+                                            }
+                                            .foregroundColor(AdminSurface.primary)
+                                            .frame(maxWidth: .infinity, minHeight: 44)
+                                            .background(AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                        }
+                                        .disabled(viewModel.isEditingSubmitting)
                                     }
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "arrowshape.turn.up.backward.fill")
-                                            .font(.system(size: 13))
-                                        Text(purpose.saveAndSelectTitle)
-                                            .font(Font.custom("Beiruti-Bold", size: 14.5, relativeTo: .callout))
-                                    }
-                                    .foregroundColor(AdminSurface.primary)
-                                    .frame(maxWidth: .infinity, minHeight: 44)
-                                    .background(AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                                 }
-                                .disabled(viewModel.isEditingSubmitting)
+                                .padding(.top, 8)
+                                .padding(.bottom, 24)
                             }
-                            .padding(.top, 8)
-                            .padding(.bottom, 24)
                         }
                         .padding(16)
                     }
@@ -2653,7 +2728,7 @@ private struct iPadCustomerSpatialCockpit: View {
     let purpose: POSCustomerPickerPurpose
     let canAttachAppUser: Bool
     let onAttachAppUser: () -> Void
-    let onSelect: (POSCustomerRecord) -> Void
+    let onSelect: ((POSCustomerRecord) -> Void)?
     let dismiss: () -> Void
 
     @FocusState private var isSearchFocused: Bool
@@ -3284,31 +3359,33 @@ private struct iPadCustomerSpatialCockpit: View {
                     }
 
                     // Primary Link To Cart Button
-                    Button {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        viewModel.rememberCustomer(customer)
-                        onSelect(customer)
-                        dismiss()
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 15, weight: .bold))
-                            Text(purpose.selectTitle)
-                                .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
+                    if !purpose.isManagingCustomers {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            viewModel.rememberCustomer(customer)
+                            onSelect?(customer)
+                            dismiss()
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 15, weight: .bold))
+                                Text(purpose.selectTitle)
+                                    .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity, minHeight: 46)
+                            .background(
+                                LinearGradient(
+                                    colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.85)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                ),
+                                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            )
+                            .shadow(color: AdminSurface.primary.opacity(0.2), radius: 6, y: 2)
                         }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity, minHeight: 46)
-                        .background(
-                            LinearGradient(
-                                colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.85)],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            ),
-                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        )
-                        .shadow(color: AdminSurface.primary.opacity(0.2), radius: 6, y: 2)
+                        .buttonStyle(PlainButtonStyle())
                     }
-                    .buttonStyle(PlainButtonStyle())
                 }
                 .padding(14)
                 .background(AdminSurface.surface)
@@ -3613,24 +3690,26 @@ private struct iPadCustomerSpatialCockpit: View {
                 .disabled(viewModel.isEditingSubmitting)
                 .buttonStyle(PlainButtonStyle())
 
-                Button {
-                    viewModel.submitUpdateCustomer(andSelect: true) { updated in
-                        onSelect(updated)
-                        dismiss()
+                if !purpose.isManagingCustomers {
+                    Button {
+                        viewModel.submitUpdateCustomer(andSelect: true) { updated in
+                            onSelect?(updated)
+                            dismiss()
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrowshape.turn.up.backward.fill").font(.system(size: 11))
+                            Text(purpose.saveAndSelectTitle)
+                                .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .callout))
+                        }
+                        .foregroundColor(AdminSurface.primary)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 44)
+                        .background(AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrowshape.turn.up.backward.fill").font(.system(size: 11))
-                        Text(purpose.saveAndSelectTitle)
-                            .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .callout))
-                    }
-                    .foregroundColor(AdminSurface.primary)
-                    .padding(.horizontal, 12)
-                    .frame(minHeight: 44)
-                    .background(AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .disabled(viewModel.isEditingSubmitting)
+                    .buttonStyle(PlainButtonStyle())
                 }
-                .disabled(viewModel.isEditingSubmitting)
-                .buttonStyle(PlainButtonStyle())
             }
             .padding(14)
             .background(AdminSurface.surface)
@@ -3683,9 +3762,13 @@ private struct iPadCustomerSpatialCockpit: View {
                     if let match = viewModel.duplicateMatch {
                         Button {
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            viewModel.rememberCustomer(match)
-                            onSelect(match)
-                            dismiss()
+                            if purpose.isManagingCustomers {
+                                viewModel.showManagedCustomer(match)
+                            } else {
+                                viewModel.rememberCustomer(match)
+                                onSelect?(match)
+                                dismiss()
+                            }
                         } label: {
                             HStack(spacing: 8) {
                                 Image(systemName: "person.crop.circle.badge.exclamationmark")
@@ -3694,7 +3777,7 @@ private struct iPadCustomerSpatialCockpit: View {
                                     Text(Language.get("POS_Customer_DuplicateFound", alter: "عميل مسجل مسبقاً بهذا الرقم!"))
                                         .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
                                         .foregroundColor(AdminSurface.primaryText)
-                                    Text(String(format: Language.get("POS_Customer_DuplicateSub", alter: "اضغط هنا لاختيار '%@' مباشرة."), match.name))
+                                    Text(String(format: Language.get(purpose.isManagingCustomers ? "POS_Customer_Management_Duplicate" : "POS_Customer_DuplicateSub", alter: nil), match.name))
                                         .font(Font.custom("Beiruti-Regular", size: 11.5, relativeTo: .caption2))
                                         .foregroundColor(.orange)
                                 }
@@ -3814,8 +3897,12 @@ private struct iPadCustomerSpatialCockpit: View {
             // Submit Button
             Button {
                 viewModel.submitCreateCustomer { createdCustomer in
-                    onSelect(createdCustomer)
-                    dismiss()
+                    if purpose.isManagingCustomers {
+                        viewModel.showManagedCustomer(createdCustomer)
+                    } else {
+                        onSelect?(createdCustomer)
+                        dismiss()
+                    }
                 }
             } label: {
                 HStack(spacing: 8) {

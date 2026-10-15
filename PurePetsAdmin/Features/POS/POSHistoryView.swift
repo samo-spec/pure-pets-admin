@@ -758,190 +758,194 @@ struct AdminPOSHistoryView: View {
     }
 
     var body: some View {
-        ZStack {
-            AdminSurface.surface.ignoresSafeArea()
+        NavigationStack {
+            ZStack {
+                AdminSurface.surface.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                navigationHeaderView
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 24) {
-                        PPAdminBranchSwitcherBar(style: .journal, horizontalPadding: 0)
-                        periodStatement
-                        receiptLocator
-                        ledgerSection
+                VStack(spacing: 0) {
+                    navigationHeaderView
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 24) {
+                            PPAdminBranchSwitcherBar(style: .journal, horizontalPadding: 0)
+                            periodStatement
+                            receiptLocator
+                            ledgerSection
+                        }
+                        .frame(maxWidth: 760, alignment: .leading)
+                        .padding(.horizontal, AdminSpacing.screenMargin)
+                        .padding(.top, 20)
+                        .padding(.bottom, 24)
+                        .frame(maxWidth: .infinity)
                     }
-                    .frame(maxWidth: 760, alignment: .leading)
-                    .padding(.horizontal, AdminSpacing.screenMargin)
-                    .padding(.top, 20)
-                    .padding(.bottom, 24)
-                    .frame(maxWidth: .infinity)
-                }
-                .scrollDismissesKeyboard(.interactively)
-                .refreshable {
-                    viewModel.load(branchID: branchStore.activeBranch?.branchID)
-                    // Keep the refresh indicator tied to this fetch, not a cosmetic delay.
-                    while viewModel.isLoading && !Task.isCancelled {
-                        try? await Task.sleep(nanoseconds: 100_000_000)
-                    }
-                }
-            }
-
-            // Copy Toast Notification
-            if let toast = copyToastText {
-                VStack {
-                    Spacer()
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(Color(uiColor: .ppSuccess))
-                        Text(toast)
-                            .font(AdminType.captionBold)
-                            .foregroundColor(.white)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Color.black.opacity(0.85), in: Capsule())
-                    .padding(.bottom, 16)
-                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
-                    .accessibilityElement(children: .combine)
-                    .allowsHitTesting(false)
-                }
-                .zIndex(100)
-            }
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if AdminRoute.pointOfSale.isAuthorized(for: session) && !isSearchFocused {
-                newSaleRail
-            }
-        }
-        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .environment(\.locale, Locale(identifier: Language.isRTL() ? "ar_QA" : "en_US"))
-        .task(id: copyToastID) {
-            guard let text = copyToastText else { return }
-            do { try await Task.sleep(nanoseconds: 2_200_000_000) } catch { return }
-            if copyToastText == text {
-                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { copyToastText = nil }
-            }
-        }
-        .onAppear {
-            viewModel.load(branchID: branchStore.activeBranch?.branchID)
-        }
-        .onChange(of: branchStore.activeBranch?.branchID) { branchID in
-            viewModel.load(branchID: branchID)
-        }
-        // Thermal Receipt Sheet
-        .sheet(item: $receiptForThermalPrint, onDismiss: { receiptNoticeForPrint = nil }) { completedReceipt in
-            POSCompletedReceiptSheet(receipt: completedReceipt, notice: receiptNoticeForPrint)
-        }
-        // Transaction Dossier Modal (Full Screen)
-        .fullScreenCover(item: $selectedDossierReceipt) { receipt in
-            POSTransactionDossierSheet(
-                receipt: receipt,
-                onPrint: {
-                    selectedDossierReceipt = nil
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        receiptNoticeForPrint = (receipt.refundedAmount > 0 || receipt.status.lowercased() == "refunded" || receipt.status.lowercased() == "partially_refunded")
-                            ? Language.get("POS_Receipt_RefundDossier_Notice", alter: "معاملة مستردة - إيصال الاسترداد المالي المعتمد.")
-                            : nil
-                        receiptForThermalPrint = POSCompletedReceipt(receipt: receipt)
-                    }
-                },
-                onRefund: {
-                    selectedDossierReceipt = nil
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        if receipt.hasIndividuallyTrackedLivePets && !receipt.hasGenericMerchandise {
-                            receiptForLivePetReturn = receipt
-                        } else {
-                            receiptForRefund = receipt
+                    .scrollDismissesKeyboard(.interactively)
+                    .refreshable {
+                        viewModel.load(branchID: branchStore.activeBranch?.branchID)
+                        // Keep the refresh indicator tied to this fetch, not a cosmetic delay.
+                        while viewModel.isLoading && !Task.isCancelled {
+                            try? await Task.sleep(nanoseconds: 100_000_000)
                         }
                     }
-                },
-                onCancel: {
-                    selectedDossierReceipt = nil
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        receiptForCancel = receipt
+                }
+
+                // Copy Toast Notification
+                if let toast = copyToastText {
+                    VStack {
+                        Spacer()
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(Color(uiColor: .ppSuccess))
+                            Text(toast)
+                                .font(AdminType.captionBold)
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color.black.opacity(0.85), in: Capsule())
+                        .padding(.bottom, 16)
+                        .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                        .accessibilityElement(children: .combine)
+                        .allowsHitTesting(false)
                     }
-                },
-                onCopied: { text in
-                    showToast(text)
+                    .zIndex(100)
                 }
-            )
-        }
-        // Live Pet Return Coordinator (Full Screen)
-        .fullScreenCover(item: $receiptForLivePetReturn) { receipt in
-            LivePetReturnCoordinatorView(
-                receipt: receipt,
-                onProceedToMerchandiseRefund: { mixedReceipt in
-                    receiptForLivePetReturn = nil
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        receiptForRefund = mixedReceipt
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if AdminRoute.pointOfSale.isAuthorized(for: session) && !isSearchFocused {
+                    newSaleRail
+                }
+            }
+            .navigationBarHidden(true)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+            .environment(\.locale, Locale(identifier: Language.isRTL() ? "ar_QA" : "en_US"))
+            .task(id: copyToastID) {
+                guard let text = copyToastText else { return }
+                do { try await Task.sleep(nanoseconds: 2_200_000_000) } catch { return }
+                if copyToastText == text {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { copyToastText = nil }
+                }
+            }
+            .onAppear {
+                viewModel.load(branchID: branchStore.activeBranch?.branchID)
+            }
+            .onChange(of: branchStore.activeBranch?.branchID) { branchID in
+                viewModel.load(branchID: branchID)
+            }
+            // Thermal Receipt Sheet
+            .sheet(item: $receiptForThermalPrint, onDismiss: { receiptNoticeForPrint = nil }) { completedReceipt in
+                POSCompletedReceiptSheet(receipt: completedReceipt, notice: receiptNoticeForPrint)
+            }
+            // Transaction Dossier Push Navigation
+            .navigationDestination(item: $selectedDossierReceipt) { receipt in
+                POSTransactionDossierSheet(
+                    receipt: receipt,
+                    onPrint: {
+                        selectedDossierReceipt = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            receiptNoticeForPrint = (receipt.refundedAmount > 0 || receipt.status.lowercased() == "refunded" || receipt.status.lowercased() == "partially_refunded")
+                                ? Language.get("POS_Receipt_RefundDossier_Notice", alter: "معاملة مستردة - إيصال الاسترداد المالي المعتمد.")
+                                : nil
+                            receiptForThermalPrint = POSCompletedReceipt(receipt: receipt)
+                        }
+                    },
+                    onRefund: {
+                        selectedDossierReceipt = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            if receipt.hasIndividuallyTrackedLivePets && !receipt.hasGenericMerchandise {
+                                receiptForLivePetReturn = receipt
+                            } else {
+                                receiptForRefund = receipt
+                            }
+                        }
+                    },
+                    onCancel: {
+                        selectedDossierReceipt = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            receiptForCancel = receipt
+                        }
+                    },
+                    onCopied: { text in
+                        showToast(text)
                     }
-                },
-                onComplete: { returnCase in
-                    receiptForLivePetReturn = nil
-                    viewModel.load(branchID: BranchContextStore.shared.activeBranch?.branchID)
-                    showToast(Language.get("LivePet_Confirm_SuccessTitle", alter: "تم تسجيل استرجاع الحيوان بنجاح"))
-                }
-            )
-        }
-        // Refund Studio (Full Screen)
-        .fullScreenCover(item: $receiptForRefund) { receipt in
-            POSRefundStudioSheet(
-                receipt: receipt,
-                viewModel: viewModel,
-                onSuccess: { refundedReceipt in
-                    receiptForRefund = nil
-                    showToast(Language.get("POS_Refund_Success_Title", alter: "تم الاسترداد بنجاح"))
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-                        receiptNoticeForPrint = Language.get(
-                            "POS_Receipt_RefundSuccess_Notice",
-                            alter: "تم تسجيل الاسترداد بنجاح في النظام. إيصال الاسترداد جاهز للطباعة والمشاركة."
-                        )
-                        receiptForThermalPrint = POSCompletedReceipt(receipt: refundedReceipt)
+                )
+            }
+            // Live Pet Return Coordinator (Full Screen)
+            .fullScreenCover(item: $receiptForLivePetReturn) { receipt in
+                LivePetReturnCoordinatorView(
+                    receipt: receipt,
+                    onProceedToMerchandiseRefund: { mixedReceipt in
+                        receiptForLivePetReturn = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            receiptForRefund = mixedReceipt
+                        }
+                    },
+                    onComplete: { returnCase in
+                        receiptForLivePetReturn = nil
+                        viewModel.load(branchID: BranchContextStore.shared.activeBranch?.branchID)
+                        showToast(Language.get("LivePet_Confirm_SuccessTitle", alter: "تم تسجيل استرجاع الحيوان بنجاح"))
                     }
-                }
-            )
-        }
-        // Cancel / Void Confirmation Sheet
-        .sheet(item: $receiptForCancel) { receipt in
-            POSCancelConfirmationSheet(
-                receipt: receipt,
-                viewModel: viewModel,
-                onSuccess: {
-                    receiptForCancel = nil
-                    showToast(Language.get("POS_Cancel_Success_Title", alter: "تم إلغاء المعاملة"))
-                }
-            )
-        }
-        // Fast Sell Push Navigation
-        .background(
-            NavigationLink(
-                isActive: $isShowingFastSell,
-                destination: {
-                    AdminPOSFastSellView(session: session) {
-                        isShowingFastSell = false
-                        viewModel.load(branchID: branchStore.activeBranch?.branchID)
+                )
+            }
+            // Refund Studio Push Navigation
+            .navigationDestination(item: $receiptForRefund) { receipt in
+                POSRefundStudioSheet(
+                    receipt: receipt,
+                    viewModel: viewModel,
+                    onSuccess: { refundedReceipt in
+                        receiptForRefund = nil
+                        showToast(Language.get("POS_Refund_Success_Title", alter: "تم الاسترداد بنجاح"))
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                            receiptNoticeForPrint = Language.get(
+                                "POS_Receipt_RefundSuccess_Notice",
+                                alter: "تم تسجيل الاسترداد بنجاح في النظام. إيصال الاسترداد جاهز للطباعة والمشاركة."
+                            )
+                            receiptForThermalPrint = POSCompletedReceipt(receipt: refundedReceipt)
+                        }
                     }
-                    .navigationTitle("")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .navigationBarBackButtonHidden(true)
-                    .navigationBarHidden(true)
-                    .toolbar(.hidden, for: .navigationBar)
-                    .ignoresSafeArea()
-                },
-                label: {
-                    EmptyView()
-                }
+                )
+            }
+            // Cancel / Void Confirmation Sheet
+            .sheet(item: $receiptForCancel) { receipt in
+                POSCancelConfirmationSheet(
+                    receipt: receipt,
+                    viewModel: viewModel,
+                    onSuccess: {
+                        receiptForCancel = nil
+                        showToast(Language.get("POS_Cancel_Success_Title", alter: "تم إلغاء المعاملة"))
+                    }
+                )
+            }
+            // Fast Sell Push Navigation
+            .background(
+                NavigationLink(
+                    isActive: $isShowingFastSell,
+                    destination: {
+                        AdminPOSFastSellView(session: session) {
+                            isShowingFastSell = false
+                            viewModel.load(branchID: branchStore.activeBranch?.branchID)
+                        }
+                        .navigationTitle("")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .navigationBarBackButtonHidden(true)
+                        .navigationBarHidden(true)
+                        .toolbar(.hidden, for: .navigationBar)
+                        .ignoresSafeArea()
+                    },
+                    label: {
+                        EmptyView()
+                    }
+                )
+                .hidden()
+                .accessibilityHidden(true)
             )
-            .hidden()
-            .accessibilityHidden(true)
-        )
-        .enableSwipeToPop {
-            let impact = UIImpactFeedbackGenerator(style: .light)
-            impact.impactOccurred()
-            if let onDismiss {
-                onDismiss()
-            } else {
-                dismiss()
+            .enableSwipeToPop {
+                let impact = UIImpactFeedbackGenerator(style: .light)
+                impact.impactOccurred()
+                if let onDismiss {
+                    onDismiss()
+                } else {
+                    dismiss()
+                }
             }
         }
     }
@@ -2548,6 +2552,14 @@ struct POSTransactionDossier_iPhone: View {
             : Language.get("POS_Action_Refund", alter: "استرداد")
     }
 
+    private var dossierSubtitle: String {
+        let id = POSReceiptFormat.receiptID(receipt.receiptID)
+        if let branch = receipt.branchName ?? BranchContextStore.shared.activeBranch?.localizedName() {
+            return "\(id) • \(branch)"
+        }
+        return id
+    }
+
     var body: some View {
         ZStack {
             AdminSurface.background.ignoresSafeArea()
@@ -2565,35 +2577,15 @@ struct POSTransactionDossier_iPhone: View {
             }
 
             VStack(spacing: 0) {
-                // Header Cockpit Bar
-                HStack(alignment: .center, spacing: 12) {
-                    AdminSquircleCloseButton {
-                        onDismiss()
-                    }
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(Language.get("POS_Dossier_Title", alter: "ملف المعاملة المالية"))
-                            .font(DossierFont.bold(17, relativeTo: .headline))
-                            .foregroundColor(AdminSurface.primaryText)
-
-                        HStack(spacing: 6) {
-                            Text(verbatim: POSReceiptFormat.receiptID(receipt.receiptID))
-                                .font(DossierFont.bold(13, relativeTo: .caption))
-                                .foregroundColor(Color(uiColor: .ppPrimary))
-
-                            if let branch = receipt.branchName ?? BranchContextStore.shared.activeBranch?.localizedName() {
-                                Text("•")
-                                    .font(DossierFont.regular(12, relativeTo: .caption2))
-                                    .foregroundColor(AdminSurface.secondaryText)
-                                Text(branch)
-                                    .font(DossierFont.regular(12, relativeTo: .caption2))
-                                    .foregroundColor(AdminSurface.secondaryText)
-                            }
-                        }
-                    }
-
-                    Spacer()
-
+                // Sovereign Navigation Bar (Inventory Pattern)
+                AdminSovereignNavigationBar(
+                    title: Language.get("POS_Dossier_Title", alter: "ملف المعاملة المالية"),
+                    subtitle: dossierSubtitle,
+                    statusDotColor: statusKind.tintColor,
+                    isModal: false,
+                    showsTopFade: false,
+                    onBack: onDismiss
+                ) {
                     // Status Pill
                     HStack(spacing: 5) {
                         Image(systemName: statusKind.iconName)
@@ -2610,10 +2602,6 @@ struct POSTransactionDossier_iPhone: View {
                             .strokeBorder(statusKind.tintColor.opacity(0.3), lineWidth: 1)
                     )
                 }
-                .padding(.horizontal, AdminSpacing.screenMargin)
-                .padding(.vertical, AdminSpacing.md)
-
-                Divider().background(AdminSurface.hairline)
 
                 // Scrollable Content
                 ScrollView(.vertical, showsIndicators: false) {
@@ -2798,6 +2786,14 @@ struct POSTransactionDossier_iPad: View {
             : Language.get("POS_Action_Refund", alter: "استرداد")
     }
 
+    private var dossierSubtitle: String {
+        let id = POSReceiptFormat.receiptID(receipt.receiptID)
+        if let branch = receipt.branchName ?? BranchContextStore.shared.activeBranch?.localizedName() {
+            return "\(id) • \(branch)"
+        }
+        return id
+    }
+
     var body: some View {
         ZStack {
             AdminSurface.background.ignoresSafeArea()
@@ -2815,79 +2811,54 @@ struct POSTransactionDossier_iPad: View {
             }
 
             VStack(spacing: 0) {
-                // iPad Header Cockpit
-                HStack(alignment: .center, spacing: 16) {
-                    AdminSquircleCloseButton {
-                        onDismiss()
-                    }
-                    .keyboardShortcut(.escape, modifiers: [])
+                // Sovereign Navigation Bar (Inventory Pattern)
+                AdminSovereignNavigationBar(
+                    title: Language.get("POS_Dossier_Title", alter: "ملف المعاملة المالية"),
+                    subtitle: dossierSubtitle,
+                    statusDotColor: statusKind.tintColor,
+                    isModal: false,
+                    showsTopFade: false,
+                    onBack: onDismiss
+                ) {
+                    HStack(spacing: 12) {
+                        // Status Pill
+                        HStack(spacing: 6) {
+                            Image(systemName: statusKind.iconName)
+                                .font(.system(size: 12, weight: .bold))
+                            Text(statusKind.localizedTitle)
+                                .font(DossierFont.bold(12, relativeTo: .caption))
+                        }
+                        .foregroundColor(statusKind.tintColor)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(statusKind.tintColor.opacity(0.12), in: Capsule())
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(statusKind.tintColor.opacity(0.3), lineWidth: 1)
+                        )
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 10) {
-                            Text(Language.get("POS_Dossier_Title", alter: "ملف المعاملة المالية"))
-                                .font(DossierFont.bold(22, relativeTo: .title2))
-                                .foregroundColor(AdminSurface.primaryText)
-
-                            // Status Pill
-                            HStack(spacing: 6) {
-                                Image(systemName: statusKind.iconName)
-                                    .font(.system(size: 12, weight: .bold))
-                                Text(statusKind.localizedTitle)
-                                    .font(DossierFont.bold(12, relativeTo: .caption))
+                        // Quick Print Button in Header with ⌘P
+                        Button(action: onPrint) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "printer.fill")
+                                    .font(.system(size: 14, weight: .bold))
+                                Text(Language.get("POS_Dossier_PrintShortcutHint", alter: "طباعة (⌘P)"))
+                                    .font(DossierFont.bold(13, relativeTo: .subheadline))
                             }
-                            .foregroundColor(statusKind.tintColor)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(statusKind.tintColor.opacity(0.12), in: Capsule())
+                            .foregroundColor(AdminSurface.primaryText)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                             .overlay(
-                                Capsule()
-                                    .strokeBorder(statusKind.tintColor.opacity(0.3), lineWidth: 1)
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder), lineWidth: 1)
                             )
                         }
-
-                        HStack(spacing: 8) {
-                            Text(verbatim: POSReceiptFormat.receiptID(receipt.receiptID))
-                                .font(DossierFont.bold(14, relativeTo: .subheadline))
-                                .foregroundColor(Color(uiColor: .ppPrimary))
-
-                            if let branch = receipt.branchName ?? BranchContextStore.shared.activeBranch?.localizedName() {
-                                Text("•")
-                                    .font(DossierFont.regular(13, relativeTo: .caption))
-                                    .foregroundColor(AdminSurface.secondaryText)
-                                Text(branch)
-                                    .font(DossierFont.medium(13, relativeTo: .caption))
-                                    .foregroundColor(AdminSurface.secondaryText)
-                            }
-                        }
+                        .buttonStyle(.plain)
+                        .hoverEffect(.highlight)
+                        .keyboardShortcut("p", modifiers: .command)
                     }
-
-                    Spacer()
-
-                    // Quick Print Button in Header with ⌘P
-                    Button(action: onPrint) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "printer.fill")
-                                .font(.system(size: 14, weight: .bold))
-                            Text(Language.get("POS_Dossier_PrintShortcutHint", alter: "طباعة (⌘P)"))
-                                .font(DossierFont.bold(13, relativeTo: .subheadline))
-                        }
-                        .foregroundColor(AdminSurface.primaryText)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(Color(uiColor: .ppSurfaceBorder), lineWidth: 1)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .hoverEffect(.highlight)
-                    .keyboardShortcut("p", modifiers: .command)
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 18)
-
-                Divider().background(AdminSurface.hairline)
 
                 // Dual-Wing Main Stage
                 GeometryReader { geo in
@@ -3242,7 +3213,10 @@ struct POSTransactionDossierSheet: View {
         .safeAreaInset(edge: .bottom) {
             if receipt.creditContractVersion == 1, let customerID = receipt.customerID, let branchID = receipt.branchID {
                 POSCreditAccountLink(customerID: customerID, branchID: branchID)
-                    .padding(.horizontal).background(AdminSurface.background)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 6)
+                    .background(AdminSurface.background)
             }
         }
         .fullScreenCover(item: $selectedReturnCaseForDetail) { rCase in
@@ -3262,6 +3236,12 @@ struct POSTransactionDossierSheet: View {
                     self.isLoadingReturnCases = false
                 }
             }
+        }
+        .navigationBarHidden(true)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .enableSwipeToPop {
+            DossierHaptics.light()
+            dismiss()
         }
         .onChange(of: feedbackMessage) { message in
             guard let message = message, !message.isEmpty else { return }
@@ -3402,28 +3382,15 @@ struct POSRefundStudioSheet: View {
             AdminSurface.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Header
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(Language.get("POS_RefundStudio_Title", alter: "استوديو الاسترداد المالي"))
-                            .font(AdminType.headline)
-                            .foregroundColor(AdminSurface.primaryText)
-
-                        Text(Language.get("POS_RefundStudio_Sub", alter: "إرجاع الكميات للمخزون واسترداد المبلغ"))
-                            .font(AdminType.caption)
-                            .foregroundColor(AdminSurface.secondaryText)
-                    }
-
-                    Spacer()
-
-                    AdminSquircleCloseButton {
-                        dismiss()
-                    }
-                }
-                .padding(.horizontal, AdminSpacing.screenMargin)
-                .padding(.vertical, AdminSpacing.md)
-
-                Divider().background(AdminSurface.hairline)
+                // Sovereign Navigation Bar (Inventory Pattern)
+                AdminSovereignNavigationBar(
+                    title: Language.get("POS_RefundStudio_Title", alter: "استوديو الاسترداد المالي"),
+                    subtitle: Language.get("POS_RefundStudio_Sub", alter: "إرجاع الكميات للمخزون واسترداد المبلغ"),
+                    statusDotColor: Color(uiColor: .systemOrange),
+                    isModal: false,
+                    showsTopFade: false,
+                    onBack: { dismiss() }
+                )
 
                 // Scrollable Body
                 ScrollView(.vertical, showsIndicators: false) {
@@ -3519,6 +3486,11 @@ struct POSRefundStudioSheet: View {
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .navigationBarHidden(true)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .enableSwipeToPop {
+            dismiss()
+        }
         .fullScreenCover(isPresented: $isShowingLivePetCoordinator) {
             LivePetReturnCoordinatorView(
                 receipt: receipt,

@@ -139,10 +139,55 @@ enum POSCreditPendingStore {
     }
 }
 
+enum POSCreditCheckoutError: LocalizedError {
+    case dateRollover(contextDate: String, currentDate: String)
+    case invalidDeposit
+    case invalidInstallmentAmount
+    case referenceRequired
+    case referenceTooLong
+    case dueDatePrecedesToday
+    case installmentPrecedesToday
+    case installmentSumMismatch
+    case customerMismatch
+    case receiptAccountMissing
+
+    var errorDescription: String? {
+        switch self {
+        case .dateRollover:
+            return Language.get("POS_Credit_DateRolloverNotice", alter: "انتقلت دورة العمل إلى يوم جديد. يرجى تحديث بيانات الائتمان للمتابعة.")
+        case .dueDatePrecedesToday, .installmentPrecedesToday:
+            return Language.get("POS_Credit_DueDatePast", alter: "تاريخ الاستحقاق يجب ألا يسبق تاريخ اليوم.")
+        case .referenceRequired:
+            return Language.get("POS_Credit_ReferenceRequired", alter: "مرجع الدفعة الأولى مطلوب عند الدفع بغير النقد.")
+        case .referenceTooLong:
+            return Language.get("POS_Credit_ReferenceTooLong", alter: "مرجع الدفعة الأولى لا يمكن أن يتجاوز 200 حرف.")
+        case .installmentSumMismatch:
+            return Language.get("POS_Credit_InvalidTerms", alter: "راجع المبالغ والتواريخ ومرجع الدفعة. يجب أن يساوي مجموع الأقساط المبلغ المتبقي بعد الدفعة الأولى.")
+        case .invalidDeposit:
+            return Language.get("POS_Credit_InvalidDeposit", alter: "مبلغ الدفعة الأولى غير صالح.")
+        case .invalidInstallmentAmount:
+            return Language.get("POS_Credit_InvalidInstallmentAmount", alter: "مبلغ القسط غير صالح ويجب أن يكون أكبر من صفر.")
+        case .customerMismatch:
+            return Language.get("POS_Credit_CustomerRequired", alter: "تغير العميل المحدد. يرجى إعادة اختيار العميل.")
+        case .receiptAccountMissing:
+            return Language.get("POS_Credit_Unavailable", alter: "حساب استلام الدفعة غير مهيأ لهذا الفرع.")
+        }
+    }
+}
+
 struct POSCreditInstallmentDraft: Identifiable {
     let id = UUID()
     var date = Date()
     var amount = ""
+}
+
+private struct PPCreditPressableButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .opacity(configuration.isPressed ? 0.92 : 1.0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.75), value: configuration.isPressed)
+    }
 }
 
 struct POSCreditCheckoutSheet: View {
@@ -150,6 +195,7 @@ struct POSCreditCheckoutSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.scenePhase) private var scenePhase
     @ScaledMetric(relativeTo: .largeTitle) private var heroAmountSize: CGFloat = 44
 
     @State private var depositText = "0.00"
@@ -169,7 +215,6 @@ struct POSCreditCheckoutSheet: View {
     @State private var selectedDepositPreset: Int? = 0
     @State private var selectedDueDatePreset: Int? = 30
     @FocusState private var editingAmount: Bool
-    @State private var confirmsCancellation = false
 
     private func label(_ key: String) -> String { Language.get(key, alter: nil) }
     private func money(_ minor: Int) -> String { POSReceiptFormat.currency(Double(minor) / 100, code: "QAR") }
@@ -211,6 +256,11 @@ struct POSCreditCheckoutSheet: View {
         return reviewing ? 2 : 1
     }
 
+    private var isBusinessDateRolledOver: Bool {
+        guard let context = model.creditContext else { return false }
+        return day(Date(), context) != context.businessDateKey
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -234,8 +284,20 @@ struct POSCreditCheckoutSheet: View {
                         unresolvedCustomerCard
                     }
 
+                    if isBusinessDateRolledOver {
+                        noticeCard(label("POS_Credit_DateRolloverNotice"), color: AdminSurface.amber, symbol: "clock.arrow.circlepath")
+                    }
+
                     if let message = localError ?? model.creditError {
-                        noticeCard(message, color: AdminSurface.crimson, symbol: "exclamationmark.triangle.fill")
+                        let isApprovalRequired = isRecovery && model.creditRecovery?.approvalRequestJSON != nil
+                        let isDuplicateNotice = isApprovalRequired && (message == label("POS_Credit_ApprovalRequired") || message == POSCreditAccountCopy.text("ApprovalRequested"))
+                        if !isDuplicateNotice, (model.selectedCustomer != nil || message != label("POS_Credit_SelectCustomer")) {
+                            let isSuccess = message == POSCreditAccountCopy.text("ApprovalRequested")
+                            let isInfo = message == POSCreditAccountCopy.text("Cancelled")
+                            let color = isSuccess ? AdminSurface.primary : (isInfo ? AdminSurface.amber : AdminSurface.crimson)
+                            let symbol = isSuccess ? "checkmark.circle.fill" : (isInfo ? "info.circle.fill" : "exclamationmark.triangle.fill")
+                            noticeCard(message, color: color, symbol: symbol)
+                        }
                     }
                 }
                 .frame(maxWidth: 640)
@@ -259,9 +321,16 @@ struct POSCreditCheckoutSheet: View {
                             .accessibilityAddTraits(.isHeader)
                         // Recovery omits the overview, so retain its branch/cart context here.
                         if isRecovery {
-                            Text("\(activeBranchName) · \(label("POS_Items")): \(headerNumber(model.cartItems.count))")
-                                .font(PPBrandFont.regular(Language.isRTL() ? 13 : 11, relativeTo: .caption))
-                                .foregroundStyle(AdminSurface.secondaryText)
+                            HStack(spacing: 3) {
+                                Text(activeBranchName)
+                                Text("·")
+                                Text(label("POS_Items"))
+                                Text(":")
+                                Text(headerNumber(model.cartItems.count))
+                                    .font(PPBrandFont.bold(Language.isRTL() ? 13 : 11, relativeTo: .caption))
+                            }
+                            .font(PPBrandFont.regular(Language.isRTL() ? 13 : 11, relativeTo: .caption))
+                            .foregroundStyle(AdminSurface.secondaryText)
                         }
                     }
                 }
@@ -324,6 +393,20 @@ struct POSCreditCheckoutSheet: View {
             .onChange(of: model.creditContext?.policyVersion) { _ in reviewing = false; accepted = false }
             .onChange(of: model.creditContext?.accountVersion) { _ in reviewing = false; accepted = false }
             .onChange(of: model.creditContext?.checkoutContextHash) { _ in reviewing = false; accepted = false }
+            .onChange(of: scenePhase) { phase in
+                if phase == .active && isBusinessDateRolledOver {
+                    model.loadCreditContext()
+                    reviewing = false
+                    accepted = false
+                }
+            }
+            .onChange(of: model.creditContext?.businessDateKey) { newDateKey in
+                if let newDateKey, let context = model.creditContext {
+                    if day(dueDate, context) < newDateKey {
+                        dueDate = Calendar.current.date(byAdding: .day, value: selectedDueDatePreset ?? 30, to: Date()) ?? Date()
+                    }
+                }
+            }
             .onChange(of: allowedMethods) { methods in
                 if !methods.contains(method) { method = methods.first ?? "" }
             }
@@ -403,15 +486,13 @@ struct POSCreditCheckoutSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityHidden(true)
                 Text(money(totalMinor))
-                    .font(.system(size: heroAmountSize, weight: .semibold, design: .rounded))
+                    .font(PPBrandFont.bold(heroAmountSize, relativeTo: .largeTitle))
                     .foregroundStyle(AdminSurface.primaryText)
-                    .monospacedDigit()
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                     .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.6)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
-                    .environment(\.layoutDirection, .leftToRight)
                     .accessibilityLabel(label("POS_Credit_TotalFinanced"))
                     .accessibilityValue(money(totalMinor))
                     .accessibilityIdentifier("pos.credit.amountDue")
@@ -469,8 +550,13 @@ struct POSCreditCheckoutSheet: View {
     }
 
     private var heroItemCount: some View {
-        Text("\(label("POS_Items")): \(headerNumber(model.cartItems.count))")
-            .fixedSize(horizontal: false, vertical: true)
+        HStack(spacing: 3) {
+            Text(label("POS_Items"))
+            Text(":")
+            Text(headerNumber(model.cartItems.count))
+                .font(PPBrandFont.bold(14, relativeTo: .footnote))
+        }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func heroQualifier(_ title: String, symbol: String, color: Color) -> some View {
@@ -570,8 +656,7 @@ struct POSCreditCheckoutSheet: View {
                     .foregroundStyle(AdminSurface.primary)
             } else {
                 Text(headerNumber(index + 1))
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
+                    .font(PPBrandFont.bold(14, relativeTo: .caption))
                     .foregroundStyle(isCurrent ? .white : AdminSurface.secondaryText)
             }
         }
@@ -634,7 +719,7 @@ struct POSCreditCheckoutSheet: View {
                                     .font(.system(size: 15))
                             }
                             Text(customer.phone)
-                                .font(AdminType.subheadline)
+                                .font(PPBrandFont.medium(14, relativeTo: .subheadline))
                                 .foregroundStyle(AdminSurface.secondaryText)
                                 .environment(\.layoutDirection, .leftToRight)
                         }
@@ -767,16 +852,46 @@ struct POSCreditCheckoutSheet: View {
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                             showsCustomerPicker = true
                         } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "person.badge.plus")
-                                Text(label("POS_Credit_ChooseCustomer"))
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(AdminSurface.primary.opacity(0.12))
+                                        .frame(width: 42, height: 42)
+                                    Image(systemName: "person.badge.plus")
+                                        .font(.system(size: 18, weight: .bold))
+                                        .foregroundStyle(AdminSurface.primary)
+                                }
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(label("POS_Credit_ChooseCustomer"))
+                                        .font(AdminType.headlineBold)
+                                        .foregroundStyle(AdminSurface.primaryText)
+                                    Text(label("POS_Credit_SearchDirectoryOrAdd"))
+                                        .font(AdminType.caption)
+                                        .foregroundStyle(AdminSurface.secondaryText)
+                                }
+
+                                Spacer(minLength: 8)
+
+                                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(AdminSurface.primary)
+                                    .frame(width: 28, height: 28)
+                                    .background(AdminSurface.primary.opacity(0.08), in: Circle())
                             }
-                            .font(AdminType.headlineBold)
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity, minHeight: 50)
-                            .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 16))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .frame(maxWidth: .infinity, minHeight: 62)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(AdminSurface.primarySoft.opacity(0.45))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .strokeBorder(AdminSurface.primary.opacity(0.20), lineWidth: 1.2)
+                            )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PPCreditPressableButtonStyle())
                         .accessibilityIdentifier("pos.credit.chooseCustomer")
                     }
                     .frame(maxWidth: .infinity)
@@ -812,7 +927,7 @@ struct POSCreditCheckoutSheet: View {
                         }
                         if let phone = model.selectedCustomer?.phone, !phone.isEmpty {
                             Text(phone)
-                                .font(AdminType.subheadline)
+                                .font(PPBrandFont.medium(14, relativeTo: .subheadline))
                                 .foregroundStyle(AdminSurface.secondaryText)
                                 .environment(\.layoutDirection, .leftToRight)
                         }
@@ -903,19 +1018,19 @@ struct POSCreditCheckoutSheet: View {
     private func creditMetricBox(title: String, amount: Int, tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
-                .font(AdminType.caption)
+                .font(PPBrandFont.medium(11, relativeTo: .caption2))
                 .foregroundStyle(AdminSurface.secondaryText)
                 .lineLimit(1)
-            Text(money(amount))
-                .font(AdminType.footnoteBold)
-                .foregroundStyle(tint)
-                .monospacedDigit()
-                .environment(\.layoutDirection, .leftToRight)
-                .lineLimit(1)
                 .minimumScaleFactor(0.8)
+            Text(money(amount))
+                .font(PPBrandFont.bold(14, relativeTo: .subheadline))
+                .foregroundStyle(tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.55)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
         .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12))
     }
 
@@ -936,10 +1051,8 @@ struct POSCreditCheckoutSheet: View {
                     Spacer()
                     if (depositMinor ?? 0) > 0 {
                         Text(money(depositMinor ?? 0))
-                            .font(AdminType.subheadlineBold)
+                            .font(PPBrandFont.bold(16, relativeTo: .subheadline))
                             .foregroundStyle(AdminSurface.emerald)
-                            .monospacedDigit()
-                            .environment(\.layoutDirection, .leftToRight)
                     }
                 }
 
@@ -956,15 +1069,13 @@ struct POSCreditCheckoutSheet: View {
                         .foregroundStyle(AdminSurface.secondaryText)
                     TextField("0.00", text: $depositText)
                         .keyboardType(.decimalPad)
-                        .font(AdminType.bodyBold)
-                        .monospacedDigit()
-                        .environment(\.layoutDirection, .leftToRight)
+                        .font(PPBrandFont.bold(17, relativeTo: .body))
                         .focused($editingAmount)
                         .onChange(of: depositText) { _ in
                             selectedDepositPreset = nil
                         }
-                    Text("QAR")
-                        .font(AdminType.footnoteBold)
+                    Text(Language.isRTL() ? "ر.ق." : "QAR")
+                        .font(PPBrandFont.bold(14, relativeTo: .footnote))
                         .foregroundStyle(AdminSurface.secondaryText)
                 }
                 .padding(.horizontal, 14)
@@ -1024,10 +1135,8 @@ struct POSCreditCheckoutSheet: View {
                         .foregroundStyle(AdminSurface.primaryText)
                     Spacer()
                     Text(money(amountDueMinor))
-                        .font(AdminType.headlineBold)
+                        .font(PPBrandFont.bold(18, relativeTo: .headline))
                         .foregroundStyle(AdminSurface.primary)
-                        .monospacedDigit()
-                        .environment(\.layoutDirection, .leftToRight)
                 }
 
                 // Mode Picker
@@ -1085,9 +1194,7 @@ struct POSCreditCheckoutSheet: View {
 
                                 TextField("0.00", text: $entry.amount)
                                     .keyboardType(.decimalPad)
-                                    .font(AdminType.bodyBold)
-                                    .monospacedDigit()
-                                    .environment(\.layoutDirection, .leftToRight)
+                                    .font(PPBrandFont.bold(16, relativeTo: .body))
                                     .padding(.horizontal, 10)
                                     .frame(minHeight: 42)
                                     .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10))
@@ -1149,7 +1256,7 @@ struct POSCreditCheckoutSheet: View {
             depositText = String(format: "%.2f", Double(minor) / 100)
         } label: {
             Text(title)
-                .font(AdminType.footnoteBold)
+                .font(PPBrandFont.bold(13, relativeTo: .footnote))
                 .foregroundStyle(selectedDepositPreset == tag ? .white : AdminSurface.primaryText)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
@@ -1212,7 +1319,7 @@ struct POSCreditCheckoutSheet: View {
             dueDate = Calendar.current.date(byAdding: .day, value: days, to: Date()) ?? Date()
         } label: {
             Text(title)
-                .font(AdminType.caption)
+                .font(PPBrandFont.bold(12, relativeTo: .caption))
                 .foregroundStyle(isSelected ? .white : AdminSurface.primaryText)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
@@ -1309,13 +1416,43 @@ struct POSCreditCheckoutSheet: View {
     private var floatingActionDock: some View {
         VStack(spacing: 8) {
             if let context = model.creditContext {
-                if reviewing {
+                if isBusinessDateRolledOver {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        isRefreshingEligibility = true
+                        localError = nil
+                        model.loadCreditContext()
+                        reviewing = false
+                        accepted = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                            isRefreshingEligibility = false
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.clockwise")
+                            Text(label("POS_Credit_Reload"))
+                                .font(AdminType.headlineBold)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 54)
+                        .foregroundStyle(.white)
+                        .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 16))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("pos.credit.reload")
+                } else if reviewing {
                     Button {
                         UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
                         do {
                             let settlement = try settlement(context)
                             guard accepted else { return }
                             if model.submitCreditOrder(settlement: settlement) { localError = nil }
+                        } catch let error as POSCreditCheckoutError {
+                            localError = error.errorDescription
+                            if case .dateRollover = error {
+                                model.loadCreditContext()
+                                reviewing = false
+                                accepted = false
+                            }
                         } catch {
                             localError = label("POS_Credit_InvalidTerms")
                         }
@@ -1326,8 +1463,7 @@ struct POSCreditCheckoutSheet: View {
                                 .font(AdminType.headlineBold)
                             Spacer()
                             Text(money(amountDueMinor))
-                                .font(AdminType.headlineBold)
-                                .monospacedDigit()
+                                .font(PPBrandFont.bold(17, relativeTo: .headline))
                         }
                         .padding(.horizontal, 20)
                         .frame(maxWidth: .infinity, minHeight: 54)
@@ -1355,6 +1491,13 @@ struct POSCreditCheckoutSheet: View {
                             _ = try settlement(context)
                             reviewing = true
                             localError = nil
+                        } catch let error as POSCreditCheckoutError {
+                            localError = error.errorDescription
+                            if case .dateRollover = error {
+                                model.loadCreditContext()
+                                reviewing = false
+                                accepted = false
+                            }
                         } catch {
                             localError = label("POS_Credit_InvalidTerms")
                         }
@@ -1397,18 +1540,25 @@ struct POSCreditCheckoutSheet: View {
                 .accessibilityIdentifier("pos.credit.reload")
             } else {
                 Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     showsCustomerPicker = true
                 } label: {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 10) {
                         Image(systemName: "person.crop.circle.badge.plus")
-                        Text(label("POS_Credit_ChooseCustomer"))
+                            .font(.system(size: 18, weight: .bold))
+                        Text(label("POS_Credit_ChooseCustomerToProceed"))
                             .font(AdminType.headlineBold)
+                        Spacer()
+                        Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                            .font(.system(size: 14, weight: .bold))
                     }
-                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .padding(.horizontal, 20)
+                    .frame(maxWidth: .infinity, minHeight: 54)
                     .foregroundStyle(.white)
-                    .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 16))
+                    .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .shadow(color: AdminSurface.primary.opacity(0.24), radius: 10, y: 4)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PPCreditPressableButtonStyle())
                 .accessibilityIdentifier("pos.credit.chooseCustomer")
             }
         }
@@ -1420,25 +1570,66 @@ struct POSCreditCheckoutSheet: View {
 
     // MARK: - Recovery Section
 
+    private var isApprovalRequired: Bool {
+        model.creditRecovery?.approvalRequestJSON != nil
+    }
+
+    private var isApprovalRequested: Bool {
+        model.creditError == POSCreditAccountCopy.text("ApprovalRequested")
+    }
+
     private var recoverySection: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
-                Image(systemName: "arrow.triangle.2.circlepath")
+                Image(systemName: isApprovalRequired ? "person.crop.circle.badge.checkmark" : "arrow.triangle.2.circlepath")
                     .font(.title2)
                     .foregroundStyle(AdminSurface.primary)
-                Text(label("POS_Credit_RecoveryTitle"))
+                Text(label(isApprovalRequired ? "POS_Credit_ApprovalRequiredTitle" : "POS_Credit_RecoveryTitle"))
                     .font(AdminType.title3Bold)
                     .foregroundStyle(AdminSurface.primaryText)
             }
 
-            Text(model.creditRecoveryError ?? label(model.creditRecovery?.confirmedResultJSON == nil ? "POS_Credit_RecoveryUnknown" : "POS_Credit_RecoveryConfirmed"))
+            Text(model.creditRecoveryError ?? label(isApprovalRequired ? "POS_Credit_ApprovalRequiredBody" : (model.creditRecovery?.confirmedResultJSON == nil ? "POS_Credit_RecoveryUnknown" : "POS_Credit_RecoveryConfirmed")))
                 .font(AdminType.body)
                 .foregroundStyle(AdminSurface.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if model.creditRecovery?.approvalRequestJSON != nil {
-                Button(POSCreditAccountCopy.text("RequestApproval")) { model.requestCreditIssueApproval() }
+            if isApprovalRequired {
+                if isApprovalRequested {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(AdminSurface.primary)
+                        Text(label("POS_Credit_ApprovalRequestedStatus"))
+                            .font(AdminType.subheadlineBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                } else {
+                    Button {
+                        model.requestCreditIssueApproval()
+                    } label: {
+                        HStack(spacing: 8) {
+                            if model.isCheckoutBusy {
+                                ProgressView().tint(.white)
+                            } else {
+                                Image(systemName: "person.crop.circle.badge.checkmark")
+                                    .font(.system(size: 16, weight: .bold))
+                            }
+                            Text(POSCreditAccountCopy.text("RequestApproval"))
+                                .font(AdminType.headlineBold)
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 14))
+                    }
+                    .buttonStyle(.plain)
                     .disabled(model.isCheckoutBusy)
+                }
+
                 if let record = model.creditRecovery, let envelope = try? JSONDecoder().decode(POSCreditPendingStore.Envelope.self, from: record.requestJSON) {
                     POSCreditAccountLink(customerID: envelope.payload.settlement.customerId, branchID: record.branchID)
                 }
@@ -1446,31 +1637,54 @@ struct POSCreditCheckoutSheet: View {
 
             HStack(spacing: 10) {
                 if let record = model.creditRecovery, record.confirmedResultJSON == nil {
-                    Button(role: .destructive) { confirmsCancellation = true } label: {
+                    Button(role: .destructive) {
+                        promptCancelPendingCreditSale()
+                    } label: {
                         Text(label("POS_Credit_CancelRecovery"))
                             .font(AdminType.subheadlineBold)
                             .frame(maxWidth: .infinity, minHeight: 46)
                     }
                     .buttonStyle(.bordered)
                     .disabled(model.isCheckoutBusy)
-                    .confirmationDialog(label("POS_Credit_CancelRecoveryNotice"), isPresented: $confirmsCancellation, titleVisibility: .visible) {
-                        Button(label("POS_Credit_CancelRecovery"), role: .destructive) { model.cancelCreditIssue() }
-                    }
                 }
 
                 Button {
                     model.recoverCreditSale()
                 } label: {
-                    Text(label("POS_Credit_Recover"))
-                        .font(AdminType.headlineBold)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, minHeight: 46)
-                        .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 12))
+                    HStack(spacing: 6) {
+                        if model.isCheckoutBusy {
+                            ProgressView().tint(.white)
+                        } else if isApprovalRequired {
+                            Image(systemName: "checkmark.seal.fill")
+                        }
+                        Text(label(isApprovalRequired ? "POS_Credit_CompleteAfterApproval" : "POS_Credit_Recover"))
+                            .font(AdminType.headlineBold)
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 46)
+                    .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
                 .disabled(model.isCheckoutBusy || model.creditRecovery == nil)
             }
         }
+    }
+
+    private func promptCancelPendingCreditSale() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        PPAlertHelper.showDestructiveConfirmation(
+            in: nil,
+            title: label("POS_Credit_CancelRecovery"),
+            subtitle: label("POS_Credit_CancelRecoveryNotice"),
+            confirmButton: label("POS_Credit_CancelRecovery"),
+            cancelButton: Language.get("Cancel", alter: "تراجع"),
+            icon: UIImage(systemName: "exclamationmark.triangle.fill"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                model.cancelCreditIssue()
+            },
+            cancelBlock: nil
+        )
     }
 
     // MARK: - Primitives & Helpers
@@ -1510,10 +1724,10 @@ struct POSCreditCheckoutSheet: View {
                 .foregroundStyle(prominent ? AdminSurface.primaryText : AdminSurface.secondaryText)
             Spacer(minLength: 12)
             Text(money(value))
-                .font(prominent ? AdminType.title3Bold : AdminType.subheadlineBold)
+                .font(prominent ? PPBrandFont.bold(18, relativeTo: .title3) : PPBrandFont.bold(15, relativeTo: .subheadline))
                 .foregroundStyle(prominent ? AdminSurface.primary : AdminSurface.primaryText)
-                .monospacedDigit()
-                .environment(\.layoutDirection, .leftToRight)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
     }
 
@@ -1527,28 +1741,55 @@ struct POSCreditCheckoutSheet: View {
     }
 
     private func settlement(_ context: POSCreditContext) throws -> [String: Any] {
-        guard let deposit = depositMinor, deposit >= 0, deposit <= totalMinor, totalMinor > 0,
-              context.customerId == model.selectedCustomer?.id, day(Date(), context) == context.businessDateKey else { throw POSCreditPendingStore.StoreError.invalidRecord }
+        guard let deposit = depositMinor, deposit >= 0, deposit <= totalMinor, totalMinor > 0 else {
+            throw POSCreditCheckoutError.invalidDeposit
+        }
+        guard context.customerId == model.selectedCustomer?.id else {
+            throw POSCreditCheckoutError.customerMismatch
+        }
+        guard day(Date(), context) == context.businessDateKey else {
+            throw POSCreditCheckoutError.dateRollover(contextDate: context.businessDateKey, currentDate: day(Date(), context))
+        }
+
         var terms: [String: Any]
         if usesInstallments {
             let rows = try installments.map { entry -> [String: Any] in
-                guard let amount = Self.minor(entry.amount), amount > 0, day(entry.date, context) >= context.businessDateKey else { throw POSCreditPendingStore.StoreError.invalidRecord }
+                guard let amount = Self.minor(entry.amount), amount > 0 else {
+                    throw POSCreditCheckoutError.invalidInstallmentAmount
+                }
+                guard day(entry.date, context) >= context.businessDateKey else {
+                    throw POSCreditCheckoutError.installmentPrecedesToday
+                }
                 return ["dueDateKey": day(entry.date, context), "amountMinor": amount]
             }
-            guard rows.reduce(0, { $0 + ($1["amountMinor"] as? Int ?? 0) }) == totalMinor - deposit else { throw POSCreditPendingStore.StoreError.invalidRecord }
+            guard rows.reduce(0, { $0 + ($1["amountMinor"] as? Int ?? 0) }) == totalMinor - deposit else {
+                throw POSCreditCheckoutError.installmentSumMismatch
+            }
             terms = ["type": "installments", "installments": rows]
         } else {
-            guard day(dueDate, context) >= context.businessDateKey else { throw POSCreditPendingStore.StoreError.invalidRecord }
+            guard day(dueDate, context) >= context.businessDateKey else {
+                throw POSCreditCheckoutError.dueDatePrecedesToday
+            }
             terms = ["type": "fixed_due", "dueDateKey": day(dueDate, context)]
         }
+
         var tender: [String: Any] = ["amountMinor": deposit]
         if deposit > 0 {
-            guard let account = context.receiptAccounts[method],
-                  reference.trimmingCharacters(in: .whitespacesAndNewlines).count <= 200,
-                  method == "cash" || (context.pendingTendersEnabled && !reference.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) else { throw POSCreditPendingStore.StoreError.invalidRecord }
-            tender["method"] = method; tender["accountId"] = account
-            tender["reference"] = reference.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let account = context.receiptAccounts[method] else {
+                throw POSCreditCheckoutError.receiptAccountMissing
+            }
+            let trimmedRef = reference.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmedRef.count <= 200 else {
+                throw POSCreditCheckoutError.referenceTooLong
+            }
+            guard method == "cash" || (context.pendingTendersEnabled && !trimmedRef.isEmpty) else {
+                throw POSCreditCheckoutError.referenceRequired
+            }
+            tender["method"] = method
+            tender["accountId"] = account
+            tender["reference"] = trimmedRef
         }
+
         return ["type": "credit", "contractVersion": 1, "customerId": context.customerId,
                 "expectedPolicyVersion": context.policyVersion, "expectedAccountVersion": context.accountVersion,
                 "checkoutContextHash": context.checkoutContextHash,

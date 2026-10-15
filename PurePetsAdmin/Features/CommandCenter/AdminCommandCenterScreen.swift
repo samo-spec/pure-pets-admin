@@ -2960,6 +2960,8 @@ final class CommandPOSShiftTelemetryStore: ObservableObject {
     @Published private(set) var todaySalesTotal: Double = 0.0
     @Published private(set) var cashSalesTotal: Double = 0.0
     @Published private(set) var cardSalesTotal: Double = 0.0
+    @Published private(set) var creditSalesTotal: Double = 0.0
+    @Published private(set) var otherSalesTotal: Double = 0.0
     @Published private(set) var refundsCount: Int = 0
     @Published private(set) var lastFetchDate: Date? = nil
     @Published private(set) var isRefreshing: Bool = false
@@ -2982,6 +2984,16 @@ final class CommandPOSShiftTelemetryStore: ObservableObject {
         return CGFloat(min(max(cardSalesTotal / todaySalesTotal, 0.0), 1.0))
     }
 
+    var creditRatio: CGFloat {
+        guard todaySalesTotal > 0 else { return 0.0 }
+        return CGFloat(min(max(creditSalesTotal / todaySalesTotal, 0.0), 1.0))
+    }
+
+    var otherRatio: CGFloat {
+        guard todaySalesTotal > 0 else { return 0.0 }
+        return CGFloat(min(max(otherSalesTotal / todaySalesTotal, 0.0), 1.0))
+    }
+
     var currencySymbol: String {
         Language.isRTL() ? "ر.ق" : "QAR"
     }
@@ -2996,6 +3008,14 @@ final class CommandPOSShiftTelemetryStore: ObservableObject {
 
     var formattedCardSales: String {
         String(format: "%.2f %@", cardSalesTotal, currencySymbol)
+    }
+
+    var formattedCreditSales: String {
+        String(format: "%.2f %@", creditSalesTotal, currencySymbol)
+    }
+
+    var formattedOtherSales: String {
+        String(format: "%.2f %@", otherSalesTotal, currencySymbol)
     }
 
     var formattedAverageOrderValue: String {
@@ -3099,6 +3119,8 @@ final class CommandPOSShiftTelemetryStore: ObservableObject {
         todaySalesTotal = 0.0
         cashSalesTotal = 0.0
         cardSalesTotal = 0.0
+        creditSalesTotal = 0.0
+        otherSalesTotal = 0.0
         refundsCount = 0
         lastFetchDate = nil
     }
@@ -3143,6 +3165,8 @@ final class CommandPOSShiftTelemetryStore: ObservableObject {
                     self.todaySalesTotal = 0.0
                     self.cashSalesTotal = 0.0
                     self.cardSalesTotal = 0.0
+                    self.creditSalesTotal = 0.0
+                    self.otherSalesTotal = 0.0
                     self.refundsCount = 0
                     return
                 }
@@ -3152,9 +3176,13 @@ final class CommandPOSShiftTelemetryStore: ObservableObject {
                 var total: Double = 0.0
                 var cash: Double = 0.0
                 var card: Double = 0.0
+                var credit: Double = 0.0
+                var other: Double = 0.0
                 var refunds = 0
 
                 for receipt in receipts {
+                    let status = receipt.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    guard !["cancelled", "voided"].contains(status) else { continue }
                     let isToday: Bool
                     if let created = receipt.createdAt {
                         isToday = calendar.isDateInToday(created)
@@ -3165,13 +3193,23 @@ final class CommandPOSShiftTelemetryStore: ObservableObject {
                     if isToday {
                         count += 1
                         total += receipt.total
-                        let method = receipt.paymentMethod.lowercased()
-                        if method.contains("cash") {
-                            cash += receipt.total
+                        let method = receipt.paymentMethod.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                        // This is gross sales by sale method. Credit deposits,
+                        // later collections, and outstanding balances are separate
+                        // server projections and must not be counted again here.
+                        if receipt.creditContractVersion == 1 || method == "credit" {
+                            credit += receipt.total
                         } else {
-                            card += receipt.total
+                            switch method {
+                            case "cash": cash += receipt.total
+                            case "card", "qib": card += receipt.total
+                            default: other += receipt.total
+                            }
                         }
-                        if receipt.refundedAmount > 0 {
+                        let hasRefund = receipt.creditContractVersion == 1
+                            ? receipt.refundedMinor > 0
+                            : receipt.refundedAmount > 0
+                        if hasRefund {
                             refunds += 1
                         }
                     }
@@ -3181,6 +3219,8 @@ final class CommandPOSShiftTelemetryStore: ObservableObject {
                 self.todaySalesTotal = total
                 self.cashSalesTotal = cash
                 self.cardSalesTotal = card
+                self.creditSalesTotal = credit
+                self.otherSalesTotal = other
                 self.refundsCount = refunds
 
                 if count == 0 {
@@ -3545,37 +3585,38 @@ private struct CommandPOSDeck: View {
     }
 
     private var supportingActions: some View {
-        VStack(spacing: 0) {
+        LazyVGrid(
+            columns: Array(
+                repeating: GridItem(.flexible(minimum: 0), spacing: 10, alignment: .top),
+                count: dynamicTypeSize.isAccessibilitySize ? 1 : 2
+            ),
+            alignment: .leading,
+            spacing: 10
+        ) {
             CommandPOSHomeAction(title: CommandPOSHomeCopy.text("Receipts"),
                                  detail: CommandPOSHomeCopy.text("ReceiptsDetail"),
-                                 symbol: "doc.text.magnifyingglass", identifier: "home.pos.receipts",
-                                 showsDetail: isRegular) {
+                                 symbol: "doc.text.magnifyingglass", identifier: "home.pos.receipts") {
                 telemetryStore.markNeedsReloadOnAppearance()
                 onRoute("posHistory")
             }
             .keyboardShortcut("h", modifiers: .command)
             if telemetryStore.canView || telemetryStore.canSell {
-                rule
                 CommandPOSHomeAction(title: Language.get("Proforma_Title", alter: nil),
                                      detail: Language.get("Proforma_Subtitle", alter: nil),
-                                     symbol: "doc.text", identifier: "home.pos.proforma",
-                                     showsDetail: isRegular) {
+                                     symbol: "doc.text", identifier: "home.pos.proforma") {
                     telemetryStore.markNeedsReloadOnAppearance()
                     onRoute("proformaInvoices")
                 }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
             }
-            rule
             CommandPOSHomeAction(title: CommandPOSHomeCopy.text("Expense"),
                                  detail: CommandPOSHomeCopy.text("ExpenseDetail"),
-                                 symbol: "plus.circle", identifier: "home.pos.expense",
-                                 showsDetail: isRegular) {
+                                 symbol: "plus.circle", identifier: "home.pos.expense") {
                 telemetryStore.markNeedsReloadOnAppearance()
                 showsQuickExpenseSheet = true
             }
             .keyboardShortcut("e", modifiers: .command)
             if canOpenWantedPets {
-                rule
                 CommandPOSHomeAction(title: CommandPOSHomeCopy.text("Wanted"),
                                      detail: CommandPOSHomeCopy.text("WantedDetail"),
                                      symbol: "pawprint", identifier: "pos.wantedPets.entry") {
@@ -3724,43 +3765,43 @@ private struct CommandPOSHomeAction: View {
     let detail: String
     let symbol: String
     let identifier: String
-    var showsDetail: Bool = true
     let action: () -> Void
     @Environment(\.layoutDirection) private var layoutDirection
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             action()
         } label: {
-            HStack(alignment: dynamicTypeSize.isAccessibilitySize ? .top : .center, spacing: 12) {
-                if !dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center) {
                     Image(systemName: symbol)
-                        .font(.system(size: 22, weight: .regular))
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .frame(width: 32, height: 32)
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(AdminSurface.primary)
+                        .frame(width: 24, height: 24)
                         .accessibilityHidden(true)
-                }
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title).font(AdminType.headline).foregroundStyle(AdminSurface.primaryText)
-                    if showsDetail {
-                        Text(detail).font(AdminType.subheadline).foregroundStyle(AdminSurface.secondaryText)
-                    }
-                }
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                if !dynamicTypeSize.isAccessibilitySize {
+                    Spacer(minLength: 8)
                     Image(systemName: layoutDirection == .rightToLeft ? "chevron.left" : "chevron.right")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(AdminSurface.secondaryText)
                         .accessibilityHidden(true)
                 }
+                Text(title)
+                    .font(AdminType.headline)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 16)
-            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-            .contentShape(Rectangle())
+            .padding(12)
+            .frame(maxWidth: .infinity, minHeight: 88, maxHeight: .infinity, alignment: .topLeading)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline, lineWidth: 1)
+                    .allowsHitTesting(false)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(CommandPOSHomePressStyle())
         .accessibilityLabel(title)
@@ -3772,6 +3813,11 @@ private struct CommandPOSHomeAction: View {
 private struct CommandPOSHomeFigures: View {
     @ObservedObject var telemetryStore: CommandPOSShiftTelemetryStore
     let usesColumns: Bool
+
+    private var cashColor: Color { AdminSurface.emerald }
+    private var cardColor: Color { AdminSurface.primaryText }
+    private var creditColor: Color { AdminSurface.primary }
+    private var otherColor: Color { AdminSurface.secondaryText.opacity(0.55) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -3800,31 +3846,45 @@ private struct CommandPOSHomeFigures: View {
 
     private var tenderFigures: some View {
         VStack(spacing: 12) {
-            figure("AdminPOS_Tender_Cash", value: telemetryStore.formattedCashSales)
-            figure("AdminPOS_Tender_Card", value: telemetryStore.formattedCardSales)
+            figure("AdminPOS_Tender_Cash", value: telemetryStore.formattedCashSales, tint: cashColor)
+            figure("AdminPOS_Tender_Card", value: telemetryStore.formattedCardSales, tint: cardColor)
+            figure("AdminPOS_Tender_Credit", value: telemetryStore.formattedCreditSales, tint: creditColor)
+            if telemetryStore.otherSalesTotal > 0 {
+                figure("AdminPOS_Tender_Other", value: telemetryStore.formattedOtherSales, tint: otherColor)
+            }
             if telemetryStore.todaySalesTotal > 0 {
                 GeometryReader { geometry in
                     HStack(spacing: 0) {
-                        AdminSurface.primary.frame(width: geometry.size.width * telemetryStore.cashRatio)
-                        AdminSurface.secondaryText.opacity(0.35)
+                        cashColor.frame(width: geometry.size.width * telemetryStore.cashRatio)
+                        cardColor.frame(width: geometry.size.width * telemetryStore.cardRatio)
+                        creditColor.frame(width: geometry.size.width * telemetryStore.creditRatio)
+                        otherColor.frame(width: geometry.size.width * telemetryStore.otherRatio)
                     }
                 }
                 .frame(height: 5)
                 .clipShape(Capsule())
                 .accessibilityHidden(true)
             }
+            if telemetryStore.creditSalesTotal > 0 {
+                Text(Language.get("AdminPOS_Tender_CreditDetail", alter: nil))
+                    .font(AdminType.caption)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
     }
 
-    private func figure(_ key: String, value: String) -> some View {
+    private func figure(_ key: String, value: String, tint: Color? = nil) -> some View {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .firstTextBaseline, spacing: 16) {
-                figureLabel(key).fixedSize(horizontal: true, vertical: true)
+                figureLabel(key, tint: tint).fixedSize(horizontal: true, vertical: true)
                 Spacer(minLength: 0)
                 figureValue(value).fixedSize(horizontal: true, vertical: true)
             }
             VStack(alignment: .leading, spacing: 2) {
-                figureLabel(key)
+                figureLabel(key, tint: tint)
                 figureValue(value)
             }
         }
@@ -3833,11 +3893,19 @@ private struct CommandPOSHomeFigures: View {
         .accessibilityValue(value)
     }
 
-    private func figureLabel(_ key: String) -> some View {
-        Text(Language.get(key, alter: ""))
+    private func figureLabel(_ key: String, tint: Color?) -> some View {
+        HStack(spacing: 7) {
+            if let tint {
+                Circle()
+                    .fill(tint)
+                    .frame(width: 6, height: 6)
+                    .accessibilityHidden(true)
+            }
+            Text(Language.get(key, alter: ""))
             .font(AdminType.subheadline)
             .foregroundStyle(AdminSurface.secondaryText)
             .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private func figureValue(_ value: String) -> some View {

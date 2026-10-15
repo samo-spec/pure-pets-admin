@@ -7717,6 +7717,9 @@
 "AdminPOS_Metric_Refunds" = "Refunds";
 "AdminPOS_Tender_Cash" = "Cash";
 "AdminPOS_Tender_Card" = "Card & POS";
+"AdminPOS_Tender_Credit" = "Credit sales";
+"AdminPOS_Tender_Other" = "Other methods";
+"AdminPOS_Tender_CreditDetail" = "Credit shows full sale values, not collections or the remaining balance.";
 "AdminPOS_AwaitingFirstSale" = "Awaiting first transaction of the shift";
 "AdminPOS_ViewOnly_Notice" = "POS Terminal (View Only)";
 "AdminPOS_TerminalSubtitle_Short" = "Instant scan • Smart cart • Direct pay";
@@ -11629,9 +11632,17 @@
 "POS_Credit_Complete" = "Complete credit sale";
 "POS_Credit_Review" = "Review credit sale";
 "POS_Credit_InvalidTerms" = "Check the amounts, dates and payment reference. Installments must total the amount remaining after the initial payment.";
+"POS_Credit_DueDatePast" = "Due date cannot precede today.";
+"POS_Credit_ReferenceRequired" = "Payment reference is required for non-cash deposits.";
+"POS_Credit_ReferenceTooLong" = "Payment reference cannot exceed 200 characters.";
+"POS_Credit_InvalidDeposit" = "Initial payment amount is invalid.";
+"POS_Credit_InvalidInstallmentAmount" = "Installment amount is invalid and must be greater than zero.";
+"POS_Credit_DateRolloverNotice" = "The business day has rolled over. Please refresh credit context to continue.";
 "POS_Credit_EditTerms" = "Edit payment terms";
 "POS_Credit_SelectCustomer" = "Choose a saved directory customer before selling on credit.";
 "POS_Credit_ChooseCustomer" = "Choose customer";
+"POS_Credit_ChooseCustomerToProceed" = "Proceed by choosing customer";
+"POS_Credit_SearchDirectoryOrAdd" = "Search directory or add a new customer";
 "POS_Credit_Reload" = "Refresh eligibility";
 "POS_Credit_Close" = "Close";
 "POS_Credit_RecoveryTitle" = "Recover credit sale outcome";
@@ -11644,6 +11655,10 @@
 "POS_Credit_Remaining" = "Amount still due";
 "POS_Credit_ExistingBalance" = "Current balance %@ · Credit limit %@";
 "POS_Credit_ApprovalRequired" = "This sale requires an independent supervisor’s approval of these exact terms. This applies to limit exceptions, overdue balances, live animals and delivery. It cannot complete without approval.";
+"POS_Credit_ApprovalRequiredTitle" = "Supervisor Approval Required for Credit Sale";
+"POS_Credit_ApprovalRequiredBody" = "This sale requires an independent supervisor's approval of credit terms before completion (limit exception, overdue balances, live animals, or delivery). Please send the approval request or complete the sale after supervisor approval.";
+"POS_Credit_CompleteAfterApproval" = "Complete Sale After Approval";
+"POS_Credit_ApprovalRequestedStatus" = "Approval request sent to supervisor · Awaiting approval";
 "POS_Credit_Deposit" = "Initial payment amount";
 "POS_Credit_DepositMethod" = "Initial payment method";
 "POS_Credit_Reference" = "Payment reference";
@@ -11702,6 +11717,8 @@
 
 /* POS customer credit account and collections */
 "POS_CreditAccount_Title" = "Credit account";
+"POS_CreditAccount_QuickViewSubtitle" = "Account statement & credit limits";
+"POS_CreditAccount_ViewAction" = "View";
 "POS_CreditAccount_Permission" = "You do not have access to this credit account.";
 "POS_CreditAccount_Outstanding" = "Outstanding balance";
 "POS_CreditAccount_Overdue" = "Overdue";
@@ -11725,7 +11742,8 @@
 "POS_CreditAccount_Uncertain" = "The result is not confirmed. Recover the same saved request before entering another payment.";
 "POS_CreditAccount_OtherPending" = "Another saved credit request must be resolved in its original staff session and account.";
 "POS_CreditAccount_Recover" = "Recover saved request";
-"POS_CreditAccount_Acknowledge" = "Acknowledge receipt and refresh";
+"POS_CreditAccount_Acknowledge" = "Acknowledge and refresh";
+"POS_CreditAccount_DismissCancelled" = "Dismiss and refresh";
 "POS_CreditAccount_Confirmed" = "Payment request confirmed by the server";
 "POS_CreditAccount_Received" = "Actually received";
 "POS_CreditAccount_Reversed" = "Reversed collection";
@@ -11915,6 +11933,12 @@
 
 /* Customer picker: native directory presentation */
 "POS_Customer_Directory_Heading" = "Choose a customer";
+"POS_Customer_Management_Title" = "Customers management";
+"POS_Customer_Management_Subtitle" = "Search, add, and update customer profiles.";
+"POS_Customer_Management_ReadOnly" = "Browse customer profiles and the account actions available to you.";
+"POS_Customer_Management_OpenProfile" = "Open customer profile";
+"POS_Customer_Management_ProfileReadOnly" = "Customer contact details are available to view.";
+"POS_Customer_Management_Duplicate" = "Open the existing profile for “%@”.";
 "POS_Customer_Directory_New" = "New customer";
 "POS_Customer_Directory_Back" = "Back to customer directory";
 "POS_Customer_Directory_ClearSearch" = "Clear search";
@@ -11961,3 +11985,19 @@
 "POS_CreditAccount_StepUpCheckingPassword" = "Checking password…";
 "POS_CreditAccount_StepUpCheckingCode" = "Verifying code…";
 "POS_CreditAccount_StepUpContinue" = "Continue";
+
+/* POS Credit Policy Studio Enhancements */
+"POS_CreditAccount_InvalidLimit" = "Please enter a valid numeric credit limit.";
+"POS_CreditAccount_ReasonRequired" = "A justification reason is required to submit the credit policy.";
+"POS_CreditAccount_ReasonRequiredBadge" = "Required";
+"POS_CreditAccount_ReasonTagClientRequest" = "Client Request";
+"POS_CreditAccount_ReasonTagIncreasePurchases" = "Higher Volume";
+"POS_CreditAccount_ReasonTagAdminApproval" = "Admin Approval";
+"POS_CreditAccount_ReasonTagAnnualReview" = "Periodic Review";
+"POS_CreditAccount_ReasonTagAccountSettlement" = "Settlement";
+"POS_CreditAccount_SubmittingPolicy" = "Submitting credit policy…";
+"POS_CreditAccount_ActivePolicyStatus" = "Credit active & enabled";
+"POS_CreditAccount_DisabledPolicyStatus" = "Credit currently locked";
+"POS_CreditAccount_PolicyHint" = "The policy will take effect immediately or be routed for independent approval based on your permissions.";
+"POS_CreditAccount_PolicyVersionLabel" = "Policy version v%d";
+

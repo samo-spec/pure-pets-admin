@@ -223,9 +223,9 @@ struct AdminAppShell: View {
                 .navigationBarBackButtonHidden(true)
                 .navigationBarHidden(true)
                 .toolbar(.hidden, for: .navigationBar)
-                // Delivery and the proforma document workspace retain native insets.
+                // Delivery, proforma, and customer workspaces retain native insets.
                 // Legacy route containers retain their existing edge ownership.
-                .ignoresSafeArea(edges: route == .delivery || route == .proformaInvoices ? [] : .all)
+                .ignoresSafeArea(edges: route == .delivery || route == .proformaInvoices || route == .customerManagement ? [] : .all)
         } else {
             EmptyView()
         }
@@ -2560,12 +2560,13 @@ private struct AdminPeopleDeckView: View {
         )
     }
 
+    private var canManageCustomers: Bool { AdminRoute.customerManagement.isAuthorized(for: session) }
     private var canUsers: Bool { AdminRoute.users.isAuthorized(for: session) }
     private var canStaff: Bool { AdminRoute.staff.isAuthorized(for: session) }
     private var canChats: Bool { AdminRoute.chats.isAuthorized(for: session) }
 
     private var hasAnyAuthorizedRoute: Bool {
-        canUsers || canStaff || canChats
+        canManageCustomers || canUsers || canStaff || canChats
     }
 
     var body: some View {
@@ -2605,6 +2606,10 @@ private struct AdminPeopleDeckView: View {
             }
 
             // 3. Hero Customer Intelligence Tile (Flagship Frontline)
+            if canManageCustomers {
+                customerManagementEntry
+            }
+
             if canUsers {
                 heroCustomerIntelligenceTile
             }
@@ -2628,6 +2633,10 @@ private struct AdminPeopleDeckView: View {
         VStack(alignment: .leading, spacing: 20) {
             // 1. Panoramic People Command Horizon Bar (Spans full width)
             iPadPeopleHorizonBar
+
+            if canManageCustomers {
+                customerManagementEntry
+            }
 
             // 2. Dual Tactical Command Wings
             HStack(alignment: .top, spacing: 20) {
@@ -2660,6 +2669,13 @@ private struct AdminPeopleDeckView: View {
     }
 
     // MARK: - Shared / iPhone Components
+
+    private var customerManagementEntry: some View {
+        AdminRouteGroup(routes: [.customerManagement]) { route in
+            router.present(route, session: session)
+        }
+        .accessibilityIdentifier("people.customersManagement")
+    }
 
     private var branchHorizonPill: some View {
         Button {

@@ -14,6 +14,7 @@ enum AdminRoute: Hashable, Identifiable {
     case pointOfSale
     case pointOfSaleHistory
     case proformaInvoices
+    case customerManagement
     case users
     case staff
     case account
@@ -57,6 +58,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .pointOfSale: return "pos"
         case .pointOfSaleHistory: return "posHistory"
         case .proformaInvoices: return "proformaInvoices"
+        case .customerManagement: return "customerManagement"
         case .users: return "users"
         case .staff: return "staff"
         case .account: return "account"
@@ -104,6 +106,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .pointOfSale: return "POS_Title"
         case .pointOfSaleHistory: return "POS_History_Title"
         case .proformaInvoices: return "Proforma_Title"
+        case .customerManagement: return "POS_Customer_Management_Title"
         case .users: return "UsersSection"
         case .staff: return "Staff_Management"
         case .account: return "EditMyAccount_Title"
@@ -144,7 +147,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .delivery, .providerApplications, .providerPlans, .providerFeatures, .providerAccounting,
              .branches, .agents, .homeControl, .services, .veterinarians, .moderation, .community, .adoptionManager, .hotel:
             return "CommandCenter_Operations_Title"
-        case .users:
+        case .customerManagement, .users:
             return "CommandCenter_People_Title"
         case .staff:
             return "CommandCenter_TeamAccess_Title"
@@ -169,6 +172,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .pointOfSale: return "cart"
         case .pointOfSaleHistory: return "clock.arrow.circlepath"
         case .proformaInvoices: return "doc.text"
+        case .customerManagement: return "person.crop.rectangle.stack"
         case .users: return "person.2"
         case .staff: return "person.3.sequence"
         case .account: return "person.crop.circle"
@@ -211,6 +215,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .pointOfSale: return ["pos.view", "pos.sell"]
         case .pointOfSaleHistory: return ["pos.view", "pos.sell", "pos.history"]
         case .proformaInvoices: return ["pos.view", "pos.sell"]
+        case .customerManagement: return ["pos.view", "pos.sell"]
         case .users: return ["users.view", "users.manage", "users.block", "users.features.view", "users.features.manage", "users.subscriptions.view", "users.subscriptions.manage", "users.restrictions.view", "users.restrictions.manage"]
         case .staff: return ["staff.view", "staff.manage"]
         case .account, .settings: return []

@@ -92,7 +92,7 @@ extension AdminTab {
             ].filter { $0.isAuthorized(for: session) }
         case .customers:
             return [
-                .users, .staff, .chats
+                .customerManagement, .users, .staff, .chats
             ].filter { $0.isAuthorized(for: session) }
         case .more:
             return [

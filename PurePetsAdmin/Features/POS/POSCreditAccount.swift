@@ -208,6 +208,11 @@ final class POSCreditAccountModel: ObservableObject {
     var canRead: Bool { Auth.auth().currentUser?.uid == actorUID && POSCreditAccountCopy.permitted("pos.credit.read", branchID: branchID) }
     var canCollect: Bool { canRead && POSCreditAccountCopy.permitted("pos.credit.collect", branchID: branchID) && accountVersion > 0 }
     var canRecover: Bool { canRead && pending?.actorUID == actorUID && pending?.branchID == branchID && pending?.customerID == customerID }
+    var isPendingCancelled: Bool {
+        guard let data = pending?.result,
+              let value = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return false }
+        return (value["status"] as? String) == "cancelled"
+    }
 
     init(customerID: String, branchID: String) {
         self.customerID = customerID; self.branchID = branchID
@@ -230,7 +235,11 @@ final class POSCreditAccountModel: ObservableObject {
     }
     deinit { if let authListener { Auth.auth().removeStateDidChangeListener(authListener) } }
     func restore() {
-        do { pending = try POSCreditAccountCommandStore.load(actorUID: actorUID); storageFailed = false }
+        do {
+            pending = try POSCreditAccountCommandStore.load(actorUID: actorUID)
+            storageFailed = false
+            if let result = pending?.result { showResult(result) }
+        }
         catch { storageFailed = true; self.error = POSCreditAccountCopy.text("StorageFailed") }
     }
     func base() -> [String: Any] { ["contractVersion": 1, "customerId": customerID, "branchId": branchID, "currency": "QAR"] }
@@ -497,6 +506,15 @@ final class POSCreditAccountModel: ObservableObject {
     }
 }
 
+private struct POSCreditAccountPressableButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
+            .opacity(configuration.isPressed ? 0.92 : 1.0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.75), value: configuration.isPressed)
+    }
+}
+
 struct POSCreditAccountLink: View {
     let customerID: String
     let branchID: String
@@ -506,25 +524,89 @@ struct POSCreditAccountLink: View {
         if !customerID.isEmpty, POSCreditAccountCopy.permitted("pos.credit.read", branchID: branchID) {
             Group {
                 if compact {
-                    Button { presented = true } label: {
-                        Label(POSCreditAccountCopy.text("Title"), systemImage: "person.text.rectangle")
-                            .font(AdminType.footnoteBold)
-                            .foregroundStyle(AdminSurface.primary)
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(minHeight: AdminTouchTarget.minimum, alignment: .leading)
-                            .contentShape(Rectangle())
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        presented = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "person.text.rectangle")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(AdminSurface.primary)
+                            Text(POSCreditAccountCopy.text("Title"))
+                                .font(AdminType.caption1Bold)
+                                .foregroundStyle(AdminSurface.primaryText)
+                            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(AdminSurface.primary.opacity(0.7))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule()
+                                .fill(AdminSurface.primarySoft.opacity(0.40))
+                        )
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(AdminSurface.primary.opacity(0.20), lineWidth: 1)
+                        )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(POSCreditAccountPressableButtonStyle())
+                    .accessibilityIdentifier("pos.credit.accountLink.compact")
                 } else {
-                    Button { presented = true } label: {
-                        Label(POSCreditAccountCopy.text("Title"), systemImage: "person.text.rectangle")
-                            .frame(maxWidth: .infinity, minHeight: 44)
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        presented = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(AdminSurface.primary.opacity(0.12))
+                                    .frame(width: 40, height: 40)
+                                Image(systemName: "person.text.rectangle")
+                                    .font(.system(size: 18, weight: .bold))
+                                    .foregroundStyle(AdminSurface.primary)
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(POSCreditAccountCopy.text("Title"))
+                                    .font(AdminType.headlineBold)
+                                    .foregroundStyle(AdminSurface.primaryText)
+                                Text(Language.get("POS_CreditAccount_QuickViewSubtitle", alter: "كشف الحساب والسقف الائتماني"))
+                                    .font(AdminType.caption)
+                                    .foregroundStyle(AdminSurface.secondaryText)
+                            }
+
+                            Spacer(minLength: 8)
+
+                            HStack(spacing: 4) {
+                                Text(Language.get("POS_CreditAccount_ViewAction", alter: "عرض"))
+                                    .font(AdminType.footnoteBold)
+                                    .foregroundStyle(AdminSurface.primary)
+                                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(AdminSurface.primary)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(AdminSurface.primary.opacity(0.08), in: Capsule())
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, minHeight: 56)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(AdminSurface.primarySoft.opacity(0.40))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(AdminSurface.primary.opacity(0.20), lineWidth: 1.2)
+                        )
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(POSCreditAccountPressableButtonStyle())
+                    .accessibilityIdentifier("pos.credit.accountLink")
                 }
             }
-            .sheet(isPresented: $presented) { POSCreditAccountSheet(customerID: customerID, branchID: branchID) }
+            .fullScreenCover(isPresented: $presented) { POSCreditAccountSheet(customerID: customerID, branchID: branchID) }
         }
     }
 }
@@ -550,6 +632,8 @@ struct POSCreditAccountSheet: View {
     @State private var policyEnabled = false
     @State private var policyLimit = ""
     @State private var policyVersion: Int?
+    @State private var policyValidationError: String? = nil
+    @State private var policyReasonAttempted = false
     @State private var stepUpPresented = false
     private enum InputField: Hashable {
         case invoiceAmount(String), reference, reason, policyLimit
@@ -571,45 +655,39 @@ struct POSCreditAccountSheet: View {
     }
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: AdminSpacing.lg) {
-                    if model.canRead {
-                        accountContent
-                    } else {
-                        emptyState("Permission", symbol: "lock.shield")
+            VStack(spacing: 0) {
+                AdminSovereignNavigationBar(
+                    title: t("Title"),
+                    subtitle: branch.activeBranch?.localizedName() ?? model.customer?.name,
+                    statusDotColor: Color(uiColor: .ppSuccess),
+                    isModal: false,
+                    showsTopFade: false,
+                    onBack: { dismiss() }
+                )
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: AdminSpacing.lg) {
+                        if model.canRead {
+                            accountContent
+                        } else {
+                            emptyState("Permission", symbol: "lock.shield")
+                        }
                     }
+                    .frame(maxWidth: 720, alignment: .leading)
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.top, AdminSpacing.base)
+                    .padding(.bottom, 80)
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: 720, alignment: .leading)
-                .padding(.horizontal, AdminSpacing.screenMargin)
-                .padding(.top, AdminSpacing.base)
-                .padding(.bottom, AdminSpacing.xl)
-                .frame(maxWidth: .infinity)
+                .scrollDismissesKeyboard(.interactively)
             }
-            .scrollDismissesKeyboard(.interactively)
             .background(AdminSurface.background)
             .font(AdminType.body)
             .foregroundStyle(AdminSurface.primaryText)
             .tint(AdminSurface.primary)
-            .navigationTitle(t("Title"))
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarHidden(true)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text(t("Title"))
-                        .font(PPBrandFont.bold(18, relativeTo: .headline))
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .accessibilityAddTraits(.isHeader)
-                }
-                ToolbarItem(placement: .cancellationAction) {
-                    Button { dismiss() } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(AdminSurface.secondaryText)
-                            .frame(width: 44, height: 44)
-                            .background(AdminSurface.control, in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(t("Close"))
-                }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button { editing = nil } label: {
@@ -617,6 +695,7 @@ struct POSCreditAccountSheet: View {
                     }
                 }
             }
+            .enableSwipeToPop { dismiss() }
             .onChange(of: tab) { _ in amounts = [:]; reviewing = false; accepted = false; if tab == "administration" { model.loadAdministration() } else { model.load(kind: tab) } }
             .onChange(of: branch.activeBranch?.branchID) { _ in dismiss() }
             .onChange(of: amounts) { _ in reviewing = false; accepted = false }
@@ -756,7 +835,7 @@ struct POSCreditAccountSheet: View {
     private func summaryMetric(_ title: String, amount: Int, attention: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: AdminSpacing.xs) {
             Text(t(title)).font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
-            Text(money(amount)).font(AdminType.title3Bold).monospacedDigit()
+            Text(money(amount)).font(PPBrandFont.bold(18, relativeTo: .title3))
                 .foregroundStyle(attention ? AdminSurface.crimson : AdminSurface.primaryText)
         }
         .fixedSize(horizontal: false, vertical: true)
@@ -817,16 +896,19 @@ struct POSCreditAccountSheet: View {
             Text(model.notice ?? t(model.canRecover ? "Uncertain" : "OtherPending"))
                 .font(AdminType.subheadline).fixedSize(horizontal: false, vertical: true)
             if model.canRecover {
-                action("Recover", symbol: "arrow.clockwise", prominent: true) { model.recover() }.disabled(model.busy)
-                if model.pending?.result == nil {
-                    action("CancelPending", symbol: "xmark.circle", role: .destructive) { model.cancelPending() }.disabled(model.busy)
-                }
-                if model.pending?.approvalRequest != nil {
-                    action("RequestApproval", symbol: "person.crop.circle.badge.checkmark") { model.requestApproval() }.disabled(model.busy)
-                }
-                if model.needsStepUp { action("StepUp", symbol: "lock.shield") { stepUpPresented = true } }
                 if model.pending?.result != nil {
-                    action("Acknowledge", symbol: "checkmark") { model.acknowledge() }.disabled(model.busy)
+                    let isCancelled = model.isPendingCancelled
+                    action(isCancelled ? "DismissCancelled" : "Acknowledge", symbol: isCancelled ? "xmark.circle" : "checkmark", prominent: true) {
+                        model.acknowledge()
+                    }
+                    .disabled(model.busy)
+                } else {
+                    action("Recover", symbol: "arrow.clockwise", prominent: true) { model.recover() }.disabled(model.busy)
+                    action("CancelPending", symbol: "xmark.circle", role: .destructive) { model.cancelPending() }.disabled(model.busy)
+                    if model.pending?.approvalRequest != nil {
+                        action("RequestApproval", symbol: "person.crop.circle.badge.checkmark") { model.requestApproval() }.disabled(model.busy)
+                    }
+                    if model.needsStepUp { action("StepUp", symbol: "lock.shield") { stepUpPresented = true } }
                 }
             }
         }
@@ -834,15 +916,9 @@ struct POSCreditAccountSheet: View {
 
     private var invoiceSection: some View {
         let visibleInvoices = model.invoices.filter(matches)
-        return LazyVStack(alignment: .leading, spacing: AdminSpacing.md) {
+        return VStack(alignment: .leading, spacing: AdminSpacing.md) {
             sectionHeading("Invoices", symbol: "doc.text")
-            Picker(t("Filter"), selection: $aging) {
-                Text(t("all")).tag("all"); Text(t("Overdue")).tag("overdue")
-                Text(t("DueSoon")).tag("dueSoon"); Text(t("paid")).tag("paid")
-                ForEach(["current", "days1to30", "days31to60", "days61to90", "days90plus"], id: \.self) { Text(t($0)).tag($0) }
-            }
-            .pickerStyle(.menu).font(AdminType.subheadlineBold)
-            .frame(minHeight: 44).accessibilityLabel(t("Filter"))
+            invoiceFilterControl
             if visibleInvoices.isEmpty, !model.busy, model.error == nil {
                 emptyState(model.invoices.isEmpty ? "EmptyInvoices" : "EmptyFilter", symbol: "doc.text.magnifyingglass")
                 if aging != "all" { action("ShowAllInvoices", symbol: "line.3.horizontal.decrease") { aging = "all" } }
@@ -851,6 +927,34 @@ struct POSCreditAccountSheet: View {
                 invoiceCard(invoice)
             }
         }
+    }
+
+    private var invoiceFilterControl: some View {
+        Menu {
+            Picker(t("Filter"), selection: $aging) {
+                Text(t("all")).tag("all").font(AdminType.subheadlineBold)
+                Text(t("Overdue")).tag("overdue").font(AdminType.subheadlineBold)
+                Text(t("DueSoon")).tag("dueSoon").font(AdminType.subheadlineBold)
+                Text(t("paid")).tag("paid").font(AdminType.subheadlineBold)
+                ForEach(["current", "days1to30", "days31to60", "days61to90", "days90plus"], id: \.self) { key in
+                    Text(t(key)).tag(key).font(AdminType.subheadlineBold)
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text(t(aging))
+                    .font(AdminType.subheadlineBold)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(AdminSurface.primary)
+            .padding(.horizontal, AdminSpacing.md)
+            .padding(.vertical, 8)
+            .background(AdminSurface.control, in: Capsule())
+            .frame(minHeight: 44)
+        }
+        .accessibilityLabel(t("Filter"))
+        .accessibilityValue(t(aging))
     }
 
     private func invoiceCard(_ invoice: POSCreditAccountInvoice) -> some View {
@@ -890,7 +994,7 @@ struct POSCreditAccountSheet: View {
                     Text(invoice.documentNumber).font(AdminType.subheadlineBold)
                         .environment(\.layoutDirection, .leftToRight)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    Text(money(invoice.amountDueMinor)).font(AdminType.title2).monospacedDigit()
+                    Text(money(invoice.amountDueMinor)).font(PPBrandFont.bold(20, relativeTo: .title2))
                     Text(t(invoice.paymentStatus)).font(AdminType.footnote)
                         .foregroundStyle(AdminSurface.secondaryText)
                     if invoice.overdueMinor > 0 {
@@ -934,9 +1038,29 @@ struct POSCreditAccountSheet: View {
         panel {
             sectionHeading("Collect", symbol: "arrow.down.left.circle")
             Text(t("CollectionHelp")).font(AdminType.subheadline).foregroundStyle(AdminSurface.secondaryText)
-            Picker(t("Method"), selection: $method) {
-                ForEach(methods, id: \.self) { Text(t($0)).tag($0) }
-            }.pickerStyle(.menu).frame(minHeight: 44)
+            Menu {
+                Picker(t("Method"), selection: $method) {
+                    ForEach(methods, id: \.self) { methodKey in
+                        Text(t(methodKey)).tag(methodKey).font(AdminType.subheadlineBold)
+                    }
+                }
+            } label: {
+                HStack(spacing: AdminSpacing.sm) {
+                    Text(t(method))
+                        .font(AdminType.subheadlineBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+                .padding(.horizontal, AdminSpacing.md)
+                .padding(.vertical, AdminSpacing.sm)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium))
+            }
+            .accessibilityLabel(t("Method"))
+            .accessibilityValue(t(method))
             if methods.isEmpty {
                 Text(t("NoCollectionMethod")).font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
             }
@@ -965,116 +1089,456 @@ struct POSCreditAccountSheet: View {
             }
         }
     }
+    private var policyPresets: [Int] { [5000, 10000, 15000, 25000, 50000] }
+
+    private var quickReasonTags: [String] {
+        [
+            Language.get("POS_CreditAccount_ReasonTagClientRequest", alter: "طلب من العميل"),
+            Language.get("POS_CreditAccount_ReasonTagIncreasePurchases", alter: "توسيع المشتريات"),
+            Language.get("POS_CreditAccount_ReasonTagAdminApproval", alter: "موافقة الإدارة"),
+            Language.get("POS_CreditAccount_ReasonTagAnnualReview", alter: "مراجعة دورية"),
+            Language.get("POS_CreditAccount_ReasonTagAccountSettlement", alter: "تسوية حساب")
+        ]
+    }
+
     private func refreshPolicyDraft() {
-        guard let policy = model.administration?.policy else { policyVersion = nil; return }
-        policyEnabled = policy.enabled
-        let cents = policy.limitMinor % 100
-        policyLimit = String(policy.limitMinor / 100) + "." + (cents < 10 ? "0" : "") + String(cents)
-        policyVersion = policy.version
+        guard let policy = model.administration?.policy else {
+            policyVersion = nil
+            return
+        }
+        if policyVersion == nil || policyVersion != policy.version {
+            policyEnabled = policy.enabled
+            let cents = policy.limitMinor % 100
+            policyLimit = String(policy.limitMinor / 100) + "." + (cents < 10 ? "0" : "") + String(cents)
+            policyVersion = policy.version
+            policyValidationError = nil
+            policyReasonAttempted = false
+        }
+    }
+
+    private func submitPolicyProposal(data: POSCreditAdministrationPage) {
+        editing = nil
+
+        // Validate Limit
+        guard let amount = POSCreditCheckoutSheet.minor(policyLimit), amount >= 0 else {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                policyValidationError = Language.get("POS_CreditAccount_InvalidLimit", alter: "يرجى إدخال حد ائتماني صالح بالأرقام.")
+            }
+            editing = .policyLimit
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
+        }
+
+        // Validate Reason
+        let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedReason.isEmpty else {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                policyReasonAttempted = true
+                policyValidationError = Language.get("POS_CreditAccount_ReasonRequired", alter: "يلزم كتابة سبب الطلب لإرسال سياسة الائتمان.")
+            }
+            editing = .reason
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
+        }
+
+        guard trimmedReason.count <= 500 else {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                policyReasonAttempted = true
+                policyValidationError = Language.get("POS_CreditAccount_ReasonTooLong", alter: "اختصر السبب إلى ٥٠٠ حرف أو أقل.")
+            }
+            editing = .reason
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
+        }
+
+        // Clean validation state
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            policyValidationError = nil
+            policyReasonAttempted = false
+        }
+
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        model.policy(enabled: policyEnabled, limit: amount, reason: trimmedReason)
     }
 
     private var administrationSection: some View {
         VStack(alignment: .leading, spacing: AdminSpacing.base) {
             sectionHeading("Administration", symbol: "slider.horizontal.3")
+
             if let data = model.administration {
-                panel {
-                    Text(t("CurrentPolicy")).font(AdminType.footnoteBold)
-                        .foregroundStyle(AdminSurface.secondaryText)
-                    Label(t(data.policy.enabled ? "Enabled" : "Disabled"),
-                          systemImage: data.policy.enabled ? "checkmark.circle" : "pause.circle")
-                        .font(AdminType.subheadlineBold)
-                        .foregroundStyle(data.policy.enabled ? AdminSurface.primary : AdminSurface.secondaryText)
-                    Text(money(data.policy.limitMinor)).font(PPBrandFont.bold(32, relativeTo: .title)).monospacedDigit()
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(t("Limit")).font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
-                }
+                currentPolicyCard(data: data)
             }
+
             if model.needsStepUp && (model.permitted("pos.credit_terms.manage") || model.permitted("pos.credit.approve")) {
-                panel {
-                    Label(t("StepUp"), systemImage: "lock.shield")
-                        .font(AdminType.headlineBold).accessibilityAddTraits(.isHeader)
-                    Text(t("VerificationHelp")).font(AdminType.subheadline)
-                        .foregroundStyle(AdminSurface.secondaryText).fixedSize(horizontal: false, vertical: true)
-                    action("StepUp", symbol: "lock.shield") { editing = nil; stepUpPresented = true }
-                }
+                stepUpVerificationCard
             }
-            panel {
-                field("Reason") {
-                    TextField(t("ReasonPlaceholder"), text: $reason, axis: .vertical)
-                        .lineLimit(2...5).focused($editing, equals: .reason).multilineTextAlignment(.leading)
-                        .accessibilityLabel(t("Reason"))
-                }
-                Text(t("ReasonHelp")).font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
-                if reason.count > 500 {
-                    Label(t("ReasonTooLong"), systemImage: "exclamationmark.circle")
-                        .font(AdminType.footnote).foregroundStyle(AdminSurface.crimson)
-                }
-                if let data = model.administration, model.permitted("pos.credit_terms.manage") {
-                    Divider().overlay(AdminSurface.hairline)
-                    Text(t("EditPolicy")).font(AdminType.headlineBold).accessibilityAddTraits(.isHeader)
-                    Toggle(t("EnableCredit"), isOn: $policyEnabled).font(AdminType.bodyBold)
-                    field("Limit") {
-                        TextField(t("Limit"), text: $policyLimit)
-                            .keyboardType(.decimalPad).focused($editing, equals: .policyLimit)
-                            .font(AdminType.title3Bold).monospacedDigit()
-                            .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
-                            .environment(\.layoutDirection, .leftToRight)
-                    }
-                    action("SavePolicy", symbol: "arrow.up.doc", prominent: true) {
-                        if let amount = POSCreditCheckoutSheet.minor(policyLimit) {
-                            model.policy(enabled: policyEnabled, limit: amount, reason: reason)
-                        }
-                    }
-                    .disabled(model.busy || model.pending != nil || policyVersion != data.policy.version || POSCreditCheckoutSheet.minor(policyLimit) == nil || reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || reason.count > 500)
-                }
+
+            if let data = model.administration, model.permitted("pos.credit_terms.manage") {
+                editPolicyProposalCard(data: data)
             }
+
             if let data = model.administration {
-                if !data.policyProposals.isEmpty || !data.rows.isEmpty {
-                    sectionHeading("ReviewQueue", symbol: "checklist")
-                }
-                ForEach(data.policyProposals) { proposal in
-                    panel {
-                        Text(t("PolicyProposal")).font(AdminType.headlineBold)
-                        valueRow(t("Limit"), value: money(proposal.limitMinor))
-                        valueRow(t("Status"), value: t(proposal.enabled ? "Enabled" : "Disabled"))
-                        if model.permitted("pos.credit.approve"), proposal.makerUid != model.actorUID {
-                            action("Approve", symbol: "checkmark.seal", prominent: true) { model.approvePolicy(proposal, reason: reason) }
-                                .disabled(model.busy || model.pending != nil || reason.isEmpty || reason.count > 500)
-                        }
-                    }
-                }
-                if data.morePolicies {
-                    Text(t("MorePolicyProposals")).font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
-                }
-                ForEach(data.rows) { review in
-                    panel {
-                        DisclosureGroup {
-                            VStack(alignment: .leading, spacing: AdminSpacing.md) {
-                                ForEach(review.lines, id: \.self) { Text($0).textSelection(.enabled) }
-                                if model.canApprove(review), review.status == "pending_approval" {
-                                    action("Approve", symbol: "checkmark.seal", prominent: true) { model.approve(review, reason: reason) }
-                                        .disabled(model.busy || model.pending != nil || reason.isEmpty || reason.count > 500)
-                                }
-                            }.padding(.top, AdminSpacing.base)
-                        } label: {
-                            VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-                                Text(t(review.kind)).font(AdminType.headlineBold).foregroundStyle(AdminSurface.primaryText)
-                                Text(t(review.status)).font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
-                            }.frame(minHeight: 44).fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                }
-                if data.nextCursor != nil {
-                    action("More", symbol: "arrow.down") { model.loadAdministration(more: true) }.disabled(model.busy)
-                }
+                reviewQueueSection(data: data)
             }
-            action("Refresh", symbol: "arrow.clockwise") { model.loadAdministration() }.disabled(model.busy)
+
+            action("Refresh", symbol: "arrow.clockwise") { model.loadAdministration() }
+                .disabled(model.busy)
         }
         .onAppear { refreshPolicyDraft() }
     }
 
+    private func currentPolicyCard(data: POSCreditAdministrationPage) -> some View {
+        panel {
+            HStack(alignment: .center, spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(data.policy.enabled ? AdminSurface.primary.opacity(0.12) : Color.gray.opacity(0.12))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: data.policy.enabled ? "shield.checkmark.fill" : "lock.shield.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(data.policy.enabled ? AdminSurface.primary : AdminSurface.secondaryText)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(t("CurrentPolicy"))
+                        .font(AdminType.footnoteBold)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    Text(data.policy.enabled
+                         ? Language.get("POS_CreditAccount_ActivePolicyStatus", alter: "الائتمان مفعّل ونشط")
+                         : Language.get("POS_CreditAccount_DisabledPolicyStatus", alter: "الائتمان مقفل حالياً"))
+                        .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                        .foregroundStyle(data.policy.enabled ? AdminSurface.primary : AdminSurface.secondaryText)
+                }
+
+                Spacer()
+
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(data.policy.enabled ? Color(red: 0.16, green: 0.78, blue: 0.48) : Color.gray.opacity(0.5))
+                        .frame(width: 8, height: 8)
+                    Text(String(format: Language.get("POS_CreditAccount_PolicyVersionLabel", alter: "إصدار v%d"), data.policy.version))
+                        .font(Font.custom("Beiruti-Medium", size: 11, relativeTo: .caption2))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(AdminSurface.control, in: Capsule())
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(t("Limit"))
+                    .font(AdminType.footnote)
+                    .foregroundStyle(AdminSurface.secondaryText)
+
+                Text(money(data.policy.limitMinor))
+                    .font(PPBrandFont.bold(Language.isRTL() ? 34 : 30, relativeTo: .title))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    private var stepUpVerificationCard: some View {
+        panel {
+            Label(t("StepUp"), systemImage: "lock.shield")
+                .font(AdminType.headlineBold).accessibilityAddTraits(.isHeader)
+            Text(t("VerificationHelp")).font(AdminType.subheadline)
+                .foregroundStyle(AdminSurface.secondaryText).fixedSize(horizontal: false, vertical: true)
+            action("StepUp", symbol: "lock.shield") { editing = nil; stepUpPresented = true }
+        }
+    }
+
+    private func editPolicyProposalCard(data: POSCreditAdministrationPage) -> some View {
+        panel {
+            // Header
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(AdminSurface.primary.opacity(0.12))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(t("EditPolicy"))
+                        .font(PPBrandFont.bold(17, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .accessibilityAddTraits(.isHeader)
+                    Text("اقتراح تعديل سقف وحالة الائتمان للحساب")
+                        .font(Font.custom("Beiruti-Regular", size: 11.5, relativeTo: .caption))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+                Spacer()
+            }
+
+            // Toggle Enable/Disable
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(t("EnableCredit"))
+                        .font(AdminType.bodyBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                    Text("السماح للعميل بالشراء الآجل وسحب الفواتير")
+                        .font(AdminType.caption)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+                Spacer()
+                Toggle("", isOn: $policyEnabled)
+                    .labelsHidden()
+                    .tint(AdminSurface.primary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            // Credit Limit Field
+            VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                HStack {
+                    Text(t("Limit"))
+                        .font(AdminType.footnoteBold)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    Spacer()
+                    Text("المبلغ بالريال القطري")
+                        .font(AdminType.caption)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+
+                HStack(spacing: 8) {
+                    TextField(t("Limit"), text: $policyLimit)
+                        .keyboardType(.decimalPad)
+                        .focused($editing, equals: .policyLimit)
+                        .font(PPBrandFont.bold(22, relativeTo: .title3))
+                        .monospacedDigit()
+                        .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                        .environment(\.layoutDirection, .leftToRight)
+                        .onChange(of: policyLimit) { _ in
+                            if policyValidationError != nil {
+                                policyValidationError = nil
+                            }
+                        }
+
+                    Text("ر.ق.")
+                        .font(PPBrandFont.bold(15, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(AdminSurface.hairline, lineWidth: 1)
+                )
+
+                // Quick Preset Chips
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(policyPresets, id: \.self) { preset in
+                            Button {
+                                policyLimit = "\(preset).00"
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                if policyValidationError != nil {
+                                    policyValidationError = nil
+                                }
+                            } label: {
+                                Text("\(preset)")
+                                    .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(AdminSurface.control, in: Capsule())
+                                    .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.5))
+                                    .foregroundStyle(AdminSurface.primaryText)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+
+            Divider().overlay(AdminSurface.hairline)
+
+            // Reason & Justification Section
+            VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                HStack(alignment: .center, spacing: 6) {
+                    Text(t("Reason"))
+                        .font(AdminType.footnoteBold)
+                        .foregroundStyle(AdminSurface.secondaryText)
+
+                    Text(Language.get("POS_CreditAccount_ReasonRequiredBadge", alter: "مطلوب للتوثيق"))
+                        .font(Font.custom("Beiruti-Bold", size: 10, relativeTo: .caption2))
+                        .foregroundStyle(Color.red)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.red.opacity(0.10), in: Capsule())
+
+                    Spacer()
+
+                    Text("\(reason.count)/500")
+                        .font(AdminType.caption)
+                        .foregroundStyle(reason.count > 500 ? AdminSurface.crimson : AdminSurface.secondaryText)
+                }
+
+                // Quick Reason Tags
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(quickReasonTags, id: \.self) { tag in
+                            Button {
+                                reason = tag
+                                policyReasonAttempted = false
+                                if policyValidationError != nil {
+                                    policyValidationError = nil
+                                }
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            } label: {
+                                Text(tag)
+                                    .font(Font.custom("Beiruti-Medium", size: 11.5, relativeTo: .caption2))
+                                    .padding(.horizontal, 9)
+                                    .padding(.vertical, 5)
+                                    .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    .foregroundStyle(AdminSurface.primary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+
+                // Reason Input Area
+                TextField(t("ReasonPlaceholder"), text: $reason, axis: .vertical)
+                    .lineLimit(2...4)
+                    .focused($editing, equals: .reason)
+                    .multilineTextAlignment(.leading)
+                    .font(AdminType.body)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(
+                                policyReasonAttempted && reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    ? Color.red
+                                    : (reason.count > 500 ? AdminSurface.crimson : AdminSurface.hairline),
+                                lineWidth: (policyReasonAttempted && reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) ? 1.5 : 1
+                            )
+                    )
+                    .onChange(of: reason) { _ in
+                        if policyValidationError != nil {
+                            policyValidationError = nil
+                        }
+                    }
+                    .accessibilityLabel(t("Reason"))
+
+                Text(t("ReasonHelp"))
+                    .font(AdminType.caption)
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+
+            // Inline Validation Error Banner
+            if let error = policyValidationError {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.red)
+                    Text(error)
+                        .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                        .foregroundStyle(Color.red)
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
+            // Primary Send Button
+            Button {
+                submitPolicyProposal(data: data)
+            } label: {
+                HStack(spacing: 8) {
+                    if model.busy {
+                        ProgressView()
+                            .tint(.white)
+                        Text(Language.get("POS_CreditAccount_SubmittingPolicy", alter: "جارٍ إرسال سياسة الائتمان…"))
+                            .font(PPBrandFont.bold(16, relativeTo: .callout))
+                            .foregroundStyle(.white)
+                    } else {
+                        Image(systemName: "paperplane.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .rotationEffect(.degrees(Language.isRTL() ? 180 : 0))
+                        Text(t("SavePolicy"))
+                            .font(PPBrandFont.bold(16, relativeTo: .callout))
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .foregroundColor(.white)
+                .background(
+                    model.busy || model.pending != nil ? AdminSurface.primary.opacity(0.6) : AdminSurface.primary,
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+            .disabled(model.busy || model.pending != nil)
+
+            Text(Language.get("POS_CreditAccount_PolicyHint", alter: "سيتم تطبيق التعديل فورياً أو توجيهه للاعتماد المالي المستقل بحسب صلاحياتك."))
+                .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
+                .foregroundStyle(AdminSurface.secondaryText)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private func reviewQueueSection(data: POSCreditAdministrationPage) -> some View {
+        if !data.policyProposals.isEmpty || !data.rows.isEmpty {
+            sectionHeading("ReviewQueue", symbol: "checklist")
+        }
+        ForEach(data.policyProposals) { proposal in
+            panel {
+                Text(t("PolicyProposal")).font(AdminType.headlineBold)
+                valueRow(t("Limit"), value: money(proposal.limitMinor))
+                valueRow(t("Status"), value: t(proposal.enabled ? "Enabled" : "Disabled"))
+                if model.permitted("pos.credit.approve"), proposal.makerUid != model.actorUID {
+                    action("Approve", symbol: "checkmark.seal", prominent: true) { model.approvePolicy(proposal, reason: reason) }
+                        .disabled(model.busy || model.pending != nil || reason.isEmpty || reason.count > 500)
+                }
+            }
+        }
+        if data.morePolicies {
+            Text(t("MorePolicyProposals")).font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
+        }
+        ForEach(data.rows) { review in
+            panel {
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: AdminSpacing.md) {
+                        ForEach(review.lines, id: \.self) { Text($0).textSelection(.enabled) }
+                        if model.canApprove(review), review.status == "pending_approval" {
+                            action("Approve", symbol: "checkmark.seal", prominent: true) { model.approve(review, reason: reason) }
+                                .disabled(model.busy || model.pending != nil || reason.isEmpty || reason.count > 500)
+                        }
+                    }.padding(.top, AdminSpacing.base)
+                } label: {
+                    VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                        Text(t(review.kind)).font(AdminType.headlineBold).foregroundStyle(AdminSurface.primaryText)
+                        Text(t(review.status)).font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
+                    }.frame(minHeight: 44).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        if data.nextCursor != nil {
+            action("More", symbol: "arrow.down") { model.loadAdministration(more: true) }.disabled(model.busy)
+        }
+    }
+
     private var collectionHistory: some View {
-        LazyVStack(alignment: .leading, spacing: AdminSpacing.md) {
+        VStack(alignment: .leading, spacing: AdminSpacing.md) {
             sectionHeading("Collections", symbol: "arrow.down.left.circle")
             if model.collections.isEmpty, !model.busy, model.error == nil {
                 emptyState("EmptyCollections", symbol: "tray")
@@ -1122,11 +1586,11 @@ struct POSCreditAccountSheet: View {
             HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.base) {
                 valueTitle(title, identifier: identifier).fixedSize(horizontal: true, vertical: false)
                 Spacer(minLength: AdminSpacing.sm)
-                Text(value).font(AdminType.bodyBold).monospacedDigit().fixedSize(horizontal: true, vertical: false)
+                Text(value).font(PPBrandFont.bold(15, relativeTo: .body)).fixedSize(horizontal: true, vertical: false)
             }
             VStack(alignment: .leading, spacing: AdminSpacing.xs) {
                 valueTitle(title, identifier: identifier)
-                Text(value).font(AdminType.bodyBold).monospacedDigit()
+                Text(value).font(PPBrandFont.bold(15, relativeTo: .body))
                     .fixedSize(horizontal: false, vertical: true)
             }.frame(maxWidth: .infinity, alignment: .leading)
         }

@@ -2628,8 +2628,9 @@ final class POSFastSellViewModel: ObservableObject {
     func requestCreditIssueApproval() {
         guard !isCheckoutBusy, let record = creditRecovery, creditSessionMatches(record),
               let data = record.approvalRequestJSON,
-              let proposal = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let customer = proposal["customerId"] as? String else { return }
+              let proposal = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        let envelope = try? JSONDecoder().decode(POSCreditPendingStore.Envelope.self, from: record.requestJSON)
+        guard let customer = (proposal["customerId"] as? String) ?? envelope?.payload.settlement.customerId, !customer.isEmpty else { return }
         let body: [String: Any] = ["contractVersion": 1, "action": "request", "kind": "issue", "commandId": record.commandID,
             "customerId": customer, "branchId": record.branchID, "currency": "QAR", "proposal": proposal]
         guard let request = try? JSONSerialization.data(withJSONObject: body, options: .sortedKeys) else { return }
@@ -3700,10 +3701,14 @@ struct AdminPOSFastSellView: View {
                     commandDeck(availableWidth: geometry.size.width, availableHeight: geometry.size.height - topClearance)
 
                     if viewModel.creditRecovery != nil || viewModel.creditRecoveryError != nil {
+                        let isApprovalRequired = viewModel.creditRecovery?.approvalRequestJSON != nil
                         Button { viewModel.showsCreditCheckout = true } label: {
-                            Label(Language.get("POS_Credit_RecoveryTitle", alter: nil), systemImage: "arrow.triangle.2.circlepath")
-                                .font(AdminType.calloutBold).fixedSize(horizontal: false, vertical: true)
-                                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).padding(.horizontal, 16)
+                            Label(
+                                Language.get(isApprovalRequired ? "POS_Credit_ApprovalRequiredTitle" : "POS_Credit_RecoveryTitle", alter: nil),
+                                systemImage: isApprovalRequired ? "person.crop.circle.badge.checkmark" : "arrow.triangle.2.circlepath"
+                            )
+                            .font(AdminType.calloutBold).fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).padding(.horizontal, 16)
                         }
                         .disabled(viewModel.isCheckoutBusy)
                         .accessibilityIdentifier("pos.credit.recovery")
@@ -5833,8 +5838,16 @@ private struct POSApexFlightDeck: View {
                 paymentNote(icon: "exclamationmark.circle", text: Language.get("POS_Checkout_ShortfallHint", alter: "Enter the remaining cash or choose another payment method."))
             }
             if viewModel.creditRecovery != nil || viewModel.creditRecoveryError != nil || viewModel.selectedPaymentMethod == "credit" {
+                let isApprovalRequired = viewModel.creditRecovery?.approvalRequestJSON != nil
+                let titleKey: String = {
+                    if viewModel.creditRecovery != nil || viewModel.creditRecoveryError != nil {
+                        return isApprovalRequired ? "POS_Credit_CompleteAfterApproval" : "POS_Credit_Recover"
+                    }
+                    return "POS_Credit_Review"
+                }()
+                let iconName: String = isApprovalRequired ? "person.crop.circle.badge.checkmark" : "doc.text"
                 Button { viewModel.showsCreditCheckout = true } label: {
-                    Label(Language.get(viewModel.creditRecovery != nil || viewModel.creditRecoveryError != nil ? "POS_Credit_Recover" : "POS_Credit_Review", alter: nil), systemImage: "doc.text")
+                    Label(Language.get(titleKey, alter: nil), systemImage: iconName)
                         .font(AdminType.headlineBold).fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, minHeight: 48)
                 }
