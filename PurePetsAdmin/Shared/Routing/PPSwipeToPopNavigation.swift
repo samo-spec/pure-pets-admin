@@ -36,7 +36,6 @@ public struct PPSwipeToPopViewModifier: ViewModifier {
     @Environment(\.presentationMode) private var presentationMode
     @Environment(\.dismiss) private var dismissAction
 
-    @State private var hasUIKitNavigationController: Bool = true
     @State private var isPopping: Bool = false
 
     public init(isEnabled: Bool = true, onCustomPop: (() -> Void)? = nil) {
@@ -53,11 +52,7 @@ public struct PPSwipeToPopViewModifier: ViewModifier {
                     isEnabled: isEnabled,
                     isRTL: isRTL,
                     onCustomPop: onCustomPop
-                ) { hasNav in
-                    if self.hasUIKitNavigationController != hasNav {
-                        self.hasUIKitNavigationController = hasNav
-                    }
-                }
+                )
             )
             .overlay(alignment: .leading) {
                 if isEnabled {
@@ -97,13 +92,13 @@ public struct PPSwipeToPopUIKitBridge: UIViewControllerRepresentable {
     public let isEnabled: Bool
     public let isRTL: Bool
     public let onCustomPop: (() -> Void)?
-    public let onNavigationStatusChanged: (Bool) -> Void
+    public let onNavigationStatusChanged: ((Bool) -> Void)?
 
     public init(
         isEnabled: Bool,
         isRTL: Bool,
-        onCustomPop: (() -> Void)?,
-        onNavigationStatusChanged: @escaping (Bool) -> Void
+        onCustomPop: (() -> Void)? = nil,
+        onNavigationStatusChanged: ((Bool) -> Void)? = nil
     ) {
         self.isEnabled = isEnabled
         self.isRTL = isRTL
@@ -163,11 +158,11 @@ public final class PPSwipeToPopBridgeViewController: UIViewController {
 
     public func applyConfiguration() {
         guard let nav = findEnclosingNavigationController() else {
-            onNavigationStatusChanged?(false)
+            notifyNavigationStatus(false)
             return
         }
 
-        onNavigationStatusChanged?(true)
+        notifyNavigationStatus(true)
 
         // Configure native interactive pop on the enclosing navigation controller
         nav.pp_enableSwipeToPop()
@@ -182,6 +177,13 @@ public final class PPSwipeToPopBridgeViewController: UIViewController {
         let expectedAttr: UISemanticContentAttribute = isRTL ? .forceRightToLeft : .forceLeftToRight
         if nav.view.semanticContentAttribute != expectedAttr {
             nav.view.semanticContentAttribute = expectedAttr
+        }
+    }
+
+    private func notifyNavigationStatus(_ hasNav: Bool) {
+        guard let callback = onNavigationStatusChanged else { return }
+        DispatchQueue.main.async {
+            callback(hasNav)
         }
     }
 

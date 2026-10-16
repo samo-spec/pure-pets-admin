@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import UIKit
+import PDFKit
 import FirebaseAuth
 import CryptoKit
 import Combine
@@ -325,6 +326,7 @@ final class POSCreditAccountModel: ObservableObject {
     @Published var error: String?
     @Published var notice: String?
     @Published var shareURL: URL?
+    @Published var previewReceiptDocument: POSCreditCollectionReceiptDocument? = nil
     @Published private(set) var storageFailed = false
     @Published private(set) var administration: POSCreditAdministrationPage?
     @Published var needsStepUp = false
@@ -357,7 +359,7 @@ final class POSCreditAccountModel: ObservableObject {
                     return
                 }
                 self.requestID = UUID(); self.busy = false; self.invoices = []; self.collections = []
-                self.summary = nil; self.context = nil; self.customerName = nil; self.notice = nil; self.pending = nil; self.shareURL = nil
+                self.summary = nil; self.context = nil; self.customerName = nil; self.notice = nil; self.pending = nil; self.shareURL = nil; self.previewReceiptDocument = nil
                 self.invoicesAreCurrent = false
                 self.administration = nil; self.adjustmentContext = nil; self.accountVersion = 0; self.asOf = ""
                 self.error = POSCreditAccountCopy.text("Permission")
@@ -520,21 +522,53 @@ final class POSCreditAccountModel: ObservableObject {
     func receipt(_ collection: POSCreditAccountCollection) {
         var body = base(); body["kind"] = "receipt"; body["collectionId"] = collection.id; body["eventId"] = collection.lastEventId
         call("getCustomerReceivables", body: body) { [weak self] value, _ in
-            guard let self, let receipt = value["receipt"] as? [String: Any], receipt["collectionId"] as? String == collection.id,
-                  receipt["customerId"] as? String == self.customerID, receipt["branchId"] as? String == self.branchID else { throw POSCreditPendingStore.StoreError.invalidRecord }
-            var lines = [POSCreditAccountCopy.text("Receipt"), collection.documentNumber, receipt["createdAt"] as? String ?? "",
-                "\(POSCreditAccountCopy.text("Status")): \(POSCreditAccountCopy.text(receipt["status"] as? String ?? "pending"))",
-                "\(POSCreditAccountCopy.text("Received")): \(POSCreditAccountCopy.money((receipt["receivedMinor"] as? NSNumber)?.intValue ?? 0))",
-                "\(POSCreditAccountCopy.text("Pending")): \(POSCreditAccountCopy.money((receipt["pendingAmountMinor"] as? NSNumber)?.intValue ?? 0))",
-                "\(POSCreditAccountCopy.text("Refunded")): \(POSCreditAccountCopy.money((receipt["refundedMinor"] as? NSNumber)?.intValue ?? 0))",
-                "\(POSCreditAccountCopy.text("Reversed")): \(POSCreditAccountCopy.money((receipt["reversedMinor"] as? NSNumber)?.intValue ?? 0))",
-                "\(POSCreditAccountCopy.text("ReceiptID")): \(collection.id) / \(collection.lastEventId)"]
-            lines.append(POSCreditAccountCopy.text(receipt["paymentMethod"] as? String ?? "cash"))
-            if let reference = receipt["reference"] as? String { lines.append(reference) }
-            for allocation in receipt["allocations"] as? [[String: Any]] ?? [] {
-                lines.append("\(allocation["invoiceId"] as? String ?? "") · \(POSCreditAccountCopy.money((allocation["amountMinor"] as? NSNumber)?.intValue ?? 0))")
+            guard let self, let receiptDict = value["receipt"] as? [String: Any], receiptDict["collectionId"] as? String == collection.id,
+                  receiptDict["customerId"] as? String == self.customerID, receiptDict["branchId"] as? String == self.branchID else { throw POSCreditPendingStore.StoreError.invalidRecord }
+
+            let allocationsRaw = receiptDict["allocations"] as? [[String: Any]] ?? []
+            let allocations = allocationsRaw.compactMap { alloc -> POSCreditCollectionReceipt.Allocation? in
+                guard let invoiceId = alloc["invoiceId"] as? String else { return nil }
+                let amountMinor = (alloc["amountMinor"] as? NSNumber)?.intValue ?? 0
+                return POSCreditCollectionReceipt.Allocation(invoiceId: invoiceId, amountMinor: amountMinor)
             }
-            self.shareURL = try POSCreditAccountPDF.export(lines)
+
+            let createdAtStr = receiptDict["createdAt"] as? String ?? ""
+            let createdAtDate: Date? = {
+                if let str = receiptDict["createdAt"] as? String, !str.isEmpty {
+                    let iso = ISO8601DateFormatter()
+                    iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                    if let d = iso.date(from: str) { return d }
+                    let isoBasic = ISO8601DateFormatter()
+                    return isoBasic.date(from: str)
+                }
+                return nil
+            }()
+
+            let modelReceipt = POSCreditCollectionReceipt(
+                collectionId: collection.id,
+                eventId: collection.lastEventId,
+                documentNumber: collection.documentNumber,
+                customerId: self.customerID,
+                customerName: self.customerName ?? "",
+                branchId: self.branchID,
+                createdAt: createdAtDate,
+                createdAtString: createdAtStr,
+                status: receiptDict["status"] as? String ?? collection.status,
+                operation: receiptDict["operation"] as? String ?? "record",
+                paymentMethod: receiptDict["paymentMethod"] as? String ?? "cash",
+                reference: receiptDict["reference"] as? String,
+                reason: receiptDict["reason"] as? String,
+                tenderAmountMinor: (receiptDict["tenderAmountMinor"] as? NSNumber)?.intValue ?? 0,
+                receivedMinor: (receiptDict["receivedMinor"] as? NSNumber)?.intValue ?? collection.receivedMinor,
+                pendingAmountMinor: (receiptDict["pendingAmountMinor"] as? NSNumber)?.intValue ?? collection.pendingAmountMinor,
+                reversedMinor: (receiptDict["reversedMinor"] as? NSNumber)?.intValue ?? collection.reversedMinor,
+                refundedMinor: (receiptDict["refundedMinor"] as? NSNumber)?.intValue ?? 0,
+                remainingBalanceMinor: self.summary?.outstandingMinor,
+                allocations: allocations
+            )
+
+            let document = try POSCreditCollectionReceiptPDF.document(for: modelReceipt)
+            self.previewReceiptDocument = document
         }
     }
     func permitted(_ permission: String) -> Bool { canRead && POSCreditAccountCopy.permitted(permission, branchID: branchID) }
@@ -955,9 +989,10 @@ struct POSCreditAccountSheet: View {
     }
     private var selected: [String: Int] {
         var result: [String: Int] = [:]
+        let installmentSelection = selectedInstallments
         for (id, val) in amounts {
             if let invoice = model.invoices.first(where: { $0.id == id }), invoice.usesInstallments {
-                if let rows = selectedInstallments[id], let amount = POSCreditCollectionAllocation.installmentTotal(rows, invoice: invoice) {
+                if let rows = installmentSelection[id], let amount = POSCreditCollectionAllocation.installmentTotal(rows, invoice: invoice) {
                     result[id] = amount
                 }
             } else if let minor = POSCreditCheckoutSheet.minor(val), minor > 0 {
@@ -1140,6 +1175,9 @@ struct POSCreditAccountSheet: View {
             }
             .sheet(isPresented: Binding(get: { model.shareURL != nil }, set: { if !$0 { model.shareURL = nil } })) {
                 if let url = model.shareURL { POSCreditAccountShare(url: url) }
+            }
+            .sheet(item: $model.previewReceiptDocument) { doc in
+                POSCreditCollectionReceiptSheet(document: doc)
             }
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
             .environment(\.locale, Locale(identifier: Language.isRTL() ? "ar_QA" : "en_QA"))
@@ -1580,6 +1618,7 @@ struct POSCreditAccountSheet: View {
 
     private func collectionInvoiceRow(_ invoice: POSCreditAccountInvoice) -> some View {
         let isSelected = amounts[invoice.id] != nil
+        let supportsInvoice = !invoice.usesInstallments || supportsInstallmentSelection
         let amount = selected[invoice.id] ?? 0
         let invalidAmount = isSelected && (amount <= 0 || amount > invoice.available || POSCreditCheckoutSheet.minor(amounts[invoice.id] ?? "") == nil)
         return VStack(alignment: .leading, spacing: 0) {
@@ -1588,7 +1627,7 @@ struct POSCreditAccountSheet: View {
                 if isSelected {
                     amounts.removeValue(forKey: invoice.id)
                     installmentAmounts.removeValue(forKey: invoice.id)
-                } else if amounts.count < 20 {
+                } else if supportsInvoice, amounts.count < 20 {
                     amounts[invoice.id] = invoice.usesInstallments ? "" : decimalAmount(invoice.available)
                     if invoice.usesInstallments { installmentAmounts[invoice.id] = [:] }
                 }
@@ -1620,12 +1659,17 @@ struct POSCreditAccountSheet: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(model.busy || (!isSelected && amounts.count >= 20))
+            .disabled(model.busy || (!isSelected && (!supportsInvoice || amounts.count >= 20)))
             .accessibilityLabel("\(invoice.documentNumber), \(t("CollectionAvailable")), \(money(invoice.available))")
             .accessibilityHint(t(isSelected ? "CollectionDeselectHint" : invoice.usesInstallments ? "CollectionScheduleSelectHint" : "CollectionSelectHint"))
             .accessibilityAddTraits(isSelected ? .isSelected : [])
             .accessibilityIdentifier("pos.credit.collect.invoice.\(invoice.id)")
-            if isSelected, invoice.usesInstallments {
+            if !supportsInvoice {
+                Label(t("CollectionInstallmentsUnavailable"), systemImage: "clock")
+                    .font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 16).padding(.bottom, 16)
+            } else if isSelected, invoice.usesInstallments {
                 collectionInstallments(invoice)
                     .padding(.horizontal, 16).padding(.bottom, 16)
             } else if isSelected {
@@ -1914,7 +1958,7 @@ struct POSCreditAccountSheet: View {
                         .accessibilityHidden(true)
                 }
             }
-            .buttonStyle(AccountActionStyle(prominent: true))
+            .buttonStyle(AccountActionStyle(prominent: true, cornerRadius: 11))
             .disabled(!valid || (reviewing && !accepted))
             .accessibilityIdentifier(reviewing ? "pos.credit.collect.confirm" : "pos.credit.collect.review")
         }
@@ -2571,6 +2615,7 @@ struct POSCreditAccountSheet: View {
 
     private struct AccountActionStyle: ButtonStyle {
         var prominent = false
+        var cornerRadius: CGFloat = AdminRadius.button
         @Environment(\.isEnabled) private var isEnabled
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -2624,14 +2669,14 @@ struct POSCreditAccountSheet: View {
                 .padding(.horizontal, AdminSpacing.base)
                 .padding(.vertical, 12)
                 .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable)
-                .background(background, in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous))
+                .background(background, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
                 .overlay {
                     if !prominent {
-                        RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous)
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                             .strokeBorder(strokeColor, lineWidth: 1.2)
                     }
                 }
-                .contentShape(RoundedRectangle(cornerRadius: AdminRadius.button))
+                .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
                 .shadow(color: AdminSurface.primary.opacity(isEnabled && prominent ? 0.25 : 0), radius: 6, y: 2)
                 .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
                 .animation(reduceMotion ? nil : AdminAnimation.fast, value: configuration.isPressed)
@@ -2667,6 +2712,730 @@ private struct POSCreditAccountShare: UIViewControllerRepresentable {
         return controller
     }
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - Collection Receipt Models & PDF Generation
+
+@MainActor
+struct POSCreditCollectionReceipt: Equatable, Identifiable {
+    nonisolated var id: String { collectionId + "_" + eventId }
+
+    struct Allocation: Equatable, Identifiable {
+        var id: String { invoiceId }
+        let invoiceId: String
+        let amountMinor: Int
+    }
+
+    let collectionId: String
+    let eventId: String
+    let documentNumber: String
+    let customerId: String
+    let customerName: String
+    let branchId: String
+    let createdAt: Date?
+    let createdAtString: String
+    let status: String
+    let operation: String
+    let paymentMethod: String
+    let reference: String?
+    let reason: String?
+    let tenderAmountMinor: Int
+    let receivedMinor: Int
+    let pendingAmountMinor: Int
+    let reversedMinor: Int
+    let refundedMinor: Int
+    let remainingBalanceMinor: Int?
+    let allocations: [Allocation]
+}
+
+struct POSCreditCollectionReceiptDocument: Identifiable {
+    let id: String
+    let receipt: POSCreditCollectionReceipt
+    let pdfData: Data
+    let pdfURL: URL
+}
+
+@MainActor
+enum POSCreditCollectionReceiptPDF {
+    static func document(for receipt: POSCreditCollectionReceipt) throws -> POSCreditCollectionReceiptDocument {
+        let data = try pdfData(for: receipt)
+        let safeDocNum = receipt.documentNumber.replacingOccurrences(of: "[^A-Za-z0-9_-]", with: "-", options: .regularExpression)
+        let filename = "collection-receipt-\(safeDocNum.isEmpty ? receipt.collectionId : safeDocNum)-\(UUID().uuidString.prefix(6)).pdf"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        return POSCreditCollectionReceiptDocument(
+            id: receipt.id,
+            receipt: receipt,
+            pdfData: data,
+            pdfURL: url
+        )
+    }
+
+    static func pdfData(for receipt: POSCreditCollectionReceipt) throws -> Data {
+        let receiptWidth: CGFloat = 340.0
+        let margin: CGFloat = 20.0
+        let contentWidth = receiptWidth - (margin * 2)
+        let rtl = Language.isRTL()
+
+        // Fonts (matching POSReceiptDocument.swift)
+        let brandFont = UIFont(name: "Beiruti-Bold", size: 20) ?? UIFont.boldSystemFont(ofSize: 20)
+        let titleFont = UIFont(name: "Beiruti-Medium", size: 13) ?? UIFont.systemFont(ofSize: 13, weight: .medium)
+        let headerFont = UIFont(name: "Beiruti-Bold", size: 13) ?? UIFont.boldSystemFont(ofSize: 13)
+        let bodyFont = UIFont(name: "Beiruti-Regular", size: 11.5) ?? UIFont.systemFont(ofSize: 11.5)
+        let boldBodyFont = UIFont(name: "Beiruti-Bold", size: 11.5) ?? UIFont.boldSystemFont(ofSize: 11.5)
+        let totalTitleFont = UIFont(name: "Beiruti-Bold", size: 15) ?? UIFont.boldSystemFont(ofSize: 15)
+        let totalAmountFont = UIFont(name: "Beiruti-Bold", size: 20) ?? UIFont.boldSystemFont(ofSize: 20)
+        let footerFont = UIFont(name: "Beiruti-Medium", size: 11) ?? UIFont.systemFont(ofSize: 11, weight: .medium)
+        let boldMicroFont = UIFont(name: "Beiruti-Bold", size: 9.5) ?? UIFont.boldSystemFont(ofSize: 9.5)
+        let microFont = UIFont(name: "Beiruti-Regular", size: 8.5) ?? UIFont.systemFont(ofSize: 8.5)
+
+        // Colors (matching POSReceiptDocument.swift)
+        let primaryColor = UIColor(red: 0.49, green: 0.06, blue: 0.20, alpha: 1.0)
+        let textColor = UIColor(red: 0.12, green: 0.10, blue: 0.11, alpha: 1.0)
+        let secondaryColor = UIColor(red: 0.46, green: 0.42, blue: 0.44, alpha: 1.0)
+        let lineColor = UIColor(red: 0.88, green: 0.84, blue: 0.86, alpha: 1.0)
+        let amberColor = UIColor(red: 0.78, green: 0.45, blue: 0.05, alpha: 1.0)
+        let redColor = UIColor(red: 0.75, green: 0.15, blue: 0.15, alpha: 1.0)
+
+        // Paragraph styles
+        let centerStyle = NSMutableParagraphStyle()
+        centerStyle.alignment = .center
+        centerStyle.baseWritingDirection = rtl ? .rightToLeft : .leftToRight
+
+        let leadingStyle = NSMutableParagraphStyle()
+        leadingStyle.alignment = rtl ? .right : .left
+        leadingStyle.baseWritingDirection = rtl ? .rightToLeft : .leftToRight
+
+        let trailingStyle = NSMutableParagraphStyle()
+        trailingStyle.alignment = rtl ? .left : .right
+        trailingStyle.baseWritingDirection = rtl ? .rightToLeft : .leftToRight
+
+        // Dynamic Height Calculation
+        var dynamicHeight: CGFloat = margin
+
+        // Logo
+        let logoImage = UIImage(named: "LogoV5") ?? UIImage(named: "AD_LOGO")
+        if logoImage != nil {
+            dynamicHeight += 48.0 + 8.0
+        }
+
+        // Brand + Subtitle + Badge
+        dynamicHeight += 24.0 + 20.0 + 20.0
+
+        // Separator + Metadata rows + Separator
+        var metadataRowCount = 5
+        if !receipt.customerName.isEmpty || !receipt.customerId.isEmpty { metadataRowCount += 1 }
+        if let ref = receipt.reference, !ref.isEmpty { metadataRowCount += 1 }
+        if let reason = receipt.reason, !reason.isEmpty { metadataRowCount += 1 }
+        dynamicHeight += 10.0 + (CGFloat(metadataRowCount) * 16.0) + 12.0
+
+        // Allocations Section
+        dynamicHeight += 22.0
+        if !receipt.allocations.isEmpty {
+            dynamicHeight += 16.0
+            dynamicHeight += CGFloat(receipt.allocations.count) * 18.0 + 8.0
+        } else {
+            dynamicHeight += 22.0
+        }
+
+        // Totals Block
+        var totalsRowCount = 1
+        if receipt.tenderAmountMinor > 0 && receipt.tenderAmountMinor != receipt.receivedMinor { totalsRowCount += 1 }
+        if receipt.pendingAmountMinor > 0 { totalsRowCount += 1 }
+        if receipt.reversedMinor > 0 { totalsRowCount += 1 }
+        if receipt.refundedMinor > 0 { totalsRowCount += 1 }
+        if receipt.remainingBalanceMinor != nil { totalsRowCount += 1 }
+        dynamicHeight += 26.0 + (CGFloat(totalsRowCount - 1) * 18.0) + 12.0
+
+        // Footer Section
+        dynamicHeight += 8.0 + 12.0 + 18.0 + 20.0 + 12.0 + 13.0 + 12.0 + 16.0 + 14.0 + margin
+
+        let totalPageHeight = max(dynamicHeight, 420.0)
+        let pageBounds = CGRect(x: 0, y: 0, width: receiptWidth, height: totalPageHeight)
+
+        let rendererFormat = UIGraphicsPDFRendererFormat()
+        rendererFormat.documentInfo = [
+            kCGPDFContextCreator as String: "Pure Pets Admin",
+            kCGPDFContextTitle as String: "\(Language.isRTL() ? "سند تحصيل حساب آجل" : "Credit Collection Receipt") #\(receipt.documentNumber)"
+        ]
+
+        let pdfRenderer = UIGraphicsPDFRenderer(bounds: pageBounds, format: rendererFormat)
+
+        let data = pdfRenderer.pdfData { context in
+            let w = receiptWidth
+            let m = margin
+            let cw = contentWidth
+
+            context.beginPage()
+            let cgContext = context.cgContext
+
+            // White background
+            cgContext.setFillColor(UIColor.white.cgColor)
+            cgContext.fill(pageBounds)
+
+            var currentY: CGFloat = m
+
+            // 1. Draw Logo
+            if let logo = logoImage {
+                let logoSize: CGFloat = 48.0
+                let logoRect = CGRect(x: (w - logoSize) / 2.0, y: currentY, width: logoSize, height: logoSize)
+                logo.draw(in: logoRect)
+                currentY += logoSize + 8.0
+            }
+
+            // 2. Brand Name
+            let brandString = rtl ? "بيور بتس" : "PURE PETS"
+            let brandAttr: [NSAttributedString.Key: Any] = [
+                .font: brandFont,
+                .foregroundColor: textColor,
+                .paragraphStyle: centerStyle
+            ]
+            let brandRect = CGRect(x: m, y: currentY, width: cw, height: 24.0)
+            brandString.draw(in: brandRect, withAttributes: brandAttr)
+            currentY += 24.0
+
+            // 3. Title
+            let titleString = rtl ? "سند تحصيل حساب آجل" : "Credit Collection Receipt"
+            let titleAttr: [NSAttributedString.Key: Any] = [
+                .font: titleFont,
+                .foregroundColor: secondaryColor,
+                .paragraphStyle: centerStyle
+            ]
+            let titleRect = CGRect(x: m, y: currentY, width: cw, height: 18.0)
+            titleString.draw(in: titleRect, withAttributes: titleAttr)
+            currentY += 20.0
+
+            // 4. Status Badge Stamp
+            let isConfirmed = receipt.status == "cleared" || receipt.operation == "clear"
+            let isPending = receipt.status == "pending"
+            let isReversed = receipt.status == "reversed" || receipt.operation == "reverse"
+            let isRefunded = receipt.status == "refunded" || receipt.operation == "refundPayout"
+
+            let badgeText: String
+            let badgeColor: UIColor
+            if isConfirmed {
+                badgeText = rtl ? "[ تم التحصيل بنجاح ومؤكد ]" : "[ Collection Confirmed ]"
+                badgeColor = primaryColor
+            } else if isPending {
+                badgeText = rtl ? "[ بانتظار المقاصة والتأكيد ]" : "[ Pending Clearing ]"
+                badgeColor = amberColor
+            } else if isReversed {
+                badgeText = rtl ? "[ سند تحصيل معكوس ]" : "[ Collection Reversed ]"
+                badgeColor = redColor
+            } else if isRefunded {
+                badgeText = rtl ? "[ مسترد ]" : "[ Refunded ]"
+                badgeColor = redColor
+            } else {
+                badgeText = "[ \(POSCreditAccountCopy.text(receipt.status)) ]"
+                badgeColor = secondaryColor
+            }
+
+            let badgeAttr: [NSAttributedString.Key: Any] = [
+                .font: boldBodyFont,
+                .foregroundColor: badgeColor,
+                .paragraphStyle: centerStyle
+            ]
+            let badgeRect = CGRect(x: m, y: currentY, width: cw, height: 16.0)
+            badgeText.draw(in: badgeRect, withAttributes: badgeAttr)
+            currentY += 18.0
+
+            // Separator helpers
+            func drawDashedSeparator(y: CGFloat) {
+                cgContext.saveGState()
+                cgContext.setStrokeColor(lineColor.cgColor)
+                cgContext.setLineWidth(0.8)
+                let dashes: [CGFloat] = [4.0, 3.0]
+                cgContext.setLineDash(phase: 0, lengths: dashes)
+                cgContext.move(to: CGPoint(x: m, y: y))
+                cgContext.addLine(to: CGPoint(x: w - m, y: y))
+                cgContext.strokePath()
+                cgContext.restoreGState()
+            }
+
+            func drawSolidSeparator(y: CGFloat) {
+                cgContext.saveGState()
+                cgContext.setStrokeColor(lineColor.cgColor)
+                cgContext.setLineWidth(0.5)
+                cgContext.move(to: CGPoint(x: m, y: y))
+                cgContext.addLine(to: CGPoint(x: w - m, y: y))
+                cgContext.strokePath()
+                cgContext.restoreGState()
+            }
+
+            func drawRow(
+                label: String,
+                value: String,
+                labelFont: UIFont? = nil,
+                valueFont: UIFont? = nil,
+                labelColor: UIColor? = nil,
+                valueColor: UIColor? = nil,
+                y: CGFloat,
+                height: CGFloat = 16.0
+            ) {
+                let actualLabelFont = labelFont ?? bodyFont
+                let actualValueFont = valueFont ?? boldBodyFont
+                let actualLabelColor = labelColor ?? secondaryColor
+                let actualValueColor = valueColor ?? textColor
+
+                let halfWidth = cw * 0.52
+                let valWidth = cw * 0.48
+
+                let labelAttr: [NSAttributedString.Key: Any] = [
+                    .font: actualLabelFont,
+                    .foregroundColor: actualLabelColor,
+                    .paragraphStyle: leadingStyle
+                ]
+                let valAttr: [NSAttributedString.Key: Any] = [
+                    .font: actualValueFont,
+                    .foregroundColor: actualValueColor,
+                    .paragraphStyle: trailingStyle
+                ]
+
+                if rtl {
+                    let labelRect = CGRect(x: w - m - halfWidth, y: y, width: halfWidth, height: height)
+                    let valRect = CGRect(x: m, y: y, width: valWidth, height: height)
+                    label.draw(in: labelRect, withAttributes: labelAttr)
+                    value.draw(in: valRect, withAttributes: valAttr)
+                } else {
+                    let labelRect = CGRect(x: m, y: y, width: halfWidth, height: height)
+                    let valRect = CGRect(x: m + halfWidth, y: y, width: valWidth, height: height)
+                    label.draw(in: labelRect, withAttributes: labelAttr)
+                    value.draw(in: valRect, withAttributes: valAttr)
+                }
+            }
+
+            // Top dashed separator
+            currentY += 4.0
+            drawDashedSeparator(y: currentY)
+            currentY += 8.0
+
+            // Metadata rows
+            drawRow(label: rtl ? "رقم السند" : "Receipt No.", value: receipt.documentNumber, y: currentY)
+            currentY += 16.0
+
+            let formattedDate: String = {
+                if let date = receipt.createdAt {
+                    return POSReceiptFormat.date(date)
+                } else if !receipt.createdAtString.isEmpty {
+                    return receipt.createdAtString
+                }
+                return POSReceiptFormat.date(Date())
+            }()
+            drawRow(label: rtl ? "التاريخ والوقت" : "Date & Time", value: formattedDate, y: currentY)
+            currentY += 16.0
+
+            let customerDisplay = !receipt.customerName.isEmpty ? receipt.customerName : receipt.customerId
+            if !customerDisplay.isEmpty {
+                drawRow(label: rtl ? "العميل" : "Customer", value: customerDisplay, y: currentY)
+                currentY += 16.0
+            }
+
+            drawRow(label: rtl ? "الفرع" : "Branch", value: receipt.branchId, y: currentY)
+            currentY += 16.0
+
+            drawRow(label: rtl ? "طريقة الدفع" : "Payment Method", value: POSReceiptFormat.paymentMethod(receipt.paymentMethod), y: currentY)
+            currentY += 16.0
+
+            if let ref = receipt.reference, !ref.isEmpty {
+                drawRow(label: rtl ? "الرقم المرجعي" : "Reference", value: ref, y: currentY)
+                currentY += 16.0
+            }
+
+            let statusDisplay: String = {
+                if isConfirmed { return rtl ? "تم التحصيل والمقاصة" : "Cleared & Confirmed" }
+                if isPending { return rtl ? "بانتظار التأكيد" : "Pending Confirmation" }
+                if isReversed { return rtl ? "تم عكس السند" : "Reversed" }
+                if isRefunded { return rtl ? "مسترد" : "Refunded" }
+                return POSCreditAccountCopy.text(receipt.status)
+            }()
+            drawRow(label: rtl ? "حالة السند" : "Status", value: statusDisplay, y: currentY)
+            currentY += 16.0
+
+            if let reason = receipt.reason, !reason.isEmpty {
+                drawRow(label: rtl ? "السبب" : "Reason", value: reason, y: currentY)
+                currentY += 16.0
+            }
+
+            // Dashed separator before allocations
+            currentY += 4.0
+            drawDashedSeparator(y: currentY)
+            currentY += 10.0
+
+            // Allocations Section
+            let allocHeader = rtl ? "الفواتير المسددة" : "Allocated Invoices"
+            let allocHeaderAttr: [NSAttributedString.Key: Any] = [
+                .font: headerFont,
+                .foregroundColor: primaryColor,
+                .paragraphStyle: leadingStyle
+            ]
+            allocHeader.draw(in: CGRect(x: m, y: currentY, width: cw, height: 18.0), withAttributes: allocHeaderAttr)
+            currentY += 20.0
+
+            if !receipt.allocations.isEmpty {
+                let col1Title = rtl ? "رقم الفاتورة" : "Invoice ID"
+                let col2Title = rtl ? "المبلغ المسدد" : "Allocated Amount"
+                let subheaderAttr: [NSAttributedString.Key: Any] = [
+                    .font: boldMicroFont,
+                    .foregroundColor: secondaryColor,
+                    .paragraphStyle: leadingStyle
+                ]
+                let subheaderValAttr: [NSAttributedString.Key: Any] = [
+                    .font: boldMicroFont,
+                    .foregroundColor: secondaryColor,
+                    .paragraphStyle: trailingStyle
+                ]
+
+                let halfWidth = cw * 0.55
+                let valWidth = cw * 0.45
+                if rtl {
+                    col1Title.draw(in: CGRect(x: w - m - halfWidth, y: currentY, width: halfWidth, height: 14.0), withAttributes: subheaderAttr)
+                    col2Title.draw(in: CGRect(x: m, y: currentY, width: valWidth, height: 14.0), withAttributes: subheaderValAttr)
+                } else {
+                    col1Title.draw(in: CGRect(x: m, y: currentY, width: halfWidth, height: 14.0), withAttributes: subheaderAttr)
+                    col2Title.draw(in: CGRect(x: m + halfWidth, y: currentY, width: valWidth, height: 14.0), withAttributes: subheaderValAttr)
+                }
+                currentY += 16.0
+
+                for allocation in receipt.allocations {
+                    drawRow(
+                        label: allocation.invoiceId,
+                        value: POSCreditAccountCopy.money(allocation.amountMinor),
+                        labelFont: bodyFont,
+                        valueFont: boldBodyFont,
+                        labelColor: textColor,
+                        valueColor: textColor,
+                        y: currentY,
+                        height: 16.0
+                    )
+                    currentY += 18.0
+                }
+            } else {
+                let note = rtl ? "دفعة عامة على الحساب" : "Payment on Account"
+                let noteAttr: [NSAttributedString.Key: Any] = [
+                    .font: bodyFont,
+                    .foregroundColor: secondaryColor,
+                    .paragraphStyle: leadingStyle
+                ]
+                note.draw(in: CGRect(x: m, y: currentY, width: cw, height: 16.0), withAttributes: noteAttr)
+                currentY += 20.0
+            }
+
+            // Solid separator before totals
+            currentY += 4.0
+            drawSolidSeparator(y: currentY)
+            currentY += 8.0
+
+            // Financial Summary Block
+            drawRow(
+                label: rtl ? "المبلغ المستلم" : "Total Received",
+                value: POSCreditAccountCopy.money(receipt.receivedMinor),
+                labelFont: totalTitleFont,
+                valueFont: totalAmountFont,
+                labelColor: textColor,
+                valueColor: primaryColor,
+                y: currentY,
+                height: 24.0
+            )
+            currentY += 24.0
+
+            if receipt.tenderAmountMinor > 0 && receipt.tenderAmountMinor != receipt.receivedMinor {
+                drawRow(label: rtl ? "مبلغ العملية" : "Tendered Amount", value: POSCreditAccountCopy.money(receipt.tenderAmountMinor), y: currentY)
+                currentY += 16.0
+            }
+
+            if receipt.pendingAmountMinor > 0 {
+                drawRow(label: rtl ? "بانتظار المقاصة" : "Pending Amount", value: POSCreditAccountCopy.money(receipt.pendingAmountMinor), valueColor: amberColor, y: currentY)
+                currentY += 16.0
+            }
+
+            if receipt.reversedMinor > 0 {
+                drawRow(label: rtl ? "المبلغ المعكوس" : "Reversed Amount", value: POSCreditAccountCopy.money(receipt.reversedMinor), valueColor: redColor, y: currentY)
+                currentY += 16.0
+            }
+
+            if receipt.refundedMinor > 0 {
+                drawRow(label: rtl ? "المبلغ المسترد" : "Refunded Amount", value: POSCreditAccountCopy.money(receipt.refundedMinor), valueColor: redColor, y: currentY)
+                currentY += 16.0
+            }
+
+            if let remaining = receipt.remainingBalanceMinor {
+                drawRow(
+                    label: rtl ? "رصيد الحساب المتبقي" : "Remaining Balance",
+                    value: POSCreditAccountCopy.money(remaining),
+                    labelFont: bodyFont,
+                    valueFont: boldBodyFont,
+                    labelColor: secondaryColor,
+                    valueColor: textColor,
+                    y: currentY
+                )
+                currentY += 16.0
+            }
+
+            // Footer (Identical to POSReceiptDocument.swift)
+            currentY += 8.0
+            drawDashedSeparator(y: currentY)
+            currentY += 12.0
+
+            // Thank You Note
+            let thanksStr = Language.get("POS_Receipt_ThankYou", alter: "شكرًا لاختياركم بيوربيتس")
+            let thanksAttr: [NSAttributedString.Key: Any] = [
+                .font: footerFont,
+                .foregroundColor: primaryColor,
+                .paragraphStyle: centerStyle
+            ]
+            thanksStr.draw(in: CGRect(x: m, y: currentY, width: cw, height: 18.0), withAttributes: thanksAttr)
+            currentY += 20.0
+
+            // Website
+            let urlStr = "https://pure-pets.net"
+            let contactAttr: [NSAttributedString.Key: Any] = [
+                .font: microFont,
+                .foregroundColor: secondaryColor,
+                .paragraphStyle: centerStyle
+            ]
+            urlStr.draw(in: CGRect(x: m, y: currentY, width: cw, height: 12.0), withAttributes: contactAttr)
+            currentY += 13.0
+
+            // Support phone & email
+            let supportStr = "support@pure-pets.net  •  +974 5999 7720"
+            supportStr.draw(in: CGRect(x: m, y: currentY, width: cw, height: 12.0), withAttributes: contactAttr)
+            currentY += 16.0
+
+            // Footer Tx / Document ID
+            let txFooter = "#" + receipt.documentNumber + " · " + (receipt.eventId.isEmpty ? receipt.collectionId : receipt.eventId)
+            txFooter.draw(in: CGRect(x: m, y: currentY, width: cw, height: 14.0), withAttributes: contactAttr)
+        }
+
+        guard data.count > 0 else { throw POSReceiptExportError.emptyDocument }
+        return data
+    }
+}
+
+// MARK: - PDFKit SwiftUI Viewer
+
+struct POSCreditPDFPreview: UIViewRepresentable {
+    let data: Data
+
+    func makeUIView(context: Context) -> PDFView {
+        let pdfView = PDFView()
+        pdfView.autoScales = true
+        pdfView.displayMode = .singlePageContinuous
+        pdfView.displayDirection = .vertical
+        pdfView.pageShadowsEnabled = true
+        pdfView.backgroundColor = UIColor.systemGroupedBackground
+        if let doc = PDFDocument(data: data) {
+            pdfView.document = doc
+        }
+        return pdfView
+    }
+
+    func updateUIView(_ uiView: PDFView, context: Context) {
+        if uiView.document == nil, let doc = PDFDocument(data: data) {
+            uiView.document = doc
+        }
+    }
+}
+
+// MARK: - Dedicated Collection Receipt Preview Sheet
+
+struct POSCreditCollectionReceiptSheet: View {
+    let document: POSCreditCollectionReceiptDocument
+    @Environment(\.dismiss) private var dismiss
+    @State private var sharePresented = false
+    @State private var copiedNotice = false
+
+    private var receipt: POSCreditCollectionReceipt { document.receipt }
+
+    var body: some View {
+        NavigationStack {
+            ZStack(alignment: .bottom) {
+                AdminSurface.background.ignoresSafeArea()
+
+                VStack(spacing: 0) {
+                    headerBar
+
+                    POSCreditPDFPreview(data: document.pdfData)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(AdminSurface.hairline, lineWidth: 1)
+                        )
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                        .padding(.bottom, 96)
+                }
+
+                bottomDock
+            }
+            .navigationBarHidden(true)
+            .sheet(isPresented: $sharePresented) {
+                POSCreditAccountShare(url: document.pdfURL)
+            }
+            .overlay(alignment: .top) {
+                if copiedNotice {
+                    Text(Language.isRTL() ? "تم نسخ رقم السند" : "Receipt number copied")
+                        .font(AdminType.footnoteBold)
+                        .foregroundStyle(Color.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.black.opacity(0.85), in: Capsule())
+                        .padding(.top, 64)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+        }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+
+    private var headerBar: some View {
+        HStack(spacing: 12) {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .frame(width: 38, height: 38)
+                    .background(AdminSurface.surface, in: Circle())
+                    .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 1))
+            }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel(Language.isRTL() ? "إغلاق" : "Close")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Language.isRTL() ? "معاينة سند التحصيل" : "Collection Receipt Preview")
+                    .font(AdminType.headlineBold)
+                    .foregroundStyle(AdminSurface.primaryText)
+                HStack(spacing: 6) {
+                    Text(receipt.documentNumber)
+                        .font(AdminType.footnote)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .monospacedDigit()
+                    Button {
+                        UIPasteboard.general.string = receipt.documentNumber
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            copiedNotice = true
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                copiedNotice = false
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(AdminSurface.primary)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+
+            Spacer()
+
+            Button {
+                printPDF()
+            } label: {
+                Image(systemName: "printer")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .frame(width: 38, height: 38)
+                    .background(AdminSurface.surface, in: Circle())
+                    .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 1))
+            }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel(Language.isRTL() ? "طباعة" : "Print")
+
+            Button {
+                sharePresented = true
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .frame(width: 38, height: 38)
+                    .background(AdminSurface.surface, in: Circle())
+                    .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 1))
+            }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel(Language.isRTL() ? "مشاركة" : "Share")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(AdminSurface.surface)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(AdminSurface.hairline).frame(height: 0.5)
+        }
+    }
+
+    private var bottomDock: some View {
+        HStack(spacing: 12) {
+            Button {
+                printPDF()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "printer.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text(Language.isRTL() ? "طباعة السند" : "Print Receipt")
+                        .font(AdminType.calloutBold)
+                }
+                .foregroundStyle(Color.white)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .shadow(color: AdminSurface.primary.opacity(0.3), radius: 6, y: 2)
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            Button {
+                sharePresented = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text(Language.isRTL() ? "مشاركة PDF" : "Share PDF")
+                        .font(AdminType.calloutBold)
+                }
+                .foregroundStyle(AdminSurface.primaryText)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(AdminSurface.surface)
+        .overlay(alignment: .top) {
+            Rectangle().fill(AdminSurface.hairline).frame(height: 0.5)
+        }
+    }
+
+    private func printPDF() {
+        guard UIPrintInteractionController.isPrintingAvailable else { return }
+        let controller = UIPrintInteractionController.shared
+        let info = UIPrintInfo(dictionary: nil)
+        info.outputType = .general
+        info.jobName = "\(Language.isRTL() ? "سند تحصيل" : "Collection Receipt") #\(receipt.documentNumber)"
+        controller.printInfo = info
+        controller.printingItem = document.pdfData
+
+        guard let scene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene ?? UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = scene.windows.first(where: { $0.isKeyWindow }) ?? scene.windows.first,
+              let root = window.rootViewController else { return }
+        let presenter = topPresenter(from: root)
+
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            controller.present(from: presenter.view.bounds, in: presenter.view, animated: true, completionHandler: nil)
+        } else {
+            controller.present(animated: true, completionHandler: nil)
+        }
+    }
+
+    private func topPresenter(from root: UIViewController) -> UIViewController {
+        if let presented = root.presentedViewController { return topPresenter(from: presented) }
+        if let nav = root as? UINavigationController, let visible = nav.visibleViewController { return topPresenter(from: visible) }
+        if let tab = root as? UITabBarController, let selected = tab.selectedViewController { return topPresenter(from: selected) }
+        return root
+    }
 }
 
 private enum POSCreditJSON: Decodable {

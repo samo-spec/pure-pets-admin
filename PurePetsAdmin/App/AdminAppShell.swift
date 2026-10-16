@@ -5415,7 +5415,7 @@ private struct AdminMoreView: View {
                             deskActionRow(
                                 title: Language.get("More_Broadcast_Settings", alter: "إعدادات وقنوات التنبيه"),
                                 subtitle: Language.get("More_Broadcast_Settings_Desc", alter: "تخصيص القنوات الصوتية والإشعارات الحرجة"),
-                                symbol: "bell.badge.gearshape.fill",
+                                symbol: "bell.badge.fill",
                                 symbolColor: .purple,
                                 showsDivider: false
                             )
