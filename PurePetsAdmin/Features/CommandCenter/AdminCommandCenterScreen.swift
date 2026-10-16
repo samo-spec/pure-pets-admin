@@ -3241,14 +3241,50 @@ private enum CommandPOSHomeCopy {
     }
 }
 
+private enum CommandPOSHomeShortcutTheme {
+    static let registerFont = PPBrandFont.bold(24, relativeTo: .title2)
+    static let titleFont = PPBrandFont.bold(18, relativeTo: .headline)
+    static let symbolFont = Font.system(size: 20, weight: .semibold)
+    static let titleColor = AdminSurface.primaryText
+    static let surface = AdminSurface.control
+    static let border = AdminSurface.hairline
+    static let accent = Color(uiColor: .ppAccentText)
+    static let registerSurface = AdminSurface.primary
+    static let registerInk = Color.white
+}
+
+private struct CommandPOSHomeShortcutIcon: View {
+    let symbol: String
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(CommandPOSHomeShortcutTheme.symbolFont)
+            .symbolRenderingMode(.monochrome)
+            .foregroundStyle(CommandPOSHomeShortcutTheme.accent)
+            .frame(width: 24, height: 24)
+            .accessibilityHidden(true)
+    }
+}
+
+private struct CommandPOSHomeShortcutArrow: View {
+    @Environment(\.layoutDirection) private var layoutDirection
+
+    var body: some View {
+        Image(systemName: layoutDirection == .rightToLeft ? "arrow.left" : "arrow.right")
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(CommandPOSHomeShortcutTheme.registerInk)
+            .frame(width: 32, height: 32)
+            .background(CommandPOSHomeShortcutTheme.registerInk.opacity(0.14), in: Circle())
+            .accessibilityHidden(true)
+    }
+}
+
 private struct CommandPOSHomePressStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .background(AdminSurface.primaryText.opacity(configuration.isPressed ? 0.055 : 0),
-                        in: RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
-            .opacity(configuration.isPressed ? 0.84 : 1)
+            .opacity(configuration.isPressed ? 0.88 : 1)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
@@ -3269,7 +3305,6 @@ private struct CommandPOSDeck: View {
 
     @ObservedObject private var branchStore = BranchContextStore.shared
     @StateObject private var telemetryStore = CommandPOSShiftTelemetryStore()
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var contrast
@@ -3290,15 +3325,22 @@ private struct CommandPOSDeck: View {
     private var showsDetails: Bool { isTelemetryExpanded ?? isRegular }
     private var hasBranch: Bool { !telemetryStore.activeBranchID.isEmpty }
     private var hasFigures: Bool { hasBranch && telemetryStore.lastFetchDate != nil }
-    private var arrow: String { Language.isRTL() ? "arrow.left" : "arrow.right" }
 
     private var posHeaderView: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Text(CommandPOSHomeCopy.text("Title"))
-                .font(PPBrandFont.bold(Language.isRTL() ? 28 : 24, relativeTo: .title2))
-                .foregroundStyle(AdminSurface.primaryText)
-                .accessibilityAddTraits(.isHeader)
-                .fixedSize(horizontal: false, vertical: true)
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(CommandPOSHomeCopy.text("Title"))
+                    .font(PPBrandFont.bold(24, relativeTo: .title2))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .accessibilityAddTraits(.isHeader)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Label(hasBranch ? currentBranchName : CommandPOSHomeCopy.text("BranchMissing"), systemImage: "building.2")
+                    .font(AdminType.footnote)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("home.pos.branchContext")
+            }
 
             Spacer(minLength: 8)
 
@@ -3306,50 +3348,39 @@ private struct CommandPOSDeck: View {
                 telemetryStore.manualRefresh()
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 13, weight: .semibold))
-                        .rotationEffect(.degrees(telemetryStore.isRefreshing ? 360 : 0))
-                        .animation(
-                            telemetryStore.isRefreshing && !reduceMotion
-                                ? Animation.linear(duration: 0.9).repeatForever(autoreverses: false)
-                                : .default,
-                            value: telemetryStore.isRefreshing
-                        )
+                    if telemetryStore.isRefreshing {
+                        ProgressView().tint(CommandPOSHomeShortcutTheme.accent)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
                     if isRegular && !dynamicTypeSize.isAccessibilitySize {
                         Text(CommandPOSHomeCopy.text("Refresh"))
                             .font(AdminType.footnoteBold)
                     }
                 }
-                .foregroundStyle(telemetryStore.isRefreshing ? AdminSurface.secondaryText : AdminSurface.primary)
-                .padding(.horizontal, isRegular ? 12 : 10)
-                .padding(.vertical, 7)
-                .frame(minHeight: 36)
-                .background(
-                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.12 : 0.08),
-                    in: Capsule()
-                )
-                .overlay(
-                    Capsule()
-                        .strokeBorder(AdminSurface.primary.opacity(0.18), lineWidth: 1)
-                )
-                .contentShape(Capsule())
+                .foregroundStyle(CommandPOSHomeShortcutTheme.accent)
+                .padding(.horizontal, 12)
+                .frame(minWidth: 44, minHeight: 44)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
             }
             .buttonStyle(CommandPOSHomePressStyle())
             .disabled(telemetryStore.isRefreshing)
             .accessibilityLabel(CommandPOSHomeCopy.text("Refresh"))
-            .accessibilityHint(Language.isRTL() ? "إعادة تحميل مبيعات الوردية الحالية" : "Reload current shift sales data")
+            .accessibilityHint(CommandPOSHomeCopy.text("RefreshHint"))
             .accessibilityIdentifier("home.pos.refreshButton")
             .keyboardShortcut("r", modifiers: [.command, .shift])
         }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            posHeaderView
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 16) {
+                posHeaderView
 
-            VStack(alignment: .leading, spacing: 20) {
                 if usesColumns {
-                    HStack(alignment: .top, spacing: 24) {
+                    HStack(alignment: .top, spacing: 16) {
                         registerActions.frame(maxWidth: .infinity, alignment: .leading)
                         supportingActions.frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -3357,16 +3388,21 @@ private struct CommandPOSDeck: View {
                     registerActions
                     supportingActions
                 }
-                rule
-                shiftSummary
             }
-            .padding(isRegular ? 24 : 16)
-            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous)
-                    .strokeBorder(AdminSurface.hairline, lineWidth: contrast == .increased ? 1.5 : 1)
-                    .allowsHitTesting(false)
-            }
+            .padding(isRegular ? 20 : 16)
+
+            rule
+            shiftSummary
+                .padding(.horizontal, isRegular ? 20 : 16)
+                .padding(.vertical, 14)
+                .background(AdminSurface.control)
+        }
+        .background(AdminSurface.surface)
+        .clipShape(RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: contrast == .increased ? 1.5 : 1)
+                .allowsHitTesting(false)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .multilineTextAlignment(.leading)
@@ -3420,133 +3456,50 @@ private struct CommandPOSDeck: View {
     }
 
     private var posAccessBadge: some View {
-        HStack(spacing: 3.5) {
-            Image(systemName: telemetryStore.canSell ? "checkmark.circle.fill" : (telemetryStore.canView ? "eye.fill" : "lock.fill"))
-                .font(.system(size: 9.5, weight: .bold))
-                .foregroundStyle(telemetryStore.canSell ? Color(uiColor: .ppSuccess) : AdminSurface.secondaryText)
-
-            Text(accessTitle)
-                .font(PPBeirutiFont.bold(12, relativeTo: .caption))
-                .foregroundStyle(
-                    telemetryStore.canSell
-                        ? (colorScheme == .dark ? Color(uiColor: .ppSuccess) : AdminSurface.primaryText)
-                        : AdminSurface.secondaryText
-                )
-        }
-        .padding(.horizontal, 7.5)
-        .padding(.vertical, 2.5)
-        .background(
-            (telemetryStore.canSell ? Color(uiColor: .ppSuccess) : AdminSurface.primaryText)
-                .opacity(colorScheme == .dark ? 0.16 : 0.08),
-            in: Capsule(style: .continuous)
-        )
+        Label(accessTitle, systemImage: telemetryStore.canSell ? "checkmark.circle" : (telemetryStore.canView ? "eye" : "lock"))
+            .font(PPBrandFont.medium(12, relativeTo: .caption))
+            .foregroundStyle(CommandPOSHomeShortcutTheme.registerInk.opacity(0.9))
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var registerActions: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             Button {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 telemetryStore.markNeedsReloadOnAppearance()
                 onRoute("pos")
             } label: {
-                Group {
-                    if dynamicTypeSize.isAccessibilitySize {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(alignment: .center, spacing: 8) {
-                                Text(CommandPOSHomeCopy.text(telemetryStore.canSell ? "StartSale" : "Browse"))
-                                    .font(AdminType.headlineBold)
-                                    .foregroundStyle(AdminSurface.primaryText)
-                                Spacer(minLength: 0)
-                                posAccessBadge
-                            }
-                            Text(CommandPOSHomeCopy.text(telemetryStore.canSell ? "SaleDetail" : "BrowseDetail"))
-                                .font(AdminType.caption)
-                                .foregroundStyle(AdminSurface.secondaryText)
-                        }
-                    } else {
-                        HStack(alignment: .center, spacing: 12) {
-                            ZStack(alignment: .bottomTrailing) {
-                                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
-                                    .fill(AdminSurface.surface)
-                                    .frame(width: 48, height: 48)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
-                                            .strokeBorder(
-                                                AdminSurface.hairline.opacity(colorScheme == .dark ? 0.45 : 0.85),
-                                                lineWidth: contrast == .increased ? 1.5 : 1
-                                            )
-                                    )
-                                    .shadow(
-                                        color: Color.black.opacity(colorScheme == .dark ? 0.28 : 0.04),
-                                        radius: 3,
-                                        x: 0,
-                                        y: 1.5
-                                    )
-
-                                Image(systemName: "barcode.viewfinder")
-                                    .font(.system(size: 21, weight: .semibold))
-                                    .foregroundStyle(AdminSurface.primaryText)
-                                    .frame(width: 48, height: 48)
-
-                                if telemetryStore.canSell {
-                                    Circle()
-                                        .fill(Color(uiColor: .ppSuccess))
-                                        .frame(width: 8.5, height: 8.5)
-                                        .overlay(
-                                            Circle()
-                                                .stroke(AdminSurface.surface, lineWidth: 1.5)
-                                        )
-                                        .offset(x: 1, y: 1)
-                                }
-                            }
+                HStack(alignment: .center, spacing: 12) {
+                    if !dynamicTypeSize.isAccessibilitySize {
+                        Image(systemName: "barcode.viewfinder")
+                            .font(.system(size: 30, weight: .medium))
+                            .symbolRenderingMode(.monochrome)
+                            .frame(width: 44, height: 44)
                             .accessibilityHidden(true)
+                    }
 
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack(alignment: .center, spacing: 8) {
-                                    Text(CommandPOSHomeCopy.text(telemetryStore.canSell ? "StartSale" : "Browse"))
-                                        .font(AdminType.headlineBold)
-                                        .foregroundStyle(AdminSurface.primaryText)
-                                        .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(CommandPOSHomeCopy.text(telemetryStore.canSell ? "StartSale" : "Browse"))
+                            .font(CommandPOSHomeShortcutTheme.registerFont)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(CommandPOSHomeCopy.text(telemetryStore.canSell ? "SaleCue" : "BrowseDetail"))
+                            .font(PPBrandFont.regular(14, relativeTo: .subheadline))
+                            .fixedSize(horizontal: false, vertical: true)
+                        posAccessBadge
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                                    posAccessBadge
-                                }
-
-                                Text(CommandPOSHomeCopy.text(telemetryStore.canSell ? "SaleDetail" : "BrowseDetail"))
-                                    .font(AdminType.caption)
-                                    .foregroundStyle(AdminSurface.secondaryText)
-                                    .lineLimit(1)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-
-                            Spacer(minLength: 4)
-
-                            ZStack {
-                                Circle()
-                                    .fill(AdminSurface.primary.opacity(colorScheme == .dark ? 0.12 : 0.06))
-                                    .frame(width: 30, height: 30)
-
-                                Image(systemName: arrow)
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundStyle(AdminSurface.primaryText)
-                            }
-                            .accessibilityHidden(true)
-                        }
+                    if !dynamicTypeSize.isAccessibilitySize {
+                        CommandPOSHomeShortcutArrow()
                     }
                 }
-                .padding(.horizontal, 15)
-                .padding(.vertical, 14)
-                .frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
+                .foregroundStyle(CommandPOSHomeShortcutTheme.registerInk)
+                .padding(16)
+                .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
                 .background(
-                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.14 : 0.065),
+                    CommandPOSHomeShortcutTheme.registerSurface,
                     in: RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 )
-                .overlay {
-                    RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
-                        .strokeBorder(
-                            AdminSurface.primary.opacity(colorScheme == .dark ? 0.18 : 0.09),
-                            lineWidth: contrast == .increased ? 1.5 : 1
-                        )
-                }
                 .contentShape(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
             }
             .buttonStyle(CommandPOSHomePressStyle())
@@ -3564,7 +3517,7 @@ private struct CommandPOSDeck: View {
                 } label: {
                     Label(CommandPOSHomeCopy.text("QuickScan"), systemImage: "viewfinder")
                         .font(AdminType.subheadlineBold)
-                        .foregroundStyle(AdminSurface.primaryText)
+                        .foregroundStyle(CommandPOSHomeShortcutTheme.accent)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .frame(minHeight: 44)
@@ -3584,15 +3537,48 @@ private struct CommandPOSDeck: View {
         return CommandPOSHomeCopy.text("Restricted")
     }
 
-    private var supportingActions: some View {
-        LazyVGrid(
-            columns: Array(
-                repeating: GridItem(.flexible(minimum: 0), spacing: 10, alignment: .top),
-                count: dynamicTypeSize.isAccessibilitySize ? 1 : 2
-            ),
-            alignment: .leading,
-            spacing: 10
-        ) {
+    private var fadedHorizontalSeparator: some View {
+        Rectangle()
+            .fill(
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0.0),
+                        .init(color: CommandPOSHomeShortcutTheme.border.opacity(contrast == .increased ? 0.8 : 0.5), location: 0.12),
+                        .init(color: CommandPOSHomeShortcutTheme.border.opacity(contrast == .increased ? 0.8 : 0.5), location: 0.88),
+                        .init(color: .clear, location: 1.0)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .frame(height: 1)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    private var fadedVerticalSeparator: some View {
+        Rectangle()
+            .fill(
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0.0),
+                        .init(color: CommandPOSHomeShortcutTheme.border.opacity(contrast == .increased ? 0.8 : 0.5), location: 0.14),
+                        .init(color: CommandPOSHomeShortcutTheme.border.opacity(contrast == .increased ? 0.8 : 0.5), location: 0.86),
+                        .init(color: .clear, location: 1.0)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .frame(width: 1)
+            .frame(maxHeight: .infinity)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    private var activeSupportingActions: [AnyView] {
+        var actions: [AnyView] = []
+        actions.append(AnyView(
             CommandPOSHomeAction(title: CommandPOSHomeCopy.text("Receipts"),
                                  detail: CommandPOSHomeCopy.text("ReceiptsDetail"),
                                  symbol: "doc.text.magnifyingglass", identifier: "home.pos.receipts") {
@@ -3600,7 +3586,9 @@ private struct CommandPOSDeck: View {
                 onRoute("posHistory")
             }
             .keyboardShortcut("h", modifiers: .command)
-            if telemetryStore.canView || telemetryStore.canSell {
+        ))
+        if telemetryStore.canView || telemetryStore.canSell {
+            actions.append(AnyView(
                 CommandPOSHomeAction(title: Language.get("Proforma_Title", alter: nil),
                                      detail: Language.get("Proforma_Subtitle", alter: nil),
                                      symbol: "doc.text", identifier: "home.pos.proforma") {
@@ -3608,7 +3596,9 @@ private struct CommandPOSDeck: View {
                     onRoute("proformaInvoices")
                 }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
-            }
+            ))
+        }
+        actions.append(AnyView(
             CommandPOSHomeAction(title: CommandPOSHomeCopy.text("Expense"),
                                  detail: CommandPOSHomeCopy.text("ExpenseDetail"),
                                  symbol: "plus.circle", identifier: "home.pos.expense") {
@@ -3616,7 +3606,9 @@ private struct CommandPOSDeck: View {
                 showsQuickExpenseSheet = true
             }
             .keyboardShortcut("e", modifiers: .command)
-            if canOpenWantedPets {
+        ))
+        if canOpenWantedPets {
+            actions.append(AnyView(
                 CommandPOSHomeAction(title: CommandPOSHomeCopy.text("Wanted"),
                                      detail: CommandPOSHomeCopy.text("WantedDetail"),
                                      symbol: "pawprint", identifier: "pos.wantedPets.entry") {
@@ -3624,13 +3616,62 @@ private struct CommandPOSDeck: View {
                     onRoute("wantedPets")
                 }
                 .accessibilityHint(Language.get("WantedPets_POS_Entry_Hint", alter: ""))
+            ))
+        }
+        return actions
+    }
+
+    private var supportingActions: some View {
+        let actions = activeSupportingActions
+        return Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: 0) {
+                    ForEach(0..<actions.count, id: \.self) { index in
+                        if index > 0 {
+                            fadedHorizontalSeparator
+                        }
+                        actions[index]
+                    }
+                }
+            } else if actions.count <= 2 {
+                HStack(spacing: 0) {
+                    ForEach(0..<actions.count, id: \.self) { index in
+                        actions[index]
+                    }
+                }
+                .overlay(alignment: .center) {
+                    if actions.count == 2 {
+                        fadedVerticalSeparator
+                    }
+                }
+            } else {
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        actions[0]
+                        actions[1]
+                    }
+                    fadedHorizontalSeparator
+                    HStack(spacing: 0) {
+                        actions[2]
+                        if actions.count > 3 {
+                            actions[3]
+                        } else {
+                            Color.clear.frame(maxWidth: .infinity)
+                        }
+                    }
+                }
+                .overlay(alignment: .center) {
+                    fadedVerticalSeparator
+                }
             }
         }
+        .background(CommandPOSHomeShortcutTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
         .accessibilityElement(children: .contain)
     }
 
     private var shiftSummary: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             Button {
                 withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
                     isTelemetryExpanded = !showsDetails
@@ -3664,20 +3705,31 @@ private struct CommandPOSDeck: View {
 
             sourceStatus
             if showsDetails && hasFigures {
-                CommandPOSHomeFigures(telemetryStore: telemetryStore, usesColumns: usesColumns)
-                    .transition(.opacity)
+                VStack(spacing: 16) {
+                    rule
+                    CommandPOSHomeFigures(telemetryStore: telemetryStore, usesColumns: usesColumns)
+                }
+                .padding(.top, 8)
+                .transition(.opacity)
             }
         }
     }
 
     private var shiftHeading: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(CommandPOSHomeCopy.text("Shift"))
-                .font(AdminType.subheadlineBold)
-                .foregroundStyle(AdminSurface.primaryText)
+        VStack(alignment: .leading, spacing: 4) {
             Text(Language.get("AdminPOS_TodaySales_Title", alter: ""))
+                .font(AdminType.footnoteBold)
+                .foregroundStyle(AdminSurface.primaryText)
+            if hasFigures {
+                HStack(spacing: 5) {
+                    Text(String(telemetryStore.todayReceiptsCount))
+                        .monospacedDigit()
+                        .environment(\.layoutDirection, .leftToRight)
+                    Text(Language.get("AdminPOS_Metric_Receipts", alter: ""))
+                }
                 .font(AdminType.caption)
                 .foregroundStyle(AdminSurface.secondaryText)
+            }
         }
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -3685,7 +3737,7 @@ private struct CommandPOSDeck: View {
     @ViewBuilder private var shiftTotal: some View {
         if hasFigures {
             Text(telemetryStore.formattedTodaySales)
-                .font(AdminType.title2)
+                .font(PPBrandFont.bold(26, relativeTo: .title2))
                 .foregroundStyle(AdminSurface.primaryText)
                 .monospacedDigit()
                 .environment(\.layoutDirection, .leftToRight)
@@ -3694,10 +3746,12 @@ private struct CommandPOSDeck: View {
     }
 
     private var disclosureIcon: some View {
-        Image(systemName: showsDetails ? "chevron.up" : "chevron.down")
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(AdminSurface.secondaryText)
-            .frame(width: 24, height: 24)
+        Image(systemName: "chevron.down")
+            .font(.system(size: 12, weight: .semibold))
+            .rotationEffect(.degrees(showsDetails ? 180 : 0))
+            .foregroundStyle(CommandPOSHomeShortcutTheme.accent)
+            .frame(width: 32, height: 32)
+            .background(AdminSurface.surface, in: Circle())
             .accessibilityHidden(true)
     }
 
@@ -3766,42 +3820,26 @@ private struct CommandPOSHomeAction: View {
     let symbol: String
     let identifier: String
     let action: () -> Void
-    @Environment(\.layoutDirection) private var layoutDirection
 
     var body: some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             action()
         } label: {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .center) {
-                    Image(systemName: symbol)
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundStyle(AdminSurface.primary)
-                        .frame(width: 24, height: 24)
-                        .accessibilityHidden(true)
-                    Spacer(minLength: 8)
-                    Image(systemName: layoutDirection == .rightToLeft ? "chevron.left" : "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(AdminSurface.secondaryText)
-                        .accessibilityHidden(true)
-                }
+            HStack(alignment: .center, spacing: 10) {
+                CommandPOSHomeShortcutIcon(symbol: symbol)
                 Text(title)
-                    .font(AdminType.headline)
-                    .foregroundStyle(AdminSurface.primaryText)
+                    .font(CommandPOSHomeShortcutTheme.titleFont)
+                    .foregroundStyle(CommandPOSHomeShortcutTheme.titleColor)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(12)
-            .frame(maxWidth: .infinity, minHeight: 88, maxHeight: .infinity, alignment: .topLeading)
-            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(AdminSurface.hairline, lineWidth: 1)
-                    .allowsHitTesting(false)
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, minHeight: 72, maxHeight: .infinity, alignment: .leading)
+            .background(CommandPOSHomeShortcutTheme.surface)
+            .contentShape(Rectangle())
         }
         .buttonStyle(CommandPOSHomePressStyle())
         .accessibilityLabel(title)
@@ -3816,7 +3854,7 @@ private struct CommandPOSHomeFigures: View {
 
     private var cashColor: Color { AdminSurface.emerald }
     private var cardColor: Color { AdminSurface.primaryText }
-    private var creditColor: Color { AdminSurface.primary }
+    private var creditColor: Color { CommandPOSHomeShortcutTheme.accent }
     private var otherColor: Color { AdminSurface.secondaryText.opacity(0.55) }
 
     var body: some View {
@@ -3828,20 +3866,45 @@ private struct CommandPOSHomeFigures: View {
                 }
             } else {
                 receiptFigures
+                Rectangle().fill(AdminSurface.hairline).frame(height: 1).accessibilityHidden(true)
                 tenderFigures
             }
         }
-        .padding(16)
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
         .accessibilityElement(children: .contain)
     }
 
     private var receiptFigures: some View {
-        VStack(spacing: 12) {
-            figure("AdminPOS_Metric_Receipts", value: String(telemetryStore.todayReceiptsCount))
-            figure("AdminPOS_Metric_AOV", value: telemetryStore.formattedAverageOrderValue)
-            figure("AdminPOS_Metric_Refunds", value: String(telemetryStore.refundsCount))
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 24) {
+                statistic("AdminPOS_Metric_Receipts", value: String(telemetryStore.todayReceiptsCount))
+                statistic("AdminPOS_Metric_AOV", value: telemetryStore.formattedAverageOrderValue)
+                statistic("AdminPOS_Metric_Refunds", value: String(telemetryStore.refundsCount))
+            }
+            .fixedSize(horizontal: true, vertical: false)
+
+            VStack(spacing: 12) {
+                figure("AdminPOS_Metric_Receipts", value: String(telemetryStore.todayReceiptsCount))
+                figure("AdminPOS_Metric_AOV", value: telemetryStore.formattedAverageOrderValue)
+                figure("AdminPOS_Metric_Refunds", value: String(telemetryStore.refundsCount))
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func statistic(_ key: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(Language.get(key, alter: ""))
+                .font(AdminType.caption)
+                .foregroundStyle(AdminSurface.secondaryText)
+            Text(value)
+                .font(PPBrandFont.bold(20, relativeTo: .title3))
+                .foregroundStyle(AdminSurface.primaryText)
+                .monospacedDigit()
+                .environment(\.layoutDirection, .leftToRight)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Language.get(key, alter: ""))
+        .accessibilityValue(value)
     }
 
     private var tenderFigures: some View {
@@ -3902,9 +3965,9 @@ private struct CommandPOSHomeFigures: View {
                     .accessibilityHidden(true)
             }
             Text(Language.get(key, alter: ""))
-            .font(AdminType.subheadline)
-            .foregroundStyle(AdminSurface.secondaryText)
-            .fixedSize(horizontal: false, vertical: true)
+                .font(AdminType.subheadline)
+                .foregroundStyle(AdminSurface.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

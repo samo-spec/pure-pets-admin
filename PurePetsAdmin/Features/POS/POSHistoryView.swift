@@ -831,12 +831,18 @@ struct AdminPOSHistoryView: View {
             .onChange(of: branchStore.activeBranch?.branchID) { branchID in
                 viewModel.load(branchID: branchID)
             }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("PPAccountingDataDidChangeNotification"))) { notification in
+                if let branchID = notification.userInfo?["branchId"] as? String,
+                   branchID != branchStore.activeBranch?.branchID { return }
+                viewModel.load(branchID: branchStore.activeBranch?.branchID)
+            }
             // Thermal Receipt Sheet
             .sheet(item: $receiptForThermalPrint, onDismiss: { receiptNoticeForPrint = nil }) { completedReceipt in
                 POSCompletedReceiptSheet(receipt: completedReceipt, notice: receiptNoticeForPrint)
             }
             // Transaction Dossier Push Navigation
-            .navigationDestination(item: $selectedDossierReceipt) { receipt in
+            .navigationDestination(item: $selectedDossierReceipt) { original in
+                let receipt = viewModel.receipts.first(where: { $0.receiptID == original.receiptID }) ?? original
                 POSTransactionDossierSheet(
                     receipt: receipt,
                     onPrint: {
@@ -2583,6 +2589,7 @@ struct POSTransactionDossier_iPhone: View {
                     subtitle: dossierSubtitle,
                     statusDotColor: statusKind.tintColor,
                     isModal: false,
+                    customTopSpacing: 0,
                     showsTopFade: false,
                     onBack: onDismiss
                 ) {
@@ -2817,6 +2824,7 @@ struct POSTransactionDossier_iPad: View {
                     subtitle: dossierSubtitle,
                     statusDotColor: statusKind.tintColor,
                     isModal: false,
+                    customTopSpacing: 0,
                     showsTopFade: false,
                     onBack: onDismiss
                 ) {
@@ -3388,6 +3396,7 @@ struct POSRefundStudioSheet: View {
                     subtitle: Language.get("POS_RefundStudio_Sub", alter: "إرجاع الكميات للمخزون واسترداد المبلغ"),
                     statusDotColor: Color(uiColor: .systemOrange),
                     isModal: false,
+                    customTopSpacing: 0,
                     showsTopFade: false,
                     onBack: { dismiss() }
                 )

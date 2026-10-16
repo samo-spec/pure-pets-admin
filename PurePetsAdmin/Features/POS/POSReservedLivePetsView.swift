@@ -1409,6 +1409,8 @@ struct POSReservedPetDossierSheet: View {
             subtitle: item.ringTag.isEmpty ? item.branchName : (item.branchName.isEmpty ? "#\(item.ringTag)" : "\(item.branchName) • #\(item.ringTag)"),
             statusDotColor: urgencyColor,
             isModal: !isPushMode,
+            customTopSpacing: 0,
+            showsTopFade: false,
             onBack: {
                 if let onBack = onBack {
                     onBack()

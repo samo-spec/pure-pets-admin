@@ -10,6 +10,8 @@
 import SwiftUI
 import FirebaseFirestore
 import FirebaseFunctions
+import FirebaseAuth
+import Combine
 
 // MARK: - Customer Model
 
@@ -207,6 +209,138 @@ enum POSCustomerPickerTab: Int, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - POS Customer Credit Store & Summary Cache
+
+@MainActor
+final class POSCustomerCreditStore: ObservableObject {
+    static let shared = POSCustomerCreditStore()
+
+    struct CreditSummary: Sendable, Codable, Equatable {
+        let customerID: String
+        let branchID: String
+        // A limit is displayed only after its enabled policy has been verified.
+        let limitMinor: Int
+        let isPolicyVerified: Bool
+        let outstandingMinor: Int
+        let pendingAmountMinor: Int
+        let overdueMinor: Int
+        let currency: String
+
+        var availableMinor: Int {
+            // Outstanding already includes money awaiting clearance.
+            isPolicyVerified ? max(0, limitMinor - outstandingMinor) : 0
+        }
+        var hasRemainingCredit: Bool { isPolicyVerified && availableMinor > 0 }
+        var shouldDisplayCreditView: Bool {
+            (isPolicyVerified && limitMinor > 0)
+                || outstandingMinor > 0
+                || pendingAmountMinor > 0
+                || overdueMinor > 0
+        }
+    }
+
+    @Published private(set) var summaries: [String: CreditSummary] = [:]
+    @Published private(set) var revision = 0
+    private var requests: [String: UUID] = [:]
+    private var failedKeys: Set<String> = []
+    private var subscriptions = Set<AnyCancellable>()
+    private nonisolated(unsafe) var authListener: AuthStateDidChangeListenerHandle?
+
+    private init() {
+        for name in ["PPAccountingDataDidChangeNotification", "PPAdminCommandAuthorizationDidChangeNotification"] {
+            NotificationCenter.default.publisher(for: Notification.Name(name))
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in self?.invalidateAll() }
+                .store(in: &subscriptions)
+        }
+        authListener = Auth.auth().addStateDidChangeListener { [weak self] _, _ in
+            Task { @MainActor in self?.invalidateAll() }
+        }
+    }
+    deinit { if let authListener { Auth.auth().removeStateDidChangeListener(authListener) } }
+
+    private func key(_ customerID: String, _ branchID: String) -> String {
+        // Length prefixes avoid collisions between otherwise ambiguous IDs.
+        "\(customerID.utf8.count):\(customerID)\(branchID.utf8.count):\(branchID)"
+    }
+    private func branch(_ value: String) -> String {
+        value.isEmpty ? (BranchContextStore.shared.activeBranch?.branchID ?? "") : value
+    }
+    func summary(for customerID: String, branchID: String) -> CreditSummary? {
+        let branchID = branch(branchID)
+        guard !customerID.isEmpty, POSCreditAccountCopy.permitted("pos.credit.read", branchID: branchID) else { return nil }
+        return summaries[key(customerID, branchID)]
+    }
+
+    func loadCreditSummary(for customerID: String, branchID: String) {
+        let branchID = branch(branchID)
+        let key = key(customerID, branchID)
+        guard !customerID.isEmpty, POSCreditAccountCopy.permitted("pos.credit.read", branchID: branchID),
+              let actor = Auth.auth().currentUser?.uid, summaries[key] == nil, requests[key] == nil, !failedKeys.contains(key) else { return }
+        let ticket = UUID()
+        requests[key] = ticket
+        let body: [String: Any] = ["contractVersion": 1, "customerId": customerID, "branchId": branchID, "currency": "QAR", "kind": "invoices", "pageSize": 1]
+        guard let data = try? JSONSerialization.data(withJSONObject: body, options: .sortedKeys) else {
+            requests.removeValue(forKey: key); return
+        }
+        PPPOSService.shared().callCreditOperation("getCustomerReceivables", request: data, actorUID: actor) { [weak self] data, error in
+            Task { @MainActor in
+                guard let self, self.requests[key] == ticket, Auth.auth().currentUser?.uid == actor,
+                      POSCreditAccountCopy.permitted("pos.credit.read", branchID: branchID) else { return }
+                guard error == nil, let data, let page = try? JSONDecoder().decode(POSCreditAccountPage<POSCreditAccountInvoice>.self, from: data),
+                      page.ok, page.customerId == customerID, page.branchId == branchID, page.currency == "QAR", page.kind == "invoices",
+                      page.summary.outstandingMinor >= 0, page.summary.pendingAmountMinor >= 0,
+                      page.summary.pendingAmountMinor <= page.summary.outstandingMinor else {
+                    self.requests.removeValue(forKey: key); self.failedKeys.insert(key); return
+                }
+                let balance = page.summary
+                // Publish the verified debt immediately. Policy failure must never replace it with zero.
+                self.summaries[key] = CreditSummary(customerID: customerID, branchID: branchID, limitMinor: 0, isPolicyVerified: false,
+                    outstandingMinor: balance.outstandingMinor, pendingAmountMinor: balance.pendingAmountMinor,
+                    overdueMinor: balance.overdueMinor, currency: page.currency)
+                self.loadPolicy(customerID: customerID, branchID: branchID, actor: actor, key: key, ticket: ticket, balance: balance)
+            }
+        }
+    }
+
+    private func loadPolicy(customerID: String, branchID: String, actor: String, key: String, ticket: UUID, balance: POSCreditAccountSummary) {
+        let body: [String: Any] = ["contractVersion": 1, "action": "list", "customerId": customerID, "branchId": branchID, "currency": "QAR"]
+        guard let data = try? JSONSerialization.data(withJSONObject: body, options: .sortedKeys) else {
+            requests.removeValue(forKey: key); return
+        }
+        PPPOSService.shared().callCreditOperation("posCreditReviewCommand", request: data, actorUID: actor) { [weak self] data, error in
+            Task { @MainActor in
+                guard let self, self.requests[key] == ticket, Auth.auth().currentUser?.uid == actor,
+                      POSCreditAccountCopy.permitted("pos.credit.read", branchID: branchID) else { return }
+                self.requests.removeValue(forKey: key)
+                guard error == nil, let data, let value = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                      value["ok"] as? Bool == true, value["customerId"] as? String == customerID,
+                      value["branchId"] as? String == branchID, value["currency"] as? String == "QAR",
+                      let policy = value["policy"] as? [String: Any], policy["enabled"] as? Bool == true,
+                      let limit = policy["limitMinor"] as? Int, limit >= 0 else { return }
+                self.summaries[key] = CreditSummary(customerID: customerID, branchID: branchID, limitMinor: limit, isPolicyVerified: true,
+                    outstandingMinor: balance.outstandingMinor, pendingAmountMinor: balance.pendingAmountMinor,
+                    overdueMinor: balance.overdueMinor, currency: "QAR")
+            }
+        }
+    }
+
+    func preloadCreditSummaries(for customers: [POSCustomerRecord], branchID: String) {
+        for customer in customers.prefix(25) where customer.source == "directory" {
+            loadCreditSummary(for: customer.id, branchID: branchID)
+        }
+    }
+    func invalidate(customerID: String, branchID: String) {
+        let key = key(customerID, branch(branchID))
+        summaries.removeValue(forKey: key); requests.removeValue(forKey: key); failedKeys.remove(key)
+        revision &+= 1
+    }
+    func invalidateAll() {
+        requests.removeAll(); failedKeys.removeAll(); summaries.removeAll()
+        revision &+= 1
+    }
+}
+
 // MARK: - POS Customer Cache Store & Firestore Synchronizer
 
 final class POSCustomerCacheStore: ObservableObject, @unchecked Sendable {
@@ -375,7 +509,11 @@ enum POSCustomerNormalization {
 final class POSCustomerPickerViewModel: ObservableObject {
     @Published var activeTab: POSCustomerPickerTab = .search
     @Published var searchText: String = ""
-    @Published var searchResults: [POSCustomerRecord] = []
+    @Published var searchResults: [POSCustomerRecord] = [] {
+        didSet {
+            preloadCreditsForCurrentResults()
+        }
+    }
     @Published var recentCustomers: [POSCustomerRecord] = []
     @Published var branches: [PPInventoryBranchOption] = []
     @Published var isLoading: Bool = false
@@ -420,6 +558,13 @@ final class POSCustomerPickerViewModel: ObservableObject {
         loadRecents()
         loadBranches()
         loadInitialDirectory()
+    }
+
+    private func preloadCreditsForCurrentResults() {
+        let branchID = BranchContextStore.shared.activeBranch?.branchID ?? ""
+        if !branchID.isEmpty {
+            POSCustomerCreditStore.shared.preloadCreditSummaries(for: searchResults, branchID: branchID)
+        }
     }
 
     // MARK: - Query Type Detector
@@ -606,6 +751,7 @@ final class POSCustomerPickerViewModel: ObservableObject {
     }
 
     func refreshFromFirestoreAsync() async {
+        POSCustomerCreditStore.shared.invalidateAll()
         isSyncingWithFirestore = true
         do {
             let callable = Functions.functions().httpsCallable("posCustomerCommand")
@@ -1130,6 +1276,42 @@ final class POSCustomerPickerViewModel: ObservableObject {
 
 /// A contact has one selection target and an independent editing target.
 /// Technical identifiers read LTR while their physical alignment follows Arabic.
+private struct POSCustomerCreditBalance: View {
+    let summary: POSCustomerCreditStore.CreditSummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("\(POSCreditAccountCopy.text("Outstanding")) · \(POSCreditAccountCopy.money(summary.outstandingMinor))")
+                .font(PPBrandFont.bold(17, relativeTo: .headline))
+                .foregroundStyle(summary.overdueMinor > 0 ? AdminSurface.crimson : AdminSurface.primaryText)
+            if summary.isPolicyVerified {
+                let available = summary.availableMinor
+                Text("\(POSCreditAccountCopy.text("CollectionAvailableCredit")) · \(POSCreditAccountCopy.money(available))")
+                    .font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
+            }
+            if summary.pendingAmountMinor > 0 {
+                Label("\(POSCreditAccountCopy.text("CollectionAwaiting")) · \(POSCreditAccountCopy.money(summary.pendingAmountMinor))", systemImage: "clock")
+                    .font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
+            }
+            if summary.overdueMinor > 0 {
+                Text(POSCreditAccountCopy.text("Overdue")).font(AdminType.footnoteBold).foregroundStyle(AdminSurface.crimson)
+            }
+        }
+        .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(summary.outstandingMinor == 0 ? AdminSurface.background : AdminSurface.primarySoft,
+                    in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .overlay {
+            if summary.outstandingMinor != 0 {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .strokeBorder(AdminSurface.primary.opacity(0.16), lineWidth: 1)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
 private struct POSCustomerIdentityCell: View {
     let customer: POSCustomerRecord
     let branchName: String
@@ -1138,8 +1320,23 @@ private struct POSCustomerIdentityCell: View {
     let onSelect: () -> Void
     let onEdit: (() -> Void)?
     var creditBranchID: String? = nil
+    @ObservedObject private var creditStore = POSCustomerCreditStore.shared
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.layoutDirection) private var direction
+
+    private var effectiveBranchID: String {
+        creditBranchID ?? BranchContextStore.shared.activeBranch?.branchID ?? customer.branchId
+    }
+
+    private var creditSummary: POSCustomerCreditStore.CreditSummary? {
+        creditStore.summary(for: customer.id, branchID: effectiveBranchID)
+    }
+
+    private var showsCreditAction: Bool {
+        guard let branchID = creditBranchID else { return false }
+        // Collection action button appears only when there is an outstanding amount owed to collect.
+        return (creditSummary?.outstandingMinor ?? 0) > 0 && POSCreditAccountCopy.permitted("pos.credit.collect", branchID: branchID)
+    }
 
     private var note: String { (customer.note ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
     private var isUnavailable: Bool {
@@ -1150,13 +1347,19 @@ private struct POSCustomerIdentityCell: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             selectionButton
-            if creditBranchID != nil || onEdit != nil {
+            if let credit = creditSummary, credit.shouldDisplayCreditView {
+                remainingCreditBadge(credit)
+                    .padding(.leading, typeSize.isAccessibilitySize ? AdminSpacing.base : 72)
+                    .padding(.trailing, AdminSpacing.base)
+                    .padding(.vertical, AdminSpacing.sm)
+            }
+            if showsCreditAction || onEdit != nil {
                 let layout = typeSize.isAccessibilitySize
                     ? AnyLayout(VStackLayout(alignment: .leading, spacing: 0))
                     : AnyLayout(HStackLayout(alignment: .center, spacing: AdminSpacing.base))
                 layout {
-                    if let branchID = creditBranchID {
-                        POSCreditAccountLink(customerID: customer.id, branchID: branchID, compact: true)
+                    if showsCreditAction, let branchID = creditBranchID {
+                        POSCreditAccountLink(customerID: customer.id, branchID: branchID, compact: true, opensCollection: true)
                     }
                     if onEdit != nil { editButton }
                 }
@@ -1166,6 +1369,11 @@ private struct POSCustomerIdentityCell: View {
             }
         }
         .background(isSelected ? AdminSurface.primary.opacity(0.045) : Color.clear)
+        .task(id: "\(effectiveBranchID):\(creditStore.revision)") {
+            if !effectiveBranchID.isEmpty {
+                creditStore.loadCreditSummary(for: customer.id, branchID: effectiveBranchID)
+            }
+        }
         .accessibilityElement(children: .contain)
     }
 
@@ -1200,6 +1408,7 @@ private struct POSCustomerIdentityCell: View {
                         metadataLine(Language.get("POS_Customer_AppUserBadge", alter: nil), icon: "person.crop.circle")
                     }
                     if isUnavailable { metadataLine(Language.get("POS_Customer_InactiveContact", alter: nil), icon: "lock") }
+
                     if !note.isEmpty {
                         Text(note)
                             .font(AdminType.footnote)
@@ -1212,7 +1421,7 @@ private struct POSCustomerIdentityCell: View {
             }
             .padding(.horizontal, AdminSpacing.base)
             .padding(.top, AdminSpacing.base)
-            .padding(.bottom, creditBranchID != nil || onEdit != nil ? AdminSpacing.xs : AdminSpacing.base)
+            .padding(.bottom, (creditSummary?.shouldDisplayCreditView == true) || showsCreditAction || onEdit != nil ? AdminSpacing.xs : AdminSpacing.base)
             .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum, alignment: .leading)
             .contentShape(Rectangle())
         }
@@ -1254,6 +1463,21 @@ private struct POSCustomerIdentityCell: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .foregroundStyle(AdminSurface.secondaryText)
+    }
+
+    private func remainingCreditBadge(_ credit: POSCustomerCreditStore.CreditSummary) -> some View {
+        let collect = credit.outstandingMinor > 0 && POSCreditAccountCopy.permitted("pos.credit.collect", branchID: effectiveBranchID)
+        return Button {
+            guard !effectiveBranchID.isEmpty else { return }
+            pushPOSCreditAccount(customerID: customer.id, branchID: effectiveBranchID, initialTab: collect ? "collect" : "invoices")
+        } label: {
+            POSCustomerCreditBalance(summary: credit)
+                .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(POSCustomerContactPressStyle())
+        .accessibilityHint(POSCreditAccountCopy.text(collect ? "CollectionEntryHelp" : "QuickViewSubtitle"))
+        .accessibilityIdentifier("pos.customer.credit.\(customer.id)")
     }
 
     private var editButton: some View {
@@ -1631,16 +1855,6 @@ private struct POSCustomerAccountAttachmentSheet: View {
 // MARK: - IPHONE: SENSORY DECK ARCHITECTURE
 // MARK: - ==========================================
 
-private struct RecentCustomerCardHeightPreferenceKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        let next = nextValue()
-        if next > value {
-            value = next
-        }
-    }
-}
-
 private struct iPhoneCustomerSensoryDeck: View {
     @ObservedObject var viewModel: POSCustomerPickerViewModel
     let currentSelected: POSCustomerRecord?
@@ -1656,7 +1870,6 @@ private struct iPhoneCustomerSensoryDeck: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var contrast
     @FocusState private var isSearchFocused: Bool
-    @State private var recentCardsMaxHeight: CGFloat = 148
 
     private func text(_ key: String) -> String { Language.get(key, alter: nil) }
     private var locale: Locale { Locale(identifier: Language.isRTL() ? "ar_QA" : "en_QA") }
@@ -2001,15 +2214,9 @@ private struct iPhoneCustomerSensoryDeck: View {
                     HStack(alignment: .top, spacing: AdminSpacing.md) {
                         ForEach(viewModel.recentCustomers) { iPhoneRecentCustomerChip(customer: $0) }
                     }
-                    .onPreferenceChange(RecentCustomerCardHeightPreferenceKey.self) { newHeight in
-                        if newHeight > recentCardsMaxHeight {
-                            recentCardsMaxHeight = newHeight
-                        }
-                    }
+                    .padding(.trailing, AdminSpacing.screenMargin)
                 }
-                .onChange(of: viewModel.recentCustomers) { _ in
-                    recentCardsMaxHeight = 148
-                }
+                .padding(.trailing, -AdminSpacing.screenMargin)
             }
         }
     }
@@ -2033,64 +2240,51 @@ private struct iPhoneCustomerSensoryDeck: View {
 
     private func iPhoneRecentCustomerChip(customer: POSCustomerRecord) -> some View {
         Button { select(customer) } label: {
-            VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-                HStack {
+            HStack(spacing: 10) {
+                if !typeSize.isAccessibilitySize {
                     Text(customer.initials)
-                        .font(PPBrandFont.bold(20, relativeTo: .headline))
+                        .font(PPBrandFont.bold(16, relativeTo: .subheadline))
                         .foregroundStyle(AdminSurface.primary)
-                        .frame(width: 44, height: 44)
+                        .frame(width: 36, height: 36)
                         .background(AdminSurface.surface, in: Circle())
                         .accessibilityHidden(true)
-                    Spacer(minLength: 0)
-                    if currentSelected?.id == customer.id {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(AdminSurface.primary)
-                            .accessibilityHidden(true)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(customer.name)
+                        .font(AdminType.subheadlineBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
+                        .fixedSize(horizontal: !typeSize.isAccessibilitySize, vertical: true)
+                    if !customer.phone.isEmpty {
+                        Text(customer.phone)
+                            .font(AdminType.caption)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: true)
+                            .environment(\.layoutDirection, .leftToRight)
+                    }
+                    if unavailable(customer) {
+                        Label(text("POS_Customer_InactiveContact"), systemImage: "lock")
+                            .font(AdminType.caption)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                Text(customer.name)
-                    .font(AdminType.subheadlineBold)
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .multilineTextAlignment(direction == .rightToLeft ? .trailing : .leading)
-                    .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(
-                        maxWidth: .infinity,
-                        minHeight: typeSize.isAccessibilitySize ? nil : 42,
-                        alignment: direction == .rightToLeft ? .topTrailing : .topLeading
-                    )
-                if !customer.phone.isEmpty {
-                    Text(customer.phone)
-                        .font(AdminType.footnote)
-                        .foregroundStyle(AdminSurface.secondaryText)
-                        .multilineTextAlignment(direction == .rightToLeft ? .trailing : .leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: direction == .rightToLeft ? .trailing : .leading)
-                        .environment(\.layoutDirection, .leftToRight)
+                if currentSelected?.id == customer.id {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                        .accessibilityHidden(true)
                 }
-                if unavailable(customer) {
-                    Label(text("POS_Customer_InactiveContact"), systemImage: "lock")
-                        .font(AdminType.caption)
-                        .foregroundStyle(AdminSurface.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 0)
             }
-            .padding(AdminSpacing.md)
-            .frame(width: typeSize.isAccessibilitySize ? nil : 152, alignment: .leading)
+            .fixedSize(horizontal: !typeSize.isAccessibilitySize, vertical: true)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
             .frame(
                 maxWidth: typeSize.isAccessibilitySize ? .infinity : nil,
-                minHeight: typeSize.isAccessibilitySize ? nil : max(recentCardsMaxHeight, 148),
-                alignment: .topLeading
-            )
-            .background(
-                GeometryReader { geo in
-                    Color.clear.preference(
-                        key: RecentCustomerCardHeightPreferenceKey.self,
-                        value: geo.size.height
-                    )
-                }
+                minHeight: 64,
+                alignment: .leading
             )
             .background(AdminSurface.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
             .contentShape(RoundedRectangle(cornerRadius: AdminRadius.card))
@@ -2401,6 +2595,7 @@ private struct POSCustomerEditSheet: View {
     let onSelectAndDismiss: (POSCustomerRecord) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var showsCreditPolicySheet = false
+    @ObservedObject private var creditStore = POSCustomerCreditStore.shared
 
     var body: some View {
         NavigationView {
@@ -2600,6 +2795,9 @@ private struct POSCustomerEditSheet: View {
 
                                 // Credit Policy & Terms Section
                                 if canEdit {
+                                    let activeBranchID = BranchContextStore.shared.activeBranch?.branchID ?? customer.branchId
+                                    let credit = creditStore.summary(for: customer.id, branchID: activeBranchID)
+
                                     VStack(alignment: .leading, spacing: 8) {
                                         HStack {
                                             Text(Language.get("POS_Customer_CreditSectionTitle", alter: "سياسة وتسهيلات البيع الآجل"))
@@ -2608,6 +2806,9 @@ private struct POSCustomerEditSheet: View {
                                             Spacer()
                                         }
 
+                                        if let credit {
+                                            POSCustomerCreditBalance(summary: credit)
+                                        } else {
                                         HStack(alignment: .top, spacing: 10) {
                                             Image(systemName: "checkmark.shield.fill")
                                                 .foregroundColor(AdminSurface.primary)
@@ -2615,10 +2816,10 @@ private struct POSCustomerEditSheet: View {
                                                 .padding(.top, 2)
 
                                             VStack(alignment: .leading, spacing: 2) {
-                                                Text(Language.get("POS_Credit_NeedsVerification", alter: "Customer terms need verification"))
+                                                Text(Language.get("POS_Credit_NeedsVerification", alter: "تعذّر التحقق من شروط العميل"))
                                                     .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .subheadline))
                                                     .foregroundColor(AdminSurface.primaryText)
-                                                Text(Language.get("POS_Credit_PolicyRequired", alter: "This customer needs an approved credit policy for this branch before selling on credit."))
+                                                Text(Language.get("POS_Credit_PolicyRequired", alter: "يحتاج العميل إلى سياسة ائتمان معتمدة لهذا الفرع قبل البيع على الحساب."))
                                                     .font(Font.custom("Beiruti-Regular", size: 11.5, relativeTo: .caption))
                                                     .foregroundColor(AdminSurface.secondaryText)
                                                     .fixedSize(horizontal: false, vertical: true)
@@ -2630,6 +2831,7 @@ private struct POSCustomerEditSheet: View {
                                         .background(AdminSurface.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                                         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline))
 
+                                        }
                                         Button {
                                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                             showsCreditPolicySheet = true
@@ -2712,6 +2914,7 @@ private struct POSCustomerEditSheet: View {
                     branchID: branchID,
                     branchName: branchName
                 ) {}
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
             }
         }
     }
@@ -2731,6 +2934,7 @@ private struct iPadCustomerSpatialCockpit: View {
     let onSelect: ((POSCustomerRecord) -> Void)?
     let dismiss: () -> Void
 
+    @ObservedObject private var creditStore = POSCustomerCreditStore.shared
     @FocusState private var isSearchFocused: Bool
     @State private var showsCreditPolicySheet = false
 
@@ -2793,7 +2997,11 @@ private struct iPadCustomerSpatialCockpit: View {
                         customerPhone: customer.phone,
                         branchID: branchID,
                         branchName: branchName
-                    ) {}
+                    ) {
+                        POSCustomerCreditStore.shared.invalidate(customerID: customer.id, branchID: branchID)
+                        POSCustomerCreditStore.shared.loadCreditSummary(for: customer.id, branchID: branchID)
+                    }
+                    .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
                 }
             }
         }
@@ -2987,6 +3195,7 @@ private struct iPadCustomerSpatialCockpit: View {
                                             .font(Font.custom("Beiruti-Medium", size: 12, relativeTo: .caption))
                                             .foregroundColor(AdminSurface.primaryText)
                                             .lineLimit(1)
+                                            .fixedSize(horizontal: true, vertical: true)
                                     }
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
@@ -3029,10 +3238,13 @@ private struct iPadCustomerSpatialCockpit: View {
                 } else {
                     LazyVStack(spacing: 8) {
                         ForEach(viewModel.searchResults) { customer in
+                            let branchID = BranchContextStore.shared.activeBranch?.branchID ?? ""
+                            let credit = creditStore.summary(for: customer.id, branchID: branchID)
+                            let showsCreditAction = (credit?.outstandingMinor ?? 0) > 0 && POSCreditAccountCopy.permitted("pos.credit.collect", branchID: branchID)
                             VStack(spacing: 4) {
                                 iPadCustomerListCard(customer: customer)
-                                if customer.source == "directory" {
-                                    POSCreditAccountLink(customerID: customer.id, branchID: BranchContextStore.shared.activeBranch?.branchID ?? "")
+                                if customer.source == "directory", showsCreditAction {
+                                    POSCreditAccountLink(customerID: customer.id, branchID: branchID, compact: true, opensCollection: true)
                                 }
                             }
                         }
@@ -3083,6 +3295,8 @@ private struct iPadCustomerSpatialCockpit: View {
     private func iPadCustomerListCard(customer: POSCustomerRecord) -> some View {
         let isHighlighted = viewModel.highlightedCustomer?.id == customer.id
         let isCurrentPOS = currentSelected?.id == customer.id
+        let activeBranchID = BranchContextStore.shared.activeBranch?.branchID ?? customer.branchId
+        let credit = creditStore.summary(for: customer.id, branchID: activeBranchID)
 
         return HStack(spacing: 10) {
             // Main Touch Target: Highlights customer in Right Inspector
@@ -3137,6 +3351,10 @@ private struct iPadCustomerSpatialCockpit: View {
                                     .foregroundColor(AdminSurface.primary)
                             }
                         }
+
+                        if let credit, credit.shouldDisplayCreditView {
+                            POSCustomerCreditBalance(summary: credit)
+                        }
                     }
 
                     Spacer(minLength: 2)
@@ -3168,6 +3386,11 @@ private struct iPadCustomerSpatialCockpit: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(isHighlighted ? AdminSurface.primary : (isCurrentPOS ? Color.clear : AdminSurface.hairline), lineWidth: isHighlighted ? 1.5 : (isCurrentPOS ? 0 : 1))
         )
+        .task(id: "\(activeBranchID):\(creditStore.revision)") {
+            if !activeBranchID.isEmpty {
+                creditStore.loadCreditSummary(for: customer.id, branchID: activeBranchID)
+            }
+        }
     }
 
     // MARK: - Right Column: Morphing Studio
@@ -3293,11 +3516,14 @@ private struct iPadCustomerSpatialCockpit: View {
                             }
 
                             // Credit & Terms Card in Dossier
-                            VStack(alignment: .leading, spacing: 6) {
+                            let activeBranchID = BranchContextStore.shared.activeBranch?.branchID ?? customer.branchId
+                            let credit = creditStore.summary(for: customer.id, branchID: activeBranchID)
+
+                            VStack(alignment: .leading, spacing: 8) {
                                 HStack {
                                     HStack(spacing: 6) {
-                                        Image(systemName: "banknote.fill")
-                                            .foregroundColor(AdminSurface.primary)
+                                        Image(systemName: "creditcard.fill")
+                                            .foregroundColor(credit?.isPolicyVerified == true ? Color(red: 0.05, green: 0.58, blue: 0.38) : AdminSurface.primary)
                                             .font(.system(size: 13))
                                         Text(Language.get("POS_Customer_CreditSectionTitle", alter: "سياسة وتسهيلات البيع الآجل"))
                                             .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
@@ -3322,10 +3548,14 @@ private struct iPadCustomerSpatialCockpit: View {
                                     .buttonStyle(PlainButtonStyle())
                                 }
 
-                                Text(Language.get("POS_Credit_PolicyRequired", alter: "This customer needs an approved credit policy for this branch before selling on credit."))
-                                    .font(Font.custom("Beiruti-Regular", size: 11.5, relativeTo: .caption))
-                                    .foregroundColor(AdminSurface.secondaryText)
-                                    .fixedSize(horizontal: false, vertical: true)
+                                if let credit, credit.shouldDisplayCreditView {
+                                    POSCustomerCreditBalance(summary: credit)
+                                } else {
+                                    Text(Language.get("POS_Credit_PolicyRequired", alter: "This customer needs an approved credit policy for this branch before selling on credit."))
+                                        .font(Font.custom("Beiruti-Regular", size: 11.5, relativeTo: .caption))
+                                        .foregroundColor(AdminSurface.secondaryText)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
                             }
                             .padding(10)
                             .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -3411,6 +3641,22 @@ private struct iPadCustomerSpatialCockpit: View {
             }
         }
         .background(AdminSurface.surface.opacity(0.5))
+        .onAppear {
+            if let customer = viewModel.highlightedCustomer {
+                let branchID = BranchContextStore.shared.activeBranch?.branchID ?? customer.branchId
+                if !branchID.isEmpty {
+                    creditStore.loadCreditSummary(for: customer.id, branchID: branchID)
+                }
+            }
+        }
+        .onChange(of: viewModel.highlightedCustomer?.id) { newID in
+            if let customer = viewModel.highlightedCustomer, let newID = newID, !newID.isEmpty {
+                let branchID = BranchContextStore.shared.activeBranch?.branchID ?? customer.branchId
+                if !branchID.isEmpty {
+                    creditStore.loadCreditSummary(for: newID, branchID: branchID)
+                }
+            }
+        }
     }
 
     private func dossierInfoRow(title: String, value: String, icon: String, isMonospaced: Bool = false) -> some View {
@@ -3606,6 +3852,10 @@ private struct iPadCustomerSpatialCockpit: View {
                     }
 
                     // Credit Policy & Terms Section
+                    let editingCustomer = viewModel.editingCustomer
+                    let editBranchID = !viewModel.editBranchId.isEmpty ? viewModel.editBranchId : (BranchContextStore.shared.activeBranch?.branchID ?? editingCustomer?.branchId ?? "")
+                    let credit = editingCustomer != nil ? creditStore.summary(for: editingCustomer!.id, branchID: editBranchID) : nil
+
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text(Language.get("POS_Customer_CreditSectionTitle", alter: "سياسة وتسهيلات البيع الآجل"))
@@ -3614,27 +3864,31 @@ private struct iPadCustomerSpatialCockpit: View {
                             Spacer()
                         }
 
-                        HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: "checkmark.shield.fill")
-                                .foregroundColor(AdminSurface.primary)
-                                .font(.system(size: 15))
-                                .padding(.top, 2)
+                        if let credit, credit.shouldDisplayCreditView {
+                            POSCustomerCreditBalance(summary: credit)
+                        } else {
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "checkmark.shield.fill")
+                                    .foregroundColor(AdminSurface.primary)
+                                    .font(.system(size: 15))
+                                    .padding(.top, 2)
 
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(Language.get("POS_Credit_NeedsVerification", alter: "Customer terms need verification"))
-                                    .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .subheadline))
-                                    .foregroundColor(AdminSurface.primaryText)
-                                Text(Language.get("POS_Credit_PolicyRequired", alter: "This customer needs an approved credit policy for this branch before selling on credit."))
-                                    .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption))
-                                    .foregroundColor(AdminSurface.secondaryText)
-                                    .fixedSize(horizontal: false, vertical: true)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(Language.get("POS_Credit_NeedsVerification", alter: "Customer terms need verification"))
+                                        .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .subheadline))
+                                        .foregroundColor(AdminSurface.primaryText)
+                                    Text(Language.get("POS_Credit_PolicyRequired", alter: "This customer needs an approved credit policy for this branch before selling on credit."))
+                                        .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption))
+                                        .foregroundColor(AdminSurface.secondaryText)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+
+                                Spacer(minLength: 0)
                             }
-
-                            Spacer(minLength: 0)
+                            .padding(10)
+                            .background(AdminSurface.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(AdminSurface.hairline))
                         }
-                        .padding(10)
-                        .background(AdminSurface.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(AdminSurface.hairline))
 
                         Button {
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()

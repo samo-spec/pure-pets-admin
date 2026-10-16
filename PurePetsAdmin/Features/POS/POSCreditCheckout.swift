@@ -209,7 +209,6 @@ struct POSCreditCheckoutSheet: View {
     @State private var accepted = false
     @State private var localError: String?
     @State private var showsCustomerPicker = false
-    @State private var showsCreditAccountSheet = false
     @State private var showsPolicyEditorSheet = false
     @State private var isRefreshingEligibility = false
     @State private var selectedDepositPreset: Int? = 0
@@ -261,130 +260,145 @@ struct POSCreditCheckoutSheet: View {
         return day(Date(), context) != context.businessDateKey
     }
 
+    private var checkoutSubtitle: String {
+        if isRecovery {
+            return "\(activeBranchName) • \(label("POS_Items")): \(headerNumber(model.cartItems.count))"
+        }
+        return activeBranchName
+    }
+
+    private var headerBar: some View {
+        AdminSovereignNavigationBar(
+            title: label("POS_Credit_PaymentMethod"),
+            subtitle: checkoutSubtitle,
+            statusDotColor: Color(uiColor: .ppPrimary),
+            isModal: false,
+            customTopSpacing: 0,
+            showsTopFade: false,
+            onBack: {
+                guard !model.isCheckoutBusy else { return }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                dismiss()
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func statusMessageNotice(message: String) -> some View {
+        let isApprovalRequired = isRecovery && model.creditRecovery?.approvalRequestJSON != nil
+        let isDuplicateNotice = isApprovalRequired && (message == label("POS_Credit_ApprovalRequired") || message == POSCreditAccountCopy.text("ApprovalRequested"))
+        if !isDuplicateNotice, (model.selectedCustomer != nil || message != label("POS_Credit_SelectCustomer")) {
+            let isSuccess = message == POSCreditAccountCopy.text("ApprovalRequested")
+            let isInfo = message == POSCreditAccountCopy.text("Cancelled")
+            let color = isSuccess ? AdminSurface.primary : (isInfo ? AdminSurface.amber : AdminSurface.crimson)
+            let symbol = isSuccess ? "checkmark.circle.fill" : (isInfo ? "info.circle.fill" : "exclamationmark.triangle.fill")
+            noticeCard(message, color: color, symbol: symbol)
+        }
+    }
+
+    private var scrollContent: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                if !isRecovery {
+                    creditOverview
+                }
+
+                if isRecovery {
+                    panel { recoverySection }
+                } else if model.isLoadingCreditContext || isRefreshingEligibility {
+                    loadingCard
+                } else if let context = model.creditContext {
+                    customerCard(context: context)
+                    if reviewing {
+                        panel { reviewAgreementSection(context: context) }
+                    } else {
+                        panel { termsAtelierSection(context: context) }
+                    }
+                } else {
+                    unresolvedCustomerCard
+                }
+
+                if isBusinessDateRolledOver {
+                    noticeCard(label("POS_Credit_DateRolloverNotice"), color: AdminSurface.amber, symbol: "clock.arrow.circlepath")
+                }
+
+                if let message = localError ?? model.creditError {
+                    statusMessageNotice(message: message)
+                }
+            }
+            .frame(maxWidth: 640)
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+            .padding(.bottom, 110)
+            .frame(maxWidth: .infinity)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .dismissKeyboardOnTapOutside()
+    }
+
+    @ViewBuilder
+    private var loadingOverlay: some View {
+        if model.isSubmitting {
+            ZStack {
+                Color.black.opacity(0.25).ignoresSafeArea()
+                VStack(spacing: 14) {
+                    ProgressView()
+                        .tint(AdminSurface.primary)
+                        .controlSize(.large)
+                    Text(label("POS_Credit_Loading"))
+                        .font(AdminType.headlineBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                .padding(26)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .shadow(color: .black.opacity(0.12), radius: 24, y: 10)
+            }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var keyboardToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .keyboard) {
+            Spacer()
+            Button {
+                editingAmount = false
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            } label: {
+                Text(label("POS_Credit_Done"))
+                    .font(AdminType.calloutBold)
+                    .foregroundStyle(AdminSurface.primary)
+            }
+        }
+    }
+
+    private var mainContent: some View {
+        VStack(spacing: 0) {
+            headerBar
+            scrollContent
+        }
+        .background(AdminSurface.background)
+        .navigationBarHidden(true)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            keyboardToolbar
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if !isRecovery && !model.isLoadingCreditContext && (model.creditContext != nil || model.canIssueCredit) {
+                floatingActionDock
+            }
+        }
+        .overlay {
+            loadingOverlay
+        }
+        .interactiveDismissDisabled(model.isCheckoutBusy)
+        .enableSwipeToPop(isEnabled: !model.isCheckoutBusy) {
+            dismiss()
+        }
+    }
+
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    if !isRecovery {
-                        creditOverview
-                    }
-
-                    if isRecovery {
-                        panel { recoverySection }
-                    } else if model.isLoadingCreditContext || isRefreshingEligibility {
-                        loadingCard
-                    } else if let context = model.creditContext {
-                        customerCard(context: context)
-                        if reviewing {
-                            panel { reviewAgreementSection(context: context) }
-                        } else {
-                            panel { termsAtelierSection(context: context) }
-                        }
-                    } else {
-                        unresolvedCustomerCard
-                    }
-
-                    if isBusinessDateRolledOver {
-                        noticeCard(label("POS_Credit_DateRolloverNotice"), color: AdminSurface.amber, symbol: "clock.arrow.circlepath")
-                    }
-
-                    if let message = localError ?? model.creditError {
-                        let isApprovalRequired = isRecovery && model.creditRecovery?.approvalRequestJSON != nil
-                        let isDuplicateNotice = isApprovalRequired && (message == label("POS_Credit_ApprovalRequired") || message == POSCreditAccountCopy.text("ApprovalRequested"))
-                        if !isDuplicateNotice, (model.selectedCustomer != nil || message != label("POS_Credit_SelectCustomer")) {
-                            let isSuccess = message == POSCreditAccountCopy.text("ApprovalRequested")
-                            let isInfo = message == POSCreditAccountCopy.text("Cancelled")
-                            let color = isSuccess ? AdminSurface.primary : (isInfo ? AdminSurface.amber : AdminSurface.crimson)
-                            let symbol = isSuccess ? "checkmark.circle.fill" : (isInfo ? "info.circle.fill" : "exclamationmark.triangle.fill")
-                            noticeCard(message, color: color, symbol: symbol)
-                        }
-                    }
-                }
-                .frame(maxWidth: 640)
-                .padding(.horizontal, 20)
-                .padding(.top, 16)
-                .padding(.bottom, 110)
-                .frame(maxWidth: .infinity)
-            }
-            .scrollDismissesKeyboard(.interactively)
-            .background(AdminSurface.background.ignoresSafeArea())
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    VStack(spacing: AdminSpacing.xxs) {
-                        Text(label("POS_Credit_PaymentMethod"))
-                            .font(PPBrandFont.bold(Language.isRTL() ? 18 : 16, relativeTo: .headline))
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                            .accessibilityLabel(label("POS_Credit_Title"))
-                            .accessibilityAddTraits(.isHeader)
-                        // Recovery omits the overview, so retain its branch/cart context here.
-                        if isRecovery {
-                            HStack(spacing: 3) {
-                                Text(activeBranchName)
-                                Text("·")
-                                Text(label("POS_Items"))
-                                Text(":")
-                                Text(headerNumber(model.cartItems.count))
-                                    .font(PPBrandFont.bold(Language.isRTL() ? 13 : 11, relativeTo: .caption))
-                            }
-                            .font(PPBrandFont.regular(Language.isRTL() ? 13 : 11, relativeTo: .caption))
-                            .foregroundStyle(AdminSurface.secondaryText)
-                        }
-                    }
-                }
-                ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(AdminSurface.secondaryText)
-                            .frame(minWidth: AdminTouchTarget.minimum, minHeight: AdminTouchTarget.minimum)
-                            .contentShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(label("POS_Credit_Close"))
-                    .accessibilityIdentifier("pos.credit.close")
-                    .disabled(model.isCheckoutBusy)
-                }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button {
-                        editingAmount = false
-                    } label: {
-                        Text(label("POS_Credit_Done"))
-                            .font(AdminType.calloutBold)
-                            .foregroundStyle(AdminSurface.primary)
-                    }
-                }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if !isRecovery && !model.isLoadingCreditContext && (model.creditContext != nil || model.canIssueCredit) {
-                    floatingActionDock
-                }
-            }
-            .overlay {
-                if model.isSubmitting {
-                    ZStack {
-                        Color.black.opacity(0.25).ignoresSafeArea()
-                        VStack(spacing: 14) {
-                            ProgressView()
-                                .tint(AdminSurface.primary)
-                                .controlSize(.large)
-                            Text(label("POS_Credit_Loading"))
-                                .font(AdminType.headlineBold)
-                                .foregroundStyle(AdminSurface.primaryText)
-                        }
-                        .padding(26)
-                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                        .shadow(color: .black.opacity(0.12), radius: 24, y: 10)
-                    }
-                }
-            }
-            .interactiveDismissDisabled(model.isCheckoutBusy)
+            mainContent
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
             .onAppear {
                 model.loadCreditContext()
@@ -416,11 +430,6 @@ struct POSCreditCheckoutSheet: View {
                     showsCustomerPicker = false
                 }
             }
-            .sheet(isPresented: $showsCreditAccountSheet, onDismiss: { model.loadCreditContext() }) {
-                if let customer = model.selectedCustomer, !activeBranchID.isEmpty {
-                    POSCreditAccountSheet(customerID: customer.id, branchID: activeBranchID)
-                }
-            }
             .sheet(isPresented: $showsPolicyEditorSheet, onDismiss: { model.loadCreditContext() }) {
                 if let customer = model.selectedCustomer, !activeBranchID.isEmpty {
                     POSCustomerCreditPolicySheet(
@@ -432,6 +441,7 @@ struct POSCreditCheckoutSheet: View {
                     ) {
                         model.loadCreditContext()
                     }
+                    .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
                 }
             }
         }
@@ -776,7 +786,11 @@ struct POSCreditCheckoutSheet: View {
                         if canManageCreditAccount {
                             Button {
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                showsCreditAccountSheet = true
+                                if let customer = model.selectedCustomer, !activeBranchID.isEmpty {
+                                    pushPOSCreditAccount(customerID: customer.id, branchID: activeBranchID) {
+                                        model.loadCreditContext()
+                                    }
+                                }
                             } label: {
                                 HStack(spacing: 6) {
                                     Image(systemName: "list.bullet.rectangle.portrait")

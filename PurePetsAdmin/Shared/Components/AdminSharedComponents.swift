@@ -2401,3 +2401,85 @@ final class ScannerViewController: UIViewController {
         })
     }
 }
+
+// MARK: - Keyboard Dismiss Overlay (Dismiss on Tap Outside)
+
+/// An invisible controller overlay that dismisses the keyboard when tapping anywhere outside text fields,
+/// without canceling button touches or interfering with scroll gestures.
+public struct PPKeyboardDismissOverlay: UIViewRepresentable {
+    public init() {}
+
+    public func makeUIView(context: Context) -> DismissUIView {
+        DismissUIView()
+    }
+
+    public func updateUIView(_ uiView: DismissUIView, context: Context) {}
+
+    public final class DismissUIView: UIView, UIGestureRecognizerDelegate {
+        private weak var attachedWindow: UIWindow?
+        private var tapRecognizer: UITapGestureRecognizer?
+
+        public override init(frame: CGRect) {
+            super.init(frame: frame)
+            backgroundColor = .clear
+            isUserInteractionEnabled = false
+        }
+
+        required init?(coder: NSCoder) {
+            super.init(coder: coder)
+            backgroundColor = .clear
+            isUserInteractionEnabled = false
+        }
+
+        public override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if let window = window {
+                attachedWindow = window
+                if tapRecognizer == nil {
+                    let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
+                    tap.cancelsTouchesInView = false
+                    tap.delegate = self
+                    window.addGestureRecognizer(tap)
+                    tapRecognizer = tap
+                }
+            } else {
+                if let tap = tapRecognizer {
+                    attachedWindow?.removeGestureRecognizer(tap)
+                    tap.view?.removeGestureRecognizer(tap)
+                    tapRecognizer = nil
+                }
+                attachedWindow = nil
+            }
+        }
+
+        @objc private func handleTap() {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
+
+        public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            var current = touch.view
+            while let v = current {
+                if v is UITextField || v is UITextView {
+                    return false
+                }
+                current = v.superview
+            }
+            return true
+        }
+
+        public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            return true
+        }
+    }
+}
+
+public extension View {
+    func dismissKeyboardOnTapOutside() -> some View {
+        self.background(
+            PPKeyboardDismissOverlay()
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+        )
+    }
+}
+

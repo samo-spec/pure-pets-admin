@@ -1210,11 +1210,6 @@ private struct AdminWorkDeckView: View {
             // 1. Branch Horizon Capsule
             branchHorizonPill
 
-            // 2. Command Health Pulse Strip
-            if AdminTab.command.isAuthorized(for: session) {
-                AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)
-            }
-
             // 3. Hero POS Terminal Tile (Flagship Frontline)
             if canPOS {
                 heroPOSTile
@@ -2600,11 +2595,6 @@ private struct AdminPeopleDeckView: View {
             // 1. Branch Horizon Capsule
             branchHorizonPill
 
-            // 2. Command Health Pulse Strip
-            if AdminTab.command.isAuthorized(for: session) {
-                AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)
-            }
-
             // 3. Hero Customer Intelligence Tile (Flagship Frontline)
             if canManageCustomers {
                 customerManagementEntry
@@ -3773,11 +3763,6 @@ private struct AdminOperationsDeckView: View {
         LazyVStack(alignment: .leading, spacing: 16) {
             // 1. Branch Horizon Capsule
             branchHorizonPill
-
-            // 2. Command Health Pulse Strip
-            if AdminTab.command.isAuthorized(for: session) {
-                AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)
-            }
 
             // 3. Hero Delivery Fleet Logistics Command Console
             if canDelivery {

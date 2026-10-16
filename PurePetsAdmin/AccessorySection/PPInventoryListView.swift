@@ -17564,71 +17564,7 @@ private struct CatalogPressStyle: ButtonStyle {
     }
 }
 
-// MARK: - Keyboard Dismiss Overlay & Extensions
-
-private struct PPKeyboardDismissOverlay: UIViewControllerRepresentable {
-    func makeUIViewController(context: Context) -> Controller {
-        Controller()
-    }
-
-    func updateUIViewController(_ uiViewController: Controller, context: Context) {}
-
-    final class Controller: UIViewController, UIGestureRecognizerDelegate {
-        private var dismissTap: UITapGestureRecognizer?
-
-        override func viewDidLoad() {
-            super.viewDidLoad()
-            view.backgroundColor = .clear
-            view.isUserInteractionEnabled = false
-        }
-
-        override func didMove(toParent parent: UIViewController?) {
-            super.didMove(toParent: parent)
-            setupTap()
-        }
-
-        override func viewDidAppear(_ animated: Bool) {
-            super.viewDidAppear(animated)
-            setupTap()
-        }
-
-        override func viewWillDisappear(_ animated: Bool) {
-            super.viewWillDisappear(animated)
-            if let tap = dismissTap {
-                tap.view?.removeGestureRecognizer(tap)
-                dismissTap = nil
-            }
-        }
-
-        private func setupTap() {
-            guard dismissTap == nil, let hostView = parent?.view ?? view.window else { return }
-            let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
-            tap.cancelsTouchesInView = false
-            tap.delegate = self
-            hostView.addGestureRecognizer(tap)
-            dismissTap = tap
-        }
-
-        @objc private func handleTap() {
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        }
-
-        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-            var current = touch.view
-            while let v = current {
-                if v is UITextField || v is UITextView {
-                    return false
-                }
-                current = v.superview
-            }
-            return true
-        }
-
-        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-            return true
-        }
-    }
-}
+// MARK: - View Compatibility Extensions
 
 fileprivate extension View {
     @ViewBuilder
@@ -17638,13 +17574,5 @@ fileprivate extension View {
         } else {
             self
         }
-    }
-
-    func dismissKeyboardOnTapOutside() -> some View {
-        self.background(
-            PPKeyboardDismissOverlay()
-                .frame(width: 0, height: 0)
-                .allowsHitTesting(false)
-        )
     }
 }

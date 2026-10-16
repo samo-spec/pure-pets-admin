@@ -1444,6 +1444,7 @@ final class POSFastSellViewModel: ObservableObject {
     private var branchInventoryCancellable: AnyCancellable?
     private var branchChangeCancellable: AnyCancellable?
     private var creditAuthorizationCancellable: AnyCancellable?
+    private var creditBalanceCancellable: AnyCancellable?
 
     init() {
         branchInventoryCancellable = PPBranchInventoryService.shared.$inventoryMap
@@ -1476,6 +1477,19 @@ final class POSFastSellViewModel: ObservableObject {
                 self.invalidateCreditContext()
                 self.hideCreditReceiptOnSessionChange()
                 self.objectWillChange.send()
+            }
+        creditBalanceCancellable = NotificationCenter.default.publisher(for: Notification.Name("PPAccountingDataDidChangeNotification"))
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] notification in
+                guard let self else { return }
+                if let branchID = notification.userInfo?["branchId"] as? String,
+                   branchID != BranchContextStore.shared.activeBranch?.branchID { return }
+                if let customerID = notification.userInfo?["customerId"] as? String,
+                   customerID != self.selectedCustomer?.id { return }
+                self.invalidateCreditContext()
+                if self.showsCreditCheckout && !self.isSubmitting && self.creditRecovery == nil {
+                    self.loadCreditContext()
+                }
             }
     }
     @Published private(set) var selectedPaymentMethod: String = "cash"
@@ -3847,7 +3861,7 @@ struct AdminPOSFastSellView: View {
                 }
             )
         }
-        .sheet(isPresented: $viewModel.showsCreditCheckout, onDismiss: { viewModel.presentCreditReceiptIfReady() }) {
+        .fullScreenCover(isPresented: $viewModel.showsCreditCheckout, onDismiss: { viewModel.presentCreditReceiptIfReady() }) {
             POSCreditCheckoutSheet(model: viewModel)
         }
         .sheet(isPresented: $showsCategoryLens) {

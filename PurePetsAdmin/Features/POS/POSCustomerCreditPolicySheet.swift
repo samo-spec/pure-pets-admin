@@ -49,8 +49,7 @@ final class POSCustomerCreditPolicyViewModel: ObservableObject {
     }
 
     var formattedCurrentLimit: String {
-        let val = Double(initialLimitMinor) / 100.0
-        return String(format: "%.2f QAR", val)
+        POSReceiptFormat.currency(Double(initialLimitMinor) / 100.0, code: "QAR")
     }
 
     func loadPolicy() {
@@ -122,7 +121,7 @@ final class POSCustomerCreditPolicyViewModel: ObservableObject {
         }
 
         let cleanReason = reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? (Language.isRTL() ? "اعتماد سياسة البيع الآجل للعميل" : "Approved customer credit policy")
+            ? (Language.isRTL() ? "اعتماد سياسة وتسهيلات البيع الآجل للعميل" : "Approved customer credit policy")
             : reason.trimmingCharacters(in: .whitespacesAndNewlines)
 
         isSubmitting = true
@@ -182,6 +181,9 @@ final class POSCustomerCreditPolicyViewModel: ObservableObject {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 self.successMessage = Language.get("POS_Credit_PolicySaved", alter: "تم حفظ واعتماد سياسة الائتمان بنجاح.")
 
+                POSCustomerCreditStore.shared.invalidate(customerID: self.customerID, branchID: self.branchID)
+                POSCustomerCreditStore.shared.loadCreditSummary(for: self.customerID, branchID: self.branchID)
+
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 onSuccess()
             }
@@ -194,7 +196,6 @@ struct POSCustomerCreditPolicySheet: View {
     let onPolicySaved: @MainActor @Sendable () -> Void
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isAmountFocused: Bool
-    @State private var showsFullAccountSheet = false
 
     init(customerID: String, customerName: String, customerPhone: String, branchID: String, branchName: String, onPolicySaved: @escaping @MainActor @Sendable () -> Void) {
         _viewModel = StateObject(wrappedValue: POSCustomerCreditPolicyViewModel(
@@ -231,7 +232,7 @@ struct POSCustomerCreditPolicySheet: View {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundStyle(AdminSurface.crimson)
                             Text(error)
-                                .font(AdminType.footnote)
+                                .font(PPBrandFont.regular(13, relativeTo: .footnote))
                                 .foregroundStyle(AdminSurface.crimson)
                             Spacer()
                         }
@@ -245,7 +246,7 @@ struct POSCustomerCreditPolicySheet: View {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(AdminSurface.emerald)
                             Text(success)
-                                .font(AdminType.footnoteBold)
+                                .font(PPBrandFont.bold(13, relativeTo: .footnote))
                                 .foregroundStyle(AdminSurface.emerald)
                             Spacer()
                         }
@@ -284,13 +285,13 @@ struct POSCustomerCreditPolicySheet: View {
                         // Secondary Link to Full Ledger
                         Button {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            showsFullAccountSheet = true
+                            pushPOSCreditAccount(customerID: viewModel.customerID, branchID: viewModel.branchID, initialTab: "administration")
                         } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "list.bullet.rectangle.portrait")
                                 Text(Language.get("POS_Credit_OpenFullLedger", alter: "عرض الحساب والمديونيات التفصيلية"))
                             }
-                            .font(AdminType.footnoteBold)
+                            .font(PPBrandFont.bold(13, relativeTo: .footnote))
                             .foregroundStyle(AdminSurface.secondaryText)
                             .frame(maxWidth: .infinity, minHeight: 40)
                         }
@@ -303,14 +304,14 @@ struct POSCustomerCreditPolicySheet: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .background(AdminSurface.background.ignoresSafeArea())
-            .navigationTitle(Language.get("POS_Credit_PolicyEditorTitle", alter: "سياسة البيع الآجل"))
+            .navigationTitle(Language.get("POS_Credit_PolicyEditorTitle", alter: "سياسة وتسهيلات البيع الآجل"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(Language.get("POS_Credit_Close", alter: "إلغاء")) {
                         dismiss()
                     }
-                    .font(AdminType.calloutBold)
+                    .font(PPBrandFont.bold(15, relativeTo: .callout))
                     .foregroundStyle(AdminSurface.primary)
                 }
                 ToolbarItemGroup(placement: .keyboard) {
@@ -318,17 +319,15 @@ struct POSCustomerCreditPolicySheet: View {
                     Button(Language.get("POS_Credit_Done", alter: "تم")) {
                         isAmountFocused = false
                     }
-                    .font(AdminType.calloutBold)
+                    .font(PPBrandFont.bold(15, relativeTo: .callout))
                     .foregroundStyle(AdminSurface.primary)
                 }
-            }
-            .sheet(isPresented: $showsFullAccountSheet) {
-                POSCreditAccountSheet(customerID: viewModel.customerID, branchID: viewModel.branchID, initialTab: "administration")
             }
             .onAppear {
                 viewModel.loadPolicy()
             }
         }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
     // MARK: - Subviews
@@ -340,19 +339,20 @@ struct POSCustomerCreditPolicySheet: View {
                     .fill(AdminSurface.primary.opacity(0.12))
                     .frame(width: 52, height: 52)
                 Text(String(viewModel.customerName.prefix(1)).uppercased())
-                    .font(AdminType.title2Bold)
+                    .font(PPBrandFont.bold(20, relativeTo: .title2))
                     .foregroundStyle(AdminSurface.primary)
             }
             VStack(alignment: .leading, spacing: 3) {
                 Text(viewModel.customerName)
-                    .font(AdminType.headlineBold)
+                    .font(PPBrandFont.bold(16, relativeTo: .headline))
                     .foregroundStyle(AdminSurface.primaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 HStack(spacing: 6) {
                     Image(systemName: "phone.fill")
                         .font(.system(size: 11))
                         .foregroundStyle(AdminSurface.secondaryText)
                     Text(viewModel.customerPhone)
-                        .font(AdminType.subheadline)
+                        .font(PPBrandFont.medium(14, relativeTo: .subheadline))
                         .foregroundStyle(AdminSurface.secondaryText)
                         .environment(\.layoutDirection, .leftToRight)
                 }
@@ -361,13 +361,14 @@ struct POSCustomerCreditPolicySheet: View {
                         .font(.system(size: 11))
                         .foregroundStyle(AdminSurface.secondaryText)
                     Text(viewModel.branchName)
-                        .font(AdminType.footnote)
+                        .font(PPBrandFont.regular(13, relativeTo: .footnote))
                         .foregroundStyle(AdminSurface.secondaryText)
                 }
             }
             Spacer()
         }
         .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(AdminSurface.hairline))
     }
@@ -382,15 +383,17 @@ struct POSCustomerCreditPolicySheet: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(viewModel.initialEnabled && viewModel.currentVersion > 0
                      ? Language.get("POS_Credit_StatusApproved", alter: "سياسة الائتمان معتمدة ونشطة")
-                     : Language.get("POS_Credit_NeedsVerification", alter: "Customer terms need verification"))
-                    .font(AdminType.subheadlineBold)
+                     : Language.get("POS_Credit_NeedsVerification", alter: "تتطلب سياسة الائتمان الاعتماد والتحقق"))
+                    .font(PPBrandFont.bold(14, relativeTo: .subheadline))
                     .foregroundStyle(AdminSurface.primaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 Text(viewModel.initialEnabled && viewModel.currentVersion > 0
                      ? String(format: Language.get("POS_Credit_CurrentLimitSub", alter: "السقف الحالي: %@"), viewModel.formattedCurrentLimit)
-                     : Language.get("POS_Credit_PolicyRequired", alter: "This customer needs an approved credit policy for this branch before selling on credit."))
-                    .font(AdminType.footnote)
+                     : Language.get("POS_Credit_PolicyRequired", alter: "يحتاج هذا العميل إلى اعتماد سياسة وسقف ائتمان لهذا الفرع قبل البيع الآجل."))
+                    .font(PPBrandFont.regular(13, relativeTo: .footnote))
                     .foregroundStyle(AdminSurface.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
@@ -409,10 +412,10 @@ struct POSCustomerCreditPolicySheet: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(Language.get("POS_Credit_EnableSales", alter: "تفعيل البيع الآجل"))
-                        .font(AdminType.subheadlineBold)
+                        .font(PPBrandFont.bold(15, relativeTo: .subheadline))
                         .foregroundStyle(AdminSurface.primaryText)
                     Text(Language.get("POS_Credit_EnableSalesHint", alter: "السماح للعميل بالشراء الآجل وسداد الفاتورة لاحقاً"))
-                        .font(AdminType.footnote)
+                        .font(PPBrandFont.regular(13, relativeTo: .footnote))
                         .foregroundStyle(AdminSurface.secondaryText)
                 }
                 Spacer()
@@ -427,11 +430,11 @@ struct POSCustomerCreditPolicySheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text(Language.get("POS_Credit_LimitLabel", alter: "سقف الائتمان (ر.ق)"))
-                        .font(AdminType.subheadlineBold)
+                        .font(PPBrandFont.bold(14, relativeTo: .subheadline))
                         .foregroundStyle(AdminSurface.primaryText)
                     Spacer()
-                    Text("QAR")
-                        .font(AdminType.footnoteBold)
+                    Text(Language.isRTL() ? "ر.ق." : "QAR")
+                        .font(PPBrandFont.bold(13, relativeTo: .footnote))
                         .foregroundStyle(AdminSurface.secondaryText)
                 }
 
@@ -445,6 +448,7 @@ struct POSCustomerCreditPolicySheet: View {
                         .font(PPBrandFont.bold(20, relativeTo: .title3))
                         .foregroundStyle(AdminSurface.primaryText)
                         .keyboardType(.numberPad)
+                        .multilineTextAlignment(.leading)
                         .focused($isAmountFocused)
                 }
                 .padding(.horizontal, 14)
@@ -461,8 +465,8 @@ struct POSCustomerCreditPolicySheet: View {
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 viewModel.limitText = "\(preset)"
                             } label: {
-                                Text("\(preset) QAR")
-                                    .font(AdminType.caption1Bold)
+                                Text(formattedPresetLabel(preset))
+                                    .font(PPBrandFont.bold(13, relativeTo: .caption))
                                     .foregroundStyle(isSelected ? .white : AdminSurface.primaryText)
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 6)
@@ -476,6 +480,7 @@ struct POSCustomerCreditPolicySheet: View {
             }
         }
         .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(AdminSurface.hairline))
     }
@@ -483,18 +488,20 @@ struct POSCustomerCreditPolicySheet: View {
     private var notesCard: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(Language.get("POS_Credit_ReasonLabel", alter: "ملاحظات الاعتماد والاتفاق"))
-                .font(AdminType.subheadlineBold)
+                .font(PPBrandFont.bold(14, relativeTo: .subheadline))
                 .foregroundStyle(AdminSurface.primaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 8) {
-                Image(systemName: "text.alignleft")
+                Image(systemName: Language.isRTL() ? "text.alignright" : "text.alignleft")
                     .font(.system(size: 14))
                     .foregroundStyle(AdminSurface.secondaryText)
                     .frame(width: 20)
 
                 TextField(Language.get("POS_Credit_ReasonPlaceholder", alter: "ملاحظات حول سقف الائتمان وتسهيلات السداد..."), text: $viewModel.reason)
-                    .font(AdminType.subheadline)
+                    .font(PPBrandFont.regular(14, relativeTo: .subheadline))
                     .foregroundStyle(AdminSurface.primaryText)
+                    .multilineTextAlignment(.leading)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
@@ -502,7 +509,17 @@ struct POSCustomerCreditPolicySheet: View {
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(AdminSurface.hairline))
         }
         .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(AdminSurface.hairline))
+    }
+
+    private func formattedPresetLabel(_ preset: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.locale = Locale(identifier: Language.isRTL() ? "ar_QA" : "en_QA")
+        let formattedNumber = formatter.string(from: NSNumber(value: preset)) ?? "\(preset)"
+        let currencySuffix = Language.isRTL() ? "ر.ق." : "QAR"
+        return "\(formattedNumber) \(currencySuffix)"
     }
 }

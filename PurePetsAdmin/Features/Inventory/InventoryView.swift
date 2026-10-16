@@ -437,6 +437,7 @@ struct AdminInventoryView: View {
             AdminSovereignNavigationBar(
                 title: viewModel.navigationTitle,
                 subtitle: Language.get("CommandCenter_Work_Workspace", alter: "مساحة المخزون"),
+                customTopSpacing: 0,
                 showsTopFade: false,
                 onBack: {
                     if let onDismiss {

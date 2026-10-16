@@ -6,6 +6,8 @@
 @import UIKit;  // <— needed for UIApplication/scenes
 
 static NSBundle *bundle = nil;
+static NSString *cachedLanguageCode = nil;
+static BOOL isSettingLanguage = NO;
 NSString *const LanguageCodeIdIndentifier = @"AppLanguage";
 NSString * const LanguageDidChangeNotification = @"LanguageDidChangeNotification";
 NSString * const PPLanguageDidChangeNotification = @"PPLanguageDidChangeNotification";
@@ -21,21 +23,28 @@ NSString * const PPLanguageDidChangeNotification = @"PPLanguageDidChangeNotifica
     return @"en";
 }
 
-+ (void)setLanguage:(NSString *)language {
++ (void)pp_loadLanguage:(NSString *)language notifyChange:(BOOL)notifyChange {
     NSString *norm = [self _normalize:language];
     NSString *path = [[NSBundle mainBundle] pathForResource:norm ofType:@"lproj"];
 
-    DLog(@"[Language] setLanguage: %@ → normalized=%@ (path=%@)", language, norm, path ?: @"<main bundle>");
+    DLog(@"[Language] loadLanguage: %@ -> normalized=%@ (path=%@ notify=%d)", language, norm, path ?: @"<main bundle>", (int)notifyChange);
 
-    if (path) {
-        bundle = [NSBundle bundleWithPath:path];
-    } else {
-        bundle = [NSBundle mainBundle];
+    @synchronized (Language.class) {
+        if (path) {
+            bundle = [NSBundle bundleWithPath:path];
+        } else {
+            bundle = [NSBundle mainBundle];
+        }
+        cachedLanguageCode = norm;
     }
 
     // Cache selection
     [[NSUserDefaults standardUserDefaults] setObject:norm forKey:LanguageCodeIdIndentifier];
     [[NSUserDefaults standardUserDefaults] synchronize];
+
+    if (!notifyChange) {
+        return;
+    }
 
     // Notify app
     [[NSNotificationCenter defaultCenter] postNotificationName:LanguageDidChangeNotification object:nil];
@@ -43,14 +52,45 @@ NSString * const PPLanguageDidChangeNotification = @"PPLanguageDidChangeNotifica
     DLog(@"[Language] posted %@ & %@ (isRTL=%d)", LanguageDidChangeNotification, PPLanguageDidChangeNotification, (int)[self isRTL]);
 }
 
++ (void)setLanguage:(NSString *)language {
+    NSString *norm = [self _normalize:language];
+    BOOL didChange = ![norm isEqualToString:[self currentLanguageCode]];
+    BOOL needsBundle = (bundle == nil);
+
+    if (isSettingLanguage) {
+        [self pp_loadLanguage:norm notifyChange:NO];
+        return;
+    }
+
+    isSettingLanguage = YES;
+    [self pp_loadLanguage:norm notifyChange:(didChange && !needsBundle)];
+    isSettingLanguage = NO;
+}
+
 + (NSString *)currentLanguageCode {
-    NSString *saved = [[NSUserDefaults standardUserDefaults] objectForKey:LanguageCodeIdIndentifier];
-    if (saved.length) {
+    if (cachedLanguageCode.length > 0) {
+        return cachedLanguageCode;
+    }
+
+    id savedObject = [[NSUserDefaults standardUserDefaults] objectForKey:LanguageCodeIdIndentifier];
+    NSString *saved = [savedObject isKindOfClass:NSString.class] ? (NSString *)savedObject : nil;
+    if (!saved && [savedObject isKindOfClass:NSArray.class]) {
+        saved = [(NSArray *)savedObject firstObject];
+    }
+    if (![saved isKindOfClass:NSString.class]) {
+        saved = nil;
+    }
+
+    if (saved.length > 0) {
         NSString *norm = [self _normalize:saved];
+        cachedLanguageCode = norm;
         return norm;
     }
+
     NSString *system = [NSLocale preferredLanguages].firstObject ?: @"en";
-    return [self _normalize:system];
+    NSString *norm = [self _normalize:system];
+    cachedLanguageCode = norm;
+    return norm;
 }
 
 + (NSInteger)languageVal {
@@ -101,15 +141,80 @@ NSString * const PPLanguageDidChangeNotification = @"PPLanguageDidChangeNotifica
 
 #pragma mark - Strings
 
-+ (NSString *)get:(NSString *)key alter:(NSString *)alternate {
-    if (!bundle) {
-        // Ensure bundle loads cached language at first call
-        [self setLanguage:[self currentLanguageCode]];
+static NSString * const kPPNotFoundSentinel = @"__PP_LANG_NOT_FOUND__";
+
++ (BOOL)_containsArabic:(NSString *)string {
+    if (!string || string.length == 0) return NO;
+    for (NSUInteger i = 0; i < string.length; i++) {
+        unichar c = [string characterAtIndex:i];
+        if ((c >= 0x0600 && c <= 0x06FF) || (c >= 0x0750 && c <= 0x077F) ||
+            (c >= 0x08A0 && c <= 0x08FF) || (c >= 0xFB50 && c <= 0xFDFF) ||
+            (c >= 0xFE70 && c <= 0xFEFF)) {
+            return YES;
+        }
     }
-    NSString *val = [bundle localizedStringForKey:key value:alternate table:nil];
-    // Optional debug (comment out if noisy)
-    // DLog(@"[Language] get key='%@' → '%@'", key, val ?: key);
-    return val ?: key;
+    return NO;
+}
+
++ (NSString *)get:(NSString *)key alter:(NSString *)alternate {
+    if (!key || key.length == 0) {
+        return (alternate && alternate.length > 0) ? alternate : @"";
+    }
+
+    if (!bundle) {
+        [self pp_loadLanguage:[self currentLanguageCode] notifyChange:NO];
+    }
+
+    NSBundle *targetBundle = bundle ?: [NSBundle mainBundle];
+    NSString *val = nil;
+
+    @try {
+        val = [targetBundle localizedStringForKey:key value:kPPNotFoundSentinel table:nil];
+    } @catch (NSException *exception) {
+        val = nil;
+    }
+
+    // 1) Key exists and was localized in the active language bundle: honor it immediately.
+    if (val && ![val isEqualToString:kPPNotFoundSentinel] && val.length > 0) {
+        return val;
+    }
+
+    // 2) Key was not found in the active bundle.
+    if ([self isRTL]) {
+        // Arabic mode: prefer developer-provided Arabic alternate if available
+        if (alternate && alternate.length > 0) {
+            return alternate;
+        }
+        // Fallback to mainBundle only if alternate was not provided
+        if (targetBundle != [NSBundle mainBundle]) {
+            @try {
+                NSString *mainVal = [[NSBundle mainBundle] localizedStringForKey:key value:kPPNotFoundSentinel table:nil];
+                if (mainVal && ![mainVal isEqualToString:kPPNotFoundSentinel] && mainVal.length > 0) {
+                    return mainVal;
+                }
+            } @catch (NSException *exception) {}
+        }
+        return key;
+    } else {
+        // English mode: check mainBundle first if targetBundle is a separate lproj
+        if (targetBundle != [NSBundle mainBundle]) {
+            @try {
+                NSString *mainVal = [[NSBundle mainBundle] localizedStringForKey:key value:kPPNotFoundSentinel table:nil];
+                if (mainVal && ![mainVal isEqualToString:kPPNotFoundSentinel] && mainVal.length > 0) {
+                    return mainVal;
+                }
+            } @catch (NSException *exception) {}
+        }
+        // If alternate was provided:
+        if (alternate && alternate.length > 0) {
+            // Guard against leaking Arabic alternate into English mode when key is English text
+            if ([self _containsArabic:alternate] && ![self _containsArabic:key]) {
+                return key;
+            }
+            return alternate;
+        }
+        return key;
+    }
 }
 
 #pragma mark - Direction helpers

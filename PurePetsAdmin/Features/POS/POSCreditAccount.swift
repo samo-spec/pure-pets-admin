@@ -3,10 +3,94 @@ import SwiftUI
 import UIKit
 import FirebaseAuth
 import CryptoKit
+import Combine
 
 @MainActor
 enum POSCreditAccountCopy {
-    static func text(_ key: String) -> String { Language.get("POS_CreditAccount_" + key, alter: nil) }
+    private static let fallbacks: [String: String] = [
+        "Title": "حساب الائتمان والمديونيات",
+        "Administration": "الإدارة والسياسات",
+        "CurrentPolicy": "سياسة الائتمان الحالية",
+        "Limit": "الحد الائتماني",
+        "EditPolicy": "اقتراح تعديل السياسة",
+        "EnableCredit": "تفعيل الائتمان لهذا الحساب",
+        "Reason": "السبب",
+        "ReasonPlaceholder": "وضّح سبب هذا الطلب",
+        "ReasonHelp": "يلزم توضيح السبب لإرسال الطلب أو الموافقة عليه. الحد الأقصى ٥٠٠ حرف.",
+        "SavePolicy": "إرسال سياسة الائتمان",
+        "Refresh": "تحديث",
+        "Done": "تم",
+        "Loading": "جارٍ التحميل…",
+        "PolicyProposal": "اقتراح سياسة ائتمان",
+        "ReviewQueue": "طلبات المراجعة",
+        "Status": "الحالة",
+        "Enabled": "مفعّل",
+        "Disabled": "معطّل",
+        "Approve": "اعتماد",
+        "Reject": "رفض",
+        "StepUp": "تأكيد الهوية",
+        "VerificationHelp": "تحقّق من هويتك قبل التغييرات الحساسة.",
+        "Retry": "إعادة المحاولة",
+        "More": "المزيد",
+        "Review": "مراجعة",
+        "Accept": "قبول",
+        "Clear": "تأكيد التحصيل",
+        "Reverse": "عكس التحصيل",
+        "Service": "خدمة التحصيل",
+        "Close": "إغلاق",
+        "Export": "تصدير",
+        "Filter": "تصفية",
+        "Total": "الإجمالي",
+        "Outstanding": "الرصيد القائم",
+        "Overdue": "المتأخرات",
+        "NextDue": "الاستحقاق القادم",
+        "Pending": "معلّق",
+        "DueSoon": "يستحق قريباً",
+        "NoDueDate": "لا يوجد موعد استحقاق محدد",
+        "InstallmentSchedule": "أرصدة الأقساط",
+        "CollectionHelp": "افتح الفاتورة وأدخل المبلغ المراد تحصيله، ثم راجع الإجمالي المحدد قبل التأكيد.",
+        "SelectedForCollection": "محدد للتحصيل",
+        "NoCollectionMethod": "لا تتوفر وسيلة دفع للتحصيل في هذا الفرع.",
+        "Records": "السجلات",
+        "Amount": "المبلغ",
+        "Method": "طريقة الدفع",
+        "Reference": "المرجع",
+        "Evidence": "مستند الإثبات",
+        "Received": "المستلم",
+        "Reversed": "المعكوس",
+        "Credits": "الائتمانات",
+        "Refunded": "المسترد",
+        "RefundLiability": "التزامات الاسترداد",
+        "AsOf": "بتاريخ",
+        "Authenticator": "تطبيق المصادقة",
+        "Password": "كلمة المرور",
+        "OneTimeCode": "الرمز لمرة واحدة",
+        "StepUpUnavailable": "التحقق غير متاح",
+        "StepUpErrorTitle": "أعد محاولة تأكيد الهوية",
+        "StepUpCodePlaceholder": "أدخل ٦ أرقام",
+        "StepUpPasswordPlaceholder": "أدخل كلمة المرور",
+        "StepUpRegisteredAuthenticator": "تطبيق المصادقة المسجّل",
+        "StepUpCheckingPassword": "جارٍ التحقّق من كلمة المرور…",
+        "StepUpCheckingCode": "جارٍ التحقّق من الرمز…",
+        "StepUpContinue": "متابعة",
+        "StepUpPasswordProgress": "الخطوة ١ من ٢: كلمة المرور",
+        "StepUpCodeProgress": "الخطوة ٢ من ٢: تطبيق المصادقة",
+        "StepUpPasswordTitle": "ابدأ بكلمة المرور",
+        "StepUpCodeTitle": "رمز تطبيق المصادقة",
+        "StepUpPasswordHelp": "أدخل كلمة مرور حساب الموظف الحالي، ثم أكّد هويتك عبر تطبيق المصادقة المسجّل.",
+        "StepUpCodeHelp": "افتح تطبيق المصادقة المسجّل وأدخل الرمز الحالي المكوّن من ٦ أرقام.",
+        "StepUpFinancialBoundary": "هذه الخطوة لتأكيد هويتك فقط، ولا ترسل أو تعتمد أي عملية مالية.",
+        "all": "الكل",
+        "paid": "مدفوع"
+    ]
+
+    static func text(_ key: String) -> String {
+        let localizedKey = "POS_CreditAccount_" + key
+        // A valid Arabic translation may equal our fallback. Look up the key first
+        // so Language does not mistake that translation for a missing resource.
+        let localized: String = Language.get(localizedKey, alter: nil)
+        return localized == localizedKey ? (fallbacks[key] ?? key) : localized
+    }
     static func money(_ value: Int) -> String { POSReceiptFormat.currency(Double(value) / 100, code: "QAR") }
     static func permitted(_ permission: String, branchID: String) -> Bool {
         guard let uid = Auth.auth().currentUser?.uid, let staff = PPStaffAuth.shared().cachedCurrentStaff,
@@ -28,6 +112,7 @@ struct POSCreditAccountContext: Decodable {
     let receiptAccounts: [String: String]
     let pendingTendersEnabled: Bool
     let agreementTemplate: POSCreditContext.AgreementTemplate?
+    let installmentAllocationVersion: Int?
 }
 struct POSCreditAccountPage<Row: Decodable>: Decodable {
     let ok: Bool
@@ -39,6 +124,7 @@ struct POSCreditAccountPage<Row: Decodable>: Decodable {
     let asOfDateKey: String
     let summary: POSCreditAccountSummary
     let collectionContext: POSCreditAccountContext
+    let customerName: String?
     let rows: [Row]
     let nextCursor: POSCreditStatementCursor?
 }
@@ -58,12 +144,14 @@ struct POSCreditAccountInvoice: Decodable, Identifiable {
         let creditedMinor: Int?
         let writtenOffMinor: Int?
         var due: Int { max(0, amountMinor - paidMinor - (creditedMinor ?? 0) - (writtenOffMinor ?? 0)) }
+        var available: Int { max(0, due - pendingAmountMinor) }
     }
     let invoiceId: String
     let saleId: String
     let documentNumber: String
     let version: Int
     let agreementVersion: Int
+    let settlementMode: String?
     let agreement: POSCreditReceiptSummary.Agreement?
     let totalMinor: Int
     let amountPaidMinor: Int
@@ -81,6 +169,11 @@ struct POSCreditAccountInvoice: Decodable, Identifiable {
     let createdAt: String
     var id: String { invoiceId }
     var available: Int { max(0, amountDueMinor - pendingAmountMinor) }
+    var usesInstallments: Bool {
+        if let settlementMode { return settlementMode == "installments" }
+        // Older read projections lack the mode. A deposit is not a future installment.
+        return installments.filter { $0.id != "initial_deposit" }.count > 1
+    }
 }
 struct POSCreditAccountCollection: Decodable, Identifiable {
     struct Allocation: Decodable { let invoiceId: String; let amountMinor: Int }
@@ -98,6 +191,41 @@ struct POSCreditAccountCollection: Decodable, Identifiable {
     let lastEventId: String
     let createdAt: String
     var id: String { collectionId }
+}
+
+/// Presentation validation; the callable independently checks every version and allocation.
+enum POSCreditCollectionAllocation {
+    static func sum(_ amounts: [Int]) -> Int? {
+        var total = 0
+        for amount in amounts {
+            guard amount > 0 else { return nil }
+            let result = total.addingReportingOverflow(amount)
+            guard !result.overflow, result.partialValue <= 9_007_199_254_740_991 else { return nil }
+            total = result.partialValue
+        }
+        return total
+    }
+    static func installmentTotal(_ amounts: [String: Int], invoice: POSCreditAccountInvoice) -> Int? {
+        guard !amounts.isEmpty, amounts.count <= 25 else { return nil }
+        for (id, amount) in amounts {
+            guard let row = invoice.installments.first(where: { $0.id == id }),
+                  amount > 0, amount <= row.available else { return nil }
+        }
+        return sum(Array(amounts.values))
+    }
+    static func total(_ amounts: [String: Int], invoices: [POSCreditAccountInvoice],
+                      installments: [String: [String: Int]] = [:]) -> Int? {
+        guard !amounts.isEmpty, amounts.count <= 20,
+              installments.keys.allSatisfy({ amounts[$0] != nil }) else { return nil }
+        for (id, amount) in amounts {
+            guard let invoice = invoices.first(where: { $0.id == id }),
+                  invoice.disputeHold != true, amount > 0, amount <= invoice.available else { return nil }
+            if invoice.usesInstallments {
+                guard let rows = installments[id], installmentTotal(rows, invoice: invoice) == amount else { return nil }
+            } else if installments[id] != nil { return nil }
+        }
+        return sum(Array(amounts.values))
+    }
 }
 
 /// Exact lifecycle request, kept independently of editable account fields.
@@ -187,6 +315,7 @@ final class POSCreditAccountModel: ObservableObject {
     let actorUID: String
     @Published private(set) var summary: POSCreditAccountSummary?
     @Published private(set) var context: POSCreditAccountContext?
+    @Published private(set) var customerName: String?
     @Published private(set) var invoices: [POSCreditAccountInvoice] = []
     @Published private(set) var collections: [POSCreditAccountCollection] = []
     @Published private(set) var accountVersion = 0
@@ -203,10 +332,12 @@ final class POSCreditAccountModel: ObservableObject {
     private var cursor: POSCreditStatementCursor?
     private var kind = "invoices"
     private var requestID = UUID()
+    private var authorizationCancellable: AnyCancellable?
+    private var invoicesAreCurrent = false
     private nonisolated(unsafe) var authListener: AuthStateDidChangeListenerHandle?
     var hasMore: Bool { cursor != nil }
     var canRead: Bool { Auth.auth().currentUser?.uid == actorUID && POSCreditAccountCopy.permitted("pos.credit.read", branchID: branchID) }
-    var canCollect: Bool { canRead && POSCreditAccountCopy.permitted("pos.credit.collect", branchID: branchID) && accountVersion > 0 }
+    var canCollect: Bool { canRead && POSCreditAccountCopy.permitted("pos.credit.collect", branchID: branchID) && accountVersion > 0 && invoicesAreCurrent }
     var canRecover: Bool { canRead && pending?.actorUID == actorUID && pending?.branchID == branchID && pending?.customerID == customerID }
     var isPendingCancelled: Bool {
         guard let data = pending?.result,
@@ -226,11 +357,21 @@ final class POSCreditAccountModel: ObservableObject {
                     return
                 }
                 self.requestID = UUID(); self.busy = false; self.invoices = []; self.collections = []
-                self.summary = nil; self.context = nil; self.notice = nil; self.pending = nil; self.shareURL = nil
+                self.summary = nil; self.context = nil; self.customerName = nil; self.notice = nil; self.pending = nil; self.shareURL = nil
+                self.invoicesAreCurrent = false
                 self.administration = nil; self.adjustmentContext = nil; self.accountVersion = 0; self.asOf = ""
                 self.error = POSCreditAccountCopy.text("Permission")
             }
         }
+        authorizationCancellable = NotificationCenter.default.publisher(for: Notification.Name("PPAdminCommandAuthorizationDidChangeNotification"))
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.requestID = UUID(); self.busy = false; self.invoicesAreCurrent = false
+                self.invoices = []; self.collections = []; self.summary = nil; self.context = nil; self.customerName = nil
+                self.administration = nil; self.adjustmentContext = nil; self.shareURL = nil
+                if self.canRead { self.load() } else { self.error = POSCreditAccountCopy.text("Permission") }
+            }
         restore()
     }
     deinit { if let authListener { Auth.auth().removeStateDidChangeListener(authListener) } }
@@ -260,7 +401,11 @@ final class POSCreditAccountModel: ObservableObject {
             Task { @MainActor in
                 guard let self, self.requestID == ticket else { return }
                 self.busy = false
-                guard self.canRead else { self.invoices = []; self.collections = []; self.summary = nil; self.context = nil; return }
+                guard self.canRead else {
+                    self.invoices = []; self.collections = []; self.summary = nil; self.context = nil; self.customerName = nil
+                    self.invoicesAreCurrent = false
+                    return
+                }
                 do {
                     if let callError { throw callError }
                     guard let response, let value = try JSONSerialization.jsonObject(with: response) as? [String: Any], value["ok"] as? Bool == true else { throw POSCreditPendingStore.StoreError.invalidRecord }
@@ -282,6 +427,7 @@ final class POSCreditAccountModel: ObservableObject {
     func load(kind requestedKind: String = "invoices", more: Bool = false) {
         guard canRead, !busy, ["invoices", "collections"].contains(requestedKind), !more || cursor != nil else { return }
         if !more || kind != requestedKind { cursor = nil; invoices = []; collections = [] }
+        invoicesAreCurrent = false
         kind = requestedKind
         var body = base(); body["kind"] = requestedKind; body["pageSize"] = 50
         if more, let cursor, let encoded = try? JSONEncoder().encode(cursor) { body["cursor"] = try? JSONSerialization.jsonObject(with: encoded) }
@@ -291,6 +437,7 @@ final class POSCreditAccountModel: ObservableObject {
                 let page = try JSONDecoder().decode(POSCreditAccountPage<POSCreditAccountInvoice>.self, from: data)
                 try self.accept(page, more: more)
                 self.invoices = more ? self.invoices + page.rows.filter { row in !self.invoices.contains(where: { $0.id == row.id }) } : page.rows
+                self.invoicesAreCurrent = true
             } else {
                 let page = try JSONDecoder().decode(POSCreditAccountPage<POSCreditAccountCollection>.self, from: data)
                 try self.accept(page, more: more)
@@ -306,15 +453,31 @@ final class POSCreditAccountModel: ObservableObject {
             throw POSCreditPendingStore.StoreError.invalidRecord
         }
         accountVersion = page.accountVersion; summary = page.summary; context = page.collectionContext; asOf = page.asOfDateKey; cursor = page.nextCursor
+        customerName = page.customerName
     }
-    func collect(amounts: [String: Int], method: String, reference: String) {
+    func collect(amounts: [String: Int], installments: [String: [String: Int]], method: String, reference: String) {
         guard canCollect, pending == nil, !storageFailed, !busy, !amounts.isEmpty, amounts.count <= 20,
               let accountID = context?.receiptAccounts[method], method == "cash" || context?.pendingTendersEnabled == true else { return }
+        let trimmedReference = reference.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard POSCreditCollectionAllocation.total(amounts, invoices: invoices, installments: installments) != nil,
+              installments.isEmpty || context?.installmentAllocationVersion == 1,
+              ["cash", "card", "cheque", "fawry", "bank_transfer"].contains(method),
+              trimmedReference.count <= 200, method == "cash" || !trimmedReference.isEmpty else {
+            error = POSCreditAccountCopy.text("Invalid"); return
+        }
         let rows = invoices.filter { amounts[$0.id] != nil }
-        guard rows.count == amounts.count, rows.allSatisfy({ (amounts[$0.id] ?? 0) > 0 && (amounts[$0.id] ?? 0) <= $0.available }) else { error = POSCreditAccountCopy.text("Invalid"); return }
         var body = base(); body["commandId"] = UUID().uuidString; body["expectedAccountVersion"] = accountVersion
         body["method"] = method; body["accountId"] = accountID; body["reference"] = reference.trimmingCharacters(in: .whitespacesAndNewlines)
-        body["allocations"] = rows.map { ["invoiceId": $0.id, "expectedVersion": $0.version, "amountMinor": amounts[$0.id]!] as [String: Any] }
+        body["allocations"] = rows.map { invoice -> [String: Any] in
+            var row: [String: Any] = ["invoiceId": invoice.id, "expectedVersion": invoice.version, "amountMinor": amounts[invoice.id]!]
+            if let selected = installments[invoice.id] {
+                row["installmentAllocations"] = invoice.installments.compactMap { entry -> [String: Any]? in
+                    guard let amount = selected[entry.id] else { return nil }
+                    return ["installmentId": entry.id, "amountMinor": amount]
+                }
+            }
+            return row
+        }
         submit("recordPosCollection", body: body)
     }
     func submit(_ operation: String, body: [String: Any]) {
@@ -337,7 +500,8 @@ final class POSCreditAccountModel: ObservableObject {
                 var confirmed = original; confirmed.result = response
                 try POSCreditAccountCommandStore.save(confirmed)
                 self.pending = confirmed; self.showResult(response)
-                NotificationCenter.default.post(name: Notification.Name("PPAccountingDataDidChangeNotification"), object: nil)
+                NotificationCenter.default.post(name: Notification.Name("PPAccountingDataDidChangeNotification"), object: nil,
+                    userInfo: ["customerId": self.customerID, "branchId": self.branchID, "actorUID": self.actorUID])
             }
         } catch { self.error = POSCreditAccountCopy.text("StorageFailed") }
     }
@@ -348,9 +512,9 @@ final class POSCreditAccountModel: ObservableObject {
         if let status = value["status"] as? String { notice = POSCreditAccountCopy.text(status); return }
         notice = "\(POSCreditAccountCopy.text("Confirmed"))\n\(POSCreditAccountCopy.text("Received")): \(POSCreditAccountCopy.money(received))\n\(POSCreditAccountCopy.text("Pending")): \(POSCreditAccountCopy.money(pendingAmount))"
     }
-    func acknowledge() {
+    func acknowledge(nextKind: String? = nil) {
         guard canRecover, let record = pending, record.result != nil else { return }
-        do { try POSCreditAccountCommandStore.acknowledge(record); pending = nil; notice = nil; if kind == "administration" { loadAdministration() } else { load(kind: kind) } }
+        do { try POSCreditAccountCommandStore.acknowledge(record); pending = nil; notice = nil; if let nextKind { kind = nextKind }; if kind == "administration" { loadAdministration() } else { load(kind: kind) } }
         catch { self.error = POSCreditAccountCopy.text("StorageFailed") }
     }
     func receipt(_ collection: POSCreditAccountCollection) {
@@ -515,24 +679,152 @@ private struct POSCreditAccountPressableButtonStyle: ButtonStyle {
     }
 }
 
+// MARK: - Hosting Controller & Push Navigation
+
+@objc(POSCreditAccountHostingController)
+public final class POSCreditAccountHostingController: UIViewController {
+    private let customerID: String
+    private let branchID: String
+    private let initialTab: String
+    private var onDismissCallback: (() -> Void)?
+
+    @objc public init(customerID: String, branchID: String, initialTab: String = "invoices", onDismiss: (() -> Void)? = nil) {
+        self.customerID = customerID
+        self.branchID = branchID
+        self.initialTab = initialTab
+        self.onDismissCallback = onDismiss
+        super.init(nibName: nil, bundle: nil)
+        hidesBottomBarWhenPushed = true
+        extendedLayoutIncludesOpaqueBars = true
+        edgesForExtendedLayout = .all
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    public override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .ppBackground
+
+        let sheetView = POSCreditAccountSheet(
+            customerID: customerID,
+            branchID: branchID,
+            initialTab: initialTab,
+            onDismiss: { [weak self] in
+                self?.handleDismiss()
+            }
+        )
+
+        let host = UIHostingController(rootView: sheetView)
+        host.view.backgroundColor = .clear
+        host.extendedLayoutIncludesOpaqueBars = true
+        host.edgesForExtendedLayout = .all
+        addChild(host)
+        view.addSubview(host.view)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
+        host.didMove(toParent: self)
+    }
+
+    private func handleDismiss() {
+        if let onDismissCallback = onDismissCallback {
+            onDismissCallback()
+        }
+        if let nav = navigationController, nav.viewControllers.count > 1 {
+            nav.popViewController(animated: true)
+        } else if let presenting = presentingViewController {
+            dismiss(animated: true)
+        } else if let presenting = navigationController?.presentingViewController {
+            navigationController?.dismiss(animated: true)
+        } else {
+            PPAdminNavigationFallback.popOrDismiss(from: self)
+        }
+    }
+
+    public override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(true, animated: animated)
+        navigationController?.pp_enableSwipeToPop()
+    }
+
+    public override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        navigationController?.pp_enableSwipeToPop()
+    }
+}
+
+@MainActor
+public func pushPOSCreditAccount(
+    customerID: String,
+    branchID: String,
+    initialTab: String = "invoices",
+    from sourceVC: UIViewController? = nil,
+    onDismiss: (() -> Void)? = nil
+) {
+    guard !customerID.isEmpty else { return }
+
+    let targetVC = POSCreditAccountHostingController(
+        customerID: customerID,
+        branchID: branchID,
+        initialTab: initialTab,
+        onDismiss: onDismiss
+    )
+    targetVC.hidesBottomBarWhenPushed = true
+
+    let topVC = sourceVC ?? PPAdminNavigationFallback.keyWindowTopViewController()
+    if let nav = topVC as? UINavigationController {
+        nav.pushViewController(targetVC, animated: true)
+        return
+    }
+    if let nav = topVC?.navigationController {
+        nav.pushViewController(targetVC, animated: true)
+        return
+    }
+
+    var current = topVC?.presentingViewController
+    while let c = current {
+        if let nav = c as? UINavigationController {
+            nav.pushViewController(targetVC, animated: true)
+            return
+        }
+        if let nav = c.navigationController {
+            nav.pushViewController(targetVC, animated: true)
+            return
+        }
+        current = c.presentingViewController
+    }
+
+    let nav = UINavigationController(rootViewController: targetVC)
+    nav.modalPresentationStyle = .fullScreen
+    nav.setNavigationBarHidden(true, animated: false)
+    topVC?.present(nav, animated: true)
+}
+
 struct POSCreditAccountLink: View {
     let customerID: String
     let branchID: String
     var compact = false
-    @State private var presented = false
+    var opensCollection = false
+    private var collect: Bool { opensCollection && POSCreditAccountCopy.permitted("pos.credit.collect", branchID: branchID) }
     var body: some View {
         if !customerID.isEmpty, POSCreditAccountCopy.permitted("pos.credit.read", branchID: branchID) {
             Group {
                 if compact {
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        presented = true
+                        pushPOSCreditAccount(customerID: customerID, branchID: branchID, initialTab: collect ? "collect" : "invoices")
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "person.text.rectangle")
+                            Image(systemName: collect ? "arrow.down.left" : "person.text.rectangle")
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(AdminSurface.primary)
-                            Text(POSCreditAccountCopy.text("Title"))
+                            Text(POSCreditAccountCopy.text(collect ? "Collect" : "Title"))
                                 .font(AdminType.caption1Bold)
                                 .foregroundStyle(AdminSurface.primaryText)
                             Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
@@ -540,38 +832,41 @@ struct POSCreditAccountLink: View {
                                 .foregroundStyle(AdminSurface.primary.opacity(0.7))
                         }
                         .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
+                        .padding(.vertical, 4)
+                        .frame(minHeight: 32)
                         .background(
-                            Capsule()
+                            RoundedRectangle(cornerRadius: 13, style: .continuous)
                                 .fill(AdminSurface.primarySoft.opacity(0.40))
                         )
                         .overlay(
-                            Capsule()
+                            RoundedRectangle(cornerRadius: 13, style: .continuous)
                                 .strokeBorder(AdminSurface.primary.opacity(0.20), lineWidth: 1)
                         )
+                        .frame(minHeight: AdminTouchTarget.minimum)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(POSCreditAccountPressableButtonStyle())
                     .accessibilityIdentifier("pos.credit.accountLink.compact")
                 } else {
                     Button {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        presented = true
+                        pushPOSCreditAccount(customerID: customerID, branchID: branchID, initialTab: collect ? "collect" : "invoices")
                     } label: {
                         HStack(spacing: 12) {
                             ZStack {
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                RoundedRectangle(cornerRadius: 9, style: .continuous)
                                     .fill(AdminSurface.primary.opacity(0.12))
                                     .frame(width: 40, height: 40)
-                                Image(systemName: "person.text.rectangle")
+                                Image(systemName: collect ? "arrow.down.left" : "person.text.rectangle")
                                     .font(.system(size: 18, weight: .bold))
                                     .foregroundStyle(AdminSurface.primary)
                             }
 
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(POSCreditAccountCopy.text("Title"))
+                                Text(POSCreditAccountCopy.text(collect ? "Collect" : "Title"))
                                     .font(AdminType.headlineBold)
                                     .foregroundStyle(AdminSurface.primaryText)
-                                Text(Language.get("POS_CreditAccount_QuickViewSubtitle", alter: "كشف الحساب والسقف الائتماني"))
+                                Text(POSCreditAccountCopy.text(collect ? "CollectionEntryHelp" : "QuickViewSubtitle"))
                                     .font(AdminType.caption)
                                     .foregroundStyle(AdminSurface.secondaryText)
                             }
@@ -594,11 +889,11 @@ struct POSCreditAccountLink: View {
                         .padding(.vertical, 10)
                         .frame(maxWidth: .infinity, minHeight: 56)
                         .background(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            RoundedRectangle(cornerRadius: 13, style: .continuous)
                                 .fill(AdminSurface.primarySoft.opacity(0.40))
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            RoundedRectangle(cornerRadius: 13, style: .continuous)
                                 .strokeBorder(AdminSurface.primary.opacity(0.20), lineWidth: 1.2)
                         )
                     }
@@ -606,7 +901,6 @@ struct POSCreditAccountLink: View {
                     .accessibilityIdentifier("pos.credit.accountLink")
                 }
             }
-            .fullScreenCover(isPresented: $presented) { POSCreditAccountSheet(customerID: customerID, branchID: branchID) }
         }
     }
 }
@@ -616,11 +910,13 @@ struct POSCreditAccountSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var onDismiss: (() -> Void)? = nil
     @State private var showsAging = false
     @ObservedObject private var branch = BranchContextStore.shared
     @State private var tab = "invoices"
     @State private var aging = "all"
     @State private var amounts: [String: String] = [:]
+    @State private var installmentAmounts: [String: [String: String]] = [:]
     @State private var method = "cash"
     @State private var reference = ""
     @State private var reviewing = false
@@ -636,73 +932,197 @@ struct POSCreditAccountSheet: View {
     @State private var policyReasonAttempted = false
     @State private var stepUpPresented = false
     private enum InputField: Hashable {
-        case invoiceAmount(String), reference, reason, policyLimit
+        case invoiceAmount(String), installmentAmount(String, String), reference, reason, policyLimit
     }
     @FocusState private var editing: InputField?
-    init(customerID: String, branchID: String, initialTab: String = "invoices") {
+    private enum CollectionFocus: Hashable { case review, receipt }
+    @AccessibilityFocusState private var collectionFocus: CollectionFocus?
+    init(customerID: String, branchID: String, initialTab: String = "invoices", onDismiss: (() -> Void)? = nil) {
+        self.onDismiss = onDismiss
         _model = StateObject(wrappedValue: POSCreditAccountModel(customerID: customerID, branchID: branchID))
         _tab = State(initialValue: initialTab)
     }
     private func t(_ key: String) -> String { POSCreditAccountCopy.text(key) }
     private func money(_ amount: Int) -> String { POSCreditAccountCopy.money(amount) }
-    private var selected: [String: Int] { amounts.compactMapValues { POSCreditCheckoutSheet.minor($0).flatMap { $0 > 0 ? $0 : nil } } }
-    private var total: Int { selected.values.reduce(0, +) }
-    private var methods: [String] { ["cash", "card", "cheque", "fawry", "bank_transfer"].filter { model.context?.receiptAccounts[$0] != nil && ($0 == "cash" || model.context?.pendingTendersEnabled == true) } }
-    private var valid: Bool {
-        guard model.canCollect, model.pending == nil, !model.storageFailed, !model.busy, amounts.values.allSatisfy({ $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || POSCreditCheckoutSheet.minor($0) != nil }), !selected.isEmpty, selected.count <= 20, methods.contains(method), reference.count <= 200,
-              method == "cash" || !reference.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-        return model.invoices.filter { selected[$0.id] != nil }.allSatisfy { (selected[$0.id] ?? 0) <= $0.available }
+    private func handleBack() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        if let onDismiss {
+            onDismiss()
+        } else {
+            dismiss()
+            PPAdminNavigationFallback.popOrDismiss()
+        }
     }
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                AdminSovereignNavigationBar(
-                    title: t("Title"),
-                    subtitle: branch.activeBranch?.localizedName() ?? model.customer?.name,
-                    statusDotColor: Color(uiColor: .ppSuccess),
-                    isModal: false,
-                    showsTopFade: false,
-                    onBack: { dismiss() }
-                )
+    private var selected: [String: Int] {
+        var result: [String: Int] = [:]
+        for (id, val) in amounts {
+            if let invoice = model.invoices.first(where: { $0.id == id }), invoice.usesInstallments {
+                if let rows = selectedInstallments[id], let amount = POSCreditCollectionAllocation.installmentTotal(rows, invoice: invoice) {
+                    result[id] = amount
+                }
+            } else if let minor = POSCreditCheckoutSheet.minor(val), minor > 0 {
+                result[id] = minor
+            }
+        }
+        return result
+    }
+    private var selectedInstallments: [String: [String: Int]] {
+        var result: [String: [String: Int]] = [:]
+        for (invoiceID, entries) in installmentAmounts where amounts[invoiceID] != nil {
+            var parsed: [String: Int] = [:]
+            for (id, raw) in entries {
+                if let amount = POSCreditCheckoutSheet.minor(raw), amount > 0 { parsed[id] = amount }
+            }
+            if !parsed.isEmpty, parsed.count == entries.count { result[invoiceID] = parsed }
+        }
+        return result
+    }
+    private var total: Int { POSCreditCollectionAllocation.sum(Array(selected.values)) ?? 0 }
+    private var supportsInstallmentSelection: Bool { model.context?.installmentAllocationVersion == 1 }
+    private var methods: [String] {
+        guard let context = model.context else { return [] }
+        let candidates = ["cash", "card", "cheque", "fawry", "bank_transfer"]
+        return candidates.filter { m in
+            let hasAccount = context.receiptAccounts[m] != nil
+            let allowed = (m == "cash") || (context.pendingTendersEnabled == true)
+            return hasAccount && allowed
+        }
+    }
+    private var valid: Bool {
+        guard model.canCollect else { return false }
+        guard model.pending == nil else { return false }
+        guard !model.storageFailed && !model.busy else { return false }
+        guard !selected.isEmpty && selected.count <= 20 && selected.count == amounts.count else { return false }
+        guard methods.contains(method) else { return false }
+        guard selectedInstallments.isEmpty || supportsInstallmentSelection else { return false }
+        guard reference.count <= 200 else { return false }
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: AdminSpacing.lg) {
-                        if model.canRead {
-                            accountContent
-                        } else {
-                            emptyState("Permission", symbol: "lock.shield")
-                        }
-                    }
-                    .frame(maxWidth: 720, alignment: .leading)
-                    .padding(.horizontal, AdminSpacing.screenMargin)
-                    .padding(.top, AdminSpacing.base)
-                    .padding(.bottom, 80)
-                    .frame(maxWidth: .infinity)
+        let trimmedRef = reference.trimmingCharacters(in: .whitespacesAndNewlines)
+        if method != "cash" && trimmedRef.isEmpty {
+            return false
+        }
+
+        let allAmountsValid = amounts.values.allSatisfy { rawValue in
+            let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty || (POSCreditCheckoutSheet.minor(trimmed) != nil)
+        }
+        guard allAmountsValid else { return false }
+
+        return POSCreditCollectionAllocation.total(selected, invoices: model.invoices, installments: selectedInstallments) != nil
+    }
+    private var headerSubtitle: String? {
+        if branch.activeBranch?.branchID == model.branchID,
+           let branchName = branch.activeBranch?.localizedName(), !branchName.isEmpty {
+            return branchName
+        }
+        if let match = branch.availableBranches.first(where: { $0.branchID == model.branchID }) {
+            return match.localizedName()
+        }
+        return model.branchID.isEmpty ? nil : String(format: t("CollectionBranchReference"), model.branchID)
+    }
+
+    private var headerBar: some View {
+        AdminSovereignNavigationBar(
+            title: t(tab == "collect" ? "Collect" : "Title"),
+            subtitle: headerSubtitle,
+            statusDotColor: model.error != nil ? AdminSurface.amber : model.busy ? AdminSurface.secondaryText : AdminSurface.primary,
+            isModal: false,
+            customTopSpacing: 0,
+            showsTopFade: false,
+            onBack: { handleBack() }
+        )
+    }
+
+    private var scrollContent: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: AdminSpacing.lg) {
+                    if model.canRead { accountContent }
+                    else { emptyState("Permission", symbol: "lock.shield") }
                 }
-                .scrollDismissesKeyboard(.interactively)
+                .frame(maxWidth: 720, alignment: .leading)
+                .id("credit.account.top")
+                .padding(.horizontal, AdminSpacing.screenMargin)
+                .padding(.top, AdminSpacing.base)
+                .padding(.bottom, AdminSpacing.lg)
+                .frame(maxWidth: .infinity)
             }
-            .background(AdminSurface.background)
-            .font(AdminType.body)
-            .foregroundStyle(AdminSurface.primaryText)
-            .tint(AdminSurface.primary)
-            .navigationBarHidden(true)
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbar {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button { editing = nil } label: {
-                        Text(t("Done")).font(AdminType.calloutBold)
-                    }
+            .scrollDismissesKeyboard(.interactively)
+            .dismissKeyboardOnTapOutside()
+            .onChange(of: reviewing) { _ in
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                    proxy.scrollTo("credit.account.top", anchor: .top)
                 }
             }
-            .enableSwipeToPop { dismiss() }
-            .onChange(of: tab) { _ in amounts = [:]; reviewing = false; accepted = false; if tab == "administration" { model.loadAdministration() } else { model.load(kind: tab) } }
-            .onChange(of: branch.activeBranch?.branchID) { _ in dismiss() }
+            .onChange(of: model.pending?.commandID) { _ in proxy.scrollTo("credit.account.top", anchor: .top) }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var keyboardToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .keyboard) {
+            Spacer()
+            Button {
+                editing = nil
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            } label: {
+                Text(t("Done")).font(AdminType.calloutBold)
+            }
+        }
+    }
+
+    private var mainContent: some View {
+        ZStack(alignment: .top) {
+            AdminSurface.background
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                headerBar
+                scrollContent
+            }
+        }
+        .font(AdminType.body)
+        .foregroundStyle(AdminSurface.primaryText)
+        .multilineTextAlignment(.leading)
+        .tint(AdminSurface.primary)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if tab == "collect", model.canRead, model.summary != nil, model.pending == nil {
+                collectionDock
+            }
+        }
+        .navigationBarHidden(true)
+        .navigationBarBackButtonHidden(true)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar(.hidden, for: .navigationBar)
+        .toolbar {
+            keyboardToolbar
+        }
+        .enableSwipeToPop { handleBack() }
+    }
+
+    var body: some View {
+        mainContent
+            .onChange(of: tab) { _ in amounts = [:]; installmentAmounts = [:]; reviewing = false; accepted = false; reloadRecords() }
+            .onChange(of: branch.activeBranch?.branchID) { _ in handleBack() }
             .onChange(of: amounts) { _ in reviewing = false; accepted = false }
-            .onChange(of: method) { _ in reviewing = false; accepted = false }
+            .onChange(of: installmentAmounts) { _ in reviewing = false; accepted = false }
+            .onChange(of: method) { value in
+                reviewing = false; accepted = false
+                if value == "cash" { reference = "" }
+            }
             .onChange(of: reference) { _ in reviewing = false; accepted = false }
+            .onChange(of: reviewing) { value in
+                if value { collectionFocus = .review }
+            }
+            .onChange(of: model.pending?.result) { _ in
+                if collectionResult != nil { collectionFocus = .receipt }
+            }
+            .onChange(of: methods) { values in
+                if !values.contains(method) { method = values.first ?? "" }
+                reviewing = false; accepted = false
+            }
             .onChange(of: model.needsStepUp) { value in
-                if value && (model.permitted("pos.credit_terms.manage") || model.permitted("pos.credit.approve") || model.canAdjust || model.canCollect) {
+                if value && (model.permitted("pos.credit_terms.manage") || model.permitted("pos.credit.approve") || model.permitted("pos.credit.clear") || model.canAdjust || model.canCollect) {
                     stepUpPresented = true
                 }
             }
@@ -711,20 +1131,24 @@ struct POSCreditAccountSheet: View {
             .sheet(item: $revising) { invoice in POSCreditTermsSheet(model: model, invoice: invoice) }
             .sheet(isPresented: $stepUpPresented, onDismiss: { model.needsStepUp = false }) { POSCreditStepUpSheet() }
             .onChange(of: model.administration?.policy) { _ in refreshPolicyDraft() }
-            .onChange(of: model.accountVersion) { _ in reviewing = false; accepted = false }
+            .onChange(of: model.accountVersion) { _ in
+                amounts = [:]; installmentAmounts = [:]; reviewing = false; accepted = false
+            }
             .task {
-                if tab == "administration" {
-                    model.loadAdministration()
-                } else {
-                    model.load(kind: tab)
-                }
+                reloadRecords()
+                if collectionResult != nil { collectionFocus = .receipt }
             }
             .sheet(isPresented: Binding(get: { model.shareURL != nil }, set: { if !$0 { model.shareURL = nil } })) {
                 if let url = model.shareURL { POSCreditAccountShare(url: url) }
             }
-        }
-        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .transaction { if reduceMotion { $0.animation = nil; $0.disablesAnimations = true } }
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+            .environment(\.locale, Locale(identifier: Language.isRTL() ? "ar_QA" : "en_QA"))
+            .transaction { if reduceMotion { $0.animation = nil; $0.disablesAnimations = true } }
+    }
+
+    private func reloadRecords() {
+        if tab == "administration" { model.loadAdministration() }
+        else { model.load(kind: tab == "collect" ? "invoices" : tab) }
     }
 
     @ViewBuilder private var accountContent: some View {
@@ -734,7 +1158,7 @@ struct POSCreditAccountSheet: View {
                     .font(AdminType.subheadline).foregroundStyle(AdminSurface.crimson)
                     .fixedSize(horizontal: false, vertical: true)
                 action("Retry", symbol: "arrow.clockwise") {
-                    if tab == "administration" { model.loadAdministration() } else { model.load(kind: tab) }
+                    reloadRecords()
                 }.disabled(model.busy)
             }
         }
@@ -747,18 +1171,19 @@ struct POSCreditAccountSheet: View {
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .accessibilityElement(children: .combine)
         }
-        if model.pending != nil { recovery }
-        if let summary = model.summary { accountOverview(summary) }
-        recordNavigation
-        if tab == "invoices" {
-            invoiceSection
-            if model.canCollect, model.pending == nil { collectionSection }
-        } else if tab == "collections" {
-            collectionHistory
-        } else {
-            administrationSection
+        if model.pending != nil {
+            if let result = collectionResult { collectionReceipt(result) } else { recovery }
         }
-        if model.hasMore, tab != "administration" {
+        if tab == "collect" {
+            if model.pending == nil, let summary = model.summary { collectionWorkspace(summary) }
+        } else {
+            if let summary = model.summary { accountOverview(summary) }
+            recordNavigation
+            if tab == "invoices" { invoiceSection }
+            else if tab == "collections" { collectionHistory }
+            else { administrationSection }
+        }
+        if model.hasMore, tab != "administration", tab != "collect" {
             action("More", symbol: "arrow.down") { model.load(kind: tab, more: true) }
                 .disabled(model.busy)
         }
@@ -766,6 +1191,11 @@ struct POSCreditAccountSheet: View {
 
     private func accountOverview(_ summary: POSCreditAccountSummary) -> some View {
         VStack(alignment: .leading, spacing: AdminSpacing.base) {
+            if let name = model.customerName, !name.isEmpty {
+                Text(name).font(PPBrandFont.bold(26, relativeTo: .title2))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             HStack(alignment: .top, spacing: AdminSpacing.md) {
                 VStack(alignment: .leading, spacing: AdminSpacing.xs) {
                     if let activeBranch = branch.activeBranch, activeBranch.branchID == model.branchID {
@@ -800,6 +1230,10 @@ struct POSCreditAccountSheet: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("pos.credit.account.balance")
+            if model.permitted("pos.credit.collect"), model.pending == nil, summary.outstandingMinor > 0 {
+                action("Collect", symbol: "arrow.down.left", prominent: true) { tab = "collect" }
+                    .accessibilityIdentifier("pos.credit.account.startCollection")
+            }
             panel {
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: AdminSpacing.lg) {
@@ -979,14 +1413,9 @@ struct POSCreditAccountSheet: View {
                     if model.permitted("pos.credit_terms.manage"), invoice.amountDueMinor > 0, model.pending == nil {
                         action("ChangeTerms", symbol: "calendar") { revising = invoice }.disabled(model.busy)
                     }
-                    if model.canCollect, model.pending == nil, invoice.available > 0 {
-                        field("Amount") {
-                            TextField(t("Amount"), text: Binding(get: { amounts[invoice.id] ?? "" }, set: { amounts[invoice.id] = $0 }))
-                                .keyboardType(.decimalPad).focused($editing, equals: .invoiceAmount(invoice.id))
-                                .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
-                                .environment(\.layoutDirection, .leftToRight)
-                                .accessibilityLabel("\(t("Amount")) · \(invoice.documentNumber)")
-                        }
+                    if model.canCollect, model.pending == nil, invoice.available > 0, invoice.disputeHold != true {
+                        action("Collect", symbol: "arrow.down.left") { tab = "collect" }
+                            .disabled(model.busy || model.storageFailed)
                     }
                 }.padding(.top, AdminSpacing.base)
             } label: {
@@ -1034,59 +1463,527 @@ struct POSCreditAccountSheet: View {
         return true
     }
 
-    private var collectionSection: some View {
-        panel {
-            sectionHeading("Collect", symbol: "arrow.down.left.circle")
-            Text(t("CollectionHelp")).font(AdminType.subheadline).foregroundStyle(AdminSurface.secondaryText)
-            Menu {
-                Picker(t("Method"), selection: $method) {
-                    ForEach(methods, id: \.self) { methodKey in
-                        Text(t(methodKey)).tag(methodKey).font(AdminType.subheadlineBold)
+    private var collectionInvoices: [POSCreditAccountInvoice] {
+        model.invoices.filter { $0.available > 0 && $0.disputeHold != true }
+            .sorted {
+                if ($0.overdueMinor > 0) != ($1.overdueMinor > 0) { return $0.overdueMinor > 0 }
+                if $0.dueDateKey != $1.dueDateKey { return ($0.dueDateKey ?? "9999") < ($1.dueDateKey ?? "9999") }
+                return $0.id < $1.id
+            }
+    }
+
+    private var collectionAccent: Color { Color(uiColor: .ppAccentText) }
+
+    private func collectionWorkspace(_ summary: POSCreditAccountSummary) -> some View {
+        VStack(alignment: .leading, spacing: 24) {
+            collectionIdentity
+            if reviewing {
+                collectionReview(summary)
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(t("Outstanding")).font(AdminType.subheadline)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    Text(money(summary.outstandingMinor))
+                        .font(PPBrandFont.bold(44, relativeTo: .largeTitle))
+                        .monospacedDigit().fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("pos.credit.collect.outstanding")
+                    if summary.overdueMinor > 0 {
+                        Label("\(t("Overdue")) · \(money(summary.overdueMinor))", systemImage: "clock.badge.exclamationmark")
+                            .font(AdminType.footnoteBold).foregroundStyle(AdminSurface.crimson)
+                    }
+                    if summary.pendingAmountMinor > 0 {
+                        Label("\(t("CollectionAwaiting")) · \(money(summary.pendingAmountMinor))", systemImage: "clock")
+                            .font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .combine)
+
+                if !model.permitted("pos.credit.collect") {
+                    emptyState("CollectionReadOnly", symbol: "lock.shield")
+                } else if summary.outstandingMinor == 0 {
+                    emptyState("CollectionSettled", symbol: "checkmark.circle")
+                } else {
+                    collectionInvoiceSelection
+                    if !selected.isEmpty { collectionPayment }
+                }
+            }
+        }
+    }
+
+    private var collectionIdentity: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(model.customerName?.isEmpty == false ? model.customerName! : t("CollectionCustomer"))
+                        .font(PPBrandFont.bold(26, relativeTo: .title2))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if let subtitle = headerSubtitle {
+                        Label(subtitle, systemImage: "building.2")
+                            .font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Button { editing = nil; tab = "invoices" } label: {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(collectionAccent)
+                        .frame(width: 48, height: 48)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16))
+                }
+                .buttonStyle(.plain).disabled(model.busy)
+                .accessibilityLabel(t("CollectionOpenAccount"))
+            }
+            Rectangle().fill(AdminSurface.hairline).frame(height: 1).accessibilityHidden(true)
+        }
+    }
+
+    private var collectionInvoiceSelection: some View {
+        let invoices = collectionInvoices
+        return VStack(alignment: .leading, spacing: 12) {
+            Text(t("CollectionChooseInvoices"))
+                .font(PPBrandFont.bold(20, relativeTo: .title3)).accessibilityAddTraits(.isHeader)
+            Text(t("CollectionChooseHelp")).font(AdminType.subheadline)
+                .foregroundStyle(AdminSurface.secondaryText).fixedSize(horizontal: false, vertical: true)
+            LazyVStack(spacing: 0) {
+                ForEach(invoices) { invoice in
+                    collectionInvoiceRow(invoice)
+                    if invoice.id != invoices.last?.id {
+                        Rectangle().fill(AdminSurface.hairline).frame(height: 1).padding(.horizontal, 16)
+                            .accessibilityHidden(true)
+                    }
+                }
+            }
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20))
+            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(AdminSurface.hairline, lineWidth: 1))
+            if invoices.isEmpty, !model.busy, model.error == nil {
+                Text(t(model.hasMore ? "CollectionMoreInvoices" : "CollectionNoAllocations"))
+                    .font(AdminType.subheadline).foregroundStyle(AdminSurface.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if model.invoices.contains(where: { $0.disputeHold == true && $0.amountDueMinor > 0 }) {
+                Label(t("CollectionDisputeHelp"), systemImage: "lock.doc")
+                    .font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if amounts.count >= 20 {
+                Text(t("CollectionSelectionLimit")).font(AdminType.footnote)
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+            if model.hasMore {
+                action("CollectionLoadMore", symbol: "arrow.down") { model.load(more: true) }
+                    .disabled(model.busy)
+            }
+        }
+    }
+
+    private func collectionInvoiceRow(_ invoice: POSCreditAccountInvoice) -> some View {
+        let isSelected = amounts[invoice.id] != nil
+        let amount = selected[invoice.id] ?? 0
+        let invalidAmount = isSelected && (amount <= 0 || amount > invoice.available || POSCreditCheckoutSheet.minor(amounts[invoice.id] ?? "") == nil)
+        return VStack(alignment: .leading, spacing: 0) {
+            Button {
+                editing = nil
+                if isSelected {
+                    amounts.removeValue(forKey: invoice.id)
+                    installmentAmounts.removeValue(forKey: invoice.id)
+                } else if amounts.count < 20 {
+                    amounts[invoice.id] = invoice.usesInstallments ? "" : decimalAmount(invoice.available)
+                    if invoice.usesInstallments { installmentAmounts[invoice.id] = [:] }
+                }
             } label: {
-                HStack(spacing: AdminSpacing.sm) {
-                    Text(t(method))
-                        .font(AdminType.subheadlineBold)
-                        .foregroundStyle(AdminSurface.primaryText)
-                    Spacer()
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 24, weight: .regular))
+                        .foregroundStyle(isSelected ? collectionAccent : AdminSurface.secondaryText)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(invoice.documentNumber).font(AdminType.headlineBold)
+                            .environment(\.layoutDirection, .leftToRight)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if let due = invoice.dueDateKey {
+                            Text(displayDate(due)).font(AdminType.footnote)
+                                .foregroundStyle(invoice.overdueMinor > 0 ? AdminSurface.crimson : AdminSurface.secondaryText)
+                        }
+                        Text("\(t("CollectionAvailable")) · \(money(invoice.available))")
+                            .font(AdminType.subheadline).foregroundStyle(AdminSurface.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if invoice.pendingAmountMinor > 0 {
+                            Text("\(t("CollectionAwaiting")) · \(money(invoice.pendingAmountMinor))")
+                                .font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
+                        }
+                    }
+                    .multilineTextAlignment(.leading)
+                }
+                .padding(16).frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(model.busy || (!isSelected && amounts.count >= 20))
+            .accessibilityLabel("\(invoice.documentNumber), \(t("CollectionAvailable")), \(money(invoice.available))")
+            .accessibilityHint(t(isSelected ? "CollectionDeselectHint" : invoice.usesInstallments ? "CollectionScheduleSelectHint" : "CollectionSelectHint"))
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+            .accessibilityIdentifier("pos.credit.collect.invoice.\(invoice.id)")
+            if isSelected, invoice.usesInstallments {
+                collectionInstallments(invoice)
+                    .padding(.horizontal, 16).padding(.bottom, 16)
+            } else if isSelected {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(t("CollectionAmountLabel")).font(AdminType.footnoteBold)
                         .foregroundStyle(AdminSurface.secondaryText)
+                    TextField(t("Amount"), text: Binding(get: { amounts[invoice.id] ?? "" }, set: { amounts[invoice.id] = $0 }))
+                        .font(PPBrandFont.bold(26, relativeTo: .title2)).monospacedDigit()
+                        .keyboardType(.decimalPad).focused($editing, equals: .invoiceAmount(invoice.id))
+                        .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                        .environment(\.layoutDirection, .leftToRight)
+                        .padding(.horizontal, 14).padding(.vertical, 10).frame(minHeight: 52)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(invalidAmount ? AdminSurface.crimson : AdminSurface.hairline, lineWidth: 1))
+                        .accessibilityLabel("\(t("CollectionAmountLabel")), \(invoice.documentNumber)")
+                        .accessibilityIdentifier("pos.credit.collect.amount.\(invoice.id)")
+                    if invalidAmount {
+                        Text(t("CollectionInvalidAmount")).font(AdminType.footnote)
+                            .foregroundStyle(AdminSurface.crimson).fixedSize(horizontal: false, vertical: true)
+                    } else if amount < invoice.available {
+                        valueRow(t("CollectionInvoiceRemainder"), value: money(invoice.available - amount))
+                    }
                 }
-                .padding(.horizontal, AdminSpacing.md)
-                .padding(.vertical, AdminSpacing.sm)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium))
+                .padding(.horizontal, 16).padding(.bottom, 16)
             }
-            .accessibilityLabel(t("Method"))
-            .accessibilityValue(t(method))
+        }
+    }
+
+    private func installmentTitle(_ row: POSCreditAccountInvoice.Installment, invoice: POSCreditAccountInvoice) -> String {
+        if row.id == "initial_deposit" { return t("CollectionInitialPayment") }
+        let index = (invoice.installments.filter { $0.id != "initial_deposit" }.firstIndex { $0.id == row.id } ?? 0) + 1
+        return String(format: t("CollectionInstallmentNumber"), locale: Locale(identifier: Language.isRTL() ? "ar_QA" : "en_QA"), index)
+    }
+
+    private func collectionInstallments(_ invoice: POSCreditAccountInvoice) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Rectangle().fill(AdminSurface.hairline).frame(height: 1).accessibilityHidden(true)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    Text(t(invoice.agreementVersion > 1 ? "CollectionCurrentSchedule" : "CollectionRecordedSchedule"))
+                        .font(AdminType.headlineBold).fixedSize()
+                    Spacer(minLength: 0)
+                    collectionSelectAllInstallments(invoice)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(t(invoice.agreementVersion > 1 ? "CollectionCurrentSchedule" : "CollectionRecordedSchedule"))
+                        .font(AdminType.headlineBold).fixedSize(horizontal: false, vertical: true)
+                    collectionSelectAllInstallments(invoice)
+                }
+            }
+            Text(t(supportsInstallmentSelection ? "CollectionInstallmentHelp" : "CollectionInstallmentsUnavailable"))
+                .font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            VStack(spacing: 0) {
+                ForEach(invoice.installments) { row in
+                    collectionInstallmentRow(row, invoice: invoice)
+                    if row.id != invoice.installments.last?.id {
+                        Rectangle().fill(AdminSurface.hairline).frame(height: 1)
+                            .padding(.horizontal, 12).accessibilityHidden(true)
+                    }
+                }
+            }
+            .background(AdminSurface.background, in: RoundedRectangle(cornerRadius: 14))
+            if let amount = selected[invoice.id] {
+                valueRow(t("SelectedForCollection"), value: money(amount))
+            }
+        }
+        .accessibilityIdentifier("pos.credit.collect.schedule.\(invoice.id)")
+    }
+
+    private func collectionSelectAllInstallments(_ invoice: POSCreditAccountInvoice) -> some View {
+        let eligible = invoice.installments.filter { $0.available > 0 }
+        let allSelected = !eligible.isEmpty && Set((installmentAmounts[invoice.id] ?? [:]).keys) == Set(eligible.map(\.id))
+        return Button {
+            editing = nil
+            installmentAmounts[invoice.id] = allSelected ? [:] : Dictionary(uniqueKeysWithValues: eligible.map { ($0.id, decimalAmount($0.available)) })
+        } label: {
+            Text(t(allSelected ? "CollectionClearInstallments" : "CollectionSelectAllInstallments"))
+                .font(AdminType.footnoteBold).foregroundStyle(collectionAccent)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 4).frame(minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(model.busy || !supportsInstallmentSelection || eligible.isEmpty)
+        .accessibilityIdentifier("pos.credit.collect.installments.all.\(invoice.id)")
+    }
+
+    private func collectionInstallmentRow(_ row: POSCreditAccountInvoice.Installment, invoice: POSCreditAccountInvoice) -> some View {
+        let title = installmentTitle(row, invoice: invoice)
+        let isSelected = installmentAmounts[invoice.id]?[row.id] != nil
+        let selectable = row.available > 0 && supportsInstallmentSelection
+        let symbol = isSelected ? "checkmark.circle.fill" : row.due == 0 ? "checkmark.circle" : row.available == 0 ? "clock" : "circle"
+        return VStack(alignment: .leading, spacing: 0) {
+            Button {
+                editing = nil
+                var entries = installmentAmounts[invoice.id] ?? [:]
+                if isSelected { entries.removeValue(forKey: row.id) }
+                else { entries[row.id] = decimalAmount(row.available) }
+                installmentAmounts[invoice.id] = entries
+            } label: {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: symbol)
+                        .font(.system(size: 22, weight: .regular))
+                        .foregroundStyle(isSelected ? collectionAccent : row.due == 0 ? AdminSurface.emerald : AdminSurface.secondaryText)
+                        .frame(width: 28).frame(minHeight: 28).accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(title).font(AdminType.headlineBold)
+                        Text(displayDate(row.dueDateKey)).font(AdminType.footnote)
+                            .foregroundStyle(row.due > 0 && row.dueDateKey < model.asOf ? AdminSurface.crimson : AdminSurface.secondaryText)
+                        valueRow(t("CollectionRecordedAmount"), value: money(row.amountMinor))
+                        if row.paidMinor > 0 {
+                            valueRow(t("Received"), value: money(row.paidMinor))
+                        }
+                        if (row.creditedMinor ?? 0) > 0 {
+                            valueRow(t("Credits"), value: money(row.creditedMinor ?? 0))
+                        }
+                        if (row.writtenOffMinor ?? 0) > 0 {
+                            valueRow(t("CollectionWrittenOff"), value: money(row.writtenOffMinor ?? 0))
+                        }
+                        if row.pendingAmountMinor > 0 {
+                            valueRow(t("CollectionAwaiting"), value: money(row.pendingAmountMinor))
+                        }
+                        if row.due == 0 {
+                            Text(t("CollectionInstallmentSettled")).font(AdminType.footnoteBold).foregroundStyle(AdminSurface.emerald)
+                        } else if row.available != row.amountMinor {
+                            valueRow(t("CollectionAvailable"), value: money(row.available))
+                        }
+                    }
+                    .foregroundStyle(AdminSurface.primaryText).multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(12).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).disabled(model.busy || !selectable)
+            .accessibilityElement(children: .combine)
+            .accessibilityHint(selectable ? t(isSelected ? "CollectionInstallmentDeselectHint" : "CollectionInstallmentSelectHint") : "")
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+            .accessibilityIdentifier("pos.credit.collect.installment.\(invoice.id).\(row.id)")
+            if isSelected { collectionInstallmentAmount(row, invoice: invoice).padding(.horizontal, 12).padding(.bottom, 12) }
+        }
+    }
+
+    private func collectionInstallmentAmount(_ row: POSCreditAccountInvoice.Installment, invoice: POSCreditAccountInvoice) -> some View {
+        let raw = installmentAmounts[invoice.id]?[row.id] ?? ""
+        let amount = POSCreditCheckoutSheet.minor(raw) ?? 0
+        let invalid = amount <= 0 || amount > row.available
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(t("CollectionAmountLabel")).font(AdminType.footnoteBold).foregroundStyle(AdminSurface.secondaryText)
+            TextField(t("Amount"), text: Binding(get: { installmentAmounts[invoice.id]?[row.id] ?? "" }, set: { value in
+                var entries = installmentAmounts[invoice.id] ?? [:]
+                entries[row.id] = value
+                installmentAmounts[invoice.id] = entries
+            }))
+            .font(PPBrandFont.bold(24, relativeTo: .title2)).monospacedDigit()
+            .keyboardType(.decimalPad).focused($editing, equals: .installmentAmount(invoice.id, row.id))
+            .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+            .environment(\.layoutDirection, .leftToRight)
+            .padding(.horizontal, 14).padding(.vertical, 10).frame(minHeight: 52)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(invalid ? AdminSurface.crimson : AdminSurface.hairline, lineWidth: 1))
+            .accessibilityLabel("\(t("CollectionAmountLabel")), \(installmentTitle(row, invoice: invoice)), \(invoice.documentNumber)")
+            .accessibilityIdentifier("pos.credit.collect.installmentAmount.\(invoice.id).\(row.id)")
+            if invalid {
+                Text(t("CollectionInvalidAmount")).font(AdminType.footnote).foregroundStyle(AdminSurface.crimson)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if amount < row.available {
+                valueRow(t("CollectionInstallmentRemainder"), value: money(row.available - amount))
+            }
+        }
+    }
+
+    private var collectionPayment: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(t("CollectionPaymentTitle")).font(PPBrandFont.bold(20, relativeTo: .title3))
+                .accessibilityAddTraits(.isHeader)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: dynamicTypeSize.isAccessibilitySize ? 1 : 2), spacing: 8) {
+                ForEach(methods, id: \.self) { key in
+                    Button { editing = nil; method = key } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: methodSymbol(key)).font(.system(size: 19, weight: .medium)).accessibilityHidden(true)
+                            Text(t(key)).font(AdminType.headlineBold)
+                                .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 0)
+                            if method == key {
+                                Image(systemName: "checkmark").font(.system(size: 13, weight: .semibold)).accessibilityHidden(true)
+                            }
+                        }
+                        .foregroundStyle(method == key ? collectionAccent : AdminSurface.primaryText)
+                        .padding(14).frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+                        .background(method == key ? AdminSurface.primarySoft : AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16))
+                        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(method == key ? collectionAccent : AdminSurface.hairline, lineWidth: 1))
+                        .contentShape(RoundedRectangle(cornerRadius: 16))
+                    }
+                    .buttonStyle(.plain).accessibilityAddTraits(method == key ? .isSelected : [])
+                    .accessibilityIdentifier("pos.credit.collect.method.\(key)")
+                }
+            }
             if methods.isEmpty {
-                Text(t("NoCollectionMethod")).font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
+                Text(t("NoCollectionMethod")).font(AdminType.subheadline).foregroundStyle(AdminSurface.secondaryText)
+            } else {
+                Label(t(method == "cash" ? "CollectionCashHelp" : "CollectionPendingHelp"), systemImage: method == "cash" ? "checkmark.shield" : "clock")
+                    .font(AdminType.subheadline).foregroundStyle(AdminSurface.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            if method != "cash" {
+            if method != "cash", !method.isEmpty {
                 field("Reference") {
-                    TextField(t("Reference"), text: $reference).focused($editing, equals: .reference)
-                        .multilineTextAlignment(.leading)
+                    TextField(t("CollectionReferencePlaceholder"), text: $reference)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .focused($editing, equals: .reference)
+                        .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                        .environment(\.layoutDirection, .leftToRight)
+                        .accessibilityIdentifier("pos.credit.collect.reference")
                 }
-                Text(t("PendingNotice")).font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
+                if reference.count > 200 {
+                    Text(t("CollectionReferenceLimit")).font(AdminType.footnote).foregroundStyle(AdminSurface.crimson)
+                }
             }
-            valueRow(t("Total"), value: money(total))
-            if reviewing {
-                Text(t("ReviewNotice")).font(AdminType.subheadline)
+        }
+    }
+
+    private func collectionReview(_ summary: POSCreditAccountSummary) -> some View {
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(t("CollectionReviewTitle")).font(AdminType.subheadlineBold).foregroundStyle(AdminSurface.secondaryText)
+                Text(money(total)).font(PPBrandFont.bold(44, relativeTo: .largeTitle)).monospacedDigit()
+                    .fixedSize(horizontal: false, vertical: true)
+                Label(t(method), systemImage: methodSymbol(method)).font(AdminType.headlineBold).foregroundStyle(collectionAccent)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityFocused($collectionFocus, equals: .review)
+            panel {
                 ForEach(model.invoices.filter { selected[$0.id] != nil }) { invoice in
                     valueRow(invoice.documentNumber, value: money(selected[invoice.id] ?? 0), identifier: true)
+                    if invoice.usesInstallments {
+                        ForEach(invoice.installments.filter { selectedInstallments[invoice.id]?[$0.id] != nil }) { row in
+                            VStack(alignment: .leading, spacing: 4) {
+                                valueRow(installmentTitle(row, invoice: invoice), value: money(selectedInstallments[invoice.id]?[row.id] ?? 0))
+                                Text(displayDate(row.dueDateKey)).font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
+                            }
+                            .accessibilityElement(children: .combine)
+                        }
+                    }
                 }
-                Toggle(t("Accept"), isOn: $accepted).font(AdminType.subheadline)
-                action("Confirm", symbol: "checkmark", prominent: true) {
-                    model.collect(amounts: selected, method: method, reference: reference)
-                    if model.pending?.operation == "recordPosCollection" { amounts = [:]; reference = "" }
-                    reviewing = false; accepted = false
-                }.disabled(!valid || !accepted)
-            } else {
-                action("Review", symbol: "checklist", prominent: true) { editing = nil; reviewing = true }
-                    .disabled(!valid)
+                if method != "cash" {
+                    valueRow(t("Reference"), value: reference.trimmingCharacters(in: .whitespacesAndNewlines))
+                }
+                Rectangle().fill(AdminSurface.hairline).frame(height: 1).accessibilityHidden(true)
+                valueRow(t(method == "cash" ? "CollectionBalanceAfter" : "CollectionBalanceUntilClear"),
+                         value: money(max(0, summary.outstandingMinor - (method == "cash" ? total : 0))))
             }
+            Text(t(method == "cash" ? "CollectionCashHelp" : "CollectionPendingHelp"))
+                .font(AdminType.subheadline).foregroundStyle(AdminSurface.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            Toggle(t(method == "cash" ? "CollectionCashAcceptance" : "CollectionPendingAcceptance"), isOn: $accepted)
+                .font(AdminType.headlineBold).tint(collectionAccent).padding(.vertical, 8)
+                .accessibilityIdentifier("pos.credit.collect.accept")
+            action("CollectionEdit", symbol: "pencil") { reviewing = false; accepted = false }
+                .disabled(model.busy)
+        }
+    }
+
+    private var collectionDock: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if !reviewing {
+                valueRow(t("SelectedForCollection"), value: money(total))
+            }
+            Button {
+                editing = nil
+                if reviewing {
+                    guard valid, accepted else { return }
+                    model.collect(amounts: selected, installments: selectedInstallments, method: method, reference: reference)
+                    if model.pending?.operation == "recordPosCollection" { amounts = [:]; installmentAmounts = [:]; reference = "" }
+                    reviewing = false; accepted = false
+                } else {
+                    guard valid else { return }
+                    reviewing = true
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Text(t(reviewing ? (method == "cash" ? "CollectionConfirmCash" : "CollectionConfirmPending") : "CollectionReviewAction"))
+                        .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                    Image(systemName: reviewing ? "checkmark" : (Language.isRTL() ? "arrow.left" : "arrow.right"))
+                        .accessibilityHidden(true)
+                }
+            }
+            .buttonStyle(AccountActionStyle(prominent: true))
+            .disabled(!valid || (reviewing && !accepted))
+            .accessibilityIdentifier(reviewing ? "pos.credit.collect.confirm" : "pos.credit.collect.review")
+        }
+        .frame(maxWidth: 720).padding(.horizontal, AdminSpacing.screenMargin).padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
+        .background(AdminSurface.surface)
+        .overlay(alignment: .top) { Rectangle().fill(AdminSurface.hairline).frame(height: 1).accessibilityHidden(true) }
+    }
+
+    private var collectionResult: [String: Any]? {
+        guard model.canRecover, let record = model.pending, record.operation == "recordPosCollection",
+              let data = record.result, let value = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let status = value["collectionStatus"] as? String, ["cleared", "pending"].contains(status),
+              let outstanding = value["outstandingMinor"] as? Int, outstanding >= 0 else { return nil }
+        return value
+    }
+
+    private func collectionReceipt(_ result: [String: Any]) -> some View {
+        let pending = result["collectionStatus"] as? String == "pending"
+        let request = model.pending.flatMap { try? JSONSerialization.jsonObject(with: $0.request) as? [String: Any] } ?? [:]
+        let allocations = request["allocations"] as? [[String: Any]] ?? []
+        let recordedAmount = allocations.reduce(0) { $0 + ($1["amountMinor"] as? Int ?? 0) }
+        return VStack(alignment: .leading, spacing: 20) {
+            Image(systemName: pending ? "clock.badge.checkmark" : "checkmark.circle.fill")
+                .font(.system(size: 40, weight: .regular))
+                .foregroundStyle(pending ? collectionAccent : AdminSurface.emerald).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(t(pending ? "CollectionPendingTitle" : "CollectionSuccessTitle"))
+                    .font(PPBrandFont.bold(28, relativeTo: .title))
+                    .accessibilityAddTraits(.isHeader)
+                Text(money(recordedAmount)).font(PPBrandFont.bold(44, relativeTo: .largeTitle)).monospacedDigit()
+                if let name = model.customerName { Text(name).font(AdminType.headlineBold) }
+                if let subtitle = headerSubtitle { Text(subtitle).font(AdminType.subheadline).foregroundStyle(AdminSurface.secondaryText) }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("pos.credit.collect.result")
+            .accessibilityFocused($collectionFocus, equals: .receipt)
+            Text(t(pending ? "CollectionPendingHelp" : "CollectionSuccessHelp"))
+                .font(AdminType.subheadline).foregroundStyle(AdminSurface.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            panel {
+                valueRow(t("Method"), value: t(request["method"] as? String ?? "cash"))
+                valueRow(t("CollectionBalanceRemaining"), value: money(result["outstandingMinor"] as? Int ?? 0))
+                if let ref = request["reference"] as? String, !ref.isEmpty { valueRow(t("Reference"), value: ref) }
+            }
+            action("CollectionViewReceipt", symbol: "doc.text", prominent: true) {
+                tab = "collections"
+                model.acknowledge(nextKind: "collections")
+            }
+            .disabled(model.busy)
+            .accessibilityIdentifier("pos.credit.collect.finish")
+        }
+        .padding(20).frame(maxWidth: .infinity, alignment: .leading)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 24))
+        .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(AdminSurface.hairline, lineWidth: 1))
+    }
+
+    private func decimalAmount(_ minor: Int) -> String {
+        String(minor / 100) + "." + String(format: "%02d", minor % 100)
+    }
+
+    private func methodSymbol(_ method: String) -> String {
+        switch method {
+        case "cash": return "banknote"
+        case "card": return "creditcard"
+        case "cheque": return "doc.text"
+        case "bank_transfer": return "building.columns"
+        default: return "arrow.left.arrow.right"
         }
     }
     private var policyPresets: [Int] { [5000, 10000, 15000, 25000, 50000] }
@@ -1216,7 +2113,7 @@ struct POSCreditAccountSheet: View {
                     Circle()
                         .fill(data.policy.enabled ? Color(red: 0.16, green: 0.78, blue: 0.48) : Color.gray.opacity(0.5))
                         .frame(width: 8, height: 8)
-                    Text(String(format: Language.get("POS_CreditAccount_PolicyVersionLabel", alter: "إصدار v%d"), data.policy.version))
+                    Text(String(format: Language.get("POS_CreditAccount_PolicyVersionLabel", alter: "إصدار v%d"), Int32(data.policy.version)))
                         .font(Font.custom("Beiruti-Medium", size: 11, relativeTo: .caption2))
                         .foregroundStyle(AdminSurface.secondaryText)
                 }
@@ -1630,8 +2527,14 @@ struct POSCreditAccountSheet: View {
     private func action(_ title: String, symbol: String, prominent: Bool = false,
                         role: ButtonRole? = nil, perform: @escaping () -> Void) -> some View {
         Button(role: role, action: perform) {
-            Label(t(title), systemImage: symbol)
-                .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.system(size: 15, weight: .semibold))
+                Text(t(title))
+                    .font(AdminType.calloutBold)
+            }
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
         }
         .buttonStyle(AccountActionStyle(prominent: prominent))
     }
@@ -1673,16 +2576,63 @@ struct POSCreditAccountSheet: View {
 
         func makeBody(configuration: Configuration) -> some View {
             let destructive = configuration.role == .destructive
-            let foreground = !isEnabled ? AdminSurface.secondaryText
-                : prominent ? Color.white : destructive ? AdminSurface.crimson : AdminSurface.primary
+            let foreground: Color = {
+                if !isEnabled {
+                    return AdminSurface.secondaryText.opacity(0.7)
+                }
+                if prominent {
+                    return Color.white
+                }
+                if destructive {
+                    return AdminSurface.crimson
+                }
+                return AdminSurface.primary
+            }()
+
+            let background: Color = {
+                if !isEnabled {
+                    return AdminSurface.control.opacity(0.4)
+                }
+                if prominent {
+                    return configuration.isPressed ? AdminSurface.primaryPressed : AdminSurface.primary
+                }
+                if destructive {
+                    return configuration.isPressed
+                        ? AdminSurface.crimson.opacity(0.14)
+                        : AdminSurface.crimson.opacity(0.08)
+                }
+                return configuration.isPressed
+                    ? AdminSurface.primary.opacity(0.14)
+                    : AdminSurface.primary.opacity(0.075)
+            }()
+
+            let strokeColor: Color = {
+                if !isEnabled {
+                    return AdminSurface.hairline.opacity(0.5)
+                }
+                if prominent {
+                    return Color.clear
+                }
+                if destructive {
+                    return AdminSurface.crimson.opacity(0.24)
+                }
+                return AdminSurface.primary.opacity(0.20)
+            }()
+
             configuration.label
-                .font(AdminType.calloutBold)
                 .foregroundStyle(foreground)
-                .padding(.horizontal, AdminSpacing.base).padding(.vertical, AdminSpacing.md)
+                .padding(.horizontal, AdminSpacing.base)
+                .padding(.vertical, 12)
                 .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable)
-                .background(isEnabled && prominent ? AdminSurface.primary : AdminSurface.control,
-                            in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous))
+                .background(background, in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous))
+                .overlay {
+                    if !prominent {
+                        RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous)
+                            .strokeBorder(strokeColor, lineWidth: 1.2)
+                    }
+                }
                 .contentShape(RoundedRectangle(cornerRadius: AdminRadius.button))
+                .shadow(color: AdminSurface.primary.opacity(isEnabled && prominent ? 0.25 : 0), radius: 6, y: 2)
                 .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
                 .animation(reduceMotion ? nil : AdminAnimation.fast, value: configuration.isPressed)
         }
@@ -1777,59 +2727,511 @@ private struct POSCreditServicingSheet: View {
     @ObservedObject var model: POSCreditAccountModel
     let collection: POSCreditAccountCollection
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.layoutDirection) private var direction
+    @Environment(\.colorSchemeContrast) private var contrast
     @State private var reason = ""
     @State private var evidence = ""
     @State private var amount = ""
     @State private var accepted = false
+    @State private var selectedOperation: Operation?
+    @State private var reviewing = false
+    @State private var showsValidation = false
+    @FocusState private var focusedInput: Input?
+    @AccessibilityFocusState private var reviewFocused: Bool
+
+    private enum Input: Hashable { case amount, reason, evidence }
+    private enum Operation: String, Identifiable {
+        case clear, reject, reverse
+        var id: String { rawValue }
+        var titleKey: String {
+            switch self { case .clear: return "ServiceClearTitle"; case .reject: return "ServiceRejectTitle"; case .reverse: return "ServiceReverseTitle" }
+        }
+        var reviewKey: String {
+            switch self { case .clear: return "ServiceReviewClear"; case .reject: return "ServiceReviewReject"; case .reverse: return "ServiceReviewReverse" }
+        }
+        var submitKey: String {
+            switch self { case .clear: return "Clear"; case .reject: return "ServiceRejectTitle"; case .reverse: return "ServiceSubmitReverse" }
+        }
+        var noticeKey: String {
+            switch self { case .clear: return "ClearNotice"; case .reject: return "ServiceRejectNotice"; case .reverse: return "ReverseNotice" }
+        }
+        var symbol: String {
+            switch self { case .clear: return "checkmark.seal"; case .reject: return "xmark.circle"; case .reverse: return "arrow.uturn.backward" }
+        }
+        var callable: String {
+            switch self { case .clear: return "confirmPosCollectionClearing"; case .reject: return "rejectPosCollectionTender"; case .reverse: return "reversePosCollection" }
+        }
+    }
+
     private func t(_ key: String) -> String { POSCreditAccountCopy.text(key) }
-    private var valid: Bool { !model.busy && model.pending == nil && accepted && !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && reason.count <= 500 }
+    private func money(_ value: Int) -> String { POSCreditAccountCopy.money(value) }
+    private var operations: [Operation] {
+        switch collection.status {
+        case "pending": return model.permitted("pos.credit.clear") ? [.clear, .reject] : []
+        case "requires_review": return model.permitted("pos.credit.clear") ? [.reject] : []
+        case "cleared", "partially_reversed":
+            return collection.receivedMinor > 0 && model.permitted("pos.credit.reverse") ? [.reverse] : []
+        default: return []
+        }
+    }
+    private var operation: Operation? {
+        if let selectedOperation, operations.contains(selectedOperation) { return selectedOperation }
+        return operations.first
+    }
+    private var canEdit: Bool { operation != nil && !model.busy && model.pending == nil && !model.storageFailed }
+    private var amountMinor: Int? { POSCreditCheckoutSheet.minor(amount) }
+    private var amountValid: Bool {
+        operation != .reverse || (amountMinor.map { $0 > 0 && $0 <= collection.receivedMinor } ?? false)
+    }
+    private var reasonValid: Bool { !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && reason.count <= 500 }
+    private var evidenceValid: Bool {
+        operation != .clear || (!evidence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && evidence.count <= 200)
+    }
+    private var fieldsValid: Bool { amountValid && reasonValid && evidenceValid }
+    private var statusColor: Color {
+        switch collection.status {
+        case "cleared": return AdminSurface.emerald
+        case "pending", "requires_review": return AdminSurface.amber
+        case "rejected": return AdminSurface.crimson
+        default: return AdminSurface.secondaryText
+        }
+    }
+    private var statusSymbol: String {
+        switch collection.status {
+        case "cleared": return "checkmark.circle.fill"
+        case "pending": return "clock.fill"
+        case "requires_review": return "exclamationmark.circle.fill"
+        case "reversed", "partially_reversed": return "arrow.uturn.backward.circle.fill"
+        case "rejected": return "xmark.circle.fill"
+        default: return "doc.text"
+        }
+    }
+
     var body: some View {
         NavigationStack {
-            Form {
-                Text(collection.documentNumber).font(.headline)
-                Text(t(collection.status))
-                LabeledContent(t("Received"), value: POSCreditAccountCopy.money(collection.receivedMinor))
-                LabeledContent(t("Pending"), value: POSCreditAccountCopy.money(collection.pendingAmountMinor))
-                TextField(t("Reason"), text: $reason, axis: .vertical)
-                if collection.status == "pending" {
-                    TextField(t("Evidence"), text: $evidence, axis: .vertical)
-                    Text(t("ClearNotice"))
-                } else if ["cleared", "partially_reversed"].contains(collection.status) {
-                    TextField(t("Amount"), text: $amount).keyboardType(.decimalPad)
-                    Text(t("ReverseNotice"))
-                }
-                Toggle(t("Accept"), isOn: $accepted)
-                if collection.status == "pending", model.permitted("pos.credit.clear") {
-                    Button(t("Clear")) { model.service(collection, operation: "confirmPosCollectionClearing", reason: reason, evidence: evidence, amount: nil); dismiss() }
-                        .disabled(!valid || evidence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || evidence.count > 200).frame(minHeight: 44)
-                }
-                if ["pending", "requires_review"].contains(collection.status), model.permitted("pos.credit.clear") {
-                    Button(t("Reject"), role: .destructive) { model.service(collection, operation: "rejectPosCollectionTender", reason: reason, evidence: "", amount: nil); dismiss() }.disabled(!valid).frame(minHeight: 44)
-                }
-                if ["cleared", "partially_reversed"].contains(collection.status), model.permitted("pos.credit.reverse") {
-                    Button(t("Reverse"), role: .destructive) { model.service(collection, operation: "reversePosCollection", reason: reason, evidence: "", amount: POSCreditCheckoutSheet.minor(amount)); dismiss() }
-                        .disabled(!valid || (POSCreditCheckoutSheet.minor(amount) ?? 0) <= 0 || (POSCreditCheckoutSheet.minor(amount) ?? 0) > collection.receivedMinor).frame(minHeight: 44)
-                }
-            }
-            .navigationTitle(t("Service"))
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text(t("Service"))
-                        .font(PPBrandFont.bold(18, relativeTo: .headline))
-                        .foregroundStyle(AdminSurface.primaryText)
-                }
-                ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Text(t("Close"))
-                            .font(AdminType.calloutBold)
-                            .foregroundStyle(AdminSurface.primary)
+            VStack(spacing: 0) {
+                header
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: AdminSpacing.lg) {
+                            if model.canRead {
+                                paymentReceipt
+                                availabilityNotice
+                                if let operation {
+                                    if reviewing { review(operation).id("payment-review") }
+                                    else { editor(operation) }
+                                } else {
+                                    notice(t("ServiceNoAction"), symbol: "lock", color: AdminSurface.secondaryText)
+                                }
+                            } else {
+                                notice(t("ServiceAccessChanged"), symbol: "lock.shield", color: AdminSurface.secondaryText)
+                            }
+                        }
+                        .frame(maxWidth: 620, alignment: .leading)
+                        .padding(.horizontal, AdminSpacing.screenMargin)
+                        .padding(.top, AdminSpacing.sm)
+                        .padding(.bottom, AdminSpacing.lg)
+                        .frame(maxWidth: .infinity)
+                    }
+                    .scrollDismissesKeyboard(.interactively)
+                    .dismissKeyboardOnTapOutside()
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        if let operation { actionDock(operation) }
+                    }
+                    .onChange(of: reviewing) {
+                        if reviewing {
+                            proxy.scrollTo("payment-review", anchor: .top)
+                            reviewFocused = true
+                        }
                     }
                 }
             }
-            .onChange(of: reason) { _ in accepted = false }.onChange(of: evidence) { _ in accepted = false }.onChange(of: amount) { _ in accepted = false }
-            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+            .background(AdminSurface.background)
+            .toolbar(.hidden, for: .navigationBar)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button(t("Done")) {
+                        focusedInput = nil
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }.font(AdminType.calloutBold)
+                }
+            }
+            .onChange(of: reason) { invalidateReview() }
+            .onChange(of: evidence) { invalidateReview() }
+            .onChange(of: amount) { invalidateReview() }
+            .onChange(of: selectedOperation) { invalidateReview(); showsValidation = false; focusedInput = nil }
+            .onChange(of: operations) { invalidateReview() }
+            .onChange(of: model.accountVersion) { invalidateReview() }
+        }
+        .tint(AdminSurface.primary)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .environment(\.locale, Locale(identifier: Language.isRTL() ? "ar_QA" : "en_QA"))
+        .presentationDragIndicator(.visible)
+    }
+
+    private var header: some View {
+        HStack(spacing: AdminSpacing.md) {
+            Text(t("Service"))
+                .font(PPBrandFont.bold(22, relativeTo: .title2))
+                .foregroundStyle(AdminSurface.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityAddTraits(.isHeader)
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                    .background(AdminSurface.surface, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(t("Close"))
+            .accessibilityIdentifier("pos.credit.service.close")
+        }
+        .frame(maxWidth: 620)
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.vertical, AdminSpacing.base)
+        .frame(maxWidth: .infinity)
+    }
+
+    private var paymentReceipt: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.base) {
+            let layout = typeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: AdminSpacing.sm))
+                : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: AdminSpacing.md))
+            layout {
+                Text(collection.documentNumber)
+                    .font(PPBrandFont.bold(18, relativeTo: .headline)).monospacedDigit()
+                    .environment(\.layoutDirection, .leftToRight)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Label(t(collection.status), systemImage: statusSymbol)
+                    .font(AdminType.footnoteBold).foregroundStyle(statusColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                Text(t(collection.status == "pending" ? "Pending" : "Received"))
+                    .font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
+                Text(money(collection.status == "pending" ? collection.pendingAmountMinor : collection.receivedMinor))
+                    .font(PPBrandFont.bold(36, relativeTo: .largeTitle)).monospacedDigit()
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("pos.credit.service.paymentAmount")
+            }
+            DisclosureGroup {
+                VStack(spacing: AdminSpacing.sm) {
+                    fact(t("ServicePaymentAmount"), money(collection.tenderAmountMinor))
+                    fact(t("Received"), money(collection.receivedMinor))
+                    fact(t("Pending"), money(collection.pendingAmountMinor))
+                    if collection.reversedMinor > 0 { fact(t("Reversed"), money(collection.reversedMinor)) }
+                    fact(t("Method"), t(collection.paymentMethod))
+                }
+                .padding(.top, AdminSpacing.sm)
+            } label: {
+                Text(t("ServicePaymentDetails"))
+                    .font(AdminType.footnoteBold)
+                    .frame(minHeight: AdminTouchTarget.minimum, alignment: .leading)
+            }
+            .accessibilityIdentifier("pos.credit.service.paymentDetails")
+        }
+        .foregroundStyle(AdminSurface.primaryText)
+        .padding(AdminSpacing.lg)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous))
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder private var availabilityNotice: some View {
+        if model.storageFailed {
+            notice(t("StorageFailed"), symbol: "lock.shield", color: AdminSurface.crimson)
+        } else if model.pending != nil {
+            notice(t("OtherPending"), symbol: "clock.arrow.circlepath", color: AdminSurface.secondaryText)
+        } else if model.busy {
+            HStack(spacing: AdminSpacing.sm) {
+                ProgressView()
+                Text(t("Loading")).font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
+            }
+        }
+    }
+
+    private func editor(_ operation: Operation) -> some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.lg) {
+            if operations.count > 1 {
+                let layout = typeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(spacing: AdminSpacing.sm))
+                    : AnyLayout(HStackLayout(spacing: AdminSpacing.sm))
+                layout {
+                    ForEach(operations) { option in
+                        Button { selectedOperation = option } label: {
+                            Label(t(option.titleKey), systemImage: option.symbol)
+                                .font(AdminType.calloutBold)
+                                .foregroundStyle(option == operation ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(AdminSpacing.md)
+                                .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable)
+                                .background(option == operation ? AdminSurface.primarySoft : AdminSurface.surface,
+                                            in: RoundedRectangle(cornerRadius: AdminRadius.button))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: AdminRadius.button)
+                                        .strokeBorder(option == operation ? AdminSurface.primary : AdminSurface.hairline, lineWidth: 1)
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(option == operation ? [.isSelected] : [])
+                        .accessibilityIdentifier("pos.credit.service.operation.\(option.rawValue)")
+                    }
+                }
+            }
+            Label(t(operation.titleKey), systemImage: operation.symbol)
+                .font(PPBrandFont.bold(22, relativeTo: .title2))
+                .foregroundStyle(AdminSurface.primaryText)
+                .accessibilityAddTraits(.isHeader)
+            if operation == .reverse { reversalAmount }
+            reasonField
+            if operation == .clear { evidenceField }
+            notice(t(operation.noticeKey), symbol: operation == .reverse ? "checkmark.shield" : "info.circle",
+                   color: AdminSurface.secondaryText)
+        }
+        .disabled(!canEdit)
+    }
+
+    private var reversalAmount: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+            let layout = typeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: AdminSpacing.xs))
+                : AnyLayout(HStackLayout(alignment: .center, spacing: AdminSpacing.md))
+            layout {
+                Text(t("ServiceReverseAmount")).font(AdminType.calloutBold).foregroundStyle(AdminSurface.primaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button {
+                    amount = "\(collection.receivedMinor / 100)." + String(format: "%02d", collection.receivedMinor % 100)
+                    focusedInput = nil
+                } label: {
+                    Text(t("ServiceFullAmount"))
+                        .font(AdminType.footnoteBold).foregroundStyle(AdminSurface.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(minHeight: AdminTouchTarget.minimum, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(format: t("ServiceUseFullAmount"), money(collection.receivedMinor)))
+                .accessibilityIdentifier("pos.credit.service.useFullAmount")
+            }
+            HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.md) {
+                TextField(t("ServiceAmountPlaceholder"), text: $amount)
+                    .font(PPBrandFont.bold(32, relativeTo: .title))
+                    .keyboardType(.decimalPad)
+                    .multilineTextAlignment(direction == .rightToLeft ? .trailing : .leading)
+                    .environment(\.layoutDirection, .leftToRight)
+                    .focused($focusedInput, equals: .amount)
+                    .accessibilityLabel(t("ServiceReverseAmount"))
+                    .accessibilityIdentifier("pos.credit.service.amount")
+                Text(t("ServiceCurrency")).font(AdminType.calloutBold).foregroundStyle(AdminSurface.secondaryText)
+            }
+            .padding(.horizontal, AdminSpacing.base).padding(.vertical, AdminSpacing.md)
+            .frame(minHeight: 64)
+            .background(AdminSurface.primarySoft, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+            .overlay { fieldBorder(invalid: (showsValidation || !amount.isEmpty) && !amountValid, focused: focusedInput == .amount) }
+            if (showsValidation || !amount.isEmpty) && !amountValid {
+                validation(String(format: t("ServiceAmountError"), money(collection.receivedMinor)))
+            } else {
+                Text(String(format: t("ServiceAvailableToReverse"), money(collection.receivedMinor)))
+                    .font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let amountMinor, amountValid, amountMinor > 0 {
+                VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+                    Label(t("ServiceAfterApproval"), systemImage: "checkmark.shield")
+                        .font(AdminType.footnoteBold).foregroundStyle(AdminSurface.secondaryText)
+                    fact(t("ServiceRestoredDebt"), money(amountMinor))
+                    fact(t("ServiceCollectedRemaining"), money(collection.receivedMinor - amountMinor))
+                }
+                .padding(AdminSpacing.base)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+                .accessibilityElement(children: .combine)
+            }
+        }
+    }
+
+    private var reasonField: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+            Text(t("ServiceReasonTitle")).font(AdminType.calloutBold).foregroundStyle(AdminSurface.primaryText)
+            TextField(t("ServiceReasonPlaceholder"), text: $reason, axis: .vertical)
+                .font(AdminType.body).lineLimit(2...6)
+                .multilineTextAlignment(.leading)
+                .focused($focusedInput, equals: .reason)
+                .padding(AdminSpacing.base)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+                .overlay { fieldBorder(invalid: (showsValidation || reason.count > 500) && !reasonValid, focused: focusedInput == .reason) }
+                .accessibilityLabel(t("ServiceReasonTitle"))
+                .accessibilityHint(t("ReasonHelp"))
+                .accessibilityIdentifier("pos.credit.service.reason")
+            Text(String(format: t("ServiceCharacterCount"), reason.count, 500))
+                .font(AdminType.caption).foregroundStyle(reason.count > 500 ? AdminSurface.crimson : AdminSurface.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            if (showsValidation || reason.count > 500) && !reasonValid { validation(t("ServiceReasonError")) }
+        }
+    }
+
+    private var evidenceField: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+            Text(t("Evidence")).font(AdminType.calloutBold).foregroundStyle(AdminSurface.primaryText)
+            TextField(t("ServiceEvidencePlaceholder"), text: $evidence, axis: .vertical)
+                .font(AdminType.body).lineLimit(2...4)
+                .autocorrectionDisabled().textInputAutocapitalization(.never)
+                .multilineTextAlignment(.leading)
+                .focused($focusedInput, equals: .evidence)
+                .padding(AdminSpacing.base)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+                .overlay { fieldBorder(invalid: (showsValidation || evidence.count > 200) && !evidenceValid, focused: focusedInput == .evidence) }
+                .accessibilityLabel(t("Evidence"))
+                .accessibilityIdentifier("pos.credit.service.evidence")
+            Text(String(format: t("ServiceCharacterCount"), evidence.count, 200))
+                .font(AdminType.caption).foregroundStyle(evidence.count > 200 ? AdminSurface.crimson : AdminSurface.secondaryText)
+            if (showsValidation || evidence.count > 200) && !evidenceValid { validation(t("ServiceEvidenceError")) }
+        }
+    }
+
+    private func review(_ operation: Operation) -> some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.base) {
+            Text(t("ServiceReviewTitle"))
+                .font(PPBrandFont.bold(24, relativeTo: .title2)).foregroundStyle(AdminSurface.primaryText)
+                .accessibilityAddTraits(.isHeader).accessibilityFocused($reviewFocused)
+            VStack(alignment: .leading, spacing: AdminSpacing.base) {
+                fact(t("ServiceOperation"), t(operation.titleKey))
+                if operation == .reverse, let amountMinor {
+                    fact(t("ServiceReverseAmount"), money(amountMinor))
+                    fact(t("ServiceCollectedAfterApproval"), money(collection.receivedMinor - amountMinor))
+                } else if operation == .clear {
+                    fact(t("Pending"), money(collection.pendingAmountMinor))
+                }
+                Divider().overlay(AdminSurface.hairline)
+                Text(t("ServiceReasonTitle")).font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
+                Text(reason.trimmingCharacters(in: .whitespacesAndNewlines)).font(AdminType.body)
+                if operation == .clear {
+                    Text(t("Evidence")).font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
+                    Text(evidence.trimmingCharacters(in: .whitespacesAndNewlines)).font(AdminType.body)
+                }
+            }
+            .foregroundStyle(AdminSurface.primaryText)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(AdminSpacing.base)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+            notice(t(operation.noticeKey), symbol: "info.circle", color: AdminSurface.secondaryText)
+            Toggle(isOn: $accepted) {
+                Text(t("ServiceAcknowledge"))
+                    .font(AdminType.calloutBold).foregroundStyle(AdminSurface.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.vertical, AdminSpacing.sm)
+            .disabled(!canEdit)
+            .accessibilityIdentifier("pos.credit.service.acknowledge")
+        }
+    }
+
+    private func actionDock(_ operation: Operation) -> some View {
+        VStack(spacing: 0) {
+            Rectangle().fill(AdminSurface.hairline).frame(height: 1)
+            let layout = typeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(spacing: AdminSpacing.sm))
+                : AnyLayout(HStackLayout(spacing: AdminSpacing.md))
+            layout {
+                if reviewing {
+                    Button { invalidateReview(); showsValidation = false } label: {
+                        Text(t("ServiceEditDetails"))
+                            .font(AdminType.calloutBold).foregroundStyle(AdminSurface.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(minHeight: AdminTouchTarget.minimum)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canEdit)
+                }
+                Button(role: reviewing && operation != .clear ? .destructive : nil) {
+                    if reviewing { submit(operation) } else { beginReview() }
+                } label: {
+                    Text(t(reviewing ? operation.submitKey : operation.reviewKey))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.center)
+                }
+                .buttonStyle(ServiceActionStyle(destructive: reviewing && operation != .clear))
+                .disabled(!canEdit || (reviewing && (!accepted || !fieldsValid)))
+                .accessibilityIdentifier(reviewing ? "pos.credit.service.submit" : "pos.credit.service.review")
+            }
+            .frame(maxWidth: 620)
+            .padding(.horizontal, AdminSpacing.screenMargin)
+            .padding(.vertical, AdminSpacing.md)
+            .frame(maxWidth: .infinity)
+        }
+        .background(AdminSurface.surface)
+    }
+
+    private func fact(_ title: String, _ value: String) -> some View {
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: AdminSpacing.xs))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: AdminSpacing.md))
+        return layout {
+            Text(title).font(AdminType.footnote).foregroundStyle(AdminSurface.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(value).font(AdminType.calloutBold).foregroundStyle(AdminSurface.primaryText).monospacedDigit()
+                .multilineTextAlignment(typeSize.isAccessibilitySize ? .leading : .trailing)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func fieldBorder(invalid: Bool, focused: Bool) -> some View {
+        RoundedRectangle(cornerRadius: AdminRadius.card)
+            .strokeBorder(invalid ? AdminSurface.crimson : focused ? AdminSurface.primary : AdminSurface.hairline,
+                          lineWidth: invalid || focused || contrast == .increased ? 2 : 1)
+            .allowsHitTesting(false)
+    }
+
+    private func notice(_ text: String, symbol: String, color: Color) -> some View {
+        Label {
+            Text(text).font(AdminType.footnote).fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: symbol).font(.system(size: 16, weight: .medium)).accessibilityHidden(true)
+        }
+        .foregroundStyle(color)
+        .multilineTextAlignment(.leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func validation(_ message: String) -> some View {
+        notice(message, symbol: "exclamationmark.circle", color: AdminSurface.crimson)
+    }
+
+    private func invalidateReview() { accepted = false; reviewing = false; reviewFocused = false }
+    private func beginReview() {
+        guard canEdit else { return }
+        showsValidation = true
+        guard fieldsValid else {
+            focusedInput = !amountValid ? .amount : !reasonValid ? .reason : .evidence
+            return
+        }
+        focusedInput = nil; accepted = false; reviewing = true
+    }
+    private func submit(_ operation: Operation) {
+        guard canEdit, self.operation == operation, fieldsValid, accepted else { return }
+        model.service(collection, operation: operation.callable, reason: reason,
+                      evidence: operation == .clear ? evidence : "", amount: operation == .reverse ? amountMinor : nil)
+        // The existing account owner retains version checks, approval, step-up and recovery.
+        dismiss()
+    }
+
+    private struct ServiceActionStyle: ButtonStyle {
+        let destructive: Bool
+        @Environment(\.isEnabled) private var isEnabled
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .font(AdminType.calloutBold)
+                .foregroundStyle(isEnabled ? Color.white : AdminSurface.secondaryText)
+                .padding(.horizontal, AdminSpacing.base).padding(.vertical, AdminSpacing.md)
+                .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable)
+                .background(isEnabled ? (destructive ? AdminSurface.crimson : AdminSurface.primary) : AdminSurface.control,
+                            in: RoundedRectangle(cornerRadius: AdminRadius.button))
+                .contentShape(RoundedRectangle(cornerRadius: AdminRadius.button))
+                .opacity(configuration.isPressed ? 0.75 : 1)
         }
     }
 }
@@ -1924,6 +3326,7 @@ struct POSCreditStepUpSheet: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollDismissesKeyboard(.interactively)
+            .dismissKeyboardOnTapOutside()
             .background(AdminSurface.background)
             .safeAreaInset(edge: .bottom, spacing: 0) { actionDock }
             .navigationTitle(t("StepUp"))
@@ -1954,7 +3357,10 @@ struct POSCreditStepUpSheet: View {
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
-                    Button { focusedField = nil } label: {
+                    Button {
+                        focusedField = nil
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    } label: {
                         Text(t("Done")).font(AdminType.calloutBold)
                     }
                 }
