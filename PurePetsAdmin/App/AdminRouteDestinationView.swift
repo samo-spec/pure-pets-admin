@@ -111,6 +111,11 @@ struct AdminRouteDestinationView: View {
             PPInventoryListView(kind: .typeLivePets, session: session, onDismiss: {
                 router.presentedRoute = nil
             })
+        case .pharmacy:
+            PPInventoryListView(kind: .typePetMedicine, session: session, showsCatalogSwitcher: false, onDismiss: {
+                router.presentedRoute = nil
+            })
+            .id(session.uid)
         case .wantedPets:
             WantedPetsHomeView(onDismiss: {
                 router.presentedRoute = nil

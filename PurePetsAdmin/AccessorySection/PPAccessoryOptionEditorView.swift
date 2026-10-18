@@ -10,6 +10,75 @@
 import SwiftUI
 import UIKit
 
+/// Medicine catalog dimensions use the existing generic option contract.
+/// Only dosage forms have a value library; strengths and pack quantities must
+/// be entered from the actual product label, never generated as treatment data.
+enum PPMedicineOptionCatalog {
+    struct Axis: Identifiable {
+        let id: String
+        let symbol: String
+        let titleKey: String
+        let hintKey: String
+
+        var title: String { Language.get(titleKey, alter: nil) }
+        var nameAr: String { PPMedicineOptionCatalog.text(titleKey, language: "ar") }
+        var nameEn: String { PPMedicineOptionCatalog.text(titleKey, language: "en") }
+
+        func definition() -> PPAccessoryOptionDefinition {
+            .custom(id: id, key: id, nameAr: nameAr, nameEn: nameEn)
+        }
+    }
+
+    static let axes: [Axis] = [
+        Axis(id: "strength", symbol: "pills.fill", titleKey: "MedicineOptions_Strength", hintKey: "MedicineOptions_StrengthHint"),
+        Axis(id: "dosage_form", symbol: "cross.case.fill", titleKey: "MedicineOptions_Form", hintKey: "MedicineOptions_FormHint"),
+        Axis(id: "pack_size", symbol: "shippingbox.fill", titleKey: "MedicineOptions_PackSize", hintKey: "MedicineOptions_PackSizeHint"),
+        Axis(id: "volume", symbol: "drop.fill", titleKey: "MedicineOptions_Volume", hintKey: "MedicineOptions_VolumeHint"),
+        Axis(id: "weight", symbol: "scalemass.fill", titleKey: "MedicineOptions_PackWeight", hintKey: "MedicineOptions_PackWeightHint"),
+    ]
+
+    static let forms: [(id: String, titleKey: String)] = [
+        ("tablet", "MedicineOptions_FormTablet"),
+        ("capsule", "MedicineOptions_FormCapsule"),
+        ("solution", "MedicineOptions_FormSolution"),
+        ("suspension", "MedicineOptions_FormSuspension"),
+        ("drops", "MedicineOptions_FormDrops"),
+        ("spray", "MedicineOptions_FormSpray"),
+        ("cream", "MedicineOptions_FormCream"),
+        ("ointment", "MedicineOptions_FormOintment"),
+    ]
+
+    /// Resolve both stored display names without changing the app's language.
+    /// Visible copy continues to use Language.get and the active language owner.
+    static func text(_ key: String, language: String) -> String {
+        guard let path = Bundle.main.path(forResource: language, ofType: "lproj"),
+              let bundle = Bundle(path: path) else { return Language.get(key, alter: nil) }
+        return bundle.localizedString(forKey: key, value: nil, table: nil)
+    }
+
+    static func categories() -> [PPAccessoryCustomOptionSheet.PresetCategory] {
+        axes.map { axis in
+            let seeds: [PPAccessoryCustomOptionSheet.PPOptionSeed] = axis.id == "dosage_form"
+                ? forms.map { form in
+                    PPAccessoryCustomOptionSheet.PPOptionSeed(
+                        id: form.id, canonicalValue: text(form.titleKey, language: "en"),
+                        nameAr: text(form.titleKey, language: "ar"), nameEn: text(form.titleKey, language: "en"),
+                        hex: nil, unit: nil
+                    )
+                } : []
+            return PPAccessoryCustomOptionSheet.PresetCategory(
+                id: axis.id, icon: axis.symbol, nameAr: axis.nameAr, nameEn: axis.nameEn,
+                tint: AdminSurface.primary, curatedSeeds: seeds
+            )
+        } + [PPAccessoryCustomOptionSheet.PresetCategory(
+            id: "custom", icon: "slider.horizontal.3",
+            nameAr: text("Options_Preset_Custom", language: "ar"),
+            nameEn: text("Options_Preset_Custom", language: "en"),
+            tint: AdminSurface.primary, curatedSeeds: []
+        )]
+    }
+}
+
 // MARK: - Active Sheet Enum
 
 enum PPAccessoryOptionSheetItem: Identifiable {
@@ -89,13 +158,16 @@ struct PPAccessoryOptionEditorView: View {
                     )
                 }
             case .addCustomOption(let categoryId):
-                PPAccessoryCustomOptionSheet(initialCategoryId: categoryId) { newOption in
+                PPAccessoryCustomOptionSheet(
+                    initialCategoryId: categoryId, isMedicine: model.isMedicine,
+                    excludedOptionKeys: Set((model.draft?.optionDefinitions ?? []).flatMap { [$0.id, $0.key] })
+                ) { newOption in
                     model.addOption(newOption)
                     activeSheet = nil
                 }
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
             case .addCustomValue(let option):
-                PPAccessoryCustomValueSheet(option: option) { newValue in
+                PPAccessoryCustomValueSheet(option: option, isMedicine: model.isMedicine) { newValue in
                     model.addOptionValue(newValue, toOptionWithId: option.id)
                     activeSheet = nil
                 }
@@ -177,7 +249,7 @@ struct PPAccessoryOptionEditorView: View {
         HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 8) {
-                    Text(Language.get("Options_Section_Title", alter: "خيارات المنتج"))
+                    Text(model.isMedicine ? Language.get("MedicineOptions_Title", alter: nil) : Language.get("Options_Section_Title", alter: "خيارات المنتج"))
                         .font(AdminType.subheadlineBold)
                         .foregroundStyle(AdminSurface.primaryText)
 
@@ -193,10 +265,10 @@ struct PPAccessoryOptionEditorView: View {
                     }
                 }
 
-                Text(Language.get("Options_Section_Subtitle", alter: "عرّف الخيارات مثل الألوان والمقاسات والأوزان وقيم كل خيار."))
+                Text(model.isMedicine ? Language.get("MedicineOptions_Subtitle", alter: nil) : Language.get("Options_Section_Subtitle", alter: "عرّف الخيارات مثل الألوان والمقاسات والأوزان وقيم كل خيار."))
                     .font(AdminType.caption2)
                     .foregroundStyle(AdminSurface.secondaryText)
-                    .lineLimit(1)
+                    .lineLimit(model.isMedicine ? nil : 1)
             }
 
             Spacer(minLength: 8)
@@ -320,7 +392,7 @@ struct PPAccessoryOptionEditorView: View {
                     .font(AdminType.subheadlineBold)
                     .foregroundStyle(AdminSurface.primaryText)
 
-                Text(Language.get("Options_Empty_Subtitle", alter: "أضف خيارًا كالألوان أو المقاسات لإنشاء متغيرات متعددة للمنتج."))
+                Text(model.isMedicine ? Language.get("MedicineOptions_Subtitle", alter: nil) : Language.get("Options_Empty_Subtitle", alter: "أضف خيارًا كالألوان أو المقاسات لإنشاء متغيرات متعددة للمنتج."))
                     .font(AdminType.caption1)
                     .foregroundStyle(AdminSurface.secondaryText)
                     .multilineTextAlignment(.center)
@@ -526,6 +598,9 @@ struct PPAccessoryOptionEditorView: View {
 
     private func optionIcon(for option: PPAccessoryOptionDefinition) -> some View {
         let (iconName, tint): (String, Color) = {
+            if model.isMedicine, let axis = PPMedicineOptionCatalog.axes.first(where: { $0.id == option.key }) {
+                return (axis.symbol, AdminSurface.primary)
+            }
             if option.isColorOption {
                 return ("paintpalette.fill", AdminSurface.primary)
             } else if option.isSizeOption {
@@ -640,9 +715,9 @@ struct PPAccessoryOptionEditorView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 // Quick preset pills
-                if option.isSizeOption {
+                if !model.isMedicine && option.isSizeOption {
                     quickSizePresets(for: option)
-                } else if option.isWeightOption {
+                } else if !model.isMedicine && option.isWeightOption {
                     quickWeightPresets(for: option)
                 } else if option.isColorOption {
                     Button {
@@ -928,6 +1003,11 @@ struct PPOptionPresetActionSheet: View {
     var onSelectCategory: ((String) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var isMedicine: Bool {
+        draft.accessKindType == Int(AccessKindType.typePetMedicine.rawValue)
+    }
 
     struct OptionPresetItem: Identifiable {
         let id: String
@@ -943,7 +1023,20 @@ struct PPOptionPresetActionSheet: View {
     }
 
     private var presets: [OptionPresetItem] {
-        [
+        if isMedicine {
+            return PPMedicineOptionCatalog.axes.map { axis in
+                OptionPresetItem(
+                    id: axis.id, key: axis.id, icon: axis.symbol,
+                    nameAr: axis.nameAr, nameEn: axis.nameEn,
+                    hintAr: PPMedicineOptionCatalog.text(axis.hintKey, language: "ar"),
+                    hintEn: PPMedicineOptionCatalog.text(axis.hintKey, language: "en"),
+                    gradientColors: [AdminSurface.primary.opacity(0.12), AdminSurface.primary.opacity(0.04)],
+                    strokeColor: AdminSurface.primary.opacity(0.25),
+                    createDefinition: { axis.definition() }
+                )
+            }
+        }
+        return [
             OptionPresetItem(
                 id: "size",
                 key: "size",
@@ -1053,10 +1146,7 @@ struct PPOptionPresetActionSheet: View {
 
                         // 2-Column Preset Grid
                         LazyVGrid(
-                            columns: [
-                                GridItem(.flexible(), spacing: 12),
-                                GridItem(.flexible(), spacing: 12)
-                            ],
+                            columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: isMedicine && dynamicTypeSize.isAccessibilitySize ? 1 : 2),
                             spacing: 12
                         ) {
                             ForEach(presets) { preset in
@@ -1109,7 +1199,7 @@ struct PPOptionPresetActionSheet: View {
             }
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(Language.get("Options_Add_Modal_Title", alter: "إضافة خيار للمنتج"))
+                Text(isMedicine ? Language.get("MedicineOptions_AddTitle", alter: nil) : Language.get("Options_Add_Modal_Title", alter: "إضافة خيار للمنتج"))
                     .font(PPBrandFont.bold(size: 17))
                     .foregroundStyle(AdminSurface.primaryText)
 
@@ -1378,6 +1468,8 @@ fileprivate struct PPOptionChipsFlow: Layout {
 
 struct PPAccessoryCustomOptionSheet: View {
     let initialCategoryId: String
+    let isMedicine: Bool
+    let excludedOptionKeys: Set<String>
     let onAdd: (PPAccessoryOptionDefinition) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -1516,7 +1608,11 @@ struct PPAccessoryCustomOptionSheet: View {
         )
     ]
 
-    var categories: [PresetCategory] { Self.categoriesList }
+    var categories: [PresetCategory] {
+        isMedicine
+            ? PPMedicineOptionCatalog.categories().filter { $0.id == "custom" || !excludedOptionKeys.contains($0.id) }
+            : Self.categoriesList
+    }
 
     // MARK: - Component State
     @State private var selectedCategoryId: String
@@ -1528,10 +1624,15 @@ struct PPAccessoryCustomOptionSheet: View {
     @State private var customValueInput: String = ""
     @State private var translationPulse: Bool = false
 
-    init(initialCategoryId: String = "size", onAdd: @escaping (PPAccessoryOptionDefinition) -> Void) {
+    init(initialCategoryId: String = "size", isMedicine: Bool = false, excludedOptionKeys: Set<String> = [], onAdd: @escaping (PPAccessoryOptionDefinition) -> Void) {
         self.initialCategoryId = initialCategoryId
+        self.isMedicine = isMedicine
+        self.excludedOptionKeys = excludedOptionKeys
         self.onAdd = onAdd
-        let initialCat = Self.categoriesList.first(where: { $0.id == initialCategoryId }) ?? Self.categoriesList.first!
+        let categories = isMedicine
+            ? PPMedicineOptionCatalog.categories().filter { $0.id == "custom" || !excludedOptionKeys.contains($0.id) }
+            : Self.categoriesList
+        let initialCat = categories.first(where: { $0.id == initialCategoryId }) ?? categories[0]
         _selectedCategoryId = State(initialValue: initialCat.id)
         if initialCat.id != "custom" {
             _nameAr = State(initialValue: initialCat.nameAr)
@@ -2031,7 +2132,7 @@ struct PPAccessoryCustomOptionSheet: View {
                                 .font(PPBrandFont.bold(size: 12, relativeTo: .caption2).monospaced())
                                 .foregroundStyle(AdminSurface.secondaryText)
 
-                            TextField("e.g. size, flavor, pack_size", text: $key)
+                            TextField(isMedicine ? Language.get("MedicineOptions_KeyPlaceholder", alter: nil) : "e.g. size, flavor, pack_size", text: $key)
                                 .font(PPBrandFont.bold(size: 14, relativeTo: .callout).monospaced())
                                 .disabled(autoDeriveKey)
                                 .autocorrectionDisabled()
@@ -2343,9 +2444,20 @@ struct PPAccessoryCustomOptionSheet: View {
         UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
         let slug = PPAccessoryOptionValue.derivedIdentifier(fromName: trimmed)
         let isAr = Language.isRTL()
-        let translatedCounterpart = isAr
-            ? (PPOptionTranslationDictionary.translate(text: trimmed, isArabicInput: true)?.counterpart ?? trimmed)
-            : (PPOptionTranslationDictionary.translate(text: trimmed, isArabicInput: false)?.counterpart ?? trimmed)
+        let translatedCounterpart: String
+        if isMedicine {
+            let form = selectedCategoryId == "dosage_form" ? PPMedicineOptionCatalog.forms.first {
+                PPMedicineOptionCatalog.text($0.titleKey, language: isAr ? "ar" : "en")
+                    .caseInsensitiveCompare(trimmed) == .orderedSame
+            } : nil
+            translatedCounterpart = form.map {
+                PPMedicineOptionCatalog.text($0.titleKey, language: isAr ? "en" : "ar")
+            } ?? trimmed
+        } else {
+            translatedCounterpart = isAr
+                ? (PPOptionTranslationDictionary.translate(text: trimmed, isArabicInput: true)?.counterpart ?? trimmed)
+                : (PPOptionTranslationDictionary.translate(text: trimmed, isArabicInput: false)?.counterpart ?? trimmed)
+        }
 
         let newSeed = PPOptionSeed(
             id: slug.isEmpty ? "val_\(selectedSeeds.count + 1)" : slug,
@@ -2417,7 +2529,14 @@ struct PPAccessoryCustomOptionSheet: View {
         }
 
         let def: PPAccessoryOptionDefinition
-        if k == "size" {
+        if isMedicine {
+            def = PPAccessoryOptionDefinition.custom(
+                id: k, key: k,
+                nameAr: finalAr.isEmpty ? finalEn : finalAr,
+                nameEn: finalEn.isEmpty ? finalAr : finalEn,
+                values: optionValues
+            )
+        } else if k == "size" {
             def = PPAccessoryOptionDefinition.presetSize(values: optionValues)
         } else if k == "weight" {
             def = PPAccessoryOptionDefinition.presetWeight(values: optionValues)
@@ -2448,29 +2567,36 @@ struct PPAccessoryCustomValueSheet: View {
     let option: PPAccessoryOptionDefinition?
     let isColor: Bool
     let isWeight: Bool
+    let isMedicine: Bool
     let onAdd: (PPAccessoryOptionValue) -> Void
 
     @Environment(\.dismiss) private var dismiss
 
     init(
         option: PPAccessoryOptionDefinition,
+        isMedicine: Bool = false,
         onAdd: @escaping (PPAccessoryOptionValue) -> Void
     ) {
         self.option = option
         self.isColor = option.isColorOption
         self.isWeight = option.isWeightOption
+        self.isMedicine = isMedicine
+        _unit = State(initialValue: isMedicine ? "g" : "kg")
         self.onAdd = onAdd
     }
 
     init(
         isColor: Bool = false,
         isWeight: Bool = false,
+        isMedicine: Bool = false,
         option: PPAccessoryOptionDefinition? = nil,
         onAdd: @escaping (PPAccessoryOptionValue) -> Void
     ) {
         self.option = option
         self.isColor = option?.isColorOption ?? isColor
         self.isWeight = option?.isWeightOption ?? isWeight
+        self.isMedicine = isMedicine
+        _unit = State(initialValue: isMedicine ? "g" : "kg")
         self.onAdd = onAdd
     }
 
@@ -2484,14 +2610,23 @@ struct PPAccessoryCustomValueSheet: View {
     @State private var selectedPresetId: String? = nil
     @State private var isHexCopied: Bool = false
 
-    private let weightUnits: [(id: String, ar: String, en: String)] = [
+    private var weightUnits: [(id: String, ar: String, en: String)] {
+        if isMedicine {
+            return [
+                ("g", PPMedicineOptionCatalog.text("MedicineOptions_UnitGram", language: "ar"), PPMedicineOptionCatalog.text("MedicineOptions_UnitGram", language: "en")),
+                ("mg", PPMedicineOptionCatalog.text("MedicineOptions_UnitMilligram", language: "ar"), PPMedicineOptionCatalog.text("MedicineOptions_UnitMilligram", language: "en")),
+                ("kg", PPMedicineOptionCatalog.text("MedicineOptions_UnitKilogram", language: "ar"), PPMedicineOptionCatalog.text("MedicineOptions_UnitKilogram", language: "en")),
+            ]
+        }
+        return [
         ("g", "جم", "g"),
         ("kg", "كجم", "kg"),
         ("oz", "أونصة", "oz"),
         ("lb", "رطل", "lb"),
         ("ml", "مل", "ml"),
         ("L", "لتر", "L"),
-    ]
+        ]
+    }
 
     var optionTint: Color {
         if let opt = option {
@@ -2507,6 +2642,9 @@ struct PPAccessoryCustomValueSheet: View {
     }
 
     var optionIcon: String {
+        if isMedicine, let axis = PPMedicineOptionCatalog.axes.first(where: { $0.id == option?.key }) {
+            return axis.symbol
+        }
         if let opt = option {
             if opt.isColorOption { return "paintpalette.fill" }
             if opt.isSizeOption { return "ruler.fill" }
@@ -2564,7 +2702,14 @@ struct PPAccessoryCustomValueSheet: View {
 
         var pool: [(id: String, canon: String, ar: String, en: String, unit: String?, hex: String?)] = []
 
-        if option?.isSizeOption == true {
+        if isMedicine {
+            if option?.key == "dosage_form" {
+                pool = PPMedicineOptionCatalog.forms.map { form in
+                    let en = PPMedicineOptionCatalog.text(form.titleKey, language: "en")
+                    return (form.id, en, PPMedicineOptionCatalog.text(form.titleKey, language: "ar"), en, nil, nil)
+                }
+            }
+        } else if option?.isSizeOption == true {
             let sizes = [
                 ("xxs", "XXS", "XXS • صغير جداً جداً", "XXS • Double Extra Small"),
                 ("xs", "XS", "XS • صغير جداً", "XS • Extra Small"),
@@ -3345,12 +3490,16 @@ struct PPAccessoryCustomValueSheet: View {
                 }
 
                 HStack(spacing: 8) {
-                    TextField(Language.isRTL() ? "مثال: أزرق ملكي، كبير، ٥٠٠ جم..." : "e.g. أزرق ملكي، كبير...", text: $nameAr)
+                    TextField(isMedicine ? Language.get("MedicineOptions_ValueArPlaceholder", alter: nil) : (Language.isRTL() ? "مثال: أزرق ملكي، كبير، ٥٠٠ جم..." : "e.g. أزرق ملكي، كبير..."), text: $nameAr)
                         .font(PPBrandFont.bold(size: 15, relativeTo: .callout))
                         .environment(\.layoutDirection, .rightToLeft)
                         .multilineTextAlignment(.leading)
                         .onChange(of: nameAr) { newVal in
-                            if autoDeriveCanonical && !newVal.isEmpty {
+                            if isMedicine && autoDeriveCanonical {
+                                canonicalValue = nameEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    ? newVal.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    : nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
+                            } else if autoDeriveCanonical && !newVal.isEmpty {
                                 if let tr = PPOptionTranslationDictionary.translate(text: newVal, isArabicInput: true) {
                                     if nameEn.isEmpty { nameEn = tr.counterpart }
                                     canonicalValue = tr.canonical
@@ -3428,12 +3577,16 @@ struct PPAccessoryCustomValueSheet: View {
                 }
 
                 HStack(spacing: 8) {
-                    TextField("e.g. Royal Blue, Large, 500g...", text: $nameEn)
+                    TextField(isMedicine ? Language.get("MedicineOptions_ValueEnPlaceholder", alter: nil) : "e.g. Royal Blue, Large, 500g...", text: $nameEn)
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
                         .environment(\.layoutDirection, .leftToRight)
                         .multilineTextAlignment(.leading)
                         .onChange(of: nameEn) { newVal in
-                            if autoDeriveCanonical && !newVal.isEmpty {
+                            if isMedicine && autoDeriveCanonical {
+                                canonicalValue = newVal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    ? nameAr.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    : newVal.trimmingCharacters(in: .whitespacesAndNewlines)
+                            } else if autoDeriveCanonical && !newVal.isEmpty {
                                 canonicalValue = newVal
                                 if nameAr.isEmpty {
                                     if let tr = PPOptionTranslationDictionary.translate(text: newVal, isArabicInput: false) {
@@ -3503,7 +3656,7 @@ struct PPAccessoryCustomValueSheet: View {
                         .font(.system(size: 11))
                         .foregroundStyle(AdminSurface.secondaryText.opacity(0.7))
 
-                    TextField("e.g. royal_blue, 500g, chicken", text: $canonicalValue)
+                    TextField(isMedicine ? Language.get("MedicineOptions_CanonicalPlaceholder", alter: nil) : "e.g. royal_blue, 500g, chicken", text: $canonicalValue)
                         .font(.system(size: 14, weight: .semibold, design: .monospaced))
                         .disabled(autoDeriveCanonical)
                         .autocorrectionDisabled()
@@ -3616,6 +3769,12 @@ struct PPAccessoryCustomValueSheet: View {
         guard !clean.isEmpty else { return }
         canonicalValue = "\(clean)\(unit)"
         nameEn = "\(clean)\(unit)"
+        if isMedicine {
+            let key = unit == "mg" ? "MedicineOptions_UnitMilligram"
+                : (unit == "kg" ? "MedicineOptions_UnitKilogram" : "MedicineOptions_UnitGram")
+            nameAr = "\(clean) \(PPMedicineOptionCatalog.text(key, language: "ar"))"
+            return
+        }
         if unit == "kg" {
             nameAr = "\(clean) كجم"
         } else if unit == "g" {
@@ -3636,6 +3795,26 @@ struct PPAccessoryCustomValueSheet: View {
     private func runSmartTranslate() {
         let ar = nameAr.trimmingCharacters(in: .whitespacesAndNewlines)
         let en = nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if isMedicine {
+            // Translate only a known dosage-form label. Concentrations and
+            // units remain exactly as entered; the accessory dictionary must
+            // never turn a medicine value into a generated slug or food label.
+            let form = option?.key == "dosage_form" ? PPMedicineOptionCatalog.forms.first {
+                PPMedicineOptionCatalog.text($0.titleKey, language: "ar") == ar ||
+                    PPMedicineOptionCatalog.text($0.titleKey, language: "en").caseInsensitiveCompare(en) == .orderedSame
+            } : nil
+            if ar.isEmpty {
+                nameAr = form.map { PPMedicineOptionCatalog.text($0.titleKey, language: "ar") } ?? en
+            }
+            if en.isEmpty {
+                nameEn = form.map { PPMedicineOptionCatalog.text($0.titleKey, language: "en") } ?? ar
+            }
+            if autoDeriveCanonical || canonicalValue.isEmpty {
+                canonicalValue = nameEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nameAr : nameEn
+            }
+            return
+        }
 
         if !ar.isEmpty && en.isEmpty {
             if let tr = PPOptionTranslationDictionary.translate(text: ar, isArabicInput: true) {

@@ -223,9 +223,9 @@ struct AdminAppShell: View {
                 .navigationBarBackButtonHidden(true)
                 .navigationBarHidden(true)
                 .toolbar(.hidden, for: .navigationBar)
-                // Delivery, proforma, and customer workspaces retain native insets.
-                // Legacy route containers retain their existing edge ownership.
-                .ignoresSafeArea(edges: route == .delivery || route == .proformaInvoices || route == .customerManagement ? [] : .all)
+                // Inventory owns its edge behavior per lane: the pharmacy
+                // respects native insets; the existing lanes extend internally.
+                .ignoresSafeArea(edges: [.delivery, .proformaInvoices, .customerManagement, .accessories, .food, .livePets, .pharmacy].contains(route) ? [] : .all)
         } else {
             EmptyView()
         }
@@ -345,6 +345,8 @@ struct AdminAppShell: View {
                 return PuryScreenContext(screen: "livePets", route: "livePets", branchId: branchId, entityType: "petAccessories")
             case .food:
                 return PuryScreenContext(screen: "food", route: "food", branchId: branchId, entityType: "petAccessories")
+            case .pharmacy:
+                return PuryScreenContext(screen: "pharmacy", route: "pharmacy", branchId: branchId, entityType: "petAccessories")
             case .users:
                 return PuryScreenContext(screen: "users", route: "users", branchId: branchId, entityType: "UsersCol")
             case .staff:
@@ -1173,10 +1175,11 @@ private struct AdminWorkDeckView: View {
     private var canAccessories: Bool { AdminRoute.accessories.isAuthorized(for: session) }
     private var canFood: Bool { AdminRoute.food.isAuthorized(for: session) }
     private var canLivePets: Bool { AdminRoute.livePets.isAuthorized(for: session) }
+    private var canPharmacy: Bool { AdminRoute.pharmacy.isAuthorized(for: session) }
     private var canWantedPets: Bool { AdminRoute.wantedPets.isAuthorized(for: session) }
 
     private var hasAnyAuthorizedRoute: Bool {
-        canPOS || canPOSHistory || canFulfillment || canPayments || canPaymentSettings || canAccessories || canFood || canLivePets || canWantedPets
+        canPOS || canPOSHistory || canFulfillment || canPayments || canPaymentSettings || canAccessories || canFood || canLivePets || canPharmacy || canWantedPets
     }
 
     var body: some View {
@@ -1226,7 +1229,7 @@ private struct AdminWorkDeckView: View {
             }
 
             // 6. Tri-Vault Inventory Horizon
-            if canAccessories || canFood || canLivePets || canWantedPets {
+            if canAccessories || canFood || canLivePets || canPharmacy || canWantedPets {
                 triVaultInventorySection
             }
         }
@@ -1272,7 +1275,7 @@ private struct AdminWorkDeckView: View {
             }
 
             // 3. Tri-Vault Inventory Command Bay (Full width, 3 generous columns, ZERO truncation)
-            if canAccessories || canFood || canLivePets || canWantedPets {
+            if canAccessories || canFood || canLivePets || canPharmacy || canWantedPets {
                 iPadInventoryVaultBay
             }
         }
@@ -1684,6 +1687,16 @@ private struct AdminWorkDeckView: View {
                         icon: "pawprint.fill",
                         tintColor: Color(uiColor: .ppPrimary),
                         route: .livePets
+                    )
+                }
+
+                if canPharmacy {
+                    inventoryVaultRow(
+                        title: Language.get("PharmacyAdmin_Title", alter: nil),
+                        subtitle: Language.get("PharmacyAdmin_RouteHint", alter: nil),
+                        icon: "pills.fill",
+                        tintColor: Color(uiColor: .ppCareAccent),
+                        route: .pharmacy
                     )
                 }
 
@@ -2399,7 +2412,7 @@ private struct AdminWorkDeckView: View {
                 Spacer()
             }
 
-            HStack(spacing: 16) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), alignment: .top)], alignment: .leading, spacing: 16) {
                 if canAccessories {
                     iPadVaultColumnCard(
                         title: Language.get("Manage Accessories", alter: "إدارة المستلزمات والأطواق"),
@@ -2430,6 +2443,17 @@ private struct AdminWorkDeckView: View {
                         icon: "pawprint.fill",
                         tint: Color(uiColor: .ppPrimary),
                         route: .livePets
+                    )
+                }
+
+                if canPharmacy {
+                    iPadVaultColumnCard(
+                        title: Language.get("PharmacyAdmin_Title", alter: nil),
+                        subtitle: Language.get("PharmacyAdmin_RouteHint", alter: nil),
+                        badge: Language.get("PharmacyAdmin_Medicines", alter: nil),
+                        icon: "pills.fill",
+                        tint: Color(uiColor: .ppCareAccent),
+                        route: .pharmacy
                     )
                 }
 

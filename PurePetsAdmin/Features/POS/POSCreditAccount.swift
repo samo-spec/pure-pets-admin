@@ -2731,6 +2731,7 @@ struct POSCreditCollectionReceipt: Equatable, Identifiable {
     let documentNumber: String
     let customerId: String
     let customerName: String
+    
     let branchId: String
     let createdAt: Date?
     let createdAtString: String

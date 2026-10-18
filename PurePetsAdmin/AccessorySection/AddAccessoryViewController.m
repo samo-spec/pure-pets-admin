@@ -59,7 +59,7 @@
     [self.view addSubview:host.view];
     host.view.translatesAutoresizingMaskIntoConstraints = NO;
     [NSLayoutConstraint activateConstraints:@[
-        [host.view.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [host.view.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
         [host.view.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [host.view.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [host.view.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]

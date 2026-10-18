@@ -144,6 +144,10 @@ final class PPAccessoryVariantSectionModel: ObservableObject {
     private var pendingStudioUpdate: PPVariantStudioPendingUpdate?
 
     var canManageVariants: Bool { PPAccessoryVariantService.shared.canManageVariants }
+    var isMedicine: Bool {
+        if let kind = draft?.accessKindType { return kind == Int(AccessKindType.typePetMedicine.rawValue) }
+        return rootAccessory?.accessKindType == .typePetMedicine
+    }
     var canViewCosts: Bool {
         guard let staff = PPStaffAuth.shared().cachedCurrentStaff else { return false }
         let branch = rootAccessory.flatMap { PPAccessoryVariantService.costBranch(for: $0) }
@@ -2081,7 +2085,10 @@ struct PPAccessoryVariantSection: View {
             }
         }
         .sheet(isPresented: $isPresentingCustomOptionSheet) {
-            PPAccessoryCustomOptionSheet(initialCategoryId: customOptionInitialCategory) { newOption in
+            PPAccessoryCustomOptionSheet(
+                initialCategoryId: customOptionInitialCategory, isMedicine: model.isMedicine,
+                excludedOptionKeys: Set((model.draft?.optionDefinitions ?? []).flatMap { [$0.id, $0.key] })
+            ) { newOption in
                 if model.isLegacyUngrouped {
                     model.convertWithPresetOption(newOption)
                 } else {
@@ -2413,12 +2420,12 @@ struct PPAccessoryVariantSection: View {
                     .fill(AdminSurface.primary.opacity(0.12))
                     .frame(width: 38, height: 38)
 
-                Image(systemName: "paintpalette.fill")
+                Image(systemName: model.isMedicine ? "pills.fill" : "paintpalette.fill")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(AdminSurface.primary)
             }
 
-            Text(Language.get("Variant_Section_Title", alter: "الألوان والوسائط"))
+            Text(model.isMedicine ? Language.get("MedicineOptions_Title", alter: nil) : Language.get("Variant_Section_Title", alter: "الألوان والوسائط"))
                 .font(AdminType.headlineBold)
                 .foregroundStyle(AdminSurface.primaryText)
 
@@ -2471,7 +2478,7 @@ struct PPAccessoryVariantSection: View {
     private var loadingRow: some View {
         HStack(spacing: 8) {
             ProgressView()
-            Text(Language.get("Variant_Loading", alter: "جاري تحميل الألوان..."))
+            Text(model.isMedicine ? Language.get("MedicineOptions_Loading", alter: nil) : Language.get("Variant_Loading", alter: "جاري تحميل الألوان..."))
                 .font(AdminType.footnote)
                 .foregroundStyle(AdminCommandInk.secondary)
         }
@@ -2480,10 +2487,51 @@ struct PPAccessoryVariantSection: View {
 
     // MARK: - Legacy Conversion
 
+    private var medicineConversionOptions: some View {
+        LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: dynamicTypeSize.isAccessibilitySize ? 1 : 2),
+            spacing: 10
+        ) {
+            ForEach(PPMedicineOptionCatalog.axes) { axis in
+                medicineOptionButton(title: axis.title, symbol: axis.symbol, category: axis.id)
+            }
+            medicineOptionButton(
+                title: Language.get("Options_Preset_Custom", alter: nil),
+                symbol: "slider.horizontal.3", category: "custom"
+            )
+        }
+    }
+
+    private func medicineOptionButton(title: String, symbol: String, category: String) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            customOptionInitialCategory = category
+            isPresentingCustomOptionSheet = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .foregroundStyle(AdminSurface.primary)
+                    .accessibilityHidden(true)
+                Text(title)
+                    .font(AdminType.caption1Bold)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(11)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+    }
+
     private var conversionInvitation: some View {
         let firstVariant = model.draft?.variants.first
         let selectedColor = firstVariant?.color
-        let hasSelectedColor = selectedColor != nil && !selectedColor!.identifier.isEmpty
+        let hasSelectedColor = !model.isMedicine && selectedColor != nil && !selectedColor!.identifier.isEmpty
 
         return VStack(alignment: .leading, spacing: 14) {
             if hasSelectedColor, let color = selectedColor {
@@ -2498,101 +2546,105 @@ struct PPAccessoryVariantSection: View {
                 selectedColorCard(color, variant: firstVariant)
             } else {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(Language.get("Options_Convert_Title", alter: "خيارات وتوليفات المنتج"))
+                    Text(model.isMedicine ? Language.get("MedicineOptions_Title", alter: nil) : Language.get("Options_Convert_Title", alter: "خيارات وتوليفات المنتج"))
                         .font(AdminType.calloutBold)
                         .foregroundStyle(AdminSurface.primaryText)
 
-                    Text(Language.get("Options_Convert_Subtitle", alter: "اختر نوع المتغيرات التي يتوفر بها هذا المنتج للبدء (المقاسات، الأوزان، الألوان، النكهات...):"))
+                    Text(model.isMedicine ? Language.get("MedicineOptions_Subtitle", alter: nil) : Language.get("Options_Convert_Subtitle", alter: "اختر نوع المتغيرات التي يتوفر بها هذا المنتج للبدء (المقاسات، الأوزان، الألوان، النكهات...):"))
                         .font(AdminType.caption1)
                         .foregroundStyle(AdminCommandInk.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
                 if model.canManageVariants {
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                        // 1. Size Button
-                        Button {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            customOptionInitialCategory = "size"
-                            isPresentingCustomOptionSheet = true
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "ruler.fill")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundStyle(AdminSurface.emerald)
-                                Text(Language.get("Options_Convert_Action_Size", alter: "المقاسات"))
-                                    .font(AdminType.caption1Bold)
-                                    .foregroundStyle(AdminSurface.primaryText)
-                                Spacer()
+                    if model.isMedicine {
+                        medicineConversionOptions
+                    } else {
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                            // 1. Size Button
+                            Button {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                customOptionInitialCategory = "size"
+                                isPresentingCustomOptionSheet = true
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "ruler.fill")
+                                        .font(.system(size: 14, weight: .bold))
+                                        .foregroundStyle(AdminSurface.emerald)
+                                    Text(Language.get("Options_Convert_Action_Size", alter: "المقاسات"))
+                                        .font(AdminType.caption1Bold)
+                                        .foregroundStyle(AdminSurface.primaryText)
+                                    Spacer()
+                                }
+                                .padding(11)
+                                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
                             }
-                            .padding(11)
-                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
-                        }
-                        .buttonStyle(.plain)
+                            .buttonStyle(.plain)
 
-                        // 2. Weight Button
-                        Button {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            customOptionInitialCategory = "weight"
-                            isPresentingCustomOptionSheet = true
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "scalemass.fill")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundStyle(AdminSurface.amber)
-                                Text(Language.get("Options_Convert_Action_Weight", alter: "الأوزان والحجم"))
-                                    .font(AdminType.caption1Bold)
-                                    .foregroundStyle(AdminSurface.primaryText)
-                                Spacer()
+                            // 2. Weight Button
+                            Button {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                customOptionInitialCategory = "weight"
+                                isPresentingCustomOptionSheet = true
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "scalemass.fill")
+                                        .font(.system(size: 14, weight: .bold))
+                                        .foregroundStyle(AdminSurface.amber)
+                                    Text(Language.get("Options_Convert_Action_Weight", alter: "الأوزان والحجم"))
+                                        .font(AdminType.caption1Bold)
+                                        .foregroundStyle(AdminSurface.primaryText)
+                                    Spacer()
+                                }
+                                .padding(11)
+                                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
                             }
-                            .padding(11)
-                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
-                        }
-                        .buttonStyle(.plain)
+                            .buttonStyle(.plain)
 
-                        // 3. Color Button
-                        Button {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            editingProductId = firstVariant?.productId
-                            isPresentingColorEditor = true
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "paintpalette.fill")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundStyle(AdminSurface.primary)
-                                Text(Language.get("Options_Convert_Action_Color", alter: "الألوان"))
-                                    .font(AdminType.caption1Bold)
-                                    .foregroundStyle(AdminSurface.primaryText)
-                                Spacer()
+                            // 3. Color Button
+                            Button {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                editingProductId = firstVariant?.productId
+                                isPresentingColorEditor = true
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "paintpalette.fill")
+                                        .font(.system(size: 14, weight: .bold))
+                                        .foregroundStyle(AdminSurface.primary)
+                                    Text(Language.get("Options_Convert_Action_Color", alter: "الألوان"))
+                                        .font(AdminType.caption1Bold)
+                                        .foregroundStyle(AdminSurface.primaryText)
+                                    Spacer()
+                                }
+                                .padding(11)
+                                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
                             }
-                            .padding(11)
-                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
-                        }
-                        .buttonStyle(.plain)
+                            .buttonStyle(.plain)
 
-                        // 4. Custom Option Button
-                        Button {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            customOptionInitialCategory = "custom"
-                            isPresentingCustomOptionSheet = true
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "slider.horizontal.2.square")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundStyle(Color.cyan)
-                                Text(Language.get("Options_Convert_Action_Custom", alter: "خيار مخصص..."))
-                                    .font(AdminType.caption1Bold)
-                                    .foregroundStyle(AdminSurface.primaryText)
-                                Spacer()
+                            // 4. Custom Option Button
+                            Button {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                customOptionInitialCategory = "custom"
+                                isPresentingCustomOptionSheet = true
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "slider.horizontal.2.square")
+                                        .font(.system(size: 14, weight: .bold))
+                                        .foregroundStyle(Color.cyan)
+                                    Text(Language.get("Options_Convert_Action_Custom", alter: "خيار مخصص..."))
+                                        .font(AdminType.caption1Bold)
+                                        .foregroundStyle(AdminSurface.primaryText)
+                                    Spacer()
+                                }
+                                .padding(11)
+                                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
                             }
-                            .padding(11)
-                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 1))
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }

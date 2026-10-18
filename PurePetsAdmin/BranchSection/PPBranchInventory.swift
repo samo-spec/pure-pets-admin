@@ -285,6 +285,9 @@ public final class PPBranchInventoryService: ObservableObject {
     @Published public private(set) var inventoryError: String? = nil
     @Published public private(set) var settingsError: String? = nil
     @Published public private(set) var isServerConfirmed = false
+    /// Inventory and commerce arrive independently. A stock snapshot does not
+    /// confirm that branch prices have arrived from the server.
+    @Published public private(set) var isCommerceServerConfirmed = false
 
     private var listenerRegistration: ListenerRegistration?
     private var settingsListenerRegistration: ListenerRegistration?
@@ -338,6 +341,7 @@ public final class PPBranchInventoryService: ObservableObject {
         inventoryError = nil
         settingsError = nil
         isServerConfirmed = false
+        isCommerceServerConfirmed = false
 
         guard let branchId = branchId?.trimmingCharacters(in: .whitespacesAndNewlines), !branchId.isEmpty else {
             currentBranchId = nil
@@ -394,6 +398,7 @@ public final class PPBranchInventoryService: ObservableObject {
                       self.currentBranchId == branchId else { return }
                 if let error {
                     self.settingsError = error.localizedDescription
+                    self.isCommerceServerConfirmed = false
                     return
                 }
 
@@ -412,6 +417,8 @@ public final class PPBranchInventoryService: ObservableObject {
                 }
                 self.settingsMap = newSettings
                 self.unresolvedCommerceProductIds = unresolved
+                self.isCommerceServerConfirmed = unresolved.isEmpty &&
+                    snapshot?.metadata.isFromCache == false && snapshot?.metadata.hasPendingWrites == false
                 self.settingsError = unresolved.isEmpty
                     ? nil
                     : Language.get(
@@ -463,6 +470,16 @@ public final class PPBranchInventoryService: ObservableObject {
 
     public func hasConfirmedCommercePrice(for productId: String) -> Bool {
         !unresolvedCommerceProductIds.contains(productId)
+    }
+
+    /// Optional, server-confirmed price for surfaces that must distinguish an
+    /// unavailable price from a real zero. Keep the legacy nonoptional reader
+    /// contract intact for existing POS and catalog callers.
+    public func serverConfirmedSellingPrice(for productId: String, fallbackPrice: Double) -> Double? {
+        guard isCommerceServerConfirmed, settingsError == nil,
+              hasConfirmedCommercePrice(for: productId) else { return nil }
+        let value = effectiveSellingPrice(for: productId, fallbackPrice: fallbackPrice)
+        return value.isFinite && value >= 0 ? value : nil
     }
 
     /// Refreshes the authoritative record after a confirmed command. Never

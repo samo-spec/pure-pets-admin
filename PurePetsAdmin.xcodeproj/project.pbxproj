@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		F518A0013018000100F51801 /* PPPharmacyInventoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F518A0023018000100F51802 /* PPPharmacyInventoryView.swift */; };
 		0FA0F4A7616B40D6BEB51BEA /* PPAlertSwiftUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23C621F144EE4FDFBD3569A9 /* PPAlertSwiftUI.swift */; };
 		0E459C5F97C3462EBFC81034 /* Features/Providers/ProvidersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 174216D85CB0499686726B1E /* Features/Providers/ProvidersView.swift */; };
 		164CA91FA82D4B09B2BECE92 /* Features/Payments/PaymentDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B1FB3466EFD4302802B480D /* Features/Payments/PaymentDetailView.swift */; };
@@ -426,6 +427,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		F518A0023018000100F51802 /* PPPharmacyInventoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPPharmacyInventoryView.swift; sourceTree = "<group>"; };
 		23C621F144EE4FDFBD3569A9 /* PPAlertSwiftUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPAlertSwiftUI.swift; sourceTree = "<group>"; };
 		037779E2FB6A43D1886C40F6 /* Features/Payments/PaymentSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Payments/PaymentSettingsView.swift; sourceTree = "<group>"; };
 		068FBBDA955D966F979652B5 /* QBVideoIconView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QBVideoIconView.m; sourceTree = "<group>"; };
@@ -2017,6 +2019,7 @@
 				F2A347CB2E58600700C6713D /* AccessoryManager.h */,
 				F2A347CC2E58601100C6713D /* AccessoryManager.m */,
 				B0A200012FAA000100B0A001 /* PPInventoryListView.swift */,
+				F518A0023018000100F51802 /* PPPharmacyInventoryView.swift */,
 				B0A200032FAA000100B0A001 /* PPAccessoryEditorView.swift */,
 				B0A200052FAA000100B0A001 /* PPLivePetBasicDataEditorView.swift */,
 				B0A200072FAA000100B0A001 /* PPInventoryActionMenuSheet.swift */,
@@ -2639,6 +2642,7 @@
 				A5E100022FF1000100A5E002 /* PPHeroApex.swift in Sources */,
 				B0A100022FAA000100B0A002 /* PPVetsListView.swift in Sources */,
 				B0A200022FAA000100B0A002 /* PPInventoryListView.swift in Sources */,
+				F518A0013018000100F51801 /* PPPharmacyInventoryView.swift in Sources */,
 				B0A200042FAA000100B0A002 /* PPAccessoryEditorView.swift in Sources */,
 				B0A200062FAA000100B0A002 /* PPLivePetBasicDataEditorView.swift in Sources */,
 				B0A200082FAA000100B0A002 /* PPInventoryActionMenuSheet.swift in Sources */,

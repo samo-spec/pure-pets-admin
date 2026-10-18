@@ -62,9 +62,13 @@
     if ([identifier isEqualToString:@"stockSector:livePets"] || [identifier isEqualToString:@"stockDeck:livePets"]) {
         return [PPInventoryListHostingController makeForLivePetsWithShowsCatalogSwitcher:NO];
     }
+    if ([identifier isEqualToString:@"stockSector:medicines"] || [identifier isEqualToString:@"stockDeck:medicines"]) {
+        return [PPInventoryListHostingController makeForMedicinesWithShowsCatalogSwitcher:NO];
+    }
     if ([identifier isEqualToString:@"accessories"]) return [PPInventoryListHostingController makeForAccessories];
     if ([identifier isEqualToString:@"food"]) return [PPInventoryListHostingController makeForFood];
     if ([identifier isEqualToString:@"livePets"]) return [PPInventoryListHostingController makeForLivePets];
+    if ([identifier isEqualToString:@"pharmacy"] || [identifier isEqualToString:@"medicines"]) return [PPInventoryListHostingController makeForMedicines];
     if ([identifier isEqualToString:@"wantedPets"]) return [WantedPetsHostingController new];
     if ([identifier isEqualToString:@"branches"]) return [AdminBranchesHostingController new];
     if ([identifier isEqualToString:@"agents"]) return [PPAgentsViewController new];

@@ -120,6 +120,23 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
         expectedRevision: Int? = nil,
         commandId suppliedCommandId: String? = nil
     ) throws -> [String: Any] {
+        try prepareProductSave(
+            accessory: accessory, branchId: branchId, commerce: commerce,
+            expectedRevision: expectedRevision, commandId: suppliedCommandId,
+            clearingMedicineExpiryDate: false
+        )
+    }
+
+    /// Only an explicit editor action may remove a stored medicine expiry.
+    /// Other callers retain the existing omission-means-unchanged semantics.
+    @nonobjc public func prepareProductSave(
+        accessory: PetAccessory,
+        branchId: String?,
+        commerce: [String: Any]? = nil,
+        expectedRevision: Int? = nil,
+        commandId suppliedCommandId: String? = nil,
+        clearingMedicineExpiryDate: Bool
+    ) throws -> [String: Any] {
         let isUpdate = !accessory.accessoryID.isEmpty
         let action = isUpdate ? "update" : "create"
         let productId = accessory.accessoryID
@@ -237,7 +254,13 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
         if let weight = accessory.weight { payload["weight"] = weight }
         if let weightUnit = accessory.weightUnit, !weightUnit.isEmpty { payload["weightUnit"] = weightUnit }
         if let size = accessory.size, !size.isEmpty { payload["size"] = size }
-        if let expiryDate = accessory.expiryDate { payload["expiryDate"] = ISO8601DateFormatter().string(from: expiryDate) }
+        if let expiryDate = accessory.expiryDate {
+            payload["expiryDate"] = ISO8601DateFormatter().string(from: expiryDate)
+        } else if isUpdate, accessory.accessKindType == .typePetMedicine, clearingMedicineExpiryDate {
+            // An explicit null clears the stored date. Omitting it would leave
+            // an old medicine expiry behind after the operator turns it off.
+            payload["expiryDate"] = NSNull()
+        }
         if let policy = accessory.inventoryTrackingPolicy, !policy.isEmpty { payload["inventoryTrackingPolicy"] = policy }
         if let days = accessory.shelfLifeDays { payload["shelfLifeDays"] = days }
         if let days = accessory.guaranteedShelfLifeDays { payload["guaranteedShelfLifeDays"] = days }

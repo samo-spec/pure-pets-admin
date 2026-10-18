@@ -519,10 +519,15 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     // MARK: - Form State
     @Published var selectedKind: AccessKindType {
         didSet {
-            if selectedKind == .typeFood {
+            if selectedKind == .typeFood || selectedKind == .typePetMedicine {
                 condition = .new
             } else {
                 hasExpiryDate = false
+            }
+            if selectedKind == .typeAccessory && oldValue != selectedKind {
+                let mainID = selectedMainKind?.id ?? selectedMainKinds.sorted().first
+                    ?? (isAllCategoriesSelected ? 1 : 0)
+                refreshAccessoryCategories(forMainKindID: mainID)
             }
             updateUnsavedChanges()
         }
@@ -786,7 +791,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 
     func refreshAccessoryCategories(forMainKindID mainID: Int) {
-        guard mainID > 0 else {
+        guard selectedKind == .typeAccessory, mainID > 0 else {
             self.availableAccessoryCategories = []
             return
         }
@@ -893,7 +898,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         if price.doubleValue > 0 {
             priceText = PPInventoryDecimalText.editable(price)
         }
-        if let cost = acc.costPrice, cost.doubleValue > 0 {
+        if let cost = acc.costPrice, cost.doubleValue > 0 || (isMedicine && cost.doubleValue == 0) {
             costPriceText = PPInventoryDecimalText.editable(cost)
         }
         if let discPercent = acc.discountPercent, discPercent.doubleValue > 0 {
@@ -915,9 +920,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 hasManuallyEditedStandardPrice = true
             }
         }
-        condition = (acc.condition == .used) ? .used : .new
+        condition = isMedicine ? .new : ((acc.condition == .used) ? .used : .new)
         
-        if isFood, let exp = acc.expiryDate {
+        if supportsExpiryDate, let exp = acc.expiryDate {
             hasExpiryDate = true
             expiryDate = exp
         } else {
@@ -1052,6 +1057,12 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 
     private func hydratePhysicalSpecs(from accessory: PetAccessory) {
+        // Medicine has no apparel/dimension selector. Keep existing metadata on
+        // the model so editing its name or price does not erase legacy details.
+        if isMedicine {
+            physicalSpecMode = .none
+            return
+        }
         if isFood {
             physicalSpecMode = .weightVolume
             hydrateWeight(from: accessory)
@@ -1465,6 +1476,30 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     var isFood: Bool { selectedKind == .typeFood }
     var isLivePet: Bool { selectedKind == .typeLivePets }
+    var isMedicine: Bool { selectedKind == .typePetMedicine }
+    var supportsExpiryDate: Bool { isFood || isMedicine }
+    var localizedMedicineExpiry: String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        formatter.locale = Locale(identifier: Language.currentLanguageCode())
+        return formatter.string(from: expiryDate).normalizedEnglishDigits
+    }
+    var usesAccessoryTaxonomy: Bool { selectedKind == .typeAccessory }
+    var catalogSymbol: String {
+        if isMedicine { return "pills.fill" }
+        if isFood { return "fork.knife" }
+        if isLivePet { return "pawprint.fill" }
+        return "shippingbox.fill"
+    }
+    /// The existing authoring contract supports generic factual text, but has
+    /// no medicine generation mode. Medicine descriptions use supplied text.
+    var authoringItemType: String {
+        if isMedicine { return "generic" }
+        if isFood { return "food" }
+        if isLivePet { return "live_pet" }
+        return "accessory"
+    }
 
     /// Whether the colour-variant section applies to the product being edited.
     ///
@@ -1995,6 +2030,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     /// True while the operator has not supplied a cost, so hydration may fill it in.
     private var isCostFieldStillUnset: Bool {
         let current = costPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if isMedicine { return current.isEmpty }
         return current.isEmpty || current == "0" || current == "0.00"
     }
 
@@ -2363,6 +2399,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 
     var screenTitle: String {
+        if isMedicine {
+            return Language.get(editingAccessory == nil ? "MedicineEditor_AddTitle" : "MedicineEditor_EditTitle", alter: nil)
+        }
         if editingAccessory != nil {
             if isFood { return Language.get("Edit Food", alter: "تعديل بيانات الغذاء") }
             if isLivePet { return Language.get("Edit Live Pet", alter: "تعديل بيانات الحيوان الأليف") }
@@ -2374,6 +2413,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 
     var eyebrowKindText: String {
+        if isMedicine { return Language.get("MedicineEditor_Kind", alter: nil) }
         if isFood { return Language.get("Food", alter: "أغذية ومكملات") }
         if isLivePet { return Language.get("Live pets", alter: "حيوانات حية") }
         return Language.get("Accessory", alter: "إكسسوارات ومستلزمات")
@@ -2468,7 +2508,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 }
             }
             if !names.isEmpty {
-                return names.joined(separator: "، ")
+                return names.joined(separator: Language.isRTL() ? "، " : ", ")
             }
         }
         return selectedMainKind?.kindName
@@ -2489,7 +2529,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 }
             }
             if !names.isEmpty {
-                return names.joined(separator: "، ")
+                return names.joined(separator: Language.isRTL() ? "، " : ", ")
             }
         }
         return selectedSubKind?.subKindName
@@ -2499,10 +2539,13 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         var attrs: [String: String] = [:]
         if let cat = selectedCategoryDisplayTitle, !cat.isEmpty { attrs["category"] = cat }
         if let sub = selectedSubCategoryDisplayTitle, !sub.isEmpty { attrs["subcategory"] = sub }
-        if let accCat = selectedAccessoryCategoryDisplayTitle, !accCat.isEmpty { attrs["accessoryCategory"] = accCat }
+        if usesAccessoryTaxonomy, let accCat = selectedAccessoryCategoryDisplayTitle, !accCat.isEmpty { attrs["accessoryCategory"] = accCat }
         if !brand.isEmpty { attrs["brand"] = brand }
         attrs["condition"] = (condition == .used) ? "used" : "new"
-        if isFood {
+        if isMedicine {
+            attrs["type"] = "medicine"
+            attrs["authoringConstraints"] = "Preserve only supplied label facts. Do not infer indications, dosage, ingredients, safety, efficacy, approval, or species suitability. Translate or polish the supplied text without adding claims."
+        } else if isFood {
             attrs["type"] = "food"
             if !weightText.isEmpty { attrs["weight"] = "\(weightText) \(weightUnit)" }
         } else if isLivePet {
@@ -2722,7 +2765,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             return false
         }
 
-        let itemTypeString = isLivePet ? "live_pet" : (isFood ? "food" : "accessory")
+        let itemTypeString = authoringItemType
 
         puryActiveFocusTarget = .name
 
@@ -2804,7 +2847,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         isPuryVisionActive = true
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
-        let itemTypeString = isLivePet ? "live_pet" : (isFood ? "food" : "accessory")
+        let itemTypeString = authoringItemType
 
         // STEP 1: Scan image & extract packaging text / animal species / accessory
         puryVisionStep = .scanning(message: Language.isRTL() ? "بيوري يحلل الصورة ويتعرف على تفاصيل المنتج..." : "Pury is analyzing image & identifying product...")
@@ -2913,6 +2956,17 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 name = nameEn
             }
             try? await Task.sleep(nanoseconds: 600_000_000)
+        }
+
+        if isMedicine {
+            let message = Language.get("MedicineEditor_ImageReview", alter: nil)
+            puryVisionStep = .success(message: message)
+            puryVisionStatusMessage = message
+            puryActiveFocusTarget = nil
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            isPuryVisionActive = false
+            puryVisionStep = .idle
+            return
         }
 
         // STEP 3: Intelligent Focus on Description Field & Tailored Writing (NEVER FAILS)
@@ -3281,6 +3335,28 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     // MARK: - Validation
 
+    var costValidationMessage: String? {
+        guard !isLivePet else { return nil }
+        let normalizedCost = costPriceText
+            .replacingOccurrences(of: ",", with: ".")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !normalizedCost.isEmpty {
+            guard let value = Double(normalizedCost), value >= 0, value <= 999_999_999.99,
+                  abs(value * 100 - (value * 100).rounded()) < 0.000_001 else {
+                return Language.get(
+                    "CatalogIntake_ValidationCost",
+                    alter: "أدخل تكلفة استلام صالحة وبحد أقصى منزلتين عشريتين."
+                )
+            }
+        } else if editingAccessory == nil, quantity > 0, canViewStockCosts {
+            return Language.get(
+                "CatalogIntake_CostRequiredForOpeningStock",
+                alter: "أدخل تكلفة الاستلام للمخزون الافتتاحي، أو أنشئ الصنف بكمية صفر."
+            )
+        }
+        return nil
+    }
+
     func validate() -> (isValid: Bool, message: String?) {
         if !isLivePet && editingAccessory != nil {
             if isLoadingCommerce {
@@ -3315,36 +3391,20 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 return (false, Language.get("Please select pet species.", alter: "يرجى اختيار النوع والفئة الرئيسية للحيوان."))
             }
         }
-        if physicalSpecMode == .dimensions && !isValidDimensionsInput() {
+        if !isMedicine && physicalSpecMode == .dimensions && !isValidDimensionsInput() {
             return (false, Language.get(
                 "CatalogIntake_ValidationDimensions",
                 alter: "أدخل أبعاداً صالحة (العرض والارتفاع) وبحد أقصى منزلتين عشريتين."
             ))
         }
-        if (physicalSpecMode == .weightVolume || !weightText.isEmpty) && !isValidWeightInput() {
+        if !isMedicine && (physicalSpecMode == .weightVolume || !weightText.isEmpty) && !isValidWeightInput() {
             return (false, Language.get(
                 "CatalogIntake_ValidationWeight",
                 alter: "أدخل وزناً أو حجماً صالحاً وبحد أقصى ثلاث منازل عشرية."
             ))
         }
-        if !isLivePet {
-            let normalizedCost = costPriceText
-                .replacingOccurrences(of: ",", with: ".")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            if !normalizedCost.isEmpty {
-                guard let value = Double(normalizedCost), value >= 0, value <= 999_999_999.99,
-                      abs(value * 100 - (value * 100).rounded()) < 0.000_001 else {
-                    return (false, Language.get(
-                        "CatalogIntake_ValidationCost",
-                        alter: "أدخل تكلفة استلام صالحة وبحد أقصى منزلتين عشريتين."
-                    ))
-                }
-            } else if editingAccessory == nil, quantity > 0, canViewStockCosts {
-                return (false, Language.get(
-                    "CatalogIntake_CostRequiredForOpeningStock",
-                    alter: "أدخل تكلفة الاستلام للمخزون الافتتاحي، أو أنشئ الصنف بكمية صفر."
-                ))
-            }
+        if let message = costValidationMessage {
+            return (false, message)
         }
         if (!isLivePet || liveInventoryMode == .quantity) && !isValidDiscountPercentInput() {
             let key = isLivePet ? "LivePetIntake_ValidationDiscountPercent" : "CatalogIntake_ValidationDiscountPercent"
@@ -3536,7 +3596,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         accessory.quantity = max(0, quantity)
         accessory.noStock = (quantity <= 0)
         
-        accessory.condition = (isFood || condition == .new) ? .new : .used
+        accessory.condition = (isFood || isMedicine || condition == .new) ? .new : .used
         accessory.isNew = (accessory.condition != .used)
         accessory.accessKindType = selectedKind
         
@@ -3555,7 +3615,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             accessory.petSubCategoryIDs = isAllSubCategoriesSelected ? [] : Array(selectedSubKinds).map { NSNumber(value: $0) }
             accessory.petMainCategoryID = isAllCategoriesSelected ? 0 : (selectedMainKind?.id ?? selectedMainKinds.first ?? 0)
             accessory.petSubCategoryID = isAllSubCategoriesSelected ? 0 : (selectedSubKind?.id ?? selectedSubKinds.first ?? 0)
-            accessory.accessoryCategoryID = (selectedKind == .typeAccessory) ? selectedAccessoryCategoryID : nil
+            accessory.accessoryCategoryID = usesAccessoryTaxonomy
+                ? selectedAccessoryCategoryID
+                : (isMedicine ? editingAccessory?.accessoryCategoryID : nil)
         }
         
         let defaultActiveBranch = BranchContextStore.shared.activeBranch?.branchID ?? "main_store"
@@ -3571,81 +3633,90 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             accessory.storeName = selectedStoreName.isEmpty ? Language.get("Main Store", alter: "المتجر الرئيسي") : selectedStoreName
         }
 
-        switch physicalSpecMode {
-        case .dimensions:
-            accessory.weight = nil
-            accessory.weightUnit = nil
-            accessory.weightText = nil
+        if isMedicine {
+            accessory.size = editingAccessory?.size
+            accessory.weight = editingAccessory?.weight
+            accessory.weightUnit = editingAccessory?.weightUnit
+            accessory.weightText = editingAccessory?.weightText
+            accessory.dimensionWidth = editingAccessory?.dimensionWidth
+            accessory.dimensionHeight = editingAccessory?.dimensionHeight
+            accessory.dimensionUnit = editingAccessory?.dimensionUnit
+        } else {
+            switch physicalSpecMode {
+            case .dimensions:
+                accessory.weight = nil
+                accessory.weightUnit = nil
+                accessory.weightText = nil
 
-            let cleanW = dimensionWidthText.trimmingCharacters(in: .whitespacesAndNewlines)
-            let cleanH = dimensionHeightText.trimmingCharacters(in: .whitespacesAndNewlines)
-            let valW = decimalValue(cleanW)
-            let valH = decimalValue(cleanH)
+                let cleanW = dimensionWidthText.trimmingCharacters(in: .whitespacesAndNewlines)
+                let cleanH = dimensionHeightText.trimmingCharacters(in: .whitespacesAndNewlines)
+                let valW = decimalValue(cleanW)
+                let valH = decimalValue(cleanH)
 
-            if let w = valW, let h = valH, w > 0 || h > 0 {
-                let canonicalW = canonicalDecimalText(w, maximumFractionDigits: 2)
-                let canonicalH = canonicalDecimalText(h, maximumFractionDigits: 2)
-                accessory.dimensionWidth = NSNumber(value: w)
-                accessory.dimensionHeight = NSNumber(value: h)
-                accessory.dimensionUnit = dimensionUnit
-                accessory.size = "\(canonicalW) × \(canonicalH) \(dimensionUnit)"
-            } else if let w = valW, w > 0 {
-                let canonicalW = canonicalDecimalText(w, maximumFractionDigits: 2)
-                accessory.dimensionWidth = NSNumber(value: w)
-                accessory.dimensionHeight = nil
-                accessory.dimensionUnit = dimensionUnit
-                accessory.size = "\(canonicalW) \(dimensionUnit)"
-            } else if let h = valH, h > 0 {
-                let canonicalH = canonicalDecimalText(h, maximumFractionDigits: 2)
+                if let w = valW, let h = valH, w > 0 || h > 0 {
+                    let canonicalW = canonicalDecimalText(w, maximumFractionDigits: 2)
+                    let canonicalH = canonicalDecimalText(h, maximumFractionDigits: 2)
+                    accessory.dimensionWidth = NSNumber(value: w)
+                    accessory.dimensionHeight = NSNumber(value: h)
+                    accessory.dimensionUnit = dimensionUnit
+                    accessory.size = "\(canonicalW) × \(canonicalH) \(dimensionUnit)"
+                } else if let w = valW, w > 0 {
+                    let canonicalW = canonicalDecimalText(w, maximumFractionDigits: 2)
+                    accessory.dimensionWidth = NSNumber(value: w)
+                    accessory.dimensionHeight = nil
+                    accessory.dimensionUnit = dimensionUnit
+                    accessory.size = "\(canonicalW) \(dimensionUnit)"
+                } else if let h = valH, h > 0 {
+                    let canonicalH = canonicalDecimalText(h, maximumFractionDigits: 2)
+                    accessory.dimensionWidth = nil
+                    accessory.dimensionHeight = NSNumber(value: h)
+                    accessory.dimensionUnit = dimensionUnit
+                    accessory.size = "\(canonicalH) \(dimensionUnit)"
+                } else {
+                    accessory.dimensionWidth = nil
+                    accessory.dimensionHeight = nil
+                    accessory.dimensionUnit = nil
+                    accessory.size = nil
+                }
+
+            case .standardSize:
                 accessory.dimensionWidth = nil
-                accessory.dimensionHeight = NSNumber(value: h)
-                accessory.dimensionUnit = dimensionUnit
-                accessory.size = "\(canonicalH) \(dimensionUnit)"
-            } else {
+                accessory.dimensionHeight = nil
+                accessory.dimensionUnit = nil
+                accessory.weight = nil
+                accessory.weightUnit = nil
+                accessory.weightText = nil
+                let trimmedSize = size.trimmingCharacters(in: .whitespacesAndNewlines)
+                accessory.size = trimmedSize.isEmpty ? nil : trimmedSize
+
+            case .weightVolume:
                 accessory.dimensionWidth = nil
                 accessory.dimensionHeight = nil
                 accessory.dimensionUnit = nil
                 accessory.size = nil
-            }
+                let normalizedWeight = weightText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if normalizedWeight.isEmpty {
+                    accessory.weight = nil
+                    accessory.weightUnit = nil
+                    accessory.weightText = nil
+                } else if let weightValue = decimalValue(normalizedWeight) {
+                    let canonicalWeight = canonicalDecimalText(weightValue, maximumFractionDigits: 3)
+                    accessory.weight = NSNumber(value: weightValue)
+                    accessory.weightUnit = weightUnit
+                    accessory.weightText = "\(canonicalWeight) \(weightUnit)"
+                }
 
-        case .standardSize:
-            accessory.dimensionWidth = nil
-            accessory.dimensionHeight = nil
-            accessory.dimensionUnit = nil
-            accessory.weight = nil
-            accessory.weightUnit = nil
-            accessory.weightText = nil
-            let trimmedSize = size.trimmingCharacters(in: .whitespacesAndNewlines)
-            accessory.size = trimmedSize.isEmpty ? nil : trimmedSize
-
-        case .weightVolume:
-            accessory.dimensionWidth = nil
-            accessory.dimensionHeight = nil
-            accessory.dimensionUnit = nil
-            accessory.size = nil
-            let normalizedWeight = weightText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if normalizedWeight.isEmpty {
+            case .none:
+                accessory.dimensionWidth = nil
+                accessory.dimensionHeight = nil
+                accessory.dimensionUnit = nil
+                accessory.size = nil
                 accessory.weight = nil
                 accessory.weightUnit = nil
                 accessory.weightText = nil
-            } else if let weightValue = decimalValue(normalizedWeight) {
-                let canonicalWeight = canonicalDecimalText(weightValue, maximumFractionDigits: 3)
-                accessory.weight = NSNumber(value: weightValue)
-                accessory.weightUnit = weightUnit
-                accessory.weightText = "\(canonicalWeight) \(weightUnit)"
             }
-
-        case .none:
-            accessory.dimensionWidth = nil
-            accessory.dimensionHeight = nil
-            accessory.dimensionUnit = nil
-            accessory.size = nil
-            accessory.weight = nil
-            accessory.weightUnit = nil
-            accessory.weightText = nil
         }
-        
-        accessory.expiryDate = (isFood && hasExpiryDate) ? expiryDate : nil
+        accessory.expiryDate = (supportsExpiryDate && hasExpiryDate) ? expiryDate : nil
         accessory.active = !isDraft
         accessory.showInAppMarket = showInAppMarket
         
@@ -4016,7 +4087,8 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         do {
             request = try pendingStandardRequest ?? PPInventoryCommandService.shared.prepareProductSave(
                 accessory: accessory, branchId: resolvedBranchId, commerce: commercePayload,
-                expectedRevision: catalogEditRevision, commandId: commandID
+                expectedRevision: catalogEditRevision, commandId: commandID,
+                clearingMedicineExpiryDate: isMedicine && !hasExpiryDate && editingAccessory?.expiryDate != nil
             )
             let recovery = PPStandardInventoryRecovery(
                 requestData: try JSONSerialization.data(withJSONObject: request, options: [.sortedKeys]),
@@ -4114,7 +4186,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                         self.clearStandardInventoryRecovery()
 
                         let pId = confirmed.accessoryID ?? accessory.accessoryID ?? ""
-                        if let catID = accessory.accessoryCategoryID, !catID.isEmpty, !pId.isEmpty {
+                        if self.usesAccessoryTaxonomy, let catID = accessory.accessoryCategoryID, !catID.isEmpty, !pId.isEmpty {
                             // Keep the operator's selection in the local model.
                             // `commitSavedAccessory` adopted the authoritative
                             // readback, which was taken *before* this write, so it
@@ -5534,6 +5606,8 @@ struct PPBilingualTextEditorField: View {
     var onFocusChange: ((Bool) -> Void)? = nil
 
     @State private var isGenerating: Bool = false
+    @State private var authoringNotice: String?
+    private var isMedicine: Bool { contextAttributes["type"] == "medicine" }
     @FocusState private var isArabicFocused: Bool
     @FocusState private var isEnglishFocused: Bool
 
@@ -5607,7 +5681,7 @@ struct PPBilingualTextEditorField: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, AdminSpacing.md)
                                 .padding(.vertical, 12)
-                                .padding(.bottom, enablePuryWriter ? 38 : 0)
+                                .padding(.bottom, enablePuryWriter ? (isMedicine ? 50 : 38) : 0)
                                 .allowsHitTesting(false)
                         }
                         TextEditor(text: $arabicText)
@@ -5617,7 +5691,7 @@ struct PPBilingualTextEditorField: View {
                             .multilineTextAlignment(.leading)
                             .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .leading)
                             .padding(AdminSpacing.xs)
-                            .padding(.bottom, enablePuryWriter ? 38 : 0)
+                            .padding(.bottom, enablePuryWriter ? (isMedicine ? 50 : 38) : 0)
                             .scrollContentBackgroundIfAvailable()
                             .forceKeyboardLanguage(.arabic)
                     }
@@ -5638,7 +5712,7 @@ struct PPBilingualTextEditorField: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, AdminSpacing.md)
                                 .padding(.vertical, 12)
-                                .padding(.bottom, enablePuryWriter ? 38 : 0)
+                                .padding(.bottom, enablePuryWriter ? (isMedicine ? 50 : 38) : 0)
                                 .allowsHitTesting(false)
                         }
                         TextEditor(text: $englishText)
@@ -5649,7 +5723,7 @@ struct PPBilingualTextEditorField: View {
                             .keyboardType(.asciiCapable)
                             .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .leading)
                             .padding(AdminSpacing.xs)
-                            .padding(.bottom, enablePuryWriter ? 38 : 0)
+                            .padding(.bottom, enablePuryWriter ? (isMedicine ? 50 : 38) : 0)
                             .scrollContentBackgroundIfAvailable()
                             .forceKeyboardLanguage(.english)
                     }
@@ -5715,6 +5789,14 @@ struct PPBilingualTextEditorField: View {
 
             // Status & Quick Action Strip
             bilingualStatusStrip
+            if let authoringNotice {
+                Text(authoringNotice)
+                    .font(AdminType.footnote)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
     }
 
@@ -5729,15 +5811,24 @@ struct PPBilingualTextEditorField: View {
                 showStatusRing: true,
                 showAmbientAura: isGenerating
             )
-            .frame(width: 32, height: 32)
+            .frame(width: isMedicine ? 44 : 32, height: isMedicine ? 44 : 32)
             .contentShape(Rectangle())
         }
         .buttonStyle(PuryCompactPressStyle())
         .disabled(isGenerating)
-        .accessibilityLabel(Language.get("Pury_Write_Description", alter: "صياغة وصف احترافي مع بيوري"))
+        .accessibilityLabel(isMedicine
+            ? Language.get("MedicineEditor_PuryAction", alter: nil)
+            : Language.get("Pury_Write_Description", alter: "صياغة وصف احترافي مع بيوري"))
     }
 
     private func generateDescriptionWithPury() {
+        authoringNotice = nil
+        if isMedicine && !hasArabicText && !hasEnglishText {
+            authoringNotice = Language.get("MedicineEditor_DescriptionSourceRequired", alter: nil)
+            return
+        }
+        let initialArabicText = arabicText
+        let initialEnglishText = englishText
         var effectiveName = itemName
         if effectiveName.isEmpty {
             effectiveName = arabicText
@@ -5769,10 +5860,10 @@ struct PPBilingualTextEditorField: View {
                 authoringTask = .translate
             } else if hasEnglishText {
                 sourceLang = "en"
-                authoringTask = .generateDescription
+                authoringTask = isMedicine ? .improveBilingual : .generateDescription
             } else {
                 sourceLang = hasArabicText ? "ar" : "en"
-                authoringTask = .generateDescription
+                authoringTask = isMedicine ? .improveBilingual : .generateDescription
             }
         } else {
             targetLang = "ar"
@@ -5781,10 +5872,10 @@ struct PPBilingualTextEditorField: View {
                 authoringTask = .translate
             } else if hasArabicText {
                 sourceLang = "ar"
-                authoringTask = .generateDescription
+                authoringTask = isMedicine ? .improveBilingual : .generateDescription
             } else {
                 sourceLang = hasEnglishText ? "en" : "ar"
-                authoringTask = .generateDescription
+                authoringTask = isMedicine ? .improveBilingual : .generateDescription
             }
         }
 
@@ -5804,8 +5895,8 @@ struct PPBilingualTextEditorField: View {
                     currentText: [
                         "nameAr": effectiveName,
                         "nameEn": itemNameEn,
-                        "descAr": arabicText,
-                        "descEn": englishText
+                        "descAr": initialArabicText,
+                        "descEn": initialEnglishText
                     ],
                     attributes: attrs
                 )
@@ -5821,7 +5912,7 @@ struct PPBilingualTextEditorField: View {
             }
 
             // GUARANTEE: Description typing NEVER fails if there is a name (and image/context)
-            if targetDescAr.isEmpty || targetDescEn.isEmpty {
+            if !isMedicine && (targetDescAr.isEmpty || targetDescEn.isEmpty) {
                 let fallback = PuryDescriptionSynthesizer.synthesize(
                     itemType: itemType,
                     nameAr: effectiveName,
@@ -5833,6 +5924,19 @@ struct PPBilingualTextEditorField: View {
                 )
                 if targetDescAr.isEmpty { targetDescAr = fallback.descAr }
                 if targetDescEn.isEmpty { targetDescEn = fallback.descEn }
+            }
+
+            if isMedicine {
+                guard arabicText == initialArabicText, englishText == initialEnglishText else {
+                    authoringNotice = Language.get("MedicineEditor_DescriptionChanged", alter: nil)
+                    isGenerating = false
+                    return
+                }
+                guard !(isEnglishTarget ? targetDescEn : targetDescAr).isEmpty else {
+                    authoringNotice = Language.get("MedicineEditor_AuthoringUnavailable", alter: nil)
+                    isGenerating = false
+                    return
+                }
             }
 
             if isEnglishTarget {
@@ -5985,13 +6089,13 @@ struct PPAccessoryEditorScreen: View {
                 }
 
             VStack(spacing: 0) {
+                // Top Sovereign Command Header
+                sovereignHeaderView
+
                 // Scrollable Master Canvas
                 ScrollViewReader { proxy in
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(spacing: 0) {
-                            // Top Sovereign Command Header
-                            sovereignHeaderView
-
                             // Spatial Stage Navigation Radar
                             stageRadarView
                                 .padding(.horizontal, AdminSpacing.screenMargin)
@@ -6224,6 +6328,7 @@ struct PPAccessoryEditorScreen: View {
                 title: viewModel.screenTitle,
                 subtitle: viewModel.eyebrowKindText,
                 statusDotColor: viewModel.isDraft ? Color(uiColor: .ppWarning) : Color(uiColor: .ppSuccess),
+                customTopSpacing: 0,
                 onBack: {
                     if viewModel.hasUnsavedChanges {
                         showDiscardAlert()
@@ -6409,7 +6514,7 @@ struct PPAccessoryEditorScreen: View {
                         .fill(AdminSurface.control)
                         .frame(width: 82, height: 82)
                         .overlay(
-                            Image(systemName: viewModel.isLivePet ? "pawprint.fill" : (viewModel.isFood ? "fork.knife" : "bag.fill"))
+                            Image(systemName: viewModel.catalogSymbol)
                                 .font(.system(size: 26))
                                 .foregroundStyle(AdminSurface.primary.opacity(0.5))
                         )
@@ -6823,7 +6928,7 @@ struct PPAccessoryEditorScreen: View {
                 englishPlaceholder: Language.get("EnterItemNameEn", alter: "Enter item name in English..."),
                 selectedLanguage: $bilingualLanguage,
                 isFocused: focusedField == .name,
-                itemType: viewModel.isLivePet ? "live_pet" : (viewModel.isFood ? "food" : "accessory"),
+                itemType: viewModel.authoringItemType,
                 contextAttributes: viewModel.authoringAttributes,
                 enablePuryTranslator: true,
                 onExtractNameFromImages: { await viewModel.extractNameWithPuryFromImages() },
@@ -6845,7 +6950,7 @@ struct PPAccessoryEditorScreen: View {
                 selectedLanguage: $bilingualLanguage,
                 minHeight: 88,
                 isFocused: focusedField == .desc,
-                itemType: viewModel.isLivePet ? "live_pet" : (viewModel.isFood ? "food" : "accessory"),
+                itemType: viewModel.authoringItemType,
                 itemName: viewModel.name,
                 itemNameEn: viewModel.nameEn,
                 categoryName: viewModel.selectedCategoryDisplayTitle ?? "",
@@ -6949,7 +7054,7 @@ struct PPAccessoryEditorScreen: View {
                 .disabled(viewModel.selectedMainKind == nil)
             }
 
-            if !viewModel.isFood && !viewModel.isLivePet {
+            if viewModel.usesAccessoryTaxonomy {
                 Button {
                     if viewModel.selectedMainKind != nil || !viewModel.selectedMainKinds.isEmpty {
                         focusedField = nil
@@ -7394,33 +7499,37 @@ struct PPAccessoryEditorScreen: View {
                 .font(AdminType.headline)
                 .foregroundStyle(AdminSurface.primaryText)
 
-            PPAccessoryConditionSelector(
-                condition: $viewModel.condition,
-                isFood: viewModel.isFood
-            )
-
-            if viewModel.isFood {
-                PPAccessoryUnifiedMeasureChamber(
-                    weightText: $viewModel.weightText,
-                    weightUnit: $viewModel.weightUnit,
-                    onFocusChanged: { focused in
-                        if focused { focusedField = .weight }
-                        else if focusedField == .weight { focusedField = nil }
-                    }
-                )
-
-                PPAccessoryExpirySentinel(
-                    hasExpiryDate: $viewModel.hasExpiryDate,
-                    expiryDate: $viewModel.expiryDate
-                )
+            if viewModel.isMedicine {
+                PPMedicineSpecifications(viewModel: viewModel)
             } else {
-                PPPhysicalSpecOrchestrator(
-                    viewModel: viewModel,
-                    onFocusChanged: { focused in
-                        if focused { focusedField = .weight }
-                        else if focusedField == .weight { focusedField = nil }
-                    }
+                PPAccessoryConditionSelector(
+                    condition: $viewModel.condition,
+                    isFood: viewModel.isFood
                 )
+
+                if viewModel.isFood {
+                    PPAccessoryUnifiedMeasureChamber(
+                        weightText: $viewModel.weightText,
+                        weightUnit: $viewModel.weightUnit,
+                        onFocusChanged: { focused in
+                            if focused { focusedField = .weight }
+                            else if focusedField == .weight { focusedField = nil }
+                        }
+                    )
+
+                    PPAccessoryExpirySentinel(
+                        hasExpiryDate: $viewModel.hasExpiryDate,
+                        expiryDate: $viewModel.expiryDate
+                    )
+                } else {
+                    PPPhysicalSpecOrchestrator(
+                        viewModel: viewModel,
+                        onFocusChanged: { focused in
+                            if focused { focusedField = .weight }
+                            else if focusedField == .weight { focusedField = nil }
+                        }
+                    )
+                }
             }
         }
         .padding(16)
@@ -10224,8 +10333,8 @@ struct PPAccessoryEditorExperienceRouter: View {
         Group {
             if viewModel.isLivePet && !viewModel.showTypeRow {
                 PPLivePetIntakeJourney(viewModel: viewModel)
-            } else if !viewModel.showTypeRow
-                        && (viewModel.selectedKind == .typeAccessory || viewModel.selectedKind == .typeFood) {
+            } else if viewModel.isMedicine || (!viewModel.showTypeRow
+                        && (viewModel.selectedKind == .typeAccessory || viewModel.selectedKind == .typeFood)) {
                 PPAccessoryFoodIntakeJourney(viewModel: viewModel)
             } else {
                 PPAccessoryEditorScreen(viewModel: viewModel)
@@ -15480,6 +15589,41 @@ private extension View {
     }
 }
 
+// MARK: - Medicine Specifications
+
+private struct PPMedicineSpecifications: View {
+    @ObservedObject var viewModel: PPAccessoryEditorViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.md) {
+            Label(Language.get("MedicineEditor_Details", alter: nil), systemImage: "pills.fill")
+                .font(AdminType.headline)
+                .foregroundStyle(AdminSurface.primaryText)
+                .accessibilityAddTraits(.isHeader)
+            Text(Language.get("MedicineEditor_LabelGuidance", alter: nil))
+                .font(AdminType.footnote)
+                .foregroundStyle(AdminSurface.secondaryText)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+            Toggle(Language.get("CatalogIntake_ExpiryToggle", alter: nil), isOn: $viewModel.hasExpiryDate)
+                .font(AdminType.calloutBold)
+                .tint(AdminSurface.primary)
+                .frame(minHeight: 44)
+            if viewModel.hasExpiryDate {
+                DatePicker(
+                    Language.get("CatalogIntake_ReviewExpiry", alter: nil),
+                    selection: $viewModel.expiryDate,
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.compact)
+                .environment(\.locale, Locale(identifier: Language.currentLanguageCode()))
+                .frame(minHeight: 44)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 // MARK: - Category-Defining Tactile Product Condition Matrix
 
 private struct PPAccessoryConditionSelector: View {
@@ -18414,7 +18558,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     showStepsAppSwitcher.toggle()
                 }
             } label: {
-                Image(systemName: viewModel.isFood ? "fork.knife" : "shippingbox.fill")
+                Image(systemName: viewModel.catalogSymbol)
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(showStepsAppSwitcher ? Color.white : AdminSurface.primary)
                     .frame(width: AdminTouchTarget.comfortable, height: AdminTouchTarget.comfortable)
@@ -18769,15 +18913,15 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 Divider().background(AdminSurface.hairline)
 
                 PPBilingualInputField(
-                    title: tr("CatalogIntake_NameLabel", "اسم الصنف"),
+                    title: viewModel.isMedicine ? Language.get("MedicineEditor_Name", alter: nil) : tr("CatalogIntake_NameLabel", "اسم الصنف"),
                     isRequired: true,
                     arabicText: $viewModel.name,
                     englishText: $viewModel.nameEn,
-                    arabicPlaceholder: tr("CatalogIntake_NamePlaceholder", "مثال: منتج واضح وسهل البحث"),
-                    englishPlaceholder: "e.g. Premium Grain-Free Cat Food",
+                    arabicPlaceholder: viewModel.isMedicine ? Language.get("MedicineEditor_NamePlaceholderAR", alter: nil) : tr("CatalogIntake_NamePlaceholder", "مثال: منتج واضح وسهل البحث"),
+                    englishPlaceholder: viewModel.isMedicine ? Language.get("MedicineEditor_NamePlaceholderEN", alter: nil) : "e.g. Premium Grain-Free Cat Food",
                     selectedLanguage: $bilingualLanguage,
                     isFocused: focusedField == .name,
-                    itemType: viewModel.isLivePet ? "live_pet" : (viewModel.isFood ? "food" : "accessory"),
+                    itemType: viewModel.authoringItemType,
                     contextAttributes: viewModel.authoringAttributes,
                     enablePuryTranslator: true,
                     onExtractNameFromImages: { await viewModel.extractNameWithPuryFromImages() },
@@ -18803,12 +18947,12 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     isRequired: false,
                     arabicText: $viewModel.desc,
                     englishText: $viewModel.descEn,
-                    arabicPlaceholder: tr("CatalogIntake_DescriptionPlaceholder", "المزايا، الاستخدام، المقاس أو المعلومات المهمة للعميل…"),
-                    englishPlaceholder: "Key features, directions for use, size, ingredients…",
+                    arabicPlaceholder: viewModel.isMedicine ? Language.get("MedicineEditor_DescriptionPlaceholderAR", alter: nil) : tr("CatalogIntake_DescriptionPlaceholder", "المزايا، الاستخدام، المقاس أو المعلومات المهمة للعميل…"),
+                    englishPlaceholder: viewModel.isMedicine ? Language.get("MedicineEditor_DescriptionPlaceholderEN", alter: nil) : "Key features, directions for use, size, ingredients…",
                     selectedLanguage: $bilingualLanguage,
                     minHeight: 120,
                     isFocused: focusedField == .description,
-                    itemType: viewModel.isLivePet ? "live_pet" : (viewModel.isFood ? "food" : "accessory"),
+                    itemType: viewModel.authoringItemType,
                     itemName: viewModel.name,
                     itemNameEn: viewModel.nameEn,
                     categoryName: viewModel.selectedCategoryDisplayTitle ?? "",
@@ -18984,7 +19128,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     viewModel.presentPhotoSource()
                 } label: {
                     VStack(spacing: AdminSpacing.sm) {
-                        Image(systemName: viewModel.isFood ? "fork.knife.circle" : "shippingbox.circle")
+                        Image(systemName: viewModel.isMedicine ? "pills.circle" : (viewModel.isFood ? "fork.knife.circle" : "shippingbox.circle"))
                             .font(.system(size: 34, weight: .light))
                         Text(tr("CatalogIntake_EmptyMediaTitle", "ابدأ بصورة واضحة للصنف"))
                             .font(AdminType.headline)
@@ -19137,18 +19281,20 @@ private struct PPAccessoryFoodIntakeJourney: View {
     private var specificationsScene: some View {
         PPLivePetDecisionSurface(
             eyebrow: tr("CatalogIntake_SpecsEyebrow", "التصنيف والمواصفات"),
-            title: viewModel.isFood
-                ? tr("CatalogIntake_FoodSpecsTitle", "ثبّت فئة الغذاء وحجم العبوة وصلاحيتها")
-                : tr("CatalogIntake_AccessorySpecsTitle", "ثبّت الفئة والحالة والمقاس"),
+            title: viewModel.isMedicine
+                ? Language.get("MedicineEditor_SpecificationsTitle", alter: nil)
+                : (viewModel.isFood
+                    ? tr("CatalogIntake_FoodSpecsTitle", "ثبّت فئة الغذاء وحجم العبوة وصلاحيتها")
+                    : tr("CatalogIntake_AccessorySpecsTitle", "ثبّت الفئة والحالة والمقاس")),
             subtitle: tr("CatalogIntake_SpecsSubtitle", "هذه البيانات تساعد الفريق والعملاء على العثور على الصنف الصحيح واتخاذ قرار دقيق."),
             symbol: "slider.horizontal.3"
         ) {
             VStack(spacing: AdminSpacing.sectionSpacing) {
                 taxonomyButton(
-                    title: tr("CatalogIntake_CategoryLabel", "الفئة الرئيسية"),
+                    title: viewModel.isMedicine ? Language.get("MedicineEditor_TargetSpecies", alter: nil) : tr("CatalogIntake_CategoryLabel", "الفئة الرئيسية"),
                     value: viewModel.selectedCategoryDisplayTitle,
                     placeholder: tr("CatalogIntake_CategoryPlaceholder", "اختر الفئة المطلوبة"),
-                    symbol: viewModel.isFood ? "fork.knife" : "shippingbox",
+                    symbol: viewModel.isMedicine ? "pawprint" : (viewModel.isFood ? "fork.knife" : "shippingbox"),
                     required: true,
                     disabled: viewModel.isLoadingKinds
                 ) {
@@ -19156,7 +19302,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 }
 
                 taxonomyButton(
-                    title: tr("CatalogIntake_SubcategoryLabel", "التصنيف الفرعي"),
+                    title: viewModel.isMedicine ? Language.get("MedicineEditor_TargetBreed", alter: nil) : tr("CatalogIntake_SubcategoryLabel", "التصنيف الفرعي"),
                     value: viewModel.selectedSubCategoryDisplayTitle,
                     placeholder: viewModel.hasNoCategorySelected
                         ? tr("CatalogIntake_SelectCategoryFirst", "اختر الفئة الرئيسية أولاً")
@@ -19168,7 +19314,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     viewModel.showBreedPicker = true
                 }
 
-                if !viewModel.isFood {
+                if viewModel.usesAccessoryTaxonomy {
                     taxonomyButton(
                         title: Language.get("AccessoryCategory", alter: "تصنيف الإكسسوار"),
                         value: viewModel.selectedAccessoryCategoryDisplayTitle,
@@ -19206,37 +19352,41 @@ private struct PPAccessoryFoodIntakeJourney: View {
 
                 Divider().background(AdminSurface.hairline)
 
-                // Tactile Product Condition Matrix
-                PPAccessoryConditionSelector(
-                    condition: $viewModel.condition,
-                    isFood: viewModel.isFood
-                )
-
-                if viewModel.isFood {
-                    // Unified Physical Measurement Chamber (Food uses weight or volume)
-                    PPAccessoryUnifiedMeasureChamber(
-                        weightText: $viewModel.weightText,
-                        weightUnit: $viewModel.weightUnit,
-                        onFocusChanged: { focused in
-                            if focused { focusedField = .weight }
-                            else if focusedField == .weight { focusedField = nil }
-                        }
-                    )
-
-                    // Expiry Date Sentinel (if food)
-                    PPAccessoryExpirySentinel(
-                        hasExpiryDate: $viewModel.hasExpiryDate,
-                        expiryDate: $viewModel.expiryDate
-                    )
+                if viewModel.isMedicine {
+                    PPMedicineSpecifications(viewModel: viewModel)
                 } else {
-                    // Category-Defining Physical Specification Studio (Exclusive: Dimensions W×H vs Size vs Weight)
-                    PPPhysicalSpecOrchestrator(
-                        viewModel: viewModel,
-                        onFocusChanged: { focused in
-                            if focused { focusedField = .weight }
-                            else if focusedField == .weight { focusedField = nil }
-                        }
+                    // Tactile Product Condition Matrix
+                    PPAccessoryConditionSelector(
+                        condition: $viewModel.condition,
+                        isFood: viewModel.isFood
                     )
+
+                    if viewModel.isFood {
+                        // Unified Physical Measurement Chamber (Food uses weight or volume)
+                        PPAccessoryUnifiedMeasureChamber(
+                            weightText: $viewModel.weightText,
+                            weightUnit: $viewModel.weightUnit,
+                            onFocusChanged: { focused in
+                                if focused { focusedField = .weight }
+                                else if focusedField == .weight { focusedField = nil }
+                            }
+                        )
+
+                        // Expiry Date Sentinel (if food)
+                        PPAccessoryExpirySentinel(
+                            hasExpiryDate: $viewModel.hasExpiryDate,
+                            expiryDate: $viewModel.expiryDate
+                        )
+                    } else {
+                        // Category-Defining Physical Specification Studio (Exclusive: Dimensions W×H vs Size vs Weight)
+                        PPPhysicalSpecOrchestrator(
+                            viewModel: viewModel,
+                            onFocusChanged: { focused in
+                                if focused { focusedField = .weight }
+                                else if focusedField == .weight { focusedField = nil }
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -19302,12 +19452,21 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     required: true
                 )
 
-                moneyField(
-                    title: tr("CatalogIntake_CostPrice", "سعر التكلفة (ر.ق)"),
-                    text: $viewModel.costPriceText,
-                    focus: .costPrice,
-                    required: false
-                )
+                if !viewModel.isMedicine || viewModel.canViewStockCosts {
+                    moneyField(
+                        title: tr("CatalogIntake_CostPrice", "سعر التكلفة (ر.ق)"),
+                        text: $viewModel.costPriceText,
+                        focus: .costPrice,
+                        required: viewModel.isMedicine && viewModel.editingAccessory == nil && viewModel.quantity > 0
+                    )
+                    if viewModel.isMedicine {
+                        Text(Language.get("MedicineEditor_CostHint", alter: nil))
+                            .font(AdminType.footnote)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
 
                 Group {
                     if dynamicTypeSize.isAccessibilitySize {
@@ -19410,6 +19569,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 .font(AdminType.headline)
                 .englishNumericInput(text: text, allowsDecimal: true)
                 .focused($focusedField, equals: focus)
+                .accessibilityLabel(title)
                 .padding(.horizontal, AdminSpacing.md)
                 .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded)
                 .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
@@ -19685,7 +19845,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                         .font(AdminType.headline)
                         .foregroundStyle(AdminSurface.primaryText)
                     reviewRow(
-                        symbol: viewModel.isFood ? "fork.knife" : "shippingbox.fill",
+                        symbol: viewModel.catalogSymbol,
                         title: tr("CatalogIntake_ReviewItem", "الصنف"),
                         value: viewModel.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                             ? tr("CatalogIntake_NotSet", "غير محدد")
@@ -19745,11 +19905,13 @@ private struct PPAccessoryFoodIntakeJourney: View {
                         value: viewModel.quantity.englishDigits,
                         forceLTR: true
                     )
-                    if viewModel.isFood && viewModel.hasExpiryDate {
+                    if viewModel.supportsExpiryDate && viewModel.hasExpiryDate {
                         reviewRow(
                             symbol: "calendar.badge.clock",
                             title: tr("CatalogIntake_ReviewExpiry", "انتهاء الصلاحية"),
-                            value: viewModel.expiryDate.formatted(date: .abbreviated, time: .omitted).normalizedEnglishDigits
+                            value: viewModel.isMedicine
+                                ? viewModel.localizedMedicineExpiry
+                                : viewModel.expiryDate.formatted(date: .abbreviated, time: .omitted).normalizedEnglishDigits
                         )
                     }
                     reviewRow(
@@ -20020,7 +20182,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
     private var appSwitcherTopBar: some View {
         HStack(spacing: AdminSpacing.sm) {
             HStack(spacing: AdminSpacing.xs) {
-                Image(systemName: viewModel.isFood ? "fork.knife" : "shippingbox.fill")
+                Image(systemName: viewModel.catalogSymbol)
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(AdminSurface.primary)
                     .frame(width: 34, height: 34)
@@ -20385,7 +20547,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     }
                 }
 
-                if !viewModel.costPriceText.isEmpty {
+                if !viewModel.costPriceText.isEmpty && (!viewModel.isMedicine || viewModel.canViewStockCosts) {
                     HStack(spacing: 6) {
                         Text(tr("CatalogIntake_CostLabel", "التكلفة:"))
                             .font(AdminType.caption2)
@@ -20542,15 +20704,18 @@ private struct PPAccessoryFoodIntakeJourney: View {
             if viewModel.hasNoCategorySelected {
                 return tr("CatalogIntake_ValidationCategory", "اختر الفئة الرئيسية للصنف.")
             }
-            if !viewModel.isFood && !viewModel.isLivePet && (viewModel.selectedAccessoryCategoryID == nil || viewModel.selectedAccessoryCategoryID?.isEmpty == true) {
+            if viewModel.usesAccessoryTaxonomy && (viewModel.selectedAccessoryCategoryID == nil || viewModel.selectedAccessoryCategoryID?.isEmpty == true) {
                 return Language.get("Validation_Accessory_Category_Required", alter: "اختر تصنيف الإكسسوار للمتابعة.")
             }
-            if !viewModel.isValidWeightInput() {
+            if !viewModel.isMedicine && !viewModel.isValidWeightInput() {
                 return tr("CatalogIntake_ValidationWeight", "أدخل وزناً أو حجماً صالحاً وبحد أقصى ثلاث منازل عشرية.")
             }
         case .pricing:
             if (PPInventoryDecimalText.minorUnits(viewModel.priceText) ?? 0) <= 0 {
                 return tr("CatalogIntake_ValidationPrice", "أدخل سعراً أساسياً صحيحاً أكبر من صفر.")
+            }
+            if viewModel.isMedicine, let message = viewModel.costValidationMessage {
+                return message
             }
             if !viewModel.isValidDiscountPercentInput() {
                 return tr("CatalogIntake_ValidationDiscountPercent", "أدخل نسبة خصم بين 0 و100 وبحد أقصى منزلتين عشريتين.")
@@ -20587,6 +20752,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
     }
 
     private var catalogScreenTitle: String {
+        if viewModel.isMedicine { return viewModel.screenTitle }
         if viewModel.editingAccessory != nil {
             return viewModel.isFood
                 ? tr("CatalogIntake_EditFoodTitle", "تعديل غذاء أو مكمل")

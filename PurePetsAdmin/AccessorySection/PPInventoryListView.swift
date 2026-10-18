@@ -1650,7 +1650,7 @@ private struct PPLivePetMortalityCause: Identifiable {
 
 // MARK: - Inventory Filter Enum
 
-private enum InventoryFilter: Int, CaseIterable, Identifiable {
+enum InventoryFilter: Int, CaseIterable, Identifiable {
     case all = 0
     case inStock
     case lowStock
@@ -1712,6 +1712,7 @@ enum CatalogHorizonTab: Int, CaseIterable, Identifiable {
     case accessories = 0
     case food
     case livePets
+    case medicines
 
     var id: Int { rawValue }
 
@@ -1720,6 +1721,7 @@ enum CatalogHorizonTab: Int, CaseIterable, Identifiable {
         case .accessories: return .typeAccessory
         case .food: return .typeFood
         case .livePets: return .typeLivePets
+        case .medicines: return .typePetMedicine
         }
     }
 
@@ -1728,6 +1730,7 @@ enum CatalogHorizonTab: Int, CaseIterable, Identifiable {
         case .accessories: return Language.get("Manage Accessories", alter: "إكسسوارات ومستلزمات")
         case .food: return Language.get("manageFood", alter: "أغذية ومكملات")
         case .livePets: return Language.get("Manage Live Pets", alter: "حيوانات أليفة حية")
+        case .medicines: return Language.get("PharmacyAdmin_Title", alter: nil)
         }
     }
 
@@ -1736,6 +1739,7 @@ enum CatalogHorizonTab: Int, CaseIterable, Identifiable {
         case .accessories: return Language.get("Accessories", alter: "إكسسوارات")
         case .food: return Language.get("Food", alter: "أغذية")
         case .livePets: return Language.get("LivePets", alter: "حيوانات حية")
+        case .medicines: return Language.get("PharmacyAdmin_Title", alter: nil)
         }
     }
 
@@ -1744,6 +1748,7 @@ enum CatalogHorizonTab: Int, CaseIterable, Identifiable {
         case .accessories: return "bag.fill"
         case .food: return "fork.knife"
         case .livePets: return "pawprint.fill"
+        case .medicines: return "pills.fill"
         }
     }
 }
@@ -1971,7 +1976,7 @@ final class PPInventoryListViewModel: ObservableObject {
     @Published private(set) var searchTargetProductIds: [String: String] = [:]
     @Published var branches: [PPInventoryBranchOption] = []
     @Published var searchText: String = ""
-    @Published fileprivate var activeFilter: InventoryFilter = .all
+    @Published var activeFilter: InventoryFilter = .all
     @Published var activeTab: CatalogHorizonTab
     @Published private(set) var isLoading: Bool = true
     @Published var errorMessage: String? = nil
@@ -1986,6 +1991,14 @@ final class PPInventoryListViewModel: ObservableObject {
 
     func effectiveStock(for item: PetAccessory) -> Int {
         let activeBranch = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if activeTab == .medicines {
+            // A missing branch record is zero in the confirmed branch snapshot;
+            // a catalog quantity must never masquerade as branch stock.
+            guard let activeBranch, !activeBranch.isEmpty,
+                  activeBranch != "main_store", activeBranch != "all_branches",
+                  PPBranchInventoryService.shared.currentBranchId == activeBranch else { return 0 }
+            return max(0, PPBranchInventoryService.shared.inventory(for: item.accessoryID)?.availableQuantity ?? 0)
+        }
         if let activeBranch, !activeBranch.isEmpty {
             if let branchRecord = PPBranchInventoryService.shared.inventory(for: item.accessoryID) {
                 return branchRecord.availableQuantity
@@ -2029,6 +2042,8 @@ final class PPInventoryListViewModel: ObservableObject {
             self.activeTab = .food
         case .typeLivePets:
             self.activeTab = .livePets
+        case .typePetMedicine:
+            self.activeTab = .medicines
         default:
             self.activeTab = .accessories
         }
@@ -2307,7 +2322,19 @@ final class PPInventoryListViewModel: ObservableObject {
         self.searchTargetFamilyIds = targetFamilyIds
         self.searchTargetProductIds = targetProductIds
         self.displayGroups = scoredGroups.map(\.group)
-        self.filteredItems = scoredGroups.flatMap(\.group.members)
+        let matchedItems = scoredGroups.flatMap(\.group.members)
+        if activeTab == .medicines {
+            // The pharmacy shows exact medicine records instead of expandable
+            // families. Do not leak unmatched siblings into a barcode or stock
+            // filter just because another member of their family matched.
+            self.filteredItems = matchedItems.filter { item in
+                satisfiesActiveFilter(item: item) && PPInventorySearchEngine.matchScore(
+                    for: item, rawQuery: rawQuery, normQuery: normQuery, tokens: tokens
+                ) > 0
+            }
+        } else {
+            self.filteredItems = matchedItems
+        }
     }
 
     private func itemDiscountValue(_ item: PetAccessory) -> Double {
@@ -2693,7 +2720,9 @@ struct PPInventoryListView: View {
     }
 
     private func openAddEditor() {
-        guard canCreateStock else {
+        let allowed = viewModel.activeTab == .medicines
+            ? canAccessInventoryCell("stock.create", branchID: pharmacyBranchID) : canCreateStock
+        guard allowed else {
             PPHUD.showError(
                 Language.get("Error", alter: "خطأ"),
                 subtitle: Language.get("NoPermissionToCreate", alter: "ليس لديك صلاحية إضافة أصناف جديدة للمخزون")
@@ -2711,7 +2740,9 @@ struct PPInventoryListView: View {
     }
 
     private func openEditEditor(for item: PetAccessory) {
-        guard canManageStock else {
+        let allowed = viewModel.activeTab == .medicines
+            ? canAccessInventoryCell(kStaffPermStockManage, branchID: pharmacyBranchID) : canManageStock
+        guard allowed else {
             PPHUD.showError(
                 Language.get("Error", alter: "خطأ"),
                 subtitle: Language.get("NoPermissionToManage", alter: "ليس لديك صلاحية تعديل بيانات المخزون")
@@ -2755,85 +2786,13 @@ struct PPInventoryListView: View {
     }
 
     public var body: some View {
-        GeometryReader { geometry in
-            let isRegular = geometry.size.width >= 760
-
-            ZStack(alignment: .bottom) {
-                AdminSurface.background.ignoresSafeArea()
-
-                VStack(spacing: 0) {
-                    sovereignHeaderBar
-                        .frame(maxWidth: isRegular ? 980 : .infinity)
-                        .frame(maxWidth: .infinity)
-                        .inventoryEntrance(step: 0, hasAppeared: hasAppeared, reduceMotion: reduceMotion)
-
-                    if showsCatalogSwitcher {
-                        catalogHorizonSwitcher
-                            .frame(maxWidth: isRegular ? 980 : .infinity)
-                            .frame(maxWidth: .infinity)
-                            .inventoryEntrance(step: 1, hasAppeared: hasAppeared, reduceMotion: reduceMotion)
-                    }
-
-                    ScrollView(.vertical, showsIndicators: false) {
-                        LazyVStack(spacing: AdminSpacing.base, pinnedViews: [.sectionHeaders]) {
-                            Section {
-                                if viewModel.isLoading && viewModel.allItems.isEmpty {
-                                    loadingSkeletonView
-                                        .accessibilityHidden(true)
-                                } else if viewModel.allItems.isEmpty && viewModel.errorMessage != nil {
-                                    inventoryUnavailableState
-                                } else if viewModel.allItems.isEmpty {
-                                    flagshipCatalogEmptyStateView(isRegular: isRegular)
-                                } else {
-                                    if viewModel.filteredItems.isEmpty {
-                                        filterEmptyStateCard
-                                            // An empty result is a *replacement* for the
-                                            // list, so it crossfades in place rather than
-                                            // sliding, which would read as navigation.
-                                            .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
-                                    } else {
-                                        itemsListSection
-                                    }
-                                }
-                            } header: {
-                                inventoryHero
-                                    .padding(.top, 4)
-                                    .padding(.bottom, AdminSpacing.xs)
-                                    .background(
-                                        AdminSurface.background
-                                            .padding(.horizontal, -AdminSpacing.screenMargin * 2)
-                                            .padding(.top, -10)
-                                    )
-                                    .inventoryEntrance(step: 2, hasAppeared: hasAppeared, reduceMotion: reduceMotion)
-                            }
-                        }
-                        // One coherent transition per filter change. Keyed to the
-                        // generation counter rather than to the item array so a
-                        // background projection refresh does not animate the list.
-                        .animation(
-                            AdminAnimation.motion(AdminAnimation.filterSwap, reduceMotion: reduceMotion),
-                            value: filterGeneration
-                        )
-                        .padding(.horizontal, AdminSpacing.screenMargin)
-                        .padding(.top, 4)
-                        .padding(.bottom, 115)
-                        .frame(maxWidth: isRegular ? 980 : .infinity)
-                        .frame(maxWidth: .infinity)
-                    }
-                    .scrollDismissesKeyboardCompat()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .refreshable {
-                        await refreshHero()
-                    }
-                }
-                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
-
-                if !viewModel.allItems.isEmpty {
-                    bottomFloatingSearchDock(isRegular: isRegular, safeBottom: geometry.safeAreaInsets.bottom)
-                }
+        Group {
+            if viewModel.activeTab == .medicines {
+                pharmacySurface
+            } else {
+                legacyInventorySurface
             }
         }
-        .ignoresSafeArea()
         .navigationBarHidden(true)
         .toolbarBackground(.hidden, for: .navigationBar)
         .dismissKeyboardOnTapOutside()
@@ -2977,8 +2936,10 @@ struct PPInventoryListView: View {
 
         .onAppear {
             viewModel.startListening()
-            startEntranceChoreography()
-            handleInitialAutoCollapseIfNeeded()
+            if viewModel.activeTab != .medicines {
+                startEntranceChoreography()
+                handleInitialAutoCollapseIfNeeded()
+            }
         }
         .onDisappear {
             viewModel.stopListening()
@@ -2988,14 +2949,14 @@ struct PPInventoryListView: View {
             // Wrapped so `ForEach` diffing animates the insert/remove/move set as
             // one gesture. `applyFilter()` mutating published state outside an
             // animation transaction is why filtering used to snap.
-            withAnimation(AdminAnimation.motion(AdminAnimation.filterSwap, reduceMotion: reduceMotion)) {
+            withAnimation(viewModel.activeTab == .medicines ? nil : AdminAnimation.motion(AdminAnimation.filterSwap, reduceMotion: reduceMotion)) {
                 viewModel.applyFilter()
                 filterGeneration += 1
                 applySearchExpansionState()
             }
         }
         .onChange(of: viewModel.activeFilter) { _ in
-            withAnimation(AdminAnimation.motion(AdminAnimation.filterSwap, reduceMotion: reduceMotion)) {
+            withAnimation(viewModel.activeTab == .medicines ? nil : AdminAnimation.motion(AdminAnimation.filterSwap, reduceMotion: reduceMotion)) {
                 viewModel.applyFilter()
                 filterGeneration += 1
                 applySearchExpansionState()
@@ -3008,6 +2969,193 @@ struct PPInventoryListView: View {
             expandedFamilyIds.removeAll()
             selectedFamilyProductIds.removeAll()
         }
+    }
+
+    // MARK: - Pharmacy presentation over the same inventory owner
+
+    private var pharmacyBranchID: String? {
+        let id = branchContext.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return id.isEmpty || id == "main_store" || id == "all_branches" ? nil : id
+    }
+
+    private var pharmacyStockConfirmed: Bool {
+        guard let branchID = pharmacyBranchID else { return false }
+        return branchProjection.currentBranchId == branchID && branchProjection.isServerConfirmed &&
+            !branchProjection.isLoading && branchProjection.inventoryError == nil &&
+            branchProjection.settingsError == nil && viewModel.errorMessage == nil && !viewModel.isLoading
+    }
+
+    private var pharmacyProjectionMessage: String? {
+        if let error = branchProjection.inventoryError ?? branchProjection.settingsError { return error }
+        guard pharmacyBranchID != nil else { return Language.get("PharmacyAdmin_BranchHint", alter: nil) }
+        guard pharmacyStockConfirmed else { return Language.get("PharmacyAdmin_ConfirmingBalance", alter: nil) }
+        return nil
+    }
+
+    private var pharmacyValuation: String? {
+        guard pharmacyStockConfirmed, branchProjection.isCommerceServerConfirmed else { return nil }
+        var total = 0.0
+        for item in viewModel.allItems {
+            guard item.hasResolvedSellingPrice,
+                  let price = branchProjection.serverConfirmedSellingPrice(
+                    for: item.accessoryID, fallbackPrice: item.finalPrice.doubleValue
+                  ) else { return nil }
+            total += price * Double(max(0, branchProjection.inventory(for: item.accessoryID)?.availableQuantity ?? 0))
+        }
+        return total.isFinite ? PetAccessory.formatCurrency(NSNumber(value: total)) : nil
+    }
+
+    private var pharmacySurface: some View {
+        PPPharmacyInventorySurface(
+            searchText: $viewModel.searchText,
+            filter: $viewModel.activeFilter,
+            totalCount: viewModel.totalCount,
+            resultCount: viewModel.filteredItems.count,
+            availableCount: viewModel.inStockCount,
+            lowCount: viewModel.lowStockCount,
+            unavailableCount: viewModel.outOfStockCount,
+            valuation: pharmacyValuation,
+            isLoading: viewModel.isLoading,
+            stockConfirmed: pharmacyStockConfirmed,
+            hasBranch: pharmacyBranchID != nil,
+            branchName: branchContext.currentBranchDisplayName,
+            errorMessage: viewModel.errorMessage,
+            projectionMessage: pharmacyProjectionMessage,
+            showsCatalogSwitcher: showsCatalogSwitcher,
+            onBack: {
+                if let onDismiss { onDismiss() }
+                else {
+                    dismiss()
+                    PPAdminNavigationFallback.popOrDismiss()
+                }
+            },
+            onAdd: canAccessInventoryCell("stock.create", branchID: pharmacyBranchID) ? { openAddEditor() } : nil,
+            onBranch: { showingBranchSwitcherSheet = true },
+            onCycleCount: pharmacyStockConfirmed && canAccessInventoryCell(kStaffPermStockManage, branchID: pharmacyBranchID) ? { showCycleCountStudio = true } : nil,
+            onSelectCatalog: { tab in viewModel.switchTab(to: tab) },
+            onRefresh: { await refreshHero() },
+            rows: {
+                ForEach(viewModel.filteredItems) { item in
+                    pharmacyMedicineRow(for: item)
+                }
+            }
+        )
+    }
+
+    private func pharmacyMedicineRow(for item: PetAccessory) -> some View {
+        let branchID = pharmacyBranchID
+        let matchesBranch = branchProjection.currentBranchId == branchID
+        let record = branchID != nil && matchesBranch ? branchProjection.inventory(for: item.accessoryID) : nil
+        let state = inventoryCellStockState(for: item, hasBranch: branchID != nil, matchesBranch: matchesBranch, record: record)
+        let price: NSNumber? = {
+            guard item.hasResolvedSellingPrice else { return nil }
+            guard branchID != nil else { return item.finalPrice }
+            guard matchesBranch,
+                  let value = branchProjection.serverConfirmedSellingPrice(
+                    for: item.accessoryID, fallbackPrice: item.finalPrice.doubleValue
+                  ) else { return nil }
+            return NSNumber(value: value)
+        }()
+        return PPPharmacyMedicineRow(
+            item: item,
+            quantity: record?.availableQuantity ?? 0,
+            reservedQuantity: record?.reservedQuantity ?? 0,
+            price: price,
+            stockState: state,
+            canManage: canAccessInventoryCell(kStaffPermStockManage, branchID: branchID),
+            onOpen: { openItemDetail(for: item) },
+            onLots: {
+                guard pharmacyStockConfirmed,
+                      canAccessInventoryCell(kStaffPermStockManage, branchID: pharmacyBranchID) else {
+                    PPHUD.showError(Language.get("Error", alter: nil), subtitle: Language.get("PharmacyAdmin_ConfirmingBalance", alter: nil))
+                    return
+                }
+                itemForLots = item
+            },
+            onMore: { itemForActionMenu = item }
+        )
+    }
+
+    private var legacyInventorySurface: some View {
+        GeometryReader { geometry in
+            let isRegular = geometry.size.width >= 760
+
+            ZStack(alignment: .bottom) {
+                AdminSurface.background.ignoresSafeArea()
+
+                VStack(spacing: 0) {
+                    sovereignHeaderBar
+                        .frame(maxWidth: isRegular ? 980 : .infinity)
+                        .frame(maxWidth: .infinity)
+                        .inventoryEntrance(step: 0, hasAppeared: hasAppeared, reduceMotion: reduceMotion)
+
+                    if showsCatalogSwitcher {
+                        catalogHorizonSwitcher
+                            .frame(maxWidth: isRegular ? 980 : .infinity)
+                            .frame(maxWidth: .infinity)
+                            .inventoryEntrance(step: 1, hasAppeared: hasAppeared, reduceMotion: reduceMotion)
+                    }
+
+                    ScrollView(.vertical, showsIndicators: false) {
+                        LazyVStack(spacing: AdminSpacing.base, pinnedViews: [.sectionHeaders]) {
+                            Section {
+                                if viewModel.isLoading && viewModel.allItems.isEmpty {
+                                    loadingSkeletonView
+                                        .accessibilityHidden(true)
+                                } else if viewModel.allItems.isEmpty && viewModel.errorMessage != nil {
+                                    inventoryUnavailableState
+                                } else if viewModel.allItems.isEmpty {
+                                    flagshipCatalogEmptyStateView(isRegular: isRegular)
+                                } else {
+                                    if viewModel.filteredItems.isEmpty {
+                                        filterEmptyStateCard
+                                            // An empty result is a *replacement* for the
+                                            // list, so it crossfades in place rather than
+                                            // sliding, which would read as navigation.
+                                            .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
+                                    } else {
+                                        itemsListSection
+                                    }
+                                }
+                            } header: {
+                                inventoryHero
+                                    .padding(.top, 4)
+                                    .padding(.bottom, AdminSpacing.xs)
+                                    .background(
+                                        AdminSurface.background
+                                            .padding(.horizontal, -AdminSpacing.screenMargin * 2)
+                                            .padding(.top, -10)
+                                    )
+                                    .inventoryEntrance(step: 2, hasAppeared: hasAppeared, reduceMotion: reduceMotion)
+                            }
+                        }
+                        // One coherent transition per filter change. Keyed to the
+                        // generation counter rather than to the item array so a
+                        // background projection refresh does not animate the list.
+                        .animation(
+                            AdminAnimation.motion(AdminAnimation.filterSwap, reduceMotion: reduceMotion),
+                            value: filterGeneration
+                        )
+                        .padding(.horizontal, AdminSpacing.screenMargin)
+                        .padding(.top, 4)
+                        .padding(.bottom, 115)
+                        .frame(maxWidth: isRegular ? 980 : .infinity)
+                        .frame(maxWidth: .infinity)
+                    }
+                    .scrollDismissesKeyboardCompat()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .refreshable {
+                        await refreshHero()
+                    }
+                }
+                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+
+                if !viewModel.allItems.isEmpty {
+                    bottomFloatingSearchDock(isRegular: isRegular, safeBottom: geometry.safeAreaInsets.bottom)
+                }
+            }
+        }
+        .ignoresSafeArea()
     }
 
     /// Automatically unfolds matching variant families and selects the target matching option.
@@ -4508,6 +4656,8 @@ struct PPInventoryListView: View {
             return Color(red: 0.95, green: 0.60, blue: 0.12)
         case .livePets:
             return Color(red: 0.10, green: 0.74, blue: 0.52)
+        case .medicines:
+            return AdminSurface.primary
         case .accessories:
             return AdminSurface.primary
         }
@@ -4519,6 +4669,8 @@ struct PPInventoryListView: View {
             return "takeoutbag.and.cup.and.straw.fill"
         case .livePets:
             return "pawprint.fill"
+        case .medicines:
+            return "pills.fill"
         case .accessories:
             return "bag.fill"
         }
@@ -4530,6 +4682,8 @@ struct PPInventoryListView: View {
             return Language.get("Inventory_Food_Empty_Title", alter: "لا توجد أطعمة أو مكملات مسجلة")
         case .livePets:
             return Language.get("Inventory_LivePets_Empty_Title", alter: "لا توجد حيوانات حية مسجلة")
+        case .medicines:
+            return Language.get("PharmacyAdmin_EmptyTitle", alter: nil)
         case .accessories:
             return Language.get("Inventory_Accessories_Empty_Title", alter: "لا توجد إكسسوارات مسجلة")
         }
@@ -4547,6 +4701,8 @@ struct PPInventoryListView: View {
             return hasBranch
                 ? String(format: Language.get("Inventory_LivePets_Empty_Subtitle_Branch", alter: "لا توجد حيوانات مسجلة في فرع «%@» حالياً. يمكنك إضافة حيوان جديد إلى السجل أو تبديل الفرع."), branchName)
                 : Language.get("Inventory_LivePets_Empty_Subtitle", alter: "لا توجد حيوانات حية مسجلة في قاعدة البيانات حالياً. يمكنك إضافة حيوان جديد الآن وتوثيق بياناته.")
+        case .medicines:
+            return Language.get("PharmacyAdmin_EmptyHint", alter: nil)
         case .accessories:
             return hasBranch
                 ? String(format: Language.get("Inventory_Accessories_Empty_Subtitle_Branch", alter: "لم يتم إضافة أي إكسسوارات أو مستلزمات في فرع «%@». يمكنك إضافة أول صنف جديد الآن."), branchName)
@@ -4560,6 +4716,8 @@ struct PPInventoryListView: View {
             return Language.get("Inventory_Add_Food", alter: "+ إضافة طعام أو مكمل جديد")
         case .livePets:
             return Language.get("Inventory_Add_LivePet", alter: "+ إضافة حيوان جديد")
+        case .medicines:
+            return Language.get("PharmacyAdmin_Add", alter: nil)
         case .accessories:
             return Language.get("Inventory_Add_Accessory", alter: "+ إضافة إكسسوار جديد")
         }
@@ -4709,7 +4867,7 @@ struct CategorySpecimenAuraTheme {
 
 /// A cell receives the screen's existing projection; it never starts a listener
 /// or invents availability from an image, a health label, or a catalog total.
-private enum PPInventoryCellStockState: Equatable {
+enum PPInventoryCellStockState: Equatable {
     case ready, selectBranch, loading, unconfirmed, missing, pending
 
     var caption: String? {
@@ -17465,6 +17623,15 @@ private struct CatalogPressStyle: ButtonStyle {
         return PPInventoryListHostingController(kind: .typeLivePets, showsCatalogSwitcher: true)
     }
 
+    @objc public static func makeForMedicines() -> UIViewController {
+        return PPInventoryListHostingController(kind: .typePetMedicine, showsCatalogSwitcher: false)
+    }
+
+    @objc(makeForMedicinesWithShowsCatalogSwitcher:)
+    public static func makeForMedicines(showsCatalogSwitcher: Bool) -> UIViewController {
+        return PPInventoryListHostingController(kind: .typePetMedicine, showsCatalogSwitcher: showsCatalogSwitcher)
+    }
+
     @objc public static func make(kind: AccessKindType) -> UIViewController {
         return PPInventoryListHostingController(kind: kind, showsCatalogSwitcher: true)
     }
@@ -17521,15 +17688,18 @@ private struct CatalogPressStyle: ButtonStyle {
             }
         )
 
-        let host = UIHostingController(rootView: swiftUIView.ignoresSafeArea())
+        let host = UIHostingController(rootView: swiftUIView)
         host.view.backgroundColor = .clear
         host.extendedLayoutIncludesOpaqueBars = true
         host.edgesForExtendedLayout = .all
         addChild(host)
         view.addSubview(host.view)
         host.view.translatesAutoresizingMaskIntoConstraints = false
+        let topConstraint = (kind == .typePetMedicine)
+            ? host.view.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
+            : host.view.topAnchor.constraint(equalTo: view.topAnchor)
         NSLayoutConstraint.activate([
-            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            topConstraint,
             host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)

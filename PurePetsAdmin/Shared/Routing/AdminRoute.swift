@@ -26,6 +26,7 @@ enum AdminRoute: Hashable, Identifiable {
     case accessories
     case food
     case livePets
+    case pharmacy
     case wantedPets
     case branches
     case agents
@@ -70,6 +71,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .accessories: return "accessories"
         case .food: return "food"
         case .livePets: return "livePets"
+        case .pharmacy: return "pharmacy"
         case .wantedPets: return "wantedPets"
         case .branches: return "branches"
         case .agents: return "agents"
@@ -118,6 +120,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .accessories: return "Manage Accessories"
         case .food: return "manageFood"
         case .livePets: return "Manage Live Pets"
+        case .pharmacy: return "PharmacyAdmin_Title"
         case .wantedPets: return "WantedPets_Title"
         case .branches: return "Branches_Title"
         case .agents: return "Agents_Title"
@@ -142,7 +145,7 @@ enum AdminRoute: Hashable, Identifiable {
     var contextTitleKey: String {
         switch self {
         case .paymentOrder, .payments, .paymentSettings, .fulfillment, .pointOfSale, .pointOfSaleHistory, .proformaInvoices,
-             .accessories, .food, .livePets, .wantedPets:
+             .accessories, .food, .livePets, .pharmacy, .wantedPets:
             return "CommandCenter_Work_Title"
         case .delivery, .providerApplications, .providerPlans, .providerFeatures, .providerAccounting,
              .branches, .agents, .homeControl, .services, .veterinarians, .moderation, .community, .adoptionManager, .hotel:
@@ -184,6 +187,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .accessories: return "shippingbox"
         case .food: return "bag"
         case .livePets: return "pawprint"
+        case .pharmacy: return "pills"
         case .wantedPets: return "list.clipboard"
         case .branches: return "building.2"
         case .agents: return "person.text.rectangle"
@@ -223,7 +227,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .notifications: return ["notifications.view", "support.view", "support.manage", "moderation.view", "moderation.manage"]
         case .notificationComposer: return ["notifications.send"]
         case .notificationSettings: return ["notifications.view", "notifications.send", "support.manage", "moderation.manage", "users.block"]
-        case .accessories, .food, .livePets, .wantedPets: return ["stock.view", "stock.manage"]
+        case .accessories, .food, .livePets, .pharmacy, .wantedPets: return ["stock.view", "stock.manage"]
         case .branches: return ["branches.view", "branches.manage"]
         case .agents: return ["agents.view", "agents.manage"]
         case .homeControl: return ["settings.view", "settings.manage"]

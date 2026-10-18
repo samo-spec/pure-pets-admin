@@ -2776,6 +2776,25 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
         }
     }
 
+    if ([self pp_commandAllowsTag:@"pharmacy"]) {
+        NSInteger lowMedsCount = 0;
+        for (PetAccessory *item in self.pp_inventoryPriorityItems ?: @[]) {
+            if (item.accessKindType != AccessTypePetMedicine) continue;
+            if (item.isDeleted || item.isBlocked || item.isDisabled || !item.active) continue;
+            if (item.noStock || item.quantity <= 3) lowMedsCount += 1;
+        }
+        if (lowMedsCount > 0) {
+            [signals addObject:[self pp_commandSignalForTag:@"pharmacy"
+                                                     title:PPAdminCommandLocalizedCount(@"AdminCommand_Stock_One",
+                                                                                      @"AdminCommand_Stock_Many",
+                                                                                      lowMedsCount)
+                                                    detail:kLang(@"AdminCommand_CheckQuantity")
+                                                   urgency:lowMedsCount >= 5 ? 91 : 85
+                                                     count:lowMedsCount
+                                                      live:YES]];
+        }
+    }
+
     [signals sortUsingComparator:^NSComparisonResult(PPAdminCommandSignal *left, PPAdminCommandSignal *right) {
         if (left.urgency > right.urgency) return NSOrderedAscending;
         if (left.urgency < right.urgency) return NSOrderedDescending;
@@ -3176,6 +3195,12 @@ void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
                                           titleKey:@"WantedPets_Title"
                                        subtitleKey:@"WantedPets_Subtitle"
                                           iconName:@"list.clipboard"]];
+    }
+    if ([self pp_canAccessAnyPermissions:@[kStaffPermStockView, kStaffPermStockManage, kPermAdminAll]]) {
+        [stockItems addObject:[self pp_itemWithTag:@"pharmacy"
+                                         titleKey:@"PharmacyAdmin_Title"
+                                      subtitleKey:@"PharmacyAdmin_RouteHint"
+                                         iconName:@"pills.fill"]];
     }
     if (stockItems.count > 0) {
         [sections addObject:[self pp_sectionWithTitleKey:@"StockSection"
@@ -3676,6 +3701,9 @@ void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
     if ([tag isEqualToString:@"stockSector:livePets"] || [tag isEqualToString:@"stockDeck:livePets"]) {
         return [PPInventoryListHostingController makeForLivePetsWithShowsCatalogSwitcher:NO];
     }
+    if ([tag isEqualToString:@"stockSector:medicines"] || [tag isEqualToString:@"stockDeck:medicines"]) {
+        return [PPInventoryListHostingController makeForMedicinesWithShowsCatalogSwitcher:NO];
+    }
     if ([tag isEqualToString:@"accessories"]) {
         return [PPInventoryListHostingController makeForAccessories];
     }
@@ -3684,6 +3712,9 @@ void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
     }
     if ([tag isEqualToString:@"livePets"]) {
         return [PPInventoryListHostingController makeForLivePets];
+    }
+    if ([tag isEqualToString:@"pharmacy"] || [tag isEqualToString:@"medicines"]) {
+        return [PPInventoryListHostingController makeForMedicines];
     }
     if ([tag isEqualToString:@"wantedPets"]) {
         return [WantedPetsHostingController new];

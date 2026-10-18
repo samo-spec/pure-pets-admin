@@ -81,7 +81,7 @@ extension AdminTab {
             return [
                 .payments, .paymentSettings, .fulfillment,
                 .pointOfSale, .pointOfSaleHistory,
-                .accessories, .food, .livePets
+                .accessories, .food, .livePets, .pharmacy
             ].filter { $0.isAuthorized(for: session) }
         case .operations:
             return [

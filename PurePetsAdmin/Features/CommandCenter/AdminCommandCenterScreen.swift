@@ -5694,11 +5694,16 @@ private struct CommandStockDeck: View {
         signals.first { $0.id.contains("pet") || $0.id.contains("live") || $0.id.contains("animal") }
     }
 
+    private var medicinesSignal: AdminCommandOrbitSignal? {
+        signals.first { $0.id.contains("medicine") || $0.id.contains("pharmacy") || $0.id.contains("drug") }
+    }
+
     private var stockAlertCount: Int {
         let acc = accessoriesSignal?.count ?? 0
         let food = foodSignal?.count ?? 0
         let pets = livePetsSignal?.count ?? 0
-        return acc + food + pets
+        let meds = medicinesSignal?.count ?? 0
+        return acc + food + pets + meds
     }
 
     private var currentBranchName: String {
@@ -5710,7 +5715,7 @@ private struct CommandStockDeck: View {
         VStack(alignment: .leading, spacing: AdminSectionSpacing.headerToContent(isRegular: isRegular)) {
             AdminSectionHeader(
                 title: Language.get("Stock_Section_Title", alter: "قطاع المخزون والمنتجات"),
-                subtitle: Language.get("Stock_Section_Subtitle", alter: "كتالوج المنتجات، الأغذية، والحيوانات الحية مع تتبع الكميات"),
+                subtitle: Language.get("Stock_Section_Subtitle", alter: "كتالوج المنتجات، الأغذية، الأدوية، والحيوانات الحية مع تتبع الكميات"),
                 eyebrow: Language.get("Stock_SectionEyebrow", alter: "المخزون والكتالوج"),
                 symbol: "shippingbox.fill",
                 themeColor: Color(red: 0.55, green: 0.36, blue: 0.96),
@@ -5782,59 +5787,73 @@ private struct CommandStockDeck: View {
         }
     }
 
-    // Stock & Products Horizon: Left column has Live Pets (tall card); Right column has Accessories + Food stacked
+    // Stock & Products Horizon: Left column has Live Pets (2-row height); Right column has Accessories + Food stacked; Bottom has Medicines spanning full width of the two columns
     private var iphoneStockView: some View {
         let spacing: CGFloat = 9
         let widths = columnWidths(spacing: spacing)
 
-        return HStack(alignment: .top, spacing: spacing) {
-            CommandStockVaultCardTallLivePets(
-                title: Language.get("Stock_LivePets_Title", alter: "الحيوانات الحية"),
-                subtitle: Language.get("Stock_LivePets_Subtitle", alter: "الطيور، القطط، الكلاب، السجلات والشرائح"),
-                iconName: "pawprint.fill",
-                accent: AdminSurface.primary,
-                badgeCount: livePetsSignal?.count,
-                arrowNudge: arrowNudge,
-                targetHeight: stackedCardsHeight > 0 ? stackedCardsHeight : nil,
-                action: { onRoute("stockSector:livePets") }
-            )
-            .frame(width: widths.livePets)
-            .frame(maxWidth: widths.livePets == nil ? .infinity : nil)
-            .frame(height: stackedCardsHeight > 0 ? stackedCardsHeight : nil)
-
-            VStack(spacing: spacing) {
-                CommandStockVaultCardCompactiPhone(
-                    title: Language.get("Stock_Accessories_Title", alter: "المخزون والإكسسوارات"),
-                    subtitle: Language.get("Stock_Accessories_Subtitle", alter: "الأطواق، الألعاب، ومستلزمات العناية والرعاية"),
-                    iconName: "archivebox.fill",
-                    accent: Color(red: 0.55, green: 0.36, blue: 0.96),
-                    badgeCount: accessoriesSignal?.count ?? (stockAlertCount > 0 ? stockAlertCount : nil),
+        return VStack(spacing: spacing) {
+            HStack(alignment: .top, spacing: spacing) {
+                CommandStockVaultCardTallLivePets(
+                    title: Language.get("Stock_LivePets_Title", alter: "الحيوانات الحية"),
+                    subtitle: Language.get("Stock_LivePets_Subtitle", alter: "الطيور، القطط، الكلاب، السجلات والشرائح"),
+                    iconName: "pawprint.fill",
+                    accent: AdminSurface.primary,
+                    badgeCount: livePetsSignal?.count,
                     arrowNudge: arrowNudge,
-                    action: { onRoute("stockSector:accessories") }
+                    targetHeight: stackedCardsHeight > 0 ? stackedCardsHeight : nil,
+                    action: { onRoute("stockSector:livePets") }
                 )
-                .frame(maxWidth: .infinity)
+                .frame(width: widths.livePets)
+                .frame(maxWidth: widths.livePets == nil ? .infinity : nil)
+                .frame(height: stackedCardsHeight > 0 ? stackedCardsHeight : nil)
 
-                CommandStockVaultCardCompactiPhone(
-                    title: Language.get("Stock_Food_Title", alter: "الأغذية والتغذية"),
-                    subtitle: Language.get("Stock_Food_Subtitle", alter: "الأغذية الجافة، الرطبة، المكملات والمكافآت"),
-                    iconName: "bag.fill",
-                    accent: Color(red: 0.96, green: 0.55, blue: 0.12),
-                    badgeCount: foodSignal?.count,
-                    arrowNudge: arrowNudge,
-                    action: { onRoute("stockSector:food") }
-                )
-                .frame(maxWidth: .infinity)
-            }
-            .frame(width: widths.stacked)
-            .frame(maxWidth: widths.stacked == nil ? .infinity : nil)
-            .background(
-                GeometryReader { geo in
-                    Color.clear.preference(
-                        key: CommandStockStackedHeightKey.self,
-                        value: geo.size.height
+                VStack(spacing: spacing) {
+                    CommandStockVaultCardCompactiPhone(
+                        title: Language.get("Stock_Accessories_Title", alter: "المخزون والإكسسوارات"),
+                        subtitle: Language.get("Stock_Accessories_Subtitle", alter: "الأطواق، الألعاب، ومستلزمات العناية والرعاية"),
+                        iconName: "archivebox.fill",
+                        accent: Color(red: 0.55, green: 0.36, blue: 0.96),
+                        badgeCount: accessoriesSignal?.count ?? (stockAlertCount > 0 ? stockAlertCount : nil),
+                        arrowNudge: arrowNudge,
+                        action: { onRoute("stockSector:accessories") }
                     )
+                    .frame(maxWidth: .infinity)
+
+                    CommandStockVaultCardCompactiPhone(
+                        title: Language.get("Stock_Food_Title", alter: "الأغذية والتغذية"),
+                        subtitle: Language.get("Stock_Food_Subtitle", alter: "الأغذية الجافة، الرطبة، المكملات والمكافآت"),
+                        iconName: "bag.fill",
+                        accent: Color(red: 0.96, green: 0.55, blue: 0.12),
+                        badgeCount: foodSignal?.count,
+                        arrowNudge: arrowNudge,
+                        action: { onRoute("stockSector:food") }
+                    )
+                    .frame(maxWidth: .infinity)
                 }
+                .frame(width: widths.stacked)
+                .frame(maxWidth: widths.stacked == nil ? .infinity : nil)
+                .background(
+                    GeometryReader { geo in
+                        Color.clear.preference(
+                            key: CommandStockStackedHeightKey.self,
+                            value: geo.size.height
+                        )
+                    }
+                )
+            }
+
+            CommandStockVaultCardiPhone(
+                title: Language.get("Stock_Medicines_Title", alter: "إدارة الأدوية"),
+                subtitle: Language.get("Stock_Medicines_Subtitle", alter: "الأدوية البيطرية، الوصفات، والتشغيلات والصلاحية"),
+                iconName: "pills.fill",
+                accent: Color(red: 0.12, green: 0.74, blue: 0.58),
+                badgeCount: medicinesSignal?.count,
+                arrowNudge: arrowNudge,
+                isRegular: false,
+                action: { onRoute("stockSector:medicines") }
             )
+            .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity)
         .background(
@@ -5847,59 +5866,73 @@ private struct CommandStockDeck: View {
         )
     }
 
-    // iPad: Panoramic Horizon Pavilion (Matching 2-Column Blueprint)
+    // iPad: Panoramic Horizon Pavilion (Matching 2-Column + Full-Width Medicine Blueprint)
     private var ipadStockView: some View {
         let spacing: CGFloat = 14
         let widths = columnWidths(spacing: spacing)
 
-        return HStack(alignment: .top, spacing: spacing) {
-            CommandStockVaultCardTallLivePets(
-                title: Language.get("Stock_LivePets_Title", alter: "الحيوانات الحية"),
-                subtitle: Language.get("Stock_LivePets_Subtitle", alter: "الطيور، القطط، الكلاب، السجلات والشرائح"),
-                iconName: "pawprint.fill",
-                accent: AdminSurface.primary,
-                badgeCount: livePetsSignal?.count,
-                arrowNudge: arrowNudge,
-                targetHeight: stackedCardsHeight > 0 ? stackedCardsHeight : nil,
-                action: { onRoute("stockSector:livePets") }
-            )
-            .frame(width: widths.livePets)
-            .frame(maxWidth: widths.livePets == nil ? .infinity : nil)
-            .frame(height: stackedCardsHeight > 0 ? stackedCardsHeight : nil)
-
-            VStack(spacing: spacing) {
-                CommandStockVaultCardCompactiPhone(
-                    title: Language.get("Stock_Accessories_Title", alter: "المخزون والإكسسوارات"),
-                    subtitle: Language.get("Stock_Accessories_Subtitle", alter: "الأطواق، الألعاب، ومستلزمات العناية والرعاية"),
-                    iconName: "archivebox.fill",
-                    accent: Color(red: 0.55, green: 0.36, blue: 0.96),
-                    badgeCount: accessoriesSignal?.count ?? (stockAlertCount > 0 ? stockAlertCount : nil),
+        return VStack(spacing: spacing) {
+            HStack(alignment: .top, spacing: spacing) {
+                CommandStockVaultCardTallLivePets(
+                    title: Language.get("Stock_LivePets_Title", alter: "الحيوانات الحية"),
+                    subtitle: Language.get("Stock_LivePets_Subtitle", alter: "الطيور، القطط، الكلاب، السجلات والشرائح"),
+                    iconName: "pawprint.fill",
+                    accent: AdminSurface.primary,
+                    badgeCount: livePetsSignal?.count,
                     arrowNudge: arrowNudge,
-                    action: { onRoute("stockSector:accessories") }
+                    targetHeight: stackedCardsHeight > 0 ? stackedCardsHeight : nil,
+                    action: { onRoute("stockSector:livePets") }
                 )
-                .frame(maxWidth: .infinity)
+                .frame(width: widths.livePets)
+                .frame(maxWidth: widths.livePets == nil ? .infinity : nil)
+                .frame(height: stackedCardsHeight > 0 ? stackedCardsHeight : nil)
 
-                CommandStockVaultCardCompactiPhone(
-                    title: Language.get("Stock_Food_Title", alter: "الأغذية والتغذية"),
-                    subtitle: Language.get("Stock_Food_Subtitle", alter: "الأغذية الجافة، الرطبة، المكملات والمكافآت"),
-                    iconName: "bag.fill",
-                    accent: Color(red: 0.96, green: 0.55, blue: 0.12),
-                    badgeCount: foodSignal?.count,
-                    arrowNudge: arrowNudge,
-                    action: { onRoute("stockSector:food") }
-                )
-                .frame(maxWidth: .infinity)
-            }
-            .frame(width: widths.stacked)
-            .frame(maxWidth: widths.stacked == nil ? .infinity : nil)
-            .background(
-                GeometryReader { geo in
-                    Color.clear.preference(
-                        key: CommandStockStackedHeightKey.self,
-                        value: geo.size.height
+                VStack(spacing: spacing) {
+                    CommandStockVaultCardCompactiPhone(
+                        title: Language.get("Stock_Accessories_Title", alter: "المخزون والإكسسوارات"),
+                        subtitle: Language.get("Stock_Accessories_Subtitle", alter: "الأطواق، الألعاب، ومستلزمات العناية والرعاية"),
+                        iconName: "archivebox.fill",
+                        accent: Color(red: 0.55, green: 0.36, blue: 0.96),
+                        badgeCount: accessoriesSignal?.count ?? (stockAlertCount > 0 ? stockAlertCount : nil),
+                        arrowNudge: arrowNudge,
+                        action: { onRoute("stockSector:accessories") }
                     )
+                    .frame(maxWidth: .infinity)
+
+                    CommandStockVaultCardCompactiPhone(
+                        title: Language.get("Stock_Food_Title", alter: "الأغذية والتغذية"),
+                        subtitle: Language.get("Stock_Food_Subtitle", alter: "الأغذية الجافة، الرطبة، المكملات والمكافآت"),
+                        iconName: "bag.fill",
+                        accent: Color(red: 0.96, green: 0.55, blue: 0.12),
+                        badgeCount: foodSignal?.count,
+                        arrowNudge: arrowNudge,
+                        action: { onRoute("stockSector:food") }
+                    )
+                    .frame(maxWidth: .infinity)
                 }
+                .frame(width: widths.stacked)
+                .frame(maxWidth: widths.stacked == nil ? .infinity : nil)
+                .background(
+                    GeometryReader { geo in
+                        Color.clear.preference(
+                            key: CommandStockStackedHeightKey.self,
+                            value: geo.size.height
+                        )
+                    }
+                )
+            }
+
+            CommandStockVaultCardiPhone(
+                title: Language.get("Stock_Medicines_Title", alter: "إدارة الأدوية"),
+                subtitle: Language.get("Stock_Medicines_Subtitle", alter: "الأدوية البيطرية، الوصفات، والتشغيلات والصلاحية"),
+                iconName: "pills.fill",
+                accent: Color(red: 0.12, green: 0.74, blue: 0.58),
+                badgeCount: medicinesSignal?.count,
+                arrowNudge: arrowNudge,
+                isRegular: true,
+                action: { onRoute("stockSector:medicines") }
             )
+            .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity)
         .background(
@@ -5961,26 +5994,27 @@ private struct CommandStockVaultCardTallLivePets: View {
     }
 
     /// Lottie cat animation loaded from Firebase Storage ("Loader cat.json") on a borderless circular plate.
-    /// Plate is circular, borderless, decreased by 30%, elevated to top, and faded from bottom.
-    /// Lottie size is preserved at full dimensions with slower animation speed (0.70x).
+    /// Plate is circular, borderless, scaled and elevated to harmonize with the 2-row card height.
+    /// Lottie size is proportionally fitted with bottom anchor preserved at calm animation speed (0.35x).
     private var lottieCatSection: some View {
         GeometryReader { proxy in
             let availW = proxy.size.width
             let availH = proxy.size.height
-            // Sizing: base plate calculation
-            let maxFromH = availH > 0 ? (availH / 1.3) : 75
-            let maxFromW = availW > 0 ? (availW / 1.3) : 75
-            let cap: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 105 : 82
-            let baseSize = max(44, min(min(maxFromH, maxFromW), cap))
+            // Sizing: base plate calculation harmonized for 2-row height
+            let maxFromH = availH > 0 ? (availH / 1.5) : 60
+            let maxFromW = availW > 0 ? (availW / 1.5) : 60
+            let cap: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 92 : 64
+            let baseSize = max(30, min(min(maxFromH, maxFromW), cap))
             // Base Lottie view size
             let baseLottieSize = (baseSize * 1.3) * 2.0
-            // Lottie size increased by +30% with bottom anchor preserved
-            let lottieSize = baseLottieSize * 1.30
+            // Lottie size scaled with bottom anchor preserved
+            let lottieSize = baseLottieSize * 1.25
             // Plate size preserved ((baseSize * 2.0) * 0.70)
             let plateSize = (baseSize * 2.0) * 0.70
+            let plateOffset: CGFloat = availH < 130 ? -4 : -8
 
             ZStack(alignment: .center) {
-                // Borderless circular plate: decreased by 30%, moved to top little, faded from bottom
+                // Borderless circular plate: decreased by 30%, centered, faded from bottom
                 Circle()
                     .fill(
                         LinearGradient(
@@ -6007,9 +6041,9 @@ private struct CommandStockVaultCardTallLivePets: View {
                         )
                     )
                     .frame(width: plateSize, height: plateSize)
-                    .offset(y: -12)
+                    .offset(y: plateOffset)
 
-                // Lottie cat animation anchored at bottom, increased by +30%, calm slow animation speed
+                // Lottie cat animation anchored at bottom, calm slow animation speed
                 PPLottieFirebaseView(
                     fileName: "Loader cat",
                     loop: true,
@@ -6017,40 +6051,40 @@ private struct CommandStockVaultCardTallLivePets: View {
                     contentMode: .scaleAspectFit
                 )
                 .frame(width: lottieSize, height: lottieSize)
-                .offset(y: -((lottieSize - baseLottieSize) / 2.0))
+                .offset(y: plateOffset - ((lottieSize - baseLottieSize) / 3.0))
                 .allowsHitTesting(false)
             }
             .position(
                 x: availW / 2,
-                y: (availH / 2) + (UIDevice.current.userInterfaceIdiom == .pad ? -8 : -2)
+                y: (availH / 2) + (UIDevice.current.userInterfaceIdiom == .pad ? -4 : 0)
             )
         }
         .frame(maxWidth: .infinity, alignment: .center)
-        .frame(minHeight: 50, maxHeight: .infinity)
+        .frame(minHeight: 40, maxHeight: .infinity)
     }
 
     private var contentSection: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 4) {
                 Circle()
                     .fill(accent)
-                    .frame(width: 5, height: 5)
+                    .frame(width: 4.5, height: 4.5)
                 Text(Language.get("Stock_Category_LivePets", alter: "حيوانات حية"))
-                    .font(Font.custom("Beiruti-Bold", size: 10.5, relativeTo: .caption2))
+                    .font(Font.custom("Beiruti-Bold", size: 10, relativeTo: .caption2))
                     .foregroundStyle(accent)
             }
-            .padding(.horizontal, 7)
+            .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(accent.opacity(colorScheme == .dark ? 0.16 : 0.08), in: Capsule())
 
             Text(title)
-                .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
+                .font(Font.custom("Beiruti-Bold", size: 14.5, relativeTo: .headline))
                 .foregroundStyle(AdminSurface.primaryText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
 
             Text(subtitle)
-                .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption))
+                .font(Font.custom("Beiruti-Regular", size: 10.5, relativeTo: .caption))
                 .foregroundStyle(AdminCommandInk.secondary)
                 .lineLimit(2)
                 .lineSpacing(1.1)
@@ -6066,13 +6100,13 @@ private struct CommandStockVaultCardTallLivePets: View {
         }) {
             VStack(alignment: .leading, spacing: 0) {
                 topBar
-                Spacer(minLength: 4)
+                Spacer(minLength: 2)
                 lottieCatSection
-                Spacer(minLength: 6)
+                Spacer(minLength: 4)
                 contentSection
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 11)
+            .padding(.vertical, 10)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(
                 RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
@@ -6231,6 +6265,7 @@ private struct CommandStockVaultCardiPhone: View {
     let accent: Color
     let badgeCount: Int?
     let arrowNudge: CGFloat
+    var isRegular: Bool = false
     let action: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -6254,10 +6289,10 @@ private struct CommandStockVaultCardiPhone: View {
                 .fill(iconGradient)
 
             Image(systemName: iconName)
-                .font(.system(size: 17, weight: .semibold))
+                .font(.system(size: isRegular ? 19 : 17, weight: .semibold))
                 .foregroundStyle(accent)
         }
-        .frame(width: 44, height: 44)
+        .frame(width: isRegular ? 48 : 44, height: isRegular ? 48 : 44)
         .overlay(
             RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                 .strokeBorder(accent.opacity(colorScheme == .dark ? 0.32 : 0.18), lineWidth: 0.75)
@@ -6265,12 +6300,24 @@ private struct CommandStockVaultCardiPhone: View {
     }
 
     private var titleAndDescription: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 2.5) {
             HStack(spacing: 6) {
                 Text(title)
-                    .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .subheadline))
+                    .font(Font.custom("Beiruti-Bold", size: isRegular ? 16 : 15, relativeTo: .subheadline))
                     .foregroundStyle(AdminSurface.primaryText)
                     .lineLimit(1)
+
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(accent)
+                        .frame(width: 4, height: 4)
+                    Text(Language.get("Stock_Category_Medicines", alter: "أدوية بيطرية"))
+                        .font(Font.custom("Beiruti-Bold", size: 9.5, relativeTo: .caption2))
+                        .foregroundStyle(accent)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 1.5)
+                .background(accent.opacity(colorScheme == .dark ? 0.16 : 0.08), in: Capsule())
 
                 if let count = badgeCount, count > 0 {
                     Text("\(count)")
@@ -6283,7 +6330,7 @@ private struct CommandStockVaultCardiPhone: View {
             }
 
             Text(subtitle)
-                .font(Font.custom("Beiruti-Regular", size: 11.5, relativeTo: .caption))
+                .font(Font.custom("Beiruti-Regular", size: isRegular ? 12 : 11.5, relativeTo: .caption))
                 .foregroundStyle(AdminCommandInk.secondary)
                 .lineLimit(1)
         }
@@ -6297,7 +6344,7 @@ private struct CommandStockVaultCardiPhone: View {
                 .foregroundStyle(accent)
                 .offset(x: (Language.isRTL() ? -1 : 1) * arrowNudge * 0.6)
         }
-        .frame(width: 28, height: 28)
+        .frame(width: isRegular ? 30 : 28, height: isRegular ? 30 : 28)
         .background(accent.opacity(colorScheme == .dark ? 0.12 : 0.06), in: Circle())
     }
 
@@ -6306,14 +6353,14 @@ private struct CommandStockVaultCardiPhone: View {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             action()
         }) {
-            HStack(spacing: 12) {
+            HStack(spacing: isRegular ? 14 : 12) {
                 iconSquircle
                 titleAndDescription
                 Spacer(minLength: 4)
                 chevronPill
             }
-            .padding(.horizontal, 13)
-            .padding(.vertical, 11)
+            .padding(.horizontal, isRegular ? 15 : 13)
+            .padding(.vertical, isRegular ? 13 : 11)
             .background(
                 RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                     .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
@@ -6640,9 +6687,19 @@ private struct CommandQuickActionsDeck: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
-    @State private var isExpanded: Bool = false
-
     private var spacing: CGFloat { 10 }
+
+    private var cardWidth: CGFloat {
+        if isRegular {
+            return isLandscapeIPad ? 285 : 265
+        } else {
+            return 248
+        }
+    }
+
+    private var isLandscapeIPad: Bool {
+        isLandscape && containerWidth >= 950
+    }
 
     private var allDeckItems: [CommandQuickActionItem] {
         let fulfillmentSignal = signals.first { $0.id.contains("fulfillment") }
@@ -6735,10 +6792,8 @@ private struct CommandQuickActionsDeck: View {
                         }
                     }
                 }
-            } else if isRegular {
-                ipadOperationsMatrixView
             } else {
-                iphoneOperationsMatrixView
+                quickActionsRailView
             }
         }
         .frame(maxWidth: .infinity)
@@ -6767,36 +6822,20 @@ private struct CommandQuickActionsDeck: View {
         }
     }
 
-    // iPhone Operations Line (Unified Action Card Stack)
-    private var iphoneOperationsMatrixView: some View {
-        VStack(spacing: spacing) {
-            ForEach(allDeckItems) { item in
-                CommandQuickActionCard(item: item, isRegular: false) {
-                    onRoute(item.tag)
+    private var quickActionsRailView: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: spacing) {
+                ForEach(allDeckItems) { item in
+                    CommandQuickActionCard(item: item, isRegular: isRegular) {
+                        onRoute(item.tag)
+                    }
+                    .frame(width: cardWidth)
                 }
             }
+            .padding(.horizontal, AdminCommandMetric.pageMargin)
+            .padding(.vertical, 6)
         }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var isLandscapeIPad: Bool {
-        isLandscape && containerWidth >= 950
-    }
-
-    // iPad Operations Line (Unified Responsive Grid: 3 columns in landscape, 2 columns in portrait)
-    private var ipadOperationsMatrixView: some View {
-        let columns = isLandscapeIPad
-            ? [GridItem(.flexible(), spacing: spacing), GridItem(.flexible(), spacing: spacing), GridItem(.flexible(), spacing: spacing)]
-            : [GridItem(.flexible(), spacing: spacing), GridItem(.flexible(), spacing: spacing)]
-
-        return LazyVGrid(columns: columns, spacing: spacing) {
-            ForEach(allDeckItems) { item in
-                CommandQuickActionCard(item: item, isRegular: true) {
-                    onRoute(item.tag)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity)
+        .padding(.horizontal, -AdminCommandMetric.pageMargin)
     }
 }
 
@@ -6860,7 +6899,7 @@ private struct CommandQuickActionCard: View {
                         .multilineTextAlignment(.leading)
                 }
 
-                Spacer(minLength: 6)
+                Spacer(minLength: 4)
 
                 // 3. Trailing Telemetry Signal / Navigation Affordance
                 HStack(spacing: 6) {
