@@ -8,13 +8,7 @@
 import Foundation
 import UIKit
 
-#if canImport(HXPHPicker)
-import HXPHPicker
-#elseif canImport(HXPhotoPicker)
-import HXPhotoPicker
-#endif
-
-#if canImport(HXPHPicker) || canImport(HXPhotoPicker)
+#if false
 
 public extension Notification.Name {
     static let PPEditorBridgeDidFinish = Notification.Name("PPEditorBridgeDidFinish")
