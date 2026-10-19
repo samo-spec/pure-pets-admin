@@ -25,9 +25,14 @@ public struct PPInventoryActionMenuSheet: View {
     var onLiveIntake: (() -> Void)? = nil
     var onToggleAppMarket: (() -> Void)? = nil
     var onRevertToNormal: (() -> Void)? = nil
+    var onChangeKind: ((AccessKindType) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    @State private var showChangeKindStudio = false
+    @State private var selectedTargetKind: AccessKindType? = nil
+    @State private var isTransferringKind = false
 
     public init(
         item: PetAccessory,
@@ -42,7 +47,8 @@ public struct PPInventoryActionMenuSheet: View {
         onRecordMortality: (() -> Void)? = nil,
         onLiveIntake: (() -> Void)? = nil,
         onToggleAppMarket: (() -> Void)? = nil,
-        onRevertToNormal: (() -> Void)? = nil
+        onRevertToNormal: (() -> Void)? = nil,
+        onChangeKind: ((AccessKindType) -> Void)? = nil
     ) {
         self.item = item
         self.onEdit = onEdit
@@ -57,6 +63,7 @@ public struct PPInventoryActionMenuSheet: View {
         self.onLiveIntake = onLiveIntake
         self.onToggleAppMarket = onToggleAppMarket
         self.onRevertToNormal = onRevertToNormal
+        self.onChangeKind = onChangeKind
     }
 
     private var imageURL: URL? {
@@ -166,21 +173,29 @@ public struct PPInventoryActionMenuSheet: View {
                     .frame(width: 38, height: 4.5)
                     .padding(.top, 10)
 
-                // Specimen Identity Header Card
-                specimenIdentityCard(compact: true)
-
-                // The Flagship Studios: Dedicated for Live Pets, Standard for Dry Goods
-                if item.isLivePet {
-                    livePetStudiosSection
+                if showChangeKindStudio {
+                    changeKindStudioView
+                        .transition(.asymmetric(
+                            insertion: .move(edge: Language.isRTL() ? .leading : .trailing).combined(with: .opacity),
+                            removal: .move(edge: Language.isRTL() ? .trailing : .leading).combined(with: .opacity)
+                        ))
                 } else {
-                    dryGoodsStudiosSection
-                }
+                    // Specimen Identity Header Card
+                    specimenIdentityCard(compact: true)
 
-                // Quick Operational Actions Grid
-                quickActionsSection
+                    // The Flagship Studios: Dedicated for Live Pets, Standard for Dry Goods
+                    if item.isLivePet {
+                        livePetStudiosSection
+                    } else {
+                        dryGoodsStudiosSection
+                    }
 
-                if canDeleteStock || (item.belongsToVariantFamily && onRevertToNormal != nil) {
-                    destructiveZone
+                    // Quick Operational Actions Grid
+                    quickActionsSection
+
+                    if canDeleteStock || (item.belongsToVariantFamily && onRevertToNormal != nil) {
+                        destructiveZone
+                    }
                 }
             }
             .padding(.horizontal, 16)
@@ -418,51 +433,107 @@ public struct PPInventoryActionMenuSheet: View {
 
             // App Marketplace Visibility Toggle Row
             if canManageStock {
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    if let onToggleAppMarket = onToggleAppMarket {
-                        onToggleAppMarket()
-                    } else {
-                        toggleAppMarketDirectly()
-                    }
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: item.showInAppMarket ? "storefront.fill" : "eye.slash.fill")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText)
+                if item.belongsToVariantFamily {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        PPHUD.showInfo(
+                            Language.get("Inventory_Family_Visibility_Title", alter: "تنبيه المتغيرات"),
+                            subtitle: Language.get("Inventory_Error_VariantVisibility", alter: "عرض هذا الصنف مرتبط بمجموعة المتغيرات. افتح محرر المتغيرات وحدد المتغير المعروض أو الافتراضي، ثم احفظ المجموعة.")
+                        )
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "square.stack.3d.up.fill")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundColor(Color(uiColor: .systemPurple))
 
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(item.showInAppMarket ? Language.get("AppMarket_Hide_Action", alter: "إخفاء من متجر التطبيق") : Language.get("AppMarket_Show_Action", alter: "إظهار في متجر التطبيق"))
-                                .font(PPBrandFont.bold(size: 14))
-                                .foregroundColor(AdminSurface.primaryText)
-                                .multilineTextAlignment(.leading)
-                            Text(item.showInAppMarket ? Language.get("AppMarket_Currently_Visible", alter: "الصنف معروض للعملاء في تطبيق Pure Pets") : Language.get("AppMarket_Currently_Hidden", alter: "الصنف مخفي عن المتجر ومتاح للكاشير والبيع الداخلي فقط"))
-                                .font(AdminType.caption2)
-                                .foregroundColor(AdminSurface.secondaryText)
-                                .multilineTextAlignment(.leading)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(Language.get("Variant_Market_Visibility_Title", alter: "عرض المتجر مرتبط بالمجموعة"))
+                                    .font(PPBrandFont.bold(size: 14))
+                                    .foregroundColor(AdminSurface.primaryText)
+                                    .multilineTextAlignment(.leading)
+                                Text(item.showInAppMarket 
+                                     ? Language.get("Variant_Market_Visible_Desc", alter: "هذا هو المتغير المعروض للعملاء في تطبيق Pure Pets كواجهة للمجموعة")
+                                     : Language.get("Variant_Market_Secondary_Desc", alter: "متغير فرعي، يظهر داخل صفحة المنتج عند اختيار خياراته"))
+                                    .font(AdminType.caption2)
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                    .multilineTextAlignment(.leading)
+                            }
+
+                            Spacer()
+
+                            Text(item.showInAppMarket 
+                                 ? Language.get("Variant_Market_Default_Badge", alter: "المعروض بالمتجر") 
+                                 : Language.get("Variant_Market_Sub_Badge", alter: "ضمن المجموعة"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundColor(Color(uiColor: .systemPurple))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    Color(uiColor: .systemPurple).opacity(0.12),
+                                    in: Capsule()
+                                )
                         }
-
-                        Spacer()
-
-                        Text(item.showInAppMarket ? Language.get("AppMarket_Status_Visible", alter: "معروض بالمتجر") : Language.get("AppMarket_Status_Hidden", alter: "مخفي من المتجر"))
-                            .font(AdminType.caption2Bold)
-                            .foregroundColor(item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                (item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText).opacity(0.12),
-                                in: Capsule()
-                            )
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(Color(uiColor: .systemPurple).opacity(0.25), lineWidth: 1)
+                        )
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(AdminSurface.hairline, lineWidth: 1)
-                    )
+                    .buttonStyle(SpecimenActionPressStyle())
+                } else {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        if let onToggleAppMarket = onToggleAppMarket {
+                            onToggleAppMarket()
+                        } else {
+                            toggleAppMarketDirectly()
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: item.showInAppMarket ? "storefront.fill" : "eye.slash.fill")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundColor(item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.showInAppMarket ? Language.get("AppMarket_Hide_Action", alter: "إخفاء من متجر التطبيق") : Language.get("AppMarket_Show_Action", alter: "إظهار في متجر التطبيق"))
+                                    .font(PPBrandFont.bold(size: 14))
+                                    .foregroundColor(AdminSurface.primaryText)
+                                    .multilineTextAlignment(.leading)
+                                Text(item.showInAppMarket ? Language.get("AppMarket_Currently_Visible", alter: "الصنف معروض للعملاء في تطبيق Pure Pets") : Language.get("AppMarket_Currently_Hidden", alter: "الصنف مخفي عن المتجر ومتاح للكاشير والبيع الداخلي فقط"))
+                                    .font(AdminType.caption2)
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                    .multilineTextAlignment(.leading)
+                            }
+
+                            Spacer()
+
+                            Text(item.showInAppMarket ? Language.get("AppMarket_Status_Visible", alter: "معروض بالمتجر") : Language.get("AppMarket_Status_Hidden", alter: "مخفي من المتجر"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundColor(item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    (item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText).opacity(0.12),
+                                    in: Capsule()
+                                )
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(AdminSurface.hairline, lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(SpecimenActionPressStyle())
                 }
-                .buttonStyle(SpecimenActionPressStyle())
+            }
+
+            // Change Inventory Kind / Section Row (Dry Goods & Merchandise Only)
+            if canManageStock && !item.isLivePet {
+                changeKindActionRow
             }
         }
     }
@@ -645,11 +716,15 @@ public struct PPInventoryActionMenuSheet: View {
                 // Trailing Column: Studios & Operations Flight Deck
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 14) {
-                        if item.isLivePet {
-                            livePetStudiosSection
+                        if showChangeKindStudio {
+                            changeKindStudioView
+                                .transition(.opacity)
                         } else {
-                            dryGoodsStudiosSection
-                        }
+                            if item.isLivePet {
+                                livePetStudiosSection
+                            } else {
+                                dryGoodsStudiosSection
+                            }
 
                         // Quick Actions Strip
                         HStack(spacing: 10) {
@@ -716,29 +791,58 @@ public struct PPInventoryActionMenuSheet: View {
                             }
 
                             if canManageStock {
-                                Button {
-                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                    if let onToggleAppMarket = onToggleAppMarket {
-                                        onToggleAppMarket()
-                                    } else {
-                                        toggleAppMarketDirectly()
+                                if item.belongsToVariantFamily {
+                                    Button {
+                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                        PPHUD.showInfo(
+                                            Language.get("Inventory_Family_Visibility_Title", alter: "تنبيه المتغيرات"),
+                                            subtitle: Language.get("Inventory_Error_VariantVisibility", alter: "عرض هذا الصنف مرتبط بمجموعة المتغيرات. افتح محرر المتغيرات وحدد المتغير المعروض أو الافتراضي، ثم احفظ المجموعة.")
+                                        )
+                                    } label: {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "square.stack.3d.up.fill")
+                                                .font(.system(size: 14, weight: .bold))
+                                            Text(item.showInAppMarket ? Language.get("Variant_Market_Default_Badge", alter: "المعروض بالمتجر") : Language.get("Variant_Market_Sub_Badge", alter: "ضمن المجموعة"))
+                                                .font(PPBrandFont.bold(size: 14))
+                                        }
+                                        .foregroundColor(Color(uiColor: .systemPurple))
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: 44)
+                                        .background(
+                                            Color(uiColor: .systemPurple).opacity(0.10),
+                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        )
                                     }
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: item.showInAppMarket ? "storefront.fill" : "eye.slash.fill")
-                                            .font(.system(size: 14, weight: .bold))
-                                        Text(item.showInAppMarket ? Language.get("AppMarket_Hide_Action", alter: "إخفاء من المتجر") : Language.get("AppMarket_Show_Action", alter: "إظهار بالمتجر"))
-                                            .font(PPBrandFont.bold(size: 14))
+                                    .buttonStyle(SpecimenActionPressStyle())
+                                } else {
+                                    Button {
+                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                        if let onToggleAppMarket = onToggleAppMarket {
+                                            onToggleAppMarket()
+                                        } else {
+                                            toggleAppMarketDirectly()
+                                        }
+                                    } label: {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: item.showInAppMarket ? "storefront.fill" : "eye.slash.fill")
+                                                .font(.system(size: 14, weight: .bold))
+                                            Text(item.showInAppMarket ? Language.get("AppMarket_Hide_Action", alter: "إخفاء من المتجر") : Language.get("AppMarket_Show_Action", alter: "إظهار بالمتجر"))
+                                                .font(PPBrandFont.bold(size: 14))
+                                        }
+                                        .foregroundColor(item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText)
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: 44)
+                                        .background(
+                                            (item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText).opacity(0.10),
+                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        )
                                     }
-                                    .foregroundColor(item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText)
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 44)
-                                    .background(
-                                        (item.showInAppMarket ? Color(uiColor: .systemIndigo) : AdminSurface.secondaryText).opacity(0.10),
-                                        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    )
+                                    .buttonStyle(SpecimenActionPressStyle())
                                 }
-                                .buttonStyle(SpecimenActionPressStyle())
+                            }
+
+                            if canManageStock && !item.isLivePet {
+                                changeKindActionRow
                             }
                         }
                         if item.belongsToVariantFamily, let onRevertToNormal = onRevertToNormal {
@@ -784,6 +888,7 @@ public struct PPInventoryActionMenuSheet: View {
                                 .background(Color(uiColor: .ppError).opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                             }
                             .buttonStyle(SpecimenActionPressStyle())
+                        }
                         }
                     }
                 }
@@ -968,6 +1073,13 @@ public struct PPInventoryActionMenuSheet: View {
     private func toggleAppMarketDirectly() {
         let docId = item.accessoryID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !docId.isEmpty else { return }
+        if item.belongsToVariantFamily {
+            PPHUD.showInfo(
+                Language.get("Inventory_Family_Visibility_Title", alter: "تنبيه المتغيرات"),
+                subtitle: Language.get("Inventory_Error_VariantVisibility", alter: "عرض هذا الصنف مرتبط بمجموعة المتغيرات. افتح محرر المتغيرات وحدد المتغير المعروض أو الافتراضي، ثم احفظ المجموعة.")
+            )
+            return
+        }
         let previousStatus = item.showInAppMarket
         let newStatus = !previousStatus
         item.showInAppMarket = newStatus
@@ -991,6 +1103,441 @@ public struct PPInventoryActionMenuSheet: View {
                 if let revision = result?.revision, revision > 0 { item.revision = revision }
                 let message = newStatus ? Language.get("AppMarket_NowVisible_Toast", alter: "تم إظهار الصنف في متجر التطبيق") : Language.get("AppMarket_NowHidden_Toast", alter: "تم إخفاء الصنف من متجر التطبيق")
                 PPHUD.showSuccess(message)
+            }
+        }
+    }
+
+    // MARK: - 🔄 Inventory Kind Transfer (Studio & Actions)
+
+    private var currentKindTitle: String {
+        switch item.accessKindType {
+        case .typeAccessory:
+            return Language.get("Kind_Accessory_Title", alter: "إكسسوارات ومستلزمات")
+        case .typeFood:
+            return Language.get("Kind_Food_Title", alter: "أغذية ومكملات")
+        case .typePetMedicine:
+            return Language.get("Kind_Medicine_Title", alter: "الأدوية ومنتجات العناية")
+        case .typeLivePets:
+            return Language.get("Manage Live Pets", alter: "حيوانات أليفة حية")
+        @unknown default:
+            return Language.get("Kind_Accessory_Title", alter: "إكسسوارات ومستلزمات")
+        }
+    }
+
+    private var currentKindIcon: String {
+        switch item.accessKindType {
+        case .typeAccessory:
+            return "bag.fill"
+        case .typeFood:
+            return "fork.knife"
+        case .typePetMedicine:
+            return "pills.fill"
+        case .typeLivePets:
+            return "pawprint.fill"
+        @unknown default:
+            return "bag.fill"
+        }
+    }
+
+    private var currentKindColor: Color {
+        switch item.accessKindType {
+        case .typeAccessory:
+            return Color(red: 245/255, green: 158/255, blue: 11/255)
+        case .typeFood:
+            return Color(red: 16/255, green: 185/255, blue: 129/255)
+        case .typePetMedicine:
+            return Color(red: 14/255, green: 165/255, blue: 233/255)
+        case .typeLivePets:
+            return Color(red: 225/255, green: 29/255, blue: 72/255)
+        @unknown default:
+            return AdminSurface.primary
+        }
+    }
+
+    private var changeKindActionRow: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            selectedTargetKind = nil
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                showChangeKindStudio = true
+            }
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(currentKindColor.opacity(0.12))
+                        .frame(width: 38, height: 38)
+                    Image(systemName: "folder.badge.gearshape")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(currentKindColor)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("ChangeInventoryKind_Title", alter: "تغيير تصنيف / قسم المخزون"))
+                        .font(PPBrandFont.bold(size: 14))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .multilineTextAlignment(.leading)
+                    Text(Language.get("ChangeInventoryKind_Desc", alter: "نقل الصنف بين الإكسسوارات، الأغذية، أو الأدوية مع الحفاظ على البيانات"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .multilineTextAlignment(.leading)
+                }
+
+                Spacer()
+
+                HStack(spacing: 4) {
+                    Image(systemName: currentKindIcon)
+                        .font(.system(size: 10, weight: .bold))
+                    Text(currentKindTitle)
+                        .font(AdminType.caption2Bold)
+                }
+                .foregroundColor(currentKindColor)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    currentKindColor.opacity(0.12),
+                    in: Capsule()
+                )
+
+                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline, lineWidth: 1)
+            )
+        }
+        .buttonStyle(SpecimenActionPressStyle())
+    }
+
+    private var changeKindStudioView: some View {
+        VStack(spacing: 14) {
+            // Header with Back Navigation and Title
+            HStack {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                        showChangeKindStudio = false
+                        selectedTargetKind = nil
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
+                            .font(.system(size: 14, weight: .bold))
+                        Text(Language.get("Back", alter: "رجوع"))
+                            .font(PPBrandFont.bold(size: 14))
+                    }
+                    .foregroundColor(AdminSurface.primary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(AdminSurface.primary.opacity(0.08), in: Capsule())
+                }
+                .buttonStyle(SpecimenActionPressStyle())
+
+                Spacer()
+
+                Text(Language.get("ChangeInventoryKind_Title", alter: "تغيير تصنيف / قسم المخزون"))
+                    .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline))
+                    .foregroundColor(AdminSurface.primaryText)
+
+                Spacer()
+
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .frame(width: 30, height: 30)
+                        .background(AdminSurface.control, in: Circle())
+                }
+                .buttonStyle(SpecimenActionPressStyle())
+            }
+            .padding(.top, 2)
+
+            // Specimen Identity Preview
+            specimenIdentityCard(compact: true)
+
+            // Data Preservation Guarantee Notice
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "checkmark.shield.fill")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(Color(uiColor: .ppSuccess))
+                    .padding(.top, 1)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("ChangeInventoryKind_Notice_Title", alter: "حفظ كامل لبيانات الصنف"))
+                        .font(PPBrandFont.bold(size: 13))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .multilineTextAlignment(.leading)
+                    Text(Language.get("ChangeInventoryKind_Notice", alter: "يتم الاحتفاظ بجميع بيانات الصنف (الاسم، الوصف، الصور، الأسعار، الباركود، SKU، والكميات) دون أي تغيير، ويتم فقط تحديث القسم المخزوني للصنف."))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(uiColor: .ppSuccess).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSuccess).opacity(0.25), lineWidth: 1)
+            )
+
+            // The 3 Kind Cards
+            VStack(spacing: 8) {
+                targetKindCard(
+                    kind: .typeAccessory,
+                    title: Language.get("Kind_Accessory_Title", alter: "إكسسوارات ومستلزمات"),
+                    subtitle: Language.get("Kind_Accessory_Desc", alter: "مستلزمات وألعاب وأقفاص وأدوات الحيوانات الأليفة"),
+                    icon: "bag.fill",
+                    accentColor: Color(red: 245/255, green: 158/255, blue: 11/255)
+                )
+
+                targetKindCard(
+                    kind: .typeFood,
+                    title: Language.get("Kind_Food_Title", alter: "أغذية ومكملات"),
+                    subtitle: Language.get("Kind_Food_Desc", alter: "أغذية جافة، رطبة، مكافآت، وفيتامينات ومكملات غذائية"),
+                    icon: "fork.knife",
+                    accentColor: Color(red: 16/255, green: 185/255, blue: 129/255)
+                )
+
+                targetKindCard(
+                    kind: .typePetMedicine,
+                    title: Language.get("Kind_Medicine_Title", alter: "الأدوية ومنتجات العناية"),
+                    subtitle: Language.get("Kind_Medicine_Desc", alter: "علاجات صيدلانية، مضادات، مراهم، وشامبوهات عناية طبية"),
+                    icon: "pills.fill",
+                    accentColor: Color(red: 14/255, green: 165/255, blue: 233/255)
+                )
+            }
+
+            // Transfer Confirmation Button
+            Button {
+                guard let targetKind = selectedTargetKind, targetKind != item.accessKindType else { return }
+                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                executeKindTransfer(to: targetKind)
+            } label: {
+                HStack(spacing: 8) {
+                    if isTransferringKind {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(0.9)
+                    } else {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 15, weight: .bold))
+                    }
+
+                    Text(confirmButtonTitle)
+                        .font(PPBrandFont.bold(size: 15))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .background(
+                    confirmButtonEnabled && !isTransferringKind
+                        ? selectedTargetKindColor
+                        : AdminSurface.secondaryText.opacity(0.35),
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                )
+                .shadow(
+                    color: confirmButtonEnabled && !isTransferringKind ? selectedTargetKindColor.opacity(0.28) : Color.clear,
+                    radius: 8,
+                    x: 0,
+                    y: 3
+                )
+            }
+            .buttonStyle(SpecimenActionPressStyle())
+            .disabled(!confirmButtonEnabled || isTransferringKind)
+            .padding(.top, 2)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func targetKindCard(
+        kind: AccessKindType,
+        title: String,
+        subtitle: String,
+        icon: String,
+        accentColor: Color
+    ) -> some View {
+        let isCurrent = item.accessKindType == kind
+        let isSelected = selectedTargetKind == kind
+
+        return Button {
+            guard !isCurrent else { return }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                selectedTargetKind = kind
+            }
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(accentColor.opacity(isSelected ? 0.20 : 0.12))
+                        .frame(width: 42, height: 42)
+                    Image(systemName: icon)
+                        .font(.system(size: 19, weight: .bold))
+                        .foregroundColor(accentColor)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(title)
+                            .font(PPBrandFont.bold(size: 14))
+                            .foregroundColor(AdminSurface.primaryText)
+
+                        if isCurrent {
+                            Text(Language.get("ChangeInventoryKind_CurrentBadge", alter: "القسم الحالي"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundColor(accentColor)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(accentColor.opacity(0.14), in: Capsule())
+                        }
+                    }
+
+                    Text(subtitle)
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                if isCurrent {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(accentColor.opacity(0.5))
+                } else if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(accentColor)
+                } else {
+                    Circle()
+                        .strokeBorder(AdminSurface.hairline, lineWidth: 2)
+                        .frame(width: 22, height: 22)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                isSelected ? accentColor.opacity(0.06) : AdminSurface.surface,
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(
+                        isSelected ? accentColor : (isCurrent ? accentColor.opacity(0.3) : AdminSurface.hairline),
+                        lineWidth: isSelected ? 1.6 : 1
+                    )
+            )
+        }
+        .buttonStyle(SpecimenActionPressStyle())
+        .opacity(isCurrent ? 0.85 : 1.0)
+    }
+
+    private var confirmButtonEnabled: Bool {
+        guard let target = selectedTargetKind else { return false }
+        return target != item.accessKindType
+    }
+
+    private var confirmButtonTitle: String {
+        if isTransferringKind {
+            return Language.get("Transferring", alter: "جارٍ النقل...")
+        }
+        guard let target = selectedTargetKind, target != item.accessKindType else {
+            return Language.get("ChangeInventoryKind_SelectPrompt", alter: "اختر القسم المطلوب للنقل")
+        }
+        let targetTitle: String
+        switch target {
+        case .typeAccessory:
+            targetTitle = Language.get("Kind_Accessory_Title", alter: "إكسسوارات ومستلزمات")
+        case .typeFood:
+            targetTitle = Language.get("Kind_Food_Title", alter: "أغذية ومكملات")
+        case .typePetMedicine:
+            targetTitle = Language.get("Kind_Medicine_Title", alter: "الأدوية ومنتجات العناية")
+        default:
+            targetTitle = ""
+        }
+        return String(format: Language.get("ChangeInventoryKind_ConfirmButton_Format", alter: "تأكيد النقل إلى %@"), targetTitle)
+    }
+
+    private var selectedTargetKindColor: Color {
+        guard let target = selectedTargetKind else { return AdminSurface.primary }
+        switch target {
+        case .typeAccessory:
+            return Color(red: 245/255, green: 158/255, blue: 11/255)
+        case .typeFood:
+            return Color(red: 16/255, green: 185/255, blue: 129/255)
+        case .typePetMedicine:
+            return Color(red: 14/255, green: 165/255, blue: 233/255)
+        default:
+            return AdminSurface.primary
+        }
+    }
+
+    private func executeKindTransfer(to targetKind: AccessKindType) {
+        let docId = item.accessoryID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !docId.isEmpty else { return }
+
+        isTransferringKind = true
+        let commandID = PPInventoryCommandService.shared.generateCommandId(action: "change_kind", targetId: docId)
+
+        PPInventoryCommandService.shared.changeItemKind(
+            productId: docId,
+            newKind: targetKind,
+            expectedRevision: item.revision > 0 ? item.revision : nil,
+            commandId: commandID
+        ) { result, error in
+            DispatchQueue.main.async {
+                isTransferringKind = false
+                if let error {
+                    PPHUD.showError(
+                        Language.get("Error", alter: "خطأ"),
+                        subtitle: PPBranchInventoryErrorHelper.localizedMessage(for: error)
+                    )
+                    return
+                }
+
+                if let revision = result?.revision, revision > 0 {
+                    item.revision = revision
+                }
+                item.accessKindType = targetKind
+
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+
+                let targetTitle: String
+                switch targetKind {
+                case .typeAccessory:
+                    targetTitle = Language.get("Kind_Accessory_Title", alter: "إكسسوارات ومستلزمات")
+                case .typeFood:
+                    targetTitle = Language.get("Kind_Food_Title", alter: "أغذية ومكملات")
+                case .typePetMedicine:
+                    targetTitle = Language.get("Kind_Medicine_Title", alter: "الأدوية ومنتجات العناية")
+                default:
+                    targetTitle = ""
+                }
+
+                let successMsg = String(
+                    format: Language.get("ChangeKind_Success_Format", alter: "تم نقل الصنف بنجاح إلى قسم %@"),
+                    targetTitle
+                )
+                PPHUD.showSuccess(successMsg)
+
+                NotificationCenter.default.post(name: NSNotification.Name("AccessoryUpdatedNotification"), object: nil)
+                NotificationCenter.default.post(name: NSNotification.Name("InventoryKindChangedNotification"), object: nil)
+
+                onChangeKind?(targetKind)
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    dismiss()
+                }
             }
         }
     }

@@ -1153,6 +1153,8 @@ public enum PPBranchInventoryErrorHelper {
                     return Language.get("Inventory_Lot_InvalidPolicy", alter: "لا يمكن إنشاء تشغيلات لأصناف تتبع الوحدات الفردية.")
                 case "LOT_UNAVAILABLE":
                     return Language.get("Inventory_Lot_Unavailable", alter: "التشغيلة المحددة غير متوفرة أو غير صالحة.")
+                case "VARIANT_VISIBILITY_REQUIRES_FAMILY_COMMAND":
+                    return Language.get("Inventory_Error_VariantVisibility", alter: "عرض هذا الصنف مرتبط بمجموعة المتغيرات. افتح محرر المتغيرات وحدد المتغير المعروض أو الافتراضي، ثم احفظ المجموعة.")
                 default:
                     break
                 }
@@ -1163,6 +1165,9 @@ public enum PPBranchInventoryErrorHelper {
         }
 
         if let msg = detailMessage, !msg.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if msg.lowercased().contains("family member") || msg.lowercased().contains("product family") {
+                return Language.get("Inventory_Error_VariantVisibility", alter: "عرض هذا الصنف مرتبط بمجموعة المتغيرات. افتح محرر المتغيرات وحدد المتغير المعروض أو الافتراضي، ثم احفظ المجموعة.")
+            }
             return msg
         }
 
@@ -1201,6 +1206,9 @@ public enum PPBranchInventoryErrorHelper {
                 }
                 if trimmed.lowercased().contains("migration") || trimmed.lowercased().contains("allocated") {
                     return Language.get("Inventory_Lot_MigrationRequired", alter: "يجب استهلاك أو تسوية المخزون الحالي قبل تفعيل تتبع التشغيلات.")
+                }
+                if trimmed.lowercased().contains("family member") || trimmed.lowercased().contains("product family") {
+                    return Language.get("Inventory_Error_VariantVisibility", alter: "عرض هذا الصنف مرتبط بمجموعة المتغيرات. افتح محرر المتغيرات وحدد المتغير المعروض أو الافتراضي، ثم احفظ المجموعة.")
                 }
                 if !trimmed.isEmpty && !trimmed.contains("com.firebase.functions") && !trimmed.lowercased().contains("the operation couldn") {
                     return trimmed

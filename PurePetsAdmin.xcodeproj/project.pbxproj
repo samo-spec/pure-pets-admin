@@ -116,6 +116,9 @@
 		ABBBFA1F9BDC48678C2EAFA9 /* Features/More/AccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7871FA36A67146949629E864 /* Features/More/AccountView.swift */; };
 		AD00E5DEAF8C418DD0AD8D20 /* QBVideoIconView.m in Sources */ = {isa = PBXBuildFile; fileRef = 068FBBDA955D966F979652B5 /* QBVideoIconView.m */; };
 		B0A100022FAA000100B0A002 /* PPVetsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A100012FAA000100B0A001 /* PPVetsListView.swift */; };
+		B0A100042FAA000100B0A002 /* PPVetDetailDossierScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A100032FAA000100B0A001 /* PPVetDetailDossierScreen.swift */; };
+		B0A100062FAA000100B0A002 /* PPVetEditorStudioScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A100052FAA000100B0A001 /* PPVetEditorStudioScreen.swift */; };
+		B0A100082FAA000100B0A002 /* PPVetSubscriptionManagementScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A100072FAA000100B0A001 /* PPVetSubscriptionManagementScreen.swift */; };
 		B0A200022FAA000100B0A002 /* PPInventoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A200012FAA000100B0A001 /* PPInventoryListView.swift */; };
 		B0A200042FAA000100B0A002 /* PPAccessoryEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A200032FAA000100B0A001 /* PPAccessoryEditorView.swift */; };
 		B0A200062FAA000100B0A002 /* PPLivePetBasicDataEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A200052FAA000100B0A001 /* PPLivePetBasicDataEditorView.swift */; };
@@ -560,6 +563,9 @@
 		A9F100A62F70000100C0DE01 /* PPPaymentManagementRecordCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPaymentManagementRecordCell.m; sourceTree = "<group>"; };
 		AFB8946774C24C23A585F8C5 /* PPPaymentManagementService.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPaymentManagementService.m; sourceTree = "<group>"; };
 		B0A100012FAA000100B0A001 /* PPVetsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPVetsListView.swift; sourceTree = "<group>"; };
+		B0A100032FAA000100B0A001 /* PPVetDetailDossierScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPVetDetailDossierScreen.swift; sourceTree = "<group>"; };
+		B0A100052FAA000100B0A001 /* PPVetEditorStudioScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPVetEditorStudioScreen.swift; sourceTree = "<group>"; };
+		B0A100072FAA000100B0A001 /* PPVetSubscriptionManagementScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPVetSubscriptionManagementScreen.swift; sourceTree = "<group>"; };
 		B0A200012FAA000100B0A001 /* PPInventoryListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPInventoryListView.swift; sourceTree = "<group>"; };
 		B0A200032FAA000100B0A001 /* PPAccessoryEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPAccessoryEditorView.swift; sourceTree = "<group>"; };
 		B0A200052FAA000100B0A001 /* PPLivePetBasicDataEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPLivePetBasicDataEditorView.swift; sourceTree = "<group>"; };
@@ -2244,6 +2250,9 @@
 				C67FD10A53834BD89FCDBB2D /* PPVetManager.h */,
 				35927158F3DE4461BAA4F526 /* PPVetManager.m */,
 				B0A100012FAA000100B0A001 /* PPVetsListView.swift */,
+				B0A100032FAA000100B0A001 /* PPVetDetailDossierScreen.swift */,
+				B0A100052FAA000100B0A001 /* PPVetEditorStudioScreen.swift */,
+				B0A100072FAA000100B0A001 /* PPVetSubscriptionManagementScreen.swift */,
 				09ACEFCC8F7A4CF99078A5AF /* PPAddEditVetViewController.h */,
 				2C97DB99BC4542DD8F31D494 /* PPAddEditVetViewController.m */,
 				458FA916CB944554AF3741C4 /* PPVetDetailViewController.h */,
@@ -2641,6 +2650,9 @@
 				F2A347D72E5868A700C6713D /* AccessoryCell.m in Sources */,
 				A5E100022FF1000100A5E002 /* PPHeroApex.swift in Sources */,
 				B0A100022FAA000100B0A002 /* PPVetsListView.swift in Sources */,
+				B0A100042FAA000100B0A002 /* PPVetDetailDossierScreen.swift in Sources */,
+				B0A100062FAA000100B0A002 /* PPVetEditorStudioScreen.swift in Sources */,
+				B0A100082FAA000100B0A002 /* PPVetSubscriptionManagementScreen.swift in Sources */,
 				B0A200022FAA000100B0A002 /* PPInventoryListView.swift in Sources */,
 				F518A0013018000100F51801 /* PPPharmacyInventoryView.swift in Sources */,
 				B0A200042FAA000100B0A002 /* PPAccessoryEditorView.swift in Sources */,

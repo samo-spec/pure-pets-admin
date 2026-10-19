@@ -222,6 +222,7 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
             payload["accessKindType"] = accessory.accessKindType.rawValue
         } else if accessory.accessKindType != .typeLivePets {
             payload["quantity"] = accessory.quantity
+            payload["accessKindType"] = accessory.accessKindType.rawValue
         }
         // Cost is deliberately **not** sent for live pets.
         //
@@ -705,6 +706,69 @@ public final class PPInventoryCommandService: NSObject, @unchecked Sendable {
                   data["ok"] as? Bool == true,
                   (data["commandId"] as? String) == commandId else {
                 let err = NSError(domain: "pp.inventory.command", code: 500, userInfo: [NSLocalizedDescriptionKey: Language.get("Inventory_InvalidCommandResponse", alter: "تعذر التحقق من استجابة خدمة المخزون.")])
+                completion(nil, err)
+                return
+            }
+            let idempotent = data["idempotent"] as? Bool ?? false
+            completion(PPInventoryCommandResult(
+                success: true,
+                commandId: commandId,
+                productId: normalizedProductId,
+                revision: data["revision"] as? Int ?? 0,
+                idempotent: idempotent,
+                action: "update",
+                resultKind: data["resultKind"] as? String ?? (idempotent ? "already_applied" : "confirmed"),
+                branchId: data["branchId"] as? String,
+                projectionState: data["projectionState"] as? String
+            ), nil)
+        }
+    }
+
+    public func changeItemKind(
+        productId: String,
+        newKind: AccessKindType,
+        expectedRevision: Int? = nil,
+        commandId suppliedCommandId: String? = nil,
+        completion: @escaping @Sendable (PPInventoryCommandResult?, Error?) -> Void
+    ) {
+        let normalizedProductId = productId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedProductId.isEmpty else {
+            let err = NSError(
+                domain: "pp.inventory.command",
+                code: 400,
+                userInfo: [NSLocalizedDescriptionKey: Language.get("Inventory_MissingProductIdentifier", alter: "تعذر تنفيذ العملية لأن معرّف الصنف غير صالح.")]
+            )
+            completion(nil, err)
+            return
+        }
+        let normalizedSuppliedCommandId = suppliedCommandId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let commandId = normalizedSuppliedCommandId.isEmpty
+            ? generateCommandId(action: "change_kind", targetId: normalizedProductId)
+            : normalizedSuppliedCommandId
+
+        var requestData: [String: Any] = [
+            "contractVersion": 2,
+            "action": "update",
+            "productId": normalizedProductId,
+            "commandId": commandId,
+            "payload": ["accessKindType": newKind.rawValue]
+        ]
+        if let expectedRevision { requestData["expectedRevision"] = expectedRevision }
+
+        let boxed = PPSendableRequest(data: requestData)
+        functions.httpsCallable("validateInventoryChange").call(boxed.data) { result, error in
+            if let error {
+                completion(nil, error)
+                return
+            }
+            guard let data = result?.data as? [String: Any],
+                  data["ok"] as? Bool == true,
+                  (data["commandId"] as? String) == commandId else {
+                let err = NSError(
+                    domain: "pp.inventory.command",
+                    code: 500,
+                    userInfo: [NSLocalizedDescriptionKey: Language.get("Inventory_InvalidCommandResponse", alter: "تعذر التحقق من استجابة خدمة المخزون.")]
+                )
                 completion(nil, err)
                 return
             }

@@ -534,6 +534,9 @@ struct PPPharmacyMedicineRow: View {
     let price: NSNumber?
     let stockState: PPInventoryCellStockState
     let canManage: Bool
+    /// The shared family shell already owns the medicine's name and image.
+    /// Its child displays only the selected option and exact-record actions.
+    var isFamilyMember: Bool = false
     let onOpen: () -> Void
     let onLots: () -> Void
     let onMore: () -> Void
@@ -562,23 +565,43 @@ struct PPPharmacyMedicineRow: View {
 
     private var listed: Bool { item.showInAppMarket && !item.isDisabled && !item.isBlocked && !item.isArchived }
 
+    private var optionTitle: String {
+        if let resolved = item.resolvedOptionDisplayTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !resolved.isEmpty, resolved != item.accessoryID { return resolved }
+        let option = item.pos_variantDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !option.isEmpty, option != item.accessoryID { return option }
+        if let colour = item.pos_variantColor, !colour.localizedName.isEmpty { return colour.localizedName }
+        if let sku = item.sku?.trimmingCharacters(in: .whitespacesAndNewlines), !sku.isEmpty { return sku }
+        return title
+    }
+
+    private var actionTitle: String {
+        isFamilyMember && optionTitle != title
+            ? [title, optionTitle].joined(separator: Language.isRTL() ? "، " : ", ") : title
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: onOpen) {
                 let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 16)) : AnyLayout(HStackLayout(alignment: .top, spacing: 16))
                 layout {
-                    medicineImage
+                    if !isFamilyMember { medicineImage }
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(title)
+                        if isFamilyMember {
+                            Text(PPPharmacyText.string("Inventory_Family_SelectedOption"))
+                                .font(AdminType.caption)
+                                .foregroundStyle(AdminSurface.secondaryText)
+                        }
+                        Text(isFamilyMember ? optionTitle : title)
                             .font(AdminType.title3)
                             .foregroundStyle(AdminSurface.primaryText)
                             .fixedSize(horizontal: false, vertical: true)
-                        if let category = item.accessoryCategoryName, !category.isEmpty {
+                        if !isFamilyMember, let category = item.accessoryCategoryName, !category.isEmpty {
                             Text(category).font(AdminType.footnote)
                                 .foregroundStyle(AdminSurface.secondaryText)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        if let variant = item.pos_smartVariantDescription, !variant.isEmpty {
+                        if !isFamilyMember, let variant = item.pos_smartVariantDescription, !variant.isEmpty {
                             Text(variant).font(AdminType.footnote)
                                 .foregroundStyle(AdminSurface.secondaryText)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -647,9 +670,13 @@ struct PPPharmacyMedicineRow: View {
             .padding(.vertical, 8)
             .background(AdminSurface.control.opacity(0.6))
         }
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(isFamilyMember ? Color.clear : AdminSurface.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 24).stroke(AdminSurface.hairline, lineWidth: 1).allowsHitTesting(false) }
+        .overlay {
+            if !isFamilyMember {
+                RoundedRectangle(cornerRadius: 24).stroke(AdminSurface.hairline, lineWidth: 1).allowsHitTesting(false)
+            }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("admin.pharmacy.medicine.\(item.accessoryID)")
     }
@@ -687,7 +714,7 @@ struct PPPharmacyMedicineRow: View {
                 .padding(.horizontal, 8)
                 .frame(minHeight: 44)
         }
-        .accessibilityLabel(PPPharmacyText.format("PharmacyAdmin_ActionsFor", title))
+        .accessibilityLabel(PPPharmacyText.format("PharmacyAdmin_ActionsFor", actionTitle))
     }
 }
 

@@ -6103,7 +6103,7 @@ struct PPAccessoryEditorScreen: View {
 
                             LazyVStack(spacing: 16) {
                                 // Archetype Selector (when applicable)
-                                if viewModel.showTypeRow && viewModel.editingAccessory == nil {
+                                if viewModel.showTypeRow && (viewModel.editingAccessory == nil || !viewModel.isLivePet) {
                                     archetypeSelectorDeck
                                 }
 
@@ -6691,7 +6691,10 @@ struct PPAccessoryEditorScreen: View {
         HStack(spacing: 8) {
             archetypePill(kind: .typeAccessory, title: Language.get("Accessory", alter: "إكسسوار"), icon: "bag.fill")
             archetypePill(kind: .typeFood, title: Language.get("Food", alter: "أغذية ومكملات"), icon: "fork.knife")
-            archetypePill(kind: .typeLivePets, title: Language.get("Live pets", alter: "حيوان حي"), icon: "pawprint.fill")
+            archetypePill(kind: .typePetMedicine, title: Language.get("Kind_Medicine_Title", alter: "الأدوية ومنتجات العناية"), icon: "pills.fill")
+            if viewModel.editingAccessory == nil {
+                archetypePill(kind: .typeLivePets, title: Language.get("Live pets", alter: "حيوان حي"), icon: "pawprint.fill")
+            }
         }
         .padding(6)
         .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))

@@ -86,8 +86,11 @@ static CGFloat const kPPVetSubGroupedCornerRadius = 22.0;
 
 @end
 
+#import "PurePetsAdmin-Swift.h"
+
 @interface PPVetSubscriptionViewController ()
 @property (nonatomic, strong) PPVetModel *vet;
+@property (nonatomic, strong) PPVetSubscriptionHostingController *hostingController;
 @property (nonatomic, strong) UIView *headerRoot;
 @property (nonatomic, strong) UIView *heroCard;
 @property (nonatomic, strong) UIView *heroAccentOrbLarge;
@@ -151,29 +154,19 @@ static CGFloat const kPPVetSubGroupedCornerRadius = 22.0;
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor ppBackground];
-    self.tableView.backgroundColor = self.view.backgroundColor;
-    self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
-    self.tableView.showsVerticalScrollIndicator = NO;
-    self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
-    self.tableView.contentInset = UIEdgeInsetsMake(0, 0, 24, 0);
+    self.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
-    if (@available(iOS 15.0, *)) {
-        self.tableView.sectionHeaderTopPadding = 4.0;
-    }
-
-    self.headerDateFormatter = [[NSDateFormatter alloc] init];
-    self.headerDateFormatter.dateStyle = NSDateFormatterMediumStyle;
-    self.headerDateFormatter.timeStyle = NSDateFormatterNoStyle;
-
-    [self buildForm];
-    [self populateForm];
-    [self setupHeader];
-    [self updateDynamicSummaryAnimated:NO];
+    self.hostingController = [[PPVetSubscriptionHostingController alloc] initWithVet:self.vet];
+    [self addChildViewController:self.hostingController];
+    self.hostingController.view.frame = self.view.bounds;
+    self.hostingController.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self.view addSubview:self.hostingController.view];
+    [self.hostingController didMoveToParentViewController:self];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    [self pp_navBarApplyBase:PPNavBarBaseLayoutAuto button:nil title:kLang(@"Vet_Sub_Management") showBack:YES];
+    [self.navigationController setNavigationBarHidden:YES animated:animated];
 }
 
 - (void)viewDidAppear:(BOOL)animated {

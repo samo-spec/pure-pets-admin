@@ -386,6 +386,9 @@ enum CommandCorner {
     /// Primary sovereign cards, section decks, large panels, modal sheets (22pt — PPCornerCard)
     static let container: CGFloat = 22
 
+    /// Card corner radius alias (22pt)
+    static let card: CGFloat = 22
+
     /// Action tiles, interactive sub-cards, module cards, primary rows, major buttons (16pt — PPCorner16)
     static let tile: CGFloat = 16
 
@@ -866,6 +869,25 @@ struct AdminCommandCenterScreenView: View {
                 .commandSectionEntrance(index: 5, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
             }
 
+            // Deck 4C: Sovereign Veterinary Care & Clinical Network Horizon
+            CommandVeterinaryDeck(
+                isRegular: isRegular,
+                onRoute: { route($0) },
+                onFilterClinics: {
+                    PPVeterinarianManagementStore.shared.activeFilter = .clinics
+                    route("vets")
+                },
+                onFilterDoctors: {
+                    PPVeterinarianManagementStore.shared.activeFilter = .doctors
+                    route("vets")
+                },
+                onQuickAdd: {
+                    PPVeterinarianManagementStore.shared.shouldPresentAddVet = true
+                    route("vets")
+                }
+            )
+            .commandSectionEntrance(index: hasHotel ? 6 : 5, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
+
             // Deck 5: Panoramic Tactical Operational Beacon
             CommandEscalationHero(
                 model: heroModel,
@@ -873,7 +895,7 @@ struct AdminCommandCenterScreenView: View {
                 onPrimary: { signal in route(signal.id) }
             )
             .transition(reduceMotion ? .identity : .opacity)
-            .commandSectionEntrance(index: hasHotel ? 6 : 5, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
+            .commandSectionEntrance(index: hasHotel ? 7 : 6, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
 
             if isRegular && isLandscape && containerWidth >= 950 {
                 // Deck 6 & 7: iPad Dual-Wing Base Deck (Priority Runway + Source Ledger) — Landscape ONLY
@@ -898,7 +920,7 @@ struct AdminCommandCenterScreenView: View {
                     )
                     .frame(maxWidth: .infinity)
                 }
-                .commandSectionEntrance(index: hasHotel ? 7 : 6, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
+                .commandSectionEntrance(index: hasHotel ? 8 : 7, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
             } else {
                 // Deck 6 & 7: Portrait iPad & iPhone - stacked vertically so each gets 100% width with zero overflow
                 CommandPriorityRunway(
@@ -909,7 +931,7 @@ struct AdminCommandCenterScreenView: View {
                     isRegular: isRegular,
                     action: { route($0.id) }
                 )
-                .commandSectionEntrance(index: hasHotel ? 7 : 6, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
+                .commandSectionEntrance(index: hasHotel ? 8 : 7, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
 
                 CommandSourceLedger(
                     title: L10n("AdminCommandCenter_SourceLedger"),
@@ -919,7 +941,7 @@ struct AdminCommandCenterScreenView: View {
                     updatedText: updatedText,
                     isRegular: isRegular
                 )
-                .commandSectionEntrance(index: hasHotel ? 8 : 7, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
+                .commandSectionEntrance(index: hasHotel ? 9 : 8, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
             }
         }
         .onAppear {
@@ -5844,8 +5866,8 @@ private struct CommandStockDeck: View {
             }
 
             CommandStockVaultCardiPhone(
-                title: Language.get("Stock_Medicines_Title", alter: "إدارة الأدوية"),
-                subtitle: Language.get("Stock_Medicines_Subtitle", alter: "الأدوية البيطرية، الوصفات، والتشغيلات والصلاحية"),
+                title: Language.get("Stock_Medicines_Title", alter: "الأدوية ومنتجات العناية"),
+                subtitle: Language.get("Stock_Medicines_Subtitle", alter: "الأدوية ومستحضرات العناية، الوصفات، والتشغيلات والصلاحية"),
                 iconName: "pills.fill",
                 accent: Color(red: 0.12, green: 0.74, blue: 0.58),
                 badgeCount: medicinesSignal?.count,
@@ -5923,8 +5945,8 @@ private struct CommandStockDeck: View {
             }
 
             CommandStockVaultCardiPhone(
-                title: Language.get("Stock_Medicines_Title", alter: "إدارة الأدوية"),
-                subtitle: Language.get("Stock_Medicines_Subtitle", alter: "الأدوية البيطرية، الوصفات، والتشغيلات والصلاحية"),
+                title: Language.get("Stock_Medicines_Title", alter: "الأدوية ومنتجات العناية"),
+                subtitle: Language.get("Stock_Medicines_Subtitle", alter: "الأدوية ومستحضرات العناية، الوصفات، والتشغيلات والصلاحية"),
                 iconName: "pills.fill",
                 accent: Color(red: 0.12, green: 0.74, blue: 0.58),
                 badgeCount: medicinesSignal?.count,
@@ -6289,10 +6311,10 @@ private struct CommandStockVaultCardiPhone: View {
                 .fill(iconGradient)
 
             Image(systemName: iconName)
-                .font(.system(size: isRegular ? 19 : 17, weight: .semibold))
+                .font(.system(size: isRegular ? 21 : 19, weight: .semibold))
                 .foregroundStyle(accent)
         }
-        .frame(width: isRegular ? 48 : 44, height: isRegular ? 48 : 44)
+        .frame(width: isRegular ? 52 : 48, height: isRegular ? 52 : 48)
         .overlay(
             RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
                 .strokeBorder(accent.opacity(colorScheme == .dark ? 0.32 : 0.18), lineWidth: 0.75)
@@ -6300,7 +6322,7 @@ private struct CommandStockVaultCardiPhone: View {
     }
 
     private var titleAndDescription: some View {
-        VStack(alignment: .leading, spacing: 2.5) {
+        VStack(alignment: .leading, spacing: 3.5) {
             HStack(spacing: 6) {
                 Text(title)
                     .font(Font.custom("Beiruti-Bold", size: isRegular ? 16 : 15, relativeTo: .subheadline))
@@ -6311,7 +6333,7 @@ private struct CommandStockVaultCardiPhone: View {
                     Circle()
                         .fill(accent)
                         .frame(width: 4, height: 4)
-                    Text(Language.get("Stock_Category_Medicines", alter: "أدوية بيطرية"))
+                    Text(Language.get("Stock_Category_Medicines", alter: "أدوية ومنتجات عناية"))
                         .font(Font.custom("Beiruti-Bold", size: 9.5, relativeTo: .caption2))
                         .foregroundStyle(accent)
                 }
@@ -6344,7 +6366,7 @@ private struct CommandStockVaultCardiPhone: View {
                 .foregroundStyle(accent)
                 .offset(x: (Language.isRTL() ? -1 : 1) * arrowNudge * 0.6)
         }
-        .frame(width: isRegular ? 30 : 28, height: isRegular ? 30 : 28)
+        .frame(width: isRegular ? 32 : 30, height: isRegular ? 32 : 30)
         .background(accent.opacity(colorScheme == .dark ? 0.12 : 0.06), in: Circle())
     }
 
@@ -6353,14 +6375,15 @@ private struct CommandStockVaultCardiPhone: View {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             action()
         }) {
-            HStack(spacing: isRegular ? 14 : 12) {
+            HStack(spacing: isRegular ? 15 : 13) {
                 iconSquircle
                 titleAndDescription
                 Spacer(minLength: 4)
                 chevronPill
             }
-            .padding(.horizontal, isRegular ? 15 : 13)
-            .padding(.vertical, isRegular ? 13 : 11)
+            .padding(.horizontal, isRegular ? 16 : 14)
+            .padding(.vertical, isRegular ? 16 : 14.5)
+            .frame(minHeight: isRegular ? 82 : 75)
             .background(
                 RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                     .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
@@ -9087,3 +9110,552 @@ private struct CommandHotelQuickActionCard: View {
             )
     }
 }
+
+// MARK: - Sovereign Veterinary Care & Clinical Network Horizon Deck (Deck 4C)
+
+private struct CommandVeterinaryDeck: View {
+    let isRegular: Bool
+    let onRoute: (String) -> Void
+    let onFilterClinics: () -> Void
+    let onFilterDoctors: () -> Void
+    let onQuickAdd: () -> Void
+
+    @ObservedObject private var store = PPVeterinarianManagementStore.shared
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AdminSectionSpacing.headerToContent(isRegular: isRegular)) {
+            // Dedicated Section Header
+            AdminSectionHeader(
+                title: Language.get("AdminVet_SectionTitle", alter: "الأطباء البيطريون والعيادات"),
+                subtitle: Language.get("AdminVet_SectionDetail", alter: "إدارة الشبكة الطبية، الرخص المهنية، الاشتراكات والعيادات المعتمدة"),
+                eyebrow: Language.get("AdminVet_SectionEyebrow", alter: "الرعاية والخدمات البيطرية"),
+                symbol: "stethoscope",
+                themeColor: Color(red: 0.08, green: 0.72, blue: 0.65),
+                state: .normal,
+                isRegular: isRegular
+            )
+
+            VStack(spacing: 12) {
+                // Primary Sovereign Radar Card
+                CommandVeterinarySovereignCard(
+                    onRoute: { onRoute("vets") },
+                    onFilterClinics: onFilterClinics,
+                    onFilterDoctors: onFilterDoctors
+                )
+
+                // Dedicated Tactical Quick Actions Below Card
+                HStack(spacing: isRegular ? 14 : 10) {
+                    // Quick Action 1: Clinics & Hospitals
+                    CommandVeterinaryQuickActionCard(
+                        title: Language.get("AdminVet_QuickAction_Clinics", alter: "المراكز والعيادات"),
+                        subtitle: Language.get("AdminVet_QuickAction_Clinics_Sub", alter: "استعراض المنشآت الطبية"),
+                        count: store.clinicsCount,
+                        countUnit: Language.isRTL() ? "عيادة" : "clinics",
+                        actionTitle: Language.get("AdminVet_Filter_Clinics", alter: "عرض العيادات"),
+                        symbol: "building.2.crop.circle.fill",
+                        accent: Color(red: 0.12, green: 0.68, blue: 0.88),
+                        isRegular: isRegular,
+                        onTap: onFilterClinics
+                    )
+
+                    // Quick Action 2: Solo Licensed Doctors
+                    CommandVeterinaryQuickActionCard(
+                        title: Language.get("AdminVet_QuickAction_Doctors", alter: "الأطباء المستقلون"),
+                        subtitle: Language.get("AdminVet_QuickAction_Doctors_Sub", alter: "الاستشاريون المرخصون"),
+                        count: store.doctorsCount,
+                        countUnit: Language.isRTL() ? "طبيب" : "doctors",
+                        actionTitle: Language.get("AdminVet_Filter_Doctors", alter: "عرض الأطباء"),
+                        symbol: "stethoscope.circle.fill",
+                        accent: Color(red: 0.08, green: 0.72, blue: 0.65),
+                        isRegular: isRegular,
+                        onTap: onFilterDoctors
+                    )
+
+                    // Quick Action 3: Register Authority (iPad regular layout)
+                    if isRegular {
+                        CommandVeterinaryQuickActionCard(
+                            title: Language.get("AdminVet_QuickAction_Add", alter: "تسجيل جهة جديدة"),
+                            subtitle: Language.get("AdminVet_QuickAction_Add_Sub", alter: "طبيب بيطري أو عيادة"),
+                            count: store.totalCount,
+                            countUnit: Language.isRTL() ? "جهة معتمدة" : "authorities",
+                            actionTitle: Language.get("AdminVet_QuickAdd", alter: "إضافة فورية"),
+                            symbol: "plus.circle.fill",
+                            accent: Color(red: 0.95, green: 0.68, blue: 0.18),
+                            isRegular: isRegular,
+                            onTap: onQuickAdd
+                        )
+                    }
+                }
+            }
+        }
+        .background(Color.clear)
+        .onAppear {
+            store.startListening()
+        }
+    }
+}
+
+// MARK: - Command Veterinary Sovereign Card
+
+private struct CommandVeterinarySovereignCard: View {
+    let onRoute: () -> Void
+    var onFilterClinics: (() -> Void)? = nil
+    var onFilterDoctors: (() -> Void)? = nil
+
+    @ObservedObject private var store = PPVeterinarianManagementStore.shared
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var isPulsing = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            headerDeck
+            clinicalHeroMetric
+            institutionalPillars
+            subscriptionFeeStrip
+        }
+        .padding(18)
+        .background(cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous))
+        .overlay(cardBorder)
+        .shadow(
+            color: Color.black.opacity(colorScheme == .dark ? 0.28 : 0.05),
+            radius: 10,
+            x: 0,
+            y: 3
+        )
+        .shadow(
+            color: Color.black.opacity(colorScheme == .dark ? 0.18 : 0.02),
+            radius: 4,
+            x: 0,
+            y: 1
+        )
+        .contentShape(RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous))
+        .onTapGesture {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onRoute()
+        }
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint(Language.isRTL() ? "اضغط لفتح شاشة إدارة الأطباء البيطريين والعيادات" : "Tap to open veterinarians and clinics management")
+        .accessibilityElement(children: .contain)
+    }
+
+    // MARK: - Header Deck
+    private var headerDeck: some View {
+        HStack(alignment: .center, spacing: 8) {
+            // Glowing Symbol Squircle
+            ZStack {
+                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.08, green: 0.72, blue: 0.65).opacity(colorScheme == .dark ? 0.30 : 0.16),
+                                Color(red: 0.12, green: 0.68, blue: 0.88).opacity(colorScheme == .dark ? 0.22 : 0.10)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
+                            .strokeBorder(Color(red: 0.08, green: 0.72, blue: 0.65).opacity(0.40), lineWidth: 0.75)
+                    )
+
+                Image(systemName: "cross.case.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color(red: 0.08, green: 0.72, blue: 0.65))
+            }
+            .frame(width: 32, height: 32)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(Language.get("AdminVet_SectionTitle", alter: "الأطباء البيطريون والعيادات"))
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+
+                    // Live Telemetry Pulse Dot
+                    HStack(spacing: 3.5) {
+                        Circle()
+                            .fill(Color(red: 0.16, green: 0.78, blue: 0.48))
+                            .frame(width: 5, height: 5)
+                            .scaleEffect(isPulsing ? 1.3 : 0.8)
+                        Text(Language.get("LiveSync", alter: "مباشر"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(red: 0.16, green: 0.78, blue: 0.48))
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color(red: 0.16, green: 0.78, blue: 0.48).opacity(0.12), in: Capsule())
+                    .onAppear {
+                        DispatchQueue.main.async {
+                            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                                isPulsing = true
+                            }
+                        }
+                    }
+                }
+
+                Text(Language.isRTL() ? "الشبكة الطبية المعتمدة • الرخص المهنية • الاشتراكات" : "Verified Medical Network • Professional Licenses • Tiers")
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminCommandInk.secondary)
+            }
+
+            Spacer()
+
+            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(AdminCommandInk.tertiary)
+        }
+    }
+
+    // MARK: - Clinical Hero Metric
+    private var clinicalHeroMetric: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Language.get("AdminVet_TotalEntities", alter: "إجمالي الشبكة الطبية"))
+                    .font(AdminType.caption1)
+                    .foregroundStyle(AdminCommandInk.secondary)
+
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("\(store.totalCount)")
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .monospacedDigit()
+
+                    Text(Language.isRTL() ? "جهة مرخصة" : "entities")
+                        .font(AdminType.subheadline)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                }
+            }
+
+            Spacer()
+
+            // Compliance & Active Ratio Pill
+            VStack(alignment: .trailing, spacing: 4) {
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(Color(red: 0.16, green: 0.78, blue: 0.48))
+                        .frame(width: 6, height: 6)
+
+                    Text("\(store.activeUptimePercent)%")
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color(red: 0.16, green: 0.78, blue: 0.48))
+                        .monospacedDigit()
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(Color(red: 0.16, green: 0.78, blue: 0.48).opacity(0.12), in: Capsule())
+
+                Text(Language.get("AdminVet_NetworkUptime", alter: "جاهزية الرخص"))
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminCommandInk.tertiary)
+            }
+        }
+    }
+
+    // MARK: - Institutional Pillars (Clinics vs Doctors)
+    private var institutionalPillars: some View {
+        HStack(spacing: 10) {
+            // Pillar 1: Clinics & Hospitals
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                if let onFilterClinics {
+                    onFilterClinics()
+                } else {
+                    onRoute()
+                }
+            } label: {
+                HStack(spacing: 9) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color(red: 0.12, green: 0.68, blue: 0.88).opacity(0.14))
+                            .frame(width: 34, height: 34)
+
+                        Image(systemName: "building.2.crop.circle.fill")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(Color(red: 0.12, green: 0.68, blue: 0.88))
+                    }
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("\(store.clinicsCount)")
+                            .font(.system(size: 17, weight: .bold, design: .rounded))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .monospacedDigit()
+
+                        Text(Language.get("AdminVet_ClinicsCount", alter: "مراكز وعيادات"))
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .padding(10)
+                .background(
+                    AdminSurface.surface.opacity(0.65),
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color(red: 0.12, green: 0.68, blue: 0.88).opacity(0.20), lineWidth: 0.8)
+                )
+            }
+            .buttonStyle(.plain)
+
+            // Pillar 2: Solo Doctors
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                if let onFilterDoctors {
+                    onFilterDoctors()
+                } else {
+                    onRoute()
+                }
+            } label: {
+                HStack(spacing: 9) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color(red: 0.08, green: 0.72, blue: 0.65).opacity(0.14))
+                            .frame(width: 34, height: 34)
+
+                        Image(systemName: "stethoscope.circle.fill")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(Color(red: 0.08, green: 0.72, blue: 0.65))
+                    }
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("\(store.doctorsCount)")
+                            .font(.system(size: 17, weight: .bold, design: .rounded))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .monospacedDigit()
+
+                        Text(Language.get("AdminVet_DoctorsCount", alter: "أطباء مستقلون"))
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .padding(10)
+                .background(
+                    AdminSurface.surface.opacity(0.65),
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color(red: 0.08, green: 0.72, blue: 0.65).opacity(0.20), lineWidth: 0.8)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: - Subscription & Fee Strip
+    private var subscriptionFeeStrip: some View {
+        HStack(spacing: 8) {
+            // Premium Partners
+            HStack(spacing: 4) {
+                Image(systemName: "crown.fill")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Color(red: 0.95, green: 0.68, blue: 0.18))
+                Text("\(store.premiumCount) \(Language.get("AdminVet_Filter_Premium", alter: "بريميوم"))")
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminSurface.primaryText)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3.5)
+            .background(Color(red: 0.95, green: 0.68, blue: 0.18).opacity(0.12), in: Capsule())
+
+            // Renewals Due Alert
+            if store.expiringSoonCount > 0 {
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(Color(red: 0.95, green: 0.45, blue: 0.25))
+                        .frame(width: 5, height: 5)
+                    Text("\(store.expiringSoonCount) \(Language.get("AdminVet_ExpiringSoon", alter: "تجديد مستحق"))")
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(Color(red: 0.95, green: 0.45, blue: 0.25))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3.5)
+                .background(Color(red: 0.95, green: 0.45, blue: 0.25).opacity(0.12), in: Capsule())
+            }
+
+            Spacer()
+
+            // Average Consultation Fee
+            if store.averageCost > 0 {
+                HStack(spacing: 3) {
+                    Text(Language.get("AdminVet_AvgFee", alter: "متوسط:"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                    Text(String(format: "%.0f %@", store.averageCost, Language.get("QAR", alter: "ر.ق")))
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(Color(red: 0.08, green: 0.72, blue: 0.65))
+                }
+            }
+        }
+    }
+
+    private var cardBackground: some View {
+        ZStack {
+            AdminSurface.surface
+
+            LinearGradient(
+                colors: [
+                    Color(red: 0.08, green: 0.72, blue: 0.65).opacity(colorScheme == .dark ? 0.08 : 0.03),
+                    Color(red: 0.12, green: 0.68, blue: 0.88).opacity(colorScheme == .dark ? 0.05 : 0.015)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+
+    private var cardBorder: some View {
+        RoundedRectangle(cornerRadius: CommandCorner.container, style: .continuous)
+            .strokeBorder(
+                Color(red: 0.08, green: 0.72, blue: 0.65).opacity(colorScheme == .dark ? 0.30 : 0.16),
+                lineWidth: 0.85
+            )
+    }
+
+    private var accessibilityLabel: String {
+        let title = Language.isRTL() ? "الأطباء البيطريون والعيادات" : "Veterinarians and Clinics"
+        let total = "\(store.totalCount)"
+        let rate = "\(store.activeUptimePercent)%"
+        return "\(title), \(total), \(rate)"
+    }
+}
+
+// MARK: - Command Veterinary Quick Action Card
+
+private struct CommandVeterinaryQuickActionCard: View {
+    let title: String
+    let subtitle: String
+    let count: Int
+    let countUnit: String
+    let actionTitle: String
+    let symbol: String
+    let accent: Color
+    let isRegular: Bool
+    let onTap: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var contrast
+    @State private var isPulsing: Bool = false
+
+    var body: some View {
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onTap()
+        }) {
+            VStack(alignment: .leading, spacing: 12) {
+                // Header: Symbol Squircle + Counter Telemetry Pill
+                HStack(alignment: .center) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
+                            .fill(accent.opacity(colorScheme == .dark ? 0.22 : 0.12))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
+                                    .strokeBorder(
+                                        accent.opacity(contrast == .increased ? 0.60 : (colorScheme == .dark ? 0.35 : 0.20)),
+                                        lineWidth: 0.75
+                                    )
+                            )
+
+                        Image(systemName: symbol)
+                            .font(.system(size: isRegular ? 16 : 14, weight: .bold))
+                            .foregroundStyle(accent)
+                    }
+                    .frame(width: isRegular ? 38 : 34, height: isRegular ? 38 : 34)
+
+                    Spacer(minLength: 4)
+
+                    // Count Badge
+                    HStack(spacing: 3) {
+                        Text("\(count)")
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(accent)
+
+                        Text(countUnit)
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3.5)
+                    .background(accent.opacity(colorScheme == .dark ? 0.18 : 0.08), in: Capsule())
+                }
+
+                // Title & Subtitle Stack
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(AdminType.headline)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+
+                    Text(subtitle)
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+
+                // Bottom Action Strip with Directional Arrow
+                HStack(spacing: 4) {
+                    Text(actionTitle)
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(accent)
+
+                    Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(accent)
+                }
+                .padding(.top, 2)
+            }
+            .padding(isRegular ? 14 : 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(minHeight: isRegular ? 116 : 106)
+            .background(cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
+            .overlay(cardBorder)
+            .shadow(
+                color: Color.black.opacity(colorScheme == .dark ? 0.22 : 0.04),
+                radius: 6,
+                x: 0,
+                y: 2
+            )
+            .contentShape(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
+        }
+        .buttonStyle(CommandCardPressStyle(scale: 0.98, pressedOpacity: 0.94, cornerRadius: CommandCorner.tile))
+        .onAppear {
+            if count > 0 {
+                DispatchQueue.main.async {
+                    withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                        isPulsing = true
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title), \(count) \(countUnit), \(subtitle)")
+        .accessibilityHint(Language.isRTL() ? "اضغط لفتح \(title)" : "Tap to open \(title)")
+    }
+
+    private var cardBackground: some View {
+        ZStack {
+            AdminSurface.surface
+
+            accent.opacity(colorScheme == .dark ? 0.05 : 0.02)
+        }
+    }
+
+    private var cardBorder: some View {
+        RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
+            .strokeBorder(
+                accent.opacity(contrast == .increased ? 0.60 : (colorScheme == .dark ? 0.28 : 0.14)),
+                lineWidth: contrast == .increased ? 1.2 : 0.85
+            )
+    }
+}
+

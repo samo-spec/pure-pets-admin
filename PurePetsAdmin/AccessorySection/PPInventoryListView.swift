@@ -1730,7 +1730,7 @@ enum CatalogHorizonTab: Int, CaseIterable, Identifiable {
         case .accessories: return Language.get("Manage Accessories", alter: "إكسسوارات ومستلزمات")
         case .food: return Language.get("manageFood", alter: "أغذية ومكملات")
         case .livePets: return Language.get("Manage Live Pets", alter: "حيوانات أليفة حية")
-        case .medicines: return Language.get("PharmacyAdmin_Title", alter: nil)
+        case .medicines: return Language.get("PharmacyAdmin_Title", alter: "الأدوية ومنتجات العناية")
         }
     }
 
@@ -1739,7 +1739,7 @@ enum CatalogHorizonTab: Int, CaseIterable, Identifiable {
         case .accessories: return Language.get("Accessories", alter: "إكسسوارات")
         case .food: return Language.get("Food", alter: "أغذية")
         case .livePets: return Language.get("LivePets", alter: "حيوانات حية")
-        case .medicines: return Language.get("PharmacyAdmin_Title", alter: nil)
+        case .medicines: return Language.get("PharmacyAdmin_Title", alter: "الأدوية ومنتجات العناية")
         }
     }
 
@@ -2319,22 +2319,51 @@ final class PPInventoryListViewModel: ObservableObject {
             }
         }
 
-        self.searchTargetFamilyIds = targetFamilyIds
-        self.searchTargetProductIds = targetProductIds
-        self.displayGroups = scoredGroups.map(\.group)
         let matchedItems = scoredGroups.flatMap(\.group.members)
+        let visibleItems: [PetAccessory]
+        let visibleGroups: [PPInventoryDisplayGroup]
         if activeTab == .medicines {
-            // The pharmacy shows exact medicine records instead of expandable
-            // families. Do not leak unmatched siblings into a barcode or stock
-            // filter just because another member of their family matched.
-            self.filteredItems = matchedItems.filter { item in
+            // Group only matching medicine options. An unmatched sibling must
+            // not reappear just because its family now shares a single cell.
+            visibleItems = matchedItems.filter { item in
                 satisfiesActiveFilter(item: item) && PPInventorySearchEngine.matchScore(
                     for: item, rawQuery: rawQuery, normQuery: normQuery, tokens: tokens
                 ) > 0
             }
+            visibleGroups = PPInventoryDisplayGroup.grouped(visibleItems)
         } else {
-            self.filteredItems = matchedItems
+            visibleItems = matchedItems
+            visibleGroups = scoredGroups.map(\.group)
         }
+        let visibleFamilyIds = Set(visibleGroups.compactMap { group -> String? in
+            if case .family(let familyId, _) = group { return familyId }
+            return nil
+        })
+        var visibleTargets = targetProductIds.filter { visibleFamilyIds.contains($0.key) }
+        if activeTab == .medicines {
+            for case .family(let familyId, let members) in visibleGroups {
+                if let targetId = visibleTargets[familyId],
+                   members.contains(where: { $0.accessoryID == targetId }) { continue }
+                // A stock filter can hide the best barcode/name match. Select
+                // the strongest remaining match, never an excluded sibling.
+                var bestVisibleMember: PetAccessory?
+                var bestVisibleScore = 0
+                for member in members {
+                    let score = PPInventorySearchEngine.matchScore(
+                        for: member, rawQuery: rawQuery, normQuery: normQuery, tokens: tokens
+                    )
+                    if bestVisibleMember == nil || score > bestVisibleScore {
+                        bestVisibleMember = member
+                        bestVisibleScore = score
+                    }
+                }
+                visibleTargets[familyId] = bestVisibleMember?.accessoryID
+            }
+        }
+        self.searchTargetFamilyIds = targetFamilyIds.intersection(visibleFamilyIds)
+        self.searchTargetProductIds = visibleTargets
+        self.displayGroups = visibleGroups
+        self.filteredItems = visibleItems
     }
 
     private func itemDiscountValue(_ item: PetAccessory) -> Double {
@@ -2471,6 +2500,15 @@ final class PPInventoryListViewModel: ObservableObject {
     func toggleAppMarketVisibility(for item: PetAccessory) {
         let docID = item.accessoryID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !docID.isEmpty else { return }
+
+        if item.belongsToVariantFamily {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            PPHUD.showInfo(
+                Language.get("Inventory_Family_Visibility_Title", alter: "تنبيه المتغيرات"),
+                subtitle: Language.get("Inventory_Error_VariantVisibility", alter: "عرض هذا الصنف مرتبط بمجموعة المتغيرات. افتح محرر المتغيرات وحدد المتغير المعروض أو الافتراضي، ثم احفظ المجموعة.")
+            )
+            return
+        }
 
         let previousValue = item.showInAppMarket
         let newValue = !previousValue
@@ -2644,7 +2682,7 @@ struct PPInventoryListView: View {
     @State private var showingBranchSwitcherSheet: Bool = false
     @State private var itemForDamage: PetAccessory? = nil
     /// Families the operator has expanded. Collapsed by default so the list
-    /// shows one row per logical product until a colour is actually needed.
+    /// shows one row per logical product until an option is actually needed.
     @State private var expandedFamilyIds: Set<String> = []
     /// One selected sellable member per expanded family. Keeping selection
     /// outside the row prevents child state from being recreated while scrolling.
@@ -2927,6 +2965,12 @@ struct PPInventoryListView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         confirmRevertVariantFamilyToNormal(item: item)
                     }
+                },
+                onChangeKind: { _ in
+                    itemForActionMenu = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        viewModel.applyFilter()
+                    }
                 }
             )
             .presentationDetents([.fraction(0.72), .large])
@@ -3035,34 +3079,30 @@ struct PPInventoryListView: View {
             onSelectCatalog: { tab in viewModel.switchTab(to: tab) },
             onRefresh: { await refreshHero() },
             rows: {
-                ForEach(viewModel.filteredItems) { item in
-                    pharmacyMedicineRow(for: item)
+                ForEach(viewModel.displayGroups) { group in
+                    inventoryDisplayGroup(
+                        group,
+                        singleRow: { pharmacyMedicineRow(for: $0) },
+                        familyInspector: { pharmacyMedicineRow(for: $0, isFamilyMember: true) }
+                    )
                 }
             }
         )
     }
 
-    private func pharmacyMedicineRow(for item: PetAccessory) -> some View {
+    private func pharmacyMedicineRow(for item: PetAccessory, isFamilyMember: Bool = false) -> some View {
         let branchID = pharmacyBranchID
         let matchesBranch = branchProjection.currentBranchId == branchID
         let record = branchID != nil && matchesBranch ? branchProjection.inventory(for: item.accessoryID) : nil
         let state = inventoryCellStockState(for: item, hasBranch: branchID != nil, matchesBranch: matchesBranch, record: record)
-        let price: NSNumber? = {
-            guard item.hasResolvedSellingPrice else { return nil }
-            guard branchID != nil else { return item.finalPrice }
-            guard matchesBranch,
-                  let value = branchProjection.serverConfirmedSellingPrice(
-                    for: item.accessoryID, fallbackPrice: item.finalPrice.doubleValue
-                  ) else { return nil }
-            return NSNumber(value: value)
-        }()
         return PPPharmacyMedicineRow(
             item: item,
             quantity: record?.availableQuantity ?? 0,
             reservedQuantity: record?.reservedQuantity ?? 0,
-            price: price,
+            price: pharmacySellingPrice(for: item),
             stockState: state,
             canManage: canAccessInventoryCell(kStaffPermStockManage, branchID: branchID),
+            isFamilyMember: isFamilyMember,
             onOpen: { openItemDetail(for: item) },
             onLots: {
                 guard pharmacyStockConfirmed,
@@ -3074,6 +3114,30 @@ struct PPInventoryListView: View {
             },
             onMore: { itemForActionMenu = item }
         )
+    }
+
+    /// Family totals use the same confirmed branch balance as the exact row.
+    /// A missing branch or pending projection remains unresolved, never zero.
+    private func pharmacyFamilyStockSnapshot(for item: PetAccessory) -> PPInventoryFamilyStockSnapshot {
+        let branchID = pharmacyBranchID
+        let matchesBranch = branchProjection.currentBranchId == branchID
+        let record = branchID != nil && matchesBranch ? branchProjection.inventory(for: item.accessoryID) : nil
+        let state = inventoryCellStockState(for: item, hasBranch: branchID != nil, matchesBranch: matchesBranch, record: record)
+        guard state == .ready else {
+            return PPInventoryFamilyStockSnapshot(quantity: nil, caption: state.caption)
+        }
+        return PPInventoryFamilyStockSnapshot(quantity: max(0, record?.availableQuantity ?? 0), caption: nil)
+    }
+
+    /// The option shelf and selected medicine must agree on branch pricing.
+    private func pharmacySellingPrice(for item: PetAccessory) -> NSNumber? {
+        guard item.hasResolvedSellingPrice else { return nil }
+        guard let branchID = pharmacyBranchID else { return item.finalPrice }
+        guard branchProjection.currentBranchId == branchID,
+              let value = branchProjection.serverConfirmedSellingPrice(
+                for: item.accessoryID, fallbackPrice: item.finalPrice.doubleValue
+              ) else { return nil }
+        return NSNumber(value: value)
     }
 
     private var legacyInventorySurface: some View {
@@ -4059,155 +4123,13 @@ struct PPInventoryListView: View {
 
     @ViewBuilder
     private var itemsListSection: some View {
-        // `enumerated` drives the reveal stagger only. Identity still comes from
-        // the group's own `id`, so filtering moves rows rather than rebuilding them.
+        // Identity comes from the group, so filtering moves rows in place.
         ForEach(Array(viewModel.displayGroups.enumerated()), id: \.element.id) { index, group in
-            Group {
-                switch group {
-                case .single(let item):
-                    inventoryCard(for: item)
-                case .family(let familyId, let members):
-                    let defaultMember = members.first(where: { $0.isDefaultVariant }) ?? members[0]
-                    let selectedMember = members.first(where: {
-                        $0.accessoryID == selectedFamilyProductIds[familyId]
-                    }) ?? defaultMember
-                    let isExpanded = expandedFamilyIds.contains(familyId)
-                    let selectedAccentColor: Color = {
-                        if selectedMember.pos_hasRealColor, let colour = selectedMember.pos_variantColor {
-                            if colour.requiresContrastBorder {
-                                return AdminSurface.primaryText.opacity(0.85)
-                            }
-                            return Color(uiColor: colour.uiColor)
-                        }
-                        return AdminSurface.primary
-                    }()
-
-                    VStack(alignment: .leading, spacing: 0) {
-                        PPInventoryFamilyRow(
-                            members: members,
-                            isExpanded: Binding(
-                                get: { expandedFamilyIds.contains(familyId) },
-                                set: { isOn in
-                                    // No `withAnimation` here. The row owns the
-                                    // disclosure animation; wrapping the binding as
-                                    // well meant two curves drove one gesture and
-                                    // fought each other on every tap.
-                                    if isOn {
-                                        expandedFamilyIds.insert(familyId)
-                                        let current = selectedFamilyProductIds[familyId]
-                                        if current == nil || !members.contains(where: { $0.accessoryID == current }) {
-                                            selectedFamilyProductIds[familyId] = defaultMember.accessoryID
-                                        }
-                                    } else {
-                                        expandedFamilyIds.remove(familyId)
-                                        selectedFamilyProductIds.removeValue(forKey: familyId)
-                                    }
-                                }
-                            ),
-                            selectedProductId: Binding(
-                                get: {
-                                    guard let current = selectedFamilyProductIds[familyId],
-                                          members.contains(where: { $0.accessoryID == current }) else {
-                                        return ""
-                                    }
-                                    return current
-                                },
-                                set: { selectedFamilyProductIds[familyId] = $0 }
-                            ),
-                            // Resolve every option from the exact same confirmed
-                            // branch state as the selected product inspector.
-                            availability: { member in
-                                let selectedBranch = branchContext.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                                let hasBranch = !selectedBranch.isEmpty && selectedBranch != "main_store"
-                                let matchesBranch = branchProjection.currentBranchId == selectedBranch
-                                let record = matchesBranch && hasBranch
-                                    ? branchProjection.inventory(for: member.accessoryID) : nil
-                                let state = inventoryCellStockState(for: member, hasBranch: hasBranch,
-                                                                    matchesBranch: matchesBranch, record: record)
-                                if state == .selectBranch {
-                                    // The inspector still shows the catalog
-                                    // quantity in this global/main-store state.
-                                    return PPInventoryFamilyStockSnapshot(
-                                        quantity: max(0, member.quantity), caption: state.caption
-                                    )
-                                }
-                                guard state == .ready else {
-                                    return PPInventoryFamilyStockSnapshot(quantity: nil, caption: state.caption)
-                                }
-                                return PPInventoryFamilyStockSnapshot(
-                                    quantity: hasBranch ? (record?.availableQuantity ?? 0) : max(0, member.quantity),
-                                    caption: nil
-                                )
-                            },
-                            retailPrice: { member in
-                                guard member.hasResolvedSellingPrice else { return nil }
-                                let selectedBranch = branchContext.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                                let hasBranch = !selectedBranch.isEmpty && selectedBranch != "main_store"
-                                guard hasBranch else { return member.finalPrice.doubleValue }
-                                guard branchProjection.currentBranchId == selectedBranch,
-                                      branchProjection.hasConfirmedCommercePrice(for: member.accessoryID) else { return nil }
-                                let resolved = branchProjection.effectiveSellingPrice(
-                                    for: member.accessoryID,
-                                    fallbackPrice: member.finalPrice.doubleValue
-                                )
-                                return resolved > 0 ? resolved : nil
-                            },
-                            lowStockThreshold: 3,
-                            showsAccentLine: false
-                        )
-
-                        // One product family unfolds into ONE exact color inspector.
-                        // Changing the rail selection swaps this child in place rather
-                        // than stacking full duplicate product cards down the list.
-                        if isExpanded {
-                            Rectangle()
-                                .fill(AdminSurface.hairline)
-                                .frame(height: AdminStroke.hairline)
-                                .padding(.horizontal, AdminSpacing.base)
-                                .accessibilityHidden(true)
-
-                            inventoryVariantInspector(for: selectedMember, showsAccentLine: false)
-                                // Retain the live control tree while changing member.
-                                // An outgoing inspector must never remain tappable
-                                // during an identity transition with old closures.
-                                .transition(.opacity)
-                        }
-                    }
-                    .padding(.leading, isExpanded ? AdminSpacing.md : 0)
-                    .background {
-                        if isExpanded {
-                            RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous)
-                                .fill(AdminSurface.surface)
-                                .shadow(color: .black.opacity(0.04), radius: 12, y: 4)
-                        }
-                    }
-                    .overlay {
-                        if isExpanded {
-                            RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous)
-                                .strokeBorder(AdminSurface.borderSubtle, lineWidth: AdminStroke.thin)
-                                .allowsHitTesting(false)
-                        }
-                    }
-                    .overlay(alignment: .leading) {
-                        if isExpanded {
-                            FamilyExpandedAccentSpineView(color: selectedAccentColor)
-                                .padding(.leading, AdminSpacing.xs)
-                                .padding(.vertical, AdminSpacing.lg)
-                                .transition(.opacity)
-                        }
-                    }
-                    .animation(
-                        AdminAnimation.motion(AdminAnimation.fast, reduceMotion: reduceMotion),
-                        value: selectedAccentColor
-                    )
-                    // The whole group animates as one unit on disclosure, so the
-                    // rows below it move with the child rather than jumping after it.
-                    .animation(
-                        AdminAnimation.motion(AdminAnimation.disclosure, reduceMotion: reduceMotion),
-                        value: isExpanded
-                    )
-                }
-            }
+            inventoryDisplayGroup(
+                group,
+                singleRow: { inventoryCard(for: $0) },
+                familyInspector: { inventoryVariantInspector(for: $0, showsAccentLine: false) }
+            )
             .animateCellDisplay(id: group.id, index: index)
             // Rows arriving or leaving on a filter change read as replacement, not
             // navigation: they fade and settle in place instead of flying in.
@@ -4222,7 +4144,167 @@ struct PPInventoryListView: View {
         }
     }
 
-    /// Compact child workspace for one selected color. It receives the exact
+    /// Accessories and medicines share one family shell and selection owner.
+    /// Each lane supplies its own exact-product content and retains its actions.
+    @ViewBuilder
+    private func inventoryDisplayGroup<SingleRow: View, FamilyInspector: View>(
+        _ group: PPInventoryDisplayGroup,
+        @ViewBuilder singleRow: (PetAccessory) -> SingleRow,
+        @ViewBuilder familyInspector: (PetAccessory) -> FamilyInspector
+    ) -> some View {
+        switch group {
+        case .single(let item):
+            singleRow(item)
+        case .family(let familyId, let members):
+            let defaultMember = members.first(where: { $0.isDefaultVariant }) ?? members[0]
+            let selectedMember = members.first(where: {
+                $0.accessoryID == selectedFamilyProductIds[familyId]
+            }) ?? defaultMember
+            let isExpanded = expandedFamilyIds.contains(familyId)
+            let selectedAccentColor: Color = {
+                if selectedMember.pos_hasRealColor, let colour = selectedMember.pos_variantColor {
+                    if colour.requiresContrastBorder {
+                        return AdminSurface.primaryText.opacity(0.85)
+                    }
+                    return Color(uiColor: colour.uiColor)
+                }
+                return AdminSurface.primary
+            }()
+
+            VStack(alignment: .leading, spacing: 0) {
+                PPInventoryFamilyRow(
+                    members: members,
+                    isExpanded: Binding(
+                        get: { expandedFamilyIds.contains(familyId) },
+                        set: { isOn in
+                            // No `withAnimation` here. The row owns the
+                            // disclosure animation; wrapping the binding as
+                            // well meant two curves drove one gesture and
+                            // fought each other on every tap.
+                            if isOn {
+                                expandedFamilyIds.insert(familyId)
+                                let current = selectedFamilyProductIds[familyId]
+                                if current == nil || !members.contains(where: { $0.accessoryID == current }) {
+                                    selectedFamilyProductIds[familyId] = defaultMember.accessoryID
+                                }
+                            } else {
+                                expandedFamilyIds.remove(familyId)
+                                selectedFamilyProductIds.removeValue(forKey: familyId)
+                            }
+                        }
+                    ),
+                    selectedProductId: Binding(
+                        get: {
+                            guard let current = selectedFamilyProductIds[familyId],
+                                  members.contains(where: { $0.accessoryID == current }) else {
+                                return ""
+                            }
+                            return current
+                        },
+                        set: { selectedFamilyProductIds[familyId] = $0 }
+                    ),
+                    // Resolve every option from the exact same confirmed
+                    // branch state as the selected product inspector.
+                    availability: { member in
+                        if viewModel.activeTab == .medicines {
+                            return pharmacyFamilyStockSnapshot(for: member)
+                        }
+                        let selectedBranch = branchContext.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                        let hasBranch = !selectedBranch.isEmpty && selectedBranch != "main_store"
+                        let matchesBranch = branchProjection.currentBranchId == selectedBranch
+                        let record = matchesBranch && hasBranch
+                            ? branchProjection.inventory(for: member.accessoryID) : nil
+                        let state = inventoryCellStockState(for: member, hasBranch: hasBranch,
+                                                            matchesBranch: matchesBranch, record: record)
+                        if state == .selectBranch {
+                            // The inspector still shows the catalog
+                            // quantity in this global/main-store state.
+                            return PPInventoryFamilyStockSnapshot(
+                                quantity: max(0, member.quantity), caption: state.caption
+                            )
+                        }
+                        guard state == .ready else {
+                            return PPInventoryFamilyStockSnapshot(quantity: nil, caption: state.caption)
+                        }
+                        return PPInventoryFamilyStockSnapshot(
+                            quantity: hasBranch ? (record?.availableQuantity ?? 0) : max(0, member.quantity),
+                            caption: nil
+                        )
+                    },
+                    retailPrice: { member in
+                        if viewModel.activeTab == .medicines {
+                            return pharmacySellingPrice(for: member)?.doubleValue
+                        }
+                        guard member.hasResolvedSellingPrice else { return nil }
+                        let selectedBranch = branchContext.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                        let hasBranch = !selectedBranch.isEmpty && selectedBranch != "main_store"
+                        guard hasBranch else { return member.finalPrice.doubleValue }
+                        guard branchProjection.currentBranchId == selectedBranch,
+                              branchProjection.hasConfirmedCommercePrice(for: member.accessoryID) else { return nil }
+                        let resolved = branchProjection.effectiveSellingPrice(
+                            for: member.accessoryID,
+                            fallbackPrice: member.finalPrice.doubleValue
+                        )
+                        return resolved > 0 ? resolved : nil
+                    },
+                    lowStockThreshold: 3,
+                    showsAccentLine: false
+                )
+
+                // One product family unfolds into one exact-option workspace.
+                // Changing the rail selection swaps this child in place rather
+                // than stacking full duplicate product cards down the list.
+                if isExpanded {
+                    Rectangle()
+                        .fill(AdminSurface.hairline)
+                        .frame(height: AdminStroke.hairline)
+                        .padding(.horizontal, AdminSpacing.base)
+                        .accessibilityHidden(true)
+
+                    familyInspector(selectedMember)
+                        // Retain the live control tree while changing member.
+                        // An outgoing inspector must never remain tappable
+                        // during an identity transition with old closures.
+                        .transition(.opacity)
+                }
+            }
+            .padding(.leading, isExpanded ? AdminSpacing.md : 0)
+            .background {
+                if isExpanded {
+                    RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous)
+                        .fill(AdminSurface.surface)
+                        .shadow(color: .black.opacity(0.04), radius: 12, y: 4)
+                }
+            }
+            .overlay {
+                if isExpanded {
+                    RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous)
+                        .strokeBorder(AdminSurface.borderSubtle, lineWidth: AdminStroke.thin)
+                        .allowsHitTesting(false)
+                }
+            }
+            .overlay(alignment: .leading) {
+                if isExpanded {
+                    FamilyExpandedAccentSpineView(color: selectedAccentColor)
+                        .padding(.leading, AdminSpacing.xs)
+                        .padding(.vertical, AdminSpacing.lg)
+                        .transition(.opacity)
+                }
+            }
+            .animation(
+                AdminAnimation.motion(AdminAnimation.fast, reduceMotion: reduceMotion),
+                value: selectedAccentColor
+            )
+            // The whole group animates as one unit on disclosure, so the
+            // rows below it move with the child rather than jumping after it.
+            .animation(
+                AdminAnimation.motion(AdminAnimation.disclosure, reduceMotion: reduceMotion),
+                value: isExpanded
+            )
+        }
+    }
+
+    /// Compact child workspace for one selected option. It receives the exact
     /// same branch projection and mutation closures as the full inventory card,
     /// but does not repeat family-level product identity or imagery.
     @ViewBuilder

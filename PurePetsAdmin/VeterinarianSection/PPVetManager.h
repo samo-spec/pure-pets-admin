@@ -49,7 +49,7 @@ typedef void(^PPVetCountBlock)(NSInteger count);
                             active:(BOOL)active
                          startDate:(NSDate * _Nullable)startDate
                            endDate:(NSDate * _Nullable)endDate
-                        completion:(PPVetVoidBlock _Nullable)completion;
+                        completion:(PPVetVoidBlock _Nullable)completion NS_SWIFT_NAME(updateSubscription(forVetID:tier:active:startDate:endDate:completion:));
 
 // ── Image ──
 - (void)uploadImage:(UIImage *)image
