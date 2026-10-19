@@ -4926,11 +4926,13 @@ struct CategorySpecimenAuraTheme {
 
         // Medicine Archetype
         if item.isPetMedicine {
+            let catDisplay = item.accessoryCategoryName ?? item.category
+            let name = (catDisplay?.isEmpty == false) ? catDisplay! : Language.get("Medicine", alter: "صيدلية")
             return CategorySpecimenAuraTheme(
                 gradient: [Color(red: 45/255, green: 212/255, blue: 191/255), Color(red: 13/255, green: 148/255, blue: 136/255)],
                 glyphName: "cross.case.fill",
                 accentTint: Color(red: 13/255, green: 148/255, blue: 136/255),
-                categoryName: Language.get("Medicine", alter: "صيدلية")
+                categoryName: name
             )
         }
 
@@ -5887,6 +5889,9 @@ private struct FlagshipInventoryCard: View {
 
     private var metadata: some View {
         PPInventoryMetadataLayout(spacing: 10, lineSpacing: 6, direction: layoutDirection) {
+            if let group = item.accessoryCategoryName ?? item.category, !group.isEmpty, group != theme.categoryName {
+                Label(group, systemImage: "square.grid.2x2")
+            }
             if !branchName.isEmpty {
                 Label(branchName, systemImage: "building.2")
             }

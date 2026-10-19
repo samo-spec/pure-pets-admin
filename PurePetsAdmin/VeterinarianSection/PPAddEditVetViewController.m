@@ -31,9 +31,14 @@
 
     self.hostingController = [[PPVetEditorHostingController alloc] initWithVetToEdit:self.vetToEdit];
     [self addChildViewController:self.hostingController];
-    self.hostingController.view.frame = self.view.bounds;
-    self.hostingController.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.hostingController.view.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:self.hostingController.view];
+    [NSLayoutConstraint activateConstraints:@[
+        [self.hostingController.view.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [self.hostingController.view.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.hostingController.view.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.hostingController.view.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
+    ]];
     [self.hostingController didMoveToParentViewController:self];
 }
 

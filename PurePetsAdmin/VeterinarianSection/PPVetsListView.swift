@@ -279,7 +279,7 @@ struct PPVeterinarianManagementScreen: View {
                 store.applyFilter()
             }
         }
-        .sheet(item: $presentedSheet) { sheet in
+        .fullScreenCover(item: $presentedSheet) { sheet in
             switch sheet {
             case .add:
                 PPVetEditorStudioScreen(
@@ -289,7 +289,6 @@ struct PPVeterinarianManagementScreen: View {
                         Task { await store.refresh() }
                     }
                 )
-                .ignoresSafeArea()
 
             case .edit(let vet):
                 PPVetEditorStudioScreen(
@@ -299,17 +298,22 @@ struct PPVeterinarianManagementScreen: View {
                         Task { await store.refresh() }
                     }
                 )
-                .ignoresSafeArea()
 
             case .detail(let vet):
                 PPVetDetailDossierScreen(
                     vet: vet,
                     onDismiss: { presentedSheet = nil },
                     onEdit: { editVet in
-                        presentedSheet = .edit(editVet)
+                        presentedSheet = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            presentedSheet = .edit(editVet)
+                        }
                     },
                     onSubscription: { subVet in
-                        presentedSheet = .subscription(subVet)
+                        presentedSheet = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            presentedSheet = .subscription(subVet)
+                        }
                     },
                     onUpdated: { _ in
                         Task { await store.refresh() }
@@ -910,7 +914,14 @@ struct PPVeterinarianManagementScreen: View {
                 pushVC(PPVetSubscriptionHostingController(vet: vet))
             }
         } else {
-            presentedSheet = destination
+            if presentedSheet != nil {
+                presentedSheet = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    presentedSheet = destination
+                }
+            } else {
+                presentedSheet = destination
+            }
         }
     }
 }
@@ -1032,7 +1043,7 @@ private struct PPVetDossierCard: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "bubble.left.and.bubble.right.fill")
                                     .font(.system(size: 11, weight: .semibold))
-                                Text("WhatsApp")
+                                Text(Language.get("WhatsApp", alter: "واتساب"))
                                     .font(AdminType.caption2Bold)
                             }
                             .foregroundStyle(Color(red: 0.16, green: 0.78, blue: 0.48))
@@ -1075,11 +1086,19 @@ private struct PPVetDossierCard: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel(Language.get("Vet_Subscription", alter: "الاشتراك"))
 
-                    // Chevron Detail Indicator
-                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(AdminCommandInk.tertiary)
-                        .padding(.leading, 2)
+                    // Chevron Detail Indicator (direct tap action)
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onOpenDetail()
+                    } label: {
+                        Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(AdminCommandInk.tertiary)
+                            .frame(width: 24, height: 32)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Language.get("Vet_Detail_Title", alter: "الملف الطبي الشامل"))
                 }
             }
             .padding(14)
@@ -1096,6 +1115,7 @@ private struct PPVetDossierCard: View {
                     )
             )
             .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.20 : 0.04), radius: 6, x: 0, y: 2)
+            .contentShape(RoundedRectangle(cornerRadius: CommandCorner.card, style: .continuous))
         }
         .buttonStyle(VetCardPressStyle())
         .contextMenu {
@@ -1333,7 +1353,7 @@ struct PPVetsListView: View {
     var onPushViewController: ((UIViewController) -> Void)?
 
     init(
-        onPushViewController: @escaping (UIViewController) -> Void = { _ in },
+        onPushViewController: ((UIViewController) -> Void)? = nil,
         onDismiss: (() -> Void)? = nil
     ) {
         self.onPushViewController = onPushViewController
@@ -1368,7 +1388,11 @@ public class PPVetsListHostingController: UIViewController {
 
         let swiftUIView = PPVeterinarianManagementScreen(
             onPushViewController: { [weak self] viewController in
-                self?.navigationController?.pushViewController(viewController, animated: true)
+                if let nav = self?.navigationController {
+                    nav.pushViewController(viewController, animated: true)
+                } else {
+                    self?.present(viewController, animated: true, completion: nil)
+                }
             },
             onDismiss: { [weak self] in
                 if let nav = self?.navigationController {

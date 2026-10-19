@@ -491,6 +491,254 @@ public enum PuryFocusTarget: Equatable {
     case description
 }
 
+// MARK: - PurePets Canonical Veterinary Medicine & Pet Care Taxonomy
+
+public enum PPMedicineCareProductType: String, CaseIterable, Identifiable {
+    case medicine = "medicine"
+    case care = "care"
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .medicine:
+            return Language.get("MedicineCare_TypeMedicine", alter: "أدوية وعلاجات بيطرية")
+        case .care:
+            return Language.get("MedicineCare_TypeCare", alter: "منتجات رعاية ونظافة")
+        }
+    }
+
+    public var shortTitle: String {
+        switch self {
+        case .medicine:
+            return Language.get("MedicineCare_TypeMedicineShort", alter: "أدوية بيطرية")
+        case .care:
+            return Language.get("MedicineCare_TypeCareShort", alter: "رعاية ونظافة")
+        }
+    }
+
+    public var subtitle: String {
+        switch self {
+        case .medicine:
+            return Language.isRTL() ? "مضادات حيوية، طفيليات، فيتامينات، ومسكنات بيطرية" : "Antibiotics, dewormers, vitamins & medical therapeutics"
+        case .care:
+            return Language.isRTL() ? "شامبوهات، نظافة فم وأسنان، عناية بالمخالب، ومطهرات" : "Shampoos, dental care, grooming & hygiene essentials"
+        }
+    }
+
+    public var icon: String {
+        switch self {
+        case .medicine:
+            return "pills.fill"
+        case .care:
+            return "sparkles"
+        }
+    }
+
+    public var accentColor: Color {
+        switch self {
+        case .medicine:
+            return Color(uiColor: .ppError)
+        case .care:
+            return Color.teal
+        }
+    }
+}
+
+public enum PPAccessoryMedicineCareCatalog {
+    public static let canonicalMedicineCategories: [PPAccessoryCategoryModel] = [
+        PPAccessoryCategoryModel(dict: [
+            "id": "med_antibiotics", "sortingKey": 10,
+            "nameAr": "مضادات حيوية وميكروبية", "nameEn": "Antibiotics & Antimicrobial"
+        ], mainKindID: 0),
+        PPAccessoryCategoryModel(dict: [
+            "id": "med_dewormers", "sortingKey": 20,
+            "nameAr": "مضادات الطفيليات والديدان", "nameEn": "Parasiticides & Dewormers"
+        ], mainKindID: 0),
+        PPAccessoryCategoryModel(dict: [
+            "id": "med_flea_tick", "sortingKey": 30,
+            "nameAr": "علاجات القراد والبراغيث والحشرات", "nameEn": "Flea, Tick & Pest Control"
+        ], mainKindID: 0),
+        PPAccessoryCategoryModel(dict: [
+            "id": "med_vitamins", "sortingKey": 40,
+            "nameAr": "فيتامينات ومكملات غذائية بيطرية", "nameEn": "Vitamins & Nutritional Supplements"
+        ], mainKindID: 0),
+        PPAccessoryCategoryModel(dict: [
+            "id": "med_anti_inflammatory", "sortingKey": 50,
+            "nameAr": "مسكنات ومضادات التهاب ومفاصل", "nameEn": "Pain Relief & Anti-Inflammatory"
+        ], mainKindID: 0),
+        PPAccessoryCategoryModel(dict: [
+            "id": "med_digestive", "sortingKey": 60,
+            "nameAr": "علاجات الجهاز الهضمي والديدان", "nameEn": "Digestive & Gastrointestinal Care"
+        ], mainKindID: 0),
+        PPAccessoryCategoryModel(dict: [
+            "id": "med_eyes_ears", "sortingKey": 70,
+            "nameAr": "قطرات ومراهم العيون والأذن", "nameEn": "Eye & Ear Medical Drops"
+        ], mainKindID: 0),
+        PPAccessoryCategoryModel(dict: [
+            "id": "med_dermatology", "sortingKey": 80,
+            "nameAr": "علاجات الجلد والفطريات والحساسية", "nameEn": "Dermatology & Antifungal Care"
+        ], mainKindID: 0),
+        PPAccessoryCategoryModel(dict: [
+            "id": "med_respiratory", "sortingKey": 90,
+            "nameAr": "علاجات تنفسية ورئوية", "nameEn": "Respiratory & Cough Treatments"
+        ], mainKindID: 0),
+        PPAccessoryCategoryModel(dict: [
+            "id": "med_antiseptic", "sortingKey": 100,
+            "nameAr": "مطهرات وجروح وإسعافات أولية", "nameEn": "Antiseptics & First Aid Wound Care"
+        ], mainKindID: 0),
+        PPAccessoryCategoryModel(dict: [
+            "id": "med_calming", "sortingKey": 110,
+            "nameAr": "مهدئات وتخفيف التوتر والسفر", "nameEn": "Calming & Stress Relief"
+        ], mainKindID: 0),
+        PPAccessoryCategoryModel(dict: [
+            "id": "med_general", "sortingKey": 120,
+            "nameAr": "أدوية ومستحضرات بيطرية عامة", "nameEn": "General Veterinary Medicines"
+        ], mainKindID: 0)
+    ]
+
+    public static let canonicalCareCategories: [PPAccessoryCategoryModel] = [
+        PPAccessoryCategoryModel(dict: [
+            "id": "care_shampoo", "sortingKey": 10,
+            "nameAr": "شامبو وبلسم واستحمام", "nameEn": "Shampoo, Conditioners & Washes"
+        ], mainKindID: 0),
+        PPAccessoryCategoryModel(dict: [
+            "id": "care_dental", "sortingKey": 20,
+            "nameAr": "نظافة الفم والأسنان", "nameEn": "Oral Care & Dental Hygiene"
+        ], mainKindID: 0),
+        PPAccessoryCategoryModel(dict: [
+            "id": "care_paw_nail", "sortingKey": 30,
+            "nameAr": "عناية بالمخالب والأقدام", "nameEn": "Paws & Nail Care"
+        ], mainKindID: 0),
+        PPAccessoryCategoryModel(dict: [
+            "id": "care_grooming", "sortingKey": 40,
+            "nameAr": "أدوات العناية بالفراء والتمشيط", "nameEn": "Brushes & Grooming Tools"
+        ], mainKindID: 0),
+        PPAccessoryCategoryModel(dict: [
+            "id": "care_ear_eye", "sortingKey": 50,
+            "nameAr": "منظفات ومناديل العيون والأذن اليومية", "nameEn": "Ear & Eye Hygiene Cleansers"
+        ], mainKindID: 0),
+        PPAccessoryCategoryModel(dict: [
+            "id": "care_deodorant", "sortingKey": 60,
+            "nameAr": "معطرات ورذاذ إزالة الروائح", "nameEn": "Deodorizing Sprays & Perfumes"
+        ], mainKindID: 0),
+        PPAccessoryCategoryModel(dict: [
+            "id": "care_pads_diapers", "sortingKey": 70,
+            "nameAr": "حفاضات ومفارش تدريب ونظافة", "nameEn": "Pads, Diapers & Hygiene Liners"
+        ], mainKindID: 0),
+        PPAccessoryCategoryModel(dict: [
+            "id": "care_habitat_clean", "sortingKey": 80,
+            "nameAr": "تعقيم وتطهير البيئة والأقفاص", "nameEn": "Habitat, Cage & Surface Sanitisers"
+        ], mainKindID: 0),
+        PPAccessoryCategoryModel(dict: [
+            "id": "care_nursing", "sortingKey": 90,
+            "nameAr": "أدوات الرضاعة والتغذية اليدوية", "nameEn": "Hand Nursing & Feeding Kits"
+        ], mainKindID: 0),
+        PPAccessoryCategoryModel(dict: [
+            "id": "care_general", "sortingKey": 100,
+            "nameAr": "مستلزمات رعاية وعناية عامة", "nameEn": "General Pet Care Products"
+        ], mainKindID: 0)
+    ]
+
+    public static var allCategories: [PPAccessoryCategoryModel] {
+        canonicalMedicineCategories + canonicalCareCategories
+    }
+
+    public static func isMedicineCategory(id: String) -> Bool {
+        id.hasPrefix("med_") || canonicalMedicineCategories.contains(where: { $0.categoryID == id })
+    }
+
+    public static func isCareCategory(id: String) -> Bool {
+        id.hasPrefix("care_") || canonicalCareCategories.contains(where: { $0.categoryID == id })
+    }
+
+    public static func subtitle(for id: String) -> String? {
+        switch id {
+        case "med_antibiotics": return Language.isRTL() ? "أقراص، سوائل، وحقن لمكافحة العدوى البكتيرية" : "Tablets, liquids & injections for bacterial infections"
+        case "med_dewormers": return Language.isRTL() ? "طارد الديدان المعوية والوقاية الدورية" : "Intestinal dewormers & periodic parasite prevention"
+        case "med_flea_tick": return Language.isRTL() ? "أمبولات موضعية، بخاخات، وأطواق حماية" : "Topical pipettes, sprays & treatment collars"
+        case "med_vitamins": return Language.isRTL() ? "معززات مناعة، كالسيوم، وأحماض أوميغا" : "Immune boosters, calcium, multivitamin & omegas"
+        case "med_anti_inflammatory": return Language.isRTL() ? "علاج آلام المفاصل، العظام، والالتهابات" : "Joint care, post-surgery pain & inflammation relief"
+        case "med_digestive": return Language.isRTL() ? "مضادات إسهال، بكتيريا نافعة، ومثبتات هضم" : "Probiotics, anti-diarrhea & digestive health"
+        case "med_eyes_ears": return Language.isRTL() ? "قطرات التهابات العين، ومعالجات القناة السمعية" : "Antibacterial eye drops & ear mite treatments"
+        case "med_dermatology": return Language.isRTL() ? "مراهم الفطريات، بخاخات التهدئة، ومضادات الحكة" : "Antifungal ointments, soothing sprays & allergy relief"
+        case "med_respiratory": return Language.isRTL() ? "موسعات شعب، مضادات سعال، ومحاليل تنفسية" : "Decongestants, expectorants & inhalants"
+        case "med_antiseptic": return Language.isRTL() ? "معقمات جروح، رذاذ فضي، وضمادات طبية" : "Silver sprays, wound disinfectant & sterile wraps"
+        case "med_calming": return Language.isRTL() ? "مهدئات عشبية وفيرومونات للتنقل والعيادات" : "Herbal calmers, pheromones & travel support"
+        case "med_general": return Language.isRTL() ? "أدوية ومستحضرات طبية بيطرية معتمدة ومتنوعة" : "General & specialty pharmaceutical preparations"
+        case "care_shampoo": return Language.isRTL() ? "شامبوهات مهدئة، مزيلة للروائح، وفرو ناعم" : "Moisturizing, hypo-allergenic & detangling shampoos"
+        case "care_dental": return Language.isRTL() ? "معاجين بيطرية، فرش أسنان، وجل منع الجير" : "Enzymatic toothpaste, tartar gels & dental wipes"
+        case "care_paw_nail": return Language.isRTL() ? "مقاص أظافر، مبرد، وبلسم ترطيب باطن القدم" : "Nail trimmers, styptic powder & paw balms"
+        case "care_grooming": return Language.isRTL() ? "فرش تسريح، أدوات نزع الوبر، وماكينات حلاقة" : "Deshedding tools, slicker brushes & groomers"
+        case "care_ear_eye": return Language.isRTL() ? "مناديل مبللة مهدئة ومحاليل تنظيف الروتين اليومي" : "Daily eye wipes, tear-stain removers & ear washes"
+        case "care_deodorant": return Language.isRTL() ? "معطرات آمنة على الحيوان للروائح الكريهة" : "Pet-safe colognes, freshening mists & coat sprays"
+        case "care_pads_diapers": return Language.isRTL() ? "مفارش تدريب جراء، حفاضات إناث وذكور" : "Puppy training pads, leak-proof diapers & bands"
+        case "care_habitat_clean": return Language.isRTL() ? "معقمات آمنة لبيوت الحيوانات، الأحواض، والأرضيات" : "Pet-safe disinfectants, kennel & tray sanitizers"
+        case "care_nursing": return Language.isRTL() ? "رضاعات حديثي الولادة، حلمات سيليكون، وحقن تغذية" : "Nursing bottles, silicone nipples & dosing syringes"
+        case "care_general": return Language.isRTL() ? "منتجات يومية للعناية بصحة ورفاهية الحيوان" : "Everyday hygiene and wellness care essentials"
+        default: return nil
+        }
+    }
+
+    public static func iconName(for id: String) -> String {
+        switch id {
+        case "med_antibiotics": return "cross.vial.fill"
+        case "med_dewormers": return "shield.lefthalf.filled"
+        case "med_flea_tick": return "ant.fill"
+        case "med_vitamins": return "leaf.fill"
+        case "med_anti_inflammatory": return "bandage.fill"
+        case "med_digestive": return "heart.text.square.fill"
+        case "med_eyes_ears": return "eye.fill"
+        case "med_dermatology": return "hand.raised.fill"
+        case "med_respiratory": return "wind"
+        case "med_antiseptic": return "cross.fill"
+        case "med_calming": return "moon.stars.fill"
+        case "med_general": return "pills.fill"
+        case "care_shampoo": return "drop.fill"
+        case "care_dental": return "mouth.fill"
+        case "care_paw_nail": return "scissors"
+        case "care_grooming": return "comb.fill"
+        case "care_ear_eye": return "eye.circle.fill"
+        case "care_deodorant": return "sparkles"
+        case "care_pads_diapers": return "square.stack.3d.down.right.fill"
+        case "care_habitat_clean": return "house.fill"
+        case "care_nursing": return "cup.and.saucer.fill"
+        case "care_general": return "cross.case.fill"
+        default: return "square.grid.2x2.fill"
+        }
+    }
+
+    public static func accentColor(for id: String) -> Color {
+        if id.hasPrefix("med_") {
+            switch id {
+            case "med_antibiotics", "med_antiseptic": return Color(uiColor: .ppError)
+            case "med_dewormers", "med_flea_tick": return Color.orange
+            case "med_vitamins": return Color.green
+            case "med_anti_inflammatory", "med_calming": return Color.purple
+            case "med_digestive": return Color.teal
+            case "med_eyes_ears": return Color.blue
+            case "med_dermatology": return Color.indigo
+            case "med_respiratory": return Color.cyan
+            default: return AdminSurface.primary
+            }
+        } else if id.hasPrefix("care_") {
+            switch id {
+            case "care_shampoo": return Color.blue
+            case "care_dental": return Color.teal
+            case "care_paw_nail": return Color.pink
+            case "care_grooming": return Color.orange
+            case "care_ear_eye": return Color.cyan
+            case "care_deodorant": return Color.purple
+            case "care_pads_diapers": return Color(uiColor: .ppWarning)
+            case "care_habitat_clean": return Color.green
+            case "care_nursing": return Color.mint
+            default: return Color.teal
+            }
+        }
+        return AdminSurface.primary
+    }
+}
+
 // MARK: - View Model
 
 @MainActor
@@ -524,7 +772,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             } else {
                 hasExpiryDate = false
             }
-            if selectedKind == .typeAccessory && oldValue != selectedKind {
+            if (selectedKind == .typeAccessory || selectedKind == .typePetMedicine) && oldValue != selectedKind {
                 let mainID = selectedMainKind?.id ?? selectedMainKinds.sorted().first
                     ?? (isAllCategoriesSelected ? 1 : 0)
                 refreshAccessoryCategories(forMainKindID: mainID)
@@ -768,6 +1016,29 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 
     // Accessory Category Selection
+    @Published var selectedMedicineCareProductType: PPMedicineCareProductType? = nil {
+        didSet {
+            guard oldValue != selectedMedicineCareProductType else { return }
+            updateUnsavedChanges()
+            if let type = selectedMedicineCareProductType {
+                switch type {
+                case .medicine:
+                    availableAccessoryCategories = PPAccessoryMedicineCareCatalog.canonicalMedicineCategories
+                    if let catID = selectedAccessoryCategoryID, !PPAccessoryMedicineCareCatalog.isMedicineCategory(id: catID) {
+                        selectedAccessoryCategoryID = nil
+                    }
+                case .care:
+                    availableAccessoryCategories = PPAccessoryMedicineCareCatalog.canonicalCareCategories
+                    if let catID = selectedAccessoryCategoryID, !PPAccessoryMedicineCareCatalog.isCareCategory(id: catID) {
+                        selectedAccessoryCategoryID = nil
+                    }
+                }
+            } else if isMedicine || isPetCareProduct {
+                availableAccessoryCategories = PPAccessoryMedicineCareCatalog.allCategories
+            }
+        }
+    }
+    @Published var showMedicineCareProductTypePicker: Bool = false
     @Published var selectedAccessoryCategoryID: String? = nil { didSet { updateUnsavedChanges() } }
     @Published var availableAccessoryCategories: [PPAccessoryCategoryModel] = []
     @Published var showAccessoryCategoryPicker: Bool = false
@@ -775,9 +1046,17 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     var selectedAccessoryCategory: PPAccessoryCategoryModel? {
         guard let id = selectedAccessoryCategoryID, !id.isEmpty else { return nil }
-        return availableAccessoryCategories.first {
+        if let match = availableAccessoryCategories.first(where: {
             $0.categoryID == id || $0.documentID == id || $0.nameAr == id || $0.nameEn == id
+        }) {
+            return match
         }
+        if let medMatch = PPAccessoryMedicineCareCatalog.allCategories.first(where: {
+            $0.categoryID == id || $0.documentID == id || $0.nameAr == id || $0.nameEn == id
+        }) {
+            return medMatch
+        }
+        return nil
     }
 
     var selectedAccessoryCategoryDisplayTitle: String? {
@@ -791,6 +1070,19 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 
     func refreshAccessoryCategories(forMainKindID mainID: Int) {
+        if isMedicine || isPetCareProduct {
+            if let type = selectedMedicineCareProductType {
+                switch type {
+                case .medicine:
+                    self.availableAccessoryCategories = PPAccessoryMedicineCareCatalog.canonicalMedicineCategories
+                case .care:
+                    self.availableAccessoryCategories = PPAccessoryMedicineCareCatalog.canonicalCareCategories
+                }
+            } else {
+                self.availableAccessoryCategories = PPAccessoryMedicineCareCatalog.allCategories
+            }
+            return
+        }
         guard selectedKind == .typeAccessory, mainID > 0 else {
             self.availableAccessoryCategories = []
             return
@@ -967,6 +1259,11 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         let loadedCatID = acc.accessoryCategoryID
         if let catID = loadedCatID, !catID.isEmpty {
             selectedAccessoryCategoryID = catID
+            if PPAccessoryMedicineCareCatalog.isMedicineCategory(id: catID) || catID.lowercased().hasPrefix("med_") {
+                selectedMedicineCareProductType = .medicine
+            } else if PPAccessoryMedicineCareCatalog.isCareCategory(id: catID) || catID.lowercased().hasPrefix("care_") {
+                selectedMedicineCareProductType = .care
+            }
         }
 
         let mainIDToLoad: Int = {
@@ -975,7 +1272,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             if isAllCategoriesSelected { return 1 }
             return 0
         }()
-        if mainIDToLoad > 0 {
+        if mainIDToLoad > 0 || isMedicine || isPetCareProduct {
             refreshAccessoryCategories(forMainKindID: mainIDToLoad)
         }
 
@@ -1467,7 +1764,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             self.selectedAccessoryCategoryID = catID
         }
         let mainIDToLoad = self.selectedMainKind?.id ?? self.selectedMainKinds.first ?? acc.petMainCategoryID
-        if mainIDToLoad > 0 {
+        if mainIDToLoad > 0 || self.isMedicine || self.isPetCareProduct {
             self.refreshAccessoryCategories(forMainKindID: mainIDToLoad)
         }
     }
@@ -1485,7 +1782,35 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         formatter.locale = Locale(identifier: Language.currentLanguageCode())
         return formatter.string(from: expiryDate).normalizedEnglishDigits
     }
-    var usesAccessoryTaxonomy: Bool { selectedKind == .typeAccessory }
+    var usesAccessoryTaxonomy: Bool { selectedKind == .typeAccessory || selectedKind == .typePetMedicine }
+    var isPetCareProduct: Bool {
+        if isMedicine { return true }
+        if let catId = selectedAccessoryCategoryID?.lowercased() {
+            if PPAccessoryMedicineCareCatalog.isCareCategory(id: catId) || PPAccessoryMedicineCareCatalog.isMedicineCategory(id: catId) {
+                return true
+            }
+            if ["care", "clean", "grooming", "hygiene", "health", "cleaning"].contains(where: { catId.contains($0) }) {
+                return true
+            }
+        }
+        if let title = selectedAccessoryCategoryDisplayTitle?.lowercased() {
+            if title.contains("care") || title.contains("عناية") || title.contains("نظافة") || title.contains("صحة") || title.contains("grooming") {
+                return true
+            }
+        }
+        if let accCat = editingAccessory?.accessoryCategoryID?.lowercased() {
+            if PPAccessoryMedicineCareCatalog.isCareCategory(id: accCat) || PPAccessoryMedicineCareCatalog.isMedicineCategory(id: accCat) {
+                return true
+            }
+            if ["care", "clean", "grooming", "hygiene", "health", "cleaning"].contains(where: { accCat.contains($0) }) {
+                return true
+            }
+        }
+        return false
+    }
+    var allowsMultipleCategorySelection: Bool {
+        isMedicine || isPetCareProduct
+    }
     var catalogSymbol: String {
         if isMedicine { return "pills.fill" }
         if isFood { return "fork.knife" }
@@ -6215,10 +6540,36 @@ struct PPAccessoryEditorScreen: View {
                 }
             )
         }
+        .sheet(isPresented: $viewModel.showMedicineCareProductTypePicker) {
+            PPMedicineCareProductTypePickerSheet(
+                selectedType: viewModel.selectedMedicineCareProductType,
+                onSelect: { type in
+                    viewModel.selectedMedicineCareProductType = type
+                }
+            )
+        }
         .sheet(isPresented: $viewModel.showAccessoryCategoryPicker) {
+            let isMedCare = viewModel.isMedicine || viewModel.isPetCareProduct
+            let targetCategories: [PPAccessoryCategoryModel] = {
+                if isMedCare {
+                    if let type = viewModel.selectedMedicineCareProductType {
+                        switch type {
+                        case .medicine:
+                            return PPAccessoryMedicineCareCatalog.canonicalMedicineCategories
+                        case .care:
+                            return PPAccessoryMedicineCareCatalog.canonicalCareCategories
+                        }
+                    }
+                    return PPAccessoryMedicineCareCatalog.allCategories
+                }
+                return viewModel.availableAccessoryCategories
+            }()
+
             PPAccessoryCategoryPickerSheet(
-                categories: viewModel.availableAccessoryCategories,
+                categories: targetCategories,
                 selectedCategoryID: viewModel.selectedAccessoryCategoryID,
+                isMedicineOrCare: isMedCare,
+                medicineCareProductType: viewModel.selectedMedicineCareProductType,
                 onSelect: { cat in
                     viewModel.selectedAccessoryCategoryID = cat.categoryID
                     viewModel.showAccessoryCategoryPicker = false
@@ -7058,18 +7409,100 @@ struct PPAccessoryEditorScreen: View {
             }
 
             if viewModel.usesAccessoryTaxonomy {
+                let isMedCare = viewModel.isMedicine || viewModel.isPetCareProduct
+                if isMedCare {
+                    Button {
+                        focusedField = nil
+                        viewModel.showMedicineCareProductTypePicker = true
+                    } label: {
+                        HStack {
+                            let typeIcon = viewModel.selectedMedicineCareProductType?.icon ?? "cross.case.fill"
+                            Image(systemName: typeIcon)
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(viewModel.selectedMedicineCareProductType != nil ? (viewModel.selectedMedicineCareProductType?.accentColor ?? AdminSurface.primary) : AdminCommandInk.tertiary)
+                                .frame(width: 32, height: 32)
+                                .background(
+                                    (viewModel.selectedMedicineCareProductType?.accentColor ?? AdminSurface.primary).opacity(0.12),
+                                    in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                )
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(Language.get("MedicineCare_ProductTypeTitle", alter: "نوع المنتج"))
+                                    .font(AdminType.caption2Bold)
+                                    .foregroundStyle(AdminCommandInk.secondary)
+                                Text(viewModel.selectedMedicineCareProductType?.title ?? Language.get("MedicineCare_SelectProductType", alter: "اختر نوع المنتج (أدوية أو رعاية)..."))
+                                    .font(AdminType.calloutBold)
+                                    .foregroundStyle(viewModel.selectedMedicineCareProductType != nil ? AdminSurface.primaryText : AdminCommandInk.tertiary)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(AdminSurface.primary)
+                        }
+                        .padding(14)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(EditorPressStyle())
+                }
+
+                let categoryTitle: String = {
+                    guard isMedCare else { return Language.get("AccessoryCategory", alter: "تصنيف الإكسسوار") }
+                    if let type = viewModel.selectedMedicineCareProductType {
+                        switch type {
+                        case .medicine:
+                            return Language.get("MedicineCare_MedicineGroupTitle", alter: "مجموعة الأدوية البيطرية")
+                        case .care:
+                            return Language.get("MedicineCare_CareGroupTitle", alter: "مجموعة منتجات الرعاية")
+                        }
+                    }
+                    return Language.get("MedicineCare_CategoryTitle", alter: "مجموعة الأدوية والعناية")
+                }()
+
+                let categoryPlaceholder: String = {
+                    if !isMedCare && viewModel.hasNoCategorySelected {
+                        return Language.get("SelectCategoryFirst", alter: "اختر الفئة الرئيسية أولاً")
+                    }
+                    guard isMedCare else {
+                        return Language.get("SelectAccessoryCategory", alter: "اختر تصنيف الإكسسوار...")
+                    }
+                    if let type = viewModel.selectedMedicineCareProductType {
+                        switch type {
+                        case .medicine:
+                            return Language.get("MedicineCare_SelectMedicineGroup", alter: "اختر تصنيف الدواء...")
+                        case .care:
+                            return Language.get("MedicineCare_SelectCareGroup", alter: "اختر تصنيف الرعاية...")
+                        }
+                    }
+                    return Language.get("MedicineCare_SelectTypeFirst", alter: "اختر نوع المنتج أولاً")
+                }()
+
                 Button {
-                    if viewModel.selectedMainKind != nil || !viewModel.selectedMainKinds.isEmpty {
+                    if isMedCare && viewModel.selectedMedicineCareProductType == nil {
+                        focusedField = nil
+                        viewModel.showMedicineCareProductTypePicker = true
+                    } else if isMedCare || viewModel.selectedMainKind != nil || !viewModel.selectedMainKinds.isEmpty || viewModel.isAllCategoriesSelected {
                         focusedField = nil
                         viewModel.showAccessoryCategoryPicker = true
                     }
                 } label: {
                     HStack {
+                        if isMedCare {
+                            let catIcon = viewModel.selectedMedicineCareProductType?.icon ?? "pills.fill"
+                            Image(systemName: catIcon)
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(viewModel.selectedAccessoryCategoryDisplayTitle != nil ? AdminSurface.primary : AdminCommandInk.tertiary)
+                                .frame(width: 32, height: 32)
+                                .background(
+                                    AdminSurface.primary.opacity(0.12),
+                                    in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                )
+                        }
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(Language.get("AccessoryCategory", alter: "تصنيف الإكسسوار"))
+                            Text(categoryTitle)
                                 .font(AdminType.caption2Bold)
                                 .foregroundStyle(AdminCommandInk.secondary)
-                            Text(viewModel.selectedAccessoryCategoryDisplayTitle ?? Language.get("SelectAccessoryCategory", alter: "اختر تصنيف الإكسسوار..."))
+                            Text(viewModel.selectedAccessoryCategoryDisplayTitle ?? categoryPlaceholder)
                                 .font(AdminType.calloutBold)
                                 .foregroundStyle(viewModel.selectedAccessoryCategoryDisplayTitle != nil ? AdminSurface.primaryText : AdminCommandInk.tertiary)
                                 .lineLimit(1)
@@ -7077,13 +7510,13 @@ struct PPAccessoryEditorScreen: View {
                         Spacer()
                         Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
                             .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle((viewModel.selectedMainKind != nil || !viewModel.selectedMainKinds.isEmpty) ? AdminSurface.primary : AdminCommandInk.tertiary)
+                            .foregroundStyle((isMedCare || viewModel.selectedMainKind != nil || !viewModel.selectedMainKinds.isEmpty || viewModel.isAllCategoriesSelected) ? AdminSurface.primary : AdminCommandInk.tertiary)
                     }
                     .padding(14)
                     .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(EditorPressStyle())
-                .disabled(viewModel.selectedMainKind == nil && viewModel.selectedMainKinds.isEmpty)
+                .disabled(!isMedCare && viewModel.selectedMainKind == nil && viewModel.selectedMainKinds.isEmpty && !viewModel.isAllCategoriesSelected)
             }
         }
         .padding(16)
@@ -9757,21 +10190,213 @@ private struct iPadQuantityGroupInspector: View {
     }
 }
 
+private enum MedicineCareGroupFilter: Int, CaseIterable, Identifiable {
+    case all = 0
+    case medicines = 1
+    case care = 2
+
+    var id: Int { rawValue }
+
+    var title: String {
+        switch self {
+        case .all:
+            return Language.get("MedicineCare_All", alter: "الكل")
+        case .medicines:
+            return Language.get("MedicineCare_Medicines", alter: "أدوية بيطرية")
+        case .care:
+            return Language.get("MedicineCare_CareProducts", alter: "رعاية ونظافة")
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .all: return "square.grid.2x2.fill"
+        case .medicines: return "cross.vial.fill"
+        case .care: return "sparkles"
+        }
+    }
+
+    var accentColor: Color {
+        switch self {
+        case .all: return AdminSurface.primary
+        case .medicines: return Color(uiColor: .ppError)
+        case .care: return Color.teal
+        }
+    }
+}
+
+// MARK: - Medicine & Care Product Type Picker Sheet
+
+private struct PPMedicineCareProductTypePickerSheet: View {
+    let selectedType: PPMedicineCareProductType?
+    let onSelect: (PPMedicineCareProductType) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                AdminSurface.background
+                    .ignoresSafeArea()
+
+                VStack(spacing: 16) {
+                    // Header Description
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(Language.get("MedicineCare_ProductTypePickerTitle", alter: "نوع المنتج"))
+                            .font(AdminType.title2)
+                            .foregroundStyle(AdminSurface.primaryText)
+                        Text(Language.get("MedicineCare_ProductTypePickerSubtitle", alter: "حدد ما إذا كان هذا المستحضر دواءً بيطرياً أم منتجاً للعناية لتصفية التصنيفات المناسبة."))
+                            .font(AdminType.footnote)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+
+                    // Selection Cards
+                    VStack(spacing: 12) {
+                        ForEach(PPMedicineCareProductType.allCases) { type in
+                            let isSelected = selectedType == type
+                            Button {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                onSelect(type)
+                                dismiss()
+                            } label: {
+                                HStack(spacing: 14) {
+                                    Image(systemName: type.icon)
+                                        .font(.system(size: 20, weight: .bold))
+                                        .foregroundStyle(isSelected ? .white : type.accentColor)
+                                        .frame(width: 48, height: 48)
+                                        .background(
+                                            isSelected ? type.accentColor : type.accentColor.opacity(0.12),
+                                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        )
+
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        HStack(spacing: 8) {
+                                            Text(type.title)
+                                                .font(AdminType.calloutBold)
+                                                .foregroundStyle(AdminSurface.primaryText)
+
+                                            let count = type == .medicine
+                                                ? PPAccessoryMedicineCareCatalog.canonicalMedicineCategories.count
+                                                : PPAccessoryMedicineCareCatalog.canonicalCareCategories.count
+                                            Text("\(count) \(Language.isRTL() ? "تصنيفاً" : "categories")")
+                                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 2)
+                                                .background(
+                                                    Capsule()
+                                                        .fill(isSelected ? type.accentColor.opacity(0.15) : AdminSurface.control)
+                                                )
+                                                .foregroundStyle(type.accentColor)
+                                        }
+
+                                        Text(type.subtitle)
+                                            .font(AdminType.caption2)
+                                            .foregroundStyle(AdminSurface.secondaryText)
+                                            .lineLimit(2)
+                                            .multilineTextAlignment(.leading)
+                                    }
+
+                                    Spacer(minLength: 4)
+
+                                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                        .font(.system(size: 20, weight: .bold))
+                                        .foregroundStyle(isSelected ? type.accentColor : AdminCommandInk.tertiary)
+                                }
+                                .padding(16)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                        .strokeBorder(
+                                            isSelected ? type.accentColor : Color(uiColor: .ppSurfaceBorder).opacity(0.6),
+                                            lineWidth: isSelected ? 1.75 : 0.75
+                                        )
+                                )
+                            }
+                            .buttonStyle(EditorPressStyle())
+                        }
+                    }
+                    .padding(.horizontal, 16)
+
+                    Spacer()
+                }
+            }
+            .navigationTitle(Language.get("MedicineCare_ProductTypeTitle", alter: "نوع المنتج"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(Language.get("Cancel", alter: "إلغاء")) {
+                        dismiss()
+                    }
+                    .font(AdminType.calloutBold)
+                    .foregroundStyle(AdminSurface.primary)
+                }
+            }
+        }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+}
+
 private struct PPAccessoryCategoryPickerSheet: View {
     let categories: [PPAccessoryCategoryModel]
     let selectedCategoryID: String?
+    var isMedicineOrCare: Bool = false
+    var medicineCareProductType: PPMedicineCareProductType? = nil
     let onSelect: (PPAccessoryCategoryModel) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var search = ""
+    @State private var groupFilter: MedicineCareGroupFilter = .all
+
+    private var sourceCategories: [PPAccessoryCategoryModel] {
+        if isMedicineOrCare {
+            if let type = medicineCareProductType {
+                switch type {
+                case .medicine:
+                    return PPAccessoryMedicineCareCatalog.canonicalMedicineCategories
+                case .care:
+                    return PPAccessoryMedicineCareCatalog.canonicalCareCategories
+                }
+            }
+            return categories.isEmpty ? PPAccessoryMedicineCareCatalog.allCategories : categories
+        }
+        return categories
+    }
+
+    private var medicineCategories: [PPAccessoryCategoryModel] {
+        sourceCategories.filter { PPAccessoryMedicineCareCatalog.isMedicineCategory(id: $0.categoryID) }
+    }
+
+    private var careCategories: [PPAccessoryCategoryModel] {
+        sourceCategories.filter { PPAccessoryMedicineCareCatalog.isCareCategory(id: $0.categoryID) }
+    }
+
+    private var baseFilteredByGroup: [PPAccessoryCategoryModel] {
+        guard isMedicineOrCare else { return sourceCategories }
+        if medicineCareProductType != nil {
+            return sourceCategories
+        }
+        switch groupFilter {
+        case .all:
+            return sourceCategories
+        case .medicines:
+            return medicineCategories
+        case .care:
+            return careCategories
+        }
+    }
 
     var filtered: [PPAccessoryCategoryModel] {
-        if search.isEmpty { return categories }
+        if search.isEmpty { return baseFilteredByGroup }
         let q = search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return categories.filter {
+        return baseFilteredByGroup.filter {
             $0.displayName().localizedCaseInsensitiveContains(q) ||
             $0.nameAr.localizedCaseInsensitiveContains(q) ||
             $0.nameEn.localizedCaseInsensitiveContains(q) ||
-            $0.categoryID.localizedCaseInsensitiveContains(q)
+            $0.categoryID.localizedCaseInsensitiveContains(q) ||
+            (isMedicineOrCare && (PPAccessoryMedicineCareCatalog.subtitle(for: $0.categoryID)?.localizedCaseInsensitiveContains(q) ?? false))
         }
     }
 
@@ -9781,14 +10406,22 @@ private struct PPAccessoryCategoryPickerSheet: View {
                 AdminSurface.background
                     .ignoresSafeArea()
 
-                VStack(spacing: 12) {
+                VStack(spacing: 10) {
+                    // Medicine & Care Group Filter Switcher (Level 1) - only when type is not pre-selected
+                    if isMedicineOrCare && medicineCareProductType == nil {
+                        medicineCareGroupSwitcher
+                    }
+
                     // Search Field
                     HStack(spacing: 8) {
                         Image(systemName: "magnifyingglass")
                             .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(AdminSurface.primary)
-                        TextField(Language.get("SearchAccessoryCategory", alter: "ابحث عن تصنيف الإكسسوار..."), text: $search)
-                            .font(AdminType.callout)
+                            .foregroundStyle(searchTint)
+                        TextField(
+                            searchPlaceholderText,
+                            text: $search
+                        )
+                        .font(AdminType.callout)
                         if !search.isEmpty {
                             Button {
                                 search = ""
@@ -9805,82 +10438,58 @@ private struct PPAccessoryCategoryPickerSheet: View {
                             .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
                     )
                     .padding(.horizontal, 16)
-                    .padding(.top, 8)
+                    .padding(.top, (isMedicineOrCare && medicineCareProductType == nil) ? 2 : 8)
 
                     // Results List
                     ScrollView {
                         LazyVStack(spacing: 10) {
                             if filtered.isEmpty {
                                 VStack(spacing: 8) {
-                                    Image(systemName: "square.grid.2x2")
+                                    Image(systemName: emptyIconName)
                                         .font(.system(size: 40))
                                         .foregroundStyle(AdminCommandInk.tertiary)
-                                    Text(Language.get("NoAccessoryCategoriesFound", alter: "لا توجد تصنيفات مطابقة للبحث"))
+                                    Text(emptyMessageText)
                                         .font(AdminType.calloutBold)
                                         .foregroundStyle(AdminCommandInk.secondary)
                                 }
                                 .padding(.top, 40)
+                            } else if isMedicineOrCare && medicineCareProductType == nil && groupFilter == .all && search.isEmpty {
+                                // Grouped sectioned view for All mode
+                                if !medicineCategories.isEmpty {
+                                    sectionHeader(
+                                        title: Language.get("MedicineCare_Medicines", alter: "أدوية وعلاجات بيطرية"),
+                                        subtitle: Language.isRTL() ? "مضادات حيوية، طفيليات، فيتامينات، ومسكنات بيطرية" : "Antibiotics, dewormers, vitamins & medical therapeutics",
+                                        count: medicineCategories.count,
+                                        icon: "cross.vial.fill",
+                                        tint: Color(uiColor: .ppError)
+                                    )
+                                    ForEach(medicineCategories, id: \.categoryID) { cat in
+                                        let isSelected = selectedCategoryID == cat.categoryID || selectedCategoryID == cat.documentID
+                                        medicineCareRow(cat: cat, isSelected: isSelected)
+                                    }
+                                }
+
+                                if !careCategories.isEmpty {
+                                    sectionHeader(
+                                        title: Language.get("MedicineCare_CareProducts", alter: "منتجات الرعاية والنظافة"),
+                                        subtitle: Language.isRTL() ? "شامبوهات، نظافة فم وأسنان، عناية بالمخالب، ومطهرات" : "Shampoos, oral dental care, paws & environment grooming",
+                                        count: careCategories.count,
+                                        icon: "sparkles",
+                                        tint: Color.teal
+                                    )
+                                    ForEach(careCategories, id: \.categoryID) { cat in
+                                        let isSelected = selectedCategoryID == cat.categoryID || selectedCategoryID == cat.documentID
+                                        medicineCareRow(cat: cat, isSelected: isSelected)
+                                    }
+                                }
                             } else {
                                 ForEach(filtered, id: \.categoryID) { cat in
                                     let isSelected = selectedCategoryID == cat.categoryID || selectedCategoryID == cat.documentID
-
-                                    Button {
-                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                        onSelect(cat)
-                                        dismiss()
-                                    } label: {
-                                        HStack(spacing: 12) {
-                                            ZStack {
-                                                Circle()
-                                                    .fill(isSelected ? AdminSurface.primary : AdminSurface.control)
-                                                    .frame(width: 42, height: 42)
-                                                Image(systemName: categoryIconName(for: cat.categoryID))
-                                                    .font(.system(size: 16, weight: .bold))
-                                                    .foregroundStyle(isSelected ? .white : AdminSurface.primary)
-                                            }
-
-                                            VStack(alignment: .leading, spacing: 2) {
-                                                Text(cat.displayName())
-                                                    .font(AdminType.calloutBold)
-                                                    .foregroundStyle(AdminSurface.primaryText)
-                                                HStack(spacing: 6) {
-                                                    if Language.isRTL() && !cat.nameEn.isEmpty {
-                                                        Text(cat.nameEn)
-                                                            .font(AdminType.caption2)
-                                                            .foregroundStyle(AdminCommandInk.secondary)
-                                                    } else if !Language.isRTL() && !cat.nameAr.isEmpty {
-                                                        Text(cat.nameAr)
-                                                            .font(AdminType.caption2)
-                                                            .foregroundStyle(AdminCommandInk.secondary)
-                                                    }
-                                                    Text(cat.categoryID)
-                                                        .font(Font.system(size: 10, weight: .medium, design: .monospaced))
-                                                        .foregroundStyle(AdminCommandInk.tertiary)
-                                                        .padding(.horizontal, 4)
-                                                        .padding(.vertical, 1)
-                                                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 4))
-                                                }
-                                            }
-
-                                            Spacer()
-
-                                            if isSelected {
-                                                Image(systemName: "checkmark.circle.fill")
-                                                    .font(.system(size: 20, weight: .bold))
-                                                    .foregroundStyle(AdminSurface.primary)
-                                            }
-                                        }
-                                        .padding(14)
-                                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                                .strokeBorder(
-                                                    isSelected ? AdminSurface.primary.opacity(0.8) : Color(uiColor: .ppSurfaceBorder).opacity(0.4),
-                                                    lineWidth: isSelected ? 1.5 : 0.5
-                                                )
-                                        )
+                                    if isMedicineOrCare {
+                                        medicineCareRow(cat: cat, isSelected: isSelected)
+                                    } else {
+                                        standardAccessoryRow(cat: cat, isSelected: isSelected)
                                     }
-                                    .buttonStyle(EditorPressStyle())
                                 }
                             }
                         }
@@ -9889,7 +10498,7 @@ private struct PPAccessoryCategoryPickerSheet: View {
                     }
                 }
             }
-            .navigationTitle(Language.get("AccessoryCategory", alter: "تصنيف الإكسسوار"))
+            .navigationTitle(navTitleText)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -9897,11 +10506,302 @@ private struct PPAccessoryCategoryPickerSheet: View {
                         dismiss()
                     }
                     .font(AdminType.calloutBold)
-                    .foregroundStyle(AdminSurface.primary)
+                    .foregroundStyle(searchTint)
                 }
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+
+    private var searchTint: Color {
+        if let type = medicineCareProductType {
+            return type.accentColor
+        }
+        return isMedicineOrCare ? groupFilter.accentColor : AdminSurface.primary
+    }
+
+    private var navTitleText: String {
+        if let type = medicineCareProductType {
+            switch type {
+            case .medicine:
+                return Language.get("MedicineCare_MedicinesTitle", alter: "تصنيفات الأدوية البيطرية")
+            case .care:
+                return Language.get("MedicineCare_CareTitle", alter: "تصنيفات منتجات الرعاية")
+            }
+        }
+        return isMedicineOrCare ? Language.get("MedicineCare_PickerTitle", alter: "تصنيفات الأدوية والرعاية") : Language.get("AccessoryCategory", alter: "تصنيف الإكسسوار")
+    }
+
+    private var searchPlaceholderText: String {
+        if let type = medicineCareProductType {
+            switch type {
+            case .medicine:
+                return Language.get("MedicineCare_SearchMedicinePlaceholder", alter: "ابحث في تصنيفات الأدوية البيطرية...")
+            case .care:
+                return Language.get("MedicineCare_SearchCarePlaceholder", alter: "ابحث في تصنيفات منتجات الرعاية...")
+            }
+        }
+        return isMedicineOrCare ? Language.get("MedicineCare_SearchPlaceholder", alter: "ابحث في الأدوية ومستحضرات الرعاية...") : Language.get("SearchAccessoryCategory", alter: "ابحث عن تصنيف الإكسسوار...")
+    }
+
+    private var emptyIconName: String {
+        if let type = medicineCareProductType {
+            return type.icon
+        }
+        return isMedicineOrCare ? "cross.vial" : "square.grid.2x2"
+    }
+
+    private var emptyMessageText: String {
+        if let type = medicineCareProductType {
+            switch type {
+            case .medicine:
+                return Language.get("MedicineCare_NoMatchingMedicines", alter: "لا توجد أدوية بيطرية مطابقة للبحث")
+            case .care:
+                return Language.get("MedicineCare_NoMatchingCare", alter: "لا توجد منتجات رعاية مطابقة للبحث")
+            }
+        }
+        return isMedicineOrCare ? Language.get("MedicineCare_NoMatching", alter: "لا توجد أدوية أو منتجات رعاية مطابقة للبحث") : Language.get("NoAccessoryCategoriesFound", alter: "لا توجد تصنيفات مطابقة للبحث")
+    }
+
+    // MARK: - Level 1 Group Switcher
+    private var medicineCareGroupSwitcher: some View {
+        HStack(spacing: 8) {
+            ForEach(MedicineCareGroupFilter.allCases) { filter in
+                let isSelected = groupFilter == filter
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                        groupFilter = filter
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: filter.icon)
+                            .font(.system(size: 11, weight: .bold))
+                        Text(filter.title)
+                            .font(AdminType.caption1Bold)
+                            .lineLimit(1)
+                        
+                        let count = countForFilter(filter)
+                        Text("\(count)")
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1.5)
+                            .background(
+                                Capsule()
+                                    .fill(isSelected ? Color.white.opacity(0.25) : AdminSurface.control)
+                            )
+                    }
+                    .foregroundStyle(isSelected ? Color.white : AdminSurface.primaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(isSelected ? filter.accentColor : AdminSurface.surface)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(
+                                isSelected ? Color.clear : Color(uiColor: .ppSurfaceBorder).opacity(0.4),
+                                lineWidth: 0.5
+                            )
+                    )
+                }
+                .buttonStyle(EditorPressStyle())
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 4)
+    }
+
+    private func countForFilter(_ filter: MedicineCareGroupFilter) -> Int {
+        switch filter {
+        case .all: return sourceCategories.count
+        case .medicines: return medicineCategories.count
+        case .care: return careCategories.count
+        }
+    }
+
+    // MARK: - Section Header for Grouped Mode
+    private func sectionHeader(title: String, subtitle: String, count: Int, icon: String, tint: Color) -> some View {
+        HStack(spacing: 8) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(tint.opacity(0.15))
+                    .frame(width: 28, height: 28)
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(tint)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(AdminType.caption1Bold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                    Text("\(count)")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(tint)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1.5)
+                        .background(tint.opacity(0.12), in: Capsule())
+                }
+                Text(subtitle)
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminCommandInk.tertiary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, 10)
+        .padding(.bottom, 2)
+    }
+
+    // MARK: - Medicine & Care Row
+    private func medicineCareRow(cat: PPAccessoryCategoryModel, isSelected: Bool) -> some View {
+        let isMed = PPAccessoryMedicineCareCatalog.isMedicineCategory(id: cat.categoryID)
+        let itemAccent = PPAccessoryMedicineCareCatalog.accentColor(for: cat.categoryID)
+        let iconName = PPAccessoryMedicineCareCatalog.iconName(for: cat.categoryID)
+        let subtitle = PPAccessoryMedicineCareCatalog.subtitle(for: cat.categoryID)
+
+        return Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onSelect(cat)
+            dismiss()
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(isSelected ? itemAccent : itemAccent.opacity(0.12))
+                        .frame(width: 46, height: 46)
+                    Image(systemName: iconName)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(isSelected ? .white : itemAccent)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(cat.displayName())
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+
+                        Text(isMed ? (Language.isRTL() ? "دواء بيطري" : "Medical") : (Language.isRTL() ? "عناية ونظافة" : "Care"))
+                            .font(.system(size: 9, weight: .bold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule()
+                                    .fill(isMed ? Color(uiColor: .ppError).opacity(0.15) : Color.teal.opacity(0.15))
+                            )
+                            .foregroundStyle(isMed ? Color(uiColor: .ppError) : Color.teal)
+                    }
+
+                    if let sub = subtitle {
+                        Text(sub)
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                    }
+
+                    HStack(spacing: 6) {
+                        if Language.isRTL() && !cat.nameEn.isEmpty {
+                            Text(cat.nameEn)
+                                .font(AdminType.caption2)
+                                .foregroundStyle(AdminCommandInk.secondary)
+                        } else if !Language.isRTL() && !cat.nameAr.isEmpty {
+                            Text(cat.nameAr)
+                                .font(AdminType.caption2)
+                                .foregroundStyle(AdminCommandInk.secondary)
+                        }
+                        Text(cat.categoryID)
+                            .font(Font.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundStyle(AdminCommandInk.tertiary)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 4))
+                    }
+                }
+
+                Spacer()
+
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(itemAccent)
+                }
+            }
+            .padding(14)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(
+                        isSelected ? itemAccent.opacity(0.85) : Color(uiColor: .ppSurfaceBorder).opacity(0.4),
+                        lineWidth: isSelected ? 1.5 : 0.5
+                    )
+            )
+        }
+        .buttonStyle(EditorPressStyle())
+    }
+
+    // MARK: - Standard Accessory Row (Legacy Preserved 100%)
+    private func standardAccessoryRow(cat: PPAccessoryCategoryModel, isSelected: Bool) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onSelect(cat)
+            dismiss()
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(isSelected ? AdminSurface.primary : AdminSurface.control)
+                        .frame(width: 42, height: 42)
+                    Image(systemName: categoryIconName(for: cat.categoryID))
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(isSelected ? .white : AdminSurface.primary)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(cat.displayName())
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                    HStack(spacing: 6) {
+                        if Language.isRTL() && !cat.nameEn.isEmpty {
+                            Text(cat.nameEn)
+                                .font(AdminType.caption2)
+                                .foregroundStyle(AdminCommandInk.secondary)
+                        } else if !Language.isRTL() && !cat.nameAr.isEmpty {
+                            Text(cat.nameAr)
+                                .font(AdminType.caption2)
+                                .foregroundStyle(AdminCommandInk.secondary)
+                        }
+                        Text(cat.categoryID)
+                            .font(Font.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundStyle(AdminCommandInk.tertiary)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 4))
+                    }
+                }
+
+                Spacer()
+
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+            }
+            .padding(14)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(
+                        isSelected ? AdminSurface.primary.opacity(0.8) : Color(uiColor: .ppSurfaceBorder).opacity(0.4),
+                        lineWidth: isSelected ? 1.5 : 0.5
+                    )
+            )
+        }
+        .buttonStyle(EditorPressStyle())
     }
 
     private func categoryIconName(for id: String) -> String {
@@ -14746,6 +15646,7 @@ private struct PPCatalogMultiChoiceSheet: View {
     let allOptionSubtitle: String?
     let allOptionSymbol: String
     let choices: [PPLivePetChoice]
+    var allowsMultipleSelection: Bool = true
     @Binding var isAllSelected: Bool
     @Binding var selectedIDs: Set<String>
     var onRefresh: (() -> Void)? = nil
@@ -14811,7 +15712,7 @@ private struct PPCatalogMultiChoiceSheet: View {
                     ScrollView {
                         LazyVStack(spacing: AdminSpacing.sm) {
                             // "ALL" Option Card
-                            if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            if allowsMultipleSelection && query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                                 allOptionCard
                             }
 
@@ -14931,9 +15832,17 @@ private struct PPCatalogMultiChoiceSheet: View {
                     isAllSelected = false
                     selectedIDs = [choice.id]
                 } else if selectedIDs.contains(choice.id) {
-                    selectedIDs.remove(choice.id)
+                    if allowsMultipleSelection {
+                        selectedIDs.remove(choice.id)
+                    } else {
+                        selectedIDs.remove(choice.id)
+                    }
                 } else {
-                    selectedIDs.insert(choice.id)
+                    if allowsMultipleSelection {
+                        selectedIDs.insert(choice.id)
+                    } else {
+                        selectedIDs = [choice.id]
+                    }
                 }
             }
         } label: {
@@ -18335,7 +19244,9 @@ private struct PPAccessoryFoodIntakeJourney: View {
         .sheet(isPresented: $viewModel.showSpeciesPicker) {
             PPCatalogMultiChoiceSheet(
                 title: tr("CatalogIntake_SelectCategory", "اختر فئات الحيوانات"),
-                subtitle: tr("CatalogIntake_SelectCategorySub", "اختر فئة واحدة أو عدة فئات، أو حدد جميع الفئات."),
+                subtitle: viewModel.allowsMultipleCategorySelection
+                    ? tr("CatalogIntake_SelectCategorySub", "اختر فئة واحدة أو عدة فئات، أو حدد جميع الفئات.")
+                    : Language.get("CatalogIntake_SelectSingleCategorySub", alter: "اختر فئة واحدة فقط لهذا الصنف."),
                 searchPrompt: tr("CatalogIntake_SearchCategory", "ابحث عن فئة"),
                 allOptionTitle: tr("CatalogIntake_AllCategoriesPrompt", "جميع الفئات • مناسب لكل الحيوانات"),
                 allOptionSubtitle: tr("CatalogIntake_AllCategoriesSub", "مناسب للكلاب، القطط، الطيور، وجميع الحيوانات الأليفة"),
@@ -18351,6 +19262,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                         symbol: kind.petSFSymbolName
                     )
                 },
+                allowsMultipleSelection: viewModel.allowsMultipleCategorySelection,
                 isAllSelected: $viewModel.isAllCategoriesSelected,
                 selectedIDs: Binding(
                     get: { Set(viewModel.selectedMainKinds.map { String($0) }) },
@@ -18377,7 +19289,9 @@ private struct PPAccessoryFoodIntakeJourney: View {
         .sheet(isPresented: $viewModel.showBreedPicker) {
             PPCatalogMultiChoiceSheet(
                 title: tr("CatalogIntake_SelectSubcategory", "اختر التصنيفات الفرعية"),
-                subtitle: tr("CatalogIntake_SelectSubcategorySub", "اختر تصنيفاً واحداً أو عدة تصنيفات، أو حدد جميع التصنيفات."),
+                subtitle: viewModel.allowsMultipleCategorySelection
+                    ? tr("CatalogIntake_SelectSubcategorySub", "اختر تصنيفاً واحداً أو عدة تصنيفات، أو حدد جميع التصنيفات.")
+                    : Language.get("CatalogIntake_SelectSingleSubcategorySub", alter: "اختر تصنيفاً واحداً فقط لهذا الصنف."),
                 searchPrompt: tr("CatalogIntake_SearchSubcategory", "ابحث عن تصنيف فرعي"),
                 allOptionTitle: tr("CatalogIntake_AllSubcategoriesPrompt", "جميع السلالات والتصنيفات الفرعية"),
                 allOptionSubtitle: tr("CatalogIntake_AllSubcategoriesSub", "شامل لكل السلالات والتفريعات بدون استثناء"),
@@ -18394,6 +19308,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                         sectionHeader: showSection ? parentCategoryName : nil
                     )
                 },
+                allowsMultipleSelection: viewModel.allowsMultipleCategorySelection,
                 isAllSelected: $viewModel.isAllSubCategoriesSelected,
                 selectedIDs: Binding(
                     get: { Set(viewModel.selectedSubKinds.map { String($0) }) },
@@ -18442,10 +19357,36 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 )
             }
         }
+        .sheet(isPresented: $viewModel.showMedicineCareProductTypePicker) {
+            PPMedicineCareProductTypePickerSheet(
+                selectedType: viewModel.selectedMedicineCareProductType,
+                onSelect: { type in
+                    viewModel.selectedMedicineCareProductType = type
+                }
+            )
+        }
         .sheet(isPresented: $viewModel.showAccessoryCategoryPicker) {
+            let isMedCare = viewModel.isMedicine || viewModel.isPetCareProduct
+            let targetCategories: [PPAccessoryCategoryModel] = {
+                if isMedCare {
+                    if let type = viewModel.selectedMedicineCareProductType {
+                        switch type {
+                        case .medicine:
+                            return PPAccessoryMedicineCareCatalog.canonicalMedicineCategories
+                        case .care:
+                            return PPAccessoryMedicineCareCatalog.canonicalCareCategories
+                        }
+                    }
+                    return PPAccessoryMedicineCareCatalog.allCategories
+                }
+                return viewModel.availableAccessoryCategories
+            }()
+
             PPAccessoryCategoryPickerSheet(
-                categories: viewModel.availableAccessoryCategories,
+                categories: targetCategories,
                 selectedCategoryID: viewModel.selectedAccessoryCategoryID,
+                isMedicineOrCare: isMedCare,
+                medicineCareProductType: viewModel.selectedMedicineCareProductType,
                 onSelect: { cat in
                     viewModel.selectedAccessoryCategoryID = cat.categoryID
                     viewModel.showAccessoryCategoryPicker = false
@@ -19318,17 +20259,72 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 }
 
                 if viewModel.usesAccessoryTaxonomy {
+                    let isMedCare = viewModel.isMedicine || viewModel.isPetCareProduct
+                    if isMedCare {
+                        taxonomyButton(
+                            title: Language.get("MedicineCare_ProductTypeTitle", alter: "نوع المنتج"),
+                            value: viewModel.selectedMedicineCareProductType?.title,
+                            placeholder: Language.get("MedicineCare_SelectProductType", alter: "اختر نوع المنتج (أدوية أو رعاية)..."),
+                            symbol: viewModel.selectedMedicineCareProductType?.icon ?? "cross.case.fill",
+                            required: true,
+                            disabled: false
+                        ) {
+                            viewModel.showMedicineCareProductTypePicker = true
+                        }
+                    }
+
+                    let categoryTitle: String = {
+                        guard isMedCare else { return Language.get("AccessoryCategory", alter: "تصنيف الإكسسوار") }
+                        if let type = viewModel.selectedMedicineCareProductType {
+                            switch type {
+                            case .medicine:
+                                return Language.get("MedicineCare_MedicineGroupTitle", alter: "مجموعة الأدوية البيطرية")
+                            case .care:
+                                return Language.get("MedicineCare_CareGroupTitle", alter: "مجموعة منتجات الرعاية")
+                            }
+                        }
+                        return Language.get("MedicineCare_CategoryTitle", alter: "مجموعة الأدوية والعناية")
+                    }()
+
+                    let categoryPlaceholder: String = {
+                        if !isMedCare && viewModel.hasNoCategorySelected {
+                            return tr("CatalogIntake_SelectCategoryFirst", "اختر الفئة الرئيسية أولاً")
+                        }
+                        guard isMedCare else {
+                            return Language.get("SelectAccessoryCategory", alter: "اختر تصنيف الإكسسوار...")
+                        }
+                        if let type = viewModel.selectedMedicineCareProductType {
+                            switch type {
+                            case .medicine:
+                                return Language.get("MedicineCare_SelectMedicineGroup", alter: "اختر تصنيف الدواء...")
+                            case .care:
+                                return Language.get("MedicineCare_SelectCareGroup", alter: "اختر تصنيف الرعاية...")
+                            }
+                        }
+                        return Language.get("MedicineCare_SelectTypeFirst", alter: "اختر نوع المنتج أولاً")
+                    }()
+
+                    let categorySymbol: String = {
+                        guard isMedCare else { return "square.grid.2x2" }
+                        if let type = viewModel.selectedMedicineCareProductType {
+                            return type.icon
+                        }
+                        return "pills.fill"
+                    }()
+
                     taxonomyButton(
-                        title: Language.get("AccessoryCategory", alter: "تصنيف الإكسسوار"),
+                        title: categoryTitle,
                         value: viewModel.selectedAccessoryCategoryDisplayTitle,
-                        placeholder: viewModel.hasNoCategorySelected
-                            ? tr("CatalogIntake_SelectCategoryFirst", "اختر الفئة الرئيسية أولاً")
-                            : Language.get("SelectAccessoryCategory", alter: "اختر تصنيف الإكسسوار..."),
-                        symbol: "square.grid.2x2",
-                        required: true,
-                        disabled: viewModel.hasNoCategorySelected
+                        placeholder: categoryPlaceholder,
+                        symbol: categorySymbol,
+                        required: viewModel.selectedKind == .typeAccessory || isMedCare,
+                        disabled: (!isMedCare && viewModel.hasNoCategorySelected)
                     ) {
-                        viewModel.showAccessoryCategoryPicker = true
+                        if isMedCare && viewModel.selectedMedicineCareProductType == nil {
+                            viewModel.showMedicineCareProductTypePicker = true
+                        } else {
+                            viewModel.showAccessoryCategoryPicker = true
+                        }
                     }
                 }
 
@@ -20707,8 +21703,14 @@ private struct PPAccessoryFoodIntakeJourney: View {
             if viewModel.hasNoCategorySelected {
                 return tr("CatalogIntake_ValidationCategory", "اختر الفئة الرئيسية للصنف.")
             }
-            if viewModel.usesAccessoryTaxonomy && (viewModel.selectedAccessoryCategoryID == nil || viewModel.selectedAccessoryCategoryID?.isEmpty == true) {
+            if viewModel.selectedKind == .typeAccessory && (viewModel.selectedAccessoryCategoryID == nil || viewModel.selectedAccessoryCategoryID?.isEmpty == true) {
                 return Language.get("Validation_Accessory_Category_Required", alter: "اختر تصنيف الإكسسوار للمتابعة.")
+            }
+            if viewModel.isMedicine && viewModel.selectedMedicineCareProductType == nil {
+                return Language.get("Validation_MedicineCare_Type_Required", alter: "اختر نوع المنتج (أدوية أو رعاية) للمتابعة.")
+            }
+            if viewModel.isMedicine && (viewModel.selectedAccessoryCategoryID == nil || viewModel.selectedAccessoryCategoryID?.isEmpty == true) {
+                return Language.get("Validation_MedicineCare_Category_Required", alter: "اختر تصنيف الصنف للمتابعة.")
             }
             if !viewModel.isMedicine && !viewModel.isValidWeightInput() {
                 return tr("CatalogIntake_ValidationWeight", "أدخل وزناً أو حجماً صالحاً وبحد أقصى ثلاث منازل عشرية.")

@@ -834,42 +834,7 @@ struct AdminCommandCenterScreenView: View {
             )
             .commandSectionEntrance(index: 3, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
 
-            // Deck 4: Financial & Treasury Horizon (Accounting)
-            VStack(alignment: .leading, spacing: AdminSectionSpacing.headerToContent(isRegular: isRegular)) {
-                AdminSectionHeader(
-                    title: Language.get("AdminAccounting_SectionTitle", alter: "الخزينة والمالية"),
-                    subtitle: Language.get("AdminAccounting_SectionDetail", alter: "تتبع مباشر للإيرادات التشغيلية، المصروفات، وصافي الأرباح"),
-                    eyebrow: Language.get("AdminAccounting_SectionEyebrow", alter: "المؤشرات المالية"),
-                    symbol: "chart.line.uptrend.xyaxis",
-                    themeColor: Color(red: 0.05, green: 0.65, blue: 0.95),
-                    state: .normal,
-                    isRegular: isRegular
-                )
-
-                CommandAccountingSovereignCard(
-                    onRoute: { route("accounting") }
-                )
-            }
-            .commandSectionEntrance(index: 4, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
-
-            // Deck 4B: Sovereign Pets Hotel & Boarding Operations
-            if hasHotel {
-                CommandHotelDeck(
-                    isRegular: isRegular,
-                    onRoute: { route($0) },
-                    onOpenArrivals: {
-                        AdminPetsHotelViewModel.shared.selectedTab = .reservations
-                        route("hotel")
-                    },
-                    onOpenDepartures: {
-                        AdminPetsHotelViewModel.shared.selectedTab = .guests
-                        route("hotel")
-                    }
-                )
-                .commandSectionEntrance(index: 5, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
-            }
-
-            // Deck 4C: Sovereign Veterinary Care & Clinical Network Horizon
+            // Deck 4: Sovereign Veterinary Care & Clinical Network Horizon
             CommandVeterinaryDeck(
                 isRegular: isRegular,
                 onRoute: { route($0) },
@@ -886,7 +851,42 @@ struct AdminCommandCenterScreenView: View {
                     route("vets")
                 }
             )
-            .commandSectionEntrance(index: hasHotel ? 6 : 5, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
+            .commandSectionEntrance(index: 4, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
+
+            // Deck 5: Financial & Treasury Horizon (Accounting)
+            VStack(alignment: .leading, spacing: AdminSectionSpacing.headerToContent(isRegular: isRegular)) {
+                AdminSectionHeader(
+                    title: Language.get("AdminAccounting_SectionTitle", alter: "الخزينة والمالية"),
+                    subtitle: Language.get("AdminAccounting_SectionDetail", alter: "تتبع مباشر للإيرادات التشغيلية، المصروفات، وصافي الأرباح"),
+                    eyebrow: Language.get("AdminAccounting_SectionEyebrow", alter: "المؤشرات المالية"),
+                    symbol: "chart.line.uptrend.xyaxis",
+                    themeColor: Color(red: 0.05, green: 0.65, blue: 0.95),
+                    state: .normal,
+                    isRegular: isRegular
+                )
+
+                CommandAccountingSovereignCard(
+                    onRoute: { route("accounting") }
+                )
+            }
+            .commandSectionEntrance(index: 5, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
+
+            // Deck 6: Sovereign Pets Hotel & Boarding Operations
+            if hasHotel {
+                CommandHotelDeck(
+                    isRegular: isRegular,
+                    onRoute: { route($0) },
+                    onOpenArrivals: {
+                        AdminPetsHotelViewModel.shared.selectedTab = .reservations
+                        route("hotel")
+                    },
+                    onOpenDepartures: {
+                        AdminPetsHotelViewModel.shared.selectedTab = .guests
+                        route("hotel")
+                    }
+                )
+                .commandSectionEntrance(index: 6, isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
+            }
 
             // Deck 5: Panoramic Tactical Operational Beacon
             CommandEscalationHero(

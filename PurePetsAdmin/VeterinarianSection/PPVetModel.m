@@ -35,7 +35,19 @@
         @"subscriptionActive":    @(self.subscriptionActive),
         @"subscriptionStartDate": self.subscriptionStartDate ?: [NSNull null],
         @"subscriptionEndDate":   self.subscriptionEndDate   ?: [NSNull null],
+        @"emergency247":          @(self.emergency247),
+        @"homeVisitAvailable":    @(self.homeVisitAvailable),
+        @"readyToContact":        @(self.readyToContact),
     } mutableCopy];
+
+    if (self.cityID.length) dict[@"cityID"] = self.cityID;
+    if (self.cityName.length) dict[@"cityName"] = self.cityName;
+    if (self.workingAreas.count) dict[@"workingAreas"] = self.workingAreas;
+    if (self.animalTypes.count) dict[@"animalTypes"] = self.animalTypes;
+    if (self.supportedKindIDs.count) dict[@"supportedKindIDs"] = self.supportedKindIDs;
+    if (self.address.length) dict[@"address"] = self.address;
+    if (self.licenseNumber.length) dict[@"licenseNumber"] = self.licenseNumber;
+    if (self.workingHours.length) dict[@"workingHours"] = self.workingHours;
 
     if (self.createdAt) {
         dict[@"createdAt"] = self.createdAt;
@@ -70,6 +82,19 @@
     m.isDisabled        = [dict[@"isDisabled"] boolValue];
     m.subscriptionTier  = [dict[@"subscriptionTier"] integerValue];
     m.subscriptionActive = [dict[@"subscriptionActive"] boolValue];
+
+    // Geographic & Specializations
+    m.cityID       = [dict[@"cityID"] isKindOfClass:[NSString class]] ? dict[@"cityID"] : @"";
+    m.cityName     = [dict[@"cityName"] isKindOfClass:[NSString class]] ? dict[@"cityName"] : @"";
+    m.workingAreas = [dict[@"workingAreas"] isKindOfClass:[NSArray class]] ? dict[@"workingAreas"] : @[];
+    m.animalTypes  = [dict[@"animalTypes"] isKindOfClass:[NSArray class]] ? dict[@"animalTypes"] : @[];
+    m.supportedKindIDs = [dict[@"supportedKindIDs"] isKindOfClass:[NSArray class]] ? dict[@"supportedKindIDs"] : @[];
+    m.address       = [dict[@"address"] isKindOfClass:[NSString class]] ? dict[@"address"] : @"";
+    m.licenseNumber = [dict[@"licenseNumber"] isKindOfClass:[NSString class]] ? dict[@"licenseNumber"] : @"";
+    m.workingHours  = [dict[@"workingHours"] isKindOfClass:[NSString class]] ? dict[@"workingHours"] : @"";
+    m.emergency247  = [dict[@"emergency247"] boolValue];
+    m.homeVisitAvailable = [dict[@"homeVisitAvailable"] boolValue];
+    m.readyToContact = [dict[@"readyToContact"] boolValue];
 
     return m;
 }
@@ -129,6 +154,17 @@
     copy.subscriptionActive    = self.subscriptionActive;
     copy.createdAt       = self.createdAt;
     copy.updatedAt       = self.updatedAt;
+    copy.cityID          = self.cityID;
+    copy.cityName        = self.cityName;
+    copy.workingAreas    = self.workingAreas;
+    copy.animalTypes     = self.animalTypes;
+    copy.supportedKindIDs = self.supportedKindIDs;
+    copy.address         = self.address;
+    copy.licenseNumber   = self.licenseNumber;
+    copy.workingHours    = self.workingHours;
+    copy.emergency247    = self.emergency247;
+    copy.homeVisitAvailable = self.homeVisitAvailable;
+    copy.readyToContact  = self.readyToContact;
     return copy;
 }
 

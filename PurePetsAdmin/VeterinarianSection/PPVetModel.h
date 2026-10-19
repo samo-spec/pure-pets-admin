@@ -47,6 +47,19 @@ typedef NS_ENUM(NSInteger, PPVetSubscriptionTier) {
 @property (nonatomic, strong, nullable) NSDate *createdAt;
 @property (nonatomic, strong, nullable) NSDate *updatedAt;
 
+// ── Geographic Coverage & Specializations ──
+@property (nonatomic, copy, nullable) NSString *cityID;
+@property (nonatomic, copy, nullable) NSString *cityName;
+@property (nonatomic, copy, nullable) NSArray<NSString *> *workingAreas;
+@property (nonatomic, copy, nullable) NSArray<NSString *> *animalTypes;
+@property (nonatomic, copy, nullable) NSArray<NSNumber *> *supportedKindIDs;
+@property (nonatomic, copy, nullable) NSString *address;
+@property (nonatomic, copy, nullable) NSString *licenseNumber;
+@property (nonatomic, copy, nullable) NSString *workingHours;
+@property (nonatomic, assign) BOOL emergency247;
+@property (nonatomic, assign) BOOL homeVisitAvailable;
+@property (nonatomic, assign) BOOL readyToContact;
+
 // ── Serialization ──
 - (NSDictionary *)toDictionary;
 + (instancetype)fromDictionary:(NSDictionary *)dict withID:(NSString *)vetID;

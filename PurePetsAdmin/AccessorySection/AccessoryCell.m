@@ -42,6 +42,7 @@
 @property (nonatomic, strong) UIStackView *badgeStackView;
 @property (nonatomic, strong) PPCellBadgeLabel *kindBadge;
 @property (nonatomic, strong) PPCellBadgeLabel *speciesBadge;
+@property (nonatomic, strong) PPCellBadgeLabel *groupBadge;
 @property (nonatomic, strong) UILabel *nameLabel;
 @property (nonatomic, strong) UIStackView *priceStackView;
 @property (nonatomic, strong) UILabel *finalPriceLabel;
@@ -113,6 +114,11 @@
     _speciesBadge.textColor = AppPrimaryClr;
     _speciesBadge.backgroundColor = [AppPrimaryClr colorWithAlphaComponent:0.08];
     [_badgeStackView addArrangedSubview:_speciesBadge];
+
+    _groupBadge = [[PPCellBadgeLabel alloc] init];
+    _groupBadge.textColor = [UIColor systemIndigoColor];
+    _groupBadge.backgroundColor = [[UIColor systemIndigoColor] colorWithAlphaComponent:0.08];
+    [_badgeStackView addArrangedSubview:_groupBadge];
 
     // 4. Title/Name Label
     _nameLabel = [[UILabel alloc] init];
@@ -284,6 +290,15 @@
         _speciesBadge.hidden = NO;
     } else {
         _speciesBadge.hidden = YES;
+    }
+
+    // Product Group Badge Text
+    NSString *groupName = accessory.accessoryCategoryName ?: accessory.category;
+    if (groupName.length > 0) {
+        _groupBadge.text = groupName;
+        _groupBadge.hidden = NO;
+    } else {
+        _groupBadge.hidden = YES;
     }
 
     // Quantity state and styling

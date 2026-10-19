@@ -77,23 +77,12 @@ struct PPPharmacyInventorySurface<Rows: View>: View {
     // MARK: Navigation keeps UIKit/Host as the sole route owner
 
     private var navigation: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) {
-                backButton
-                navigationIdentity
-                Spacer(minLength: 8)
-                toolsMenu
-                if let onAdd { addButton(onAdd) }
-            }
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 12) {
-                    backButton
-                    navigationIdentity
-                    Spacer(minLength: 0)
-                    toolsMenu
-                }
-                if let onAdd { addButton(onAdd).frame(maxWidth: .infinity, alignment: .trailing) }
-            }
+        HStack(spacing: 8) {
+            backButton
+            navigationIdentity
+            Spacer(minLength: 4)
+            toolsMenu
+            if let onAdd { topAddButton(onAdd) }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 8)
@@ -115,12 +104,27 @@ struct PPPharmacyInventorySurface<Rows: View>: View {
             Text(PPPharmacyText.string("PharmacyAdmin_Title"))
                 .font(AdminType.headline)
                 .foregroundStyle(AdminSurface.primaryText)
+                .lineLimit(1)
             Text(PPPharmacyText.string("PharmacyAdmin_Workspace"))
                 .font(AdminType.caption)
                 .foregroundStyle(AdminSurface.secondaryText)
+                .lineLimit(1)
         }
-        .fixedSize(horizontal: false, vertical: true)
         .accessibilityElement(children: .combine)
+    }
+
+    private func topAddButton(_ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "plus")
+                .font(.body.weight(.semibold))
+                .frame(width: 44, height: 44)
+                .foregroundStyle(Color.white)
+                .background(AdminSurface.primary, in: Circle())
+        }
+        .buttonStyle(PPPharmacyPressStyle())
+        .keyboardShortcut("n", modifiers: .command)
+        .accessibilityLabel(PPPharmacyText.string("PharmacyAdmin_Add"))
+        .accessibilityIdentifier("admin.pharmacy.add")
     }
 
     private func addButton(_ action: @escaping () -> Void) -> some View {
@@ -134,7 +138,7 @@ struct PPPharmacyInventorySurface<Rows: View>: View {
         }
         .buttonStyle(PPPharmacyPressStyle())
         .keyboardShortcut("n", modifiers: .command)
-        .accessibilityIdentifier("admin.pharmacy.add")
+        .accessibilityIdentifier("admin.pharmacy.add.empty")
     }
 
     private var toolsMenu: some View {
@@ -596,7 +600,7 @@ struct PPPharmacyMedicineRow: View {
                             .font(AdminType.title3)
                             .foregroundStyle(AdminSurface.primaryText)
                             .fixedSize(horizontal: false, vertical: true)
-                        if !isFamilyMember, let category = item.accessoryCategoryName, !category.isEmpty {
+                        if let category = item.accessoryCategoryName ?? item.category, !category.isEmpty {
                             Text(category).font(AdminType.footnote)
                                 .foregroundStyle(AdminSurface.secondaryText)
                                 .fixedSize(horizontal: false, vertical: true)
