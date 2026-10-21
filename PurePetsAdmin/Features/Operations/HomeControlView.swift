@@ -12,6 +12,7 @@ import SwiftUI
 import UIKit
 import FirebaseFirestore
 import FirebaseAuth
+import FirebaseFunctions
 
 // MARK: - Section Catalog Metadata
 
@@ -140,6 +141,7 @@ public final class AdminHomeControlViewModel: ObservableObject {
 
     private var savedSections: [HomeSectionStateItem] = []
     private var savedGlobalSettings = HomeGlobalSettings()
+    private var loadedConfigVersion = 0
     private let configRef = Firestore.firestore().collection("AppConfigCol").document("HomeConfig")
 
     public var enabledSectionsCount: Int {
@@ -310,6 +312,7 @@ public final class AdminHomeControlViewModel: ObservableObject {
                 }
 
                 guard let snapshot, snapshot.exists, let data = snapshot.data() else {
+                    self.loadedConfigVersion = 0
                     self.resetToDefaultState()
                     self.savedSections = self.sections
                     self.savedGlobalSettings = self.globalSettings
@@ -317,6 +320,7 @@ public final class AdminHomeControlViewModel: ObservableObject {
                     return
                 }
 
+                self.loadedConfigVersion = (data["configVersion"] as? NSNumber)?.intValue ?? 0
                 var loadedSections: [HomeSectionStateItem] = []
                 var seenIDs = Set<Int>()
 
@@ -390,36 +394,37 @@ public final class AdminHomeControlViewModel: ObservableObject {
             "PPReusableVideoMediaEnabled": globalSettings.reusableVideoEnabled,
             "PPULTRA_CARE_IS_ACTIVATED": globalSettings.ultraCareActivated,
             "PPUSE_LEGACY_BAR": globalSettings.useLegacyBar,
-            "BBUniversalCellUseSwiftUI": globalSettings.universalCellsSwiftUI,
-            "updatedAt": FieldValue.serverTimestamp()
+            "BBUniversalCellUseSwiftUI": globalSettings.universalCellsSwiftUI
         ]
 
-        configRef.setData(payload, merge: true) { [weak self] error in
+        // HomeConfig is server-owned: publish via the audited, version-checked callable.
+        // Direct Firestore writes are intentionally rejected by production rules.
+        let commandId = UUID().uuidString
+        Functions.functions().httpsCallable("publishHomeConfig").call([
+            "commandId": commandId,
+            "expectedVersion": loadedConfigVersion,
+            "config": payload
+        ]) { [weak self] result, error in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isSaving = false
                 if let error {
                     completion(false, error.localizedDescription)
-                } else {
-                    self.savedSections = self.sections
-                    self.savedGlobalSettings = self.globalSettings
-                    self.isDirty = false
-                    self.writeAuditLog()
-                    completion(true, Language.get("HomeControl_Saved", alter: "تم حفظ إعدادات الصفحة الرئيسية بنجاح"))
+                    return
                 }
+                guard let response = result?.data as? [String: Any],
+                      response["ok"] as? Bool == true,
+                      let version = response["configVersion"] as? Int else {
+                    completion(false, "Home configuration publish returned an invalid response.")
+                    return
+                }
+                self.loadedConfigVersion = version
+                self.savedSections = self.sections
+                self.savedGlobalSettings = self.globalSettings
+                self.isDirty = false
+                completion(true, Language.get("HomeControl_Saved", alter: "تم حفظ إعدادات الصفحة الرئيسية بنجاح"))
             }
         }
-    }
-
-    private func writeAuditLog() {
-        let uid = Auth.auth().currentUser?.uid ?? ""
-        Firestore.firestore().collection("AdminAuditLogs").document().setData([
-            "action": "update_home_config",
-            "targetCollection": "AppConfigCol",
-            "targetId": "HomeConfig",
-            "adminUid": uid,
-            "timestamp": FieldValue.serverTimestamp()
-        ])
     }
 
     public func metaFor(sectionID: Int) -> HomeSectionCatalogItem? {
