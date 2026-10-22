@@ -959,49 +959,46 @@ struct AdminPOSHistoryView: View {
     // MARK: - Document Heading
 
     private var navigationHeaderView: some View {
-        VStack(spacing: 0) {
-            Color.clear.frame(height: PPStatusBarHelper.statusBarHeight)
-            HStack(alignment: .center, spacing: 12) {
-                AdminSquircleBackButton {
-                    isSearchFocused = false
-                    if let onDismiss { onDismiss() } else { dismiss() }
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(Language.get("POS_History_Title", alter: "سجل المبيعات"))
-                        .font(PPBrandFont.bold(20, relativeTo: .title3))
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .accessibilityAddTraits(.isHeader)
-                    if !dynamicTypeSize.isAccessibilitySize {
-                        Text(loadStatus)
-                            .font(PPBrandFont.regular(12, relativeTo: .caption))
-                            .foregroundStyle(AdminSurface.secondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Button {
-                    isSearchFocused = false
-                    viewModel.load(branchID: branchStore.activeBranch?.branchID)
-                } label: {
-                    Group {
-                        if viewModel.isLoading {
-                            ProgressView().tint(AdminSurface.primary)
-                        } else {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 19, weight: .medium))
-                        }
-                    }
-                    .frame(width: 44, height: 44)
-                }
-                .buttonStyle(POSReceiptActionStyle(cornerRadius: 14))
-                .disabled(viewModel.isLoading)
-                .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
-                .accessibilityValue(loadStatus)
+        HStack(alignment: .center, spacing: 12) {
+            AdminSquircleBackButton {
+                isSearchFocused = false
+                if let onDismiss { onDismiss() } else { dismiss() }
             }
-            .padding(.horizontal, AdminSpacing.screenMargin)
-            .padding(.vertical, 8)
-            .frame(maxWidth: 1040)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Language.get("POS_History_Title", alter: "سجل المبيعات"))
+                    .font(PPBrandFont.bold(20, relativeTo: .title3))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .accessibilityAddTraits(.isHeader)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Text(loadStatus)
+                        .font(PPBrandFont.regular(12, relativeTo: .caption))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button {
+                isSearchFocused = false
+                viewModel.load(branchID: branchStore.activeBranch?.branchID)
+            } label: {
+                Group {
+                    if viewModel.isLoading {
+                        ProgressView().tint(AdminSurface.primary)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 19, weight: .medium))
+                    }
+                }
+                .frame(width: 44, height: 44)
+            }
+            .buttonStyle(POSReceiptActionStyle(cornerRadius: 14))
+            .disabled(viewModel.isLoading)
+            .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
+            .accessibilityValue(loadStatus)
         }
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.vertical, 8)
+        .frame(maxWidth: 1040)
     }
 
     private var loadStatus: String {

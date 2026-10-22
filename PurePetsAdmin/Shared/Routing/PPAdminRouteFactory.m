@@ -1,4 +1,5 @@
 #import "PPAdminRouteFactory.h"
+#import "PPDriverWorkspaceViewController.h"
 
 #import "Providers/PPProviderApplicationsViewController.h"
 #import "Providers/PPProviderPlansViewController.h"
@@ -34,6 +35,7 @@
     if ([identifier isEqualToString:@"payments"]) return [AdminPaymentListHostingController new];
     if ([identifier isEqualToString:@"paymentSettings"]) return [AdminPaymentSettingsHostingController new];
     if ([identifier isEqualToString:@"fulfillment"]) return [AdminFulfillmentListHostingController new];
+    if ([identifier isEqualToString:@"driverWorkspace"]) return [[PPDriverWorkspaceViewController alloc] initWithTaskID:nil authority:nil];
     if ([identifier isEqualToString:@"delivery"]) return [AdminDeliveryListHostingController new];
     if ([identifier isEqualToString:@"providerApplications"]) return [PPProviderApplicationsHostingController new];
     if ([identifier isEqualToString:@"providerPlans"]) return [PPProviderPlansViewController new];

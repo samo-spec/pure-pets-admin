@@ -410,6 +410,8 @@
 		WP0000052FA9000100WP0005 /* Features/WantedPets/Views/WantedPetDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP0001052FA9000100WP0005 /* Features/WantedPets/Views/WantedPetDetailView.swift */; };
 		WP0000062FA9000100WP0006 /* Features/WantedPets/Views/WaitingCustomersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP0001062FA9000100WP0006 /* Features/WantedPets/Views/WaitingCustomersView.swift */; };
 		WP0000072FA9000100WP0007 /* Features/WantedPets/Views/WantedPetsHostingControllers.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP0001072FA9000100WP0007 /* Features/WantedPets/Views/WantedPetsHostingControllers.swift */; };
+		45F1BF21C1E74B3889297300 /* PPDriverWorkspaceService.m in Sources */ = {isa = PBXBuildFile; fileRef = 7D8C54C39F1540FA949AA0C0 /* PPDriverWorkspaceService.m */; };
+		348B4F8DD7FB48378213C81F /* PPDriverWorkspaceViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 5CD809F5FE5C4F99A054A745 /* PPDriverWorkspaceViewController.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1069,6 +1071,10 @@
 		WP0001052FA9000100WP0005 /* Features/WantedPets/Views/WantedPetDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/WantedPets/Views/WantedPetDetailView.swift; sourceTree = "<group>"; };
 		WP0001062FA9000100WP0006 /* Features/WantedPets/Views/WaitingCustomersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/WantedPets/Views/WaitingCustomersView.swift; sourceTree = "<group>"; };
 		WP0001072FA9000100WP0007 /* Features/WantedPets/Views/WantedPetsHostingControllers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/WantedPets/Views/WantedPetsHostingControllers.swift; sourceTree = "<group>"; };
+		9FE9EB31E4A64B0BA9FD2629 /* PPDriverWorkspaceService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPDriverWorkspaceService.h; sourceTree = "<group>"; };
+		7D8C54C39F1540FA949AA0C0 /* PPDriverWorkspaceService.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPDriverWorkspaceService.m; sourceTree = "<group>"; };
+		98D68C97FC9343E1B498F708 /* PPDriverWorkspaceViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPDriverWorkspaceViewController.h; sourceTree = "<group>"; };
+		5CD809F5FE5C4F99A054A745 /* PPDriverWorkspaceViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPDriverWorkspaceViewController.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -1917,6 +1923,10 @@
 				F2A24ADD3003C4D3003AB79D /* PPDeliveryManagementViewController.m */,
 				F2A24ADE3003C4D3003AB79D /* PPDeliveryService.h */,
 				F2A24ADF3003C4D3003AB79D /* PPDeliveryService.m */,
+				5CD809F5FE5C4F99A054A745 /* PPDriverWorkspaceViewController.m */,
+				98D68C97FC9343E1B498F708 /* PPDriverWorkspaceViewController.h */,
+				7D8C54C39F1540FA949AA0C0 /* PPDriverWorkspaceService.m */,
+				9FE9EB31E4A64B0BA9FD2629 /* PPDriverWorkspaceService.h */,
 			);
 			path = Delivery;
 			sourceTree = "<group>";
@@ -2730,6 +2740,8 @@
 				F2A24AFE3003C4D3003AB79D /* PPAccountingViewController.m in Sources */,
 				F2A24B003003C4D3003AB79D /* PPDeliveryManagementViewController.m in Sources */,
 				F2A24B013003C4D3003AB79D /* PPDeliveryService.m in Sources */,
+				348B4F8DD7FB48378213C81F /* PPDriverWorkspaceViewController.m in Sources */,
+				45F1BF21C1E74B3889297300 /* PPDriverWorkspaceService.m in Sources */,
 				F2A24B023003C4D3003AB79D /* PPProviderFeatureAccessViewController.m in Sources */,
 				F2A24B033003C4D3003AB79D /* PPProviderService.m in Sources */,
 				F2A24B043003C4D3003AB79D /* PPProviderAccountingViewController.m in Sources */,

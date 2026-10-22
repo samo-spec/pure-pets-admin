@@ -1,3 +1,5 @@
+#import "PPDriverWorkspaceViewController.h"
+#import "PPAdminSessionBridge.h"
 //
 //  NotificationsListViewController.m
 //  PurePetsAdmin
@@ -53,6 +55,8 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
 @property (nonatomic, strong) UILabel *navTitleLabel;
 @property (nonatomic, strong) UIButton *markAllNavButton;
 @property (nonatomic, strong) UIButton *composeNavButton;
+@property (nonatomic, strong) PPAdminSessionSnapshot *permissionSnapshot;
+@property (nonatomic, strong) PPAdminSessionObservation *permissionObservation;
 @property (nonatomic, strong) UIButton *settingsNavButton;
 
 // Cockpit Metric Badges
@@ -128,6 +132,7 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
 }
 
 - (void)dealloc {
+    [self.permissionObservation invalidate];
     [self.inboxListener remove];
     self.inboxListener = nil;
 }
@@ -209,6 +214,17 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
                                                         action:@selector(openSettingsTapped)];
     self.settingsNavButton.accessibilityLabel = [Language isRTL] ? @"إعدادات الإشعارات" : @"Notification settings";
     [actionsStack addArrangedSubview:self.settingsNavButton];
+    self.composeNavButton.hidden = YES;
+    self.settingsNavButton.hidden = YES;
+    __weak typeof(self) weakSelf = self;
+    self.permissionObservation = [PPAdminSessionBridge observeCurrentSessionWithChange:^(PPAdminSessionSnapshot *snapshot, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) self = weakSelf;
+            self.permissionSnapshot = error ? nil : snapshot;
+            self.composeNavButton.hidden = ![self.permissionSnapshot hasPermission:@"notifications.send"];
+            self.settingsNavButton.hidden = ![self.permissionSnapshot hasAnyPermission:@[@"notifications.send", @"support.manage", @"moderation.manage"]];
+        });
+    }];
 
     [NSLayoutConstraint activateConstraints:@[
         [self.dossierNavBarView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
@@ -291,12 +307,14 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
 }
 
 - (void)openSettingsTapped {
+    if (![self.permissionSnapshot hasAnyPermission:@[@"notifications.send", @"support.manage", @"moderation.manage"]]) return;
     [PPFunc pp_playTapEffect];
     AdminNotificationSettingsHostingController *vc = [[AdminNotificationSettingsHostingController alloc] init];
     [self.navigationController pushViewController:vc animated:YES];
 }
 
 - (void)openComposerTapped {
+    if (![self.permissionSnapshot hasPermission:@"notifications.send"]) return;
     [PPFunc pp_playTapEffect];
     AdminNotificationComposerHostingController *vc = [[AdminNotificationComposerHostingController alloc] init];
     [self.navigationController pushViewController:vc animated:YES];
@@ -1090,6 +1108,11 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
     }
 
     NSDictionary *meta = [m.meta isKindOfClass:NSDictionary.class] ? m.meta : @{};
+    NSDictionary *driverRoute = PPDriverTaskRoute(meta);
+    if (driverRoute.count) {
+        [[NSNotificationCenter defaultCenter] postNotificationName:PPAdminRouteToDriverTaskNotification object:nil userInfo:driverRoute];
+        return;
+    }
     NSString *orderID = meta[@"orderId"] ?: meta[@"orderID"];
 
     if (orderID.length > 0) {

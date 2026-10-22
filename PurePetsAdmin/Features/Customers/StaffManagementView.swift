@@ -1360,21 +1360,21 @@ struct AdminStaffMemberEditorView: View {
                             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.red.opacity(0.25), lineWidth: 1))
                         }
 
-                        // Bottom Spacer for floating action bar
-                        Spacer().frame(height: 70)
                     }
                     .padding(.horizontal, AdminSpacing.screenMargin)
                     .padding(.top, 10)
                     .padding(.bottom, 24)
                 }
 
-                // Pinned Bottom Floating Executive Action Bar
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
                 floatingExecutiveActionBar
-
-                // Floating Toast
-                if let toast = toastMessage {
-                    floatingToastView(toast)
-                }
+                    .overlay(alignment: .top) {
+                        if let toast = toastMessage {
+                            floatingToastView(toast)
+                                .alignmentGuide(.top) { $0[.bottom] }
+                        }
+                    }
             }
         }
         .sheet(item: $inspectingRoleForMatrix) { role in
@@ -2965,80 +2965,23 @@ struct AdminStaffMemberEditorView: View {
     // MARK: - 6. Floating Executive Action Bar
 
     private var floatingExecutiveActionBar: some View {
-        HStack(spacing: 12) {
-            // Left Status Pill
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(isActive ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning))
-                    .frame(width: 8, height: 8)
-
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: 4) {
-                        Text(currentSelectedRoleModel.localizedTitle)
-                            .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
-                            .foregroundColor(AdminSurface.primaryText)
-                        Text("#\(currentSelectedRoleModel.rank)")
-                            .font(.system(size: 9.5, weight: .black, design: .monospaced))
-                            .foregroundColor(currentSelectedRoleModel.accentColor)
-                    }
-                    Text(isActive ? Language.get("Staff_Status_Active_Auth", alter: "نشط ومفوّض") : Language.get("Staff_Status_Disabled_Susp", alter: "معطّل"))
-                        .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
-                        .foregroundColor(AdminSurface.secondaryText)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(AdminSurface.control, in: Capsule())
-
-            Spacer()
-
-            // Main Save CTA
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                saveSettings()
-            } label: {
-                HStack(spacing: 6) {
-                    if isSaving {
-                        ProgressView().tint(.white).scaleEffect(0.8)
-                    } else {
-                        Image(systemName: "checkmark.shield.fill")
-                            .font(.system(size: 13, weight: .bold))
-                    }
-
-                    Text(Language.get("Staff_Access_Save", alter: "حفظ إعدادات الوصول"))
-                        .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .callout))
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 11)
-                .background(
-                    LinearGradient(
-                        colors: [AdminSurface.primary, Color(red: 0.72, green: 0.05, blue: 0.18)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    in: Capsule()
-                )
-                .shadow(color: AdminSurface.primary.opacity(0.28), radius: 8, y: 3)
-            }
-            .disabled(isSaving || !canSubmitCommand)
+        AdminStaffAccessActionDock(
+            roleTitle: currentSelectedRoleModel.localizedTitle,
+            roleRank: currentSelectedRoleModel.rank,
+            isActive: isActive,
+            isSaving: isSaving,
+            canSubmit: canSubmitCommand
+        ) {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            saveSettings()
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(AdminSurface.surface.opacity(0.92), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(AdminSurface.hairline, lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.08), radius: 14, y: 4)
         .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.bottom, 12)
+        .padding(.top, AdminSpacing.sm)
+        .padding(.bottom, AdminSpacing.xs)
     }
 
     private func floatingToastView(_ toast: String) -> some View {
-        VStack {
-            Spacer()
+        VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 14, weight: .bold))
@@ -3059,7 +3002,7 @@ struct AdminStaffMemberEditorView: View {
             )
             .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
             .shadow(color: Color.black.opacity(0.20), radius: 12, y: 6)
-            .padding(.bottom, 80)
+            .padding(.bottom, AdminSpacing.sm)
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: toastMessage)
@@ -3364,6 +3307,160 @@ struct AdminStaffMemberEditorView: View {
     }
 }
 
+// MARK: - Staff Access Action Dock
+
+private struct AdminStaffAccessActionDock: View {
+    let roleTitle: String
+    let roleRank: Int
+    let isActive: Bool
+    let isSaving: Bool
+    let canSubmit: Bool
+    let onSave: () -> Void
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                stackedContent
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 0) {
+                        accessSummary
+                            .fixedSize(horizontal: true, vertical: false)
+                        Spacer(minLength: AdminSpacing.base)
+                        saveButton(expanded: false)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+                    stackedContent
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(AdminSpacing.md)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
+                .strokeBorder(contrast == .increased ? AdminSurface.secondaryText : AdminSurface.hairline,
+                              lineWidth: contrast == .increased ? 1.5 : 1)
+        }
+        .shadow(color: AdminShadow.elevated.color, radius: AdminShadow.elevated.radius, y: AdminShadow.elevated.y)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("admin.staff.editor.accessDock")
+    }
+
+    private var stackedContent: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.md) {
+            accessSummary
+            saveButton(expanded: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var accessSummary: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+            Text(roleTitle)
+                .font(AdminType.headline)
+                .foregroundStyle(AdminSurface.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: AdminSpacing.sm) {
+                    statusLabel
+                    rankLabel
+                }
+                VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                    statusLabel
+                    rankLabel
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("admin.staff.editor.accessSummary")
+    }
+
+    private var statusLabel: some View {
+        HStack(spacing: AdminSpacing.xs) {
+            Image(systemName: isActive ? "checkmark.circle.fill" : "pause.circle.fill")
+                .foregroundStyle(contrast == .increased ? AdminSurface.primaryText :
+                                    (isActive ? AdminSurface.emerald : AdminSurface.amber))
+                .accessibilityHidden(true)
+            Text(isActive ? Language.get("Active", alter: "نشط") : Language.get("Disabled", alter: "معطل"))
+                .foregroundStyle(AdminSurface.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .font(AdminType.footnote)
+    }
+
+    private var rankLabel: some View {
+        Text(verbatim: "#\(roleRank)")
+            .font(.caption.weight(.semibold).monospacedDigit())
+            .foregroundStyle(AdminSurface.secondaryText)
+            .environment(\.layoutDirection, .leftToRight)
+            .accessibilityLabel(Language.get("RoleRank_NumericalRank", alter: "الرتبة الرقمية"))
+            .accessibilityValue(Text(verbatim: String(roleRank)))
+    }
+
+    private func saveButton(expanded: Bool) -> some View {
+        Button(action: onSave) {
+            HStack(spacing: AdminSpacing.sm) {
+                Group {
+                    if isSaving && !reduceMotion {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(.white)
+                    } else {
+                        Image(systemName: isSaving ? "hourglass" : "checkmark")
+                            .font(.body.weight(.semibold))
+                    }
+                }
+                .frame(minWidth: AdminSpacing.base)
+                .accessibilityHidden(true)
+
+                // Reserve both labels so a request does not resize the action.
+                ZStack {
+                    Text(Language.get("Save", alter: "حفظ"))
+                        .opacity(isSaving ? 0 : 1)
+                    Text(Language.get("Saving", alter: "جارٍ الحفظ"))
+                        .opacity(isSaving ? 1 : 0)
+                }
+                .font(AdminType.headline)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityHidden(true)
+            }
+            .padding(.horizontal, AdminSpacing.base)
+            .padding(.vertical, AdminSpacing.md)
+            .frame(maxWidth: expanded ? .infinity : nil, minHeight: AdminSpacing.rowMinimumHeight)
+            .contentShape(RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous))
+        }
+        .buttonStyle(AccessSaveButtonStyle(prominent: canSubmit || isSaving))
+        .disabled(isSaving || !canSubmit)
+        .accessibilityLabel(isSaving ? Language.get("Staff_Access_Saving", alter: "جارٍ تطبيق إعدادات الوصول") :
+                                Language.get("Staff_Access_Save", alter: "حفظ إعدادات الوصول"))
+        .accessibilityHint(canSubmit ? "" : Language.get("StatusNoAccess", alter: "لا تملك صلاحية تنفيذ هذا الإجراء"))
+        .accessibilityIdentifier("admin.staff.editor.saveAccess")
+    }
+
+    private struct AccessSaveButtonStyle: ButtonStyle {
+        let prominent: Bool
+
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .foregroundStyle(prominent ? Color.white : AdminSurface.secondaryText)
+                .background(
+                    prominent ? (configuration.isPressed ? AdminSurface.primaryPressed : AdminSurface.primary) : AdminSurface.control,
+                    in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous)
+                        .strokeBorder(prominent ? Color.clear : AdminSurface.hairline, lineWidth: 1)
+                }
+        }
+    }
+}
+
 // MARK: - Interactive Deep Staff Permissions Inspector Sheet
 
 private struct AdminStaffPermissionsInspectorSheet: View {
@@ -3426,9 +3523,7 @@ private struct AdminStaffPermissionsInspectorSheet: View {
             PermissionItem(id: "pos.credit.read", title: Language.get("StaffPermTitle_pos_credit_read", alter: "استعراض مديونيات وحسابات العملاء الآجلة"), domain: payDomain, domainIcon: "creditcard.fill", isGranted: role != .viewer && role != .supportAgent),
             PermissionItem(id: "pos.credit_terms.manage", title: Language.get("StaffPermTitle_pos_credit_terms_manage", alter: "إدارة وتعديل سياسات وشروط البيع الآجل"), domain: payDomain, domainIcon: "creditcard.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager),
             PermissionItem(id: "pos.credit.issue", title: Language.get("StaffPermTitle_pos_credit_issue", alter: "إصدار وتمرير البيع الآجل للعملاء"), domain: payDomain, domainIcon: "creditcard.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager || role == .paymentsManager),
-            PermissionItem(id: "pos.credit_terms.issue", title: Language.get("StaffPermTitle_pos_credit_terms_issue", alter: "تفويض إصدار شروط البيع الآجل"), domain: payDomain, domainIcon: "creditcard.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager || role == .paymentsManager),
             PermissionItem(id: "pos.credit.approve", title: Language.get("StaffPermTitle_pos_credit_approve", alter: "اعتماد حدود واستثناءات البيع الآجل"), domain: payDomain, domainIcon: "creditcard.fill", isGranted: role == .owner || role == .superAdmin),
-            PermissionItem(id: "pos.credit_terms.approve", title: Language.get("StaffPermTitle_pos_credit_terms_approve", alter: "اعتماد شروط واستثناءات الآجل"), domain: payDomain, domainIcon: "creditcard.fill", isGranted: role == .owner || role == .superAdmin),
             PermissionItem(id: "pos.credit.collect", title: Language.get("StaffPermTitle_pos_credit_collect", alter: "تحصيل وسداد مديونيات العملاء"), domain: payDomain, domainIcon: "creditcard.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager || role == .paymentsManager),
             PermissionItem(id: "delivery.cod.reconcile", title: Language.get("StaffPermTitle_delivery_cod_reconcile", alter: "تحصيل ومطابقة الدفع عند الاستلام"), domain: payDomain, domainIcon: "creditcard.fill", isGranted: role == .owner || role == .superAdmin || role == .paymentsManager),
             PermissionItem(id: "accounting.view", title: Language.get("StaffPermTitle_accounting_view", alter: "الدفاتر والقيود المحاسبية"), domain: payDomain, domainIcon: "creditcard.fill", isGranted: role == .owner || role == .superAdmin || role == .paymentsManager),

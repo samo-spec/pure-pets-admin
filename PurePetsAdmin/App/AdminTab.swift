@@ -1,6 +1,7 @@
 import Foundation
 
 enum AdminTab: String, CaseIterable, Identifiable {
+    case driver
     case command
     case work
     case operations
@@ -11,6 +12,7 @@ enum AdminTab: String, CaseIterable, Identifiable {
 
     var titleKey: String {
         switch self {
+        case .driver: return "Driver_Title"
         case .command: return "CommandCenter_Tab_Command"
         case .work: return "CommandCenter_Tab_Work"
         case .operations: return "CommandCenter_Tab_Operations"
@@ -23,6 +25,7 @@ enum AdminTab: String, CaseIterable, Identifiable {
 
     var symbol: String {
         switch self {
+        case .driver: return "location.north.line"
         case .command: return "square.grid.2x2"
         case .work: return "briefcase"
         case .operations: return "slider.horizontal.3"
@@ -33,6 +36,7 @@ enum AdminTab: String, CaseIterable, Identifiable {
 
     var selectedSymbol: String {
         switch self {
+        case .driver: return "location.north.line.fill"
         case .command: return "square.grid.2x2.fill"
         case .work: return "briefcase.fill"
         case .operations: return "slider.horizontal.3"
@@ -43,6 +47,7 @@ enum AdminTab: String, CaseIterable, Identifiable {
 
     var shortcutNumber: Int {
         switch self {
+        case .driver: return 6
         case .command: return 1
         case .work: return 2
         case .operations: return 3
@@ -62,6 +67,7 @@ import SwiftUI
 extension AdminTab {
     var keyEquivalent: KeyEquivalent {
         switch self {
+        case .driver: return "6"
         case .command: return "1"
         case .work: return "2"
         case .operations: return "3"
@@ -75,6 +81,8 @@ extension AdminTab {
 extension AdminTab {
     func routes(for session: AdminSession) -> [AdminRoute] {
         switch self {
+        case .driver:
+            return [.driverWorkspace].filter { $0.isAuthorized(for: session) }
         case .command:
             return []
         case .work:
@@ -105,6 +113,8 @@ extension AdminTab {
 
     func isAuthorized(for session: AdminSession) -> Bool {
         switch self {
+        case .driver:
+            return !session.isAdmin && session.hasPermission("delivery.tasks.manage")
         case .command:
             return session.hasAnyPermission(["admin.all", "command.center", "dashboard.view"]) ||
                    session.grantsAllPermissions ||

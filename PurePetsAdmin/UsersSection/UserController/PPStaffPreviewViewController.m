@@ -285,7 +285,6 @@ static UIColor *PPStaffPreviewBorderColor(void) {
         [[PPStaffPreviewPermissionModule alloc] initWithKey:@"Staff_Module_POS"
                                                       perms:@[kStaffPermPosView, kStaffPermPosSell, kStaffPermPosSellWholesale, kStaffPermPosHistory,
                                                               kStaffPermPosCreditRead, kStaffPermPosCreditTermsManage, kStaffPermPosCreditIssue, kStaffPermPosCreditApprove,
-                                                              kStaffPermPosCreditTermsIssue, kStaffPermPosCreditTermsApprove,
                                                               kStaffPermPosCreditCollect, kStaffPermPosCreditReverse, kStaffPermPosCreditClear, kStaffPermPosCreditWriteoff, kStaffPermPosCreditRefund]],
         [[PPStaffPreviewPermissionModule alloc] initWithKey:@"Staff_Module_Branches"
                                                       perms:@[kStaffPermBranchesView, kStaffPermBranchesManage]],

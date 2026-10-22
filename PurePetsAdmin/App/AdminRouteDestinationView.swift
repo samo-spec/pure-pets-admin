@@ -51,6 +51,10 @@ struct AdminRouteDestinationView: View {
             AdminFulfillmentListView(session: session) {
                 router.presentedRoute = nil
             }
+        case .driverWorkspace:
+            AdminDriverWorkspaceView(session: session, router: router).id(session.uid)
+        case .driverTask(let payload):
+            AdminDriverWorkspaceView(session: session, router: router, taskPayload: payload).id(session.uid + payload)
         case .delivery:
             AdminDeliveryListView {
                 router.presentedRoute = nil

@@ -32,8 +32,9 @@ extern PPStaffRole const PPStaffRoleContentPublisher;
 extern PPStaffRole const PPStaffRoleViewer;
 extern PPStaffRole const PPStaffRoleSecurityAdmin;
 extern PPStaffRole const PPStaffRoleComplianceAuditor;
+extern PPStaffRole const PPStaffRoleDeliveryDriver;
 
-#pragma mark - Permission Keys Constants (168 Permissions)
+#pragma mark - Permission Keys Constants (169 Permissions)
 
 extern NSString * const kStaffPermDashboardView;
 extern NSString * const kStaffPermNovaView;
@@ -203,8 +204,7 @@ extern NSString * const kStaffPermPosCreditReverse;
 extern NSString * const kStaffPermPosCreditClear;
 extern NSString * const kStaffPermPosCreditWriteoff;
 extern NSString * const kStaffPermPosCreditRefund;
-extern NSString * const kStaffPermPosCreditTermsIssue;
-extern NSString * const kStaffPermPosCreditTermsApprove;
+extern NSString * const kStaffPermDeliveryTasksManage;
 
 #pragma mark - Catalog Accessors
 

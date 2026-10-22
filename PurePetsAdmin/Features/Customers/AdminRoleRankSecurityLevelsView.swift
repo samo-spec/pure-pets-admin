@@ -238,17 +238,15 @@ public final class SecurityPermissionCatalog: @unchecked Sendable {
                     SecurityPermissionItem(key: "pos.sell", titleAr: "إجراء عمليات البيع وإصدار الفواتير", titleEn: "Execute Sales & Receipts", moduleKey: "pos", isHighRisk: false),
                     SecurityPermissionItem(key: "pos.sell.wholesale", titleAr: "إجراء مبيعات الجملة عبر نقطة البيع", titleEn: "Execute Wholesale POS Sales", moduleKey: "pos", isHighRisk: false),
                     SecurityPermissionItem(key: "pos.history", titleAr: "استعراض سجل مبيعات الصندوق", titleEn: "Review Register History", moduleKey: "pos", isHighRisk: false),
-                    SecurityPermissionItem(key: "pos.credit.read", titleAr: "عرض مديونيات وحسابات العملاء الآجلة (pos.credit.read)", titleEn: "View POS Customer Credit & Receivables", moduleKey: "pos", isHighRisk: false),
-                    SecurityPermissionItem(key: "pos.credit_terms.manage", titleAr: "إدارة وتعديل سياسات وشروط البيع الآجل (pos.credit_terms.manage)", titleEn: "Manage Credit Policies & Terms", moduleKey: "pos", isHighRisk: false),
-                    SecurityPermissionItem(key: "pos.credit.issue", titleAr: "إصدار وتمرير البيع الآجل للعميل (pos.credit.issue)", titleEn: "Issue POS Customer Credit", moduleKey: "pos", isHighRisk: false),
-                    SecurityPermissionItem(key: "pos.credit_terms.issue", titleAr: "تفويض إصدار البيع الآجل (pos.credit_terms.issue)", titleEn: "Authorize Credit Terms Issuance", moduleKey: "pos", isHighRisk: false),
-                    SecurityPermissionItem(key: "pos.credit.approve", titleAr: "اعتماد استثناءات وحدود البيع الآجل (pos.credit.approve)", titleEn: "Approve Credit Exceptions & Limits", moduleKey: "pos", isHighRisk: true),
-                    SecurityPermissionItem(key: "pos.credit_terms.approve", titleAr: "اعتماد شروط واستثناءات الآجل (pos.credit_terms.approve)", titleEn: "Approve Credit Terms Exceptions", moduleKey: "pos", isHighRisk: true),
-                    SecurityPermissionItem(key: "pos.credit.collect", titleAr: "تحصيل وسداد مديونية العميل (pos.credit.collect)", titleEn: "Collect POS Customer Debt", moduleKey: "pos", isHighRisk: false),
-                    SecurityPermissionItem(key: "pos.credit.reverse", titleAr: "عكس تحصيلات وتسويات العملاء (pos.credit.reverse)", titleEn: "Reverse Customer Collections", moduleKey: "pos", isHighRisk: true),
-                    SecurityPermissionItem(key: "pos.credit.clear", titleAr: "تأكيد أو رفض تسوية سندات التحصيل (pos.credit.clear)", titleEn: "Clear or Reject Collection Tenders", moduleKey: "pos", isHighRisk: true),
-                    SecurityPermissionItem(key: "pos.credit.writeoff", titleAr: "شطب مديونيات العملاء المتعثرة (pos.credit.writeoff)", titleEn: "Write Off POS Customer Debt", moduleKey: "pos", isHighRisk: true),
-                    SecurityPermissionItem(key: "pos.credit.refund", titleAr: "تسوية أو استرداد البيع الآجل (pos.credit.refund)", titleEn: "Adjust or Refund Customer Credit", moduleKey: "pos", isHighRisk: true)
+                    SecurityPermissionItem(key: "pos.credit.read", titleAr: "عرض مديونيات وحسابات العملاء الآجلة", titleEn: "View POS Customer Credit & Receivables", moduleKey: "pos", isHighRisk: false),
+                    SecurityPermissionItem(key: "pos.credit_terms.manage", titleAr: "إدارة وتعديل سياسات وشروط البيع الآجل", titleEn: "Manage Credit Policies & Terms", moduleKey: "pos", isHighRisk: false),
+                    SecurityPermissionItem(key: "pos.credit.issue", titleAr: "إصدار وتفويض البيع الآجل للعميل", titleEn: "Issue POS Customer Credit", moduleKey: "pos", isHighRisk: false),
+                    SecurityPermissionItem(key: "pos.credit.approve", titleAr: "اعتماد استثناءات وشروط البيع الآجل", titleEn: "Approve Credit Exceptions & Limits", moduleKey: "pos", isHighRisk: true),
+                    SecurityPermissionItem(key: "pos.credit.collect", titleAr: "تحصيل وسداد مديونية العميل", titleEn: "Collect POS Customer Debt", moduleKey: "pos", isHighRisk: false),
+                    SecurityPermissionItem(key: "pos.credit.reverse", titleAr: "عكس تحصيلات وتسويات العملاء", titleEn: "Reverse Customer Collections", moduleKey: "pos", isHighRisk: true),
+                    SecurityPermissionItem(key: "pos.credit.clear", titleAr: "تأكيد أو رفض تسوية سندات التحصيل", titleEn: "Clear or Reject Collection Tenders", moduleKey: "pos", isHighRisk: true),
+                    SecurityPermissionItem(key: "pos.credit.writeoff", titleAr: "شطب مديونيات العملاء المتعثرة", titleEn: "Write Off POS Customer Debt", moduleKey: "pos", isHighRisk: true),
+                    SecurityPermissionItem(key: "pos.credit.refund", titleAr: "تسوية أو استرداد البيع الآجل", titleEn: "Adjust or Refund Customer Credit", moduleKey: "pos", isHighRisk: true)
                 ]
             ),
             SecurityPermissionModule(
@@ -298,7 +296,7 @@ public final class SecurityPermissionCatalog: @unchecked Sendable {
                 icon: "bed.double.fill",
                 permissions: [
                     SecurityPermissionItem(key: "hotel.view", titleAr: "عرض حجوزات وغرف الفندق", titleEn: "View Hotel Stays", moduleKey: "hotel", isHighRisk: false),
-                    SecurityPermissionItem(key: "hotel.manage", titleAr: "إدارة الحجوزات وخطط الرعاية والتغذية", titleEn: "Manage Hotel Care Plans", moduleKey: "hotel", isHighRisk: false),
+                    SecurityPermissionItem(key: "hotel.reservations.manage", titleAr: "إدارة الحجوزات وخطط الرعاية والتغذية", titleEn: "Manage Hotel Care Plans & Reservations", moduleKey: "hotel", isHighRisk: false),
                     SecurityPermissionItem(key: "hotel.checkin", titleAr: "تسجيل دخول وخروج النزلاء", titleEn: "Check-in & Check-out Guests", moduleKey: "hotel", isHighRisk: false)
                 ]
             ),
@@ -468,9 +466,9 @@ public struct PlatformRoleModel: Identifiable, Hashable, Sendable {
                     "dashboard.view", "staff.view", "users.view", "users.manage", "stock.view", "stock.manage", "stock.create",
                     "listings.view", "listings.manage", "listings.moderate", "payments.view", "delivery.view", "delivery.dispatch",
                     "delivery.override", "delivery.cod.reconcile", "pos.view", "pos.sell", "pos.history",
-                    "pos.credit.read", "pos.credit_terms.manage", "pos.credit.issue", "pos.credit_terms.issue",
-                    "pos.credit.approve", "pos.credit_terms.approve", "pos.credit.collect", "branches.view",
-                    "support.view", "support.manage", "services.view", "services.manage", "hotel.view", "hotel.manage",
+                    "pos.credit.read", "pos.credit_terms.manage", "pos.credit.issue",
+                    "pos.credit.approve", "pos.credit.collect", "branches.view",
+                    "support.view", "support.manage", "services.view", "services.manage", "hotel.view", "hotel.reservations.manage",
                     "categories.view", "categories.manage", "moderation.view", "moderation.manage", "notifications.view", "notifications.send"
                 ]),
                 assignedStaffUids: staffRoleMap[PPStaffRole.operationsManager.rawValue] ?? []
@@ -513,7 +511,7 @@ public struct PlatformRoleModel: Identifiable, Hashable, Sendable {
                 permissions: Set([
                     "dashboard.view", "staff.view", "users.view", "stock.view", "stock.manage", "payments.view",
                     "pos.view", "pos.sell", "pos.history", "pos.credit.read", "pos.credit_terms.manage",
-                    "pos.credit.issue", "pos.credit_terms.issue", "pos.credit.collect", "branches.view", "hotel.view", "hotel.manage",
+                    "pos.credit.issue", "pos.credit.collect", "branches.view", "hotel.view", "hotel.reservations.manage",
                     "hotel.checkin", "services.view", "support.view"
                 ]),
                 assignedStaffUids: staffRoleMap[PPStaffRole.branchManager.rawValue] ?? []
@@ -679,7 +677,7 @@ public struct PlatformRoleModel: Identifiable, Hashable, Sendable {
                 iconName: "cart.fill",
                 accentHex: "#10B981",
                 permissions: Set([
-                    "pos.view", "pos.sell", "pos.history", "pos.credit.read", "pos.credit.issue", "pos.credit_terms.issue", "stock.view", "users.view"
+                    "pos.view", "pos.sell", "pos.history", "pos.credit.read", "pos.credit.issue", "stock.view", "users.view"
                 ]),
                 assignedStaffUids: staffRoleMap[PPStaffRole.sales.rawValue] ?? []
             ),
@@ -734,7 +732,7 @@ public final class AdminRoleRankViewModel: ObservableObject {
     @Published public private(set) var staffMembers: [PPStaffDoc] = []
     @Published public var selectedTierFilter: String = "all"
     @Published public var searchText: String = ""
-    @Published public private(set) var isLoading: Bool = true
+    @Published public private(set) var isLoading: Bool = false
     @Published public var errorMessage: String? = nil
     @Published public private(set) var canManage: Bool = false
     @Published public private(set) var canCreateRole: Bool = false
@@ -765,15 +763,18 @@ public final class AdminRoleRankViewModel: ObservableObject {
 
     public func evaluatePermissions() {
         let staff = PPStaffAuth.shared().cachedCurrentStaff
-        self.canCreateRole = staff?.hasPermission(kStaffPermIamRoleCreate) ?? false
-        self.canUpdateRole = staff?.hasPermission(kStaffPermIamRoleUpdate) ?? false
-        self.canDeleteRole = staff?.hasPermission(kStaffPermIamRoleDelete) ?? false
+        let isRootOrAdmin = staff?.isAdmin() == true || staff?.role == PPStaffRole.superAdmin || staff?.role == PPStaffRole.owner
+        self.canCreateRole = isRootOrAdmin || (staff?.hasPermission(kStaffPermIamRoleCreate) ?? false)
+        self.canUpdateRole = isRootOrAdmin || (staff?.hasPermission(kStaffPermIamRoleUpdate) ?? false)
+        self.canDeleteRole = isRootOrAdmin || (staff?.hasPermission(kStaffPermIamRoleDelete) ?? false)
         self.canManage = canCreateRole || canUpdateRole || canDeleteRole
     }
 
     public func startListening() {
         evaluatePermissions()
-        isLoading = true
+        if allRoles.isEmpty {
+            isLoading = true
+        }
         errorMessage = nil
 
         // Listen to Staff Roster for live role assignment counts
@@ -921,28 +922,64 @@ public final class AdminRoleRankViewModel: ObservableObject {
         accentHex: String,
         permissions: Set<String>,
         idempotencyKey: String? = nil,
-        completion: @escaping (Bool) -> Void
+        completion: @escaping (Bool, String?) -> Void
     ) {
         let authorized = existingId?.isEmpty == false ? canUpdateRole : canCreateRole
         guard authorized else {
-            completion(false)
+            let msg = Language.get("RoleRank_Unauthorized", alter: "ليس لديك الصلاحية الكافية لتعديل أو إنشاء الأدوار المخصصة")
+            self.errorMessage = msg
+            completion(false, msg)
+            return
+        }
+
+        let cleanAr = titleAr.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanEn = titleEn.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanAr.isEmpty || !cleanEn.isEmpty else {
+            let msg = Language.get("RoleRank_EmptyName", alter: "يرجى إدخال اسم الدور المخصص")
+            self.errorMessage = msg
+            completion(false, msg)
+            return
+        }
+        let finalAr = cleanAr.isEmpty ? cleanEn : cleanAr
+        let finalEn = cleanEn.isEmpty ? cleanAr : cleanEn
+
+        let cleanDescAr = descAr.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanDescEn = descEn.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalDescAr = cleanDescAr.isEmpty ? cleanDescEn : cleanDescAr
+        let finalDescEn = cleanDescEn.isEmpty ? cleanDescAr : cleanDescEn
+
+        var canonicalPermissions = Set<String>()
+        for p in permissions {
+            var key = p.trimmingCharacters(in: .whitespacesAndNewlines)
+            if key == "pos.credit_terms.issue" { key = "pos.credit.issue" }
+            if key == "pos.credit_terms.approve" { key = "pos.credit.approve" }
+            if key == "hotel.manage" { key = "hotel.reservations.manage" }
+            if !key.isEmpty {
+                canonicalPermissions.insert(key)
+            }
+        }
+
+        guard !canonicalPermissions.isEmpty else {
+            let msg = Language.get("RoleRank_EmptyPermissions", alter: "يجب اختيار صلاحية واحدة على الأقل للدور المخصص")
+            self.errorMessage = msg
+            completion(false, msg)
             return
         }
 
         let payload: [String: Any] = [
             "name": [
-                "ar": titleAr.trimmingCharacters(in: .whitespacesAndNewlines),
-                "en": titleEn.trimmingCharacters(in: .whitespacesAndNewlines)
+                "ar": finalAr,
+                "en": finalEn
             ],
             "description": [
-                "ar": descAr.trimmingCharacters(in: .whitespacesAndNewlines),
-                "en": descEn.trimmingCharacters(in: .whitespacesAndNewlines)
+                "ar": finalDescAr,
+                "en": finalDescEn
             ],
             "rank": rank,
             "securityLevel": tier.rawValue,
             "iconName": iconName,
             "accentHex": accentHex,
-            "permissions": Array(permissions)
+            "permissions": Array(canonicalPermissions)
         ]
 
         let opKey = (idempotencyKey?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
@@ -959,12 +996,13 @@ public final class AdminRoleRankViewModel: ObservableObject {
             functions.httpsCallable("updateStaffRole").call(command) { [weak self] _, error in
                 guard let self = self else { return }
                 if let error {
-                    self.errorMessage = error.localizedDescription
-                    completion(false)
+                    let desc = error.localizedDescription
+                    self.errorMessage = desc
+                    completion(false, desc)
                     return
                 }
                 self.toastMessage = Language.get("RoleRank_Save_Success", alter: "تم حفظ وتطبيق الدور بنجاح")
-                completion(true)
+                completion(true, nil)
             }
         } else {
             var command = payload
@@ -974,12 +1012,13 @@ public final class AdminRoleRankViewModel: ObservableObject {
             functions.httpsCallable("createStaffRole").call(command) { [weak self] _, error in
                 guard let self = self else { return }
                 if let error {
-                    self.errorMessage = error.localizedDescription
-                    completion(false)
+                    let desc = error.localizedDescription
+                    self.errorMessage = desc
+                    completion(false, desc)
                     return
                 }
                 self.toastMessage = Language.get("RoleRank_Save_Success", alter: "تم حفظ وتطبيق الدور بنجاح")
-                completion(true)
+                completion(true, nil)
             }
         }
     }
@@ -1061,14 +1100,16 @@ public struct AdminRoleRankSecurityLevelsView: View {
                 executiveClearanceCockpit
 
                 ScrollView(.vertical, showsIndicators: false) {
-                    LazyVStack(spacing: AdminSpacing.md) {
+                    VStack(spacing: AdminSpacing.md) {
                         filterAndSearchMatrix
                         rankedRolesStream
                     }
+                    .frame(maxWidth: .infinity)
                     .padding(.horizontal, AdminSpacing.screenMargin)
                     .padding(.top, AdminSpacing.sm)
                     .padding(.bottom, AdminSpacing.xxl)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .refreshable {
                     viewModel.startListening()
                 }
@@ -1117,8 +1158,8 @@ public struct AdminRoleRankSecurityLevelsView: View {
                             accentHex: roleData.accentHex,
                             permissions: roleData.permissions,
                             idempotencyKey: roleData.idempotencyKey
-                        ) { success in
-                            onComplete(success)
+                        ) { success, error in
+                            onComplete(success, error)
                             if success {
                                 viewModel.isShowingEditor = false
                                 viewModel.editingRole = nil
@@ -1196,6 +1237,7 @@ public struct AdminRoleRankSecurityLevelsView: View {
         AdminSovereignNavigationBar(
             title: Language.get("RoleRank_Title", alter: "رتب الأدوار ومستويات الأمان"),
             subtitle: Language.get("RoleRank_Subtitle", alter: "الهيكل الهرمي لحوكمة الصلاحيات والوصول"),
+            customTopSpacing: 0,
             onBack: {
                 if let onDismiss {
                     onDismiss()
@@ -1440,7 +1482,7 @@ public struct AdminRoleRankSecurityLevelsView: View {
 
     private var rankedRolesStream: some View {
         VStack(spacing: 12) {
-            if viewModel.isLoading {
+            if viewModel.isLoading && viewModel.filteredRoles.isEmpty {
                 VStack(spacing: 14) {
                     ProgressView()
                         .tint(AdminSurface.primary)
@@ -2059,7 +2101,7 @@ public struct RoleRankEditorData: Sendable {
 
 public struct RoleRankEditorSheet: View {
     let existingRole: PlatformRoleModel?
-    let onSave: (RoleRankEditorData, @escaping (Bool) -> Void) -> Void
+    let onSave: (RoleRankEditorData, @escaping (Bool, String?) -> Void) -> Void
     let onDismiss: () -> Void
 
     @State private var sessionKey: String = UUID().uuidString
@@ -2073,6 +2115,7 @@ public struct RoleRankEditorSheet: View {
     @State private var accentHex: String = "#2563EB"
     @State private var selectedPermissions: Set<String> = []
     @State private var isSaving: Bool = false
+    @State private var localErrorMessage: String? = nil
 
     private let availableIcons = [
         "shield.fill", "crown.fill", "gearshape.2.fill", "cube.box.fill",
@@ -2085,7 +2128,7 @@ public struct RoleRankEditorSheet: View {
         "#0D9488", "#10B981", "#7C3AED", "#EA580C", "#64748B"
     ]
 
-    public init(existingRole: PlatformRoleModel?, onSave: @escaping (RoleRankEditorData, @escaping (Bool) -> Void) -> Void, onDismiss: @escaping () -> Void) {
+    public init(existingRole: PlatformRoleModel?, onSave: @escaping (RoleRankEditorData, @escaping (Bool, String?) -> Void) -> Void, onDismiss: @escaping () -> Void) {
         self.existingRole = existingRole
         self.onSave = onSave
         self.onDismiss = onDismiss
@@ -2097,7 +2140,18 @@ public struct RoleRankEditorSheet: View {
         _tier = State(initialValue: existingRole?.clearanceTier ?? .tier2)
         _iconName = State(initialValue: existingRole?.iconName ?? "shield.fill")
         _accentHex = State(initialValue: existingRole?.accentHex ?? "#2563EB")
-        _selectedPermissions = State(initialValue: existingRole?.permissions ?? [])
+
+        var initialPerms = Set<String>()
+        for p in (existingRole?.permissions ?? []) {
+            var key = p.trimmingCharacters(in: .whitespacesAndNewlines)
+            if key == "pos.credit_terms.issue" { key = "pos.credit.issue" }
+            if key == "pos.credit_terms.approve" { key = "pos.credit.approve" }
+            if key == "hotel.manage" { key = "hotel.reservations.manage" }
+            if !key.isEmpty {
+                initialPerms.insert(key)
+            }
+        }
+        _selectedPermissions = State(initialValue: initialPerms)
     }
 
     public var body: some View {
@@ -2109,6 +2163,26 @@ public struct RoleRankEditorSheet: View {
 
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 16) {
+                        if let error = localErrorMessage {
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.white)
+                                Text(error)
+                                    .font(Font.custom("Beiruti-Bold", size: 13))
+                                    .foregroundColor(.white)
+                                    .multilineTextAlignment(.leading)
+                                Spacer()
+                                Button {
+                                    withAnimation { localErrorMessage = nil }
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.white.opacity(0.8))
+                                }
+                            }
+                            .padding(12)
+                            .background(Color(uiColor: .ppError), in: RoundedRectangle(cornerRadius: 12))
+                        }
+
                         identityCard
                         rankAndClearanceTierCard
                         iconAndThemeCard
@@ -2119,6 +2193,19 @@ public struct RoleRankEditorSheet: View {
             }
         }
         .navigationBarHidden(true)
+        .alert(
+            Language.get("Error", alter: "خطأ"),
+            isPresented: Binding(
+                get: { localErrorMessage != nil },
+                set: { if !$0 { localErrorMessage = nil } }
+            )
+        ) {
+            Button(Language.get("OK", alter: "حسناً"), role: .cancel) {
+                localErrorMessage = nil
+            }
+        } message: {
+            Text(localErrorMessage ?? "")
+        }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
@@ -2126,6 +2213,7 @@ public struct RoleRankEditorSheet: View {
         AdminSovereignNavigationBar(
             title: existingRole != nil ? Language.get("RoleRank_Editor_Edit_Title", alter: "تعديل الدور المخصص") : Language.get("RoleRank_Editor_Create_Title", alter: "صياغة دور مخصص جديد"),
             subtitle: Language.isRTL() ? "تحديد الصلاحيات ورتبة الوصول" : "Configure clearance & permissions",
+            customTopSpacing: 0,
             onBack: onDismiss
         ) {
             Button(action: saveTapped) {
@@ -2151,13 +2239,15 @@ public struct RoleRankEditorSheet: View {
     }
 
     private var canSave: Bool {
-        !titleAr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-        !titleEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        (!titleAr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+         !titleEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) &&
+        !selectedPermissions.isEmpty
     }
 
     private func saveTapped() {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         isSaving = true
+        localErrorMessage = nil
         let data = RoleRankEditorData(
             titleAr: titleAr,
             titleEn: titleEn,
@@ -2170,9 +2260,10 @@ public struct RoleRankEditorSheet: View {
             permissions: selectedPermissions,
             idempotencyKey: sessionKey
         )
-        onSave(data) { success in
+        onSave(data) { success, error in
             if !success {
                 isSaving = false
+                localErrorMessage = error ?? Language.get("RoleRank_Save_Failed", alter: "تعذر حفظ الدور المخصص، يرجى المحاولة مرة أخرى")
             }
         }
     }
@@ -2328,7 +2419,7 @@ public struct RoleRankEditorSheet: View {
                 }
                 presetButton(title: Language.get("RoleRank_Preset_Ops", alter: "عمليات ومخزون")) {
                     selectedPermissions = Set([
-                        "dashboard.view", "stock.view", "stock.manage", "pos.view", "pos.sell", "pos.credit.read", "pos.credit_terms.manage", "pos.credit.issue", "pos.credit_terms.issue", "delivery.view", "branches.view"
+                        "dashboard.view", "stock.view", "stock.manage", "pos.view", "pos.sell", "pos.credit.read", "pos.credit_terms.manage", "pos.credit.issue", "delivery.view", "branches.view"
                     ])
                 }
                 presetButton(title: Language.get("RoleRank_Preset_ReadOnly", alter: "رصد فقط")) {

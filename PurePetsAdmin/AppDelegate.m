@@ -6,6 +6,7 @@
 //
 
 #import "AppDelegate.h"
+#import "PPDriverWorkspaceViewController.h"
 #import "Development/PPLocalCreditEmulator.h"
 #import "SceneDelegate.h"
 #import <sys/utsname.h>
@@ -737,6 +738,9 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
                         if (hasPayments) {
                             [notificationScopes addObjectsFromArray:@[@"staff.orders", @"staff.payments", @"staff.delivery"]];
                         }
+                        if (!hasPayments && [staffSession hasAnyPermission:@[@"delivery.tasks.manage", @"delivery.view", @"delivery.dispatch"]]) {
+                            [notificationScopes addObject:@"staff.delivery"];
+                        }
                         if (hasSupport) [notificationScopes addObject:@"staff.support"];
                         if (hasModeration) [notificationScopes addObject:@"staff.moderation"];
                         if ([staffSession hasPermission:kStaffPermNotificationsSend]) [notificationScopes addObject:@"staff.manual"];
@@ -894,6 +898,7 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
         completionHandler(UNNotificationPresentationOptionNone);
         return;
     }
+    if (PPDriverTaskRoute(payload).count) [[NSNotificationCenter defaultCenter] postNotificationName:PPDriverTasksDidChangeNotification object:nil];
     if (@available(iOS 14.0, *)) {
         completionHandler(UNNotificationPresentationOptionBanner |
                           UNNotificationPresentationOptionList |
@@ -910,6 +915,12 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
     NSDictionary *payload = response.notification.request.content.userInfo;
     if (![AppDelegate pp_isNotificationPayloadRoutable:payload]) {
         NSLog(@"PPLAB NotificationsV2 admin tap ignored | targetApp_mismatch=yes appId=%@", PPAdminNotificationV2AppID);
+        if (completionHandler) completionHandler();
+        return;
+    }
+    NSDictionary *driverRoute = PPDriverTaskRoute(payload);
+    if (driverRoute.count) {
+        [[NSNotificationCenter defaultCenter] postNotificationName:PPAdminRouteToDriverTaskNotification object:nil userInfo:driverRoute];
         if (completionHandler) completionHandler();
         return;
     }

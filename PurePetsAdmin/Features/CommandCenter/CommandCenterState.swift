@@ -72,8 +72,10 @@ final class CommandCenterState: ObservableObject {
     func updateSession(_ session: AdminSession) {
         guard self.session != session else { return }
         self.session = session
+        requestID = UUID()
+        isRefreshing = false
         phase = .idle
-        load(retainingContent: false)
+        if AdminTab.command.isAuthorized(for: session) { load(retainingContent: false) }
     }
 
     private func load(retainingContent: Bool) {

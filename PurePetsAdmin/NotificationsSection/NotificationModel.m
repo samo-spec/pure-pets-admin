@@ -39,7 +39,7 @@ static NSString *PPNotificationMetadataString(id value)
     NSArray<NSString *> *metadataKeys = @[
         @"type", @"orderId", @"orderID", @"orderReference", @"threadId",
         @"conversationId", @"conversationThreadID", @"route", @"targetApp",
-        @"targetAppId", @"appId", @"requestId", @"contextId", @"sourceApp"
+        @"targetAppId", @"appId", @"taskId", @"authority", @"requestId", @"contextId", @"sourceApp"
     ];
     for (NSString *key in metadataKeys) {
         NSString *value = PPNotificationMetadataString(normalizedMeta[key]);

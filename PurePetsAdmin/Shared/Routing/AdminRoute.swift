@@ -7,6 +7,8 @@ enum AdminRoute: Hashable, Identifiable {
     case paymentSettings
     case fulfillment
     case delivery
+    case driverWorkspace
+    case driverTask(String)
     case providerApplications
     case providerPlans
     case providerFeatures
@@ -51,6 +53,8 @@ enum AdminRoute: Hashable, Identifiable {
         case .payments: return "payments"
         case .paymentSettings: return "paymentSettings"
         case .fulfillment: return "fulfillment"
+        case .driverWorkspace: return "driverWorkspace"
+        case .driverTask: return "driverTask"
         case .delivery: return "delivery"
         case .providerApplications: return "providerApplications"
         case .providerPlans: return "providerPlans"
@@ -92,6 +96,7 @@ enum AdminRoute: Hashable, Identifiable {
 
     var payload: String? {
         if case let .paymentOrder(orderID) = self { return orderID }
+        if case let .driverTask(task) = self { return task }
         return nil
     }
 
@@ -100,6 +105,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .paymentOrder, .payments: return "PaymentMgmt_Dashboard_Title"
         case .paymentSettings: return "PaymentMgmt_Dashboard_Settings_Title"
         case .fulfillment: return "Fulfillment_Title"
+        case .driverWorkspace, .driverTask: return "Driver_Title"
         case .delivery: return "Delivery_Title"
         case .providerApplications: return "Providers_Applications_Title"
         case .providerPlans: return "Providers_Plans_Title"
@@ -147,6 +153,8 @@ enum AdminRoute: Hashable, Identifiable {
         case .paymentOrder, .payments, .paymentSettings, .fulfillment, .pointOfSale, .pointOfSaleHistory, .proformaInvoices,
              .accessories, .food, .livePets, .pharmacy, .wantedPets:
             return "CommandCenter_Work_Title"
+        case .driverWorkspace, .driverTask:
+            return "Driver_Title"
         case .delivery, .providerApplications, .providerPlans, .providerFeatures, .providerAccounting,
              .branches, .agents, .homeControl, .services, .veterinarians, .moderation, .community, .adoptionManager, .hotel:
             return "CommandCenter_Operations_Title"
@@ -167,6 +175,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .paymentOrder, .payments: return "creditcard"
         case .paymentSettings: return "slider.horizontal.3"
         case .fulfillment: return "shippingbox"
+        case .driverWorkspace, .driverTask: return "location.north.line"
         case .delivery: return "truck.box"
         case .providerApplications: return "person.badge.plus"
         case .providerPlans: return "list.clipboard"
@@ -213,6 +222,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .fulfillment: return ["payments.view", "payments.manage", "providers.view"]
         // `payments.manage` is an isolated official-fleet compatibility bridge.
         // New staff grants must use the dedicated delivery permission.
+        case .driverWorkspace, .driverTask: return ["delivery.tasks.manage"]
         case .delivery: return ["delivery.view", "delivery.dispatch", "delivery.override", "delivery.cod.reconcile", "payments.manage"]
         case .providerApplications, .providerPlans, .providerFeatures: return ["providers.view", "providers.manage"]
         case .providerAccounting: return ["payments.view", "payments.manage"]
@@ -269,7 +279,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .categories: return ["categories.view", "categories.manage"]
         case .banners: return ["banners.manage"]
         case .listings: return ["listings.view", "listings.manage", "listings.moderate"]
-        case .hotel: return ["hotel.view", "hotel.manage", "hotel.checkin"]
+        case .hotel: return ["hotel.view", "hotel.reservations.manage", "hotel.checkin"]
         }
     }
 
@@ -297,10 +307,12 @@ final class AdminRouter: ObservableObject {
     @Published var presentedRoute: AdminRoute?
     @Published var permissionDenied = false
     private var pendingPaymentOrderID: String?
+    private var pendingDriverTask: String?
 
     func resetProtectedRoutes() {
         presentedRoute = nil
         pendingPaymentOrderID = nil
+        pendingDriverTask = nil
         permissionDenied = false
     }
 
@@ -322,7 +334,18 @@ final class AdminRouter: ObservableObject {
         pendingPaymentOrderID = trimmed
     }
 
+    func enqueueDriverTask(_ taskID: String, authority: String) {
+        guard !taskID.isEmpty, taskID.count <= 128, !taskID.contains("/"),
+              ["FULFILLMENT_V1", "COMPANY_DELIVERY_REQUEST"].contains(authority) else { return }
+        pendingDriverTask = authority + ":" + taskID
+    }
+
     func consumePendingRoute(session: AdminSession) {
+        if let task = pendingDriverTask {
+            pendingDriverTask = nil
+            present(.driverTask(task), session: session)
+            return
+        }
         guard let pendingPaymentOrderID else { return }
         self.pendingPaymentOrderID = nil
         present(.paymentOrder(pendingPaymentOrderID), session: session)

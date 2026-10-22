@@ -475,6 +475,11 @@ final class AdminAppRootHostingController: UIViewController {
         }
     }
 
+    @objc func routeToDriverTaskID(_ taskID: String, authority: String) {
+        router.enqueueDriverTask(taskID, authority: authority)
+        if case let .authenticated(session) = sessionStore.state { router.consumePendingRoute(session: session) }
+    }
+
     func routeToPaymentOrderID(_ orderID: String) {
         router.enqueuePaymentOrder(orderID)
         if case let .authenticated(session) = sessionStore.state {

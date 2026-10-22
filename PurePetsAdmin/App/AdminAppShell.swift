@@ -48,6 +48,9 @@ struct AdminAppShell: View {
             ZStack(alignment: .bottom) {
                 Group {
                     switch selectedTab {
+                    case .driver:
+                        AdminDriverWorkspaceView(session: session, router: router)
+                            .id(session.uid)
                     case .command:
                         AdminCommandOrbitDashboard(
                             session: session,
@@ -62,7 +65,7 @@ struct AdminAppShell: View {
                             router: router,
                             commandState: commandState,
                             isPadWide: isPadWide,
-                            onOpenCommand: { selectedTab = .command }
+                            onOpenCommand: { if AdminTab.command.isAuthorized(for: session) { selectedTab = .command } }
                         )
                         .ignoresSafeArea()
 
@@ -72,7 +75,7 @@ struct AdminAppShell: View {
                             router: router,
                             commandState: commandState,
                             isPadWide: isPadWide,
-                            onOpenCommand: { selectedTab = .command }
+                            onOpenCommand: { if AdminTab.command.isAuthorized(for: session) { selectedTab = .command } }
                         )
                         .ignoresSafeArea()
 
@@ -82,7 +85,7 @@ struct AdminAppShell: View {
                             router: router,
                             commandState: commandState,
                             isPadWide: isPadWide,
-                            onOpenCommand: { selectedTab = .command }
+                            onOpenCommand: { if AdminTab.command.isAuthorized(for: session) { selectedTab = .command } }
                         )
                         .ignoresSafeArea()
 
@@ -95,7 +98,7 @@ struct AdminAppShell: View {
                             isSigningOut: sessionStore.isSigningOut,
                             isPadWide: isPadWide,
                             onLogout: { promptLogoutConfirmation() },
-                            onOpenCommand: { selectedTab = .command }
+                            onOpenCommand: { if AdminTab.command.isAuthorized(for: session) { selectedTab = .command } }
                         )
                         .ignoresSafeArea()
                     }
@@ -166,7 +169,7 @@ struct AdminAppShell: View {
             router.consumePendingRoute(session: session)
         }
         .onChange(of: selectedTab) { tab in
-            if tab != .command {
+            if tab != .command && AdminTab.command.isAuthorized(for: session) {
                 commandState.loadIfNeeded()
             }
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -189,7 +192,7 @@ struct AdminAppShell: View {
                 .publisher(for: NSNotification.Name.PPActiveBranchDidChange)
                 .receive(on: RunLoop.main)
         ) { _ in
-            commandState.refresh()
+            if AdminTab.command.isAuthorized(for: session) { commandState.refresh() }
         }
     }
 
@@ -225,7 +228,7 @@ struct AdminAppShell: View {
                 .toolbar(.hidden, for: .navigationBar)
                 // Inventory owns its edge behavior per lane: the pharmacy
                 // respects native insets; the existing lanes extend internally.
-                .ignoresSafeArea(edges: [.delivery, .proformaInvoices, .customerManagement, .accessories, .food, .livePets, .pharmacy].contains(route) ? [] : .all)
+                .ignoresSafeArea(edges: (route.identifier == "driverTask" || route == .driverWorkspace || [.delivery, .proformaInvoices, .customerManagement, .accessories, .food, .livePets, .pharmacy].contains(route)) ? [] : .all)
         } else {
             EmptyView()
         }
@@ -6030,5 +6033,27 @@ struct ContentUnavailableCompat: View {
                 .stroke(AdminSurface.hairline)
         )
         .accessibilityElement(children: .combine)
+    }
+}
+
+
+/// UIKit owns presentation; the existing shell owns navigation and session.
+@MainActor
+struct AdminDriverWorkspaceView: UIViewControllerRepresentable {
+    let session: AdminSession
+    @ObservedObject var router: AdminRouter
+    var taskPayload: String? = nil
+    func makeUIViewController(context: Context) -> PPDriverWorkspaceViewController {
+        let parts = taskPayload?.split(separator: ":", maxSplits: 1).map(String.init) ?? []
+        let controller = PPDriverWorkspaceViewController(taskID: parts.count == 2 ? parts[1] : nil,
+                                                        authority: parts.count == 2 ? parts[0] : nil)
+        bind(controller)
+        return controller
+    }
+    func updateUIViewController(_ controller: PPDriverWorkspaceViewController, context: Context) { bind(controller) }
+    private func bind(_ controller: PPDriverWorkspaceViewController) {
+        controller.onOpenTask = { taskID, authority in router.present(.driverTask(authority + ":" + taskID), session: session) }
+        controller.onClose = { router.presentedRoute = nil }
+        controller.onNotifications = { router.present(.notifications, session: session) }
     }
 }

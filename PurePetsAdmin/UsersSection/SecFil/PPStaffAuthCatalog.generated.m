@@ -9,7 +9,7 @@
 
 NSString * const PPStaffIAMPolicyVersion = @"2.0.0-draft.1";
 NSString * const PPStaffIAMSchemaVersion = @"2.0.0";
-NSString * const PPStaffIAMPolicySHA256 = @"90ed3ce47f0501a1183236c2f85aa4609683e58858bf902252a14080725007d9";
+NSString * const PPStaffIAMPolicySHA256 = @"5e6f49f7c9c361c41e4a4919b0c44320e8455cb474d000859f3b9b7c3054d435";
 
 #pragma mark - Role Definitions
 
@@ -28,6 +28,7 @@ PPStaffRole const PPStaffRoleContentPublisher = @"content_publisher";
 PPStaffRole const PPStaffRoleViewer = @"viewer";
 PPStaffRole const PPStaffRoleSecurityAdmin = @"security_admin";
 PPStaffRole const PPStaffRoleComplianceAuditor = @"compliance_auditor";
+PPStaffRole const PPStaffRoleDeliveryDriver = @"delivery_driver";
 
 #pragma mark - Permission Key Definitions
 
@@ -199,8 +200,7 @@ NSString * const kStaffPermPosCreditReverse = @"pos.credit.reverse";
 NSString * const kStaffPermPosCreditClear = @"pos.credit.clear";
 NSString * const kStaffPermPosCreditWriteoff = @"pos.credit.writeoff";
 NSString * const kStaffPermPosCreditRefund = @"pos.credit.refund";
-NSString * const kStaffPermPosCreditTermsIssue = @"pos.credit_terms.issue";
-NSString * const kStaffPermPosCreditTermsApprove = @"pos.credit_terms.approve";
+NSString * const kStaffPermDeliveryTasksManage = @"delivery.tasks.manage";
 
 #pragma mark - Catalog Accessor Implementations
 
@@ -224,6 +224,7 @@ NSArray<PPStaffRole> * PPStaffAllRoleKeys(void) {
             PPStaffRoleViewer,
             PPStaffRoleSecurityAdmin,
             PPStaffRoleComplianceAuditor,
+            PPStaffRoleDeliveryDriver,
         ];
     });
     return roles;
@@ -402,8 +403,7 @@ NSArray<NSString *> * PPStaffAllPermissionKeys(void) {
             kStaffPermPosCreditClear,
             kStaffPermPosCreditWriteoff,
             kStaffPermPosCreditRefund,
-            kStaffPermPosCreditTermsIssue,
-            kStaffPermPosCreditTermsApprove,
+            kStaffPermDeliveryTasksManage,
         ];
     });
     return keys;
@@ -515,6 +515,7 @@ NSArray<NSDictionary<NSString *, id> *> * PPStaffPermissionModules(void) {
                    @{ @"key": @"delivery.cod.view", @"labelEn": @"View cash-on-delivery custody", @"labelAr": @"عرض عهدة الدفع عند الاستلام", @"riskTier": @"T2", @"protected": @NO },
                    @{ @"key": @"delivery.cod.reconcile", @"labelEn": @"Reconcile cash on delivery", @"labelAr": @"تسوية الدفع عند الاستلام", @"riskTier": @"T3", @"protected": @YES },
                    @{ @"key": @"delivery.settings.manage", @"labelEn": @"Manage delivery settings", @"labelAr": @"إدارة إعدادات التوصيل", @"riskTier": @"T4", @"protected": @YES },
+                   @{ @"key": @"delivery.tasks.manage", @"labelEn": @"Manage own delivery tasks", @"labelAr": @"إدارة مهام التوصيل الخاصة بي", @"riskTier": @"T2", @"protected": @NO },
                ] },
             @{ @"key": @"pos",
                @"labelEn": @"Point of Sale",
@@ -814,6 +815,7 @@ PPStaffRole _Nullable PPStaffNormalizedRole(id value) {
     if ([lower isEqualToString:@"viewer"]) return PPStaffRoleViewer;
     if ([lower isEqualToString:@"security_admin"]) return PPStaffRoleSecurityAdmin;
     if ([lower isEqualToString:@"compliance_auditor"]) return PPStaffRoleComplianceAuditor;
+    if ([lower isEqualToString:@"delivery_driver"]) return PPStaffRoleDeliveryDriver;
 
     return nil;
 }
@@ -1312,6 +1314,13 @@ NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role) {
         ];
     }
 
+    if ([normalized isEqualToString:PPStaffRoleDeliveryDriver]) {
+        return @[
+            kStaffPermDeliveryTasksManage,
+            kStaffPermNotificationsView,
+        ];
+    }
+
     return @[];
 }
 
@@ -1332,5 +1341,6 @@ NSString * PPStaffLocalizedRoleName(PPStaffRole role) {
     if ([normalized isEqualToString:PPStaffRoleViewer]) return NSLocalizedString(@"StaffRole_VIEWER", @"عرض فقط");
     if ([normalized isEqualToString:PPStaffRoleSecurityAdmin]) return NSLocalizedString(@"StaffRole_SECURITY_ADMIN", @"مسؤول الأمان");
     if ([normalized isEqualToString:PPStaffRoleComplianceAuditor]) return NSLocalizedString(@"StaffRole_COMPLIANCE_AUDITOR", @"مدقق الامتثال");
+    if ([normalized isEqualToString:PPStaffRoleDeliveryDriver]) return NSLocalizedString(@"StaffRole_DELIVERY_DRIVER", @"سائق توصيل");
     return normalized ?: @"";
 }

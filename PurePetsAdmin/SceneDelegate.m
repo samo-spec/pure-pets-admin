@@ -1,4 +1,5 @@
 #import "SceneDelegate.h"
+#import "PPDriverWorkspaceViewController.h"
 #import "AppDelegate.h"
 #import <GoogleSignIn/GoogleSignIn.h>
 @import Firebase;
@@ -169,9 +170,10 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
                                                    selector:@selector(reloadRootViewControllerForLanguageChange)
                                                        name:PPLanguageDidChangeNotification
                                                      object:nil];
-          if (pendingOrderID.length > 0) {
-               [adminRoot routeToPaymentOrderID:pendingOrderID];
-           }
+          [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(pp_handleDriverTaskRoute:) name:PPAdminRouteToDriverTaskNotification object:nil];
+          NSDictionary *driverRoute = [AppDelegate pp_isNotificationPayloadRoutable:coldStartPayload] ? PPDriverTaskRoute(coldStartPayload) : @{};
+          if (driverRoute.count) [adminRoot routeToDriverTaskID:driverRoute[@"taskId"] authority:driverRoute[@"authority"]];
+          else if (pendingOrderID.length > 0) [adminRoot routeToPaymentOrderID:pendingOrderID];
            return;
      }
 #else
@@ -506,6 +508,13 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
 }
 
 #pragma mark - Notification Routing
+
+- (void)pp_handleDriverTaskRoute:(NSNotification *)notification
+{
+     if ([self.window.rootViewController isKindOfClass:AdminAppRootHostingController.class]) {
+          [(AdminAppRootHostingController *)self.window.rootViewController routeToDriverTaskID:notification.userInfo[@"taskId"] authority:notification.userInfo[@"authority"]];
+     }
+}
 
 - (void)pp_handlePaymentOrderRouteNotification:(NSNotification *)notification
 {

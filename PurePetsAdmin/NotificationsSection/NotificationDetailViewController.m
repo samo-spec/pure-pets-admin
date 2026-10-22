@@ -1,3 +1,4 @@
+#import "PPDriverWorkspaceViewController.h"
 //
 //  NotificationDetailViewController.m
 //  PurePetsAdmin
@@ -451,6 +452,11 @@
 - (void)openRelatedOrder {
     [PPFunc pp_playTapEffect];
     NSDictionary *meta = [self.model.meta isKindOfClass:NSDictionary.class] ? self.model.meta : @{};
+    NSDictionary *driverRoute = PPDriverTaskRoute(meta);
+    if (driverRoute.count) {
+        [[NSNotificationCenter defaultCenter] postNotificationName:PPAdminRouteToDriverTaskNotification object:nil userInfo:driverRoute];
+        return;
+    }
     NSString *orderID = meta[@"orderId"] ?: meta[@"orderID"];
     if (orderID.length > 0) {
         [[NSNotificationCenter defaultCenter] postNotificationName:PPAdminRouteToPaymentOrderNotification

@@ -35,6 +35,7 @@
 #import "PPAlertHelper.h"
 #import "Delivery/PPDeliveryManagementViewController.h"
 #import "Delivery/PPDeliveryService.h"
+#import "Delivery/PPDriverWorkspaceViewController.h"
 #import "Accounting/PPAccountingViewController.h"
 #import "Accounting/PPAccountingService.h"
 #import "AgentSection/PPAgentsViewController.h"
