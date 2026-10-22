@@ -13500,14 +13500,14 @@
 /* Driver workspace — official fleet, personal tasks */
 "Driver_Title" = "توصيلاتي";
 "Driver_Workspace_Subtitle" = "PURE PETS · على الطريق";
-"Driver_Task_Title" = "وجهتك التالية";
-"Driver_Task_Subtitle" = "توصيلة واحدة · خطوة واضحة";
+"Driver_Task_Title" = "تفاصيل التوصيلة";
+"Driver_Task_Subtitle" = "من الاستلام إلى التسليم";
 "Driver_Back" = "رجوع";
 "Driver_Notifications" = "الإشعارات";
 "Driver_Lane_Active" = "مهامي";
 "Driver_Lane_New" = "مهام جديدة";
 "Driver_Lane_History" = "السجل";
-"Driver_Next" = "خطوتك التالية";
+"Driver_Next" = "ضمن مهامك";
 "Driver_Order_Format" = "طلب %@";
 "Driver_Delivery" = "توصيلة";
 "Driver_Pickup" = "الاستلام من";

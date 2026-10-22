@@ -6054,6 +6054,10 @@ struct AdminDriverWorkspaceView: UIViewControllerRepresentable {
     private func bind(_ controller: PPDriverWorkspaceViewController) {
         controller.onOpenTask = { taskID, authority in router.present(.driverTask(authority + ":" + taskID), session: session) }
         controller.onClose = { router.presentedRoute = nil }
-        controller.onNotifications = { router.present(.notifications, session: session) }
+        if AdminRoute.notifications.isAuthorized(for: session) {
+            controller.onNotifications = { router.present(.notifications, session: session) }
+        } else {
+            controller.onNotifications = nil
+        }
     }
 }

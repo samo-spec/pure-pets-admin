@@ -309,10 +309,10 @@ final class AdminRouter: ObservableObject {
     private var pendingPaymentOrderID: String?
     private var pendingDriverTask: String?
 
-    func resetProtectedRoutes() {
+    func resetProtectedRoutes(preservingPendingDriverTask: Bool = false) {
         presentedRoute = nil
         pendingPaymentOrderID = nil
-        pendingDriverTask = nil
+        if !preservingPendingDriverTask { pendingDriverTask = nil }
         permissionDenied = false
     }
 

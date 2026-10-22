@@ -358,6 +358,7 @@ struct AdminAppRoot: View {
     @ObservedObject var router: AdminRouter
     @ObservedObject private var branchStore = BranchContextStore.shared
     @Environment(\.scenePhase) private var scenePhase
+    @State private var hadAuthenticatedSession = false
 
     var body: some View {
         Group {
@@ -384,9 +385,20 @@ struct AdminAppRoot: View {
             authenticationState.refreshLanguage()
         }
         .onChange(of: sessionStore.state) { state in
-            if case .unauthenticated = state {
-                router.resetProtectedRoutes()
+            switch state {
+            case .authenticated:
+                hadAuthenticatedSession = true
+            case .unauthenticated:
+                // Keep a launch-time task intent through the first login only.
+                // Signing out of an established session clears protected routes.
+                router.resetProtectedRoutes(preservingPendingDriverTask: !hadAuthenticatedSession)
+                hadAuthenticatedSession = false
+            case .restoring:
+                break
             }
+        }
+        .onAppear {
+            if case .authenticated = sessionStore.state { hadAuthenticatedSession = true }
         }
         .onChange(of: scenePhase) { phase in
             if phase == .active {

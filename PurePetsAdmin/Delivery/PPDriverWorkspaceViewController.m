@@ -96,7 +96,8 @@ static NSString *DAction(NSString *action) {
     [self.contentView addSubview:paper];
     UILabel *eyebrow = DLabel(focused ? DL(@"Driver_Next") : DStatus(DText(task[@"status"])),13,YES,UIColor.ppPrimary);
     NSString *number = DText(task[@"orderNumber"]);
-    UILabel *title = DLabel(number.length ? [NSString stringWithFormat:DL(@"Driver_Order_Format"),number] : DL(@"Driver_Delivery"),focused ? 27 : 21,YES,UIColor.ppTextPrimary);
+    NSString *isolatedNumber = [NSString stringWithFormat:@"\u2068%@\u2069",number];
+    UILabel *title = DLabel(number.length ? [NSString stringWithFormat:DL(@"Driver_Order_Format"),isolatedNumber] : DL(@"Driver_Delivery"),focused ? 27 : 21,YES,UIColor.ppTextPrimary);
     title.accessibilityTraits |= UIAccessibilityTraitHeader;
     UILabel *state = DLabel(DStatus(DText(task[@"status"])),17,YES,UIColor.ppTextSecondary);
     UIView *hairline = [UIView new]; hairline.backgroundColor = UIColor.ppSeparator;
@@ -145,6 +146,7 @@ static NSString *DAction(NSString *action) {
 @property(nonatomic,strong) UIStackView *detailActions;
 @property(nonatomic,strong) UIStackView *feedback;
 @property(nonatomic,strong) UIButton *availabilityButton;
+@property(nonatomic,strong) UIButton *utilityButton;
 @property(nonatomic,strong) NSDictionary *availability;
 @property(nonatomic,assign) BOOL pendingAvailability;
 @property(nonatomic,strong) UIStackView *dock;
@@ -155,6 +157,7 @@ static NSString *DAction(NSString *action) {
 @property(nonatomic,assign) BOOL loading;
 @property(nonatomic,assign) BOOL submitting;
 @property(nonatomic,assign) BOOL hasMore;
+@property(nonatomic,assign) BOOL showingAdditionalPages;
 @property(nonatomic,assign) BOOL visible;
 @property(nonatomic,assign) NSUInteger generation;
 @end
@@ -174,6 +177,8 @@ static NSString *DAction(NSString *action) {
     UILabel *heading = DLabel(DL(self.taskID.length ? @"Driver_Task_Title" : @"Driver_Title"),32,YES,UIColor.ppTextPrimary);
     heading.accessibilityTraits |= UIAccessibilityTraitHeader;
     UIButton *utility = DButton(DL(self.taskID.length ? @"Driver_Back" : @"Driver_Notifications"),self.taskID.length ? @"chevron.backward" : @"bell",NO);
+    self.utilityButton = utility;
+    utility.hidden = !self.taskID.length && !self.onNotifications;
     [utility addTarget:self action:@selector(utilityTapped) forControlEvents:UIControlEventTouchUpInside];
     [header addArrangedSubview:utility]; [header addArrangedSubview:caption]; [header addArrangedSubview:heading];
     self.lanes = [[UIStackView alloc] init]; self.lanes.spacing = 8; self.lanes.distribution = UIStackViewDistributionFillEqually;
@@ -208,8 +213,8 @@ static NSString *DAction(NSString *action) {
         [self.dock.leadingAnchor constraintEqualToAnchor:readable.leadingAnchor], [self.dock.trailingAnchor constraintEqualToAnchor:readable.trailingAnchor],
         [self.dock.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor constant:-4]]];
     [self adaptType];
-    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(refresh) name:PPDriverTasksDidChangeNotification object:nil];
-    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(refresh) name:UIApplicationDidBecomeActiveNotification object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(passiveRefresh) name:PPDriverTasksDidChangeNotification object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(passiveRefresh) name:UIApplicationDidBecomeActiveNotification object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(adaptType) name:UIContentSizeCategoryDidChangeNotification object:nil];
 }
 - (void)viewDidLayoutSubviews {
@@ -229,19 +234,29 @@ static NSString *DAction(NSString *action) {
 }
 - (void)adaptType { self.lanes.axis = UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory) ? UILayoutConstraintAxisVertical : UILayoutConstraintAxisHorizontal; [self.table reloadData]; }
 - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; self.visible=YES; [self.refreshTimer invalidate]; [self refresh];
-    __weak typeof(self) weakSelf=self; self.refreshTimer=[NSTimer scheduledTimerWithTimeInterval:30 repeats:YES block:^(NSTimer *timer){ [weakSelf refresh]; }]; }
+    __weak typeof(self) weakSelf=self; self.refreshTimer=[NSTimer scheduledTimerWithTimeInterval:30 repeats:YES block:^(NSTimer *timer){ [weakSelf passiveRefresh]; }]; }
 - (void)viewDidDisappear:(BOOL)animated { [super viewDidDisappear:animated]; self.visible=NO; [self.refreshTimer invalidate]; self.refreshTimer=nil; self.generation++; self.loading=NO; }
 - (void)dealloc { [self.refreshTimer invalidate]; [NSNotificationCenter.defaultCenter removeObserver:self]; }
+- (void)setOnNotifications:(void (^)(void))onNotifications {
+    _onNotifications = [onNotifications copy];
+    self.utilityButton.hidden = !self.taskID.length && !onNotifications;
+}
 - (BOOL)sessionMatches { return self.uid.length && [self.uid isEqualToString:FIRAuth.auth.currentUser.uid]; }
 - (void)utilityTapped { if (self.taskID.length) { if(self.onClose)self.onClose(); } else if(self.onNotifications)self.onNotifications(); }
 - (void)laneTapped:(UIButton *)button {
     if(self.submitting)return; self.generation++; self.loading=NO; self.lane=@[@"active",@"available",@"history"][button.tag];
-    self.tasks=@[]; self.cursor=nil; self.hasMore=NO;
+    self.tasks=@[]; self.cursor=nil; self.hasMore=NO; self.showingAdditionalPages=NO;
     for(UIButton *b in self.lanes.arrangedSubviews){ UIButtonConfiguration *c=b.configuration; c.baseBackgroundColor=b==button ? UIColor.ppPrimary : [UIColor.ppPrimary colorWithAlphaComponent:0.08]; c.baseForegroundColor=b==button ? UIColor.whiteColor : UIColor.ppPrimary; b.configuration=c; b.accessibilityTraits=b==button ? UIAccessibilityTraitButton|UIAccessibilityTraitSelected : UIAccessibilityTraitButton; }
     [self.table reloadData]; [self refresh];
 }
 - (void)refresh { if(!self.visible || UIApplication.sharedApplication.applicationState != UIApplicationStateActive || self.loading || self.submitting || self.pendingCommand || self.presentedViewController)return; [self loadMore:NO]; }
-- (void)loadNext { if(self.hasMore && !self.loading) [self loadMore:YES]; }
+- (void)passiveRefresh {
+    // Keep an expanded run sheet and the driver's reading position intact.
+    // Pull-to-refresh remains an explicit request to reload from the first page.
+    if(self.table.dragging || self.table.decelerating || (!self.taskID.length && self.showingAdditionalPages))return;
+    [self refresh];
+}
+- (void)loadNext { if(self.hasMore && !self.loading && !self.submitting && !self.pendingCommand) [self loadMore:YES]; }
 - (void)clear:(UIStackView *)stack { for(UIView *view in stack.arrangedSubviews.copy){[stack removeArrangedSubview:view];[view removeFromSuperview];} }
 - (void)message:(NSString *)key retry:(BOOL)retry {
     [self clear:self.feedback]; [self.feedback addArrangedSubview:DLabel(DL(key),15,NO,UIColor.ppTextSecondary)];
@@ -252,6 +267,7 @@ static NSString *DAction(NSString *action) {
 - (void)loadMore:(BOOL)more {
     if(![self sessionMatches]){self.tasks=@[];[self.table reloadData];[self renderDock];[self message:@"Driver_Access_Denied" retry:NO];return;}
     self.loading=YES; NSUInteger epoch=++self.generation;
+    [self renderDock];[self renderAvailability];
     NSMutableDictionary *parameters=[NSMutableDictionary dictionary];
     if(self.taskID.length){parameters[@"taskId"]=self.taskID;parameters[@"authority"]=self.authority;}
     else{parameters[@"lane"]=self.lane;if(more && self.cursor)parameters[@"cursor"]=self.cursor;}
@@ -262,7 +278,7 @@ static NSString *DAction(NSString *action) {
         self.loading=NO;[self.table.refreshControl endRefreshing];
         if(error){
             BOOL denied=[error.domain isEqualToString:FIRFunctionsErrorDomain] && (error.code==FIRFunctionsErrorCodePermissionDenied || error.code==FIRFunctionsErrorCodeUnauthenticated || error.code==FIRFunctionsErrorCodeNotFound);
-            if(denied){self.tasks=@[];self.cursor=nil;self.hasMore=NO;[self renderDock];[self.table reloadData];}
+            if(denied){self.tasks=@[];self.cursor=nil;self.hasMore=NO;self.availability=@{};[self renderDock];[self renderAvailability];[self.table reloadData];if(!self.taskID.length)[self updateFooter];}
             [self message:denied ? @"Driver_Access_Denied" : @"Driver_Error_Load" retry:!denied];return;
         }
         NSMutableArray *items=more ? self.tasks.mutableCopy : [NSMutableArray array];
@@ -270,7 +286,7 @@ static NSString *DAction(NSString *action) {
         for(id raw in rows){NSDictionary *task=DDict(raw); if(!DText(task[@"taskId"]).length || ![@[@"FULFILLMENT_V1",@"COMPANY_DELIVERY_REQUEST"] containsObject:DText(task[@"authority"])])continue;
             NSIndexSet *duplicate=[items indexesOfObjectsPassingTest:^BOOL(NSDictionary *other,NSUInteger idx,BOOL *stop){return [other[@"taskId"] isEqual:task[@"taskId"]] && [other[@"authority"] isEqual:task[@"authority"]];}];
             [items removeObjectsAtIndexes:duplicate];[items addObject:task];}
-        self.tasks=items;self.cursor=DDict(data[@"nextCursor"]);self.hasMore=DFlag(data[@"hasMore"]);
+        self.tasks=items;self.cursor=DDict(data[@"nextCursor"]);self.hasMore=DFlag(data[@"hasMore"]);self.showingAdditionalPages=more;
         if(!self.taskID.length){self.availability = DDict(DArray(data[@"availability"]).firstObject);[self renderAvailability];}
         [self clear:self.feedback];[self.table reloadData];[self renderDock];if(!self.taskID.length)[self updateFooter];[self.view setNeedsLayout];
         if(!self.tasks.count)[self message:self.hasMore ? @"Driver_More_Available" : [self.lane isEqualToString:@"available"] ? @"Driver_Empty_New" : [self.lane isEqualToString:@"history"] ? @"Driver_Empty_History" : @"Driver_Empty_Active" retry:NO];
@@ -308,7 +324,10 @@ static NSString *DAction(NSString *action) {
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section{return self.tasks.count;}
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     PPDriverTaskCell *cell=[tableView dequeueReusableCellWithIdentifier:@"task" forIndexPath:indexPath];
-    [cell render:self.tasks[indexPath.row] focused:indexPath.row==0 && [self.lane isEqualToString:@"active"] detail:self.taskID.length>0];return cell;
+    NSDictionary *task=self.tasks[indexPath.row];
+    BOOL finished=[@[@"completed",@"cancelled",@"rejected",@"failed",@"returned"] containsObject:DText(task[@"status"])];
+    BOOL focused=indexPath.row==0 && [self.lane isEqualToString:@"active"] && DFlag(task[@"mine"]) && !finished;
+    [cell render:task focused:focused detail:self.taskID.length>0];return cell;
 }
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];if(self.taskID.length)return;
@@ -335,11 +354,11 @@ static NSString *DAction(NSString *action) {
     if(DFlag(DDict(task[@"cash"])[@"required"]) && !DFlag(DDict(task[@"cash"])[@"collected"])) [self.detailActions addArrangedSubview:DLabel([self cashText:task],16,YES,UIColor.ppTextPrimary)];
     NSArray *actions=DArray(task[@"actions"]);
     if(actions.count){UIButton *action=DButton(DAction(DText(actions.firstObject)),@"checkmark",YES);action.accessibilityIdentifier=@"driver.task.primaryAction";
-        [action addTarget:self action:@selector(confirmAction) forControlEvents:UIControlEventTouchUpInside];action.enabled=!self.submitting && !self.pendingCommand;[self.dock addArrangedSubview:action];}
+        [action addTarget:self action:@selector(confirmAction) forControlEvents:UIControlEventTouchUpInside];action.enabled=!self.loading && !self.submitting && !self.pendingCommand;[self.dock addArrangedSubview:action];}
     else [self.detailActions addArrangedSubview:DLabel(DL([DText(task[@"status"]) isEqualToString:@"delivery_assigned"] ? @"Driver_Wait_Handover" : @"Driver_No_Action"),15,NO,UIColor.ppTextSecondary)];
 }
 - (void)confirmAction {
-    if(self.submitting || self.pendingCommand || !self.tasks.count)return;
+    if(self.loading || self.submitting || self.pendingCommand || !self.tasks.count)return;
     NSDictionary *task=self.tasks.firstObject;NSString *action=DText(DArray(task[@"actions"]).firstObject);if(!action.length)return;
     NSDictionary *proof=DDict(task[@"proofRequirements"]);
     if([action isEqualToString:@"DELIVER"] && [self.authority isEqualToString:@"COMPANY_DELIVERY_REQUEST"] &&
@@ -382,7 +401,10 @@ static NSString *DAction(NSString *action) {
                 if(error.code==FIRFunctionsErrorCodePermissionDenied || error.code==FIRFunctionsErrorCodeUnauthenticated || error.code==FIRFunctionsErrorCodeNotFound){self.tasks=@[];[self.table reloadData];}
                 [self message:@"Driver_Error_Changed" retry:YES];}else [self message:@"Driver_Error_Uncertain" retry:YES];[self renderDock];[self renderAvailability];return;}
         self.pendingCommand=nil;[self renderAvailability];if(!UIAccessibilityIsReduceMotionEnabled())[[UINotificationFeedbackGenerator new] notificationOccurred:UINotificationFeedbackTypeSuccess];
-        UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification,DL(@"Driver_Saved"));[self refresh];
+        UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification,DL(@"Driver_Saved"));
+        // A fast callable can finish before the confirmation alert has dismissed.
+        // Refresh directly so an obsolete primary action never stays enabled.
+        if(self.visible)[self loadMore:NO];
         [NSNotificationCenter.defaultCenter postNotificationName:PPDriverTasksDidChangeNotification object:self];
     };
     if(self.pendingAvailability)[self.service setAvailability:self.pendingCommand completion:completion];
@@ -404,11 +426,14 @@ static NSString *DAction(NSString *action) {
     [UIApplication.sharedApplication openURL:url.URL options:@{} completionHandler:nil];
 }
 - (void)notificationStatus {
+    if(!self.onNotifications)return;
+    NSUInteger epoch=self.generation;
     __weak typeof(self) weakSelf=self;
     [UNUserNotificationCenter.currentNotificationCenter getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings){dispatch_async(dispatch_get_main_queue(),^{
-        __strong typeof(weakSelf) self=weakSelf;if(!self || !self.visible || ![self sessionMatches])return;
+        __strong typeof(weakSelf) self=weakSelf;if(!self || epoch!=self.generation || !self.visible || !self.onNotifications || ![self sessionMatches])return;
         if(settings.authorizationStatus==UNAuthorizationStatusDenied || settings.authorizationStatus==UNAuthorizationStatusNotDetermined){
             UIButton *button=DButton(DL(@"Driver_Enable_Notifications"),@"bell.badge",NO);[button addTarget:self action:@selector(enableNotifications) forControlEvents:UIControlEventTouchUpInside];[self.feedback addArrangedSubview:button];
+            [self.view setNeedsLayout];
         }
     });}];
 }

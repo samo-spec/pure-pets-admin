@@ -815,6 +815,7 @@ struct AdminPOSHistoryView: View {
                 }
             }
             .navigationBarHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
             .toolbarBackground(.hidden, for: .navigationBar)
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
             .environment(\.locale, Locale(identifier: Language.isRTL() ? "ar_QA" : "en_US"))

@@ -268,10 +268,10 @@ extension UIViewController {
 
     public override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .ppBackground
+        view.backgroundColor = .ppSurface
 
         let session = AdminSession(source: PPAdminSessionSnapshot())
-        pp_embedSwiftUI(AdminPOSHistoryView(session: session, onDismiss: { [weak self] in
+        let swiftUIView = AdminPOSHistoryView(session: session, onDismiss: { [weak self] in
             guard let self = self else {
                 PPAdminNavigationFallback.popOrDismiss()
                 return
@@ -282,7 +282,24 @@ extension UIViewController {
             let fastSellVC = AdminPOSFastSellHostingController()
             fastSellVC.hidesBottomBarWhenPushed = true
             nav.pushViewController(fastSellVC, animated: true)
-        }))
+        })
+
+        extendedLayoutIncludesOpaqueBars = true
+        edgesForExtendedLayout = .all
+        let host = UIHostingController(rootView: swiftUIView)
+        host.view.backgroundColor = .clear
+        host.extendedLayoutIncludesOpaqueBars = true
+        host.edgesForExtendedLayout = .all
+        addChild(host)
+        view.addSubview(host.view)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
+        host.didMove(toParent: self)
     }
 
     public override func viewWillAppear(_ animated: Bool) {

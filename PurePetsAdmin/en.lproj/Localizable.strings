@@ -13471,14 +13471,14 @@
 /* Driver workspace — official fleet, personal tasks */
 "Driver_Title" = "My deliveries";
 "Driver_Workspace_Subtitle" = "PURE PETS · ON THE ROAD";
-"Driver_Task_Title" = "Your next stop";
-"Driver_Task_Subtitle" = "ONE DELIVERY · ONE CLEAR NEXT STEP";
+"Driver_Task_Title" = "Delivery details";
+"Driver_Task_Subtitle" = "FROM PICKUP TO HANDOVER";
 "Driver_Back" = "Back";
 "Driver_Notifications" = "Notifications";
 "Driver_Lane_Active" = "My run";
 "Driver_Lane_New" = "New tasks";
 "Driver_Lane_History" = "Finished";
-"Driver_Next" = "NEXT ON YOUR RUN";
+"Driver_Next" = "ON YOUR RUN";
 "Driver_Order_Format" = "Order %@";
 "Driver_Delivery" = "Delivery";
 "Driver_Pickup" = "PICK UP FROM";
@@ -13505,7 +13505,7 @@
 "Driver_Action_Deliver" = "Confirm handover";
 "Driver_Action_Cash" = "Confirm cash received";
 "Driver_Action_Complete" = "Finish delivery";
-"Driver_Loading" = "Finding your next stop…";
+"Driver_Loading" = "Loading your deliveries…";
 "Driver_Error_Load" = "We couldn’t refresh your deliveries. Check your connection and try again.";
 "Driver_Access_Denied" = "This task is no longer available to your account. Your assignment or access may have changed.";
 "Driver_Retry" = "Try again";
