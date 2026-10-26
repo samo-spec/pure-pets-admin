@@ -35,6 +35,11 @@ export default {
         appCheckSiteKey: env.FIREBASE_APPCHECK_SITE_KEY || null});
     }
     if (url.pathname.startsWith('/ws/api/')) return json({error: 'Unknown endpoint'}, 404);
+    // Path aliases for the staff operations workspace; authorization is server-side.
+    if (url.pathname === '/ws/manage' || url.pathname === '/ws/manage/') {
+      url.pathname = '/ws/manage.html';
+      return Response.redirect(url.toString(), 308);
+    }
     const originalPath = url.pathname;
     url.pathname = '/' + originalPath.slice(prefix.length);
     const assetRequest = new Request(url.toString(), request);
