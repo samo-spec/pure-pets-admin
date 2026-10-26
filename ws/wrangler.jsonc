@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pure-pets-wholesale",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-10-20",
+  "workers_dev": true,
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "vars": {
+    "FUNCTIONS_REGION": "us-central1"
+  },
+  "env": {
+    "preview": {
+      "name": "pure-pets-wholesale-preview",
+      "workers_dev": true,
+      "vars": {
+        "FUNCTIONS_REGION": "us-central1"
+      }
+    }
+  }
+}
