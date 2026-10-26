@@ -1,5 +1,5 @@
 /** Pure, audited intent and cart validation shared with the UI. */
-const permittedActions = new Set(['add', 'save', 'cart', 'checkout', 'orders']);
+const permittedActions = new Set(['add', 'save', 'cart', 'checkout', 'orders', 'saved']);
 export function protectedIntent(action, payload = {}) {
   if (!permittedActions.has(action)) throw new Error('Unsupported protected action');
   const result = {action};

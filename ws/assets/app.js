@@ -110,13 +110,16 @@ async function connectBackend() {
     if(!res.ok)throw new Error('Missing Firebase storefront configuration');
     return res.json();
   });
-  const [{initializeApp},{getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut},{getFunctions,httpsCallable}]
+  const [{initializeApp},{getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut},{getFunctions,httpsCallable},{initializeAppCheck,ReCaptchaV3Provider}]
   = await Promise.all([
     import('https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js'),
     import('https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js'),
-    import('https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js')
+    import('https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js'),
+    import('https://www.gstatic.com/firebasejs/11.10.0/firebase-app-check.js')
   ]);
   const app=initializeApp(config.firebase,'pure-pets-wholesale');
+  if(!config.appCheckSiteKey)throw new Error('Missing Firebase App Check site key');
+  initializeAppCheck(app,{provider:new ReCaptchaV3Provider(config.appCheckSiteKey),isTokenAutoRefreshEnabled:true});
   const auth=getAuth(app);
   const functions=getFunctions(app,config.region||'us-central1');
   state.backend={
@@ -169,7 +172,7 @@ function categoryTitle(category) {
 function visibleProducts() {
   let products=state.products.filter(p=>(state.category==='all'||p.category===state.category)
     && (localized(p)+' '+p.id+' '+p.category).toLocaleLowerCase().includes(state.query.toLocaleLowerCase()));
-  if(state.sort!=='featured') products=[...products].sort((a,b)=>(a.groups[0]?.priceMinor||0)-(b.groups[0]?.priceMinor||0) *(state.sort==='priceDesc'?-1:1));
+  if(state.sort!=='featured') products=[...products].sort((a,b)=>((a.groups[0]?.priceMinor||0)-(b.groups[0]?.priceMinor||0)) *(state.sort==='priceDesc'?-1:1));
   return products;
 }
 function renderCatalog() {
@@ -256,6 +259,7 @@ async function runIntent(intent) {
     toast(phrase('saved'));
   } else if(intent.action==='cart'||intent.action==='checkout') openDrawer('cart');
   else if(intent.action==='orders') await openDrawer('orders');
+  else if(intent.action==='saved') await openDrawer('saved');
 }
 function cartLinePrice(line){
   const product=getProduct(line.productId);
@@ -295,7 +299,7 @@ function renderDrawer(){
   else box.innerHTML=state.orders.length?state.orders.map(o=>'<div class="drawer-item"><div><strong>#'+esc(o.orderNumber||o.id)+'</strong><small>'+esc(o.status||'pending_review')+'</small></div><strong>'+esc(money(o.totalMinor,o.currency))+'</strong></div>').join(''):'<div class="empty-state"><strong>'+esc(phrase('ordersEmpty'))+'</strong></div>';
 }
 async function openDrawer(view){
-  if(!state.user)return goAuth(protectedIntent(view==='orders'?'orders':view==='saved'?'save':'cart'));
+  if(!state.user)return goAuth(protectedIntent(view==='orders'?'orders':view==='saved'?'saved':'cart'));
   state.drawer=view; $('buyerDrawer').hidden=false;$('drawerScrim').hidden=false;
   if(view==='orders'){
     try{const data=await call('listWholesaleOrderRequests',{limit:30});state.orders=Array.isArray(data.items)?data.items:[];}
@@ -330,7 +334,7 @@ $('productGrid').addEventListener('click',event=>{
   const open=event.target.closest('[data-open]');if(open)productDetails(open.dataset.open);
 });
 $('cartBtn').addEventListener('click',()=>requireBuyer(protectedIntent('cart')));
-$('savedBtn').addEventListener('click',()=>{if(state.user)openDrawer('saved');else goAuth(protectedIntent('cart'));});
+$('savedBtn').addEventListener('click',()=>{if(state.user)openDrawer('saved');else goAuth(protectedIntent('saved'));});
 $('ordersNav').addEventListener('click',()=>requireBuyer(protectedIntent('orders')));
 $('closeProduct').addEventListener('click',()=>$('productDialog').close());
 $('closeDrawer').addEventListener('click',closeDrawer);

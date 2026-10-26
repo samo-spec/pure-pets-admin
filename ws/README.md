@@ -20,3 +20,5 @@ A separate wholesale customer storefront inside the Admin repository, **not** an
 Set `FIREBASE_CLIENT_CONFIG` in Cloudflare Worker environment to a JSON Firebase web app config (no service-account keys). It is safe for the Firebase web API key and project IDs to reach browsers, **not** privileged credentials. Set `FUNCTIONS_REGION` if different from us-central1.
 
 Production requires a separately reviewed Infra backend deployment, rules review, preview QA, Cloudflare route attachment, and fresh release approval. Client routes outside /ws must remain with the existing Pages site. Never widen the staff-only `processTransaction` callable.
+
+Set `FIREBASE_APPCHECK_SITE_KEY` to a registered Firebase Web App Check reCAPTCHA v3 site key before preview. The Firebase callables enforce App Check; sign-in and browsing must fail closed if no valid site key is configured.

@@ -31,7 +31,8 @@ export default {
       if (!firebase || !firebase.apiKey || !firebase.authDomain || !firebase.projectId || !firebase.appId) {
         return json({error: 'Wholesale preview needs Firebase client configuration'}, 503);
       }
-      return json({firebase, region: env.FUNCTIONS_REGION || 'us-central1'});
+      return json({firebase, region: env.FUNCTIONS_REGION || 'us-central1',
+        appCheckSiteKey: env.FIREBASE_APPCHECK_SITE_KEY || null});
     }
     if (url.pathname.startsWith('/ws/api/')) return json({error: 'Unknown endpoint'}, 404);
     const originalPath = url.pathname;
