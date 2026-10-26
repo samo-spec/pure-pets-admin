@@ -1,4 +1,3 @@
-import {safeImageUrl} from './state.js';
 const el=(id)=>document.getElementById(id);
 const lang={current:'ar'};
 const labels={

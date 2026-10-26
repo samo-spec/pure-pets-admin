@@ -27,3 +27,8 @@ test('image URLs allow only HTTPS, not script or data schemes', () => {
   assert.equal(safeImageUrl('javascript:alert(1)'),'');
   assert.equal(safeImageUrl('https://example.com/cat.png'),'https://example.com/cat.png');
 });
+
+test('saved workspace is an authenticated continuation intent',()=>{
+  assert.deepEqual(protectedIntent('saved'),{action:'saved'});
+  assert.throws(()=>protectedIntent('admin'));
+});

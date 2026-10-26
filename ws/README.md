@@ -22,3 +22,9 @@ Set `FIREBASE_CLIENT_CONFIG` in Cloudflare Worker environment to a JSON Firebase
 Production requires a separately reviewed Infra backend deployment, rules review, preview QA, Cloudflare route attachment, and fresh release approval. Client routes outside /ws must remain with the existing Pages site. Never widen the staff-only `processTransaction` callable.
 
 Set `FIREBASE_APPCHECK_SITE_KEY` to a registered Firebase Web App Check reCAPTCHA v3 site key before preview. The Firebase callables enforce App Check; sign-in and browsing must fail closed if no valid site key is configured.
+
+## Staff operations
+
+Staff review: `/ws/manage.html` (same deployed Worker, separate protected UI). Firebase staff login is validated by `listWholesaleStaffBranches` and branch-specific `listWholesaleStaffRequests`; review decisions use `reviewWholesaleStaffRequest`. This does not perform POS checkout or collect money. Buyer cancellations use `cancelMyWholesaleRequest`.
+
+GitHub Action `ws-checks.yml` runs syntax, focused unit tests, a static build and a production-route guard.

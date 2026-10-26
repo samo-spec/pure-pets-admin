@@ -27,7 +27,7 @@ const t = {
     authFailed:'تعذر تسجيل الدخول. تحقق من بياناتك أو إعدادات التسجيل.',sessionFailed:'تعذر التحقق من الحساب.',
     processing:'يتم التنفيذ...',requestFailed:'تعذر إرسال الطلب. تحقق من الكمية أو الأسعار وأعد المحاولة.',
     noProducts:'لا تتوفر منتجات جملة منشورة حالياً.',signupConfirm:'أنشئ حسابك لتتابع الشراء.',welcome:'حسابي',open:'فتح',status:'الحالة',
-    units:'قطعة',verified:'سعر الجملة',noBranch:'اختر الفرع'
+    units:'قطعة',verified:'سعر الجملة',noBranch:'اختر الفرع',cancelRequest:'إلغاء الطلب',cancelConfirm:'هل تريد إلغاء طلب الجملة المعلق؟',cancelSuccess:'تم إلغاء الطلب',increase:'زيادة الكمية',decrease:'تقليل الكمية'
   },
   en: {
     top:'The Pure Pets business gateway',wholesale:'A dedicated wholesale experience',navCatalog:'Products',navOrders:'My orders',
@@ -53,7 +53,7 @@ const t = {
     authFailed:'Sign in failed. Check your details or registration settings.',sessionFailed:'Could not verify your account.',
     processing:'Working...',requestFailed:'Could not submit the request. Refresh prices or stock and retry.',
     noProducts:'No published wholesale products yet.',signupConfirm:'Create your account to continue.',welcome:'My account',open:'Open',status:'Status',
-    units:'units',verified:'Wholesale price',noBranch:'Select branch'
+    units:'units',verified:'Wholesale price',noBranch:'Select branch',cancelRequest:'Cancel request',cancelConfirm:'Cancel this pending wholesale request?',cancelSuccess:'Request cancelled',increase:'Increase quantity',decrease:'Decrease quantity'
   }
 };
 const state = {
@@ -276,7 +276,7 @@ function formatDrawerRows(lines,mode) {
     const price=mode==='cart'&&group?money(group.priceMinor*line.quantity,product.currency):'';
     return '<div class="drawer-item"><div><strong>'+esc(label)+'</strong><small>'+
       (mode==='cart'?esc(String(line.quantity)+' × '+(group?localized(group):line.groupId)):'')+'</small>'+
-      '<small>'+esc(price)+'</small></div><button type="button" data-remove="'+mode+':'+index+'" aria-label="'+esc(phrase('remove'))+'">×</button></div>';
+      '<small>'+esc(price)+'</small></div><div class="drawer-actions">'+(mode==='cart'?'<button type="button" data-adjust="'+index+':-1" aria-label="'+esc(phrase('decrease'))+'">−</button><button type="button" data-adjust="'+index+':1" aria-label="'+esc(phrase('increase'))+'">+</button>':'<button type="button" data-view="'+esc(id)+'" aria-label="'+esc(phrase('details'))+'">↗</button>')+'<button type="button" data-remove="'+mode+':'+index+'" aria-label="'+esc(phrase('remove'))+'">×</button></div></div>';
   }).join('');
 }
 function renderDrawer(){
@@ -296,7 +296,7 @@ function renderDrawer(){
       '<p class="notice">'+esc(phrase('draftNote'))+'</p>':'');
     $('checkoutBtn')?.addEventListener('click',()=>submitOrder());
   } else if(view==='saved') box.innerHTML=formatDrawerRows(state.saved,'saved');
-  else box.innerHTML=state.orders.length?state.orders.map(o=>'<div class="drawer-item"><div><strong>#'+esc(o.orderNumber||o.id)+'</strong><small>'+esc(o.status||'pending_review')+'</small></div><strong>'+esc(money(o.totalMinor,o.currency))+'</strong></div>').join(''):'<div class="empty-state"><strong>'+esc(phrase('ordersEmpty'))+'</strong></div>';
+  else box.innerHTML=state.orders.length?state.orders.map(o=>'<div class="drawer-item"><div><strong>#'+esc(o.orderNumber||o.id)+'</strong><small>'+esc(o.status||'pending_review')+'</small><small>'+esc(money(o.totalMinor,o.currency))+'</small></div>'+ (o.status==='pending_review'?'<button type="button" data-cancel="'+esc(o.id)+'" title="'+esc(phrase('cancelRequest'))+'">'+esc(phrase('cancelRequest'))+'</button>':'')+'</div>').join(''):'<div class="empty-state"><strong>'+esc(phrase('ordersEmpty'))+'</strong></div>';
 }
 async function openDrawer(view){
   if(!state.user)return goAuth(protectedIntent(view==='orders'?'orders':view==='saved'?'saved':'cart'));
@@ -363,6 +363,33 @@ $('authForm').addEventListener('submit',async event=>{
   finally{button.disabled=false;button.textContent=phrase('continue');}
 });
 $('drawerContent').addEventListener('click',async event=>{
+  const view=event.target.closest('[data-view]');
+  if(view){const p=getProduct(view.dataset.view);if(p){closeDrawer();productDetails(p.id);}else toast(phrase('comingSoon'));return;}
+  const cancel=event.target.closest('[data-cancel]');
+  if(cancel){
+    if(!state.user||!window.confirm(phrase('cancelConfirm')))return;
+    cancel.disabled=true;
+    try{
+      const response=await call('cancelMyWholesaleRequest',{requestId:cancel.dataset.cancel});
+      if(!response?.ok)throw new Error('Cancellation not acknowledged');
+      toast(phrase('cancelSuccess'));await openDrawer('orders');
+    }catch(err){console.warn('Cancellation failed',err?.code||err?.message);toast(phrase('requestFailed'));cancel.disabled=false;}
+    return;
+  }
+  const change=event.target.closest('[data-adjust]');
+  if(change){
+    const [index,delta]=change.dataset.adjust.split(':').map(Number);
+    if(!Number.isSafeInteger(index)||!Number.isSafeInteger(delta))return;
+    const cart=state.cart.map(line=>({...line}));
+    if(!cart[index])return;
+    cart[index].quantity+=delta;
+    if(cart[index].quantity<=0)cart.splice(index,1);
+    else if(cart[index].quantity>10000){toast(phrase('requestFailed'));return;}
+    change.disabled=true;
+    try{await persistBuyer(cart,state.saved);}
+    catch(err){change.disabled=false;toast(phrase('saveFailed'));}
+    return;
+  }
   const node=event.target.closest('[data-remove]');if(!node)return;
   const [mode,indexText]=node.dataset.remove.split(':');const index=Number(indexText);
   try{
