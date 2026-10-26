@@ -3630,6 +3630,7 @@ struct AdminPOSFastSellView: View {
     @State private var isBranchPickerVisible = false
     @State private var showsReservedLivePets = false
     @State private var showsDeepLogInspector = false
+    @State private var showsWholesaleInbox = false
     @State private var showsCustomerPicker = false
     @State private var showsItemPicker = false
     @State private var isShowingScanner = false
@@ -3869,6 +3870,9 @@ struct AdminPOSFastSellView: View {
         }
         .sheet(isPresented: $showsDeepLogInspector) {
             POSDeepLogInspectorView()
+        }
+        .sheet(isPresented: $showsWholesaleInbox) {
+            POSWholesaleRequestsSheet()
         }
         .sheet(isPresented: $showsItemPicker) {
             itemPickerSheet
@@ -4425,6 +4429,19 @@ struct AdminPOSFastSellView: View {
                     }
                 }
                 .disabled(channel == .wholesale && !viewModel.canSellWholesale)
+            }
+            if viewModel.canSellWholesale {
+                Divider()
+                Button {
+                    dismissKeyboard()
+                    showsWholesaleInbox = true
+                } label: {
+                    Label(
+                        Language.isRTL() ? "طلبات الجملة الواردة" : "Incoming wholesale requests",
+                        systemImage: "shippingbox.and.arrow.backward"
+                    )
+                }
+                .accessibilityIdentifier("admin.pos.wholesale.requests")
             }
         } label: {
             HStack(spacing: AdminSpacing.sm) {
@@ -11867,6 +11884,282 @@ struct POSPriceReconciliationSheet: View {
                     .frame(height: 32)
             }
             .buttonStyle(.plain)
+        }
+    }
+}
+
+
+// MARK: - Customer Wholesale Request Inbox
+// Uses the same canonical Infra permission/scope boundary as the web staff desk.
+// Accepting a request is NOT a POS sale, inventory reservation, or payment.
+private struct POSWholesaleRequestsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var branches: [WholesaleBranch] = []
+    @State private var branchID = ""
+    @State private var requests: [WholesaleRequest] = []
+    @State private var isLoading = false
+    @State private var isReviewing = false
+    @State private var errorText: String?
+    @State private var pendingDecision: ReviewDecision?
+
+    private let accent = Color(red: 0.79, green: 0.15, blue: 0.33)
+    private let darkInk = Color(red: 0.08, green: 0.19, blue: 0.2)
+    private var rtl: Bool { Language.isRTL() }
+
+    private struct WholesaleBranch: Identifiable {
+        let id: String
+        let nameAr: String
+        let nameEn: String
+        var name: String { Language.isRTL() ? (nameAr.isEmpty ? nameEn : nameAr) : (nameEn.isEmpty ? nameAr : nameEn) }
+    }
+
+    private struct WholesaleRequest: Identifiable {
+        let id: String
+        let ownerUID: String
+        let status: String
+        let totalMinor: Int
+        let currency: String
+        let items: Int
+        var shortCode: String { String(id.prefix(10)).uppercased() }
+    }
+
+    private struct ReviewDecision {
+        let request: WholesaleRequest
+        let action: String
+    }
+
+    private func call(_ name: String, payload: [String: Any] = [:], completion: @escaping (Result<[String: Any], Error>) -> Void) {
+        Functions.functions(region: "us-central1").httpsCallable(name).call(payload) { result, error in
+            DispatchQueue.main.async {
+                if let error {
+                    completion(.failure(error))
+                    return
+                }
+                completion(.success(result?.data as? [String: Any] ?? [:]))
+            }
+        }
+    }
+
+    private func loadBranches() {
+        isLoading = true
+        errorText = nil
+        call("listWholesaleStaffBranches") { result in
+            isLoading = false
+            switch result {
+            case .success(let data):
+                let values = data["branches"] as? [[String: Any]] ?? []
+                branches = values.compactMap { item in
+                    guard let id = item["id"] as? String, !id.isEmpty else { return nil }
+                    return WholesaleBranch(
+                        id: id,
+                        nameAr: item["nameAr"] as? String ?? "",
+                        nameEn: item["nameEn"] as? String ?? ""
+                    )
+                }
+                if let first = branches.first, !branches.contains(where: { $0.id == branchID }) {
+                    branchID = first.id
+                }
+                if branches.isEmpty {
+                    errorText = rtl ? "لا توجد فروع مصرح لك بمراجعة طلبات الجملة فيها." : "No authorized wholesale branches available."
+                }
+            case .failure:
+                errorText = rtl ? "تعذر تحميل الفروع. تحقق من اتصالك وصلاحياتك." : "Unable to load branches. Check connectivity and permissions."
+            }
+        }
+    }
+
+    private func loadRequests() {
+        guard !branchID.isEmpty else { return }
+        isLoading = true
+        errorText = nil
+        call("listWholesaleStaffRequests", payload: [
+            "branchId": branchID,
+            "statuses": ["pending_review", "accepted_for_processing"],
+            "limit": 50
+        ]) { result in
+            isLoading = false
+            switch result {
+            case .success(let data):
+                let values = data["items"] as? [[String: Any]] ?? []
+                requests = values.compactMap { item in
+                    guard let id = item["id"] as? String else { return nil }
+                    return WholesaleRequest(
+                        id: id,
+                        ownerUID: item["ownerUid"] as? String ?? "",
+                        status: item["status"] as? String ?? "pending_review",
+                        totalMinor: (item["totalMinor"] as? NSNumber)?.intValue ?? 0,
+                        currency: item["currency"] as? String ?? "QAR",
+                        items: (item["items"] as? [[String: Any]])?.count ?? 0
+                    )
+                }
+            case .failure:
+                requests = []
+                errorText = rtl ? "تعذر تحميل الطلبات." : "Could not load wholesale requests."
+            }
+        }
+    }
+
+    private func completeReview(_ review: ReviewDecision) {
+        guard !isReviewing, !branchID.isEmpty else { return }
+        isReviewing = true
+        call("reviewWholesaleStaffRequest", payload: [
+            "branchId": branchID,
+            "requestId": review.request.id,
+            "decision": review.action,
+            "note": ""
+        ]) { result in
+            isReviewing = false
+            switch result {
+            case .success:
+                loadRequests()
+            case .failure:
+                errorText = rtl ? "لم ينجح اعتماد القرار. تحقق من الحالة والصلاحيات." : "Review failed. Refresh and confirm request permissions."
+            }
+        }
+    }
+
+    private func requestCard(_ request: WholesaleRequest) -> some View {
+        VStack(alignment: .leading, spacing: 15) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("#" + request.shortCode)
+                        .font(.system(.headline, design: .rounded, weight: .bold))
+                        .foregroundStyle(darkInk)
+                    Text(rtl ? "عدد البنود: \(request.items)" : "\(request.items) line items")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(request.status == "pending_review"
+                     ? (rtl ? "قيد المراجعة" : "Pending review")
+                     : (rtl ? "بانتظار استكمال البيع" : "Awaiting staff checkout"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(accent)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(accent.opacity(0.09), in: Capsule())
+            }
+            Divider()
+            HStack {
+                Text(String(format: "%.2f %@", Double(request.totalMinor) / 100.0, request.currency))
+                    .font(.system(.title3, design: .rounded, weight: .bold))
+                    .foregroundStyle(darkInk)
+                Spacer()
+                if request.status == "pending_review" {
+                    Button(rtl ? "رفض" : "Reject") {
+                        pendingDecision = ReviewDecision(request: request, action: "reject")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isReviewing)
+                    Button(rtl ? "قبول للمراجعة" : "Accept for processing") {
+                        pendingDecision = ReviewDecision(request: request, action: "accept")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(darkInk)
+                    .disabled(isReviewing)
+                }
+            }
+        }
+        .padding(18)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color(uiColor: .separator).opacity(0.35)))
+        .accessibilityElement(children: .contain)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(rtl ? "طلبات العملاء بالجملة" : "Customer wholesale requests")
+                        .font(.title2.weight(.bold))
+                    Text(rtl
+                         ? "قبول الطلب لا يحجز مخزوناً ولا ينفذ عملية دفع. أكمل البيع من خلال نقطة البيع المعتادة."
+                         : "Accepting a request does not hold stock or collect payment. Complete the sale through regular POS.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !branches.isEmpty {
+                        Picker(rtl ? "الفرع" : "Branch", selection: $branchID) {
+                            ForEach(branches) { branch in
+                                Text(branch.name).tag(branch.id)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .tint(darkInk)
+                        .accessibilityIdentifier("admin.pos.wholesale.branch")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+
+                if isLoading {
+                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            if let errorText {
+                                Text(errorText).font(.subheadline).foregroundStyle(accent).padding(16)
+                            } else if requests.isEmpty {
+                                ContentUnavailableView(
+                                    rtl ? "لا توجد طلبات جملة" : "No wholesale requests",
+                                    systemImage: "shippingbox",
+                                    description: Text(rtl ? "طلبات الجملة الجديدة ستظهر هنا." : "New customer wholesale requests will appear here.")
+                                )
+                                .padding(.top, 70)
+                            } else {
+                                ForEach(requests) { request in requestCard(request) }
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 28)
+                    }
+                    .refreshable { loadRequests() }
+                }
+            }
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationTitle(rtl ? "مراجعة الجملة" : "Wholesale inbox")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(rtl ? "إغلاق" : "Close") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        if branches.isEmpty { loadBranches() } else { loadRequests() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .disabled(isLoading || isReviewing)
+                    .accessibilityLabel(rtl ? "تحديث طلبات الجملة" : "Refresh wholesale requests")
+                }
+            }
+            .onAppear { loadBranches() }
+            .onChange(of: branchID) { _ in loadRequests() }
+            .confirmationDialog(
+                rtl ? "تأكيد قرار مراجعة الجملة" : "Confirm wholesale review",
+                isPresented: Binding(
+                    get: { pendingDecision != nil },
+                    set: { if !$0 { pendingDecision = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                if let review = pendingDecision {
+                    Button(
+                        review.action == "reject"
+                          ? (rtl ? "رفض الطلب" : "Reject request")
+                          : (rtl ? "قبول للمعالجة" : "Accept for processing"),
+                        role: review.action == "reject" ? .destructive : nil
+                    ) {
+                        pendingDecision = nil
+                        completeReview(review)
+                    }
+                }
+                Button(rtl ? "إلغاء" : "Cancel", role: .cancel) {
+                    pendingDecision = nil
+                }
+            } message: {
+                Text(rtl ? "لن يتم إنشاء إيصال بيع أو حجز مخزون." : "No sale, payment or inventory hold will be created.")
+            }
         }
     }
 }
