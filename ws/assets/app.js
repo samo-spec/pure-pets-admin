@@ -319,9 +319,19 @@ async function submitOrder(){
   try{
     const result=await call('createWholesaleOrderRequest',{commandId:state.orderCommandId,branchId,items:state.cart});
     if(!result?.ok || !result?.requestId)throw new Error('Order not acknowledged');
+    // The server acknowledged an immutable request. From this point forward,
+    // cart cleanup and history refresh must never report order submission failure
+    // or cause a second request with a fresh command ID.
     state.orderCommandId=null;
-    await persistBuyer([],state.saved);
-    toast(phrase('requestSent'));closeDrawer();await openDrawer('orders');
+    state.cart=[];
+    $('cartCount').textContent='0';
+    closeDrawer();
+    toast(phrase('requestSent'));
+    try { await persistBuyer([],state.saved); }
+    catch (cleanupError) {
+      console.warn('Request accepted, but cart cleanup needs retry',cleanupError?.code);
+    }
+    await openDrawer('orders');
   }catch(error){console.warn('Wholesale order request rejected',error?.code||error?.message);toast(phrase('requestFailed'));}
   finally{state.submitting=false;renderDrawer();}
 }

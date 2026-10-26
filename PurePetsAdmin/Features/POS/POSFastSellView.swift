@@ -11913,13 +11913,23 @@ private struct POSWholesaleRequestsSheet: View {
         var name: String { Language.isRTL() ? (nameAr.isEmpty ? nameEn : nameAr) : (nameEn.isEmpty ? nameAr : nameEn) }
     }
 
+    private struct WholesaleLine {
+        let productId: String
+        let nameAr: String
+        let nameEn: String
+        let groupId: String
+        let quantity: Int
+        let unitsPerGroup: Int
+        var name: String { Language.isRTL() ? (nameAr.isEmpty ? nameEn : nameAr) : (nameEn.isEmpty ? nameAr : nameEn) }
+    }
+
     private struct WholesaleRequest: Identifiable {
         let id: String
         let ownerUID: String
         let status: String
         let totalMinor: Int
         let currency: String
-        let items: Int
+        let lines: [WholesaleLine]
         var shortCode: String { String(id.prefix(10)).uppercased() }
     }
 
@@ -11989,7 +11999,16 @@ private struct POSWholesaleRequestsSheet: View {
                         status: item["status"] as? String ?? "pending_review",
                         totalMinor: (item["totalMinor"] as? NSNumber)?.intValue ?? 0,
                         currency: item["currency"] as? String ?? "QAR",
-                        items: (item["items"] as? [[String: Any]])?.count ?? 0
+                        lines: (item["items"] as? [[String: Any]] ?? []).map { line in
+                            WholesaleLine(
+                                productId: line["productId"] as? String ?? "",
+                                nameAr: line["nameAr"] as? String ?? "",
+                                nameEn: line["nameEn"] as? String ?? "",
+                                groupId: line["groupId"] as? String ?? "",
+                                quantity: (line["groupQuantity"] as? NSNumber)?.intValue ?? 0,
+                                unitsPerGroup: (line["unitsPerGroup"] as? NSNumber)?.intValue ?? 1
+                            )
+                        }
                     )
                 }
             case .failure:
@@ -12025,7 +12044,7 @@ private struct POSWholesaleRequestsSheet: View {
                     Text("#" + request.shortCode)
                         .font(.system(.headline, design: .rounded, weight: .bold))
                         .foregroundStyle(darkInk)
-                    Text(rtl ? "عدد البنود: \(request.items)" : "\(request.items) line items")
+                    Text(rtl ? "عدد البنود: \(request.lines.count)" : "\(request.lines.count) line items")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -12040,6 +12059,25 @@ private struct POSWholesaleRequestsSheet: View {
                     .background(accent.opacity(0.09), in: Capsule())
             }
             Divider()
+            VStack(alignment: .leading, spacing: 9) {
+                ForEach(request.lines.indices, id: \.self) { index in
+                    let line = request.lines[index]
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(line.name.isEmpty ? line.productId : line.name)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(darkInk)
+                            Text(line.groupId)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text("\(line.quantity) × \(line.unitsPerGroup)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
             HStack {
                 Text(String(format: "%.2f %@", Double(request.totalMinor) / 100.0, request.currency))
                     .font(.system(.title3, design: .rounded, weight: .bold))
