@@ -74,3 +74,22 @@ Next coding increment: staff operations UI at /ws/manage.html, buyer cancellatio
     - Route: `https://pure-pets.net/ws/`
     - Verified HTTP 308 redirect from `/ws` to `/ws/` and HTTP 200 on `/ws/`.
   - Synced preview deployment: `https://pure-pets-wholesale-preview.long-meadow-a519.workers.dev/ws/`.
+
+## 2026-10-27 — Omni-Auth Upgrade & `/ws/mng` Production Deployment
+
+- **Omni-Auth Gateway Matrix across Storefront (`/ws/`) & Staff Desk (`/ws/mng` / `/ws/manage.html`)**:
+  - Google Sign-In (`GoogleAuthProvider` via popup with account selection).
+  - Apple Sign-In (`OAuthProvider('apple.com')` via popup with `email` and `name` scopes).
+  - Mobile Number SMS OTP (Qatar `+974` auto-formatting & E.164 normalization, invisible reCAPTCHA, 6-digit OTP verification, resend timer).
+  - Email & Password credential sign-in.
+- **Route Alias Added**:
+  - `/ws/mng`, `/ws/mng/`, `/mng`, `/mng/` added as canonical aliases to `/ws/manage.html`.
+  - Copied `manage.html` as `mng.html` in static bundle.
+- **Production Deployment Verified**:
+  - Worker: `pure-pets-wholesale`
+  - Version ID: `f7b51bac-52a2-4ad5-ac0c-b14abb325500`
+  - Routes: `pure-pets.net/ws*`, `www.pure-pets.net/ws*`
+  - Verified live:
+    - `https://pure-pets.net/ws/mng` -> HTTP 308 -> `https://pure-pets.net/ws/manage.html` -> HTTP 200 OK.
+    - Verified live markup contains `#managerGoogleBtn`, `#managerAppleBtn`, `#managerPhoneInput`, `#managerAuthForm`.
+

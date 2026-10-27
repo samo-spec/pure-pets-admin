@@ -6,7 +6,7 @@ const root = resolve(import.meta.dirname, '..');
 const dist = resolve(root, 'dist');
 const files = {};
 
-for (const page of ['index.html', 'manage.html']) {
+for (const page of ['index.html', 'manage.html', 'mng.html']) {
   files['/' + page] = {
     type: 'text/html; charset=utf-8',
     body: readFileSync(resolve(dist, page), 'utf8')

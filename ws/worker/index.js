@@ -26,7 +26,8 @@ export default {
       url.pathname = prefix;
       return Response.redirect(url.toString(), 308);
     }
-    if (url.pathname === '/manage' || url.pathname === '/manage/' || url.pathname === '/manage.html') {
+    if (url.pathname === '/manage' || url.pathname === '/manage/' || url.pathname === '/manage.html' ||
+        url.pathname === '/mng' || url.pathname === '/mng/' || url.pathname === '/mng.html') {
       url.pathname = '/ws/manage.html';
       return Response.redirect(url.toString(), 308);
     }
@@ -44,7 +45,8 @@ export default {
     }
     if (url.pathname.startsWith('/ws/api/')) return json({error: 'Unknown endpoint'}, 404);
     // Path aliases for the staff operations workspace; authorization is server-side.
-    if (url.pathname === '/ws/manage' || url.pathname === '/ws/manage/') {
+    if (url.pathname === '/ws/manage' || url.pathname === '/ws/manage/' ||
+        url.pathname === '/ws/mng' || url.pathname === '/ws/mng/' || url.pathname === '/ws/mng.html') {
       url.pathname = '/ws/manage.html';
       return Response.redirect(url.toString(), 308);
     }

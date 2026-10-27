@@ -5,6 +5,7 @@ const out = resolve(root, 'dist');
 rmSync(out, {recursive: true, force: true});
 mkdirSync(out, {recursive: true});
 for (const page of ['index.html', 'manage.html']) copyFileSync(resolve(root, page), resolve(out, page));
+copyFileSync(resolve(root, 'manage.html'), resolve(out, 'mng.html'));
 if (!existsSync(resolve(root, 'assets'))) throw new Error('Missing assets');
 cpSync(resolve(root, 'assets'), resolve(out, 'assets'), {recursive: true});
 console.log('Wholesale static site built: ' + out);

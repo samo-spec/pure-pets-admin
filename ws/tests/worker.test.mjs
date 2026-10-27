@@ -28,4 +28,8 @@ test('asset proxy maps the prefix and applies security headers',async()=>{
 test('staff workspace aliases resolve to the staff page',async()=>{
  const response=await worker.fetch(request('/ws/manage/'),{});
  assert.equal(response.status,308);assert.equal(response.headers.get('location'),'https://example.com/ws/manage.html');
+ const mngResponse=await worker.fetch(request('/ws/mng'),{});
+ assert.equal(mngResponse.status,308);assert.equal(mngResponse.headers.get('location'),'https://example.com/ws/manage.html');
+ const mngSlashResponse=await worker.fetch(request('/ws/mng/'),{});
+ assert.equal(mngSlashResponse.status,308);assert.equal(mngSlashResponse.headers.get('location'),'https://example.com/ws/manage.html');
 });
