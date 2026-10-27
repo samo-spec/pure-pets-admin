@@ -41,3 +41,12 @@ Next coding increment: staff operations UI at /ws/manage.html, buyer cancellatio
 - Validation: 13 Node tests pass, build and syntax checks pass, 10 temporary DOM interaction assertions pass with synthetic catalog/buyer data (no Firebase writes). Cloud browser verified Arabic/English storefront and guest cart sign-in gate; Cloudflare rendering verified the 390×844 mobile view. Product/cart/order UI checks with fixtures do not prove real Firebase integration.
 - Tool limits: 12ui improve could not capture because its browser runtime was unavailable; browser installation download failed. Built-in image generation supplied the visual direction; actual app logo replaces the illustrative pet photography and invented brand mark from the concept.
 - Updated existing Workers.dev preview only. Firebase client configuration and App Check site key remain absent (settings expose only FUNCTIONS_REGION). Real catalog/auth/order E2E remains blocked; preview reports catalog unavailable and does not simulate order success. pure-pets.net/ws is not attached.
+
+## 2026-10-27 — Buying desk implementation
+
+- Rebuilt storefront and staff workspace around the existing Pure Pets identity: original pet portrait, local fonts/icons, responsive product grid/compact view, pack composer with live quote, desktop order desk, mobile cart dock, and a shared buyer panel.
+- Preserved existing Auth/App Check, callable contracts, permissions and request-only semantics. Added translated request statuses, explicit accept/reject confirmation and inline staff service errors.
+- Fixed incorrect sorting against non-default packs, misleading incomplete/mixed-currency cart totals, failed catalog retry, hidden pagination errors, overlapping cart writes, stale staff branch results and stale HTML caching for the staff page.
+- Validation: 27 Node/DOM tests and build pass; see DESIGN_DESK.md. Real Firebase E2E is still blocked by missing preview configuration. No production routes or native iOS code changed.
+- Updated the existing isolated Workers.dev preview. Code is proposed from `codex/ws-purchase-desk` into `ws`; release remains separate from review.
+- Next: review/merge the PR into `ws`, configure approved staging Firebase + App Check and validate real guest/buyer/staff flows before production release.

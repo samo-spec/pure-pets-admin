@@ -5,8 +5,10 @@ const root=resolve(import.meta.dirname,'..');
 const files={};
 for(const page of ['index.html','manage.html'])files['/'+page]={type:'text/html; charset=utf-8',body:readFileSync(resolve(root,'dist',page),'utf8')};
 for(const file of readdirSync(resolve(root,'dist/assets'))){
- const type=file.endsWith('.png')?'image/png':file.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8';
- const binary=file.endsWith('.png');
+ const ext=file.split('.').pop();
+ const mime={png:'image/png',webp:'image/webp',svg:'image/svg+xml',woff2:'font/woff2',css:'text/css; charset=utf-8',js:'text/javascript; charset=utf-8'};
+ const type=mime[ext];if(!type)throw new Error('Unsupported preview asset: '+file);
+ const binary=['png','webp','woff2'].includes(ext);
  files['/assets/'+file]={type,body:readFileSync(resolve(root,'dist/assets',file),binary?'base64':'utf8'),binary};
 }
 const canonical=readFileSync(resolve(root,'worker/index.js'),'utf8');
