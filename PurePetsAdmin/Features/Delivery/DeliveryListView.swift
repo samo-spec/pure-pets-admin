@@ -616,15 +616,19 @@ private final class DeliveryCommandCenterViewModel: ObservableObject {
         isExecuting = true
         commandIncident = nil
         let commandID = "admin-ios-driver-\(pending.action.lowercased())-\(UUID().uuidString)"
+        let latestDriver = self.drivers.first(where: { $0.uid == pending.driver.uid })
+        let currentMember = self.companyMembers.first(where: { $0.uid == pending.driver.uid })
+        let expectedRevision = max(pending.driver.revision, max(latestDriver?.revision ?? 0, currentMember?.revision ?? 0))
         PPDeliveryService.shared().executeDriver(action: pending.action,
                                                  driverUID: pending.driver.uid,
-                                                 expectedRevision: pending.driver.revision,
+                                                 expectedRevision: expectedRevision,
                                                  commandID: commandID) { [weak self] error in
             Task { @MainActor in
                 guard let self else { return }
                 self.isExecuting = false
                 if let error {
                     self.commandIncident = DeliveryIncident.classify(error as NSError)
+                    self.load(refresh: true)
                     completion?(false)
                     return
                 }
@@ -2519,18 +2523,22 @@ private struct DeliveryDriverDetailSheet: View {
     let driver: PPDeliveryDriverRecord
     let onDismiss: () -> Void
 
+    private var effectiveDriver: PPDeliveryDriverRecord {
+        viewModel.drivers.first(where: { $0.uid == driver.uid }) ?? driver
+    }
+
     private var member: PPDeliveryCompanyMemberRecord? {
-        viewModel.member(for: driver.uid)
+        viewModel.member(for: effectiveDriver.uid)
     }
 
     private var phone: String {
         let memberPhone = member?.phone.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return memberPhone.isEmpty ? driver.phone : memberPhone
+        return memberPhone.isEmpty ? effectiveDriver.phone : memberPhone
     }
 
     private var isAvailable: Bool {
-        driver.accountStatus.uppercased() == "ACTIVE" &&
-            driver.canReceiveAssignments &&
+        effectiveDriver.accountStatus.uppercased() == "ACTIVE" &&
+            effectiveDriver.canReceiveAssignments &&
             (member?.available ?? true)
     }
 
@@ -2546,7 +2554,9 @@ private struct DeliveryDriverDetailSheet: View {
                         operationalSummary
                         identityCard
                         if let incident = viewModel.memberIncident ?? viewModel.commandIncident {
-                            DeliveryIncidentPanel(incident: incident, retry: nil)
+                            DeliveryIncidentPanel(incident: incident, retry: {
+                                viewModel.load(refresh: true)
+                            })
                         }
                         if let errorKey = viewModel.memberErrorKey {
                             Label(deliveryText(errorKey), systemImage: "exclamationmark.triangle.fill")
@@ -2560,9 +2570,11 @@ private struct DeliveryDriverDetailSheet: View {
                         contactActions
                         managementActions
                     }
-                    .padding(18)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 14)
                     .padding(.bottom, 30)
                 }
+                .clipped()
                 if viewModel.isExecuting {
                     AdminLoadingOverlay(message: deliveryText("Delivery_Command_Applying"))
                         .background(Color.black.opacity(0.08))
@@ -2602,6 +2614,7 @@ private struct DeliveryDriverDetailSheet: View {
         .overlay(alignment: .bottom) {
             Divider().background(AdminSurface.hairline)
         }
+        .shadow(color: Color.black.opacity(0.04), radius: 6, y: 3)
     }
 
     private func presentDriverCommandAlert(for pending: PendingDriverCommand) {
@@ -2612,7 +2625,7 @@ private struct DeliveryDriverDetailSheet: View {
         PPAlertHelper.showConfirmation(
             in: nil,
             title: deliveryText("Delivery_Confirm_Driver_Command"),
-            subtitle: "\(driver.displayName) · \(deliveryCommandText(pending.action))",
+            subtitle: "\(effectiveDriver.displayName) · \(deliveryCommandText(pending.action))",
             confirmButton: deliveryText("Confirm"),
             cancelButton: deliveryText("Cancel"),
             icon: icon,
@@ -2634,7 +2647,7 @@ private struct DeliveryDriverDetailSheet: View {
             icon: UIImage(systemName: "person.crop.circle.badge.minus"),
             confirmBlock: { _, didConfirm in
                 guard didConfirm else { return }
-                viewModel.disableDriver(driver.uid) { succeeded in
+                viewModel.disableDriver(effectiveDriver.uid) { succeeded in
                     Task { @MainActor in
                         if succeeded { onDismiss() }
                     }
@@ -2655,7 +2668,7 @@ private struct DeliveryDriverDetailSheet: View {
                 .shadow(color: .black.opacity(0.07), radius: 24, y: 12)
             VStack(spacing: 10) {
                 detailAvatar
-                Text(driver.displayName)
+                Text(effectiveDriver.displayName)
                     .font(AdminType.title)
                     .foregroundColor(AdminSurface.primaryText)
                     .multilineTextAlignment(.center)
@@ -2705,9 +2718,9 @@ private struct DeliveryDriverDetailSheet: View {
 
     private var operationalSummary: some View {
         HStack(spacing: 10) {
-            metric(deliveryEnumText(driver.presence), "Delivery_Driver_Presence")
-            metric(deliveryEnumText(driver.shiftStatus), "Delivery_Driver_Shift")
-            metric("\(driver.activeDeliveryCount)", "Delivery_Driver_Workload")
+            metric(deliveryEnumText(effectiveDriver.presence), "Delivery_Driver_Presence")
+            metric(deliveryEnumText(effectiveDriver.shiftStatus), "Delivery_Driver_Shift")
+            metric("\(effectiveDriver.activeDeliveryCount)", "Delivery_Driver_Workload")
         }
     }
 
@@ -2736,7 +2749,7 @@ private struct DeliveryDriverDetailSheet: View {
                     .foregroundColor(AdminSurface.primaryText)
                     .padding(.bottom, 12)
                     .accessibilityAddTraits(.isHeader)
-                infoRow("Delivery_Driver_UID", driver.uid, semanticLTR: true)
+                infoRow("Delivery_Driver_UID", effectiveDriver.uid, semanticLTR: true)
                 Divider()
                 infoRow("Delivery_Driver_Phone", phone.isEmpty ? deliveryText("Delivery_Not_Available") : phone,
                         semanticLTR: !phone.isEmpty)
@@ -2795,11 +2808,11 @@ private struct DeliveryDriverDetailSheet: View {
                         .font(AdminType.headline)
                         .foregroundColor(AdminSurface.primaryText)
                         .accessibilityAddTraits(.isHeader)
-                    if driver.accountStatus.uppercased() == "ACTIVE" {
-                        managementButton(action: driver.canReceiveAssignments ? "PAUSE" : "RESUME",
+                    if effectiveDriver.accountStatus.uppercased() == "ACTIVE" {
+                        managementButton(action: effectiveDriver.canReceiveAssignments ? "PAUSE" : "RESUME",
                                          destructive: false)
                         managementButton(action: "SUSPEND", destructive: true)
-                    } else if driver.accountStatus.uppercased() == "SUSPENDED" {
+                    } else if effectiveDriver.accountStatus.uppercased() == "SUSPENDED" {
                         managementButton(action: "REACTIVATE", destructive: false)
                     }
                     if member?.status.lowercased() == "active" {
@@ -2823,7 +2836,7 @@ private struct DeliveryDriverDetailSheet: View {
 
     private func managementButton(action: String, destructive: Bool) -> some View {
         Button {
-            let pending = PendingDriverCommand(action: action, driver: driver)
+            let pending = PendingDriverCommand(action: action, driver: effectiveDriver)
             presentDriverCommandAlert(for: pending)
         } label: {
             Label(deliveryCommandText(action), systemImage: driverActionSymbol(action))

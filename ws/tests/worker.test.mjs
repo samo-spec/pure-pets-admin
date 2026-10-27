@@ -5,6 +5,10 @@ const request=(path,options)=>new Request('https://example.com'+path,options);
 test('wholesale root redirects inside its own prefix',async()=>{
  const response=await worker.fetch(request('/ws'),{});
  assert.equal(response.status,308);assert.equal(response.headers.get('location'),'https://example.com/ws/');
+ const rootResponse=await worker.fetch(request('/'),{});
+ assert.equal(rootResponse.status,308);assert.equal(rootResponse.headers.get('location'),'https://example.com/ws/');
+ const manageResponse=await worker.fetch(request('/manage'),{});
+ assert.equal(manageResponse.status,308);assert.equal(manageResponse.headers.get('location'),'https://example.com/ws/manage.html');
 });
 test('worker cannot serve unrelated site routes',async()=>{
  assert.equal((await worker.fetch(request('/admin'),{})).status,404);

@@ -1012,14 +1012,14 @@ private struct StaffMemberSovereignCard: View {
                         monogramFallback
                     }
                     .frame(width: 48, height: 48)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .clipShape(Circle())
                 } else {
                     monogramFallback
                 }
             }
             .frame(width: 48, height: 48)
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                Circle()
                     .strokeBorder(isCurrent ? AdminSurface.primary.opacity(0.4) : roleAccentColor.opacity(0.25), lineWidth: 1.2)
             )
 
@@ -1029,7 +1029,7 @@ private struct StaffMemberSovereignCard: View {
                 .frame(width: 12, height: 12)
                 .overlay(Circle().stroke(AdminSurface.surface, lineWidth: 2))
                 .shadow(color: isActive ? Color.green.opacity(0.4) : Color.orange.opacity(0.3), radius: 2.5, y: 1)
-                .offset(x: 2, y: 2)
+                .offset(x: 1, y: 1)
         }
         .frame(width: 50, height: 50)
     }
@@ -1051,7 +1051,7 @@ private struct StaffMemberSovereignCard: View {
                 .shadow(color: Color.black.opacity(0.15), radius: 2, y: 1)
         }
         .frame(width: 48, height: 48)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(Circle())
     }
 
     // MARK: - Trailing Status & Navigation Affordance
@@ -1494,7 +1494,7 @@ struct AdminStaffMemberEditorView: View {
                             monogramView
                         }
                         .frame(width: 70, height: 70)
-                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .clipShape(Circle())
                     } else {
                         monogramView
                     }
@@ -1712,7 +1712,7 @@ struct AdminStaffMemberEditorView: View {
                 .foregroundColor(.white)
         }
         .frame(width: 70, height: 70)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .clipShape(Circle())
     }
 
     private var displayName: String {
@@ -2809,7 +2809,7 @@ struct AdminStaffMemberEditorView: View {
                                         .foregroundColor(.white)
                                 }
                                 .frame(width: 46, height: 46)
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .clipShape(Circle())
 
                                 VStack(alignment: .leading, spacing: 2) {
                                     HStack(spacing: 4) {
@@ -2896,7 +2896,7 @@ struct AdminStaffMemberEditorView: View {
                                         .foregroundColor(AdminSurface.primary)
                                 }
                                 .frame(width: 46, height: 46)
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .clipShape(Circle())
 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(Language.get("Staff_Select_User_Action", alter: "اختر مستخدماً من المنصة"))
@@ -3940,7 +3940,7 @@ struct AdminUserPickerSheet: View {
                             pickerMonogram(user)
                         }
                         .frame(width: 48, height: 48)
-                        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                        .clipShape(Circle())
                     } else {
                         pickerMonogram(user)
                     }
@@ -4058,12 +4058,12 @@ struct AdminUserPickerSheet: View {
                 .foregroundColor(.white)
         }
         .frame(width: 48, height: 48)
-        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .clipShape(Circle())
     }
 
     private var pickerSkeletonCard: some View {
         HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
+            Circle()
                 .fill(AdminSurface.control)
                 .frame(width: 48, height: 48)
 

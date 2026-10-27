@@ -138,6 +138,8 @@ static NSArray<NSString *> *PPStaffCanonicalPermissionKeys(id value) {
 
 - (BOOL)canAccessStaffWorkspace {
     if (!self.isActive) return NO;
+    if ([self.role isEqualToString:PPStaffRoleDeliveryDriver]) return YES;
+    if ([self.roleIdentifier isEqualToString:@"driver"] || [self.roleIdentifier isEqualToString:@"delivery_driver"]) return YES;
     return [self hasPermission:kStaffPermDashboardView] || self.permissions.count > 0;
 }
 
@@ -426,6 +428,7 @@ BOOL PPStaffMatchesPermission(NSArray<NSString *> *granted, NSString *perm) {
     if ([normalizedRole isEqualToString:PPStaffRoleInventoryManager])  return 6;
     if ([normalizedRole isEqualToString:PPStaffRolePaymentsManager])   return 5;
     if ([normalizedRole isEqualToString:PPStaffRoleSupportAgent])      return 3;
+    if ([normalizedRole isEqualToString:PPStaffRoleDeliveryDriver])    return 16;
     if ([staffRole hasPrefix:@"custom_"])                              return 1;
     return 1;
 }

@@ -27,7 +27,13 @@ struct AdminAppShell: View {
         UITabBar.appearance().isHidden = true
 
         let authorized = AdminTab.allCases.filter { $0.isAuthorized(for: session) }
-        _selectedTab = State(initialValue: authorized.first ?? .more)
+        let initialTab: AdminTab
+        if session.roleIdentifier == "driver" || session.roleIdentifier == "delivery_driver" {
+            initialTab = authorized.contains(.driver) ? .driver : (authorized.first ?? .more)
+        } else {
+            initialTab = authorized.first ?? .more
+        }
+        _selectedTab = State(initialValue: initialTab)
     }
 
     var body: some View {
@@ -163,7 +169,11 @@ struct AdminAppShell: View {
             Text(Language.get("CommandCenter_Permission_Denied_Message", alter: nil))
         }
         .onAppear {
-            if !availableTabs.contains(selectedTab) {
+            if session.roleIdentifier == "driver" || session.roleIdentifier == "delivery_driver" {
+                if availableTabs.contains(.driver) {
+                    selectedTab = .driver
+                }
+            } else if !availableTabs.contains(selectedTab) {
                 selectedTab = availableTabs.first ?? .more
             }
             router.consumePendingRoute(session: session)
@@ -179,7 +189,11 @@ struct AdminAppShell: View {
         .onChange(of: session) { updatedSession in
             commandState.updateSession(updatedSession)
             let updatedTabs = AdminTab.allCases.filter { $0.isAuthorized(for: updatedSession) }
-            if !updatedTabs.contains(selectedTab) {
+            if updatedSession.roleIdentifier == "driver" || updatedSession.roleIdentifier == "delivery_driver" {
+                if updatedTabs.contains(.driver) {
+                    selectedTab = .driver
+                }
+            } else if !updatedTabs.contains(selectedTab) {
                 selectedTab = updatedTabs.first ?? .more
             }
             guard let route = router.presentedRoute else { return }
@@ -4208,26 +4222,48 @@ private struct AdminOperationsDeckView: View {
                     Spacer()
                 }
 
-                // Primary Trigger Button
-                Button {
-                    triggerHaptic(.medium)
-                    router.present(.delivery, session: session)
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "truck.box")
-                            .font(.system(size: 15, weight: .bold))
-                        Text(Language.get("Operations_Delivery_Hero_Action", alter: "دخول مركز التوصيل الميداني"))
-                            .font(AdminType.calloutBold)
-                        Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
-                            .font(.system(size: 12, weight: .bold))
+                // Primary Trigger Buttons
+                HStack(spacing: 10) {
+                    Button {
+                        triggerHaptic(.medium)
+                        router.present(.delivery, session: session)
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "truck.box")
+                                .font(.system(size: 15, weight: .bold))
+                            Text(Language.get("Operations_Delivery_Hero_Action", alter: "دخول مركز التوصيل الميداني"))
+                                .font(AdminType.calloutBold)
+                            Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                                .font(.system(size: 12, weight: .bold))
+                        }
+                        .foregroundColor(Color(red: 0.08, green: 0.09, blue: 0.12))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color.white, in: Capsule())
+                        .shadow(color: Color.black.opacity(0.18), radius: 6, x: 0, y: 3)
                     }
-                    .foregroundColor(Color(red: 0.08, green: 0.09, blue: 0.12))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Color.white, in: Capsule())
-                    .shadow(color: Color.black.opacity(0.18), radius: 6, x: 0, y: 3)
+                    .buttonStyle(V6CardButtonStyle())
+
+                    if AdminRoute.driverWorkspace.isAuthorized(for: session) {
+                        Button {
+                            triggerHaptic(.medium)
+                            router.present(.driverWorkspace, session: session)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "location.north.line.fill")
+                                    .font(.system(size: 14, weight: .semibold))
+                                Text(Language.get("Driver_Title", alter: "توصيلاتي"))
+                                    .font(AdminType.calloutBold)
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(Color.white.opacity(0.18), in: Capsule())
+                            .overlay(Capsule().strokeBorder(Color.white.opacity(0.3), lineWidth: 0.8))
+                        }
+                        .buttonStyle(V6CardButtonStyle())
+                    }
                 }
-                .buttonStyle(V6CardButtonStyle())
             }
             .padding(isPad ? 20 : 16)
         }

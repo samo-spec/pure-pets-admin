@@ -22,6 +22,14 @@ export default {
       url.pathname = prefix;
       return Response.redirect(url.toString(), 308);
     }
+    if (url.pathname === '/' || url.pathname === '/index.html') {
+      url.pathname = prefix;
+      return Response.redirect(url.toString(), 308);
+    }
+    if (url.pathname === '/manage' || url.pathname === '/manage/' || url.pathname === '/manage.html') {
+      url.pathname = '/ws/manage.html';
+      return Response.redirect(url.toString(), 308);
+    }
     if (!url.pathname.startsWith(prefix)) return new Response('Not found', {status: 404});
     if (url.pathname === '/ws/api/config') {
       if (request.method !== 'GET') return new Response('Method not allowed', {status: 405});

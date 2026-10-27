@@ -11938,25 +11938,17 @@ private struct POSWholesaleRequestsSheet: View {
         let action: String
     }
 
-    private func call(_ name: String, payload: [String: Any] = [:], completion: @escaping (Result<[String: Any], Error>) -> Void) {
-        Functions.functions(region: "us-central1").httpsCallable(name).call(payload) { result, error in
-            DispatchQueue.main.async {
-                if let error {
-                    completion(.failure(error))
-                    return
-                }
-                completion(.success(result?.data as? [String: Any] ?? [:]))
-            }
-        }
+    private func call(_ name: String, payload: [String: any Sendable] = [:]) async throws -> [String: Any] {
+        let result = try await Functions.functions(region: "us-central1").httpsCallable(name).call(payload)
+        return result.data as? [String: Any] ?? [:]
     }
 
     private func loadBranches() {
         isLoading = true
         errorText = nil
-        call("listWholesaleStaffBranches") { result in
-            isLoading = false
-            switch result {
-            case .success(let data):
+        Task {
+            do {
+                let data = try await call("listWholesaleStaffBranches")
                 let values = data["branches"] as? [[String: Any]] ?? []
                 branches = values.compactMap { item in
                     guard let id = item["id"] as? String, !id.isEmpty else { return nil }
@@ -11972,9 +11964,10 @@ private struct POSWholesaleRequestsSheet: View {
                 if branches.isEmpty {
                     errorText = rtl ? "لا توجد فروع مصرح لك بمراجعة طلبات الجملة فيها." : "No authorized wholesale branches available."
                 }
-            case .failure:
+            } catch {
                 errorText = rtl ? "تعذر تحميل الفروع. تحقق من اتصالك وصلاحياتك." : "Unable to load branches. Check connectivity and permissions."
             }
+            isLoading = false
         }
     }
 
@@ -11982,14 +11975,13 @@ private struct POSWholesaleRequestsSheet: View {
         guard !branchID.isEmpty else { return }
         isLoading = true
         errorText = nil
-        call("listWholesaleStaffRequests", payload: [
-            "branchId": branchID,
-            "statuses": ["pending_review", "accepted_for_processing"],
-            "limit": 50
-        ]) { result in
-            isLoading = false
-            switch result {
-            case .success(let data):
+        Task {
+            do {
+                let data = try await call("listWholesaleStaffRequests", payload: [
+                    "branchId": branchID,
+                    "statuses": ["pending_review", "accepted_for_processing"],
+                    "limit": 50
+                ])
                 let values = data["items"] as? [[String: Any]] ?? []
                 requests = values.compactMap { item in
                     guard let id = item["id"] as? String else { return nil }
@@ -12011,29 +12003,30 @@ private struct POSWholesaleRequestsSheet: View {
                         }
                     )
                 }
-            case .failure:
+            } catch {
                 requests = []
                 errorText = rtl ? "تعذر تحميل الطلبات." : "Could not load wholesale requests."
             }
+            isLoading = false
         }
     }
 
     private func completeReview(_ review: ReviewDecision) {
         guard !isReviewing, !branchID.isEmpty else { return }
         isReviewing = true
-        call("reviewWholesaleStaffRequest", payload: [
-            "branchId": branchID,
-            "requestId": review.request.id,
-            "decision": review.action,
-            "note": ""
-        ]) { result in
-            isReviewing = false
-            switch result {
-            case .success:
+        Task {
+            do {
+                _ = try await call("reviewWholesaleStaffRequest", payload: [
+                    "branchId": branchID,
+                    "requestId": review.request.id,
+                    "decision": review.action,
+                    "note": ""
+                ])
                 loadRequests()
-            case .failure:
+            } catch {
                 errorText = rtl ? "لم ينجح اعتماد القرار. تحقق من الحالة والصلاحيات." : "Review failed. Refresh and confirm request permissions."
             }
+            isReviewing = false
         }
     }
 

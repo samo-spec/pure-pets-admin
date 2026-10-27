@@ -93,7 +93,7 @@ extension AdminTab {
             ].filter { $0.isAuthorized(for: session) }
         case .operations:
             return [
-                .delivery, .providerApplications, .providerPlans,
+                .delivery, .driverWorkspace, .providerApplications, .providerPlans,
                 .providerFeatures, .providerAccounting, .branches,
                 .agents, .homeControl, .services, .veterinarians,
                 .moderation, .community, .adoptionManager, .hotel
@@ -114,7 +114,10 @@ extension AdminTab {
     func isAuthorized(for session: AdminSession) -> Bool {
         switch self {
         case .driver:
-            return !session.isAdmin && session.hasPermission("delivery.tasks.manage")
+            let isDriver = session.roleIdentifier == "driver" ||
+                           session.roleIdentifier == "delivery_driver" ||
+                           session.hasPermission("delivery.tasks.manage")
+            return !session.isAdmin && isDriver
         case .command:
             return session.hasAnyPermission(["admin.all", "command.center", "dashboard.view"]) ||
                    session.grantsAllPermissions ||

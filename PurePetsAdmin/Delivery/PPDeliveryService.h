@@ -77,6 +77,7 @@ FOUNDATION_EXPORT NSString * const PPDeliveryServiceErrorDomain;
 @property (nonatomic, assign) BOOL available;
 @property (nonatomic, assign) BOOL canReceiveAssignments;
 @property (nonatomic, assign) NSInteger activeDeliveryCount;
+@property (nonatomic, assign) NSInteger revision;
 @property (nonatomic, copy, nullable) NSDate *lastSeenAt;
 - (instancetype)initWithDictionary:(NSDictionary *)dictionary;
 @end

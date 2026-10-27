@@ -414,7 +414,7 @@ public struct PlatformRoleModel: Identifiable, Hashable, Sendable {
         lhs.assignedStaffUids == rhs.assignedStaffUids
     }
 
-    // MARK: - Canonical Built-in Foundation Roles (15 Roles)
+    // MARK: - Canonical Built-in Foundation Roles (16 Roles)
     public static func builtInFoundationRoles(staffRoleMap: [String: Set<String>] = [:]) -> [PlatformRoleModel] {
         return [
             // 1. super_admin (100)
@@ -681,7 +681,25 @@ public struct PlatformRoleModel: Identifiable, Hashable, Sendable {
                 ]),
                 assignedStaffUids: staffRoleMap[PPStaffRole.sales.rawValue] ?? []
             ),
-            // 15. viewer (10)
+            // 15. delivery_driver (25)
+            PlatformRoleModel(
+                id: PPStaffRole.deliveryDriver.rawValue,
+                key: PPStaffRole.deliveryDriver.rawValue,
+                titleAr: "سائق توصيل معتمد",
+                titleEn: "Fleet Delivery Driver",
+                descAr: "سائق الأسطول الميداني الرسمي: إدارة مهام التوصيل الخاصة به واستلام الشحنات وتحديث حالات التسليم",
+                descEn: "Official fleet delivery courier: active delivery run sheet, shipment drop-off and availability",
+                rank: 25,
+                clearanceTier: .tier3,
+                isBuiltIn: true,
+                iconName: "location.north.line.fill",
+                accentHex: "#0284C7",
+                permissions: Set([
+                    "delivery.tasks.manage", "notifications.view"
+                ]),
+                assignedStaffUids: staffRoleMap[PPStaffRole.deliveryDriver.rawValue] ?? []
+            ),
+            // 16. viewer (10)
             PlatformRoleModel(
                 id: PPStaffRole.viewer.rawValue,
                 key: PPStaffRole.viewer.rawValue,

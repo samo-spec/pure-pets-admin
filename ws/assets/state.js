@@ -41,11 +41,27 @@ export function safeImageUrl(value) {
     return url.protocol === 'https:' ? url.toString() : '';
   } catch { return ''; }
 }
+export function normalizePhoneNumber(raw) {
+  if (typeof raw !== 'string') throw new Error('Invalid phone number');
+  let cleaned = raw.trim().replace(/[\s\-()]/g, '');
+  if (!cleaned) throw new Error('Phone number is required');
+  if (cleaned.startsWith('00')) cleaned = '+' + cleaned.slice(2);
+  if (!cleaned.startsWith('+')) {
+    if (/^\d{8}$/.test(cleaned)) cleaned = '+974' + cleaned;
+    else if (/^974\d{8}$/.test(cleaned)) cleaned = '+' + cleaned;
+    else cleaned = '+' + cleaned;
+  }
+  if (!/^\+[1-9]\d{6,14}$/.test(cleaned)) throw new Error('Invalid phone format');
+  return cleaned;
+}
 export function normalizeCatalogItem(item) {
   if (!item || typeof item !== 'object' || typeof item.id !== 'string') return null;
   const groups = Array.isArray(item.groups) ? item.groups.filter(x =>
     x && typeof x.id === 'string' && x.active === true && x.wholesaleEnabled === true &&
-    Number.isSafeInteger(x.unitsPerGroup) && x.unitsPerGroup > 0 && Number.isSafeInteger(x.priceMinor) && x.priceMinor >= 0
+    Number.isSafeInteger(x.unitsPerGroup) && x.unitsPerGroup > 1 &&
+    x.id !== 'single' && x.nameAr !== 'حبة' && x.nameAr !== 'حبة مفرقة' &&
+    x.nameEn?.toLowerCase() !== 'piece' && x.nameEn?.toLowerCase() !== 'single' &&
+    Number.isSafeInteger(x.priceMinor) && x.priceMinor >= 0
   ) : [];
   if (!groups.length) return null;
   return {

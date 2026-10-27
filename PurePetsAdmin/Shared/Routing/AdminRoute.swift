@@ -294,6 +294,10 @@ enum AdminRoute: Hashable, Identifiable {
         if session.isAdmin || session.grantsAllPermissions {
             return true
         }
+        if (session.roleIdentifier == "driver" || session.roleIdentifier == "delivery_driver") &&
+           (self == .driverWorkspace || { if case .driverTask = self { return true }; return false }()) {
+            return true
+        }
         guard session.hasAnyPermission(requiredPermissions),
               requiredAllPermissions.allSatisfy(session.hasPermission) else {
             return false

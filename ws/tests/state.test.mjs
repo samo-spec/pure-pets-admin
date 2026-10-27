@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {protectedIntent, mergeCart, normalizeCatalogItem, safeImageUrl} from '../assets/state.js';
+import {protectedIntent, mergeCart, normalizeCatalogItem, safeImageUrl, normalizePhoneNumber} from '../assets/state.js';
 test('guest action stores product, group and quantity without losing context', () => {
   assert.deepEqual(protectedIntent('add',{productId:'food_1',groupId:'carton',quantity:2}),
     {action:'add',productId:'food_1',groupId:'carton',quantity:2});
@@ -23,6 +23,9 @@ test('catalog permits valid active quantity groups only', () => {
   const item=normalizeCatalogItem({id:'p',groups:[{id:'g',active:true,wholesaleEnabled:true,unitsPerGroup:6,priceMinor:1200},{id:'z',active:false,wholesaleEnabled:true,unitsPerGroup:1,priceMinor:100}]});
   assert.deepEqual(item.groups.map(x=>x.id),['g']);
 });
+test('catalog strictly rejects selling by single pieces (unitsPerGroup === 1 or single)', () => {
+  assert.equal(normalizeCatalogItem({id:'p',groups:[{id:'single',nameAr:'حبة',active:true,wholesaleEnabled:true,unitsPerGroup:1,priceMinor:200}]}), null);
+});
 test('image URLs allow only HTTPS, not script or data schemes', () => {
   assert.equal(safeImageUrl('javascript:alert(1)'),'');
   assert.equal(safeImageUrl('https://example.com/cat.png'),'https://example.com/cat.png');
@@ -31,4 +34,14 @@ test('image URLs allow only HTTPS, not script or data schemes', () => {
 test('saved workspace is an authenticated continuation intent',()=>{
   assert.deepEqual(protectedIntent('saved'),{action:'saved'});
   assert.throws(()=>protectedIntent('admin'));
+});
+
+test('normalizePhoneNumber formats Qatar and international numbers', () => {
+  assert.equal(normalizePhoneNumber('55551234'), '+97455551234');
+  assert.equal(normalizePhoneNumber('+974 5555 1234'), '+97455551234');
+  assert.equal(normalizePhoneNumber('00974 5555 1234'), '+97455551234');
+  assert.equal(normalizePhoneNumber('+966 50 123 4567'), '+966501234567');
+  assert.throws(() => normalizePhoneNumber('123'));
+  assert.throws(() => normalizePhoneNumber('not-a-number'));
+  assert.throws(() => normalizePhoneNumber(''));
 });

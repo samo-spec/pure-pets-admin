@@ -1,23 +1,267 @@
 <!doctype html>
-<html lang="ar" dir="rtl">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f8f6f0"><title>Pure Pets · Wholesale Operations</title><link rel="stylesheet" href="/ws/assets/style.css"></head>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#faf9f6">
+  <title>Pure Pets · Wholesale Operations</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Beiruti:wght@300;400;500;600;700;800;900&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/ws/assets/style.css">
+</head>
 <body class="manager-page">
-<div class="topbar"><span>PURE PETS / WHOLESALE OPERATIONS</span><span>INTERNAL WORKSPACE</span></div>
-<header class="site-header"><a class="wordmark" href="/ws/"><span class="brand-glyph" aria-hidden="true">✳</span><span class="brand-title">PURE<span>PETS</span><small>WHOLESALE OPERATIONS</small></span></a><div class="header-actions"><a href="/ws/" class="secondary-button" id="publicLink">المتجر</a><button class="language" id="langBtn" type="button">EN</button><button class="account-button" id="logoutBtn" type="button" hidden>خروج</button></div></header>
-<main class="manager-main">
- <div class="section-kicker" id="managerEyebrow">THE WHOLESALE DESK</div><div class="manager-heading"><div><h1 id="managerTitle">طلبات الجملة</h1><p id="managerSubtitle">مراجعة منظمة للطلبات دون المساس بالدفع أو المخزون.</p></div><div class="manager-count"><span id="requestCount">—</span><small id="requestCountLabel">طلب</small></div></div>
- <div id="managerAuth" class="manager-auth">
-   <div class="auth-symbol">✳</div><h2 id="authHeading">دخول الموظفين</h2><p id="authHelp">هذه المساحة تتطلب تصريح بيع الجملة في الفرع المحدد.</p>
-   <form id="managerAuthForm"><label><span id="emailLabel">البريد الإلكتروني</span><input type="email" id="managerEmail" autocomplete="username" required></label><label><span id="passwordLabel">كلمة المرور</span><input type="password" id="managerPassword" autocomplete="current-password" required></label><button class="primary-button" type="submit" id="managerLogin">دخول</button></form>
- </div>
- <section id="managerWorkspace" hidden>
-  <div class="controls manager-controls"><label class="manager-branch"><span id="branchLabel">الفرع</span><select id="managerBranch" aria-label="Select authorized branch"></select></label><label class="manager-branch"><span id="statusLabel">الحالة</span><select id="managerStatus"><option value="pending_review">بانتظار المراجعة</option><option value="accepted_for_processing">جاهز للمعالجة</option><option value="rejected">مرفوض</option><option value="cancelled_by_customer">ملغي من العميل</option></select></label><button class="secondary-button" id="refreshManager" type="button">تحديث</button></div>
-  <div id="managerMessage" class="notice" role="status" aria-live="polite"></div>
-  <div id="managerQueue" class="manager-queue"></div>
-  <p class="notice" id="staffPolicy">قبول الطلب لا يعتبر عملية بيع أو قبضاً أو حجزاً للمخزون؛ يجب إكمال البيع عبر نقطة البيع المصرح بها.</p>
- </section>
-</main>
-<footer class="footer"><div class="footer-wordmark">PUREPETS®</div><small>WHOLESALE STAFF · Internal actions are logged</small></footer>
-<dialog id="reviewDialog" class="auth-dialog"><button id="closeReview" class="close-button dialog-close" type="button" aria-label="Close">×</button><div class="section-kicker">WHOLESALE REVIEW</div><h2 id="reviewTitle">قرار المراجعة</h2><p id="reviewSummary"></p><label class="review-note"><span id="reviewNoteLabel">ملاحظات المراجعة (اختياري)</span><textarea id="reviewNote" rows="4" maxlength="500"></textarea></label><p class="notice" id="reviewWarning">هذه العملية لا تنشئ إيصالاً ولا تحصّل دفعة ولا تحجز المخزون.</p><button id="confirmReview" class="primary-button" type="button">تأكيد</button></dialog>
-<div id="managerToast" class="toast" role="status" hidden></div>
-<script type="module" src="/ws/assets/manage.js"></script></body></html>
+  <a class="skip-link" href="#mainContent">تخطي إلى المحتوى الرئيسي</a>
+
+  <!-- Operational Telemetry Bar -->
+  <div class="topbar">
+    <div class="topbar-start">
+      <span class="status-beacon" aria-hidden="true"></span>
+      <span class="topbar-chip">PURE PETS / WHOLESALE OPERATIONS</span>
+      <span class="topbar-divider">·</span>
+      <span class="topbar-sub">OPERATIONAL DESK</span>
+    </div>
+    <div class="topbar-end">
+      <span class="secure-tag" id="workspaceBadge">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <span>INTERNAL WORKSPACE</span>
+      </span>
+    </div>
+  </div>
+
+  <!-- Header with Brand Signature and Controls -->
+  <header class="site-header">
+    <a class="wordmark" href="/ws/" title="Pure Pets Wholesale">
+      <span class="brand-glyph" aria-hidden="true">✳</span>
+      <span class="brand-title">PURE<span>PETS</span><small>WHOLESALE OPERATIONS</small></span>
+    </a>
+    <div class="header-actions">
+      <a href="/ws/" class="secondary-button desk-nav-link" id="publicLink" title="الانتقال إلى المتجر">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        <span>المتجر</span>
+      </a>
+      <button class="theme-toggle" id="themeToggleBtn" type="button" aria-label="تبديل المظهر" title="تبديل المظهر">
+        <svg class="sun-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg class="moon-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <button class="language" id="langBtn" type="button" aria-label="تبديل اللغة">EN</button>
+      <button class="account-button logout-button" id="logoutBtn" type="button" hidden>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        <span>خروج</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Operations Canvas -->
+  <main class="manager-main" id="mainContent">
+    <!-- Hero / Telemetry Heading -->
+    <div class="manager-hero">
+      <div class="section-kicker" id="managerEyebrow">THE WHOLESALE DESK / مكتب مراجعة الجملة</div>
+      <div class="manager-heading">
+        <div class="heading-content">
+          <h1 id="managerTitle">طلبات الجملة</h1>
+          <p id="managerSubtitle">مراجعة منظمة وموثوقة لطلبات الشركاء دون المساس بالدفع أو المخزون.</p>
+        </div>
+        <div class="manager-count" aria-live="polite">
+          <span class="count-pulse" aria-hidden="true"></span>
+          <span id="requestCount">—</span>
+          <small id="requestCountLabel">طلب</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Omni-Auth Gateway (Google, Apple, Phone OTP, Email/Password) -->
+    <div id="managerAuth" class="manager-auth">
+      <div class="manager-auth-card">
+        <div class="auth-brand-emblem" aria-hidden="true">
+          <span class="emblem-glyph">✳</span>
+          <span class="emblem-halo"></span>
+        </div>
+        <div class="auth-header-text">
+          <div class="auth-kicker" id="authKicker">STAFF ACCESS CONTROL</div>
+          <h2 id="authHeading">دخول الموظفين</h2>
+          <p id="authHelp">هذه المساحة مخصصة للموظفين المعتمدين وتتطلب تصريح بيع الجملة في الفرع المحدد.</p>
+        </div>
+
+        <!-- Quick OAuth Providers: Google & Apple -->
+        <div class="auth-quick-stack">
+          <button type="button" id="managerGoogleBtn" class="google-auth-button">
+            <svg class="google-icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+            </svg>
+            <span id="managerGoogleLabel">المتابعة باستخدام Google</span>
+          </button>
+
+          <button type="button" id="managerAppleBtn" class="apple-auth-button">
+            <svg class="apple-icon" width="18" height="20" viewBox="0 0 170 170" fill="currentColor" aria-hidden="true">
+              <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.7-3.03-7.61-7.7-11.73-14.01-6.19-9.52-11.06-20.25-14.61-32.19-3.55-11.94-5.33-23.27-5.33-33.99 0-14.28 3.55-26.06 10.66-35.34 7.1-9.28 16.03-14.01 26.79-14.21 4.58 0 9.87 1.25 15.86 3.75 5.99 2.5 9.88 3.78 11.67 3.84 1.57 0 5.68-1.34 12.33-4.01 6.65-2.67 12.43-3.88 17.34-3.63 13.06.66 23.36 5.41 30.9 14.25-11.41 6.9-17 16.48-16.78 28.74.22 9.69 3.88 17.65 10.98 23.88 7.1 6.23 15.37 9.77 24.81 10.62-2.12 6.53-4.8 13.1-8.04 19.71zm-28.8-105.15c0 7.3-2.73 14.15-8.2 20.55-5.91 6.84-13.04 10.95-21.39 12.33-.22-1.33-.33-2.58-.33-3.75 0-7.23 2.87-14.3 8.62-21.2 2.87-3.48 6.42-6.38 10.66-8.71 4.24-2.33 7.82-3.63 10.74-3.9 0 1.58-.1 3.14-.1 4.68z"/>
+            </svg>
+            <span id="managerAppleLabel">المتابعة باستخدام Apple</span>
+          </button>
+        </div>
+
+        <!-- Illuminated Divider -->
+        <div class="auth-divider">
+          <span id="managerDividerText">أو تسجيل الدخول المباشر</span>
+        </div>
+
+        <!-- Method Tabs: Email vs Phone -->
+        <div class="auth-method-tabs" role="tablist">
+          <button type="button" class="method-tab active" id="managerMethodEmail" role="tab" aria-selected="true">البريد الإلكتروني</button>
+          <button type="button" class="method-tab" id="managerMethodPhone" role="tab" aria-selected="false">رقم الهاتف</button>
+        </div>
+
+        <!-- Method 1: Email Form -->
+        <div id="managerEmailSection">
+          <form id="managerAuthForm" novalidate>
+            <label class="form-field">
+              <span id="emailLabel">البريد الإلكتروني</span>
+              <div class="input-wrapper">
+                <input type="email" id="managerEmail" autocomplete="username" inputmode="email" dir="ltr" placeholder="staff@pure-pets.net" required>
+              </div>
+            </label>
+            <label class="form-field">
+              <span id="passwordLabel">كلمة المرور</span>
+              <div class="input-wrapper">
+                <input type="password" id="managerPassword" autocomplete="current-password" dir="ltr" placeholder="••••••••" required>
+              </div>
+            </label>
+            <button class="primary-button submit-auth-button" type="submit" id="managerLogin">
+              <span>دخول</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </button>
+          </form>
+        </div>
+
+        <!-- Method 2: Phone SMS OTP Section -->
+        <div id="managerPhoneSection" hidden>
+          <!-- Step A: Enter Phone Number -->
+          <form id="managerPhoneInputForm">
+            <label class="form-field">
+              <span id="phoneLabel">رقم الهاتف</span>
+              <div class="input-wrapper phone-wrapper">
+                <input id="managerPhoneInput" type="tel" autocomplete="tel" placeholder="+974 5555 1234" dir="ltr" required>
+              </div>
+            </label>
+            <div id="managerPhoneRecaptcha"></div>
+            <button id="managerSendPhoneCodeBtn" type="submit" class="primary-button submit-auth-button">
+              <span>إرسال رمز التحقق (SMS)</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </button>
+          </form>
+
+          <!-- Step B: Verify 6-digit Code -->
+          <form id="managerPhoneCodeForm" hidden>
+            <div class="code-step-info">
+              <div>
+                <span id="codeSentToLabel">تم إرسال رمز التحقق إلى:</span>
+                <strong id="managerSentPhoneDisplay" dir="ltr"></strong>
+              </div>
+              <button type="button" id="managerChangePhoneBtn" class="link-action">تغيير الرقم</button>
+            </div>
+            <label class="form-field">
+              <span id="smsCodeLabel">رمز التحقق (6 أرقام)</span>
+              <div class="input-wrapper">
+                <input id="managerPhoneCodeInput" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="123456" dir="ltr" autocomplete="one-time-code" required>
+              </div>
+            </label>
+            <button id="managerVerifyPhoneCodeBtn" type="submit" class="primary-button submit-auth-button">
+              <span>تأكيد الرمز والدخول</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </button>
+            <button id="managerResendPhoneCodeBtn" type="button" class="secondary-button auth-resend-btn">إعادة إرسال الرمز</button>
+          </form>
+        </div>
+
+        <!-- Auth Error Banner -->
+        <p id="managerAuthError" role="alert" class="error-line" hidden></p>
+      </div>
+    </div>
+
+    <!-- Authenticated Staff Workspace -->
+    <section id="managerWorkspace" class="manager-workspace" hidden>
+      <!-- Control Deck: Branch select, Status select, Refresh -->
+      <div class="manager-control-deck">
+        <div class="deck-filters">
+          <label class="manager-control-group">
+            <span class="control-label" id="branchLabel">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+              <span>الفرع</span>
+            </span>
+            <div class="select-wrapper">
+              <select id="managerBranch" aria-label="اختر الفرع المصرح"></select>
+            </div>
+          </label>
+
+          <label class="manager-control-group">
+            <span class="control-label" id="statusLabel">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg>
+              <span>الحالة</span>
+            </span>
+            <div class="select-wrapper">
+              <select id="managerStatus">
+                <option value="pending_review">بانتظار المراجعة</option>
+                <option value="accepted_for_processing">جاهز للمعالجة</option>
+                <option value="rejected">مرفوض</option>
+                <option value="cancelled_by_customer">ملغي من العميل</option>
+              </select>
+            </div>
+          </label>
+        </div>
+
+        <button class="secondary-button refresh-button" id="refreshManager" type="button" title="تحديث قائمة الطلبات">
+          <svg class="refresh-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          <span id="refreshLabel">تحديث</span>
+        </button>
+      </div>
+
+      <!-- Real-time Status Notice -->
+      <div id="managerMessage" class="manager-telemetry-banner" role="status" aria-live="polite"></div>
+
+      <!-- Wholesale Requests Queue -->
+      <div id="managerQueue" class="manager-queue" aria-label="قائمة طلبات الجملة"></div>
+
+      <!-- Invariant Policy Callout -->
+      <div class="policy-callout" role="note">
+        <svg class="policy-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <p id="staffPolicy">قبول الطلب لا يعتبر عملية بيع أو قبضاً أو حجزاً للمخزون؛ يجب إكمال البيع الفعلي حصرياً عبر نقطة البيع (POS) المصرح بها.</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- Editorial Footer -->
+  <footer class="footer">
+    <div class="footer-wordmark">PUREPETS<span>®</span></div>
+    <div class="footer-badge">WHOLESALE STAFF OPERATIONS · Internal actions are strictly audited</div>
+    <small>© 2026 Pure Pets Platform · Authorized Workspace</small>
+  </footer>
+
+  <!-- Decision Review Dialog -->
+  <dialog id="reviewDialog" class="auth-dialog review-dialog" aria-labelledby="reviewTitle">
+    <button id="closeReview" class="close-button dialog-close" type="button" aria-label="إغلاق النافذة">×</button>
+    <div class="section-kicker">WHOLESALE REVIEW / قرار المراجعة</div>
+    <h2 id="reviewTitle">قرار المراجعة</h2>
+    <div class="review-summary-card">
+      <span class="summary-icon" aria-hidden="true">📋</span>
+      <p id="reviewSummary" class="review-summary-text"></p>
+    </div>
+    <label class="review-note">
+      <span id="reviewNoteLabel">ملاحظات المراجعة (اختياري)</span>
+      <textarea id="reviewNote" rows="3" maxlength="500" placeholder="أضف أي ملاحظات موجهة للفرع أو العميل..."></textarea>
+    </label>
+    <p class="notice policy-alert" id="reviewWarning">هذه العملية لا تنشئ إيصالاً ولا تحصّل دفعة ولا تحجز المخزون.</p>
+    <div class="dialog-actions">
+      <button id="confirmReview" class="primary-button" type="button">تأكيد القرار</button>
+    </div>
+  </dialog>
+
+  <!-- Toast Notification -->
+  <div id="managerToast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <!-- Modular Management Engine -->
+  <script type="module" src="/ws/assets/manage.js"></script>
+</body>
+</html>

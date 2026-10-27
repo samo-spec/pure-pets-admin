@@ -797,6 +797,12 @@ PPStaffRole _Nullable PPStaffNormalizedRole(id value) {
     if ([raw isEqualToString:@"Viewer"]) return PPStaffRoleViewer;
     if ([raw isEqualToString:@"viewer"]) return PPStaffRoleViewer;
     if ([raw isEqualToString:@"user"]) return PPStaffRoleViewer;
+    if ([raw isEqualToString:@"Driver"]) return PPStaffRoleDeliveryDriver;
+    if ([raw isEqualToString:@"driver"]) return PPStaffRoleDeliveryDriver;
+    if ([raw isEqualToString:@"DeliveryDriver"]) return PPStaffRoleDeliveryDriver;
+    if ([raw isEqualToString:@"deliverydriver"]) return PPStaffRoleDeliveryDriver;
+    if ([raw isEqualToString:@"delivery driver"]) return PPStaffRoleDeliveryDriver;
+    if ([raw isEqualToString:@"delivery_driver"]) return PPStaffRoleDeliveryDriver;
 
     NSString *lower = [raw.lowercaseString stringByReplacingOccurrencesOfString:@"-" withString:@"_"];
     lower = [lower stringByReplacingOccurrencesOfString:@" " withString:@"_"];
@@ -816,6 +822,8 @@ PPStaffRole _Nullable PPStaffNormalizedRole(id value) {
     if ([lower isEqualToString:@"security_admin"]) return PPStaffRoleSecurityAdmin;
     if ([lower isEqualToString:@"compliance_auditor"]) return PPStaffRoleComplianceAuditor;
     if ([lower isEqualToString:@"delivery_driver"]) return PPStaffRoleDeliveryDriver;
+    if ([lower isEqualToString:@"driver"]) return PPStaffRoleDeliveryDriver;
+    if ([lower isEqualToString:@"deliverydriver"]) return PPStaffRoleDeliveryDriver;
 
     return nil;
 }

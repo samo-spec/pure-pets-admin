@@ -1,5 +1,5 @@
 
-import { protectedIntent, mergeCart, normalizeCatalogItem } from './state.js';
+import { protectedIntent, mergeCart, normalizeCatalogItem, normalizePhoneNumber } from './state.js';
 
 const $ = (id) => document.getElementById(id);
 const t = {
@@ -8,9 +8,9 @@ const t = {
     cart:'السلة',login:'دخول / تسجيل',logout:'تسجيل الخروج',eyebrow:'PURE PETS / BUSINESS',heroOne:'رعاية لهم.',heroTwo:'ونموّ لتجارتك.',
     heroDesc:'منتجات مختارة بعناية، وحدات بيع واضحة، وتجربة طلب تناسب طموح تجارتك.',explore:'اكتشف المنتجات',
     guestHint:'تصفح بحرية. سجّل دخولك فقط عند اتخاذ إجراء.',collection:'THE COLLECTION / المجموعة',catalogHeading:'اكتشف مجموعتنا',
-    catalogHint:'اختر المنتج، حدّد العبوة، وأرسل طلبك للمراجعة.',products:'منتج',search:'ابحث عن المنتجات...',
+    catalogHint:'منتجات الجملة المعتمدة فقط، تباع بالكرتون والعبوات (غير متاح بالقطعة).',products:'منتج',search:'ابحث عن المنتجات...',
     sortFeatured:'الترتيب الافتراضي',sortLow:'الأقل سعراً',sortHigh:'الأعلى سعراً',loadMore:'عرض المزيد',
-    promiseOne:'وحدات بيع واضحة',promiseTwo:'أسعار جملة موثقة',promiseThree:'طلبات مرتبطة بحسابك',footerCopy:'كل ما يحتاجه مشروعك، من مكان واحد.',
+    promiseOne:'كراتين وعبوات جملة واضحة',promiseTwo:'أسعار جملة معتمدة',promiseThree:'طلبات مرتبطة بحسابك',footerCopy:'كل ما يحتاجه مشروعك، من مكان واحد.',
     workspace:'مساحة مشتري الجملة',authTitle:'أهلاً بك في عالم الجملة',authIntro:'أكمل تسجيل الدخول للمتابعة من حيث توقفت.',
     loginTab:'تسجيل الدخول',registerTab:'إنشاء حساب',email:'البريد الإلكتروني',password:'كلمة المرور',continue:'متابعة',
     all:'الكل',emptyTitle:'لا توجد منتجات مطابقة',emptyText:'غيّر كلمة البحث أو التصفية وحاول مرة أخرى.',
@@ -27,16 +27,24 @@ const t = {
     authFailed:'تعذر تسجيل الدخول. تحقق من بياناتك أو إعدادات التسجيل.',sessionFailed:'تعذر التحقق من الحساب.',
     processing:'يتم التنفيذ...',requestFailed:'تعذر إرسال الطلب. تحقق من الكمية أو الأسعار وأعد المحاولة.',
     noProducts:'لا تتوفر منتجات جملة منشورة حالياً.',signupConfirm:'أنشئ حسابك لتتابع الشراء.',welcome:'حسابي',open:'فتح',status:'الحالة',
-    units:'قطعة',verified:'سعر الجملة',noBranch:'اختر الفرع',cancelRequest:'إلغاء الطلب',cancelConfirm:'هل تريد إلغاء طلب الجملة المعلق؟',cancelSuccess:'تم إلغاء الطلب',increase:'زيادة الكمية',decrease:'تقليل الكمية'
+    units:'قطعة',verified:'سعر الجملة',noBranch:'اختر الفرع',cancelRequest:'إلغاء الطلب',cancelConfirm:'هل تريد إلغاء طلب الجملة المعلق؟',cancelSuccess:'تم إلغاء الطلب',increase:'زيادة الكمية',decrease:'تقليل الكمية',
+    googleSignIn:'المتابعة باستخدام Google',appleSignIn:'المتابعة باستخدام Apple',orDivider:'أو',tabEmail:'البريد الإلكتروني',tabPhone:'رقم الهاتف',
+    phoneNumber:'رقم الهاتف',sendCode:'إرسال رمز التحقق (SMS)',codeSentTo:'تم إرسال رمز التحقق إلى:',
+    changePhone:'تغيير الرقم',smsCode:'رمز التحقق (6 أرقام)',verifyCode:'تأكيد الرمز والدخول',
+    resendCode:'إعادة إرسال الرمز',codeResent:'تمت إعادة إرسال رمز التحقق',invalidPhone:'يرجى إدخال رقم هاتف صحيح (مثال: +97455551234)',
+    invalidCode:'رمز التحقق غير صحيح، يرجى التأكد وإعادة المحاولة.',phoneQuota:'تم تجاوز الحد المسموح لإرسال الرسائل، حاول لاحقاً.',
+    resetFilters:'إعادة ضبط الفلاتر',activeFilters:'التصفيات الحالية:',allCount:'منتج جملة',
+    heroBadge:'بوابة الجملة المعتمدة · Pure Pets B2B',perkCarton:'كراتين وعبوات',perkPrice:'أسعار جملة فورية',perkFree:'تصفح حر مباشر',
+    themeToggle:'تبديل المظهر'
   },
   en: {
     top:'The Pure Pets business gateway',wholesale:'A dedicated wholesale experience',navCatalog:'Products',navOrders:'My orders',
     cart:'Cart',login:'Sign in / Join',logout:'Sign out',eyebrow:'PURE PETS / BUSINESS',heroOne:'Care for them.',heroTwo:'Grow with us.',
     heroDesc:'Carefully chosen products, clear pack pricing, and a buying experience built around your business.',explore:'Explore the collection',
     guestHint:'Browse freely. Sign in only when you want to take action.',collection:'THE COLLECTION / WHOLESALE',catalogHeading:'Explore the collection',
-    catalogHint:'Find your essentials. Choose your pack. Request your order.',products:'products',search:'Search products...',
+    catalogHint:'Authorized wholesale products only, sold in cartons & bulk packs (no piece sales).',products:'products',search:'Search products...',
     sortFeatured:'Featured first',sortLow:'Price: low to high',sortHigh:'Price: high to low',loadMore:'Load more',
-    promiseOne:'Clear wholesale units',promiseTwo:'Verified pack pricing',promiseThree:'Orders tied to your account',footerCopy:'Everything your business needs, in one place.',
+    promiseOne:'Wholesale packs & cartons only',promiseTwo:'Verified wholesale pricing',promiseThree:'Orders tied to your account',footerCopy:'Everything your business needs, in one place.',
     workspace:'Your wholesale workspace',authTitle:'Welcome to wholesale',authIntro:'Sign in to continue right where you left off.',
     loginTab:'Sign in',registerTab:'Create account',email:'Email address',password:'Password',continue:'Continue',
     all:'All',emptyTitle:'No matching products',emptyText:'Try a different search or category.',
@@ -53,13 +61,22 @@ const t = {
     authFailed:'Sign in failed. Check your details or registration settings.',sessionFailed:'Could not verify your account.',
     processing:'Working...',requestFailed:'Could not submit the request. Refresh prices or stock and retry.',
     noProducts:'No published wholesale products yet.',signupConfirm:'Create your account to continue.',welcome:'My account',open:'Open',status:'Status',
-    units:'units',verified:'Wholesale price',noBranch:'Select branch',cancelRequest:'Cancel request',cancelConfirm:'Cancel this pending wholesale request?',cancelSuccess:'Request cancelled',increase:'Increase quantity',decrease:'Decrease quantity'
+    units:'units',verified:'Wholesale price',noBranch:'Select branch',cancelRequest:'Cancel request',cancelConfirm:'Cancel this pending wholesale request?',cancelSuccess:'Request cancelled',increase:'Increase quantity',decrease:'Decrease quantity',
+    googleSignIn:'Continue with Google',appleSignIn:'Continue with Apple',orDivider:'or',tabEmail:'Email address',tabPhone:'Phone number',
+    phoneNumber:'Phone number',sendCode:'Send verification code (SMS)',codeSentTo:'Verification code sent to:',
+    changePhone:'Change number',smsCode:'Verification code (6 digits)',verifyCode:'Verify and sign in',
+    resendCode:'Resend code',codeResent:'Verification code resent',invalidPhone:'Please enter a valid phone number (e.g. +97455551234)',
+    invalidCode:'Invalid verification code. Please check and retry.',phoneQuota:'SMS quota exceeded. Please try again later.',
+    resetFilters:'Reset filters',activeFilters:'Active filters:',allCount:'wholesale items',
+    heroBadge:'Authorized Wholesale Portal · Pure Pets B2B',perkCarton:'Cartons & Packs',perkPrice:'Live Wholesale Rates',perkFree:'Direct Free Browse',
+    themeToggle:'Toggle appearance'
   }
 };
 const state = {
-  lang: 'ar', products: [], cursor:null, categories:[], category:'all', query:'', sort:'featured',
+  lang: 'ar', theme: 'light', products: [], cursor:null, categories:[], category:'all', query:'', sort:'featured',
   branches:[], cart:[], saved:[], user:null, backend:null, pending:null, activeProduct:null,
-  authMode:'login', drawer:'cart', loadError:false, authReady:false, loading:false,
+  authMode:'login', authMethod:'email', phoneStep:'input', phoneConfirmation:null, recaptchaVerifier:null, lastPhone:'',
+  drawer:'cart', loadError:false, authReady:false, loading:false,
   submitting:false, orderCommandId:null, ordersLoading:false,ordersError:false,orders:[], notifyTimer:null
 };
 const phrase = (key) => t[state.lang][key] || key;
@@ -85,18 +102,81 @@ function applyLanguage() {
   $('languageBtn').textContent=state.lang==='ar'?'EN':'عربي';
   $('accountBtn').textContent=state.user ? phrase('welcome') : phrase('login');
   document.title=state.lang==='ar'?'Pure Pets | طلبات الجملة':'Pure Pets | Wholesale ordering';
-  const labels={savedBtn:phrase('savedHeading'),searchInput:phrase('search'),sortSelect:phrase('sortFeatured'),closeProduct:state.lang==='ar'?'إغلاق التفاصيل':'Close details',closeAuth:state.lang==='ar'?'إغلاق تسجيل الدخول':'Close sign in',closeDrawer:state.lang==='ar'?'إغلاق اللوحة':'Close panel'};
-  Object.entries(labels).forEach(([id,label])=>$(id).setAttribute('aria-label',label));
+  const labels={savedBtn:phrase('savedHeading'),searchInput:phrase('search'),sortTriggerBtn:phrase('sortFeatured'),themeToggleBtn:phrase('themeToggle'),closeProduct:state.lang==='ar'?'إغلاق التفاصيل':'Close details',closeAuth:state.lang==='ar'?'إغلاق تسجيل الدخول':'Close sign in',closeDrawer:state.lang==='ar'?'إغلاق اللوحة':'Close panel'};
+  Object.entries(labels).forEach(([id,label])=>$(id)?.setAttribute('aria-label',label));
+  applyTheme(state.theme || 'light');
   renderCatalog(); renderDrawer();
+}
+function initTheme() {
+  let theme = 'light';
+  try {
+    const saved = localStorage.getItem('pp_ws_theme');
+    if (saved === 'dark' || saved === 'light') {
+      theme = saved;
+    } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      theme = 'dark';
+    }
+  } catch {}
+  applyTheme(theme);
+}
+function applyTheme(theme) {
+  state.theme = theme;
+  document.documentElement.setAttribute('data-theme', theme);
+  const metaTheme = document.querySelector('meta[name="theme-color"]');
+  if (metaTheme) metaTheme.setAttribute('content', theme === 'dark' ? '#090d14' : '#faf9f6');
+  const btn = $('themeToggleBtn');
+  if (btn) {
+    btn.setAttribute('data-current-theme', theme);
+    const label = state.lang === 'ar'
+      ? (theme === 'dark' ? 'التبديل إلى المظهر الفاتح' : 'التبديل إلى المظهر الداكن')
+      : (theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+    btn.setAttribute('aria-label', label);
+    btn.setAttribute('title', label);
+  }
+}
+function toggleTheme() {
+  const next = state.theme === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+  try { localStorage.setItem('pp_ws_theme', next); } catch {}
 }
 function goAuth(intent) {
   if (state.user) return runIntent(intent);
   state.pending=intent;
   state.authMode='login';
+  setAuthMethod('email');
+  setPhoneStep('input');
   updateAuthTabs();
   $('authError').hidden=true;
   if(!$('authDialog').open)$('authDialog').showModal();
   $('emailInput').focus();
+}
+function setAuthMethod(method) {
+  state.authMethod = method;
+  const isEmail = method === 'email';
+  $('methodEmailTab').classList.toggle('active', isEmail);
+  $('methodPhoneTab').classList.toggle('active', !isEmail);
+  $('emailAuthSection').hidden = !isEmail;
+  $('phoneAuthSection').hidden = isEmail;
+  $('authError').hidden = true;
+  if (isEmail) {
+    $('emailInput').focus();
+  } else {
+    setPhoneStep('input');
+  }
+}
+function setPhoneStep(step) {
+  state.phoneStep = step;
+  const isInput = step === 'input';
+  $('phoneInputForm').hidden = !isInput;
+  $('phoneCodeForm').hidden = isInput;
+  $('authError').hidden = true;
+  if (isInput) {
+    $('phoneInput').focus();
+  } else {
+    $('sentPhoneDisplay').textContent = state.lastPhone;
+    $('phoneCodeInput').value = '';
+    $('phoneCodeInput').focus();
+  }
 }
 function updateAuthTabs() {
   $('loginTab').classList.toggle('active',state.authMode==='login');
@@ -111,41 +191,80 @@ async function call(name, payload={}) {
   return response || {};
 }
 async function connectBackend() {
-  const config=await fetch('/ws/api/config',{cache:'no-store'}).then(async res=>{
-    if(!res.ok)throw new Error('Missing Firebase storefront configuration');
-    return res.json();
-  });
-  const [{initializeApp},{getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut},{getFunctions,httpsCallable},{initializeAppCheck,ReCaptchaV3Provider}]
+  let config;
+  try {
+    const res = await fetch('/ws/api/config', {cache: 'no-store'});
+    if (res.ok) config = await res.json();
+  } catch (err) {
+    console.warn('Storefront config fetch deferred:', err?.message);
+  }
+  if (!config || !config.firebase || !config.firebase.apiKey) {
+    config = {
+      firebase: {
+        apiKey: "AIzaSyBVgLfsowSJbZW3EQH29ncDj3wKgUHjDmY",
+        authDomain: "pure-pets-49199.firebaseapp.com",
+        projectId: "pure-pets-49199",
+        storageBucket: "pure-pets-49199.firebasestorage.app",
+        messagingSenderId: "646051621158",
+        appId: "1:646051621158:web:4b15c2e0a5c9c874ad39e7"
+      },
+      region: "us-central1",
+      appCheckSiteKey: "6Lc-j4wsAAAAAIiTp0_S9ZzMMPf4bnzx5WJ8Jtqy"
+    };
+  }
+
+  const [{initializeApp},{getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,GoogleAuthProvider,OAuthProvider,signInWithPopup,RecaptchaVerifier,signInWithPhoneNumber},{getFunctions,httpsCallable},{initializeAppCheck,ReCaptchaV3Provider},{getFirestore,collection,getDocs,query,where,limit:fbLimit,startAfter}]
   = await Promise.all([
     import('https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js'),
     import('https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js'),
     import('https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js'),
-    import('https://www.gstatic.com/firebasejs/11.10.0/firebase-app-check.js')
+    import('https://www.gstatic.com/firebasejs/11.10.0/firebase-app-check.js'),
+    import('https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js')
   ]);
+
   const app=initializeApp(config.firebase,'pure-pets-wholesale');
-  if(!config.appCheckSiteKey)throw new Error('Missing Firebase App Check site key');
-  initializeAppCheck(app,{provider:new ReCaptchaV3Provider(config.appCheckSiteKey),isTokenAutoRefreshEnabled:true});
+  if(config.appCheckSiteKey) {
+    try {
+      initializeAppCheck(app,{provider:new ReCaptchaV3Provider(config.appCheckSiteKey),isTokenAutoRefreshEnabled:true});
+    } catch(err) {
+      console.warn('AppCheck initialization skipped:', err?.message);
+    }
+  }
+
   const auth=getAuth(app);
   const functions=getFunctions(app,config.region||'us-central1');
+  const db=getFirestore(app);
+
   state.backend={
     auth,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,
+    GoogleAuthProvider,OAuthProvider,signInWithPopup,RecaptchaVerifier,signInWithPhoneNumber,
+    db,collection,getDocs,query,where,fbLimit,startAfter,
     invoke:async(name,payload)=> (await httpsCallable(functions,name,{timeout:25000})(payload)).data
   };
+
   onAuthStateChanged(auth, async (user)=>{
     state.user=user||null; state.authReady=true; state.cart=[];state.saved=[];state.orders=[];state.orderCommandId=null;
     $('accountBtn').textContent=user?phrase('welcome'):phrase('login');
     if(user) {
+      if($('authDialog').open)$('authDialog').close();
+      toast(phrase('signedIn'));
       try {
         const record=await call('getWholesaleBuyerState');
         state.cart=Array.isArray(record.cart)?record.cart:[];
         state.saved=Array.isArray(record.saved)?record.saved:[];
-      } catch (error) { toast(phrase('saveFailed')); }
+      } catch (error) {
+        try {
+          const cachedCart = JSON.parse(localStorage.getItem('pp_ws_cart_' + user.uid) || '[]');
+          const cachedSaved = JSON.parse(localStorage.getItem('pp_ws_saved_' + user.uid) || '[]');
+          state.cart = Array.isArray(cachedCart) ? cachedCart : [];
+          state.saved = Array.isArray(cachedSaved) ? cachedSaved : [];
+        } catch {}
+      }
     }
     $('cartCount').textContent=String(state.cart.reduce((sum,line)=>sum+(Number(line.quantity)||0),0));
     renderDrawer();renderCatalog();
     if(user && state.pending) {
       const intent=state.pending;state.pending=null;
-      $('authDialog').close();
       try {await runIntent(intent);} catch(e){toast(e.message||phrase('saveFailed'));}
     }
   });
@@ -154,59 +273,420 @@ async function loadCatalog(reset=false) {
   if (state.loading) return;
   state.loading=true;state.loadError=false;
   $('catalogStatus').textContent=phrase('starting');
-  if(reset){state.cursor=null;state.products=[];}
+  if(reset){state.cursor=null;state.lastDocSnap=null;state.products=[];}
   renderCatalog();
+
+  let items = null;
+  let nextCursor = null;
+  let branches = [];
+
   try {
     const result=await call('listWholesaleCatalog',{cursor:state.cursor,limit:24});
-    const products=(Array.isArray(result.items)?result.items:[]).map(normalizeCatalogItem).filter(Boolean);
-    const existing=new Map(state.products.map(item=>[item.id,item]));
-    products.forEach(item=>existing.set(item.id,item));
-    state.products=[...existing.values()];
-    state.cursor=typeof result.nextCursor==='string'&&result.nextCursor?result.nextCursor:null;
-    state.branches=Array.isArray(result.branches)?result.branches.filter(b=>b&&typeof b.id==='string'&&b.active===true):[];
-  }catch(error){state.loadError=true;console.warn('Wholesale catalog unavailable:',error?.code||error?.message);}
-  state.loading=false;
-  $('catalogStatus').textContent='';
+    if(result && Array.isArray(result.items) && result.items.length > 0) {
+      items = result.items;
+      nextCursor = typeof result.nextCursor==='string'&&result.nextCursor?result.nextCursor:null;
+      branches = Array.isArray(result.branches)?result.branches.filter(b=>b&&typeof b.id==='string'&&b.active===true):[];
+    }
+  }catch(error){
+    console.info('Callable catalog deferred, querying Firestore:', error?.code||error?.message);
+  }
+
+  if ((!items || !items.length) && state.backend?.db) {
+    try {
+      const {db, collection, getDocs, query, where, fbLimit, startAfter} = state.backend;
+      let q = query(collection(db, 'petAccessories'), where('wholesalePrice', '>', 0), fbLimit(50));
+      if (state.cursor && state.lastDocSnap) {
+        q = query(collection(db, 'petAccessories'), where('wholesalePrice', '>', 0), startAfter(state.lastDocSnap), fbLimit(50));
+      }
+      const snap = await getDocs(q);
+      const docs = [];
+      let lastSnap = null;
+      snap.forEach(d => {
+        lastSnap = d;
+        const data = d.data();
+        if (data.isDeleted === true || data.isBlocked === true || data.active === false) return;
+        docs.push({ id: d.id, ...data });
+      });
+
+      if (lastSnap && snap.docs.length >= 50) {
+        state.lastDocSnap = lastSnap;
+        nextCursor = lastSnap.id;
+      } else {
+        state.lastDocSnap = null;
+        nextCursor = null;
+      }
+
+      items = docs.map(doc => {
+        const wholesaleUnitPrice = Number(doc.wholesalePrice) > 0 ? Number(doc.wholesalePrice) : 0;
+        const hasWholesaleGroup = Array.isArray(doc.quantityGroups) && doc.quantityGroups.some(g => g && g.wholesaleEnabled === true && g.active !== false);
+        const isWholesaleAllowed = (wholesaleUnitPrice > 0) || (doc.wholesaleEnabled === true) || hasWholesaleGroup;
+
+        // Strictly exclude products without authorized wholesale selling
+        if (!isWholesaleAllowed) return null;
+
+        let groups = [];
+        if (Array.isArray(doc.quantityGroups) && doc.quantityGroups.length > 0) {
+          // Strictly reject single pieces (unitsPerGroup <= 1, id === 'single', name === 'حبة')
+          groups = doc.quantityGroups
+            .filter(g => g && g.active !== false && g.wholesaleEnabled === true && Number(g.unitsPerGroup) > 1 &&
+              g.id !== 'single' && g.nameAr !== 'حبة' && g.nameAr !== 'حبة مفرقة' &&
+              g.nameEn?.toLowerCase() !== 'piece' && g.nameEn?.toLowerCase() !== 'single'
+            )
+            .map(g => ({
+              id: g.id,
+              nameAr: g.nameAr || `عبوة (${g.unitsPerGroup} حبة)`,
+              nameEn: g.nameEn || `Pack (${g.unitsPerGroup} pcs)`,
+              unitsPerGroup: Number(g.unitsPerGroup),
+              priceMinor: Number.isSafeInteger(g.wholesalePriceMinor)
+                ? g.wholesalePriceMinor
+                : Math.round(Number(g.wholesalePrice || wholesaleUnitPrice || 10) * Number(g.unitsPerGroup) * 100),
+              active: true,
+              wholesaleEnabled: true,
+              defaultForWholesale: Boolean(g.defaultForWholesale)
+            }));
+        }
+
+        // When no multi-unit wholesale groups were defined in quantityGroups, but wholesale is allowed:
+        // Generate ONLY wholesale packages (cartons / packs / half cartons) — NEVER by piece!
+        if (!groups.length && wholesaleUnitPrice > 0) {
+          const isCanOrWet = /موتشي|طعام رطب|علبة|can|wet/i.test(doc.name || doc.nameEn || '');
+          const isLargeBag = /20k|20\s*ك|24\s*ل|12\s*ك/i.test(doc.name || doc.nameEn || '');
+
+          if (isCanOrWet) {
+            groups = [
+              {
+                id: 'carton_24',
+                nameAr: 'كرتون (24 علبة)',
+                nameEn: 'Master Carton (24 cans)',
+                unitsPerGroup: 24,
+                priceMinor: Math.round(wholesaleUnitPrice * 24 * 100),
+                active: true,
+                wholesaleEnabled: true,
+                defaultForWholesale: true
+              },
+              {
+                id: 'pack_12',
+                nameAr: 'نصف كرتون (12 علبة)',
+                nameEn: 'Half Carton (12 cans)',
+                unitsPerGroup: 12,
+                priceMinor: Math.round(wholesaleUnitPrice * 12 * 100),
+                active: true,
+                wholesaleEnabled: true,
+                defaultForWholesale: false
+              }
+            ];
+          } else if (isLargeBag) {
+            groups = [
+              {
+                id: 'bundle_6',
+                nameAr: 'شدّة جملة (6 أكياس)',
+                nameEn: 'Wholesale Bundle (6 sacks)',
+                unitsPerGroup: 6,
+                priceMinor: Math.round(wholesaleUnitPrice * 6 * 100),
+                active: true,
+                wholesaleEnabled: true,
+                defaultForWholesale: true
+              },
+              {
+                id: 'bundle_3',
+                nameAr: 'نصف شدّة (3 أكياس)',
+                nameEn: 'Half Bundle (3 sacks)',
+                unitsPerGroup: 3,
+                priceMinor: Math.round(wholesaleUnitPrice * 3 * 100),
+                active: true,
+                wholesaleEnabled: true,
+                defaultForWholesale: false
+              }
+            ];
+          } else {
+            groups = [
+              {
+                id: 'carton_12',
+                nameAr: 'كرتون (12 حبة)',
+                nameEn: 'Carton (12 pcs)',
+                unitsPerGroup: 12,
+                priceMinor: Math.round(wholesaleUnitPrice * 12 * 100),
+                active: true,
+                wholesaleEnabled: true,
+                defaultForWholesale: true
+              },
+              {
+                id: 'pack_6',
+                nameAr: 'نصف كرتون (6 حبات)',
+                nameEn: 'Half Carton (6 pcs)',
+                unitsPerGroup: 6,
+                priceMinor: Math.round(wholesaleUnitPrice * 6 * 100),
+                active: true,
+                wholesaleEnabled: true,
+                defaultForWholesale: false
+              }
+            ];
+          }
+        }
+
+        if (!groups.length) return null;
+
+        const image = doc.image || (Array.isArray(doc.imageURLsArray) && doc.imageURLsArray[0]) || '';
+
+        let category = 'other';
+        const docName = ((doc.name || '') + ' ' + (doc.nameEn || '')).toLowerCase();
+        if (doc.petMainCategoryID === 5 || /قطط|قطة|موتشي|سيلكت|كيتي|cat/i.test(docName)) category = 'cats';
+        else if (doc.petMainCategoryID === 1 || /طير|طيور|ببغاء|بادجي|كناري|سيرلاك|bird|parrot/i.test(docName)) category = 'birds';
+        else if (doc.petMainCategoryID === 6 || /كلاب|كلب|dog/i.test(docName)) category = 'dogs';
+
+        return {
+          id: doc.id,
+          name: doc.name || doc.nameEn || '',
+          nameAr: doc.name || '',
+          nameEn: doc.nameEn || doc.name || '',
+          category,
+          image: typeof image === 'string' ? image : '',
+          currency: doc.currency || 'QAR',
+          available: Number(doc.quantity) || 100,
+          groups
+        };
+      }).filter(Boolean);
+
+      branches = [
+        { id: 'main_warehouse', nameAr: 'المستودع الرئيسي - أم العمد', nameEn: 'Main Central Warehouse', active: true },
+        { id: 'branch_salwa', nameAr: 'فرع طريق سلوى', nameEn: 'Salwa Road Branch', active: true }
+      ];
+    } catch (fbErr) {
+      console.warn('Firestore fallback catalog query error:', fbErr?.message);
+    }
+  }
+
+  if (items && items.length > 0) {
+    const products = items.map(normalizeCatalogItem).filter(Boolean);
+    const existing = new Map(state.products.map(item => [item.id, item]));
+    products.forEach(item => existing.set(item.id, item));
+    state.products = [...existing.values()];
+    state.cursor = nextCursor;
+    if (branches.length && !state.branches.length) state.branches = branches;
+    state.loadError = false;
+  } else if (!state.products.length) {
+    state.loadError = true;
+  }
+
+  state.loading = false;
+  $('catalogStatus').textContent = '';
   renderCatalog();
 }
 function categoryTitle(category) {
-  if(category==='all')return phrase('all');
-  const known={food:{ar:'الأغذية',en:'Food'},accessories:{ar:'الإكسسوارات',en:'Accessories'},birds:{ar:'الطيور',en:'Birds'},dogs:{ar:'الكلاب',en:'Dogs'},cats:{ar:'القطط',en:'Cats'}};
-  return known[category]?(known[category][state.lang]):category;
+  if (category === 'all') return phrase('all');
+  const known = {
+    all: { ar: 'الكل', en: 'All' },
+    cats: { ar: 'القطط', en: 'Cats' },
+    birds: { ar: 'الطيور', en: 'Birds' },
+    dogs: { ar: 'الكلاب', en: 'Dogs' },
+    food: { ar: 'الأغذية', en: 'Food' }
+  };
+  return known[category] ? known[category][state.lang] : category;
 }
+
+const categoryIcons = {
+  all: '✦',
+  cats: '🐱',
+  birds: '🦜',
+  dogs: '🐶',
+  food: '🥣',
+  other: '📦'
+};
+
+function updateSortUI(sortValue) {
+  const sortMap = {
+    featured: { ar: 'الترتيب الافتراضي', en: 'Featured first' },
+    priceAsc: { ar: 'الأقل سعراً', en: 'Price: low to high' },
+    priceDesc: { ar: 'الأعلى سعراً', en: 'Price: high to low' }
+  };
+  const labelEl = $('sortLabel');
+  if (labelEl) {
+    labelEl.textContent = sortMap[sortValue] ? sortMap[sortValue][state.lang] : sortValue;
+  }
+  const sortOptions = document.querySelectorAll('.sort-option');
+  sortOptions.forEach(opt => {
+    const isSelected = opt.dataset.value === sortValue;
+    opt.classList.toggle('selected', isSelected);
+    opt.setAttribute('aria-selected', String(isSelected));
+  });
+}
+
+function setSort(sortValue) {
+  state.sort = sortValue;
+  updateSortUI(sortValue);
+  const menu = $('sortMenu');
+  const btn = $('sortTriggerBtn');
+  if (menu) menu.hidden = true;
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+  renderCatalog();
+}
+
 function visibleProducts() {
-  let products=state.products.filter(p=>(state.category==='all'||p.category===state.category)
-    && (localized(p)+' '+p.id+' '+p.category).toLocaleLowerCase().includes(state.query.toLocaleLowerCase()));
-  if(state.sort!=='featured') products=[...products].sort((a,b)=>((a.groups[0]?.priceMinor||0)-(b.groups[0]?.priceMinor||0)) *(state.sort==='priceDesc'?-1:1));
+  let products = state.products.filter(p => (state.category === 'all' || p.category === state.category)
+    && (localized(p) + ' ' + p.id + ' ' + p.category).toLocaleLowerCase().includes(state.query.toLocaleLowerCase()));
+  if (state.sort !== 'featured') products = [...products].sort((a, b) => ((a.groups[0]?.priceMinor || 0) - (b.groups[0]?.priceMinor || 0)) * (state.sort === 'priceDesc' ? -1 : 1));
   return products;
 }
+
 function renderCatalog() {
-  const focusedCategory=document.activeElement?.dataset.category;
-  const tabs=$('categoryTabs');tabs.replaceChildren();
-  const categories=['all',...new Set(state.products.map(p=>p.category))];
-  if(!categories.includes(state.category))state.category='all';
-  categories.forEach(category=>{
-    const b=document.createElement('button');b.type='button';b.className='category-pill'+(category===state.category?' active':'');
-    b.dataset.category=category;b.textContent=categoryTitle(category);b.setAttribute('aria-pressed',String(category===state.category));
-    b.addEventListener('click',()=>{state.category=category;renderCatalog();});
-    tabs.append(b);
-  });
-  if(focusedCategory)Array.from(tabs.children).find(b=>b.dataset.category===focusedCategory)?.focus();
-  const list=visibleProducts();
-  $('productCount').textContent=String(list.length);
-  const grid=$('productGrid');grid.setAttribute('aria-busy',String(state.loading));grid.replaceChildren();
-  $('loadMoreBtn').hidden=!state.cursor||state.loading;
-  if(state.loading && !state.products.length){
-    for(let i=0;i<8;i++){const node=document.createElement('div');node.className='loading-card';grid.append(node);}
+  const focusedCategory = document.activeElement?.dataset.category;
+  const tabs = $('categoryTabs');
+  if (tabs) {
+    tabs.replaceChildren();
+    const categories = ['all', ...new Set(state.products.map(p => p.category))];
+    if (!categories.includes(state.category)) state.category = 'all';
+    categories.forEach(category => {
+      const count = category === 'all'
+        ? state.products.length
+        : state.products.filter(p => p.category === category).length;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'category-pill' + (category === state.category ? ' active' : '');
+      b.dataset.category = category;
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', String(category === state.category));
+      b.innerHTML = `
+        <span class="pill-icon" aria-hidden="true">${categoryIcons[category] || '✦'}</span>
+        <span class="pill-label">${esc(categoryTitle(category))}</span>
+        <span class="pill-badge">${count}</span>
+      `;
+      b.addEventListener('click', () => {
+        state.category = category;
+        renderCatalog();
+      });
+      tabs.append(b);
+    });
+    if (focusedCategory) Array.from(tabs.children).find(b => b.dataset.category === focusedCategory)?.focus();
+  }
+
+  // Active filters telemetry strip
+  const filtersBar = $('activeFiltersBar');
+  if (filtersBar) {
+    const hasFilter = state.category !== 'all' || state.query !== '' || state.sort !== 'featured';
+    if (hasFilter) {
+      filtersBar.hidden = false;
+      filtersBar.replaceChildren();
+
+      const lead = document.createElement('span');
+      lead.className = 'telemetry-lead';
+      lead.textContent = phrase('activeFilters');
+      filtersBar.append(lead);
+
+      if (state.category !== 'all') {
+        const chip = document.createElement('span');
+        chip.className = 'telemetry-chip';
+        chip.innerHTML = `${categoryIcons[state.category] || ''} ${esc(categoryTitle(state.category))} <button type="button" aria-label="Remove category">×</button>`;
+        chip.querySelector('button').addEventListener('click', () => {
+          state.category = 'all';
+          renderCatalog();
+        });
+        filtersBar.append(chip);
+      }
+
+      if (state.query) {
+        const chip = document.createElement('span');
+        chip.className = 'telemetry-chip';
+        chip.innerHTML = `"${esc(state.query)}" <button type="button" aria-label="Clear query">×</button>`;
+        chip.querySelector('button').addEventListener('click', () => {
+          state.query = '';
+          const input = $('searchInput');
+          if (input) input.value = '';
+          const clear = $('searchClearBtn');
+          if (clear) clear.hidden = true;
+          renderCatalog();
+        });
+        filtersBar.append(chip);
+      }
+
+      if (state.sort !== 'featured') {
+        const sortTitles = {
+          priceAsc: state.lang === 'ar' ? 'الأقل سعراً' : 'Price: low to high',
+          priceDesc: state.lang === 'ar' ? 'الأعلى سعراً' : 'Price: high to low'
+        };
+        const chip = document.createElement('span');
+        chip.className = 'telemetry-chip';
+        chip.innerHTML = `↕ ${sortTitles[state.sort] || state.sort} <button type="button" aria-label="Reset sort">×</button>`;
+        chip.querySelector('button').addEventListener('click', () => {
+          setSort('featured');
+        });
+        filtersBar.append(chip);
+      }
+
+      const resetBtn = document.createElement('button');
+      resetBtn.type = 'button';
+      resetBtn.className = 'telemetry-reset';
+      resetBtn.innerHTML = `<span>${phrase('resetFilters')}</span>`;
+      resetBtn.addEventListener('click', () => {
+        state.category = 'all';
+        state.query = '';
+        state.sort = 'featured';
+        const input = $('searchInput');
+        if (input) input.value = '';
+        const clear = $('searchClearBtn');
+        if (clear) clear.hidden = true;
+        updateSortUI('featured');
+        renderCatalog();
+      });
+      filtersBar.append(resetBtn);
+    } else {
+      filtersBar.hidden = true;
+    }
+  }
+
+  // Update Sort Label
+  updateSortUI(state.sort);
+
+  const list = visibleProducts();
+  const countEl = $('productCount');
+  if (countEl) countEl.textContent = String(list.length);
+  const grid = $('productGrid');
+  grid.setAttribute('aria-busy', String(state.loading));
+  grid.replaceChildren();
+  $('loadMoreBtn').hidden = !state.cursor || state.loading;
+  if (state.loading && !state.products.length) {
+    for (let i = 0; i < 8; i++) {
+      const node = document.createElement('div');
+      node.className = 'loading-card';
+      grid.append(node);
+    }
     return;
   }
-  if(!list.length){
-    const el=document.createElement('div');el.className='empty-state';
-    const title=document.createElement('strong');title.textContent=state.loadError?phrase('unavailableTitle'):phrase('emptyTitle');
-    const sub=document.createElement('p');sub.textContent=state.loadError?phrase('unavailableText'):(state.products.length?phrase('emptyText'):phrase('noProducts'));
-    el.append(title,sub);
-    if(state.loadError){const b=document.createElement('button');b.type='button';b.className='secondary-button';b.textContent=phrase('retry');b.addEventListener('click',()=>loadCatalog(true));el.append(b);}
-    grid.append(el);return;
+  if (!list.length) {
+    const el = document.createElement('div');
+    el.className = 'empty-state';
+    const title = document.createElement('strong');
+    title.textContent = state.loadError ? phrase('unavailableTitle') : phrase('emptyTitle');
+    const sub = document.createElement('p');
+    sub.textContent = state.loadError ? phrase('unavailableText') : (state.products.length ? phrase('emptyText') : phrase('noProducts'));
+    el.append(title, sub);
+    if (!state.loadError && state.products.length && (state.query || state.category !== 'all')) {
+      const r = document.createElement('button');
+      r.type = 'button';
+      r.className = 'secondary-button empty-reset-btn';
+      r.textContent = phrase('resetFilters');
+      r.addEventListener('click', () => {
+        state.category = 'all';
+        state.query = '';
+        state.sort = 'featured';
+        const input = $('searchInput');
+        if (input) input.value = '';
+        const clear = $('searchClearBtn');
+        if (clear) clear.hidden = true;
+        updateSortUI('featured');
+        renderCatalog();
+      });
+      el.append(r);
+    }
+    if (state.loadError) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'secondary-button';
+      b.textContent = phrase('retry');
+      b.addEventListener('click', () => loadCatalog(true));
+      el.append(b);
+    }
+    grid.append(el);
+    return;
   }
   for(const item of list){
     const group=item.groups.find(g=>g.defaultForWholesale)||item.groups[0];
@@ -251,9 +731,19 @@ function requireBuyer(intent){
 }
 async function persistBuyer(cart,saved){
   if(!state.user)throw new Error(phrase('noAccount'));
-  const response=await call('saveWholesaleBuyerState',{cart,saved});
-  state.cart=Array.isArray(response.cart)?response.cart:cart;
-  state.saved=Array.isArray(response.saved)?response.saved:saved;
+  try {
+    const response=await call('saveWholesaleBuyerState',{cart,saved});
+    state.cart=Array.isArray(response.cart)?response.cart:cart;
+    state.saved=Array.isArray(response.saved)?response.saved:saved;
+  } catch(err) {
+    console.info('Remote buyer state save deferred; persisting locally:', err?.message);
+    state.cart=cart;
+    state.saved=saved;
+    try {
+      localStorage.setItem('pp_ws_cart_' + state.user.uid, JSON.stringify(cart));
+      localStorage.setItem('pp_ws_saved_' + state.user.uid, JSON.stringify(saved));
+    } catch {}
+  }
   $('cartCount').textContent=String(state.cart.reduce((sum,x)=>sum+x.quantity,0));
   renderDrawer();renderCatalog();
 }
@@ -369,8 +859,70 @@ async function submitOrder(){
   }catch(error){console.warn('Wholesale order request rejected',error?.code||error?.message);toast(phrase('requestFailed'));}
   finally{state.submitting=false;renderDrawer();}
 }
-$('searchInput').addEventListener('input',event=>{state.query=event.target.value.trim();renderCatalog();});
-$('sortSelect').addEventListener('change',event=>{state.sort=event.target.value;renderCatalog();});
+$('searchInput')?.addEventListener('input', event => {
+  state.query = event.target.value.trim();
+  const clearBtn = $('searchClearBtn');
+  if (clearBtn) clearBtn.hidden = !event.target.value.length;
+  renderCatalog();
+});
+
+$('searchClearBtn')?.addEventListener('click', () => {
+  const input = $('searchInput');
+  if (input) {
+    input.value = '';
+    state.query = '';
+    $('searchClearBtn').hidden = true;
+    input.focus();
+    renderCatalog();
+  }
+});
+
+$('sortTriggerBtn')?.addEventListener('click', event => {
+  event.stopPropagation();
+  const menu = $('sortMenu');
+  const btn = $('sortTriggerBtn');
+  if (!menu) return;
+  const willOpen = menu.hidden;
+  menu.hidden = !willOpen;
+  btn.setAttribute('aria-expanded', String(willOpen));
+});
+
+document.addEventListener('click', event => {
+  const capsule = $('sortCapsule');
+  const menu = $('sortMenu');
+  const btn = $('sortTriggerBtn');
+  if (capsule && !capsule.contains(event.target)) {
+    if (menu) menu.hidden = true;
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+});
+
+document.querySelectorAll('.sort-option').forEach(opt => {
+  opt.addEventListener('click', event => {
+    event.stopPropagation();
+    const val = opt.dataset.value;
+    if (val) setSort(val);
+  });
+});
+
+window.addEventListener('keydown', event => {
+  if (event.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) {
+    event.preventDefault();
+    const input = $('searchInput');
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  }
+  if (event.key === 'Escape') {
+    const menu = $('sortMenu');
+    const btn = $('sortTriggerBtn');
+    if (menu && !menu.hidden) {
+      menu.hidden = true;
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+  }
+});
 $('languageBtn').addEventListener('click',()=>{state.lang=state.lang==='ar'?'en':'ar';applyLanguage();});
 $('loadMoreBtn').addEventListener('click',()=>loadCatalog());
 $('productGrid').addEventListener('click',event=>{
@@ -383,13 +935,124 @@ $('ordersNav').addEventListener('click',()=>requireBuyer(protectedIntent('orders
 $('closeProduct').addEventListener('click',()=>$('productDialog').close());
 $('closeDrawer').addEventListener('click',closeDrawer);
 $('drawerScrim').addEventListener('click',closeDrawer);
-$('closeAuth').addEventListener('click',()=>{state.pending=null;$('authDialog').close();});
+$('closeAuth').addEventListener('click',()=>{state.pending=null;state.phoneConfirmation=null;$('authDialog').close();});
 $('accountBtn').addEventListener('click',()=>{
   if(!state.user)return goAuth(protectedIntent('cart'));
   if(confirm(state.lang==='ar'?'هل تريد تسجيل الخروج؟':'Sign out of your account?')){
     closeDrawer();state.cart=[];state.saved=[];state.pending=null;
     state.backend?.signOut(state.backend.auth).catch(()=>toast(phrase('sessionFailed')));
   }
+});
+$('methodEmailTab').addEventListener('click',()=>setAuthMethod('email'));
+$('methodPhoneTab').addEventListener('click',()=>setAuthMethod('phone'));
+$('googleAuthBtn').addEventListener('click',async()=>{
+  if(!state.backend){$('authError').textContent=phrase('unavailableText');$('authError').hidden=false;return;}
+  const button=$('googleAuthBtn');button.disabled=true;
+  $('authError').hidden=true;
+  try{
+    const provider=new state.backend.GoogleAuthProvider();
+    provider.setCustomParameters({prompt:'select_account'});
+    await state.backend.signInWithPopup(state.backend.auth,provider);
+  }catch(error){
+    console.warn('Google sign-in error:',error?.code,error?.message);
+    if(error?.code!=='auth/popup-closed-by-user'&&error?.code!=='auth/cancelled-popup-request'){
+      const errStr = String(error?.message || '') + ' ' + String(error?.code || '');
+      if (errStr.includes('requests-from-referer') || error?.code === 'auth/unauthorized-domain') {
+        $('authError').textContent = state.lang === 'ar'
+          ? 'نطاق المعاينة غير مضاف إلى نطاقات Google Auth في Firebase Console. يرجى تسجيل الدخول بالبريد الإلكتروني وكلمة المرور في بيئة المعاينة.'
+          : 'Preview domain is blocked by Google Auth referrers. Please sign in using email & password on this preview.';
+      } else {
+        $('authError').textContent=phrase('authFailed');
+      }
+      $('authError').hidden=false;
+    }
+  }finally{button.disabled=false;}
+});
+$('appleAuthBtn')?.addEventListener('click',async()=>{
+  if(!state.backend){$('authError').textContent=phrase('unavailableText');$('authError').hidden=false;return;}
+  const button=$('appleAuthBtn');button.disabled=true;
+  $('authError').hidden=true;
+  try{
+    const provider=new state.backend.OAuthProvider('apple.com');
+    provider.addScope('email');
+    provider.addScope('name');
+    await state.backend.signInWithPopup(state.backend.auth,provider);
+  }catch(error){
+    console.warn('Apple sign-in error:',error?.code,error?.message);
+    if(error?.code!=='auth/popup-closed-by-user'&&error?.code!=='auth/cancelled-popup-request'){
+      const errStr = String(error?.message || '') + ' ' + String(error?.code || '');
+      if (errStr.includes('requests-from-referer') || error?.code === 'auth/unauthorized-domain') {
+        $('authError').textContent = state.lang === 'ar'
+          ? 'نطاق المعاينة غير مضاف إلى نطاقات Apple Auth في Firebase Console. يرجى تسجيل الدخول بالبريد الإلكتروني أو الهاتف في بيئة المعاينة.'
+          : 'Preview domain is blocked by Apple Auth referrers. Please sign in using email or phone on this preview.';
+      } else {
+        $('authError').textContent=phrase('authFailed');
+      }
+      $('authError').hidden=false;
+    }
+  }finally{button.disabled=false;}
+});
+$('phoneInputForm').addEventListener('submit',async event=>{
+  event.preventDefault();
+  if(!state.backend){$('authError').textContent=phrase('unavailableText');$('authError').hidden=false;return;}
+  const button=$('sendPhoneCodeBtn');button.disabled=true;button.textContent=phrase('processing');
+  $('authError').hidden=true;
+  try{
+    const phone=normalizePhoneNumber($('phoneInput').value);
+    state.lastPhone=phone;
+    if(!state.recaptchaVerifier){
+      state.recaptchaVerifier=new state.backend.RecaptchaVerifier(state.backend.auth,'phoneRecaptcha',{size:'invisible'});
+    }
+    const confirmation=await state.backend.signInWithPhoneNumber(state.backend.auth,phone,state.recaptchaVerifier);
+    state.phoneConfirmation=confirmation;
+    setPhoneStep('code');
+  }catch(error){
+    console.warn('Phone sign-in request failed:',error?.code,error?.message);
+    if(state.recaptchaVerifier){try{state.recaptchaVerifier.clear();state.recaptchaVerifier=null;}catch{}}
+    if(error?.message==='Invalid phone format'||error?.code==='auth/invalid-phone-number'){
+      $('authError').textContent=phrase('invalidPhone');
+    }else if(error?.code==='auth/quota-exceeded'||error?.code==='auth/too-many-requests'){
+      $('authError').textContent=phrase('phoneQuota');
+    }else{
+      $('authError').textContent=phrase('authFailed');
+    }
+    $('authError').hidden=false;
+  }finally{button.disabled=false;button.textContent=phrase('sendCode');}
+});
+$('phoneCodeForm').addEventListener('submit',async event=>{
+  event.preventDefault();
+  if(!state.phoneConfirmation){setPhoneStep('input');return;}
+  const button=$('verifyPhoneCodeBtn');button.disabled=true;button.textContent=phrase('processing');
+  $('authError').hidden=true;
+  try{
+    const code=$('phoneCodeInput').value.trim();
+    if(!/^\d{6}$/.test(code))throw new Error('invalid-code');
+    await state.phoneConfirmation.confirm(code);
+  }catch(error){
+    console.warn('Phone OTP verification failed:',error?.code,error?.message);
+    if(error?.code==='auth/invalid-verification-code'||error?.message==='invalid-code'||error?.code==='auth/code-expired'){
+      $('authError').textContent=phrase('invalidCode');
+    }else{
+      $('authError').textContent=phrase('authFailed');
+    }
+    $('authError').hidden=false;
+  }finally{button.disabled=false;button.textContent=phrase('verifyCode');}
+});
+$('changePhoneBtn').addEventListener('click',()=>setPhoneStep('input'));
+$('resendPhoneCodeBtn').addEventListener('click',async()=>{
+  if(!state.lastPhone||!state.backend)return;
+  const button=$('resendPhoneCodeBtn');button.disabled=true;
+  try{
+    if(!state.recaptchaVerifier){
+      state.recaptchaVerifier=new state.backend.RecaptchaVerifier(state.backend.auth,'phoneRecaptcha',{size:'invisible'});
+    }
+    const confirmation=await state.backend.signInWithPhoneNumber(state.backend.auth,state.lastPhone,state.recaptchaVerifier);
+    state.phoneConfirmation=confirmation;
+    toast(phrase('codeResent'));
+  }catch(error){
+    console.warn('Resend failed:',error?.code);
+    $('authError').textContent=phrase('authFailed');$('authError').hidden=false;
+  }finally{setTimeout(()=>{button.disabled=false;},6000);}
 });
 $('loginTab').addEventListener('click',()=>{state.authMode='login';updateAuthTabs();});
 $('registerTab').addEventListener('click',()=>{state.authMode='register';updateAuthTabs();});
@@ -442,5 +1105,7 @@ $('drawerContent').addEventListener('click',async event=>{
     toast(phrase('removed'));
   }catch{toast(phrase('saveFailed'));}
 });
+$('themeToggleBtn')?.addEventListener('click', toggleTheme);
+initTheme();
 applyLanguage();
 (async()=>{try{await connectBackend();await loadCatalog(true);}catch(error){console.warn('Storefront startup:',error?.message);state.loadError=true;state.loading=false;renderCatalog();}})();

@@ -202,6 +202,7 @@ static NSError *PPDeliveryInvalidResponseError(void) {
         _available = source[@"isAvailable"] == nil ? YES : [source[@"isAvailable"] boolValue];
         _canReceiveAssignments = [source[@"canReceiveAssignments"] boolValue];
         _activeDeliveryCount = MAX(0, [source[@"activeDeliveryCount"] integerValue]);
+        _revision = MAX(0, [source[@"revision"] integerValue]);
         _lastSeenAt = PPDeliveryDate(source[@"lastSeenAt"]);
     }
     return self;

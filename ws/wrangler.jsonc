@@ -1,23 +1,33 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "pure-pets-wholesale",
-  "main": "worker/index.js",
+  "main": "dist/preview-worker.mjs",
   "compatibility_date": "2026-10-20",
   "workers_dev": true,
+  "routes": [
+    { "pattern": "pure-pets.net/ws*", "zone_name": "pure-pets.net" },
+    { "pattern": "www.pure-pets.net/ws*", "zone_name": "pure-pets.net" }
+  ],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
     "run_worker_first": true
   },
   "vars": {
-    "FUNCTIONS_REGION": "us-central1"
+    "FUNCTIONS_REGION": "us-central1",
+    "FIREBASE_APPCHECK_SITE_KEY": "6Lc-j4wsAAAAAIiTp0_S9ZzMMPf4bnzx5WJ8Jtqy",
+    "FIREBASE_CLIENT_CONFIG": "{\"apiKey\":\"AIzaSyBVgLfsowSJbZW3EQH29ncDj3wKgUHjDmY\",\"authDomain\":\"pure-pets-49199.firebaseapp.com\",\"projectId\":\"pure-pets-49199\",\"storageBucket\":\"pure-pets-49199.firebasestorage.app\",\"messagingSenderId\":\"646051621158\",\"appId\":\"1:646051621158:web:4b15c2e0a5c9c874ad39e7\"}"
   },
   "env": {
     "preview": {
       "name": "pure-pets-wholesale-preview",
+      "main": "dist/preview-worker.mjs",
       "workers_dev": true,
+      "routes": [],
       "vars": {
-        "FUNCTIONS_REGION": "us-central1"
+        "FUNCTIONS_REGION": "us-central1",
+        "FIREBASE_APPCHECK_SITE_KEY": "6Lc-j4wsAAAAAIiTp0_S9ZzMMPf4bnzx5WJ8Jtqy",
+        "FIREBASE_CLIENT_CONFIG": "{\"apiKey\":\"AIzaSyBVgLfsowSJbZW3EQH29ncDj3wKgUHjDmY\",\"authDomain\":\"pure-pets-49199.firebaseapp.com\",\"projectId\":\"pure-pets-49199\",\"storageBucket\":\"pure-pets-49199.firebasestorage.app\",\"messagingSenderId\":\"646051621158\",\"appId\":\"1:646051621158:web:4b15c2e0a5c9c874ad39e7\"}"
       }
     }
   }

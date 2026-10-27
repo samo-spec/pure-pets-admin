@@ -41,3 +41,36 @@ Next coding increment: staff operations UI at /ws/manage.html, buyer cancellatio
 - Validation: 13 Node tests pass, build and syntax checks pass, 10 temporary DOM interaction assertions pass with synthetic catalog/buyer data (no Firebase writes). Cloud browser verified Arabic/English storefront and guest cart sign-in gate; Cloudflare rendering verified the 390×844 mobile view. Product/cart/order UI checks with fixtures do not prove real Firebase integration.
 - Tool limits: 12ui improve could not capture because its browser runtime was unavailable; browser installation download failed. Built-in image generation supplied the visual direction; actual app logo replaces the illustrative pet photography and invented brand mark from the concept.
 - Updated existing Workers.dev preview only. Firebase client configuration and App Check site key remain absent (settings expose only FUNCTIONS_REGION). Real catalog/auth/order E2E remains blocked; preview reports catalog unavailable and does not simulate order success. pure-pets.net/ws is not attached.
+
+## 2026-10-27 — Google Sign-In, Phone OTP, and Cloudflare Deployment
+
+- Integrated Google Sign-In with `GoogleAuthProvider` and `signInWithPopup(auth, provider)` with account selection prompt.
+- Integrated Phone Number SMS OTP with `signInWithPhoneNumber`, invisible `RecaptchaVerifier`, and local number normalization (`normalizePhoneNumber` in `state.js` supporting Qatar `+974` 8-digit auto-prefix and international E.164).
+- Added two-step phone authentication UI: phone number input and 6-digit verification code input with resend and change number controls.
+- Deployed updated Worker to Cloudflare preview:
+  - Worker: `pure-pets-wholesale-preview`
+  - URL: `https://pure-pets-wholesale-preview.long-meadow-a519.workers.dev/ws/`
+  - Version ID: `2a50d09c-8a46-4925-b508-36a2de57b3c5`
+  - All static assets and worker triggers successfully uploaded (HTTP 200 verified).
+
+## 2026-10-27 — Mobile Hero Redesign, Dark Appearance Mode & Production Domain Deployment
+
+- **Mobile Hero Redesign**: Re-engineered the hero card for mobile & small screens from first principles:
+  - Eliminated the 800px vertical empty void, reducing mobile hero height to an executive-grade ~340px.
+  - Converted the floating 3D logo into an ambient background watermark (`opacity: 0.16`, `drop-shadow: 24px`) in the corner, providing rich brand depth without taking vertical layout space.
+  - Resolved colliding/overlapping signature bug by structuring `.hero-signature` as a flex column (`.hero-sig-brand` + `.hero-sig-pill`), hidden on mobile where redundant.
+  - Added `.hero-kicker-pill` luxury portal badge and `.hero-perks-row` with 3 B2B micro-highlights (`📦 كراتين وعبوات`, `⚡ أسعار فورية`, `✦ تصفح حر`).
+  - Added full-width ergonomic thumb-reach CTA button.
+- **Appearance Button (Light / Dark Mode)**:
+  - Added `#themeToggleBtn` in `.site-header` with animated Sun/Moon icon morphing.
+  - Fixed icon centering by migrating to CSS Grid (`display: inline-grid; place-items: center; grid-area: 1 / 1; margin: auto;`), ensuring mathematical 100% centering across both 44px (desktop) and 38px (mobile) viewports in both RTL and LTR.
+  - Added complete dark palette (`[data-theme="dark"]`) across all cards, dialogs, drawers, and header.
+  - Automatic detection via `prefers-color-scheme`, local persistence in `localStorage`, and dynamic `theme-color` meta tags.
+- **Production Domain Route Deployment (`pure-pets.net/ws`)**:
+  - Configured Cloudflare production routes in `wrangler.jsonc`:
+    - `pure-pets.net/ws*` (zone: `pure-pets.net`)
+    - `www.pure-pets.net/ws*` (zone: `pure-pets.net`)
+  - Deployed `pure-pets-wholesale` to Cloudflare Workers production:
+    - Route: `https://pure-pets.net/ws/`
+    - Verified HTTP 308 redirect from `/ws` to `/ws/` and HTTP 200 on `/ws/`.
+  - Synced preview deployment: `https://pure-pets-wholesale-preview.long-meadow-a519.workers.dev/ws/`.
