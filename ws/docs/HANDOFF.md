@@ -31,3 +31,13 @@ Next coding increment: staff operations UI at /ws/manage.html, buyer cancellatio
 - Cloudflare production routes remain empty: neither `pure-pets.net/ws` nor `pure-pets.net/ws/*` is attached.
 - Release blocker: connect Firebase, deploy customer-safe backend functions + rules after security verification, create Firebase web app config and reCAPTCHA App Check key, publish approved wholesale branches/configuration, run E2E guest browsing and auth/cart/order tests. Then deploy canonical `ws/` Worker with Wrangler static assets and attach path-specific production routes.
 - Do not deploy any existing Admin POS staff callables to public unprivileged access or mark quote requests paid.
+
+## 2026-10-27 — Wholesale storefront redesign
+
+- Replaced the layered stylesheet with one responsive system: editorial typography, Pure Pets rose controls, botanical brand panel, catalog tabs, product cards, detail/auth modals and buyer drawers. Official LogoV5 is served locally, optimized from 808 KB to 60 KB.
+- Preserved callable names, payloads, buyer-gated actions and request-only checkout semantics. No Infra, Firebase rules, native Admin or production route changes.
+- Fixed default wholesale pack selection, category keyboard focus, drawer focus containment/background inertness/Escape dismissal, translated control labels, saved-state feedback and order-history loading/error/retry. Fixed translation values equal to their key being skipped.
+- Fixed build output to include manage.html. Added isolated preview snapshot builder reusing the canonical Worker and dist assets; preview configuration bindings are inherited.
+- Validation: 13 Node tests pass, build and syntax checks pass, 10 temporary DOM interaction assertions pass with synthetic catalog/buyer data (no Firebase writes). Cloud browser verified Arabic/English storefront and guest cart sign-in gate; Cloudflare rendering verified the 390×844 mobile view. Product/cart/order UI checks with fixtures do not prove real Firebase integration.
+- Tool limits: 12ui improve could not capture because its browser runtime was unavailable; browser installation download failed. Built-in image generation supplied the visual direction; actual app logo replaces the illustrative pet photography and invented brand mark from the concept.
+- Updated existing Workers.dev preview only. Firebase client configuration and App Check site key remain absent (settings expose only FUNCTIONS_REGION). Real catalog/auth/order E2E remains blocked; preview reports catalog unavailable and does not simulate order success. pure-pets.net/ws is not attached.

@@ -5,10 +5,10 @@ const $ = (id) => document.getElementById(id);
 const t = {
   ar: {
     top:'بوابة الأعمال من Pure Pets',wholesale:'تجربة مخصصة لطلبات الجملة',navCatalog:'المنتجات',navOrders:'طلباتي',
-    cart:'السلة',login:'دخول / تسجيل',logout:'تسجيل الخروج',eyebrow:'PURE PETS / BUSINESS',heroOne:'الجملة،',heroTwo:'بمفهوم أذكى.',
+    cart:'السلة',login:'دخول / تسجيل',logout:'تسجيل الخروج',eyebrow:'PURE PETS / BUSINESS',heroOne:'رعاية لهم.',heroTwo:'ونموّ لتجارتك.',
     heroDesc:'منتجات مختارة بعناية، وحدات بيع واضحة، وتجربة طلب تناسب طموح تجارتك.',explore:'اكتشف المنتجات',
     guestHint:'تصفح بحرية. سجّل دخولك فقط عند اتخاذ إجراء.',collection:'THE COLLECTION / المجموعة',catalogHeading:'اكتشف مجموعتنا',
-    catalogHint:'منتجات الجملة المتاحة حسب إعدادات المتجر الفعلية.',products:'منتج',search:'ابحث عن المنتجات...',
+    catalogHint:'اختر المنتج، حدّد العبوة، وأرسل طلبك للمراجعة.',products:'منتج',search:'ابحث عن المنتجات...',
     sortFeatured:'الترتيب الافتراضي',sortLow:'الأقل سعراً',sortHigh:'الأعلى سعراً',loadMore:'عرض المزيد',
     promiseOne:'وحدات بيع واضحة',promiseTwo:'أسعار جملة موثقة',promiseThree:'طلبات مرتبطة بحسابك',footerCopy:'كل ما يحتاجه مشروعك، من مكان واحد.',
     workspace:'مساحة مشتري الجملة',authTitle:'أهلاً بك في عالم الجملة',authIntro:'أكمل تسجيل الدخول للمتابعة من حيث توقفت.',
@@ -31,10 +31,10 @@ const t = {
   },
   en: {
     top:'The Pure Pets business gateway',wholesale:'A dedicated wholesale experience',navCatalog:'Products',navOrders:'My orders',
-    cart:'Cart',login:'Sign in / Join',logout:'Sign out',eyebrow:'PURE PETS / BUSINESS',heroOne:'Wholesale,',heroTwo:'reimagined.',
+    cart:'Cart',login:'Sign in / Join',logout:'Sign out',eyebrow:'PURE PETS / BUSINESS',heroOne:'Care for them.',heroTwo:'Grow with us.',
     heroDesc:'Carefully chosen products, clear pack pricing, and a buying experience built around your business.',explore:'Explore the collection',
     guestHint:'Browse freely. Sign in only when you want to take action.',collection:'THE COLLECTION / WHOLESALE',catalogHeading:'Explore the collection',
-    catalogHint:'Wholesale products published by the store.',products:'products',search:'Search products...',
+    catalogHint:'Find your essentials. Choose your pack. Request your order.',products:'products',search:'Search products...',
     sortFeatured:'Featured first',sortLow:'Price: low to high',sortHigh:'Price: high to low',loadMore:'Load more',
     promiseOne:'Clear wholesale units',promiseTwo:'Verified pack pricing',promiseThree:'Orders tied to your account',footerCopy:'Everything your business needs, in one place.',
     workspace:'Your wholesale workspace',authTitle:'Welcome to wholesale',authIntro:'Sign in to continue right where you left off.',
@@ -60,7 +60,7 @@ const state = {
   lang: 'ar', products: [], cursor:null, categories:[], category:'all', query:'', sort:'featured',
   branches:[], cart:[], saved:[], user:null, backend:null, pending:null, activeProduct:null,
   authMode:'login', drawer:'cart', loadError:false, authReady:false, loading:false,
-  submitting:false, orderCommandId:null, orders:[], notifyTimer:null
+  submitting:false, orderCommandId:null, ordersLoading:false,ordersError:false,orders:[], notifyTimer:null
 };
 const phrase = (key) => t[state.lang][key] || key;
 const esc = (value) => String(value == null ? '' : value).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -79,11 +79,14 @@ function applyLanguage() {
   document.documentElement.dir=state.lang==='ar'?'rtl':'ltr';
   document.querySelectorAll('[data-t]').forEach(node=>{
     const key=node.dataset.t;
-    if(phrase(key)!==key)node.textContent=phrase(key);
+    if(Object.hasOwn(t[state.lang],key))node.textContent=phrase(key);
   });
   document.querySelectorAll('[data-placeholder]').forEach(node=>node.placeholder=phrase(node.dataset.placeholder));
   $('languageBtn').textContent=state.lang==='ar'?'EN':'عربي';
   $('accountBtn').textContent=state.user ? phrase('welcome') : phrase('login');
+  document.title=state.lang==='ar'?'Pure Pets | طلبات الجملة':'Pure Pets | Wholesale ordering';
+  const labels={savedBtn:phrase('savedHeading'),searchInput:phrase('search'),sortSelect:phrase('sortFeatured'),closeProduct:state.lang==='ar'?'إغلاق التفاصيل':'Close details',closeAuth:state.lang==='ar'?'إغلاق تسجيل الدخول':'Close sign in',closeDrawer:state.lang==='ar'?'إغلاق اللوحة':'Close panel'};
+  Object.entries(labels).forEach(([id,label])=>$(id).setAttribute('aria-label',label));
   renderCatalog(); renderDrawer();
 }
 function goAuth(intent) {
@@ -92,12 +95,14 @@ function goAuth(intent) {
   state.authMode='login';
   updateAuthTabs();
   $('authError').hidden=true;
-  $('authDialog').showModal();
+  if(!$('authDialog').open)$('authDialog').showModal();
   $('emailInput').focus();
 }
 function updateAuthTabs() {
   $('loginTab').classList.toggle('active',state.authMode==='login');
   $('registerTab').classList.toggle('active',state.authMode==='register');
+  $('loginTab').setAttribute('aria-pressed',String(state.authMode==='login'));
+  $('registerTab').setAttribute('aria-pressed',String(state.authMode==='register'));
   $('passwordInput').autocomplete=state.authMode==='login'?'current-password':'new-password';
 }
 async function call(name, payload={}) {
@@ -137,7 +142,7 @@ async function connectBackend() {
       } catch (error) { toast(phrase('saveFailed')); }
     }
     $('cartCount').textContent=String(state.cart.reduce((sum,line)=>sum+(Number(line.quantity)||0),0));
-    renderDrawer();
+    renderDrawer();renderCatalog();
     if(user && state.pending) {
       const intent=state.pending;state.pending=null;
       $('authDialog').close();
@@ -176,18 +181,20 @@ function visibleProducts() {
   return products;
 }
 function renderCatalog() {
+  const focusedCategory=document.activeElement?.dataset.category;
   const tabs=$('categoryTabs');tabs.replaceChildren();
   const categories=['all',...new Set(state.products.map(p=>p.category))];
   if(!categories.includes(state.category))state.category='all';
   categories.forEach(category=>{
     const b=document.createElement('button');b.type='button';b.className='category-pill'+(category===state.category?' active':'');
-    b.textContent=categoryTitle(category);b.setAttribute('aria-pressed',String(category===state.category));
+    b.dataset.category=category;b.textContent=categoryTitle(category);b.setAttribute('aria-pressed',String(category===state.category));
     b.addEventListener('click',()=>{state.category=category;renderCatalog();});
     tabs.append(b);
   });
+  if(focusedCategory)Array.from(tabs.children).find(b=>b.dataset.category===focusedCategory)?.focus();
   const list=visibleProducts();
   $('productCount').textContent=String(list.length);
-  const grid=$('productGrid');grid.replaceChildren();
+  const grid=$('productGrid');grid.setAttribute('aria-busy',String(state.loading));grid.replaceChildren();
   $('loadMoreBtn').hidden=!state.cursor||state.loading;
   if(state.loading && !state.products.length){
     for(let i=0;i<8;i++){const node=document.createElement('div');node.className='loading-card';grid.append(node);}
@@ -207,7 +214,7 @@ function renderCatalog() {
     const card=document.createElement('article');card.className='product-card';
     card.innerHTML='<button class="product-art" type="button" data-open="'+esc(item.id)+'" aria-label="'+esc(localized(item))+'">'+image+
       '<span class="pack-chip">'+esc(String(group.unitsPerGroup))+' '+esc(phrase('units'))+'</span></button>'+
-      '<button type="button" class="save-float" data-save="'+esc(item.id)+'" aria-label="'+esc(phrase('save'))+'">♡</button>'+
+      '<button type="button" class="save-float" data-save="'+esc(item.id)+'" aria-pressed="'+String(state.saved.includes(item.id))+'" aria-label="'+esc(phrase('save'))+'">'+(state.saved.includes(item.id)?'♥':'♡')+'</button>'+
       '<div class="card-body"><div class="card-type">'+esc(categoryTitle(item.category))+'</div><h3>'+esc(localized(item))+'</h3>'+
       '<p class="card-pack">'+esc(localized(group))+' · '+esc(String(group.unitsPerGroup))+' '+esc(phrase('units'))+'</p>'+
       '<div class="card-bottom"><div><span class="price-label">'+esc(phrase('from'))+'</span><div class="price-value">'+esc(money(group.priceMinor,item.currency))+'</div></div>'+
@@ -235,7 +242,8 @@ function productDetails(id){
       dialog.close();requireBuyer(intent);
     } catch {toast(phrase('requestFailed'));}
   });
-  dialog.showModal();
+  $('detailGroup').value=(product.groups.find(g=>g.defaultForWholesale)||product.groups[0]).id;
+  if(!dialog.open)dialog.showModal();
 }
 function requireBuyer(intent){
   if(!state.user){goAuth(intent);return;}
@@ -247,7 +255,7 @@ async function persistBuyer(cart,saved){
   state.cart=Array.isArray(response.cart)?response.cart:cart;
   state.saved=Array.isArray(response.saved)?response.saved:saved;
   $('cartCount').textContent=String(state.cart.reduce((sum,x)=>sum+x.quantity,0));
-  renderDrawer();
+  renderDrawer();renderCatalog();
 }
 async function runIntent(intent) {
   if(!state.user)return goAuth(intent);
@@ -284,6 +292,13 @@ function renderDrawer(){
   const view=state.drawer;
   $('drawerHeading').textContent=phrase(view==='cart'?'cartHeading':view==='saved'?'savedHeading':'ordersHeading');
   const box=$('drawerContent');
+  const selectedBranch=$('branchSelect')?.value;
+  if(view==='orders'&&(state.ordersLoading||state.ordersError)){
+    box.replaceChildren();
+    const message=document.createElement('p');message.className='notice';message.setAttribute('role','status');message.textContent=state.ordersLoading?phrase('processing'):phrase('saveFailed');box.append(message);
+    if(state.ordersError){const retry=document.createElement('button');retry.className='secondary-button';retry.textContent=phrase('retry');retry.addEventListener('click',()=>openDrawer('orders'));box.append(retry);}
+    return;
+  }
   if(view==='cart'){
     const total=state.cart.reduce((n,line)=>n+(cartLinePrice(line)||0),0);
     const branchOptions=state.branches.map(b=>'<option value="'+esc(b.id)+'">'+esc(localized(b))+'</option>').join('');
@@ -294,20 +309,39 @@ function renderDrawer(){
       (state.branches.length?'':'<p class="notice">'+esc(phrase('branchMissing'))+'</p>')+
       '<button type="button" class="primary-button" id="checkoutBtn" '+(state.branches.length?'':'disabled')+'>'+esc(phrase('requestOrder'))+'</button>'+
       '<p class="notice">'+esc(phrase('draftNote'))+'</p>':'');
+    if(selectedBranch&&$('branchSelect'))$('branchSelect').value=selectedBranch;
     $('checkoutBtn')?.addEventListener('click',()=>submitOrder());
   } else if(view==='saved') box.innerHTML=formatDrawerRows(state.saved,'saved');
   else box.innerHTML=state.orders.length?state.orders.map(o=>'<div class="drawer-item"><div><strong>#'+esc(o.orderNumber||o.id)+'</strong><small>'+esc(o.status||'pending_review')+'</small><small>'+esc(money(o.totalMinor,o.currency))+'</small></div>'+ (o.status==='pending_review'?'<button type="button" data-cancel="'+esc(o.id)+'" title="'+esc(phrase('cancelRequest'))+'">'+esc(phrase('cancelRequest'))+'</button>':'')+'</div>').join(''):'<div class="empty-state"><strong>'+esc(phrase('ordersEmpty'))+'</strong></div>';
 }
+let drawerReturnFocus=null;
+function setWorkspaceInert(value){
+  document.querySelectorAll('.skip-link,.topbar,.site-header,main,.footer').forEach(node=>node.inert=value);
+  document.body.classList.toggle('workspace-open',value);
+}
 async function openDrawer(view){
   if(!state.user)return goAuth(protectedIntent(view==='orders'?'orders':view==='saved'?'saved':'cart'));
+  if($('buyerDrawer').hidden)drawerReturnFocus=document.activeElement;
+  setWorkspaceInert(true);
   state.drawer=view; $('buyerDrawer').hidden=false;$('drawerScrim').hidden=false;
   if(view==='orders'){
+    state.ordersLoading=true;state.ordersError=false;renderDrawer();$('closeDrawer').focus();
     try{const data=await call('listWholesaleOrderRequests',{limit:30});state.orders=Array.isArray(data.items)?data.items:[];}
-    catch{toast(phrase('saveFailed'));}
+    catch{state.ordersError=true;}
+    finally{state.ordersLoading=false;}
   }
-  renderDrawer();$('closeDrawer').focus();
+  if(!$('buyerDrawer').hidden){renderDrawer();$('closeDrawer').focus();}
 }
-function closeDrawer(){$('buyerDrawer').hidden=true;$('drawerScrim').hidden=true;}
+function closeDrawer(){$('buyerDrawer').hidden=true;$('drawerScrim').hidden=true;setWorkspaceInert(false);drawerReturnFocus?.focus();}
+$('buyerDrawer').addEventListener('keydown',event=>{
+  if(event.key==='Escape'){event.preventDefault();closeDrawer();return;}
+  if(event.key!=='Tab')return;
+  const nodes=[...$('buyerDrawer').querySelectorAll('button:not(:disabled),input,select,a[href],textarea')].filter(n=>n.getClientRects().length);
+  const first=nodes[0],last=nodes.at(-1);
+  if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}
+  else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
+});
+$('authDialog').addEventListener('cancel',()=>{state.pending=null;});
 async function submitOrder(){
   if(state.submitting)return;
   const branchId=$('branchSelect')?.value;
