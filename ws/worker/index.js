@@ -54,7 +54,7 @@ export default {
     headers.set('x-frame-options', 'DENY');
     headers.set('permissions-policy', 'camera=(), microphone=(), geolocation=()');
     // The HTML must never be cached across releases.
-    if (url.pathname === '/' || url.pathname === '/index.html') headers.set('cache-control', 'no-store');
+    if (url.pathname === '/' || url.pathname.endsWith('.html')) headers.set('cache-control', 'no-store');
     return new Response(response.body, {status: response.status, statusText: response.statusText, headers});
   }
 };

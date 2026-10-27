@@ -1,23 +1,33 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f8f6f0"><title>Pure Pets · Wholesale Operations</title><link rel="stylesheet" href="/ws/assets/style.css"></head>
+<head>
+ <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#fafafa"><title>Pure Pets · Wholesale Operations</title>
+ <link rel="icon" href="/ws/assets/logo.png"><link rel="stylesheet" href="/ws/assets/style.css">
+</head>
 <body class="manager-page">
-<div class="topbar"><span>PURE PETS / WHOLESALE OPERATIONS</span><span>INTERNAL WORKSPACE</span></div>
-<header class="site-header"><a class="wordmark" href="/ws/"><span class="brand-glyph" aria-hidden="true">✳</span><span class="brand-title">PURE<span>PETS</span><small>WHOLESALE OPERATIONS</small></span></a><div class="header-actions"><a href="/ws/" class="secondary-button" id="publicLink">المتجر</a><button class="language" id="langBtn" type="button">EN</button><button class="account-button" id="logoutBtn" type="button" hidden>خروج</button></div></header>
-<main class="manager-main">
- <div class="section-kicker" id="managerEyebrow">THE WHOLESALE DESK</div><div class="manager-heading"><div><h1 id="managerTitle">طلبات الجملة</h1><p id="managerSubtitle">مراجعة منظمة للطلبات دون المساس بالدفع أو المخزون.</p></div><div class="manager-count"><span id="requestCount">—</span><small id="requestCountLabel">طلب</small></div></div>
- <div id="managerAuth" class="manager-auth">
-   <div class="auth-symbol">✳</div><h2 id="authHeading">دخول الموظفين</h2><p id="authHelp">هذه المساحة تتطلب تصريح بيع الجملة في الفرع المحدد.</p>
-   <form id="managerAuthForm"><label><span id="emailLabel">البريد الإلكتروني</span><input type="email" id="managerEmail" autocomplete="username" required></label><label><span id="passwordLabel">كلمة المرور</span><input type="password" id="managerPassword" autocomplete="current-password" required></label><button class="primary-button" type="submit" id="managerLogin">دخول</button></form>
+<a class="skip-link" href="#managerMain" id="managerSkip">طلبات الجملة</a>
+<div class="topbar"><span id="managerTop">Pure Pets · عمليات الجملة</span><span id="internalLabel">مساحة الموظفين</span></div>
+<header class="site-header"><a class="wordmark" href="/ws/" aria-label="Pure Pets Wholesale"><img src="/ws/assets/logo.png" alt="" width="44" height="44"><span class="brand-title">pure pets<span>WHOLESALE</span></span></a><div class="header-actions"><a href="/ws/" class="secondary-button" id="publicLink">المتجر</a><button class="language" id="langBtn" type="button" aria-label="Switch to English">EN</button><button class="account-button" id="logoutBtn" type="button" hidden>خروج</button></div></header>
+<main class="manager-main" id="managerMain">
+ <div class="manager-eyebrow" id="managerEyebrow">مكتب الجملة</div>
+ <div class="manager-heading"><div><h1 id="managerTitle">طلبات الجملة</h1><p id="managerSubtitle">كل طلب واضح. كل قرار في مكانه.</p></div><div class="manager-count" id="managerCount" hidden><span id="requestCount">—</span><small id="requestCountLabel">طلب</small></div></div>
+ <div id="managerEntry" class="manager-entry">
+  <div id="managerAuth" class="manager-auth">
+   <img class="auth-symbol" src="/ws/assets/logo.png" alt="" width="52" height="52"><h2 id="authHeading">دخول الموظفين</h2><p id="authHelp">هذه المساحة تتطلب تصريح بيع الجملة في الفرع المحدد.</p>
+   <form id="managerAuthForm"><label><span id="emailLabel">البريد الإلكتروني</span><input type="email" id="managerEmail" autocomplete="username" required maxlength="180"></label><label><span id="passwordLabel">كلمة المرور</span><input type="password" id="managerPassword" autocomplete="current-password" required></label><p id="managerAuthError" role="alert" class="error-line" hidden></p><button class="primary-button" type="submit" id="managerLogin">دخول</button></form>
+  </div>
+  <div class="manager-visual" aria-hidden="true"><img src="/ws/assets/companions.webp" width="1536" height="1024" alt=""></div>
  </div>
- <section id="managerWorkspace" hidden>
-  <div class="controls manager-controls"><label class="manager-branch"><span id="branchLabel">الفرع</span><select id="managerBranch" aria-label="Select authorized branch"></select></label><label class="manager-branch"><span id="statusLabel">الحالة</span><select id="managerStatus"><option value="pending_review">بانتظار المراجعة</option><option value="accepted_for_processing">جاهز للمعالجة</option><option value="rejected">مرفوض</option><option value="cancelled_by_customer">ملغي من العميل</option></select></label><button class="secondary-button" id="refreshManager" type="button">تحديث</button></div>
-  <div id="managerMessage" class="notice" role="status" aria-live="polite"></div>
-  <div id="managerQueue" class="manager-queue"></div>
-  <p class="notice" id="staffPolicy">قبول الطلب لا يعتبر عملية بيع أو قبضاً أو حجزاً للمخزون؛ يجب إكمال البيع عبر نقطة البيع المصرح بها.</p>
+ <section id="managerWorkspace" aria-labelledby="managerTitle" hidden>
+  <div class="controls manager-controls"><label class="manager-branch"><span id="branchLabel">الفرع</span><select id="managerBranch"></select></label><label class="manager-branch"><span id="statusLabel">الحالة</span><select id="managerStatus"><option value="pending_review">بانتظار المراجعة</option><option value="accepted_for_processing">جاهز للمعالجة</option><option value="rejected">مرفوض</option><option value="cancelled_by_customer">ملغي من العميل</option></select></label><button class="secondary-button" id="refreshManager" type="button">تحديث</button></div>
+  <div id="managerMessage" class="manager-message" role="status" aria-live="polite"></div>
+  <div id="managerQueue" class="manager-queue" aria-live="polite"></div>
+  <div class="staff-policy"><svg class="icon" aria-hidden="true"><use href="/ws/assets/icons.svg#shield-check"></use></svg><p class="notice" id="staffPolicy">قبول الطلب لا يعتبر عملية بيع أو قبضاً أو حجزاً للمخزون؛ يجب إكمال البيع عبر نقطة البيع المصرح بها.</p></div>
  </section>
 </main>
-<footer class="footer"><div class="footer-wordmark">PUREPETS®</div><small>WHOLESALE STAFF · Internal actions are logged</small></footer>
-<dialog id="reviewDialog" class="auth-dialog"><button id="closeReview" class="close-button dialog-close" type="button" aria-label="Close">×</button><div class="section-kicker">WHOLESALE REVIEW</div><h2 id="reviewTitle">قرار المراجعة</h2><p id="reviewSummary"></p><label class="review-note"><span id="reviewNoteLabel">ملاحظات المراجعة (اختياري)</span><textarea id="reviewNote" rows="4" maxlength="500"></textarea></label><p class="notice" id="reviewWarning">هذه العملية لا تنشئ إيصالاً ولا تحصّل دفعة ولا تحجز المخزون.</p><button id="confirmReview" class="primary-button" type="button">تأكيد</button></dialog>
-<div id="managerToast" class="toast" role="status" hidden></div>
-<script type="module" src="/ws/assets/manage.js"></script></body></html>
+<footer class="footer page-width"><div class="footer-brand"><img src="/ws/assets/logo.png" alt="" width="38" height="38"><strong>pure pets</strong><span>WHOLESALE</span></div><small id="managerFooter">مساحة الموظفين · تُسجّل قرارات المراجعة</small></footer>
+<dialog id="reviewDialog" class="auth-dialog review-dialog" aria-labelledby="reviewTitle" aria-describedby="reviewWarning"><button id="closeReview" class="close-button dialog-close" type="button" aria-label="إغلاق"><svg class="icon" aria-hidden="true"><use href="/ws/assets/icons.svg#x"></use></svg></button><div class="review-decision" id="reviewDecision"></div><h2 id="reviewTitle">قرار المراجعة</h2><p id="reviewSummary"></p><label class="review-note"><span id="reviewNoteLabel">ملاحظات المراجعة (اختياري)</span><textarea id="reviewNote" rows="4" maxlength="500"></textarea></label><p class="notice" id="reviewWarning"></p><p id="reviewError" class="error-line" role="alert" hidden></p><button id="confirmReview" class="primary-button" type="button">تأكيد</button></dialog>
+<div id="managerToast" class="toast" role="status" aria-live="polite" hidden></div>
+<script type="module" src="/ws/assets/manage.js"></script>
+</body>
+</html>

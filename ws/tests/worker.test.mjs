@@ -25,3 +25,8 @@ test('staff workspace aliases resolve to the staff page',async()=>{
  const response=await worker.fetch(request('/ws/manage/'),{});
  assert.equal(response.status,308);assert.equal(response.headers.get('location'),'https://example.com/ws/manage.html');
 });
+
+test('staff HTML is never cached across releases',async()=>{
+ const response=await worker.fetch(request('/ws/manage.html'),{ASSETS:{fetch:async()=>new Response('<main>Staff</main>',{headers:{'content-type':'text/html','cache-control':'public,max-age=86400'}})}});
+ assert.equal(response.headers.get('cache-control'),'no-store');
+});

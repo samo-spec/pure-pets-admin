@@ -22,12 +22,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install locked test dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Check JavaScript source syntax
         run: |
           node --check worker/index.js
           node --check assets/app.js
           node --check assets/manage.js
           node --check assets/state.js
+          node --check assets/ui.js
       - name: Validate browser unit tests
         run: node --test tests/*.test.mjs
       - name: Build Cloudflare web assets
