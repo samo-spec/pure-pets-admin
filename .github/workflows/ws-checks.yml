@@ -1,0 +1,40 @@
+name: Wholesale Website Checks
+on:
+  pull_request:
+    paths:
+      - 'ws/**'
+      - '.github/workflows/ws-checks.yml'
+  push:
+    branches: [ws]
+    paths:
+      - 'ws/**'
+      - '.github/workflows/ws-checks.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ws
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check JavaScript source syntax
+        run: |
+          node --check worker/index.js
+          node --check assets/app.js
+          node --check assets/manage.js
+          node --check assets/state.js
+      - name: Validate browser unit tests
+        run: node --test tests/*.test.mjs
+      - name: Build Cloudflare web assets
+        run: node scripts/build.mjs
+      - name: Assert production route is not configured
+        run: |
+          if grep -q '"routes"' wrangler.jsonc; then
+            echo "Production routes require separate approval" >&2
+            exit 1
+          fi

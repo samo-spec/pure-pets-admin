@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#F8F6F1">
+  <link rel="icon" href="/ws/assets/logo.png">
+  <meta name="description" content="Pure Pets Wholesale — اكتشف منتجات الحيوانات الأليفة بالجملة، عبوات مناسبة وأسعار واضحة.">
+  <title>Pure Pets | Wholesale</title>
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/ws/assets/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#catalog" data-t="navCatalog">المنتجات</a>
+  <div class="topbar"><span data-t="top">بوابة الأعمال من Pure Pets</span><span class="topbar-end"><span class="live-dot" aria-hidden="true"></span><span data-t="wholesale">تجربة مخصصة لطلبات الجملة</span></span></div>
+  <header class="site-header">
+    <a class="wordmark" href="/ws/" aria-label="Pure Pets Wholesale Home"><span class="brand-glyph brand-glyph-official"><img src="/ws/assets/logo.png" alt="" width="52" height="52" decoding="async"></span><span class="brand-title">PURE<span>PETS</span><small>WHOLESALE</small></span></a>
+    <nav class="primary-nav" aria-label="Main navigation"><a href="#catalog" data-t="navCatalog">المنتجات</a><button type="button" id="ordersNav" data-action="orders" data-t="navOrders">طلباتي</button></nav>
+    <div class="header-actions"><button class="language" id="languageBtn" type="button" aria-label="Switch language">EN</button><button class="icon-button" id="savedBtn" type="button" aria-label="Saved items"><span aria-hidden="true">♡</span></button><button class="cart-button" id="cartBtn" type="button"><span aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2l2 12h12l2-9H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg></span><span data-t="cart">السلة</span><b id="cartCount">0</b></button><button class="account-button" id="accountBtn" type="button" data-t="login">دخول / تسجيل</button></div>
+  </header>
+  <main id="mainContent">
+    <section class="hero" aria-labelledby="heroTitle">
+      <div class="hero-content"><h1 id="heroTitle"><span data-t="heroOne">رعاية لهم.</span><br><em data-t="heroTwo">ونموّ لتجارتك.</em></h1><p data-t="heroDesc">منتجات مختارة بعناية، وحدات بيع واضحة، وتجربة طلب تناسب طموح تجارتك.</p><a href="#catalog" class="hero-cta"><span data-t="explore">اكتشف المنتجات</span><span aria-hidden="true">↗</span></a><div class="hero-note"><span class="note-symbol" aria-hidden="true">✦</span><span data-t="guestHint">تصفح بحرية. سجّل دخولك فقط عند اتخاذ إجراء.</span></div></div>
+      <div class="hero-art" aria-hidden="true"><div class="brand-cutout"></div><img class="hero-official-logo" src="/ws/assets/logo.png" alt="" width="250" height="250"><div class="hero-signature">PURE PETS<span>WHOLESALE</span></div></div>
+    </section>
+    <section id="catalog" class="catalog-section" aria-labelledby="catalogHeading">
+      <div class="section-head"><div><div class="section-kicker" data-t="collection">THE COLLECTION / المجموعة</div><h2 id="catalogHeading" data-t="catalogHeading">اكتشف مجموعتنا</h2><p data-t="catalogHint">منتجات الجملة المتاحة حسب إعدادات المتجر الفعلية.</p></div><div class="product-total"><span id="productCount">—</span><small data-t="products">منتج</small></div></div>
+      <div class="controls"><label class="search-wrap"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg><input type="search" id="searchInput" autocomplete="off" data-placeholder="search" placeholder="ابحث عن المنتجات..." aria-label="Search products"></label><select id="sortSelect" aria-label="Sort products"><option value="featured" data-t="sortFeatured">الترتيب الافتراضي</option><option value="priceAsc" data-t="sortLow">الأقل سعراً</option><option value="priceDesc" data-t="sortHigh">الأعلى سعراً</option></select></div>
+      <div id="categoryTabs" class="categories" aria-label="Product categories"></div>
+      <div id="catalogStatus" role="status" aria-live="polite"></div>
+      <div id="productGrid" class="product-grid" aria-live="polite"></div>
+      <div class="catalog-footer"><button id="loadMoreBtn" type="button" class="secondary-button" hidden data-t="loadMore">عرض المزيد</button></div>
+    </section>
+    <section class="promise-strip" aria-label="Pure Pets wholesale advantage"><div><strong>01</strong><span data-t="promiseOne">وحدات بيع واضحة</span></div><div><strong>02</strong><span data-t="promiseTwo">أسعار جملة موثقة</span></div><div><strong>03</strong><span data-t="promiseThree">طلبات مرتبطة بحسابك</span></div></section>
+  </main>
+  <footer class="footer"><div class="footer-wordmark">PUREPETS<span>®</span></div><p data-t="footerCopy">كل ما يحتاجه مشروعك، من مكان واحد.</p><small>© 2026 Pure Pets · Wholesale</small></footer>
+  <div id="drawerScrim" class="drawer-scrim" hidden></div>
+  <aside id="buyerDrawer" class="buyer-drawer" hidden role="dialog" aria-modal="true" aria-labelledby="drawerHeading"><div class="drawer-top"><div><small data-t="workspace">مساحة مشتري الجملة</small><h2 id="drawerHeading">السلة</h2></div><button type="button" class="close-button" id="closeDrawer" aria-label="Close panel">×</button></div><div id="drawerContent" class="drawer-content"></div></aside>
+  <dialog id="productDialog" class="product-dialog" aria-label="Product details"><button type="button" class="close-button dialog-close" id="closeProduct" aria-label="Close details">×</button><div id="productDetail"></div></dialog>
+  <dialog id="authDialog" class="auth-dialog" aria-labelledby="authTitle"><button type="button" class="close-button dialog-close" id="closeAuth" aria-label="Close sign in">×</button><img class="auth-symbol" src="/ws/assets/logo.png" alt="Pure Pets" width="64" height="64"><div class="section-kicker">PURE PETS ACCOUNT</div><h2 id="authTitle" data-t="authTitle">أهلاً بك في عالم الجملة</h2><p data-t="authIntro">أكمل تسجيل الدخول للمتابعة من حيث توقفت.</p><div class="auth-tabs"><button type="button" class="active" id="loginTab" data-t="loginTab">تسجيل الدخول</button><button type="button" id="registerTab" data-t="registerTab">إنشاء حساب</button></div><form id="authForm"><label><span data-t="email">البريد الإلكتروني</span><input id="emailInput" type="email" autocomplete="email" required maxlength="180" inputmode="email"></label><label><span data-t="password">كلمة المرور</span><input id="passwordInput" type="password" autocomplete="current-password" required minlength="6"></label><p id="authError" role="alert" class="error-line" hidden></p><button id="submitAuth" type="submit" class="primary-button" data-t="continue">متابعة</button></form></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script type="module" src="/ws/assets/app.js"></script>
+</body></html>

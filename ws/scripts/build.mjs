@@ -1,0 +1,10 @@
+import {cpSync, copyFileSync, existsSync, mkdirSync, rmSync} from 'node:fs';
+import {resolve} from 'node:path';
+const root = resolve(import.meta.dirname, '..');
+const out = resolve(root, 'dist');
+rmSync(out, {recursive: true, force: true});
+mkdirSync(out, {recursive: true});
+for (const page of ['index.html', 'manage.html']) copyFileSync(resolve(root, page), resolve(out, page));
+if (!existsSync(resolve(root, 'assets'))) throw new Error('Missing assets');
+cpSync(resolve(root, 'assets'), resolve(out, 'assets'), {recursive: true});
+console.log('Wholesale static site built: ' + out);
