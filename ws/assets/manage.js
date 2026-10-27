@@ -549,7 +549,6 @@ function renderOperatorPill() {
   setText('popoverLangText', isArabic ? 'English' : 'العربية');
   setText('popoverLogoutText', t('popoverLogout'));
 }
-}
 
 function toggleOperatorPopover(show) {
   const popover = el('operatorPopover');
