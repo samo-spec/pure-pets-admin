@@ -63,8 +63,13 @@ export default {
     headers.set('referrer-policy', 'strict-origin-when-cross-origin');
     headers.set('x-frame-options', 'DENY');
     headers.set('permissions-policy', 'camera=(), microphone=(), geolocation=()');
-    // The HTML must never be cached across releases.
-    if (url.pathname === '/' || url.pathname === '/index.html') headers.set('cache-control', 'no-store');
+    headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+    // The HTML must never be cached across releases; assets revalidate immediately.
+    if (url.pathname === '/' || url.pathname === '/index.html' || url.pathname.endsWith('.html')) {
+      headers.set('cache-control', 'no-store, no-cache, must-revalidate');
+    } else {
+      headers.set('cache-control', 'public, max-age=0, must-revalidate');
+    }
     return new Response(response.body, {status: response.status, statusText: response.statusText, headers});
   }
 };

@@ -2971,6 +2971,23 @@ final class POSFastSellViewModel: ObservableObject {
         // Applies to every tender intentionally: switching an uncertain credit
         // sale to cash could charge the same cart twice. The original five
         // tenders are unchanged when there is no unresolved credit command.
+        if selectedPaymentMethod != "credit" {
+            if let record = creditRecovery {
+                if record.confirmedResultJSON != nil {
+                    showsCreditCheckout = true
+                    return false
+                } else if record.approvalRequestJSON == nil {
+                    showsCreditCheckout = true
+                    return false
+                } else {
+                    try? POSCreditPendingStore.clear(commandID: record.commandID)
+                    self.creditRecovery = nil
+                    self.creditRecoveryError = nil
+                }
+            } else {
+                self.creditRecoveryError = nil
+            }
+        }
         guard creditRecovery == nil, creditRecoveryError == nil else {
             showsCreditCheckout = true
             return false
@@ -3715,7 +3732,8 @@ struct AdminPOSFastSellView: View {
                 VStack(spacing: 0) {
                     commandDeck(availableWidth: geometry.size.width, availableHeight: geometry.size.height - topClearance)
 
-                    if viewModel.creditRecovery != nil || viewModel.creditRecoveryError != nil {
+                    if (viewModel.selectedPaymentMethod == "credit" && (viewModel.creditRecovery != nil || viewModel.creditRecoveryError != nil))
+                        || (viewModel.creditRecovery != nil && viewModel.creditRecovery?.approvalRequestJSON == nil) {
                         let isApprovalRequired = viewModel.creditRecovery?.approvalRequestJSON != nil
                         Button { viewModel.showsCreditCheckout = true } label: {
                             Label(
@@ -5868,7 +5886,7 @@ private struct POSApexFlightDeck: View {
             } else if hasShortfall {
                 paymentNote(icon: "exclamationmark.circle", text: Language.get("POS_Checkout_ShortfallHint", alter: "Enter the remaining cash or choose another payment method."))
             }
-            if viewModel.creditRecovery != nil || viewModel.creditRecoveryError != nil || viewModel.selectedPaymentMethod == "credit" {
+            if viewModel.selectedPaymentMethod == "credit" {
                 let isApprovalRequired = viewModel.creditRecovery?.approvalRequestJSON != nil
                 let titleKey: String = {
                     if viewModel.creditRecovery != nil || viewModel.creditRecoveryError != nil {

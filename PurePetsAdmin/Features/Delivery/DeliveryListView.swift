@@ -319,6 +319,7 @@ private final class DeliveryCommandCenterViewModel: ObservableObject {
     var drivers: [PPDeliveryDriverRecord] { snapshot?.drivers ?? [] }
     var exceptions: [PPDeliveryExceptionRecord] { snapshot?.exceptions ?? [] }
     var officialCompanyID: String { deliveryDictionary(snapshot?.carrier)["id"] as? String ?? "" }
+    var members: [PPDeliveryCompanyMemberRecord] { companyMembers }
     var driverMembers: [PPDeliveryCompanyMemberRecord] {
         companyMembers.filter { $0.role.lowercased() == "driver" }
     }
@@ -617,7 +618,7 @@ private final class DeliveryCommandCenterViewModel: ObservableObject {
         commandIncident = nil
         let commandID = "admin-ios-driver-\(pending.action.lowercased())-\(UUID().uuidString)"
         let latestDriver = self.drivers.first(where: { $0.uid == pending.driver.uid })
-        let currentMember = self.companyMembers.first(where: { $0.uid == pending.driver.uid })
+        let currentMember = self.member(for: pending.driver.uid)
         let expectedRevision = max(pending.driver.revision, max(latestDriver?.revision ?? 0, currentMember?.revision ?? 0))
         PPDeliveryService.shared().executeDriver(action: pending.action,
                                                  driverUID: pending.driver.uid,

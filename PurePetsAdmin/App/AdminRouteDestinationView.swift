@@ -52,9 +52,13 @@ struct AdminRouteDestinationView: View {
                 router.presentedRoute = nil
             }
         case .driverWorkspace:
-            AdminDriverWorkspaceView(session: session, router: router).id(session.uid)
+            AdminDriverWorkspaceView(session: session, router: router)
+                .id(session.uid)
+                .ignoresSafeArea()
         case .driverTask(let payload):
-            AdminDriverWorkspaceView(session: session, router: router, taskPayload: payload).id(session.uid + payload)
+            AdminDriverWorkspaceView(session: session, router: router, taskPayload: payload)
+                .id(session.uid + payload)
+                .ignoresSafeArea()
         case .delivery:
             AdminDeliveryListView {
                 router.presentedRoute = nil

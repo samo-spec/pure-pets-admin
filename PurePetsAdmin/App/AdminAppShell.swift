@@ -57,6 +57,7 @@ struct AdminAppShell: View {
                     case .driver:
                         AdminDriverWorkspaceView(session: session, router: router)
                             .id(session.uid)
+                            .ignoresSafeArea()
                     case .command:
                         AdminCommandOrbitDashboard(
                             session: session,
@@ -242,7 +243,7 @@ struct AdminAppShell: View {
                 .toolbar(.hidden, for: .navigationBar)
                 // Inventory owns its edge behavior per lane: the pharmacy
                 // respects native insets; the existing lanes extend internally.
-                .ignoresSafeArea(edges: (route.identifier == "driverTask" || route == .driverWorkspace || [.delivery, .proformaInvoices, .customerManagement, .accessories, .food, .livePets, .pharmacy].contains(route)) ? [] : .all)
+                .ignoresSafeArea(edges: ([.delivery, .proformaInvoices, .customerManagement, .accessories, .food, .livePets, .pharmacy].contains(route)) ? [] : .all)
         } else {
             EmptyView()
         }

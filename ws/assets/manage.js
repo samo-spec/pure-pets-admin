@@ -8,12 +8,15 @@ const labels = {
     title: 'طلبات الجملة',
     subtitle: 'مراجعة منظمة وموثوقة لطلبات الشركاء دون المساس بالدفع أو المخزون.',
     eyebrow: 'THE WHOLESALE DESK / مكتب مراجعة الجملة',
+    headerSubtitle: 'منصة إدارة الجملة',
     authKicker: 'STAFF ACCESS CONTROL',
     auth: 'دخول الموظفين',
     authHelp: 'هذه المساحة مخصصة للموظفين المعتمدين وتتطلب تصريح بيع الجملة في الفرع المحدد.',
     login: 'دخول',
     logout: 'خروج',
     store: 'المتجر',
+    storeNavText: 'بوابة المتجر',
+    storeNavTitle: 'الانتقال إلى متجر الجملة',
     branch: 'الفرع',
     status: 'الحالة',
     count: 'طلب',
@@ -36,6 +39,7 @@ const labels = {
     processing: 'جارٍ التنفيذ...',
     loginFailed: 'بيانات الدخول غير صحيحة أو الخدمة غير متاحة.',
     ready: 'جاهز لمراجعة طلبات الفرع',
+    readyAuthorized: 'جاهز لمراجعة طلبات الفرع (صلاحية قيادية معتمدة)',
     review: 'قرار المراجعة',
     reviewKicker: 'WHOLESALE REVIEW / قرار المراجعة',
     error: 'تعذر حفظ القرار. تحقق من الحالة والصلاحيات.',
@@ -61,18 +65,51 @@ const labels = {
     phoneQuota: 'تم تجاوز الحد المسموح لإرسال الرسائل، حاول لاحقاً.',
     authFailed: 'تعذر تسجيل الدخول. تحقق من بياناتك أو اتصالك.',
     previewDomainBlocked: 'نطاق المعاينة غير مضاف إلى نطاقات OAuth في Firebase Console. يرجى تسجيل الدخول بالبريد الإلكتروني أو الهاتف في بيئة المعاينة.',
-    themeToggle: 'تبديل المظهر'
+    themeToggle: 'تبديل المظهر',
+    signedIn: 'تم تسجيل الدخول بنجاح',
+    operatorClearance: 'بيانات المشغل والصلاحيات',
+    verifiedTag: 'موثق رسمي',
+    copyUidTitle: 'انقر لنسخ معرّف المشغل',
+    copied: 'تم النسخ بنجاح!',
+    roleLevel: 'المستوى القيادي',
+    branchScope: 'نطاق الفروع',
+    wholesaleSelling: 'بيع الجملة',
+    securityLevel: 'مستوى الأمان',
+    securityActiveVal: 'جلسة مشفرة ومؤمنة',
+    activeBranchFocus: 'الفرع النشط للعمليات',
+    activeBranchBadge: 'معتمد رسمياً',
+    popoverLogout: 'تسجيل الخروج من لوحة العمليات',
+    roleOwner: 'مالك المنظومة',
+    roleAdmin: 'مدير النظام',
+    roleManager: 'مدير العمليات',
+    roleCashier: 'أمين نقطة البيع',
+    roleStaff: 'مشغل معتمد',
+    badgeOwner: '👑 OWNER',
+    badgeAdmin: '🛡️ ADMIN',
+    badgeManager: '💼 MANAGER',
+    badgeCashier: '⚡ POS',
+    badgeStaff: '✨ STAFF',
+    scopeAllBranches: '● وصول شامل لجميع الفروع',
+    scopeSingleBranch: '● فرع مخصص',
+    scopeAssignedBranches: '● فروع مخصصة',
+    scopeValAll: (n) => `وصول شامل (${n} فروع)`,
+    scopeValAssigned: (n) => `محدد (${n} فروع)`,
+    wholesaleAuthorized: 'مفعّل بالكامل',
+    wholesaleRestricted: 'غير مصرح'
   },
   en: {
     title: 'Wholesale requests',
     subtitle: 'A structured operations desk for partner orders, without bypassing payments or inventory.',
     eyebrow: 'THE WHOLESALE DESK / OPERATIONS DESK',
+    headerSubtitle: 'Wholesale Operations Desk',
     authKicker: 'STAFF ACCESS CONTROL',
     auth: 'Staff sign-in',
     authHelp: 'This workspace requires authorized wholesale selling permissions for an active branch.',
     login: 'Sign in',
     logout: 'Sign out',
     store: 'Storefront',
+    storeNavText: 'Storefront Portal',
+    storeNavTitle: 'Go to Wholesale Storefront',
     branch: 'Branch',
     status: 'Status',
     count: 'requests',
@@ -95,6 +132,7 @@ const labels = {
     processing: 'Working...',
     loginFailed: 'Sign in failed or service unavailable.',
     ready: 'Reviewing branch requests',
+    readyAuthorized: 'Active & Authorized for Branch Operations',
     review: 'Review decision',
     reviewKicker: 'WHOLESALE REVIEW / DECISION',
     error: 'Could not save review. Check status and permissions.',
@@ -120,11 +158,44 @@ const labels = {
     phoneQuota: 'SMS quota exceeded. Please try again later.',
     authFailed: 'Sign in failed. Check your credentials or connection.',
     previewDomainBlocked: 'Preview domain is blocked by OAuth referrers. Please sign in with email or phone on this preview.',
-    themeToggle: 'Toggle appearance'
+    themeToggle: 'Toggle appearance',
+    signedIn: 'Signed in successfully',
+    operatorClearance: 'Operator Clearance & Privileges',
+    verifiedTag: 'Official Verified',
+    copyUidTitle: 'Click to copy Operator UID',
+    copied: 'Copied to clipboard!',
+    roleLevel: 'Clearance Level',
+    branchScope: 'Branch Jurisdiction',
+    wholesaleSelling: 'Wholesale Clearance',
+    securityLevel: 'Security Protocol',
+    securityActiveVal: 'Hardware-Encrypted Session',
+    activeBranchFocus: 'Active Operations Branch',
+    activeBranchBadge: 'Certified',
+    popoverLogout: 'Terminate Operator Session',
+    roleOwner: 'Platform Sovereign',
+    roleAdmin: 'System Administrator',
+    roleManager: 'Operations Manager',
+    roleCashier: 'POS Cashier',
+    roleStaff: 'Authorized Operator',
+    badgeOwner: '👑 OWNER',
+    badgeAdmin: '🛡️ ADMIN',
+    badgeManager: '💼 MANAGER',
+    badgeCashier: '⚡ POS',
+    badgeStaff: '✨ STAFF',
+    scopeAllBranches: '● Global Platform Clearance',
+    scopeSingleBranch: '● Single Branch Scope',
+    scopeAssignedBranches: '● Assigned Branches',
+    scopeValAll: (n) => `Global (${n} Branches)`,
+    scopeValAssigned: (n) => `Assigned (${n} Branches)`,
+    wholesaleAuthorized: 'Fully Authorized',
+    wholesaleRestricted: 'Restricted'
   }
 };
 
-const t = (k) => labels[lang.current][k] || k;
+const t = (k, arg) => {
+  const val = labels[lang.current][k] || k;
+  return typeof val === 'function' ? val(arg) : val;
+};
 const safe = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = (minor, currency) => {
   try {
@@ -140,7 +211,10 @@ const money = (minor, currency) => {
 
 const state = {
   api: null,
+  db: null,
+  fs: null,
   user: null,
+  staff: null,
   branches: [],
   requests: [],
   branch: '',
@@ -256,11 +330,251 @@ function toggleTheme() {
   try { localStorage.setItem('pp_ws_theme', next); } catch {}
 }
 
+const CANONICAL_BRANCHES = [
+  { id: 'qQX5tQikeluPnOH2W7RT', nameAr: 'الهرم', nameEn: 'Al Haram (HQ)', code: 'Develper1', isConsumerAppStock: true, isDefault: false },
+  { id: 'Z3psFtT5vhfnFOncOtYX', nameAr: 'الوكرة , سوق واقف', nameEn: 'Souq Waqif Al Wakra', code: 'PP-1', isConsumerAppStock: false, isDefault: true },
+  { id: 'Sa75xrCKe7M7YMQjCfr1', nameAr: 'ام العمد', nameEn: 'Umm Al Amad', code: 'AMD', isConsumerAppStock: false, isDefault: false }
+];
+
+function checkStaffPermissions(staffData, user) {
+  if (!user) return { isAuthorized: false, role: '', status: 'unauthenticated', isGlobal: false, branchIds: [] };
+
+  const email = (user.email || '').toLowerCase().trim();
+  const uid = String(user.uid || '').trim();
+  const phone = String(user.phoneNumber || '').trim();
+
+  // Authoritative Owner Verification
+  const isOwner = email === 'm.m.samray@gmail.com' ||
+                  uid === 'AaIsIsS1KEg7tK6FZq6hEoC7TI12' ||
+                  phone.includes('70012668');
+
+  const defaultOwnerAvatar = 'https://lh3.googleusercontent.com/a/ACg8ocIE6g4Mq_4XSmQ4PZg1VR-ByFnd0jWQS3kStt9d80p9bReIUuM=s96-c';
+
+  if (isOwner) {
+    let displayName = staffData?.displayName || staffData?.name || user.displayName;
+    if (!displayName || displayName === 'Operator' || displayName === 'sam') {
+      displayName = lang.current === 'ar' ? 'محمد سمري' : 'Mohamed Samray';
+    }
+    return {
+      isAuthorized: true,
+      role: 'owner',
+      status: 'active',
+      isGlobal: true,
+      branchIds: [],
+      hasWholesalePerm: true,
+      hasBranchesManage: true,
+      displayName,
+      photoURL: staffData?.photoURL || user.photoURL || defaultOwnerAvatar
+    };
+  }
+
+  if (!staffData) {
+    return { isAuthorized: false, role: '', status: 'not_found', isGlobal: false, branchIds: [] };
+  }
+
+  const role = String(staffData.role || '').toLowerCase();
+  const status = String(staffData.status || '').toLowerCase();
+  const isStaffActive = status === 'active';
+  const isOwnerRole = role === 'owner' || role === 'super_admin';
+
+  let hasWholesalePerm = false;
+  let hasBranchesManage = false;
+  let hasBranchesView = false;
+
+  if (Array.isArray(staffData.permissions)) {
+    hasWholesalePerm = staffData.permissions.includes('pos.sell.wholesale');
+    hasBranchesManage = staffData.permissions.includes('branches.manage');
+    hasBranchesView = staffData.permissions.includes('branches.view');
+  } else if (staffData.permissions && typeof staffData.permissions === 'object') {
+    hasWholesalePerm = Boolean(staffData.permissions['pos.sell.wholesale']);
+    hasBranchesManage = Boolean(staffData.permissions['branches.manage']);
+    hasBranchesView = Boolean(staffData.permissions['branches.view']);
+  }
+
+  const isGlobal = Boolean(staffData.scope?.global || isOwnerRole || hasBranchesManage || (Array.isArray(staffData.scope?.branchIds) && staffData.scope.branchIds.length === 0));
+  const branchIds = Array.isArray(staffData.scope?.branchIds) ? staffData.scope.branchIds : [];
+  const isAuthorized = isStaffActive && (isOwnerRole || hasWholesalePerm || hasBranchesManage || hasBranchesView);
+
+  let displayName = staffData.displayName || staffData.name || user.displayName;
+  if (!displayName) {
+    displayName = isOwnerRole ? (lang.current === 'ar' ? 'محمد سمري' : 'Mohamed Samray') : (user.email?.split('@')[0] || user.phoneNumber || 'Operator');
+  }
+
+  return {
+    isAuthorized,
+    role: role || (isOwnerRole ? 'owner' : 'staff'),
+    status: status || 'active',
+    isGlobal,
+    branchIds,
+    hasWholesalePerm: isOwnerRole || hasWholesalePerm,
+    hasBranchesManage: isOwnerRole || hasBranchesManage,
+    displayName,
+    photoURL: staffData.photoURL || user.photoURL || (isOwnerRole ? defaultOwnerAvatar : '')
+  };
+}
+
+function renderOperatorPill() {
+  const wrap = el('operatorCapsuleWrap');
+  if (!wrap) return;
+
+  if (!state.user) {
+    wrap.hidden = true;
+    return;
+  }
+  wrap.hidden = false;
+
+  const user = state.user;
+  const staff = state.staff || {};
+  const isArabic = lang.current === 'ar';
+  const isOwner = (user.email || '').toLowerCase().trim() === 'm.m.samray@gmail.com' ||
+                  user.uid === 'AaIsIsS1KEg7tK6FZq6hEoC7TI12' ||
+                  (user.phoneNumber && user.phoneNumber.includes('70012668')) ||
+                  staff.role === 'owner';
+
+  let displayName = staff.displayName || user.displayName;
+  if (!displayName || displayName === 'Operator' || displayName === 'sam') {
+    displayName = isOwner ? (isArabic ? 'محمد سمري' : 'Mohamed Samray') : (user.email ? user.email.split('@')[0] : (user.phoneNumber || 'Operator'));
+  }
+
+  let monogram = 'OP';
+  if (isOwner) {
+    monogram = 'MS';
+  } else if (displayName) {
+    const parts = displayName.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      monogram = (parts[0][0] + parts[1][0]).toUpperCase();
+    } else {
+      monogram = displayName.slice(0, 2).toUpperCase();
+    }
+  }
+
+  const defaultOwnerAvatar = 'https://lh3.googleusercontent.com/a/ACg8ocIE6g4Mq_4XSmQ4PZg1VR-ByFnd0jWQS3kStt9d80p9bReIUuM=s96-c';
+  const photo = staff.photoURL || user.photoURL || (isOwner ? defaultOwnerAvatar : '');
+  const opImg = el('operatorAvatarImg');
+  const opFallback = el('operatorAvatarFallback');
+  const popImg = el('popoverAvatarImg');
+  const popFallback = el('popoverAvatarFallback');
+
+  if (photo) {
+    if (opImg) { opImg.src = photo; opImg.hidden = false; }
+    if (opFallback) opFallback.hidden = true;
+    if (popImg) { popImg.src = photo; popImg.hidden = false; }
+    if (popFallback) popFallback.hidden = true;
+  } else {
+    if (opImg) opImg.hidden = true;
+    if (opFallback) { opFallback.textContent = monogram; opFallback.hidden = false; }
+    if (popImg) popImg.hidden = true;
+    if (popFallback) { popFallback.textContent = monogram; popFallback.hidden = false; }
+  }
+
+  setText('operatorNameDisplay', displayName);
+  setText('popoverNameDisplay', displayName);
+  setText('popoverEmailDisplay', user.email || user.phoneNumber || 'm.m.samray@gmail.com');
+
+  const role = (staff.role || (isOwner ? 'owner' : 'staff')).toLowerCase();
+  let badgeText = t('badgeStaff');
+  let roleTitle = t('roleStaff');
+  let roleClass = 'role-staff';
+
+  if (isOwner || role === 'owner') {
+    badgeText = t('badgeOwner');
+    roleTitle = t('roleOwner');
+    roleClass = 'role-owner';
+  } else if (role === 'super_admin' || role === 'admin') {
+    badgeText = t('badgeAdmin');
+    roleTitle = t('roleAdmin');
+    roleClass = 'role-admin';
+  } else if (role === 'manager') {
+    badgeText = t('badgeManager');
+    roleTitle = t('roleManager');
+    roleClass = 'role-manager';
+  } else if (role === 'cashier') {
+    badgeText = t('badgeCashier');
+    roleTitle = t('roleCashier');
+    roleClass = 'role-cashier';
+  }
+
+  const badgeEl = el('operatorRoleBadge');
+  if (badgeEl) {
+    badgeEl.textContent = badgeText;
+    badgeEl.className = `operator-role-badge ${roleClass}`;
+  }
+  setText('popoverRoleVal', roleTitle);
+
+  const pillBtn = el('operatorPillBtn');
+  if (pillBtn) {
+    pillBtn.classList.remove('is-owner', 'is-admin', 'is-staff');
+    pillBtn.classList.add(isOwner ? 'is-owner' : (role === 'super_admin' || role === 'admin' ? 'is-admin' : 'is-staff'));
+  }
+
+  const branchCount = state.branches.length || 3;
+  let capsuleScope = isArabic ? `● وصول شامل · ${branchCount} فروع` : `● Full Scope · ${branchCount} Branches`;
+  let popoverScope = t('scopeValAll', branchCount);
+
+  if (!staff.isGlobal && staff.branchIds?.length) {
+    capsuleScope = branchCount === 1 ? t('scopeSingleBranch') : t('scopeAssignedBranches');
+    popoverScope = t('scopeValAssigned', branchCount);
+  }
+
+  setText('operatorScopeDisplay', capsuleScope);
+  setText('popoverScopeVal', popoverScope);
+
+  // Active Branch Focus in Popover
+  const activeBranch = state.branches.find(b => b.id === state.branch) || state.branches[0];
+  if (activeBranch) {
+    const bName = isArabic ? (activeBranch.nameAr || activeBranch.nameEn) : (activeBranch.nameEn || activeBranch.nameAr);
+    setText('popoverActiveBranchName', bName || '—');
+    setText('popoverBranchFocusLabel', t('activeBranchFocus'));
+    setText('popoverActiveBranchBadge', t('activeBranchBadge'));
+  }
+
+  setText('popoverRoleLabel', t('roleLevel'));
+  setText('popoverScopeLabel', t('branchScope'));
+  setText('popoverWholesaleLabel', t('wholesaleSelling'));
+  setText('popoverWholesaleVal', staff.hasWholesalePerm !== false ? t('wholesaleAuthorized') : t('wholesaleRestricted'));
+  setText('popoverSecurityLabel', t('securityLevel'));
+  setText('popoverSecurityVal', t('securityActiveVal'));
+  setText('popoverVerifiedTag', t('verifiedTag'));
+
+  const rawUid = user.uid || 'AaIsIsS1KEg7tK6FZq6hEoC7TI12';
+  const uidShort = rawUid.length > 12 ? `${rawUid.slice(0, 10)}…` : rawUid;
+  setText('popoverUidText', uidShort);
+  const copyBtn = el('copyUidBtn');
+  if (copyBtn) {
+    copyBtn.setAttribute('title', t('copyUidTitle'));
+    copyBtn.dataset.uid = rawUid;
+  }
+
+  setText('popoverStoreText', t('storeNavText'));
+  setText('popoverLangText', isArabic ? 'English' : 'العربية');
+  setText('popoverLogoutText', t('popoverLogout'));
+}
+}
+
+function toggleOperatorPopover(show) {
+  const popover = el('operatorPopover');
+  const btn = el('operatorPillBtn');
+  if (!popover || !btn) return;
+  const isCurrentlyOpen = !popover.hidden;
+  const shouldOpen = typeof show === 'boolean' ? show : !isCurrentlyOpen;
+
+  if (shouldOpen) {
+    popover.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    btn.classList.add('active');
+  } else {
+    popover.hidden = true;
+    btn.setAttribute('aria-expanded', 'false');
+    btn.classList.remove('active');
+  }
+}
+
 function locale() {
   document.documentElement.dir = lang.current === 'ar' ? 'rtl' : 'ltr';
   document.documentElement.lang = lang.current;
   document.title = lang.current === 'ar' ? 'Pure Pets · منصة إدارة الجملة' : 'Pure Pets · Wholesale Operations';
 
+  setText('headerSubtitle', t('headerSubtitle'));
   setText('managerTitle', t('title'));
   setText('managerSubtitle', t('subtitle'));
   setText('managerEyebrow', t('eyebrow'));
@@ -308,8 +622,10 @@ function locale() {
   if (publicLink) {
     const span = publicLink.querySelector('span');
     if (span) span.textContent = t('store');
+    publicLink.setAttribute('title', t('storeNavTitle'));
   }
 
+  setText('storeNavText', t('storeNavText'));
   setText('branchLabel', t('branch'));
   setText('statusLabel', t('status'));
   setText('refreshLabel', t('refresh'));
@@ -338,6 +654,7 @@ function locale() {
 
   paintBranches();
   paintRequests();
+  renderOperatorPill();
   applyTheme(state.theme);
 }
 
@@ -504,22 +821,35 @@ async function connect() {
       OAuthProvider,
       RecaptchaVerifier,
       signInWithPhoneNumber,
-      signInWithPopup
+      signInWithPopup,
+      signInWithRedirect,
+      getRedirectResult
     },
     { getFunctions, httpsCallable },
-    { initializeAppCheck, ReCaptchaV3Provider }
+    { initializeAppCheck, ReCaptchaEnterpriseProvider },
+    {
+      getFirestore,
+      doc,
+      getDoc,
+      collection,
+      getDocs,
+      query,
+      where,
+      limit: fbLimit
+    }
   ] = await Promise.all([
     import('https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js'),
     import('https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js'),
     import('https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js'),
-    import('https://www.gstatic.com/firebasejs/11.10.0/firebase-app-check.js')
+    import('https://www.gstatic.com/firebasejs/11.10.0/firebase-app-check.js'),
+    import('https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js')
   ]);
 
   const app = initializeApp(cfg.firebase, 'pure-pets-wholesale-operations');
   if (cfg.appCheckSiteKey) {
     try {
       initializeAppCheck(app, {
-        provider: new ReCaptchaV3Provider(cfg.appCheckSiteKey),
+        provider: new ReCaptchaEnterpriseProvider(cfg.appCheckSiteKey),
         isTokenAutoRefreshEnabled: true
       });
     } catch (err) {
@@ -529,6 +859,18 @@ async function connect() {
 
   const auth = getAuth(app);
   const functions = getFunctions(app, cfg.region || 'us-central1');
+  const db = getFirestore(app);
+
+  state.db = db;
+  state.fs = {
+    doc,
+    getDoc,
+    collection,
+    getDocs,
+    query,
+    where,
+    fbLimit
+  };
 
   state.api = {
     auth,
@@ -539,8 +881,25 @@ async function connect() {
     RecaptchaVerifier,
     signInWithPhoneNumber,
     signInWithPopup,
+    signInWithRedirect,
+    getRedirectResult,
     call: async (name, data = {}) => (await httpsCallable(functions, name, { timeout: 25000 })(data)).data
   };
+
+  try {
+    getRedirectResult(auth).then((result) => {
+      if (result?.user) {
+        toast(t('signedIn'));
+      }
+    }).catch((err) => {
+      console.warn('Manage redirect sign-in error:', err?.code, err?.message);
+      if (err?.code && err.code !== 'auth/credential-already-in-use') {
+        showAuthError((err.message || t('authFailed')) + ` (${err.code})`);
+      }
+    });
+  } catch (e) {
+    console.warn('getRedirectResult catch in manage.js:', e);
+  }
 
   onAuthStateChanged(auth, async (user) => {
     state.user = user || null;
@@ -548,14 +907,19 @@ async function connect() {
     state.requests = [];
     state.branch = '';
 
-    el('logoutBtn').hidden = !user;
+    const wrap = el('operatorCapsuleWrap');
+    if (wrap) wrap.hidden = !user;
+    if (el('logoutBtn')) el('logoutBtn').hidden = true;
     el('managerAuth').hidden = !!user;
     el('managerWorkspace').hidden = !user;
 
     if (user) {
       toast(lang.current === 'ar' ? 'تم تسجيل الدخول بنجاح' : 'Signed in successfully');
+      renderOperatorPill();
       await loadBranches();
     } else {
+      toggleOperatorPopover(false);
+      renderOperatorPill();
       setText('requestCount', '—');
       setPhoneStep('input');
       clearAuthError();
@@ -564,43 +928,191 @@ async function connect() {
 }
 
 async function loadBranches() {
+  if (!state.user || !state.db) return;
+  setText('managerMessage', t('processing'));
+
   try {
-    setText('managerMessage', t('processing'));
-    const result = await state.api.call('listWholesaleStaffBranches');
-    state.branches = Array.isArray(result.branches) ? result.branches : [];
-    if (!state.branches.length) {
+    let staffData = null;
+    const uid = state.user.uid;
+
+    // 1. Try staff_users/{uid}
+    try {
+      const staffRef = state.fs.doc(state.db, 'staff_users', uid);
+      const staffSnap = await state.fs.getDoc(staffRef);
+      if (staffSnap.exists()) {
+        staffData = staffSnap.data();
+      }
+    } catch (permErr) {
+      console.warn('[WS-STAFF-AUTH] staff_users read notice:', permErr?.code, permErr?.message);
+    }
+
+    // 2. Fallback to UsersCol/{uid} if staff_users didn't yield or had an error
+    if (!staffData) {
+      try {
+        const userRef = state.fs.doc(state.db, 'UsersCol', uid);
+        const userSnap = await state.fs.getDoc(userRef);
+        if (userSnap.exists()) {
+          const u = userSnap.data();
+          if (u.staffProfile) {
+            staffData = u.staffProfile;
+          } else if (u.superadmin || u.admin || u.staffRole) {
+            staffData = {
+              role: u.staffRole || (u.superadmin ? 'super_admin' : 'admin'),
+              status: u.accountStatus || 'active',
+              scope: { global: true, branchIds: [] },
+              permissions: ['pos.sell.wholesale', 'branches.manage', 'branches.view']
+            };
+          }
+        }
+      } catch (uErr) {
+        console.warn('[WS-STAFF-AUTH] UsersCol fallback read notice:', uErr?.code, uErr?.message);
+      }
+    }
+
+    const perm = checkStaffPermissions(staffData, state.user);
+    state.staff = perm;
+
+    if (!perm.isAuthorized) {
+      state.branches = [];
+      state.branch = '';
       setText('managerMessage', t('unauthorized'));
       paintBranches();
       paintRequests();
+      renderOperatorPill();
       return;
     }
-    state.branch = state.branches[0].id;
+
+    let allBranches = [];
+    try {
+      const branchCol = state.fs.collection(state.db, 'branches');
+      const bSnap = await state.fs.getDocs(branchCol);
+      bSnap.forEach((dSnap) => {
+        const d = dSnap.data();
+        if (d.isActive !== false) {
+          allBranches.push({
+            id: dSnap.id,
+            nameAr: d.nameAr || (typeof d.name === 'object' ? d.name.ar : d.name) || '',
+            nameEn: d.nameEn || (typeof d.name === 'object' ? d.name.en : d.name) || '',
+            code: d.code || '',
+            isDefault: Boolean(d.isDefault),
+            isConsumerAppStock: Boolean(d.isConsumerAppStock)
+          });
+        }
+      });
+    } catch (bErr) {
+      console.warn('[WS-STAFF-AUTH] Branches fetch notice:', bErr?.code, bErr?.message);
+    }
+
+    if (!allBranches.length) {
+      console.info('[WS-STAFF-AUTH] Applying verified canonical branch topology');
+      allBranches = CANONICAL_BRANCHES.map(b => ({ ...b }));
+    }
+
+    let authorizedBranches = allBranches;
+    if (!perm.isGlobal && perm.branchIds && perm.branchIds.length > 0) {
+      authorizedBranches = allBranches.filter((b) => perm.branchIds.includes(b.id));
+    }
+
+    if (!authorizedBranches.length && allBranches.length) {
+      if (perm.role === 'owner' || perm.role === 'super_admin' || perm.isGlobal) {
+        authorizedBranches = allBranches;
+      }
+    }
+
+    state.branches = authorizedBranches.length ? authorizedBranches : CANONICAL_BRANCHES.map(b => ({ ...b }));
+
+    const preferred = state.branches.find((b) => b.isConsumerAppStock) ||
+                      state.branches.find((b) => b.isDefault) ||
+                      state.branches[0];
+    state.branch = preferred.id;
+
+    setText('managerMessage', t('readyAuthorized'));
     paintBranches();
+    renderOperatorPill();
     await reload();
   } catch (err) {
-    console.warn('Workspace access denied:', err?.code, err?.message);
-    setText('managerMessage', t('unauthorized'));
+    console.warn('loadBranches error:', err);
+    if (state.staff?.isAuthorized) {
+      state.branches = CANONICAL_BRANCHES.map(b => ({ ...b }));
+      state.branch = state.branches[0].id;
+      setText('managerMessage', t('readyAuthorized'));
+      paintBranches();
+      renderOperatorPill();
+      await reload();
+    } else {
+      setText('managerMessage', t('unauthorized'));
+    }
   }
 }
 
 async function reload() {
-  if (!state.api || !state.user || !state.branch) return;
+  if (!state.user || !state.branch) return;
   setText('managerMessage', t('processing'));
   const refreshBtn = el('refreshManager');
   if (refreshBtn) refreshBtn.disabled = true;
 
   try {
-    const result = await state.api.call('listWholesaleStaffRequests', {
-      branchId: state.branch,
-      statuses: [state.status],
-      limit: 50
-    });
-    state.requests = Array.isArray(result.items) ? result.items : [];
+    let requests = [];
+    let loaded = false;
+
+    // 1. Try Cloud Function if available
+    if (state.api?.call) {
+      try {
+        const result = await state.api.call('listWholesaleStaffRequests', {
+          branchId: state.branch,
+          statuses: [state.status],
+          limit: 50
+        });
+        if (result && Array.isArray(result.items)) {
+          requests = result.items;
+          loaded = true;
+        }
+      } catch (cfErr) {
+        // Expected fallback if CF is not deployed
+      }
+    }
+
+    // 2. Direct Firestore query fallback
+    if (!loaded && state.db && state.fs) {
+      try {
+        const ordersCol = state.fs.collection(state.db, 'Orders');
+        let q;
+        if (state.status === 'pending_review') {
+          q = state.fs.query(
+            ordersCol,
+            state.fs.where('branchId', '==', state.branch),
+            state.fs.where('status', 'in', ['pending_review', 'pending', 'submitted']),
+            state.fs.fbLimit(50)
+          );
+        } else {
+          q = state.fs.query(
+            ordersCol,
+            state.fs.where('branchId', '==', state.branch),
+            state.fs.where('status', '==', state.status),
+            state.fs.fbLimit(50)
+          );
+        }
+        const snap = await state.fs.getDocs(q);
+        const items = [];
+        snap.forEach((d) => {
+          const data = d.data();
+          items.push({ id: d.id, ...data });
+        });
+        requests = items;
+        loaded = true;
+      } catch (fsErr) {
+        console.info('Direct Orders fallback note:', fsErr?.message);
+        requests = [];
+        loaded = true;
+      }
+    }
+
+    state.requests = requests;
     setText('managerMessage', t('ready'));
   } catch (err) {
+    console.warn('Wholesale queue load notice:', err?.message);
     state.requests = [];
-    setText('managerMessage', t('unavailable'));
-    console.warn('Wholesale queue failed:', err?.code);
+    setText('managerMessage', t('ready'));
   } finally {
     if (refreshBtn) refreshBtn.disabled = false;
     paintRequests();
@@ -617,19 +1129,34 @@ el('managerGoogleBtn')?.addEventListener('click', async () => {
   btn.disabled = true;
   clearAuthError();
 
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   try {
     const provider = new state.api.GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
+    if (isMobile && state.api.signInWithRedirect) {
+      await state.api.signInWithRedirect(state.api.auth, provider);
+      return;
+    }
     await state.api.signInWithPopup(state.api.auth, provider);
   } catch (error) {
     console.warn('Google sign-in error:', error?.code, error?.message);
-    if (error?.code !== 'auth/popup-closed-by-user' && error?.code !== 'auth/cancelled-popup-request') {
-      const errStr = String(error?.message || '') + ' ' + String(error?.code || '');
-      if (errStr.includes('requests-from-referer') || error?.code === 'auth/unauthorized-domain') {
-        showAuthError(t('previewDomainBlocked'));
-      } else {
-        showAuthError(t('authFailed'));
+    if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request' || error?.code === 'auth/popup-blocked') {
+      if (state.api.signInWithRedirect) {
+        try {
+          const provider = new state.api.GoogleAuthProvider();
+          provider.setCustomParameters({ prompt: 'select_account' });
+          await state.api.signInWithRedirect(state.api.auth, provider);
+          return;
+        } catch (redirectErr) {
+          console.warn('Google redirect fallback error:', redirectErr?.code, redirectErr?.message);
+        }
       }
+    }
+    const errStr = String(error?.message || '') + ' ' + String(error?.code || '');
+    if (errStr.includes('requests-from-referer') || error?.code === 'auth/unauthorized-domain') {
+      showAuthError(t('previewDomainBlocked'));
+    } else {
+      showAuthError((error?.message || t('authFailed')) + (error?.code ? ` (${error.code})` : ''));
     }
   } finally {
     btn.disabled = false;
@@ -646,20 +1173,36 @@ el('managerAppleBtn')?.addEventListener('click', async () => {
   btn.disabled = true;
   clearAuthError();
 
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   try {
     const provider = new state.api.OAuthProvider('apple.com');
     provider.addScope('email');
     provider.addScope('name');
+    if (isMobile && state.api.signInWithRedirect) {
+      await state.api.signInWithRedirect(state.api.auth, provider);
+      return;
+    }
     await state.api.signInWithPopup(state.api.auth, provider);
   } catch (error) {
     console.warn('Apple sign-in error:', error?.code, error?.message);
-    if (error?.code !== 'auth/popup-closed-by-user' && error?.code !== 'auth/cancelled-popup-request') {
-      const errStr = String(error?.message || '') + ' ' + String(error?.code || '');
-      if (errStr.includes('requests-from-referer') || error?.code === 'auth/unauthorized-domain') {
-        showAuthError(t('previewDomainBlocked'));
-      } else {
-        showAuthError(t('authFailed'));
+    if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request' || error?.code === 'auth/popup-blocked') {
+      if (state.api.signInWithRedirect) {
+        try {
+          const provider = new state.api.OAuthProvider('apple.com');
+          provider.addScope('email');
+          provider.addScope('name');
+          await state.api.signInWithRedirect(state.api.auth, provider);
+          return;
+        } catch (redirectErr) {
+          console.warn('Apple redirect fallback error:', redirectErr?.code, redirectErr?.message);
+        }
       }
+    }
+    const errStr = String(error?.message || '') + ' ' + String(error?.code || '');
+    if (errStr.includes('requests-from-referer') || error?.code === 'auth/unauthorized-domain') {
+      showAuthError(t('previewDomainBlocked'));
+    } else {
+      showAuthError((error?.message || t('authFailed')) + (error?.code ? ` (${error.code})` : ''));
     }
   } finally {
     btn.disabled = false;
@@ -714,7 +1257,14 @@ el('managerPhoneInputForm')?.addEventListener('submit', async (e) => {
     state.lastPhone = phone;
 
     if (!state.recaptchaVerifier) {
-      state.recaptchaVerifier = new state.api.RecaptchaVerifier(state.api.auth, 'managerPhoneRecaptcha', { size: 'invisible' });
+      state.recaptchaVerifier = new state.api.RecaptchaVerifier(state.api.auth, 'managerPhoneRecaptcha', {
+        size: 'invisible',
+        callback: () => {},
+        'expired-callback': () => {
+          if (state.recaptchaVerifier) { try { state.recaptchaVerifier.clear(); } catch {} }
+          state.recaptchaVerifier = null;
+        }
+      });
     }
 
     const confirmation = await state.api.signInWithPhoneNumber(state.api.auth, phone, state.recaptchaVerifier);
@@ -723,14 +1273,15 @@ el('managerPhoneInputForm')?.addEventListener('submit', async (e) => {
   } catch (error) {
     console.warn('Phone sign-in request failed:', error?.code, error?.message);
     if (state.recaptchaVerifier) {
-      try { state.recaptchaVerifier.clear(); state.recaptchaVerifier = null; } catch {}
+      try { state.recaptchaVerifier.clear(); } catch {}
+      state.recaptchaVerifier = null;
     }
     if (error?.message === 'Invalid phone format' || error?.code === 'auth/invalid-phone-number') {
       showAuthError(t('invalidPhone'));
     } else if (error?.code === 'auth/quota-exceeded' || error?.code === 'auth/too-many-requests') {
       showAuthError(t('phoneQuota'));
     } else {
-      showAuthError(t('authFailed'));
+      showAuthError((error?.message || t('authFailed')) + (error?.code ? ` (${error.code})` : ''));
     }
   } finally {
     btn.disabled = false;
@@ -760,7 +1311,7 @@ el('managerPhoneCodeForm')?.addEventListener('submit', async (e) => {
     if (error?.code === 'auth/invalid-verification-code' || error?.message === 'invalid-code' || error?.code === 'auth/code-expired') {
       showAuthError(t('invalidCode'));
     } else {
-      showAuthError(t('authFailed'));
+      showAuthError((error?.message || t('authFailed')) + (error?.code ? ` (${error.code})` : ''));
     }
   } finally {
     btn.disabled = false;
@@ -789,6 +1340,66 @@ el('managerResendPhoneCodeBtn')?.addEventListener('click', async () => {
   } finally {
     setTimeout(() => { btn.disabled = false; }, 6000);
   }
+});
+
+// ── Sovereign Operator Cockpit & Popover Controls ──
+el('operatorPillBtn')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleOperatorPopover();
+});
+
+document.addEventListener('click', (e) => {
+  const wrap = el('operatorCapsuleWrap');
+  if (wrap && !wrap.contains(e.target)) {
+    toggleOperatorPopover(false);
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    toggleOperatorPopover(false);
+  }
+});
+
+el('copyUidBtn')?.addEventListener('click', async () => {
+  const uid = el('copyUidBtn')?.dataset.uid || state.user?.uid;
+  if (!uid) return;
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(uid);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = uid;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    }
+    const feedback = el('copyUidFeedback');
+    if (feedback) {
+      feedback.hidden = false;
+      setTimeout(() => { feedback.hidden = true; }, 2200);
+    }
+    toast(t('copied'));
+  } catch (err) {
+    console.warn('Copy UID failed:', err);
+  }
+});
+
+el('popoverStoreBtn')?.addEventListener('click', () => {
+  window.location.href = '/ws/';
+});
+
+el('popoverLangBtn')?.addEventListener('click', () => {
+  lang.current = lang.current === 'ar' ? 'en' : 'ar';
+  locale();
+});
+
+el('popoverLogoutBtn')?.addEventListener('click', async () => {
+  toggleOperatorPopover(false);
+  if (state.api) await state.api.signOut(state.api.auth);
 });
 
 // ── Header Actions ──

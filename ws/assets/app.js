@@ -11,6 +11,22 @@ const t = {
     catalogHint:'منتجات الجملة المعتمدة فقط، تباع بالكرتون والعبوات (غير متاح بالقطعة).',products:'منتج',search:'ابحث عن المنتجات...',
     sortFeatured:'الترتيب الافتراضي',sortLow:'الأقل سعراً',sortHigh:'الأعلى سعراً',loadMore:'عرض المزيد',
     promiseOne:'كراتين وعبوات جملة واضحة',promiseTwo:'أسعار جملة معتمدة',promiseThree:'طلبات مرتبطة بحسابك',footerCopy:'كل ما يحتاجه مشروعك، من مكان واحد.',
+    advantageKicker:'ميثاق التوريد المعتمد · PRESTIGE B2B',advantageTitle:'معايير توريد صُممت لنمو تجارتك',advantageSubtitle:'منظومة لوجستية وتجارية متكاملة تضمن لمتجرك أو عيادتك أعلى درجات الموثوقية وهوامش الربح.',
+    promiseOneBadge:'عبوات وكراتين فقط',promiseOneDesc:'توريد تجاري مباشر بالكرتون والشدّات لضمان أفضل هوامش ربحية وتلبية احتياجات المتاجر والعيادات البيطرية دون وسيط.',
+    promiseOneBullet1:'أحجام توريد اقتصادية واضحة',promiseOneBullet2:'غير متاح بالقطعة (حماية لهوامش الموزعين)',
+    promiseTwoBadge:'تسعير جملة فوري',promiseTwoDesc:'تسعير فوري وشفاف مع فواتير تجارية رقمية وضريبية معتمدة لكافة الأصناف بدون رسوم خفية.',
+    promiseTwoBullet1:'أسعار تنافسية مبنية على حجم الطلب',promiseTwoBullet2:'فواتير رسمية قابلة للتحميل الفوري',
+    promiseThreeBadge:'ربط وتجهيز فوري',promiseThreeDesc:'متابعة حية لحالة الشحنات، سجل الفواتير السابقة، وأولوية التجهيز المباشر من مستودع الهرم المعتمد.',
+    promiseThreeBullet1:'أولوية الصرف والتجهيز السريع',promiseThreeBullet2:'تعيين تلقائي لمستودع الهرم المخصص',
+    telemetryLiveStatus:'شبكة الجملة تعمل بكفاءة حية',telemetryHubLabel:'مستودع التوزيع المركزي: الهرم (مخزون تطبيق Pure Pets المعتمد)',telemetryConcierge:'المساعد التجاري (واتساب)',
+    footerBrandDesc:'كل ما يحتاجه مشروعك، من مكان واحد. المنظومة القطرية المتخصصة في تزويد المتاجر، العيادات البيطرية، والمربين المعتمدين بأجود المنتجات.',
+    footerColCatalog:'الكتالوج والتوريد',footerLinkAll:'كافة منتجات الجملة',footerLinkPacks:'كراتين ومستلزمات الغذاء',footerLinkCare:'العناية والرعاية البيطرية',footerLinkNew:'الأصناف المضافة حديثاً',
+    footerColBuyer:'مساحة المشتري',footerLinkCart:'سلة المشتريات والطلبات',footerLinkOrders:'متابعة الطلبات والفواتير',footerLinkAccount:'تسجيل دخول المنشآت',footerLinkStaff:'لوحة إدارة العمليات (Staff)',
+    footerColReach:'التغطية والدعم',footerReachDesc:'شحن تجاري سريع يغطي كافة بلديات دولة قطر:',footerSupportPhone:'هاتف الدعم: +974 5999 7720',
+    footerQatarVerified:'منصة مرخصة وموثقة · دولة قطر',footerVetInspected:'فحص بيطري وتوريد معتمد',
+    footerLegalCopy:'© 2026 Pure Pets Wholesale Platform W.L.L. جميع الحقوق محفوظة في دولة قطر.',
+    footerLegalStewardship:'تخضع كافة المعاملات التجارية ومعايير التوريد للأنظمة واللوائح المعتمدة في دولة قطر.',
+    footerAscend:'للأعلى',doha:'الدوحة',alrayyan:'الريان',alwakrah:'الوكرة',alkhor:'الخور',lusail:'لوسيل',alshamal:'الشمال',
     workspace:'مساحة مشتري الجملة',authTitle:'أهلاً بك في عالم الجملة',authIntro:'أكمل تسجيل الدخول للمتابعة من حيث توقفت.',
     loginTab:'تسجيل الدخول',registerTab:'إنشاء حساب',email:'البريد الإلكتروني',password:'كلمة المرور',continue:'متابعة',
     all:'الكل',emptyTitle:'لا توجد منتجات مطابقة',emptyText:'غيّر كلمة البحث أو التصفية وحاول مرة أخرى.',
@@ -28,6 +44,8 @@ const t = {
     processing:'يتم التنفيذ...',requestFailed:'تعذر إرسال الطلب. تحقق من الكمية أو الأسعار وأعد المحاولة.',
     noProducts:'لا تتوفر منتجات جملة منشورة حالياً.',signupConfirm:'أنشئ حسابك لتتابع الشراء.',welcome:'حسابي',open:'فتح',status:'الحالة',
     units:'قطعة',verified:'سعر الجملة',noBranch:'اختر الفرع',cancelRequest:'إلغاء الطلب',cancelConfirm:'هل تريد إلغاء طلب الجملة المعلق؟',cancelSuccess:'تم إلغاء الطلب',increase:'زيادة الكمية',decrease:'تقليل الكمية',
+    availableStock:'المتوفر بالمخزن',outOfStock:'نفد من المخزن',inCart:'في السلة',packsInCart:'عبوة في السلة',packs:'عبوة',alreadyInCart:'مضاف في السلة حالياً',
+    fulfillmentBranch:'فرع التنفيذ (المعتمد لتطبيق الآيفون)',assignedBranchLabel:'فرع الصرف والتنفيذ',consumerAppBranchNote:'تم تحديد الفرع تلقائياً وفقاً لمخزون تطبيق Pure Pets للعملاء (الهرم)',
     googleSignIn:'المتابعة باستخدام Google',appleSignIn:'المتابعة باستخدام Apple',orDivider:'أو',tabEmail:'البريد الإلكتروني',tabPhone:'رقم الهاتف',
     phoneNumber:'رقم الهاتف',sendCode:'إرسال رمز التحقق (SMS)',codeSentTo:'تم إرسال رمز التحقق إلى:',
     changePhone:'تغيير الرقم',smsCode:'رمز التحقق (6 أرقام)',verifyCode:'تأكيد الرمز والدخول',
@@ -45,6 +63,22 @@ const t = {
     catalogHint:'Authorized wholesale products only, sold in cartons & bulk packs (no piece sales).',products:'products',search:'Search products...',
     sortFeatured:'Featured first',sortLow:'Price: low to high',sortHigh:'Price: high to low',loadMore:'Load more',
     promiseOne:'Wholesale packs & cartons only',promiseTwo:'Verified wholesale pricing',promiseThree:'Orders tied to your account',footerCopy:'Everything your business needs, in one place.',
+    advantageKicker:'AUTHORIZED WHOLESALE PACT · B2B EXCELLENCE',advantageTitle:'Wholesale Standards Engineered For Business Scale',advantageSubtitle:'An integrated commercial and logistics ecosystem delivering verified product integrity and superior retail margins.',
+    promiseOneBadge:'Cartons & Packs Only',promiseOneDesc:'Direct-from-source commercial bulk packs engineered for retail stores, clinics, and high-volume breeders without intermediaries.',
+    promiseOneBullet1:'Transparent economic pack sizing',promiseOneBullet2:'No piece sales (distributor margin protection)',
+    promiseTwoBadge:'Live Verified Rates',promiseTwoDesc:'Transparent rate cards with instant digital commercial invoices and guaranteed tier-based wholesale pricing.',
+    promiseTwoBullet1:'Competitive tiered price scales',promiseTwoBullet2:'Instant downloadable commercial invoices',
+    promiseThreeBadge:'Instant Account Sync',promiseThreeDesc:'Real-time order tracking, comprehensive invoice archive, and priority dispatch from the designated Al Haram Hub.',
+    promiseThreeBullet1:'Priority preparation & fast dispatch',promiseThreeBullet2:'Automated routing to Al Haram Central Hub',
+    telemetryLiveStatus:'Wholesale Network Operational',telemetryHubLabel:'Central Fulfillment Hub: Al Haram (Designated Pure Pets Stock)',telemetryConcierge:'B2B Sales Concierge (WhatsApp)',
+    footerBrandDesc:'Everything your business needs, in one place. Qatar’s premier wholesale platform supplying verified retailers, veterinary clinics, and licensed breeders.',
+    footerColCatalog:'Catalog & Supply',footerLinkAll:'All Wholesale Products',footerLinkPacks:'Bulk Food & Nutrition',footerLinkCare:'Care & Veterinary Supplies',footerLinkNew:'New Wholesale Arrivals',
+    footerColBuyer:'Buyer Workspace',footerLinkCart:'Cart & Active Workspace',footerLinkOrders:'My Orders & Invoices',footerLinkAccount:'Business Account Sign In',footerLinkStaff:'Staff Operations Desk',
+    footerColReach:'Logistics & Support',footerReachDesc:'Express commercial dispatch covering all Qatar municipalities:',footerSupportPhone:'Support Hotline: +974 5999 7720',
+    footerQatarVerified:'Licensed & Verified Platform · Qatar',footerVetInspected:'Veterinary-Inspected Supply',
+    footerLegalCopy:'© 2026 Pure Pets Wholesale Platform W.L.L. All rights reserved across the State of Qatar.',
+    footerLegalStewardship:'All wholesale transactions and animal welfare standards strictly adhere to the laws and regulations of Qatar.',
+    footerAscend:'Top',doha:'Doha',alrayyan:'Al Rayyan',alwakrah:'Al Wakrah',alkhor:'Al Khor',lusail:'Lusail',alshamal:'Al Shamal',
     workspace:'Your wholesale workspace',authTitle:'Welcome to wholesale',authIntro:'Sign in to continue right where you left off.',
     loginTab:'Sign in',registerTab:'Create account',email:'Email address',password:'Password',continue:'Continue',
     all:'All',emptyTitle:'No matching products',emptyText:'Try a different search or category.',
@@ -62,6 +96,8 @@ const t = {
     processing:'Working...',requestFailed:'Could not submit the request. Refresh prices or stock and retry.',
     noProducts:'No published wholesale products yet.',signupConfirm:'Create your account to continue.',welcome:'My account',open:'Open',status:'Status',
     units:'units',verified:'Wholesale price',noBranch:'Select branch',cancelRequest:'Cancel request',cancelConfirm:'Cancel this pending wholesale request?',cancelSuccess:'Request cancelled',increase:'Increase quantity',decrease:'Decrease quantity',
+    availableStock:'Available stock',outOfStock:'Out of stock',inCart:'In cart',packsInCart:'packs in cart',packs:'packs',alreadyInCart:'Currently in cart',
+    fulfillmentBranch:'Fulfillment Branch (iOS App Designated)',assignedBranchLabel:'Fulfillment & Dispatch Branch',consumerAppBranchNote:'Automatically routed to the Pure Pets consumer app stock branch (Al Haram)',
     googleSignIn:'Continue with Google',appleSignIn:'Continue with Apple',orDivider:'or',tabEmail:'Email address',tabPhone:'Phone number',
     phoneNumber:'Phone number',sendCode:'Send verification code (SMS)',codeSentTo:'Verification code sent to:',
     changePhone:'Change number',smsCode:'Verification code (6 digits)',verifyCode:'Verify and sign in',
@@ -74,7 +110,8 @@ const t = {
 };
 const state = {
   lang: 'ar', theme: 'light', products: [], cursor:null, categories:[], category:'all', query:'', sort:'featured',
-  branches:[], cart:[], saved:[], user:null, backend:null, pending:null, activeProduct:null,
+  branches:[], assignedBranch:{ id:'qQX5tQikeluPnOH2W7RT', nameAr:'الهرم', nameEn:'Al Haram (Consumer Stock)', isConsumerAppStock:true },
+  cart:[], saved:[], user:null, backend:null, pending:null, activeProduct:null,
   authMode:'login', authMethod:'email', phoneStep:'input', phoneConfirmation:null, recaptchaVerifier:null, lastPhone:'',
   drawer:'cart', loadError:false, authReady:false, loading:false,
   submitting:false, orderCommandId:null, ordersLoading:false,ordersError:false,orders:[], notifyTimer:null
@@ -104,8 +141,37 @@ function applyLanguage() {
   document.title=state.lang==='ar'?'Pure Pets | طلبات الجملة':'Pure Pets | Wholesale ordering';
   const labels={savedBtn:phrase('savedHeading'),searchInput:phrase('search'),sortTriggerBtn:phrase('sortFeatured'),themeToggleBtn:phrase('themeToggle'),closeProduct:state.lang==='ar'?'إغلاق التفاصيل':'Close details',closeAuth:state.lang==='ar'?'إغلاق تسجيل الدخول':'Close sign in',closeDrawer:state.lang==='ar'?'إغلاق اللوحة':'Close panel'};
   Object.entries(labels).forEach(([id,label])=>$(id)?.setAttribute('aria-label',label));
+
+  const langArBtn = $('wsFooterLangAr');
+  const langEnBtn = $('wsFooterLangEn');
+  if (langArBtn && langEnBtn) {
+    langArBtn.classList.toggle('active', state.lang === 'ar');
+    langArBtn.setAttribute('aria-checked', state.lang === 'ar' ? 'true' : 'false');
+    langEnBtn.classList.toggle('active', state.lang === 'en');
+    langEnBtn.setAttribute('aria-checked', state.lang === 'en' ? 'true' : 'false');
+  }
+  updateWsFooterClock();
+
   applyTheme(state.theme || 'light');
   renderCatalog(); renderDrawer();
+}
+
+function updateWsFooterClock() {
+  const clockEl = $('ws-footer-clock');
+  if (!clockEl) return;
+  try {
+    const now = new Date();
+    const isArabic = state.lang === 'ar';
+    const timeStr = now.toLocaleTimeString(isArabic ? 'ar-QA' : 'en-US', {
+      timeZone: 'Asia/Qatar',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+    clockEl.textContent = `${timeStr} ${isArabic ? 'بتوقيت قطر' : 'AST'}`;
+  } catch {
+    clockEl.textContent = state.lang === 'ar' ? 'الدوحة · توقيت قطر' : 'Doha · AST';
+  }
 }
 function initTheme() {
   let theme = 'light';
@@ -213,7 +279,7 @@ async function connectBackend() {
     };
   }
 
-  const [{initializeApp},{getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,GoogleAuthProvider,OAuthProvider,signInWithPopup,RecaptchaVerifier,signInWithPhoneNumber},{getFunctions,httpsCallable},{initializeAppCheck,ReCaptchaV3Provider},{getFirestore,collection,getDocs,query,where,limit:fbLimit,startAfter}]
+  const [{initializeApp},{getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,GoogleAuthProvider,OAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,RecaptchaVerifier,signInWithPhoneNumber},{getFunctions,httpsCallable},{initializeAppCheck,ReCaptchaEnterpriseProvider},{getFirestore,collection,getDocs,query,where,limit:fbLimit,startAfter}]
   = await Promise.all([
     import('https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js'),
     import('https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js'),
@@ -225,7 +291,7 @@ async function connectBackend() {
   const app=initializeApp(config.firebase,'pure-pets-wholesale');
   if(config.appCheckSiteKey) {
     try {
-      initializeAppCheck(app,{provider:new ReCaptchaV3Provider(config.appCheckSiteKey),isTokenAutoRefreshEnabled:true});
+      initializeAppCheck(app,{provider:new ReCaptchaEnterpriseProvider(config.appCheckSiteKey),isTokenAutoRefreshEnabled:true});
     } catch(err) {
       console.warn('AppCheck initialization skipped:', err?.message);
     }
@@ -237,10 +303,28 @@ async function connectBackend() {
 
   state.backend={
     auth,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,
-    GoogleAuthProvider,OAuthProvider,signInWithPopup,RecaptchaVerifier,signInWithPhoneNumber,
+    GoogleAuthProvider,OAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,RecaptchaVerifier,signInWithPhoneNumber,
     db,collection,getDocs,query,where,fbLimit,startAfter,
     invoke:async(name,payload)=> (await httpsCallable(functions,name,{timeout:25000})(payload)).data
   };
+
+  try {
+    getRedirectResult(auth).then((result)=>{
+      if(result?.user){
+        if($('authDialog').open)$('authDialog').close();
+        toast(phrase('signedIn'));
+      }
+    }).catch((err)=>{
+      console.warn('Redirect sign-in error:', err?.code, err?.message);
+      if(err?.code && err.code !== 'auth/credential-already-in-use'){
+        $('authError').textContent = (err.message || phrase('authFailed')) + ` (${err.code})`;
+        $('authError').hidden = false;
+        if(!$('authDialog').open)$('authDialog').showModal();
+      }
+    });
+  } catch(e) {
+    console.warn('getRedirectResult caught:', e);
+  }
 
   onAuthStateChanged(auth, async (user)=>{
     state.user=user||null; state.authReady=true; state.cart=[];state.saved=[];state.orders=[];state.orderCommandId=null;
@@ -280,18 +364,7 @@ async function loadCatalog(reset=false) {
   let nextCursor = null;
   let branches = [];
 
-  try {
-    const result=await call('listWholesaleCatalog',{cursor:state.cursor,limit:24});
-    if(result && Array.isArray(result.items) && result.items.length > 0) {
-      items = result.items;
-      nextCursor = typeof result.nextCursor==='string'&&result.nextCursor?result.nextCursor:null;
-      branches = Array.isArray(result.branches)?result.branches.filter(b=>b&&typeof b.id==='string'&&b.active===true):[];
-    }
-  }catch(error){
-    console.info('Callable catalog deferred, querying Firestore:', error?.code||error?.message);
-  }
-
-  if ((!items || !items.length) && state.backend?.db) {
+  if (state.backend?.db) {
     try {
       const {db, collection, getDocs, query, where, fbLimit, startAfter} = state.backend;
       let q = query(collection(db, 'petAccessories'), where('wholesalePrice', '>', 0), fbLimit(50));
@@ -434,6 +507,9 @@ async function loadCatalog(reset=false) {
         else if (doc.petMainCategoryID === 1 || /طير|طيور|ببغاء|بادجي|كناري|سيرلاك|bird|parrot/i.test(docName)) category = 'birds';
         else if (doc.petMainCategoryID === 6 || /كلاب|كلب|dog/i.test(docName)) category = 'dogs';
 
+        const rawQty = Number(doc.quantity);
+        const available = Number.isFinite(rawQty) ? Math.max(0, Math.floor(rawQty)) : 0;
+
         return {
           id: doc.id,
           name: doc.name || doc.nameEn || '',
@@ -442,15 +518,45 @@ async function loadCatalog(reset=false) {
           category,
           image: typeof image === 'string' ? image : '',
           currency: doc.currency || 'QAR',
-          available: Number(doc.quantity) || 100,
+          available,
           groups
         };
       }).filter(Boolean);
 
-      branches = [
-        { id: 'main_warehouse', nameAr: 'المستودع الرئيسي - أم العمد', nameEn: 'Main Central Warehouse', active: true },
-        { id: 'branch_salwa', nameAr: 'فرع طريق سلوى', nameEn: 'Salwa Road Branch', active: true }
-      ];
+      try {
+        const bSnap = await getDocs(collection(db, 'branches'));
+        const bDocs = [];
+        bSnap.forEach(d => {
+          const data = d.data();
+          if (data.isActive !== false) {
+            bDocs.push({
+              id: d.id,
+              nameAr: data.nameAr || (typeof data.name === 'object' ? data.name.ar : data.name) || '',
+              nameEn: data.nameEn || (typeof data.name === 'object' ? data.name.en : data.name) || '',
+              isConsumerAppStock: Boolean(data.isConsumerAppStock),
+              isDefault: Boolean(data.isDefault)
+            });
+          }
+        });
+        if (bDocs.length) branches = bDocs;
+      } catch (bErr) {
+        console.warn('Branches fetch note:', bErr?.message);
+      }
+
+      if (!branches.length) {
+        branches = [
+          { id: 'qQX5tQikeluPnOH2W7RT', nameAr: 'الهرم', nameEn: 'Al Haram (Consumer Stock)', isConsumerAppStock: true },
+          { id: 'Z3psFtT5vhfnFOncOtYX', nameAr: 'الوكرة , سوق واقف', nameEn: 'Wakra', isDefault: true }
+        ];
+      }
+
+      const consumerBranch = branches.find(b => b.isConsumerAppStock === true)
+        || branches.find(b => b.isDefault === true)
+        || branches.find(b => b.id === 'qQX5tQikeluPnOH2W7RT')
+        || branches[0]
+        || { id: 'qQX5tQikeluPnOH2W7RT', nameAr: 'الهرم', nameEn: 'Al Haram', isConsumerAppStock: true };
+      state.assignedBranch = consumerBranch;
+      state.branches = branches;
     } catch (fbErr) {
       console.warn('Firestore fallback catalog query error:', fbErr?.message);
     }
@@ -689,16 +795,41 @@ function renderCatalog() {
     return;
   }
   for(const item of list){
+    const inCartQty = state.cart.filter(c => c.productId === item.id).reduce((sum, c) => sum + (Number(c.quantity) || 0), 0);
     const group=item.groups.find(g=>g.defaultForWholesale)||item.groups[0];
     const image=item.image?'<img src="'+esc(item.image)+'" loading="lazy" alt="'+esc(localized(item))+'">':'<span class="placeholder-art">PP</span>';
-    const card=document.createElement('article');card.className='product-card';
+    const card=document.createElement('article');
+    card.className='product-card' + (inCartQty > 0 ? ' in-cart' : '');
+
+    const cartBadge = inCartQty > 0
+      ? '<span class="in-cart-badge"><span class="badge-icon">🛒</span> <span class="badge-count">' + inCartQty + '</span> ' + esc(phrase('packsInCart')) + '</span>'
+      : '';
+
+    const stockBadge = '<div class="card-available ' + (item.available > 0 ? 'in-stock' : 'out-of-stock') + '">' +
+      '<span class="stock-dot" aria-hidden="true"></span>' +
+      '<span class="stock-text">' + (item.available > 0 ? (esc(phrase('availableStock')) + ': ' + item.available + ' ' + esc(phrase('units'))) : esc(phrase('outOfStock'))) + '</span>' +
+      '</div>';
+
+    const actionUI = inCartQty > 0
+      ? '<div class="cell-stepper" role="group" aria-label="' + esc(phrase('quantity')) + '">' +
+          '<button type="button" class="stepper-btn stepper-sub" data-stepper-sub="' + esc(item.id) + '" aria-label="' + esc(phrase('decrease')) + '">−</button>' +
+          '<span class="stepper-val" title="' + esc(phrase('inCart')) + '">' + inCartQty + '</span>' +
+          '<button type="button" class="stepper-btn stepper-add" data-stepper-add="' + esc(item.id) + '" aria-label="' + esc(phrase('increase')) + '">+</button>' +
+        '</div>'
+      : '<button class="add-mini" type="button" data-quick-add="' + esc(item.id) + '" data-group-id="' + esc(group.id) + '" aria-label="' + esc(phrase('add')) + '">+</button>';
+
     card.innerHTML='<button class="product-art" type="button" data-open="'+esc(item.id)+'" aria-label="'+esc(localized(item))+'">'+image+
-      '<span class="pack-chip">'+esc(String(group.unitsPerGroup))+' '+esc(phrase('units'))+'</span></button>'+
+      '<span class="pack-chip">'+esc(String(group.unitsPerGroup))+' '+esc(phrase('units'))+'</span>'+
+      cartBadge+
+      '</button>'+
       '<button type="button" class="save-float" data-save="'+esc(item.id)+'" aria-pressed="'+String(state.saved.includes(item.id))+'" aria-label="'+esc(phrase('save'))+'">'+(state.saved.includes(item.id)?'♥':'♡')+'</button>'+
-      '<div class="card-body"><div class="card-type">'+esc(categoryTitle(item.category))+'</div><h3>'+esc(localized(item))+'</h3>'+
+      '<div class="card-body">'+
+      '<div class="card-type">'+esc(categoryTitle(item.category))+'</div>'+
+      '<h3 data-open="'+esc(item.id)+'" role="button" tabindex="0">'+esc(localized(item))+'</h3>'+
       '<p class="card-pack">'+esc(localized(group))+' · '+esc(String(group.unitsPerGroup))+' '+esc(phrase('units'))+'</p>'+
+      stockBadge+
       '<div class="card-bottom"><div><span class="price-label">'+esc(phrase('from'))+'</span><div class="price-value">'+esc(money(group.priceMinor,item.currency))+'</div></div>'+
-      '<button class="add-mini" type="button" data-open="'+esc(item.id)+'" aria-label="'+esc(phrase('details'))+'">+</button></div></div>';
+      actionUI+'</div></div>';
     grid.append(card);
   }
 }
@@ -706,11 +837,18 @@ function getProduct(id){return state.products.find(p=>p.id===id);}
 function productDetails(id){
   const product=getProduct(id);if(!product)return;
   state.activeProduct=id;
+  const inCartQty = state.cart.filter(c => c.productId === product.id).reduce((sum, c) => sum + (Number(c.quantity) || 0), 0);
   const image=product.image?'<img src="'+esc(product.image)+'" alt="'+esc(localized(product))+'">':'<span class="placeholder-art">PP</span>';
   const dialog=$('productDialog');
   $('productDetail').innerHTML='<div class="detail-layout"><div class="detail-image">'+image+'</div>'+
     '<div class="detail-info"><div class="section-kicker">'+esc(phrase('verified'))+'</div><h2>'+esc(localized(product))+'</h2>'+
-    '<p>'+esc(categoryTitle(product.category))+'</p><label>'+esc(phrase('selectPack'))+'<select id="detailGroup">'+
+    '<p class="detail-category">'+esc(categoryTitle(product.category))+'</p>'+
+    '<div class="detail-stock ' + (product.available > 0 ? 'in-stock' : 'out-of-stock') + '">' +
+      '<span class="stock-dot" aria-hidden="true"></span>' +
+      '<span>' + (product.available > 0 ? (esc(phrase('availableStock')) + ': <strong>' + product.available + '</strong> ' + esc(phrase('units'))) : ('<strong>' + esc(phrase('outOfStock')) + '</strong>')) + '</span>' +
+    '</div>' +
+    (inCartQty > 0 ? '<div class="detail-in-cart-note">🛒 ' + esc(phrase('alreadyInCart')) + ': <strong>' + inCartQty + ' ' + esc(phrase('packs')) + '</strong></div>' : '') +
+    '<label>'+esc(phrase('selectPack'))+'<select id="detailGroup">'+
     product.groups.map(g=>'<option value="'+esc(g.id)+'">'+esc(localized(g))+' · '+esc(g.unitsPerGroup)+' '+esc(phrase('units'))+' · '+esc(money(g.priceMinor,product.currency))+'</option>').join('')+
     '</select></label><label>'+esc(phrase('quantity'))+'<input id="detailQuantity" type="number" min="1" max="10000" step="1" value="1"></label>'+
     '<button class="primary-button" id="detailAdd" type="button">'+esc(phrase('add'))+'</button></div></div>';
@@ -791,15 +929,19 @@ function renderDrawer(){
   }
   if(view==='cart'){
     const total=state.cart.reduce((n,line)=>n+(cartLinePrice(line)||0),0);
-    const branchOptions=state.branches.map(b=>'<option value="'+esc(b.id)+'">'+esc(localized(b))+'</option>').join('');
+    const assignedBranchName = esc(localized(state.assignedBranch) || state.assignedBranch?.nameAr || 'الهرم');
     box.innerHTML=formatDrawerRows(state.cart,'cart')+
       (state.cart.length?'<div class="drawer-total"><span>'+esc(phrase('total'))+'</span><strong>'+esc(money(total,state.products[0]?.currency||'QAR'))+'</strong></div>'+
-      '<label>'+esc(phrase('branch'))+'<select id="branchSelect">'+
-      '<option value="">'+esc(phrase('noBranch'))+'</option>'+branchOptions+'</select></label>'+
-      (state.branches.length?'':'<p class="notice">'+esc(phrase('branchMissing'))+'</p>')+
-      '<button type="button" class="primary-button" id="checkoutBtn" '+(state.branches.length?'':'disabled')+'>'+esc(phrase('requestOrder'))+'</button>'+
+      '<div class="drawer-assigned-branch">'+
+        '<div class="branch-pill-icon" aria-hidden="true">🏢</div>'+
+        '<div class="branch-pill-details">'+
+          '<span class="branch-pill-kicker">'+esc(phrase('assignedBranchLabel'))+'</span>'+
+          '<strong class="branch-pill-name">'+assignedBranchName+'</strong>'+
+          '<span class="branch-pill-note">'+esc(phrase('consumerAppBranchNote'))+'</span>'+
+        '</div>'+
+      '</div>'+
+      '<button type="button" class="primary-button" id="checkoutBtn">'+esc(phrase('requestOrder'))+'</button>'+
       '<p class="notice">'+esc(phrase('draftNote'))+'</p>':'');
-    if(selectedBranch&&$('branchSelect'))$('branchSelect').value=selectedBranch;
     $('checkoutBtn')?.addEventListener('click',()=>submitOrder());
   } else if(view==='saved') box.innerHTML=formatDrawerRows(state.saved,'saved');
   else box.innerHTML=state.orders.length?state.orders.map(o=>'<div class="drawer-item"><div><strong>#'+esc(o.orderNumber||o.id)+'</strong><small>'+esc(o.status||'pending_review')+'</small><small>'+esc(money(o.totalMinor,o.currency))+'</small></div>'+ (o.status==='pending_review'?'<button type="button" data-cancel="'+esc(o.id)+'" title="'+esc(phrase('cancelRequest'))+'">'+esc(phrase('cancelRequest'))+'</button>':'')+'</div>').join(''):'<div class="empty-state"><strong>'+esc(phrase('ordersEmpty'))+'</strong></div>';
@@ -834,8 +976,8 @@ $('buyerDrawer').addEventListener('keydown',event=>{
 $('authDialog').addEventListener('cancel',()=>{state.pending=null;});
 async function submitOrder(){
   if(state.submitting)return;
-  const branchId=$('branchSelect')?.value;
-  if(!branchId||!state.branches.some(b=>b.id===branchId)){toast(phrase('noBranch'));return;}
+  const branchId = state.assignedBranch?.id || 'qQX5tQikeluPnOH2W7RT';
+  if(!branchId){toast(phrase('branchMissing'));return;}
   if(!state.cart.length)return;
   state.submitting=true;
   const button=$('checkoutBtn');if(button){button.disabled=true;button.textContent=phrase('processing');}
@@ -926,8 +1068,55 @@ window.addEventListener('keydown', event => {
 $('languageBtn').addEventListener('click',()=>{state.lang=state.lang==='ar'?'en':'ar';applyLanguage();});
 $('loadMoreBtn').addEventListener('click',()=>loadCatalog());
 $('productGrid').addEventListener('click',event=>{
-  const save=event.target.closest('[data-save]');if(save){requireBuyer(protectedIntent('save',{productId:save.dataset.save}));return;}
-  const open=event.target.closest('[data-open]');if(open)productDetails(open.dataset.open);
+  const save=event.target.closest('[data-save]');
+  if(save){requireBuyer(protectedIntent('save',{productId:save.dataset.save}));return;}
+
+  const quickAdd=event.target.closest('[data-quick-add]');
+  if(quickAdd){
+    const productId=quickAdd.dataset.quickAdd;
+    const groupId=quickAdd.dataset.groupId;
+    const p=getProduct(productId);
+    if(!p)return;
+    const g=p.groups.find(x=>x.id===groupId)||p.groups[0];
+    if(!g)return;
+    requireBuyer(protectedIntent('add',{productId,groupId:g.id,quantity:1}));
+    return;
+  }
+
+  const stepAdd=event.target.closest('[data-stepper-add]');
+  if(stepAdd){
+    const productId=stepAdd.dataset.stepperAdd;
+    const p=getProduct(productId);
+    if(!p)return;
+    const existing=state.cart.find(c=>c.productId===productId);
+    const groupId=existing?existing.groupId:(p.groups.find(g=>g.defaultForWholesale)||p.groups[0]).id;
+    requireBuyer(protectedIntent('add',{productId,groupId,quantity:1}));
+    return;
+  }
+
+  const stepSub=event.target.closest('[data-stepper-sub]');
+  if(stepSub){
+    const productId=stepSub.dataset.stepperSub;
+    if(!state.user){goAuth(protectedIntent('cart'));return;}
+    const cart=state.cart.map(line=>({...line}));
+    let targetIndex=-1;
+    for(let i=cart.length-1;i>=0;i--){
+      if(cart[i].productId===productId){targetIndex=i;break;}
+    }
+    if(targetIndex>=0){
+      cart[targetIndex].quantity-=1;
+      if(cart[targetIndex].quantity<=0)cart.splice(targetIndex,1);
+      stepSub.disabled=true;
+      persistBuyer(cart,state.saved).catch(()=>{
+        stepSub.disabled=false;
+        toast(phrase('saveFailed'));
+      });
+    }
+    return;
+  }
+
+  const open=event.target.closest('[data-open]');
+  if(open)productDetails(open.dataset.open);
 });
 $('cartBtn').addEventListener('click',()=>requireBuyer(protectedIntent('cart')));
 $('savedBtn').addEventListener('click',()=>{if(state.user)openDrawer('saved');else goAuth(protectedIntent('saved'));});
@@ -949,47 +1138,71 @@ $('googleAuthBtn').addEventListener('click',async()=>{
   if(!state.backend){$('authError').textContent=phrase('unavailableText');$('authError').hidden=false;return;}
   const button=$('googleAuthBtn');button.disabled=true;
   $('authError').hidden=true;
+  const isMobile=/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   try{
     const provider=new state.backend.GoogleAuthProvider();
     provider.setCustomParameters({prompt:'select_account'});
+    if(isMobile && state.backend.signInWithRedirect){
+      await state.backend.signInWithRedirect(state.backend.auth,provider);
+      return;
+    }
     await state.backend.signInWithPopup(state.backend.auth,provider);
   }catch(error){
     console.warn('Google sign-in error:',error?.code,error?.message);
-    if(error?.code!=='auth/popup-closed-by-user'&&error?.code!=='auth/cancelled-popup-request'){
-      const errStr = String(error?.message || '') + ' ' + String(error?.code || '');
-      if (errStr.includes('requests-from-referer') || error?.code === 'auth/unauthorized-domain') {
-        $('authError').textContent = state.lang === 'ar'
-          ? 'نطاق المعاينة غير مضاف إلى نطاقات Google Auth في Firebase Console. يرجى تسجيل الدخول بالبريد الإلكتروني وكلمة المرور في بيئة المعاينة.'
-          : 'Preview domain is blocked by Google Auth referrers. Please sign in using email & password on this preview.';
-      } else {
-        $('authError').textContent=phrase('authFailed');
+    if(error?.code==='auth/popup-closed-by-user'||error?.code==='auth/cancelled-popup-request'||error?.code==='auth/popup-blocked'){
+      if(state.backend.signInWithRedirect){
+        try{
+          const provider=new state.backend.GoogleAuthProvider();
+          provider.setCustomParameters({prompt:'select_account'});
+          await state.backend.signInWithRedirect(state.backend.auth,provider);
+          return;
+        }catch(redirectErr){
+          console.warn('Google redirect fallback error:',redirectErr?.code,redirectErr?.message);
+        }
       }
-      $('authError').hidden=false;
     }
+    const errStr = String(error?.message || '') + ' ' + String(error?.code || '');
+    if (errStr.includes('requests-from-referer') || error?.code === 'auth/unauthorized-domain') {
+      $('authError').textContent = state.lang === 'ar'
+        ? 'نطاق الموقع غير مضاف إلى نطاقات Google Auth في Firebase Console.'
+        : 'Domain is blocked by Google Auth referrers. Please check authorized domains.';
+    } else {
+      $('authError').textContent = (error?.message || phrase('authFailed')) + (error?.code ? ` (${error.code})` : '');
+    }
+    $('authError').hidden=false;
   }finally{button.disabled=false;}
 });
 $('appleAuthBtn')?.addEventListener('click',async()=>{
   if(!state.backend){$('authError').textContent=phrase('unavailableText');$('authError').hidden=false;return;}
   const button=$('appleAuthBtn');button.disabled=true;
   $('authError').hidden=true;
+  const isMobile=/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   try{
     const provider=new state.backend.OAuthProvider('apple.com');
     provider.addScope('email');
     provider.addScope('name');
+    if(isMobile && state.backend.signInWithRedirect){
+      await state.backend.signInWithRedirect(state.backend.auth,provider);
+      return;
+    }
     await state.backend.signInWithPopup(state.backend.auth,provider);
   }catch(error){
     console.warn('Apple sign-in error:',error?.code,error?.message);
-    if(error?.code!=='auth/popup-closed-by-user'&&error?.code!=='auth/cancelled-popup-request'){
-      const errStr = String(error?.message || '') + ' ' + String(error?.code || '');
-      if (errStr.includes('requests-from-referer') || error?.code === 'auth/unauthorized-domain') {
-        $('authError').textContent = state.lang === 'ar'
-          ? 'نطاق المعاينة غير مضاف إلى نطاقات Apple Auth في Firebase Console. يرجى تسجيل الدخول بالبريد الإلكتروني أو الهاتف في بيئة المعاينة.'
-          : 'Preview domain is blocked by Apple Auth referrers. Please sign in using email or phone on this preview.';
-      } else {
-        $('authError').textContent=phrase('authFailed');
+    if(error?.code==='auth/popup-closed-by-user'||error?.code==='auth/cancelled-popup-request'||error?.code==='auth/popup-blocked'){
+      if(state.backend.signInWithRedirect){
+        try{
+          const provider=new state.backend.OAuthProvider('apple.com');
+          provider.addScope('email');
+          provider.addScope('name');
+          await state.backend.signInWithRedirect(state.backend.auth,provider);
+          return;
+        }catch(redirectErr){
+          console.warn('Apple redirect fallback error:',redirectErr?.code,redirectErr?.message);
+        }
       }
-      $('authError').hidden=false;
     }
+    $('authError').textContent = (error?.message || phrase('authFailed')) + (error?.code ? ` (${error.code})` : '');
+    $('authError').hidden=false;
   }finally{button.disabled=false;}
 });
 $('phoneInputForm').addEventListener('submit',async event=>{
@@ -1001,20 +1214,28 @@ $('phoneInputForm').addEventListener('submit',async event=>{
     const phone=normalizePhoneNumber($('phoneInput').value);
     state.lastPhone=phone;
     if(!state.recaptchaVerifier){
-      state.recaptchaVerifier=new state.backend.RecaptchaVerifier(state.backend.auth,'phoneRecaptcha',{size:'invisible'});
+      state.recaptchaVerifier=new state.backend.RecaptchaVerifier(state.backend.auth,'phoneRecaptcha',{
+        size:'invisible',
+        callback:()=>{},
+        'expired-callback':()=>{
+          if(state.recaptchaVerifier){try{state.recaptchaVerifier.clear();}catch{}}
+          state.recaptchaVerifier=null;
+        }
+      });
     }
     const confirmation=await state.backend.signInWithPhoneNumber(state.backend.auth,phone,state.recaptchaVerifier);
     state.phoneConfirmation=confirmation;
     setPhoneStep('code');
   }catch(error){
     console.warn('Phone sign-in request failed:',error?.code,error?.message);
-    if(state.recaptchaVerifier){try{state.recaptchaVerifier.clear();state.recaptchaVerifier=null;}catch{}}
+    if(state.recaptchaVerifier){try{state.recaptchaVerifier.clear();}catch{}}
+    state.recaptchaVerifier=null;
     if(error?.message==='Invalid phone format'||error?.code==='auth/invalid-phone-number'){
       $('authError').textContent=phrase('invalidPhone');
     }else if(error?.code==='auth/quota-exceeded'||error?.code==='auth/too-many-requests'){
       $('authError').textContent=phrase('phoneQuota');
     }else{
-      $('authError').textContent=phrase('authFailed');
+      $('authError').textContent = (error?.message || phrase('authFailed')) + (error?.code ? ` (${error.code})` : '');
     }
     $('authError').hidden=false;
   }finally{button.disabled=false;button.textContent=phrase('sendCode');}
@@ -1033,7 +1254,7 @@ $('phoneCodeForm').addEventListener('submit',async event=>{
     if(error?.code==='auth/invalid-verification-code'||error?.message==='invalid-code'||error?.code==='auth/code-expired'){
       $('authError').textContent=phrase('invalidCode');
     }else{
-      $('authError').textContent=phrase('authFailed');
+      $('authError').textContent = (error?.message || phrase('authFailed')) + (error?.code ? ` (${error.code})` : '');
     }
     $('authError').hidden=false;
   }finally{button.disabled=false;button.textContent=phrase('verifyCode');}
@@ -1106,6 +1327,19 @@ $('drawerContent').addEventListener('click',async event=>{
   }catch{toast(phrase('saveFailed'));}
 });
 $('themeToggleBtn')?.addEventListener('click', toggleTheme);
+$('wsElevatorBtn')?.addEventListener('click', () => {
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+$('wsFooterCartBtn')?.addEventListener('click', () => $('cartBtn')?.click());
+$('wsFooterOrdersBtn')?.addEventListener('click', () => $('ordersNav')?.click());
+$('wsFooterAccountBtn')?.addEventListener('click', () => $('accountBtn')?.click());
+$('wsFooterLangAr')?.addEventListener('click', () => {
+  if (state.lang !== 'ar') { state.lang = 'ar'; applyLanguage(); }
+});
+$('wsFooterLangEn')?.addEventListener('click', () => {
+  if (state.lang !== 'en') { state.lang = 'en'; applyLanguage(); }
+});
 initTheme();
 applyLanguage();
+setInterval(updateWsFooterClock, 20000);
 (async()=>{try{await connectBackend();await loadCatalog(true);}catch(error){console.warn('Storefront startup:',error?.message);state.loadError=true;state.loading=false;renderCatalog();}})();

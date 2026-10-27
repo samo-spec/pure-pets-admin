@@ -41,6 +41,11 @@ test('normalizePhoneNumber formats Qatar and international numbers', () => {
   assert.equal(normalizePhoneNumber('+974 5555 1234'), '+97455551234');
   assert.equal(normalizePhoneNumber('00974 5555 1234'), '+97455551234');
   assert.equal(normalizePhoneNumber('+966 50 123 4567'), '+966501234567');
+  assert.equal(normalizePhoneNumber('+201022363409'), '+201022363409');
+  assert.equal(normalizePhoneNumber('01022363409'), '+201022363409');
+  assert.equal(normalizePhoneNumber('+٢٠١٠٢٢٣٦٣٤٠٩'), '+201022363409');
+  assert.equal(normalizePhoneNumber('٠١٠٢٢٣٦٣٤٠٩'), '+201022363409');
+  assert.equal(normalizePhoneNumber('0512345678'), '+966512345678');
   assert.throws(() => normalizePhoneNumber('123'));
   assert.throws(() => normalizePhoneNumber('not-a-number'));
   assert.throws(() => normalizePhoneNumber(''));

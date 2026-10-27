@@ -17,6 +17,12 @@ import FirebaseFirestore
 import FirebaseStorage
 import FirebaseFunctions
 
+// MARK: - File-level Localization Helper
+
+fileprivate func tr(_ key: String, _ fallback: String = "") -> String {
+    Language.get(key, alter: fallback.isEmpty ? key : fallback)
+}
+
 // MARK: - Editable Catalog Decimals
 
 /// Keep the stored decimal intact when reopening a draft. Presentation formats
@@ -1809,7 +1815,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         return false
     }
     var allowsMultipleCategorySelection: Bool {
-        isMedicine || isPetCareProduct
+        !isLivePet
     }
     var catalogSymbol: String {
         if isMedicine { return "pills.fill" }
@@ -2647,7 +2653,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     func isStageComplete(_ stage: PPEditorStage) -> Bool {
         switch stage {
         case .identity:
-            return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedMainKind != nil
+            return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !hasNoCategorySelected
         case .bioVault:
             if !isLivePet { return true }
             if liveInventoryMode == .individual {
@@ -2673,7 +2679,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         if trimmedName.isEmpty {
             return Language.get("NameRequiredHint", alter: "أدخل اسم الصنف أولاً")
         }
-        if selectedMainKind == nil {
+        if hasNoCategorySelected {
             return Language.get("SpeciesRequiredHint", alter: "اختر نوع وفئة الحيوان")
         }
         if basePrice <= 0 {
@@ -6521,24 +6527,112 @@ struct PPAccessoryEditorScreen: View {
             }
         }
         .sheet(isPresented: $viewModel.showSpeciesPicker) {
-            PPAccessorySpeciesPickerSheet(
-                speciesList: viewModel.availableMainKinds,
-                selectedSpecies: viewModel.selectedMainKind,
-                onSelect: { species in
-                    viewModel.selectedMainKind = species
-                    viewModel.showSpeciesPicker = false
+            if viewModel.allowsMultipleCategorySelection {
+                PPCatalogMultiChoiceSheet(
+                    title: Language.get("MedicineEditor_TargetSpecies", alter: "الحيوانات المعنية"),
+                    subtitle: tr("CatalogIntake_SelectCategorySub", "اختر فئة واحدة أو عدة فئات، أو حدد جميع الفئات."),
+                    searchPrompt: tr("CatalogIntake_SearchCategory", "ابحث عن فئة"),
+                    allOptionTitle: tr("CatalogIntake_AllCategoriesPrompt", "جميع الفئات • مناسب لكل الحيوانات"),
+                    allOptionSubtitle: tr("CatalogIntake_AllCategoriesSub", "مناسب للكلاب، القطط، الطيور، وجميع الحيوانات الأليفة"),
+                    allOptionSymbol: "globe",
+                    choices: viewModel.availableMainKinds.map { kind in
+                        PPLivePetChoice(
+                            id: String(kind.id),
+                            title: kind.kindName,
+                            subtitle: String(
+                                format: tr("CatalogIntake_SubcategoryCount", "%ld تصنيفاً فرعياً"),
+                                (kind.subKindsArray as? [SubKindModel])?.count ?? 0
+                            ),
+                            symbol: kind.petSFSymbolName
+                        )
+                    },
+                    allowsMultipleSelection: true,
+                    isAllSelected: $viewModel.isAllCategoriesSelected,
+                    selectedIDs: Binding(
+                        get: { Set(viewModel.selectedMainKinds.map { String($0) }) },
+                        set: { newSet in
+                            viewModel.selectedMainKinds = Set(newSet.compactMap { Int($0) })
+                        }
+                    ),
+                    onRefresh: {
+                        viewModel.loadMainKinds(forceServer: true)
+                    },
+                    onConfirm: {
+                        if viewModel.isAllCategoriesSelected {
+                            viewModel.selectedMainKind = nil
+                        } else if let firstID = viewModel.selectedMainKinds.first {
+                            viewModel.selectedMainKind = viewModel.availableMainKinds.first(where: { $0.id == firstID })
+                        }
+                        viewModel.fetchFreshSubKindsForSelectedCategories()
+                    }
+                )
+                .onAppear {
+                    viewModel.loadMainKinds(forceServer: true)
                 }
-            )
+            } else {
+                PPAccessorySpeciesPickerSheet(
+                    speciesList: viewModel.availableMainKinds,
+                    selectedSpecies: viewModel.selectedMainKind,
+                    onSelect: { species in
+                        viewModel.selectedMainKind = species
+                        viewModel.showSpeciesPicker = false
+                    }
+                )
+            }
         }
         .sheet(isPresented: $viewModel.showBreedPicker) {
-            PPAccessoryBreedPickerSheet(
-                breedList: viewModel.availableSubKinds,
-                selectedBreed: viewModel.selectedSubKind,
-                onSelect: { breed in
-                    viewModel.selectedSubKind = breed
-                    viewModel.showBreedPicker = false
+            if viewModel.allowsMultipleCategorySelection {
+                PPCatalogMultiChoiceSheet(
+                    title: Language.get("MedicineEditor_TargetBreed", alter: "السلالة (اختياري)"),
+                    subtitle: tr("CatalogIntake_SelectSubcategorySub", "اختر تصنيفاً واحداً أو عدة تصنيفات، أو حدد جميع التصنيفات."),
+                    searchPrompt: tr("CatalogIntake_SearchSubcategory", "ابحث عن تصنيف فرعي"),
+                    allOptionTitle: tr("CatalogIntake_AllSubcategoriesPrompt", "جميع السلالات والتصنيفات الفرعية"),
+                    allOptionSubtitle: tr("CatalogIntake_AllSubcategoriesSub", "شامل لكل السلالات والتفريعات بدون استثناء"),
+                    allOptionSymbol: "tag.fill",
+                    choices: viewModel.availableSubKinds.map { subkind in
+                        let parentCategoryName = viewModel.availableMainKinds.first(where: { $0.id == subkind.mainKindID })?.kindName
+                            ?? viewModel.availableMainKinds.first(where: { ($0.subKindsArray as? [SubKindModel])?.contains(where: { $0.id == subkind.id }) == true })?.kindName
+                        let showSection = (viewModel.selectedMainKinds.count > 1 || viewModel.isAllCategoriesSelected)
+                        return PPLivePetChoice(
+                            id: String(subkind.id),
+                            title: subkind.subKindName,
+                            subtitle: showSection ? parentCategoryName : nil,
+                            symbol: "tag.fill",
+                            sectionHeader: showSection ? parentCategoryName : nil
+                        )
+                    },
+                    allowsMultipleSelection: true,
+                    isAllSelected: $viewModel.isAllSubCategoriesSelected,
+                    selectedIDs: Binding(
+                        get: { Set(viewModel.selectedSubKinds.map { String($0) }) },
+                        set: { newSet in
+                            viewModel.selectedSubKinds = Set(newSet.compactMap { Int($0) })
+                        }
+                    ),
+                    onRefresh: {
+                        viewModel.fetchFreshSubKindsForSelectedCategories()
+                    },
+                    onConfirm: {
+                        if viewModel.isAllSubCategoriesSelected {
+                            viewModel.selectedSubKind = nil
+                        } else if let firstID = viewModel.selectedSubKinds.first {
+                            viewModel.selectedSubKind = viewModel.availableSubKinds.first(where: { $0.id == firstID })
+                        }
+                    }
+                )
+                .onAppear {
+                    viewModel.fetchFreshSubKindsForSelectedCategories()
                 }
-            )
+            } else {
+                PPAccessoryBreedPickerSheet(
+                    breedList: viewModel.availableSubKinds,
+                    selectedBreed: viewModel.selectedSubKind,
+                    onSelect: { breed in
+                        viewModel.selectedSubKind = breed
+                        viewModel.showBreedPicker = false
+                    }
+                )
+            }
         }
         .sheet(isPresented: $viewModel.showMedicineCareProductTypePicker) {
             PPMedicineCareProductTypePickerSheet(
@@ -7361,7 +7455,7 @@ struct PPAccessoryEditorScreen: View {
                             )
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(Language.get("Species", alter: "نوع الحيوان (الفئة)"))
+                            Text(viewModel.allowsMultipleCategorySelection ? Language.get("MedicineEditor_TargetSpecies", alter: "الحيوانات المعنية") : Language.get("Species", alter: "نوع الحيوان (الفئة)"))
                                 .font(AdminType.caption2Bold)
                                 .foregroundStyle(AdminCommandInk.secondary)
                             Text(viewModel.selectedCategoryDisplayTitle ?? Language.get("SelectSpecies", alter: "اختر النوع..."))
@@ -7381,31 +7475,31 @@ struct PPAccessoryEditorScreen: View {
 
                 // Breed Selector Card
                 Button {
-                    if viewModel.selectedMainKind != nil {
+                    if !viewModel.hasNoCategorySelected {
                         focusedField = nil
                         viewModel.showBreedPicker = true
                     }
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(Language.get("Breed", alter: "السلالة الفرعية"))
+                            Text(viewModel.allowsMultipleCategorySelection ? Language.get("MedicineEditor_TargetBreed", alter: "السلالة (اختياري)") : Language.get("Breed", alter: "السلالة الفرعية"))
                                 .font(AdminType.caption2Bold)
                                 .foregroundStyle(AdminCommandInk.secondary)
-                            Text(viewModel.selectedSubKind?.subKindName ?? Language.get("SelectBreed", alter: "اختياري..."))
+                            Text(viewModel.selectedSubCategoryDisplayTitle ?? Language.get("SelectBreed", alter: "اختياري..."))
                                 .font(AdminType.calloutBold)
-                                .foregroundStyle(viewModel.selectedSubKind != nil ? AdminSurface.primaryText : AdminCommandInk.tertiary)
+                                .foregroundStyle(viewModel.selectedSubCategoryDisplayTitle != nil ? AdminSurface.primaryText : AdminCommandInk.tertiary)
                                 .lineLimit(1)
                         }
                         Spacer()
                         Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
                             .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(viewModel.selectedMainKind != nil ? AdminSurface.primary : AdminCommandInk.tertiary)
+                            .foregroundStyle(!viewModel.hasNoCategorySelected ? AdminSurface.primary : AdminCommandInk.tertiary)
                     }
                     .padding(14)
                     .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(EditorPressStyle())
-                .disabled(viewModel.selectedMainKind == nil)
+                .disabled(viewModel.hasNoCategorySelected)
             }
 
             if viewModel.usesAccessoryTaxonomy {
@@ -15459,10 +15553,6 @@ private struct PPLivePetIntakeJourney: View {
         )
         .accessibilityElement(children: .combine)
     }
-
-    private func tr(_ key: String, _ fallback: String) -> String {
-        Language.get(key, alter: fallback)
-    }
 }
 
 private struct PPLivePetDecisionSurface<Content: View>: View {
@@ -19243,7 +19333,9 @@ private struct PPAccessoryFoodIntakeJourney: View {
         }
         .sheet(isPresented: $viewModel.showSpeciesPicker) {
             PPCatalogMultiChoiceSheet(
-                title: tr("CatalogIntake_SelectCategory", "اختر فئات الحيوانات"),
+                title: viewModel.allowsMultipleCategorySelection
+                    ? Language.get("MedicineEditor_TargetSpecies", alter: "الحيوانات المعنية")
+                    : tr("CatalogIntake_SelectCategory", "اختر فئات الحيوانات"),
                 subtitle: viewModel.allowsMultipleCategorySelection
                     ? tr("CatalogIntake_SelectCategorySub", "اختر فئة واحدة أو عدة فئات، أو حدد جميع الفئات.")
                     : Language.get("CatalogIntake_SelectSingleCategorySub", alter: "اختر فئة واحدة فقط لهذا الصنف."),
@@ -19288,7 +19380,9 @@ private struct PPAccessoryFoodIntakeJourney: View {
         }
         .sheet(isPresented: $viewModel.showBreedPicker) {
             PPCatalogMultiChoiceSheet(
-                title: tr("CatalogIntake_SelectSubcategory", "اختر التصنيفات الفرعية"),
+                title: viewModel.allowsMultipleCategorySelection
+                    ? Language.get("MedicineEditor_TargetBreed", alter: "السلالة (اختياري)")
+                    : tr("CatalogIntake_SelectSubcategory", "اختر التصنيفات الفرعية"),
                 subtitle: viewModel.allowsMultipleCategorySelection
                     ? tr("CatalogIntake_SelectSubcategorySub", "اختر تصنيفاً واحداً أو عدة تصنيفات، أو حدد جميع التصنيفات.")
                     : Language.get("CatalogIntake_SelectSingleSubcategorySub", alter: "اختر تصنيفاً واحداً فقط لهذا الصنف."),
@@ -20235,7 +20329,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
         ) {
             VStack(spacing: AdminSpacing.sectionSpacing) {
                 taxonomyButton(
-                    title: viewModel.isMedicine ? Language.get("MedicineEditor_TargetSpecies", alter: nil) : tr("CatalogIntake_CategoryLabel", "الفئة الرئيسية"),
+                    title: viewModel.allowsMultipleCategorySelection ? Language.get("MedicineEditor_TargetSpecies", alter: "الحيوانات المعنية") : tr("CatalogIntake_CategoryLabel", "الفئة الرئيسية"),
                     value: viewModel.selectedCategoryDisplayTitle,
                     placeholder: tr("CatalogIntake_CategoryPlaceholder", "اختر الفئة المطلوبة"),
                     symbol: viewModel.isMedicine ? "pawprint" : (viewModel.isFood ? "fork.knife" : "shippingbox"),
@@ -20246,7 +20340,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 }
 
                 taxonomyButton(
-                    title: viewModel.isMedicine ? Language.get("MedicineEditor_TargetBreed", alter: nil) : tr("CatalogIntake_SubcategoryLabel", "التصنيف الفرعي"),
+                    title: viewModel.allowsMultipleCategorySelection ? Language.get("MedicineEditor_TargetBreed", alter: "السلالة (اختياري)") : tr("CatalogIntake_SubcategoryLabel", "التصنيف الفرعي"),
                     value: viewModel.selectedSubCategoryDisplayTitle,
                     placeholder: viewModel.hasNoCategorySelected
                         ? tr("CatalogIntake_SelectCategoryFirst", "اختر الفئة الرئيسية أولاً")
@@ -21474,16 +21568,16 @@ private struct PPAccessoryFoodIntakeJourney: View {
         case .bioVault:
             VStack(alignment: .leading, spacing: AdminSpacing.sm) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(tr("CatalogIntake_CategoryLabel", "الفئة الرئيسية"))
+                    Text(viewModel.allowsMultipleCategorySelection ? Language.get("MedicineEditor_TargetSpecies", alter: "الحيوانات المعنية") : tr("CatalogIntake_CategoryLabel", "الفئة الرئيسية"))
                         .font(AdminType.caption2)
                         .foregroundStyle(AdminSurface.secondaryText)
                     HStack(spacing: 6) {
                         Image(systemName: "square.grid.2x2.fill")
                             .font(.system(size: 11))
                             .foregroundStyle(AdminSurface.primary)
-                        Text(viewModel.selectedMainKind?.kindName ?? tr("CatalogIntake_CategoryMissing", "غير محددة"))
+                        Text(viewModel.selectedCategoryDisplayTitle ?? tr("CatalogIntake_CategoryMissing", "غير محددة"))
                             .font(AdminType.footnoteBold)
-                            .foregroundStyle(viewModel.selectedMainKind == nil ? AdminSurface.secondaryText : AdminSurface.primaryText)
+                            .foregroundStyle(viewModel.hasNoCategorySelected ? AdminSurface.secondaryText : AdminSurface.primaryText)
                             .lineLimit(1)
                     }
                     .padding(.horizontal, 8)
@@ -21492,7 +21586,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(tr("CatalogIntake_SubcategoryLabel", "الفئات الفرعية"))
+                    Text(viewModel.allowsMultipleCategorySelection ? Language.get("MedicineEditor_TargetBreed", alter: "السلالة (اختياري)") : tr("CatalogIntake_SubcategoryLabel", "الفئات الفرعية"))
                         .font(AdminType.caption2)
                         .foregroundStyle(AdminSurface.secondaryText)
                     let subText: String = {
@@ -21859,10 +21953,6 @@ private struct PPAccessoryFoodIntakeJourney: View {
             },
             cancelBlock: nil
         )
-    }
-
-    private func tr(_ key: String, _ fallback: String) -> String {
-        Language.get(key, alter: fallback)
     }
 }
 

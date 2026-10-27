@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Beiruti:wght@300;400;500;600;700;800;900&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/ws/assets/style.css">
+  <link rel="stylesheet" href="/ws/assets/style.css?v=20261027c">
 </head>
 <body class="manager-page">
   <a class="skip-link" href="#mainContent">تخطي إلى المحتوى الرئيسي</a>
@@ -32,23 +32,136 @@
   <!-- Header with Brand Signature and Controls -->
   <header class="site-header">
     <a class="wordmark" href="/ws/" title="Pure Pets Wholesale">
-      <span class="brand-glyph" aria-hidden="true">✳</span>
-      <span class="brand-title">PURE<span>PETS</span><small>WHOLESALE OPERATIONS</small></span>
+      <span class="brand-glyph brand-glyph-official">
+        <img src="/ws/assets/logo.png" alt="" width="44" height="44">
+      </span>
+      <span class="brand-title">PURE<span>PETS</span><small id="headerSubtitle">WHOLESALE OPERATIONS</small></span>
     </a>
     <div class="header-actions">
       <a href="/ws/" class="secondary-button desk-nav-link" id="publicLink" title="الانتقال إلى المتجر">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-        <span>المتجر</span>
+        <span id="storeNavText">المتجر</span>
       </a>
       <button class="theme-toggle" id="themeToggleBtn" type="button" aria-label="تبديل المظهر" title="تبديل المظهر">
         <svg class="sun-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
         <svg class="moon-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       </button>
       <button class="language" id="langBtn" type="button" aria-label="تبديل اللغة">EN</button>
-      <button class="account-button logout-button" id="logoutBtn" type="button" hidden>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        <span>خروج</span>
+
+      <!-- Category-Defining Sovereign Operator Capsule -->
+      <div class="operator-capsule-wrapper" id="operatorCapsuleWrap" hidden>
+        <button type="button" class="operator-capsule" id="operatorPillBtn" aria-expanded="false" aria-haspopup="true" aria-label="بيانات المشغل والصلاحيات">
+          <div class="operator-avatar-port">
+            <span class="operator-halo-orbit" aria-hidden="true"></span>
+            <img id="operatorAvatarImg" src="" alt="" class="operator-avatar-img" hidden>
+            <span id="operatorAvatarFallback" class="operator-avatar-fallback">MS</span>
+            <span class="operator-status-beacon" aria-hidden="true" title="جلسة نشطة وموثقة"></span>
+          </div>
+          <div class="operator-meta">
+            <div class="operator-headline">
+              <strong class="operator-name" id="operatorNameDisplay">Mohamed Samray</strong>
+              <span class="operator-role-badge" id="operatorRoleBadge">👑 OWNER</span>
+            </div>
+            <div class="operator-subline">
+              <span class="operator-scope-text" id="operatorScopeDisplay">● وصول شامل لجميع الفروع</span>
+            </div>
+          </div>
+          <div class="operator-chevron-port">
+            <span class="operator-chevron" aria-hidden="true">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </div>
+        </button>
+
+        <!-- Floating Sovereign Command Hub (Popover) -->
+        <div class="operator-popover" id="operatorPopover" hidden role="dialog" aria-label="لوحة تحكم المشغل">
+          <div class="popover-hero">
+            <div class="popover-avatar-wrap">
+              <span class="popover-halo-ring" aria-hidden="true"></span>
+              <img id="popoverAvatarImg" src="" alt="" class="popover-avatar-img" hidden>
+              <span id="popoverAvatarFallback" class="popover-avatar-fallback">MS</span>
+              <span class="popover-badge-icon" title="موثق معتمد">✓</span>
+            </div>
+            <div class="popover-identity">
+              <div class="popover-name-row">
+                <strong class="popover-name" id="popoverNameDisplay">Mohamed Samray</strong>
+                <span class="popover-verified-tag" id="popoverVerifiedTag">موثق رسمي</span>
+              </div>
+              <span class="popover-email" id="popoverEmailDisplay">m.m.samray@gmail.com</span>
+              <button type="button" class="uid-chip" id="copyUidBtn" title="انقر لنسخ معرّف المشغل">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <code id="popoverUidText">AaIsIsS1...</code>
+                <span class="uid-copied-hint" id="copyUidFeedback" hidden>تم النسخ!</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="popover-branch-focus" id="popoverBranchFocusRow">
+            <span class="branch-focus-icon">📍</span>
+            <div class="branch-focus-data">
+              <small class="branch-focus-label" id="popoverBranchFocusLabel">الفرع النشط</small>
+              <strong class="branch-focus-name" id="popoverActiveBranchName">—</strong>
+            </div>
+            <span class="branch-focus-badge" id="popoverActiveBranchBadge">معتمد</span>
+          </div>
+
+          <div class="popover-matrix">
+            <div class="matrix-tile">
+              <span class="matrix-icon">👑</span>
+              <div class="matrix-data">
+                <small class="matrix-label" id="popoverRoleLabel">المستوى القيادي</small>
+                <strong class="matrix-val" id="popoverRoleVal">مالك المنظومة</strong>
+              </div>
+            </div>
+            <div class="matrix-tile">
+              <span class="matrix-icon">🏢</span>
+              <div class="matrix-data">
+                <small class="matrix-label" id="popoverScopeLabel">نطاق الفروع</small>
+                <strong class="matrix-val" id="popoverScopeVal">وصول شامل (3 فروع)</strong>
+              </div>
+            </div>
+            <div class="matrix-tile">
+              <span class="matrix-icon">💼</span>
+              <div class="matrix-data">
+                <small class="matrix-label" id="popoverWholesaleLabel">بيع الجملة</small>
+                <strong class="matrix-val matrix-highlight" id="popoverWholesaleVal">مفعّل بالكامل</strong>
+              </div>
+            </div>
+            <div class="matrix-tile">
+              <span class="matrix-icon">🔒</span>
+              <div class="matrix-data">
+                <small class="matrix-label" id="popoverSecurityLabel">مستوى الأمان</small>
+                <strong class="matrix-val" id="popoverSecurityVal">جلسة مشفرة ومؤمنة</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="popover-actions-strip">
+            <button type="button" class="popover-strip-btn" id="popoverStoreBtn" title="الانتقال إلى المتجر">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+              <span id="popoverStoreText">بوابة المتجر</span>
+            </button>
+            <button type="button" class="popover-strip-btn" id="popoverLangBtn" title="تبديل اللغة">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              <span id="popoverLangText">English</span>
+            </button>
+          </div>
+
+          <div class="popover-footer">
+            <button type="button" class="operator-popover-logout" id="popoverLogoutBtn">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              <span id="popoverLogoutText">تسجيل الخروج من لوحة العمليات</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Guest Login Button fallback -->
+      <button class="account-button login-button" id="guestLoginBtn" type="button" hidden>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+        <span id="guestLoginText">دخول الموظفين</span>
       </button>
+      <button id="logoutBtn" type="button" hidden style="display:none !important;"></button>
     </div>
   </header>
 
@@ -262,6 +375,6 @@
   <div id="managerToast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <!-- Modular Management Engine -->
-  <script type="module" src="/ws/assets/manage.js"></script>
+  <script type="module" src="/ws/assets/manage.js?v=20261027c"></script>
 </body>
 </html>

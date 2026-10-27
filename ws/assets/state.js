@@ -45,10 +45,19 @@ export function normalizePhoneNumber(raw) {
   if (typeof raw !== 'string') throw new Error('Invalid phone number');
   let cleaned = raw.trim().replace(/[\s\-()]/g, '');
   if (!cleaned) throw new Error('Phone number is required');
+  const arabicIndic = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
+  const easternArabic = ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
+  for (let i = 0; i < 10; i++) {
+    cleaned = cleaned.replaceAll(arabicIndic[i], String(i)).replaceAll(easternArabic[i], String(i));
+  }
   if (cleaned.startsWith('00')) cleaned = '+' + cleaned.slice(2);
   if (!cleaned.startsWith('+')) {
     if (/^\d{8}$/.test(cleaned)) cleaned = '+974' + cleaned;
     else if (/^974\d{8}$/.test(cleaned)) cleaned = '+' + cleaned;
+    else if (/^01[0125]\d{8}$/.test(cleaned)) cleaned = '+20' + cleaned.slice(1);
+    else if (/^201[0125]\d{8}$/.test(cleaned)) cleaned = '+' + cleaned;
+    else if (/^05\d{8}$/.test(cleaned)) cleaned = '+966' + cleaned.slice(1);
+    else if (/^9665\d{8}$/.test(cleaned)) cleaned = '+' + cleaned;
     else cleaned = '+' + cleaned;
   }
   if (!/^\+[1-9]\d{6,14}$/.test(cleaned)) throw new Error('Invalid phone format');

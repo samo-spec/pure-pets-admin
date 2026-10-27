@@ -4,6 +4,7 @@
 #import "Language.h"
 #import "Styling.h"
 #import "PPFirebaseCompat.h"
+#import "UIViewController+PPNavBar.h"
 
 #import <UserNotifications/UserNotifications.h>
 #import <MapKit/MapKit.h>
@@ -420,6 +421,9 @@ static NSString *DAction(NSString *action) {
 @property(nonatomic, strong) UILabel *availabilityTitleLabel;
 @property(nonatomic, strong) UILabel *availabilitySubtitleLabel;
 @property(nonatomic, strong) UIImageView *availabilityChevron;
+@property(nonatomic, strong) UIView *navBarContainer;
+@property(nonatomic, strong) UIView *topBar;
+@property(nonatomic, strong) UIButton *backButton;
 @property(nonatomic, strong) UIButton *utilityButton;
 @property(nonatomic, strong) NSDictionary *availability;
 @property(nonatomic, assign) BOOL pendingAvailability;
@@ -455,16 +459,28 @@ static NSString *DAction(NSString *action) {
     self.uid = FIRAuth.auth.currentUser.uid ?: @"";
     self.view.backgroundColor = UIColor.ppBackground;
     self.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    self.edgesForExtendedLayout = UIRectEdgeAll;
+    self.extendedLayoutIncludesOpaqueBars = YES;
 
-    // --- Elegant Header Architecture ---
-    UIStackView *header = DStack(@[], 14);
-    self.header = header;
-    header.layoutMargins = UIEdgeInsetsMake(12, 18, 12, 18);
-    header.layoutMarginsRelativeArrangement = YES;
+    // --- Pinned Sovereign Navigation Bar ---
+    UIView *navBarContainer = [UIView new];
+    navBarContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    navBarContainer.backgroundColor = UIColor.ppBackground;
+    navBarContainer.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    self.navBarContainer = navBarContainer;
+    [self.view addSubview:navBarContainer];
 
-    // 1. Top Bar Row (Beacon Badge on Leading, Utility Button on Trailing)
     UIView *topBar = [UIView new];
     topBar.translatesAutoresizingMaskIntoConstraints = NO;
+    topBar.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    self.topBar = topBar;
+    [navBarContainer addSubview:topBar];
+
+    // Leading Back Button
+    UIButton *backBtn = [self pp_BackButtonWithSystemName:PPNavBackSymbolName() action:@selector(handleBackAction)];
+    backBtn.accessibilityLabel = DL(@"Driver_Back");
+    self.backButton = backBtn;
+    [topBar addSubview:backBtn];
 
     // Fleet Subtitle Beacon Pill
     UIView *beaconPill = [UIView new];
@@ -497,35 +513,68 @@ static NSString *DAction(NSString *action) {
     ]];
     [topBar addSubview:beaconPill];
 
-    // Trailing Action Squircle Button (Notifications or Back)
+    // Trailing Action Squircle Button (Notifications)
     UIButton *utility = [UIButton buttonWithType:UIButtonTypeSystem];
     utility.translatesAutoresizingMaskIntoConstraints = NO;
-    utility.backgroundColor = UIColor.ppElevatedSurface;
+    utility.backgroundColor = [UIColor ppSurface];
     utility.layer.cornerRadius = 14;
     utility.layer.cornerCurve = kCACornerCurveContinuous;
-    utility.layer.borderWidth = 1.0;
-    utility.layer.borderColor = UIColor.ppSurfaceBorder.CGColor;
+    utility.layer.borderWidth = 0.8;
+    utility.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.8].CGColor;
+    utility.layer.shadowColor = UIColor.blackColor.CGColor;
+    utility.layer.shadowOpacity = 0.04;
+    utility.layer.shadowOffset = CGSizeMake(0, 2);
+    utility.layer.shadowRadius = 6;
+    utility.layer.masksToBounds = NO;
     utility.tintColor = UIColor.ppTextPrimary;
-    UIImage *utilIcon = [UIImage systemImageNamed:self.taskID.length ? ([Language isRTL] ? @"arrow.right" : @"arrow.left") : @"bell.fill"];
-    [utility setImage:utilIcon forState:UIControlStateNormal];
+    UIImage *utilIcon = [UIImage systemImageNamed:@"bell.fill"];
+    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightBold];
+    UIImage *configuredIcon = [utilIcon imageByApplyingSymbolConfiguration:config] ?: utilIcon;
+    [utility setImage:configuredIcon forState:UIControlStateNormal];
     [utility addTarget:self action:@selector(utilityTapped) forControlEvents:UIControlEventTouchUpInside];
-    utility.accessibilityLabel = DL(self.taskID.length ? @"Driver_Back" : @"Driver_Notifications");
+    utility.accessibilityLabel = DL(@"Driver_Notifications");
     self.utilityButton = utility;
-    utility.hidden = !self.taskID.length && !self.onNotifications;
+    utility.hidden = !self.onNotifications;
     [topBar addSubview:utility];
 
     [NSLayoutConstraint activateConstraints:@[
-        [beaconPill.leadingAnchor constraintEqualToAnchor:topBar.leadingAnchor],
+        [backBtn.leadingAnchor constraintEqualToAnchor:topBar.leadingAnchor],
+        [backBtn.centerYAnchor constraintEqualToAnchor:topBar.centerYAnchor],
+        [backBtn.widthAnchor constraintEqualToConstant:44],
+        [backBtn.heightAnchor constraintEqualToConstant:44],
+
+        [beaconPill.leadingAnchor constraintEqualToAnchor:backBtn.trailingAnchor constant:10],
         [beaconPill.centerYAnchor constraintEqualToAnchor:topBar.centerYAnchor],
+        [beaconPill.trailingAnchor constraintLessThanOrEqualToAnchor:utility.leadingAnchor constant:-8],
+        [beaconPill.heightAnchor constraintEqualToConstant:26],
+
         [utility.trailingAnchor constraintEqualToAnchor:topBar.trailingAnchor],
         [utility.centerYAnchor constraintEqualToAnchor:topBar.centerYAnchor],
-        [utility.widthAnchor constraintEqualToConstant:40],
-        [utility.heightAnchor constraintEqualToConstant:40],
-        [topBar.heightAnchor constraintGreaterThanOrEqualToConstant:42]
-    ]];
-    [header addArrangedSubview:topBar];
+        [utility.widthAnchor constraintEqualToConstant:44],
+        [utility.heightAnchor constraintEqualToConstant:44],
 
-    // 2. Commanding Title
+        [topBar.heightAnchor constraintEqualToConstant:44]
+    ]];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [navBarContainer.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [navBarContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [navBarContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [navBarContainer.bottomAnchor constraintEqualToAnchor:topBar.bottomAnchor constant:8],
+
+        // Navbar top anchor equal status bar bottom anchor (safe area top anchor)
+        [topBar.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [topBar.leadingAnchor constraintEqualToAnchor:navBarContainer.leadingAnchor constant:16],
+        [topBar.trailingAnchor constraintEqualToAnchor:navBarContainer.trailingAnchor constant:-16]
+    ]];
+
+    // --- Elegant Header Architecture ---
+    UIStackView *header = DStack(@[], 14);
+    self.header = header;
+    header.layoutMargins = UIEdgeInsetsMake(8, 18, 12, 18);
+    header.layoutMarginsRelativeArrangement = YES;
+
+    // Commanding Title
     UILabel *heading = DLabel(DL(self.taskID.length ? @"Driver_Task_Title" : @"Driver_Title"), 30, YES, UIColor.ppTextPrimary);
     heading.accessibilityTraits |= UIAccessibilityTraitHeader;
     [header addArrangedSubview:heading];
@@ -678,21 +727,25 @@ static NSString *DAction(NSString *action) {
     self.dock.layoutMargins = UIEdgeInsetsMake(12, 18, 6, 18);
     self.dock.layoutMarginsRelativeArrangement = YES;
     self.dock.backgroundColor = UIColor.ppBackground;
+    self.dock.hidden = !self.taskID.length;
 
+    CGFloat initialWidth = UIScreen.mainScreen.bounds.size.width;
+    CGSize targetHeaderSize = [header systemLayoutSizeFittingSize:CGSizeMake(initialWidth, UILayoutFittingCompressedSize.height)
+                                    withHorizontalFittingPriority:UILayoutPriorityRequired
+                                      verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
+    header.frame = CGRectMake(0, 0, initialWidth, targetHeaderSize.height > 0 ? targetHeaderSize.height : 260);
     self.table.tableHeaderView = header;
     [self.view addSubview:self.table];
     [self.view addSubview:self.dock];
 
-    UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
-    UILayoutGuide *readable = self.view.readableContentGuide;
     [NSLayoutConstraint activateConstraints:@[
-        [self.table.topAnchor constraintEqualToAnchor:safe.topAnchor],
-        [self.table.leadingAnchor constraintEqualToAnchor:readable.leadingAnchor],
-        [self.table.trailingAnchor constraintEqualToAnchor:readable.trailingAnchor],
-        [self.table.bottomAnchor constraintEqualToAnchor:self.dock.topAnchor],
-        [self.dock.leadingAnchor constraintEqualToAnchor:readable.leadingAnchor],
-        [self.dock.trailingAnchor constraintEqualToAnchor:readable.trailingAnchor],
-        [self.dock.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor constant:-4]
+        [self.table.topAnchor constraintEqualToAnchor:self.navBarContainer.bottomAnchor],
+        [self.table.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.table.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.table.bottomAnchor constraintEqualToAnchor:self.taskID.length ? self.dock.topAnchor : self.view.safeAreaLayoutGuide.bottomAnchor],
+        [self.dock.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.dock.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.dock.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-4]
     ]];
 
     [self adaptType];
@@ -703,12 +756,15 @@ static NSString *DAction(NSString *action) {
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
+    CGFloat width = self.table.bounds.size.width;
+    if (width <= 0) {
+        width = self.view.bounds.size.width > 0 ? self.view.bounds.size.width : UIScreen.mainScreen.bounds.size.width;
+    }
     for (UIStackView *stack in @[self.header, self.detailActions ?: self.header]) {
-        CGFloat width = self.table.bounds.size.width;
         CGSize size = [stack systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
                            withHorizontalFittingPriority:UILayoutPriorityRequired
                              verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
-        if (fabs(stack.frame.size.height - size.height) > 0.5 || fabs(stack.frame.size.width - width) > 0.5) {
+        if (size.height > 0 && (fabs(stack.frame.size.height - size.height) > 0.5 || fabs(stack.frame.size.width - width) > 0.5)) {
             stack.frame = CGRectMake(0, 0, width, size.height);
             if (stack == self.header) {
                 self.table.tableHeaderView = stack;
@@ -724,6 +780,8 @@ static NSString *DAction(NSString *action) {
     if ([self.traitCollection hasDifferentColorAppearanceComparedToTraitCollection:previousTraitCollection]) {
         [self updateLaneButtonAppearances];
         [self renderAvailability];
+        self.backButton.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.8].CGColor;
+        self.utilityButton.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.8].CGColor;
         [self.table reloadData];
     }
 }
@@ -743,6 +801,16 @@ static NSString *DAction(NSString *action) {
     }];
 }
 
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    if ([self.navigationController respondsToSelector:@selector(pp_enableSwipeToPop)]) {
+        [(id)self.navigationController pp_enableSwipeToPop];
+    } else if (self.navigationController.interactivePopGestureRecognizer) {
+        self.navigationController.interactivePopGestureRecognizer.enabled = YES;
+        self.navigationController.interactivePopGestureRecognizer.delegate = nil;
+    }
+}
+
 - (void)viewDidDisappear:(BOOL)animated {
     [super viewDidDisappear:animated];
     self.visible = NO;
@@ -759,17 +827,27 @@ static NSString *DAction(NSString *action) {
 
 - (void)setOnNotifications:(void (^)(void))onNotifications {
     _onNotifications = [onNotifications copy];
-    self.utilityButton.hidden = !self.taskID.length && !onNotifications;
+    self.utilityButton.hidden = !onNotifications;
 }
 
 - (BOOL)sessionMatches {
     return self.uid.length && [self.uid isEqualToString:FIRAuth.auth.currentUser.uid];
 }
 
+- (void)handleBackAction {
+    if (self.onClose) {
+        self.onClose();
+        return;
+    }
+    if (self.navigationController.viewControllers.count > 1) {
+        [self.navigationController popViewControllerAnimated:YES];
+    } else if (self.presentingViewController) {
+        [self dismissViewControllerAnimated:YES completion:nil];
+    }
+}
+
 - (void)utilityTapped {
-    if (self.taskID.length) {
-        if (self.onClose) self.onClose();
-    } else if (self.onNotifications) {
+    if (self.onNotifications) {
         self.onNotifications();
     }
 }
