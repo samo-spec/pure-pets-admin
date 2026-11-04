@@ -177,6 +177,7 @@ public struct AdminFieldContainer<Content: View>: View {
 
     public var body: some View {
         content
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
             .background(
@@ -445,6 +446,7 @@ public struct PPVetEditorStudioScreen: View {
                 selectedAreaKeys: $workingAreas
             )
         }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
     // MARK: - Navigation Header
@@ -496,6 +498,7 @@ public struct PPVetEditorStudioScreen: View {
             Text(Language.get("Vet_Field_Type", alter: "تصنيف الجهة الطبية"))
                 .font(AdminType.caption1Bold)
                 .foregroundStyle(AdminSurface.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 12) {
                 // Doctor Option
@@ -564,10 +567,14 @@ public struct PPVetEditorStudioScreen: View {
                     Text(title)
                         .font(.custom("Beiruti-Bold", size: 16))
                         .foregroundStyle(AdminSurface.primaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .multilineTextAlignment(.leading)
                     Text(subtitle)
                         .font(AdminType.caption2)
                         .foregroundStyle(AdminSurface.secondaryText)
                         .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .multilineTextAlignment(.leading)
                 }
             }
             .padding(12)
@@ -627,7 +634,7 @@ public struct PPVetEditorStudioScreen: View {
                                         .font(.system(size: 10, weight: .bold))
                                         .foregroundStyle(.white)
                                 )
-                                .offset(x: 4, y: 4)
+                                .offset(x: Language.isRTL() ? -4 : 4, y: 4)
                         }
                     }
                 }
@@ -641,10 +648,14 @@ public struct PPVetEditorStudioScreen: View {
                     Text(Language.get("Image_Picker_Prompt", alter: "صورة الشعار أو الهوية المهنية"))
                         .font(AdminType.subheadlineBold)
                         .foregroundStyle(AdminSurface.primaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .multilineTextAlignment(.leading)
 
                     Text(Language.get("Image_Picker_Sub", alter: "تظهر في بطاقة الطبيب ونتائج البحث وملف الاعتماد"))
                         .font(AdminType.caption2)
                         .foregroundStyle(AdminSurface.secondaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .multilineTextAlignment(.leading)
 
                     HStack(spacing: 8) {
                         Button {
@@ -671,6 +682,8 @@ public struct PPVetEditorStudioScreen: View {
                             }
                             .buttonStyle(.plain)
                         }
+
+                        Spacer()
                     }
                 }
 
@@ -707,6 +720,7 @@ public struct PPVetEditorStudioScreen: View {
                 Text(Language.get("Vet_Field_Name", alter: "الاسم أو المسمى الطبي *"))
                     .font(AdminType.caption1Bold)
                     .foregroundStyle(AdminSurface.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 AdminFieldContainer {
                     TextField(
@@ -714,6 +728,7 @@ public struct PPVetEditorStudioScreen: View {
                         text: $title
                     )
                     .font(AdminType.body)
+                    .multilineTextAlignment(.leading)
                 }
             }
 
@@ -722,9 +737,10 @@ public struct PPVetEditorStudioScreen: View {
                 Text(Language.get("Vet_Field_License", alter: "رقم الترخيص الطبي / المنشأة"))
                     .font(AdminType.caption1Bold)
                     .foregroundStyle(AdminSurface.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 AdminFieldContainer {
-                    HStack {
+                    HStack(spacing: 8) {
                         Image(systemName: "checkmark.seal.fill")
                             .font(.system(size: 13))
                             .foregroundStyle(primaryAccent)
@@ -733,6 +749,7 @@ public struct PPVetEditorStudioScreen: View {
                             text: $licenseNumber
                         )
                         .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                        .multilineTextAlignment(.leading)
                     }
                 }
             }
@@ -742,11 +759,14 @@ public struct PPVetEditorStudioScreen: View {
                 Text(Language.get("Vet_Field_Description", alter: "نبذة عن المؤهلات والخدمات"))
                     .font(AdminType.caption1Bold)
                     .foregroundStyle(AdminSurface.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 AdminFieldContainer {
                     TextEditor(text: $descriptionText)
                         .frame(minHeight: 84)
                         .font(AdminType.body)
+                        .multilineTextAlignment(.leading)
+                        .scrollContentBackground(.hidden)
                 }
             }
         }
@@ -769,6 +789,7 @@ public struct PPVetEditorStudioScreen: View {
                 Text(Language.get("Vet_Field_City", alter: "البلدية / المدينة الرئيسية"))
                     .font(AdminType.caption1Bold)
                     .foregroundStyle(AdminSurface.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 Button {
                     showCityPickerSheet = true
@@ -827,6 +848,7 @@ public struct PPVetEditorStudioScreen: View {
                             Text(Language.get("Vet_Field_Areas_Placeholder", alter: "لم يتم تحديد مناطق محددة (تغطية كامل البلدية)"))
                                 .font(AdminType.caption1)
                                 .foregroundStyle(AdminSurface.secondaryText)
+                                .multilineTextAlignment(.leading)
                             Spacer()
                         }
                     }
@@ -873,9 +895,10 @@ public struct PPVetEditorStudioScreen: View {
                 Text(Language.get("Vet_Field_Address", alter: "العنوان والفرع الفعلي"))
                     .font(AdminType.caption1Bold)
                     .foregroundStyle(AdminSurface.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 AdminFieldContainer {
-                    HStack {
+                    HStack(spacing: 8) {
                         Image(systemName: "signpost.right.fill")
                             .font(.system(size: 13))
                             .foregroundStyle(primaryAccent)
@@ -884,6 +907,7 @@ public struct PPVetEditorStudioScreen: View {
                             text: $address
                         )
                         .font(AdminType.body)
+                        .multilineTextAlignment(.leading)
                     }
                 }
             }
@@ -914,6 +938,8 @@ public struct PPVetEditorStudioScreen: View {
             Text(Language.get("AdminVet_SpeciesSelection_Hint", alter: "حدد الحيوانات التي يستقبلها الطبيب/العيادة، واضغط على النجمة لتعيين التخصص الرئيسي."))
                 .font(AdminType.caption2)
                 .foregroundStyle(AdminSurface.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.leading)
 
             // Species Grid
             let columns = [
@@ -958,11 +984,15 @@ public struct PPVetEditorStudioScreen: View {
                                     .font(AdminType.subheadlineBold)
                                     .foregroundStyle(AdminSurface.primaryText)
                                     .lineLimit(1)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .multilineTextAlignment(.leading)
 
                                 if isPrimary {
                                     Text(Language.get("Vet_Primary_Species", alter: "التخصص الرئيسي"))
                                         .font(.system(size: 10, weight: .bold))
                                         .foregroundStyle(Color.orange)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .multilineTextAlignment(.leading)
                                 }
                             }
 
@@ -1021,12 +1051,14 @@ public struct PPVetEditorStudioScreen: View {
                 Text(Language.get("Vet_Field_Cost", alter: "تكلفة الاستشارة (ر.ق)"))
                     .font(AdminType.caption1Bold)
                     .foregroundStyle(AdminSurface.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 AdminFieldContainer {
                     HStack {
                         TextField("0", text: $vetCost)
                             .keyboardType(.decimalPad)
                             .font(.system(size: 16, weight: .bold, design: .rounded))
+                            .multilineTextAlignment(.leading)
 
                         Text(Language.get("QAR", alter: "ر.ق"))
                             .font(AdminType.caption1Bold)
@@ -1040,9 +1072,10 @@ public struct PPVetEditorStudioScreen: View {
                 Text(Language.get("Vet_Field_Hours", alter: "ساعات وأيام العمل الرسمية"))
                     .font(AdminType.caption1Bold)
                     .foregroundStyle(AdminSurface.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 AdminFieldContainer {
-                    HStack {
+                    HStack(spacing: 8) {
                         Image(systemName: "calendar.badge.clock")
                             .font(.system(size: 13))
                             .foregroundStyle(primaryAccent)
@@ -1051,6 +1084,7 @@ public struct PPVetEditorStudioScreen: View {
                             text: $workingHours
                         )
                         .font(AdminType.body)
+                        .multilineTextAlignment(.leading)
                     }
                 }
             }
@@ -1071,9 +1105,13 @@ public struct PPVetEditorStudioScreen: View {
                         Text(Language.get("Vet_Field_Emergency", alter: "طوارئ بيطرية 24/7"))
                             .font(AdminType.subheadlineBold)
                             .foregroundStyle(AdminSurface.primaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .multilineTextAlignment(.leading)
                         Text(Language.get("Vet_Field_Emergency_Sub", alter: "استقبال الحالات الحرجة والطارئة على مدار الساعة"))
                             .font(AdminType.caption2)
                             .foregroundStyle(AdminSurface.secondaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .multilineTextAlignment(.leading)
                     }
                 }
             }
@@ -1097,9 +1135,13 @@ public struct PPVetEditorStudioScreen: View {
                         Text(Language.get("Vet_Field_HomeVisit", alter: "خدمة الزيارة المنزلية متوفرة"))
                             .font(AdminType.subheadlineBold)
                             .foregroundStyle(AdminSurface.primaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .multilineTextAlignment(.leading)
                         Text(Language.get("Vet_Field_HomeVisit_Sub", alter: "إمكانية الكشف والتدخل الطبي في منزل العميل"))
                             .font(AdminType.caption2)
                             .foregroundStyle(AdminSurface.secondaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .multilineTextAlignment(.leading)
                     }
                 }
             }
@@ -1113,9 +1155,13 @@ public struct PPVetEditorStudioScreen: View {
                     Text(Language.get("Vet_Field_AvailableDate", alter: "تحديد تاريخ بدء الاستقبال"))
                         .font(AdminType.subheadline)
                         .foregroundStyle(AdminSurface.primaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .multilineTextAlignment(.leading)
                     Text(Language.get("Vet_AvailableDate_Hint", alter: "تحديد موعد جاهزية الطبيب أو العيادة"))
                         .font(AdminType.caption2)
                         .foregroundStyle(AdminSurface.secondaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .multilineTextAlignment(.leading)
                 }
             }
             .tint(primaryAccent)
@@ -1161,9 +1207,13 @@ public struct PPVetEditorStudioScreen: View {
                         Text(Language.get("Vet_Field_ReadyToContact", alter: "جاهزية الاستشارة الفورية (أونلاين)"))
                             .font(AdminType.subheadlineBold)
                             .foregroundStyle(AdminSurface.primaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .multilineTextAlignment(.leading)
                         Text(Language.get("Vet_Field_ReadyToContact_Sub", alter: "ظهور شارة الجاهزية للتواصل الفوري في التطبيق"))
                             .font(AdminType.caption2)
                             .foregroundStyle(AdminSurface.secondaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .multilineTextAlignment(.leading)
                     }
                 }
             }
@@ -1176,9 +1226,10 @@ public struct PPVetEditorStudioScreen: View {
                 Text(Language.get("Vet_Field_Phone", alter: "رقم الهاتف المعتمد *"))
                     .font(AdminType.caption1Bold)
                     .foregroundStyle(AdminSurface.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 AdminFieldContainer {
-                    HStack {
+                    HStack(spacing: 8) {
                         Image(systemName: "phone.fill")
                             .font(.system(size: 13))
                             .foregroundStyle(Color(red: 0.08, green: 0.72, blue: 0.65))
@@ -1186,6 +1237,7 @@ public struct PPVetEditorStudioScreen: View {
                         TextField("974xxxxxxxx", text: $phone)
                             .keyboardType(.phonePad)
                             .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                            .multilineTextAlignment(.leading)
                     }
                 }
             }
@@ -1213,7 +1265,7 @@ public struct PPVetEditorStudioScreen: View {
                 }
 
                 AdminFieldContainer {
-                    HStack {
+                    HStack(spacing: 8) {
                         Image(systemName: "message.fill")
                             .font(.system(size: 13))
                             .foregroundStyle(Color(red: 0.16, green: 0.78, blue: 0.48))
@@ -1221,6 +1273,7 @@ public struct PPVetEditorStudioScreen: View {
                         TextField("974xxxxxxxx", text: $whatsapp)
                             .keyboardType(.phonePad)
                             .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                            .multilineTextAlignment(.leading)
                     }
                 }
             }
@@ -1247,9 +1300,13 @@ public struct PPVetEditorStudioScreen: View {
                     Text(!isDisabled ? Language.get("Vet_Status_Active", alter: "الترخيص نشط ومتاح للعامة") : Language.get("Vet_Status_Disabled", alter: "موقوف مؤقتاً عن الظهور"))
                         .font(AdminType.subheadlineBold)
                         .foregroundStyle(!isDisabled ? Color(red: 0.16, green: 0.78, blue: 0.48) : Color(red: 0.92, green: 0.35, blue: 0.28))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .multilineTextAlignment(.leading)
                     Text(Language.get("Vet_Status_Description", alter: "عند التعطيل، يُحجب الكيان الطبي من نتائج بحث وتطبيق العملاء"))
                         .font(AdminType.caption2)
                         .foregroundStyle(AdminSurface.secondaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .multilineTextAlignment(.leading)
                 }
             }
             .tint(Color(red: 0.16, green: 0.78, blue: 0.48))
@@ -1309,6 +1366,7 @@ public struct PPVetEditorStudioScreen: View {
                 .font(AdminType.subheadlineBold)
                 .foregroundStyle(AdminSurface.primaryText)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func errorBanner(_ message: String) -> some View {
@@ -1319,6 +1377,7 @@ public struct PPVetEditorStudioScreen: View {
             Text(message)
                 .font(AdminType.caption1Bold)
                 .foregroundStyle(Color(red: 0.92, green: 0.35, blue: 0.28))
+                .multilineTextAlignment(.leading)
             Spacer()
         }
         .padding(12)
@@ -1463,6 +1522,7 @@ private struct PPCityPickerSheet: View {
                             .foregroundStyle(AdminSurface.secondaryText)
                         TextField(Language.get("Search", alter: "بحث عن البلدية..."), text: $searchQuery)
                             .font(AdminType.body)
+                            .multilineTextAlignment(.leading)
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
@@ -1495,9 +1555,13 @@ private struct PPCityPickerSheet: View {
                                             Text(city.localizedName)
                                                 .font(AdminType.subheadlineBold)
                                                 .foregroundStyle(AdminSurface.primaryText)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                .multilineTextAlignment(.leading)
                                             Text(Language.isRTL() ? city.nameEn : city.nameAr)
                                                 .font(AdminType.caption2)
                                                 .foregroundStyle(AdminSurface.secondaryText)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                .multilineTextAlignment(.leading)
                                         }
 
                                         Spacer()
@@ -1539,6 +1603,7 @@ private struct PPCityPickerSheet: View {
                 }
             }
         }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 }
 
@@ -1579,6 +1644,7 @@ private struct PPAreaMultiPickerSheet: View {
                             .foregroundStyle(AdminSurface.secondaryText)
                         TextField(Language.get("Search", alter: "بحث عن منطقة..."), text: $searchQuery)
                             .font(AdminType.body)
+                            .multilineTextAlignment(.leading)
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
@@ -1636,9 +1702,13 @@ private struct PPAreaMultiPickerSheet: View {
                                             Text(area.localizedName)
                                                 .font(AdminType.subheadlineBold)
                                                 .foregroundStyle(AdminSurface.primaryText)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                .multilineTextAlignment(.leading)
                                             Text(Language.isRTL() ? area.nameEn : area.nameAr)
                                                 .font(AdminType.caption2)
                                                 .foregroundStyle(AdminSurface.secondaryText)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                .multilineTextAlignment(.leading)
                                         }
 
                                         Spacer()
@@ -1696,6 +1766,7 @@ private struct PPAreaMultiPickerSheet: View {
                 workingSelection = Set(selectedAreaKeys)
             }
         }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 }
 
@@ -1758,6 +1829,7 @@ public class PPVetEditorHostingController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor.ppBackground
+        view.semanticContentAttribute = Language.semanticAttributeForCurrentLanguage()
         extendedLayoutIncludesOpaqueBars = true
         edgesForExtendedLayout = .all
         navigationController?.setNavigationBarHidden(true, animated: false)
@@ -1773,9 +1845,11 @@ public class PPVetEditorHostingController: UIViewController {
             },
             onSaved: { _ in }
         )
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
 
         let hostingController = UIHostingController(rootView: swiftUIView)
         hostingController.view.backgroundColor = .clear
+        hostingController.view.semanticContentAttribute = Language.semanticAttributeForCurrentLanguage()
         hostingController.extendedLayoutIncludesOpaqueBars = true
         addChild(hostingController)
         view.addSubview(hostingController.view)

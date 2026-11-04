@@ -30,6 +30,7 @@
     self.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
     self.hostingController = [[PPVetEditorHostingController alloc] initWithVetToEdit:self.vetToEdit];
+    self.hostingController.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     [self addChildViewController:self.hostingController];
     self.hostingController.view.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:self.hostingController.view];

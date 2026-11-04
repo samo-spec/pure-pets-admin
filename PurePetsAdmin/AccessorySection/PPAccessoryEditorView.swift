@@ -6427,6 +6427,7 @@ struct PPAccessoryEditorScreen: View {
                 ScrollViewReader { proxy in
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(spacing: 0) {
+                            
                             // Spatial Stage Navigation Radar
                             stageRadarView
                                 .padding(.horizontal, AdminSpacing.screenMargin)

@@ -280,57 +280,60 @@ struct PPVeterinarianManagementScreen: View {
             }
         }
         .fullScreenCover(item: $presentedSheet) { sheet in
-            switch sheet {
-            case .add:
-                PPVetEditorStudioScreen(
-                    vetToEdit: nil,
-                    onDismiss: { presentedSheet = nil },
-                    onSaved: { _ in
-                        Task { await store.refresh() }
-                    }
-                )
-
-            case .edit(let vet):
-                PPVetEditorStudioScreen(
-                    vetToEdit: vet,
-                    onDismiss: { presentedSheet = nil },
-                    onSaved: { _ in
-                        Task { await store.refresh() }
-                    }
-                )
-
-            case .detail(let vet):
-                PPVetDetailDossierScreen(
-                    vet: vet,
-                    onDismiss: { presentedSheet = nil },
-                    onEdit: { editVet in
-                        presentedSheet = nil
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            presentedSheet = .edit(editVet)
+            Group {
+                switch sheet {
+                case .add:
+                    PPVetEditorStudioScreen(
+                        vetToEdit: nil,
+                        onDismiss: { presentedSheet = nil },
+                        onSaved: { _ in
+                            Task { await store.refresh() }
                         }
-                    },
-                    onSubscription: { subVet in
-                        presentedSheet = nil
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            presentedSheet = .subscription(subVet)
-                        }
-                    },
-                    onUpdated: { _ in
-                        Task { await store.refresh() }
-                    }
-                )
-                .ignoresSafeArea()
+                    )
 
-            case .subscription(let vet):
-                PPVetSubscriptionManagementScreen(
-                    vet: vet,
-                    onDismiss: { presentedSheet = nil },
-                    onSaved: { _ in
-                        Task { await store.refresh() }
-                    }
-                )
-                .ignoresSafeArea()
+                case .edit(let vet):
+                    PPVetEditorStudioScreen(
+                        vetToEdit: vet,
+                        onDismiss: { presentedSheet = nil },
+                        onSaved: { _ in
+                            Task { await store.refresh() }
+                        }
+                    )
+
+                case .detail(let vet):
+                    PPVetDetailDossierScreen(
+                        vet: vet,
+                        onDismiss: { presentedSheet = nil },
+                        onEdit: { editVet in
+                            presentedSheet = nil
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                                presentedSheet = .edit(editVet)
+                            }
+                        },
+                        onSubscription: { subVet in
+                            presentedSheet = nil
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                                presentedSheet = .subscription(subVet)
+                            }
+                        },
+                        onUpdated: { _ in
+                            Task { await store.refresh() }
+                        }
+                    )
+                    .ignoresSafeArea()
+
+                case .subscription(let vet):
+                    PPVetSubscriptionManagementScreen(
+                        vet: vet,
+                        onDismiss: { presentedSheet = nil },
+                        onSaved: { _ in
+                            Task { await store.refresh() }
+                        }
+                    )
+                    .ignoresSafeArea()
+                }
             }
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .confirmationDialog(
             Language.get("Vet_Confirm_Delete_Title", alter: "حذف الطبيب البيطري أو العيادة؟"),

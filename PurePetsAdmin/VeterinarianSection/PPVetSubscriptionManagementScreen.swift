@@ -128,6 +128,7 @@ public struct PPVetSubscriptionManagementScreen: View {
                 .transition(.opacity)
             }
         }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
     // MARK: - Navigation Header
@@ -649,6 +650,7 @@ public class PPVetSubscriptionHostingController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor.ppBackground
+        view.semanticContentAttribute = Language.semanticAttributeForCurrentLanguage()
         extendedLayoutIncludesOpaqueBars = true
         edgesForExtendedLayout = .all
         navigationController?.setNavigationBarHidden(true, animated: false)
@@ -664,9 +666,11 @@ public class PPVetSubscriptionHostingController: UIViewController {
             },
             onSaved: { _ in }
         )
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
 
         let hostingController = UIHostingController(rootView: swiftUIView.ignoresSafeArea())
         hostingController.view.backgroundColor = .clear
+        hostingController.view.semanticContentAttribute = Language.semanticAttributeForCurrentLanguage()
         hostingController.extendedLayoutIncludesOpaqueBars = true
         addChild(hostingController)
         view.addSubview(hostingController.view)

@@ -53,7 +53,29 @@ const t = {
     invalidCode:'رمز التحقق غير صحيح، يرجى التأكد وإعادة المحاولة.',phoneQuota:'تم تجاوز الحد المسموح لإرسال الرسائل، حاول لاحقاً.',
     resetFilters:'إعادة ضبط الفلاتر',activeFilters:'التصفيات الحالية:',allCount:'منتج جملة',
     heroBadge:'بوابة الجملة المعتمدة · Pure Pets B2B',perkCarton:'كراتين وعبوات',perkPrice:'أسعار جملة فورية',perkFree:'تصفح حر مباشر',
-    themeToggle:'تبديل المظهر'
+    themeToggle:'تبديل المظهر',
+    verifiedBuyer:'تاجر جملة معتمد · B2B Verified',
+    accountUidLabel:'معرف الحساب:',
+    uidCopied:'تم نسخ معرف الحساب إلى الحافظة',
+    activeHub:'مركز التوزيع المعتمد',
+    kpiOrdersTitle:'طلباتي',
+    kpiOrdersAction:'استعراض ↗',
+    kpiCartTitle:'سلة الجملة',
+    kpiCartAction:'فتح السلة ↗',
+    contactEmail:'البريد الإلكتروني:',
+    contactPhone:'رقم الجوال:',
+    tierTitle:'فئة التسعير:',
+    tierVal:'كبار الموزعين والعيادات (Tier 1)',
+    policyTitle:'سياسة الصرف:',
+    policyVal:'كراتين وعبوات أصلية فقط',
+    btnOrdersTracking:'سجل الطلبات والفواتير التجارية',
+    btnStaffDesk:'مكتب إدارة العمليات (Staff)',
+    signOutBtnText:'تسجيل الخروج من الحساب',
+    signOutPromptTitle:'تأكيد تسجيل الخروج',
+    signOutPromptDesc:'ستبقى عناصر السلة والمحفوظات محفوظة بأمان في حسابك التجاري فور عودتك.',
+    btnConfirmExit:'تأكيد الخروج',
+    btnCancelExit:'تراجع',
+    notSet:'غير محدد'
   },
   en: {
     top:'The Pure Pets business gateway',wholesale:'A dedicated wholesale experience',navCatalog:'Products',navOrders:'My orders',
@@ -105,7 +127,29 @@ const t = {
     invalidCode:'Invalid verification code. Please check and retry.',phoneQuota:'SMS quota exceeded. Please try again later.',
     resetFilters:'Reset filters',activeFilters:'Active filters:',allCount:'wholesale items',
     heroBadge:'Authorized Wholesale Portal · Pure Pets B2B',perkCarton:'Cartons & Packs',perkPrice:'Live Wholesale Rates',perkFree:'Direct Free Browse',
-    themeToggle:'Toggle appearance'
+    themeToggle:'Toggle appearance',
+    verifiedBuyer:'Verified B2B Wholesale Buyer',
+    accountUidLabel:'Account UID:',
+    uidCopied:'Account UID copied to clipboard',
+    activeHub:'Assigned Dispatch Hub',
+    kpiOrdersTitle:'My Orders',
+    kpiOrdersAction:'View orders ↗',
+    kpiCartTitle:'Wholesale Cart',
+    kpiCartAction:'Open cart ↗',
+    contactEmail:'Corporate Email:',
+    contactPhone:'Mobile Phone:',
+    tierTitle:'Pricing Tier:',
+    tierVal:'Tier 1 Wholesale (Distributors & Clinics)',
+    policyTitle:'Dispatch Policy:',
+    policyVal:'Authentic Cartons & Multi-Packs Only',
+    btnOrdersTracking:'Orders & Commercial Invoices',
+    btnStaffDesk:'Staff Operations Desk',
+    signOutBtnText:'Sign Out Of Account',
+    signOutPromptTitle:'Sign Out Confirmation',
+    signOutPromptDesc:'Your cart allocations and saved items remain securely saved to your business profile.',
+    btnConfirmExit:'Confirm Sign Out',
+    btnCancelExit:'Cancel',
+    notSet:'Not specified'
   }
 };
 const state = {
@@ -205,16 +249,90 @@ function toggleTheme() {
   applyTheme(next);
   try { localStorage.setItem('pp_ws_theme', next); } catch {}
 }
+function openAccount(intent = null) {
+  state.pending = intent;
+  $('authError').hidden = true;
+  const isAuth = Boolean(state.user);
+  const profileView = $('accountProfileView');
+  const authView = $('accountAuthView');
+
+  if (isAuth) {
+    if (authView) authView.hidden = true;
+    if (profileView) profileView.hidden = false;
+    renderAccountProfile();
+  } else {
+    if (profileView) profileView.hidden = true;
+    if (authView) authView.hidden = false;
+    state.authMode = 'login';
+    setAuthMethod('email');
+    setPhoneStep('input');
+    updateAuthTabs();
+    setTimeout(() => $('emailInput')?.focus(), 60);
+  }
+
+  const dialog = $('authDialog');
+  if (dialog && !dialog.open) dialog.showModal();
+}
+
+function renderAccountProfile() {
+  if (!state.user) return;
+  const u = state.user;
+  const rawName = u.displayName || (u.email ? u.email.split('@')[0] : (u.phoneNumber || ''));
+  const initials = (rawName || 'PP')
+    .split(' ')
+    .filter(Boolean)
+    .map(p => p[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+
+  const initialsEl = $('accountAvatarInitials');
+  if (initialsEl) initialsEl.textContent = initials || 'PP';
+
+  const nameEl = $('accountDisplayName');
+  if (nameEl) nameEl.textContent = rawName || phrase('welcome');
+
+  const uidEl = $('accountUidDisplay');
+  if (uidEl) {
+    const rawUid = u.uid || '';
+    uidEl.textContent = rawUid ? `${rawUid.slice(0, 6)}...${rawUid.slice(-4)}` : '—';
+    uidEl.title = rawUid;
+  }
+
+  const emailEl = $('accountEmailDisplay');
+  if (emailEl) emailEl.textContent = u.email || phrase('notSet');
+
+  const phoneEl = $('accountPhoneDisplay');
+  if (phoneEl) phoneEl.textContent = u.phoneNumber || state.lastPhone || phrase('notSet');
+
+  const ordersCountEl = $('accountKpiOrdersCount');
+  if (ordersCountEl) ordersCountEl.textContent = String(state.orders.length || 0);
+
+  const cartUnits = state.cart.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+  const cartCountEl = $('accountKpiCartCount');
+  if (cartCountEl) cartCountEl.textContent = String(cartUnits);
+
+  const hubNameEl = $('accountKpiHubName');
+  if (hubNameEl) hubNameEl.textContent = localized(state.assignedBranch) || state.assignedBranch?.nameAr || 'الهرم';
+
+  const themeLabel = $('accountThemeLabel');
+  if (themeLabel) {
+    themeLabel.textContent = state.theme === 'dark'
+      ? (state.lang === 'ar' ? 'المظهر: داكن' : 'Dark Mode')
+      : (state.lang === 'ar' ? 'المظهر: فاتح' : 'Light Mode');
+  }
+
+  const langLabel = $('accountLangLabel');
+  if (langLabel) langLabel.textContent = state.lang === 'ar' ? 'English' : 'عربي';
+
+  const confirmCard = $('signOutConfirmCard');
+  if (confirmCard) confirmCard.hidden = true;
+  const initBtn = $('initSignOutBtn');
+  if (initBtn) initBtn.hidden = false;
+}
+
 function goAuth(intent) {
-  if (state.user) return runIntent(intent);
-  state.pending=intent;
-  state.authMode='login';
-  setAuthMethod('email');
-  setPhoneStep('input');
-  updateAuthTabs();
-  $('authError').hidden=true;
-  if(!$('authDialog').open)$('authDialog').showModal();
-  $('emailInput').focus();
+  openAccount(intent);
 }
 function setAuthMethod(method) {
   state.authMethod = method;
@@ -1125,12 +1243,69 @@ $('closeProduct').addEventListener('click',()=>$('productDialog').close());
 $('closeDrawer').addEventListener('click',closeDrawer);
 $('drawerScrim').addEventListener('click',closeDrawer);
 $('closeAuth').addEventListener('click',()=>{state.pending=null;state.phoneConfirmation=null;$('authDialog').close();});
-$('accountBtn').addEventListener('click',()=>{
-  if(!state.user)return goAuth(protectedIntent('cart'));
-  if(confirm(state.lang==='ar'?'هل تريد تسجيل الخروج؟':'Sign out of your account?')){
-    closeDrawer();state.cart=[];state.saved=[];state.pending=null;
-    state.backend?.signOut(state.backend.auth).catch(()=>toast(phrase('sessionFailed')));
+$('accountBtn').addEventListener('click', () => openAccount());
+
+$('copyUidBtn')?.addEventListener('click', async () => {
+  if (!state.user?.uid) return;
+  try {
+    await navigator.clipboard.writeText(state.user.uid);
+    toast(phrase('uidCopied'));
+  } catch {
+    toast(state.user.uid);
   }
+});
+
+const handleGoOrders = async () => {
+  $('authDialog')?.close();
+  await openDrawer('orders');
+};
+$('accountKpiOrdersBtn')?.addEventListener('click', handleGoOrders);
+$('accountGoOrdersBtn')?.addEventListener('click', handleGoOrders);
+
+$('accountKpiCartBtn')?.addEventListener('click', () => {
+  $('authDialog')?.close();
+  openDrawer('cart');
+});
+
+$('accountToggleThemeBtn')?.addEventListener('click', () => {
+  toggleTheme();
+  renderAccountProfile();
+});
+
+$('accountToggleLangBtn')?.addEventListener('click', () => {
+  state.lang = state.lang === 'ar' ? 'en' : 'ar';
+  applyLanguage();
+  renderAccountProfile();
+});
+
+$('initSignOutBtn')?.addEventListener('click', () => {
+  $('initSignOutBtn').hidden = true;
+  $('signOutConfirmCard').hidden = false;
+});
+
+$('cancelSignOutBtn')?.addEventListener('click', () => {
+  $('signOutConfirmCard').hidden = true;
+  $('initSignOutBtn').hidden = false;
+});
+
+$('confirmSignOutBtn')?.addEventListener('click', async () => {
+  $('authDialog')?.close();
+  closeDrawer();
+  state.cart = [];
+  state.saved = [];
+  state.pending = null;
+  try {
+    await state.backend?.signOut(state.backend.auth);
+    toast(phrase('logout'));
+  } catch {
+    toast(phrase('sessionFailed'));
+  }
+});
+
+$('togglePasswordVisibilityBtn')?.addEventListener('click', () => {
+  const input = $('passwordInput');
+  if (!input) return;
+  input.type = input.type === 'password' ? 'text' : 'password';
 });
 $('methodEmailTab').addEventListener('click',()=>setAuthMethod('email'));
 $('methodPhoneTab').addEventListener('click',()=>setAuthMethod('phone'));
