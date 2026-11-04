@@ -152,6 +152,33 @@ private func deliveryCurrencyText(_ amount: NSNumber?, currency: String = "QAR")
     return "\(value) \(currencyText)"
 }
 
+// An assignment-enabled account is not automatically an available driver.
+private func driverCanReceiveOffers(_ driver: PPDeliveryDriverRecord,
+                                    member: PPDeliveryCompanyMemberRecord?) -> Bool {
+    let presenceOnline = driver.presence.uppercased() == "ONLINE"
+    let shift = driver.shiftStatus.uppercased()
+    return driver.accountStatus.uppercased() == "ACTIVE"
+        && driver.eligible
+        && driver.canReceiveAssignments
+        && (member?.available ?? true)
+        && presenceOnline
+        && (member?.online ?? presenceOnline)
+        && shift != "BREAK" && shift != "OFF_SHIFT"
+}
+
+private func driverBlockerText(_ driver: PPDeliveryDriverRecord,
+                               member: PPDeliveryCompanyMemberRecord?) -> String {
+    if driver.accountStatus.uppercased() != "ACTIVE" { return deliveryText("Driver_Dispatcher_Account_Blocked") }
+    if !driver.canReceiveAssignments { return deliveryText("Driver_Dispatcher_Assignments_Paused") }
+    if driver.presence.uppercased() != "ONLINE" || member?.online == false { return deliveryText("Driver_Dispatcher_Offline") }
+    if driver.shiftStatus.uppercased() == "BREAK" { return deliveryText("Driver_Shift_Break") }
+    if driver.shiftStatus.uppercased() == "OFF_SHIFT" { return deliveryText("Driver_Shift_Off") }
+    if !driver.eligibilityReasonCodes.isEmpty {
+        return driver.eligibilityReasonCodes.map(deliveryEnumText).joined(separator: " · ")
+    }
+    return deliveryText("Driver_Dispatcher_Check_Eligibility")
+}
+
 private struct DeliveryIncident: Identifiable {
     let id = UUID()
     let domainCode: String
@@ -1207,9 +1234,7 @@ struct AdminDeliveryListView: View {
     private var driverManagementHero: some View {
         let activeCount = viewModel.drivers.filter { $0.accountStatus.uppercased() == "ACTIVE" }.count
         let availableCount = viewModel.drivers.filter {
-            $0.accountStatus.uppercased() == "ACTIVE" &&
-                $0.canReceiveAssignments &&
-                (viewModel.member(for: $0.uid)?.available ?? true)
+            driverCanReceiveOffers($0, member: viewModel.member(for: $0.uid))
         }.count
         return AdminCard {
             VStack(alignment: .leading, spacing: 14) {
@@ -1275,9 +1300,7 @@ struct AdminDeliveryListView: View {
 
     private func driverCard(_ driver: PPDeliveryDriverRecord) -> some View {
         let member = viewModel.member(for: driver.uid)
-        let available = driver.accountStatus.uppercased() == "ACTIVE" &&
-            driver.canReceiveAssignments &&
-            (member?.available ?? true)
+        let available = driverCanReceiveOffers(driver, member: member)
         let availabilityColor: Color = available ? .green : .orange
         return Button {
             viewModel.prepareDriverManagementAction()
@@ -1324,11 +1347,11 @@ struct AdminDeliveryListView: View {
                                    symbol: "shippingbox.fill")
                     }
 
-                    if !driver.eligibilityReasonCodes.isEmpty {
-                        Label(driver.eligibilityReasonCodes.map(deliveryEnumText).joined(separator: " · "),
-                              systemImage: "info.circle")
+                    if !available {
+                        Label(driverBlockerText(driver, member: member), systemImage: "info.circle")
                             .font(AdminType.caption1)
                             .foregroundColor(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
                     HStack(spacing: 8) {
@@ -2538,9 +2561,7 @@ private struct DeliveryDriverDetailSheet: View {
     }
 
     private var isAvailable: Bool {
-        effectiveDriver.accountStatus.uppercased() == "ACTIVE" &&
-            effectiveDriver.canReceiveAssignments &&
-            (member?.available ?? true)
+        driverCanReceiveOffers(effectiveDriver, member: member)
     }
 
     var body: some View {
@@ -2718,10 +2739,27 @@ private struct DeliveryDriverDetailSheet: View {
     }
 
     private var operationalSummary: some View {
-        HStack(spacing: 10) {
-            metric(deliveryEnumText(effectiveDriver.presence), "Delivery_Driver_Presence")
-            metric(deliveryEnumText(effectiveDriver.shiftStatus), "Delivery_Driver_Shift")
-            metric("\(effectiveDriver.activeDeliveryCount)", "Delivery_Driver_Workload")
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                metric(deliveryEnumText(effectiveDriver.presence), "Delivery_Driver_Presence")
+                metric(deliveryEnumText(effectiveDriver.shiftStatus), "Delivery_Driver_Shift")
+                metric("\(effectiveDriver.activeDeliveryCount)", "Delivery_Driver_Workload")
+            }
+            HStack(spacing: 10) {
+                metric(deliveryText(effectiveDriver.canReceiveAssignments
+                                    ? "Driver_Dispatcher_Assignments_Enabled" : "Driver_Dispatcher_Assignments_Paused"),
+                       "Delivery_Driver_Assignments")
+                metric(deliveryText(effectiveDriver.accountStatus.uppercased() == "ACTIVE"
+                                    ? "Driver_Dispatcher_Account_Active" : "Driver_Dispatcher_Account_Restricted"),
+                       "Delivery_Driver_Account")
+            }
+            if !isAvailable {
+                Label(driverBlockerText(effectiveDriver, member: member), systemImage: "info.circle")
+                    .font(AdminType.callout)
+                    .foregroundColor(.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .combine)
+            }
         }
     }
 
@@ -2810,10 +2848,29 @@ private struct DeliveryDriverDetailSheet: View {
                         .foregroundColor(AdminSurface.primaryText)
                         .accessibilityAddTraits(.isHeader)
                     if effectiveDriver.accountStatus.uppercased() == "ACTIVE" {
+                        Label(deliveryText("Delivery_Driver_Assignments"), systemImage: "shippingbox")
+                            .font(AdminType.subheadlineBold)
+                            .foregroundColor(AdminSurface.primaryText)
+                        Text(deliveryText("Delivery_Driver_Assignment_Control_Subtitle"))
+                            .font(AdminType.caption1)
+                            .foregroundColor(AdminSurface.secondaryText)
                         managementButton(action: effectiveDriver.canReceiveAssignments ? "PAUSE" : "RESUME",
                                          destructive: false)
+                        Divider().padding(.vertical, 4)
+                        Label(deliveryText("Delivery_Driver_Account"), systemImage: "person.crop.circle")
+                            .font(AdminType.subheadlineBold)
+                            .foregroundColor(AdminSurface.primaryText)
+                        Text(deliveryText("Delivery_Driver_Account_Control_Subtitle"))
+                            .font(AdminType.caption1)
+                            .foregroundColor(AdminSurface.secondaryText)
                         managementButton(action: "SUSPEND", destructive: true)
                     } else if effectiveDriver.accountStatus.uppercased() == "SUSPENDED" {
+                        Label(deliveryText("Delivery_Driver_Account"), systemImage: "person.crop.circle")
+                            .font(AdminType.subheadlineBold)
+                            .foregroundColor(AdminSurface.primaryText)
+                        Text(deliveryText("Delivery_Driver_Account_Control_Subtitle"))
+                            .font(AdminType.caption1)
+                            .foregroundColor(AdminSurface.secondaryText)
                         managementButton(action: "REACTIVATE", destructive: false)
                     }
                     if member?.status.lowercased() == "active" {

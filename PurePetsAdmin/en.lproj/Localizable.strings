@@ -13531,11 +13531,65 @@
 "Driver_Saved" = "Delivery updated";
 "Driver_Enable_Notifications" = "Enable delivery alerts";
 
+"Driver_Presence_Online" = "Online";
+"Driver_Presence_Offline" = "Offline";
+"Driver_Presence_Go_Offline" = "Tap to go offline. This will not pause dispatch controls.";
+"Driver_Presence_Go_Online" = "Tap to go online. Dispatch and shift rules still apply.";
+"Driver_Dispatch_Paused_Standalone" = "New assignments: Paused by dispatch";
+"Driver_Dispatch_Enabled" = "New assignments: Enabled by dispatch";
+"Driver_Dispatch_Unknown" = "New assignments: Not verified";
+"Driver_Account_Status_Unknown" = "Account access: Not verified";
+"Driver_Account_Status_Active" = "Account access: Active";
+"Driver_Account_Status_Restricted" = "Account access: Restricted";
+"Driver_Shift_Unknown" = "Shift: Not verified";
+"Driver_Shift_On" = "Shift: On shift";
+"Driver_Shift_Break" = "Shift: On break";
+"Driver_Shift_Off" = "Shift: Off shift";
+"Driver_Work_Unknown" = "Workload: Not verified";
+"Driver_Work_Busy" = "Workload: Busy";
+"Driver_Work_Idle" = "Workload: No recorded active delivery";
+"Driver_Work_Count_Format" = "Recorded active deliveries: %@";
+"Driver_Presence_Control" = "Driver online presence";
+"Driver_Offline_With_Orders" = "You have active deliveries. Going offline will not remove your assigned jobs. Continue?";
+"Driver_Review_Next_Format" = "Review next: %@";
 "Driver_Availability_Loading" = "Checking your availability…";
 "Driver_Fleet_Pending" = "Ask dispatch to activate your fleet membership.";
+"Driver_Fleet_Pending_Title" = "Fleet Activation Pending";
+"Driver_Fleet_Pending_Subtitle" = "Your driver profile is registered. Contact dispatch to activate your membership and start receiving delivery routes.";
+"Driver_Fleet_Call_Dispatch" = "Contact Dispatch";
+"Driver_Fleet_Refresh_Status" = "Check Status";
+"Driver_Radar_Title" = "No active deliveries";
+"Driver_Radar_Subtitle" = "Assigned routes and their next steps will appear here. Check New for other eligible work.";
+"Driver_Diag_GPS" = "GPS: Active";
+"Driver_Diag_Network" = "Network: Secure";
+"Driver_Diag_Fleet" = "Fleet: Pending Roster";
+"Driver_Shift_Badge" = "Today • Pure Pets Fleet";
+"Driver_Call_Dispatch_Short" = "Call Operations";
+"Driver_Refresh_Run" = "Refresh Tasks";
 "Driver_Dispatch_Paused" = "Assignments paused by dispatch";
 "Driver_Online" = "Online · ready for eligible tasks";
 "Driver_Offline" = "Offline · tap when you’re ready";
 "Driver_Go_Online" = "Go online";
 "Driver_Go_Offline" = "Go offline";
 "Driver_Availability_Body" = "This changes your availability for new tasks. Your assigned deliveries remain yours.";
+
+"Driver_Dispatcher_Account_Blocked" = "Driver account is suspended or restricted.";
+"Driver_Dispatcher_Assignments_Paused" = "Dispatcher has paused new assignments.";
+"Driver_Dispatcher_Offline" = "Driver is offline; new offers are not available.";
+"Driver_Dispatcher_Check_Eligibility" = "Check shift, fleet and eligibility conditions.";
+"Driver_Dispatcher_Assignments_Enabled" = "Enabled";
+"Driver_Dispatcher_Account_Active" = "Active";
+"Driver_Dispatcher_Account_Restricted" = "Restricted";
+"Delivery_Driver_Assignments" = "Assignments";
+"Delivery_Driver_Account" = "Account";
+
+"Driver_Readiness_Dispatch_Fix" = "Ask dispatch to resume new assignments. Going online does not override this pause.";
+"Driver_Readiness_Account" = "Your account is restricted. Contact fleet operations.";
+"Driver_Readiness_Shift" = "Your current shift prevents new assignments.";
+"Driver_Readiness_Capacity" = "At your recorded delivery limit. Complete existing work before accepting more.";
+"Driver_Readiness_Stale" = "Presence data may be stale. Refresh to check your current status.";
+
+"Delivery_Driver_Assignment_Control_Subtitle" = "Pause or resume new assignments without changing account access or existing jobs.";
+"Delivery_Driver_Account_Control_Subtitle" = "Suspending account access is separate from dispatch availability and needs confirmation.";
+
+"Driver_Proof_Assistance_Title" = "Proof verification required";

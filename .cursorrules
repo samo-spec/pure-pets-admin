@@ -1,0 +1,12 @@
+# Cursor Rules — Pure Pets Admin iOS Satellite
+
+You are in `pure-pets-admin`, the internal staff iOS application for Pure Pets (`pure-pets-49199`).
+Pointer: `project-brain.json`. Cross-repo umbrella brain is at `../PurePetsProjects/docs/agent/INDEX.md`.
+
+Invariants:
+- Objective-C UIKit MVC architecture.
+- App Check + Firebase Auth + `staff_users` RBAC.
+- Preserved callable mutation boundaries and mandatory audit logging.
+- Physical connected device only (iPhone 13 Pro Max). Never simulator.
+- Arabic primary (RTL) localization.
+- Never ingest secrets.

@@ -13560,11 +13560,65 @@
 "Driver_Saved" = "تم تحديث التوصيلة";
 "Driver_Enable_Notifications" = "تفعيل تنبيهات التوصيل";
 
+"Driver_Presence_Online" = "متصل";
+"Driver_Presence_Offline" = "غير متصل";
+"Driver_Presence_Go_Offline" = "اضغط لإيقاف اتصالك. هذا لا يغيّر إعدادات التوزيع.";
+"Driver_Presence_Go_Online" = "اضغط لتصبح متصلاً. تظل قواعد التوزيع والوردية سارية.";
+"Driver_Dispatch_Paused_Standalone" = "التكليفات الجديدة: أوقفها مسؤول التوزيع";
+"Driver_Dispatch_Enabled" = "التكليفات الجديدة: مفعّلة من مسؤول التوزيع";
+"Driver_Dispatch_Unknown" = "التكليفات الجديدة: لم يتم التحقق";
+"Driver_Account_Status_Unknown" = "صلاحية الحساب: لم يتم التحقق";
+"Driver_Account_Status_Active" = "صلاحية الحساب: نشطة";
+"Driver_Account_Status_Restricted" = "صلاحية الحساب: مقيّدة";
+"Driver_Shift_Unknown" = "الوردية: لم يتم التحقق";
+"Driver_Shift_On" = "الوردية: قيد العمل";
+"Driver_Shift_Break" = "الوردية: استراحة";
+"Driver_Shift_Off" = "الوردية: خارج وقت العمل";
+"Driver_Work_Unknown" = "عبء العمل: لم يتم التحقق";
+"Driver_Work_Busy" = "عبء العمل: مشغول";
+"Driver_Work_Idle" = "عبء العمل: لا توجد توصيلات نشطة مسجلة";
+"Driver_Work_Count_Format" = "التوصيلات النشطة المسجلة: %@";
+"Driver_Presence_Control" = "حالة اتصال المندوب";
+"Driver_Offline_With_Orders" = "لديك توصيلات نشطة. إيقاف الاتصال لن يلغي المهام المسندة إليك. هل تريد المتابعة؟";
+"Driver_Review_Next_Format" = "راجع الخطوة التالية: %@";
 "Driver_Availability_Loading" = "جارٍ التحقق من توفرك…";
 "Driver_Fleet_Pending" = "اطلب من مسؤول التوزيع تفعيل عضويتك في الأسطول.";
+"Driver_Fleet_Pending_Title" = "بانتظار تفعيل عضوية الأسطول";
+"Driver_Fleet_Pending_Subtitle" = "ملفك مسجل في النظام. تواصل مع مسؤول التوزيع لاعتماد العضوية وبدء استقبال مسارات التوصيل.";
+"Driver_Fleet_Call_Dispatch" = "الاتصال بمسؤول التوزيع";
+"Driver_Fleet_Refresh_Status" = "تحديث الحالة";
+"Driver_Radar_Title" = "لا توجد توصيلات نشطة";
+"Driver_Radar_Subtitle" = "ستظهر هنا التوصيلات المسندة والخطوة التالية لكل منها. راجع المهام الجديدة للعمل المتاح.";
+"Driver_Diag_GPS" = "الملاحة: نشطة";
+"Driver_Diag_Network" = "الاتصال: آمن";
+"Driver_Diag_Fleet" = "الأسطول: قيد الاعتماد";
+"Driver_Shift_Badge" = "وردية اليوم • أسطول بيور بيتس";
+"Driver_Call_Dispatch_Short" = "اتصال بالعمليات";
+"Driver_Refresh_Run" = "تحديث المهام";
 "Driver_Dispatch_Paused" = "التكليفات متوقفة من مسؤول التوزيع";
 "Driver_Online" = "متصل · جاهز للمهام المناسبة";
 "Driver_Offline" = "غير متصل · اضغط عندما تكون جاهزًا";
 "Driver_Go_Online" = "بدء التوفر";
 "Driver_Go_Offline" = "إيقاف التوفر";
 "Driver_Availability_Body" = "يغيّر هذا الإجراء توفرك للمهام الجديدة. تظل توصيلاتك المعيّنة مسؤوليتك.";
+
+"Driver_Dispatcher_Account_Blocked" = "حساب المندوب موقوف أو مقيّد.";
+"Driver_Dispatcher_Assignments_Paused" = "أوقف مسؤول التوزيع التكليفات الجديدة.";
+"Driver_Dispatcher_Offline" = "المندوب غير متصل ولا يمكنه استقبال مهام جديدة.";
+"Driver_Dispatcher_Check_Eligibility" = "تحقق من الوردية والأسطول وشروط أهلية المندوب.";
+"Driver_Dispatcher_Assignments_Enabled" = "مفعّلة";
+"Driver_Dispatcher_Account_Active" = "نشط";
+"Driver_Dispatcher_Account_Restricted" = "مقيّد";
+"Delivery_Driver_Assignments" = "التكليفات";
+"Delivery_Driver_Account" = "الحساب";
+
+"Driver_Readiness_Dispatch_Fix" = "اطلب من مسؤول التوزيع استئناف التكليفات. الاتصال لا يلغي هذا الإيقاف.";
+"Driver_Readiness_Account" = "حسابك مقيّد. تواصل مع مسؤول الأسطول.";
+"Driver_Readiness_Shift" = "حالة ورديتك الحالية تمنع التكليفات الجديدة.";
+"Driver_Readiness_Capacity" = "وصلت إلى الحد المسجل للتوصيلات. أكمل المهام الحالية قبل استقبال غيرها.";
+"Driver_Readiness_Stale" = "قد تكون بيانات الاتصال قديمة. حدّث الصفحة للتحقق من حالتك.";
+
+"Delivery_Driver_Assignment_Control_Subtitle" = "أوقف أو استأنف التكليفات الجديدة دون تغيير صلاحية الحساب أو المهام الحالية.";
+"Delivery_Driver_Account_Control_Subtitle" = "إيقاف صلاحية الحساب مختلف عن إيقاف التكليفات، ويتطلب تأكيدًا.";
+
+"Driver_Proof_Assistance_Title" = "يلزم توثيق التسليم";
