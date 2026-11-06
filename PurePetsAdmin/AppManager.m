@@ -29,6 +29,8 @@
 #import <TargetConditionals.h>
 #import <DeviceCheck/DeviceCheck.h>
 
+NSString * const PPAdminGoogleAppCheckErrorDomain = @"PurePetsAdmin.GoogleAppCheck";
+
 static BOOL PPAppCheckTruthyString(NSString *value) {
     NSString *trimmed = [value isKindOfClass:NSString.class]
         ? [[value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] lowercaseString]
@@ -63,25 +65,23 @@ static BOOL PPAdminSafeClaimBoolValue(id value)
 }
 
 static BOOL PPShouldUseDebugAppCheckProvider(void) {
+#if DEBUG
 #if TARGET_OS_SIMULATOR
     return YES;
 #else
+    // In Debug builds (e.g. running from Xcode on connected physical device),
+    // default to Debug provider unless explicitly forced to production App Attest.
     NSProcessInfo *processInfo = [NSProcessInfo processInfo];
     NSDictionary<NSString *, NSString *> *env = processInfo.environment ?: @{};
-    NSString *forceEnv = env[@"PP_FORCE_APPCHECK_DEBUG_PROVIDER"];
-    NSString *debugTokenEnv = env[@"FIRAAppCheckDebugToken"];
-    BOOL forceFromEnv = PPAppCheckTruthyString(forceEnv);
-    BOOL hasDebugTokenEnv = [debugTokenEnv isKindOfClass:NSString.class] && debugTokenEnv.length > 0;
-
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    id forceDefaultsValue = [defaults objectForKey:@"PPForceAppCheckDebugProvider"];
-    BOOL forceDefaultsEnabled = NO;
-    if ([forceDefaultsValue isKindOfClass:NSNumber.class]) {
-        forceDefaultsEnabled = [(NSNumber *)forceDefaultsValue boolValue];
-    } else if ([forceDefaultsValue isKindOfClass:NSString.class]) {
-        forceDefaultsEnabled = PPAppCheckTruthyString((NSString *)forceDefaultsValue);
+    if (PPAppCheckTruthyString(env[@"PP_FORCE_APPCHECK_APPACTEST_PROVIDER"])) {
+        return NO;
     }
-    return forceFromEnv || hasDebugTokenEnv || forceDefaultsEnabled;
+    return YES;
+#endif
+#else
+    // A runtime environment variable or preference must never enable Debug
+    // attestation in a distributed Release build.
+    return NO;
 #endif
 }
 
@@ -315,9 +315,17 @@ static BOOL PPAppCheckErrorLooksLikeAppAttestFailure(NSError *error) {
 
 @end
 
+@interface AppManager ()
+@property (nonatomic, assign) BOOL googleSignInAppCheckReady;
+@property (nonatomic, assign) BOOL googleSignInAppCheckConfiguring;
+@property (nonatomic, assign) NSUInteger googleSignInAppCheckGeneration;
+@property (nonatomic, strong) NSMutableArray *googleSignInAppCheckCompletions;
+@end
+
 @implementation AppManager
 
 - (void)pp_logAndProbeDebugAppCheckIfNeeded {
+#if DEBUG
     if (!PPShouldUseDebugAppCheckProvider()) {
         return;
     }
@@ -327,24 +335,94 @@ static BOOL PPAppCheckErrorLooksLikeAppAttestFailure(NSError *error) {
         return;
     }
 
-    FIRAppCheckDebugProvider *provider = [[FIRAppCheckDebugProvider alloc] initWithApp:defaultApp];
-    if (provider) {
-        NSLog(@"[AppCheck] Local debug token: '%@'", provider.localDebugToken ?: @"");
-        NSLog(@"[AppCheck] Current debug token: '%@'", provider.currentDebugToken ?: @"");
-    }
-
     [[FIRAppCheck appCheck] tokenForcingRefresh:YES completion:^(FIRAppCheckToken * _Nullable token, NSError * _Nullable error) {
         if (error) {
-            NSLog(@"[AppCheck] Debug token exchange failed for app %@ (%@): %@",
-                  defaultApp.options.googleAppID ?: @"unknown-app",
-                  defaultApp.options.projectID ?: @"unknown-project",
-                  error.localizedDescription ?: @"unknown error");
+            DLog(@"[AppCheck] Debug exchange failed (%@/%ld).", error.domain, (long)error.code);
             return;
         }
 
-        NSLog(@"[AppCheck] Debug token exchange succeeded. Token expiration: %@",
-              token.expirationDate ?: [NSNull null]);
+        DLog(@"[AppCheck] Debug exchange succeeded.");
     }];
+#endif
+}
+
+- (void)prepareGoogleSignInWithCompletion:(void (^ _Nullable)(NSError * _Nullable))callback {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self prepareGoogleSignInWithCompletion:callback];
+        });
+        return;
+    }
+    if (self.googleSignInAppCheckReady) {
+        if (callback) callback(nil);
+        return;
+    }
+
+    if (!self.googleSignInAppCheckCompletions) {
+        self.googleSignInAppCheckCompletions = [NSMutableArray array];
+    }
+    if (callback) [self.googleSignInAppCheckCompletions addObject:[callback copy]];
+    if (self.googleSignInAppCheckConfiguring) return;
+
+    self.googleSignInAppCheckConfiguring = YES;
+    NSUInteger generation = ++self.googleSignInAppCheckGeneration;
+    void (^finish)(NSError * _Nullable) = ^(NSError * _Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            // Ignore late/duplicate completions from a timed-out setup attempt.
+            if (self.googleSignInAppCheckGeneration != generation || !self.googleSignInAppCheckConfiguring) return;
+            self.googleSignInAppCheckConfiguring = NO;
+            self.googleSignInAppCheckReady = error == nil;
+
+            NSError *reportedError = nil;
+            if (error) {
+                BOOL networkError = NO;
+                NSError *cause = error;
+                for (NSUInteger depth = 0; cause && depth < 8; depth++) {
+                    if ([cause.domain isEqualToString:NSURLErrorDomain]) {
+                        networkError = YES;
+                        break;
+                    }
+                    id underlying = cause.userInfo[NSUnderlyingErrorKey];
+                    cause = [underlying isKindOfClass:NSError.class] ? underlying : nil;
+                }
+                reportedError = [NSError errorWithDomain:PPAdminGoogleAppCheckErrorDomain code:110 userInfo:@{
+                    NSLocalizedDescriptionKey: networkError ? kLang(@"StatusNetworkError") : kLang(@"auth_google_verification_failed"),
+                    NSUnderlyingErrorKey: error
+                }];
+                DLog(@"[GoogleSignIn][AppCheck] Setup failed (%@/%ld).", error.domain, (long)error.code);
+            }
+
+            NSArray *callbacks = [self.googleSignInAppCheckCompletions copy];
+            [self.googleSignInAppCheckCompletions removeAllObjects];
+            for (void (^pending)(NSError * _Nullable) in callbacks) pending(reportedError);
+        });
+    };
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(30 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (self.googleSignInAppCheckGeneration == generation && self.googleSignInAppCheckConfiguring) {
+            finish([NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorTimedOut userInfo:nil]);
+        }
+    });
+
+    FIRApp *defaultApp = [FIRApp defaultApp];
+    if (!defaultApp) {
+        finish([NSError errorWithDomain:PPAdminGoogleAppCheckErrorDomain code:1 userInfo:nil]);
+        return;
+    }
+#if DEBUG
+    if (PPShouldUseDebugAppCheckProvider()) {
+        // Google Identity owns a separate App Check client and debug token.
+        // Firebase's provider factory does not configure Google Sign-In.
+        NSString *apiKey = defaultApp.options.APIKey;
+        if (apiKey.length == 0) {
+            finish([NSError errorWithDomain:PPAdminGoogleAppCheckErrorDomain code:2 userInfo:nil]);
+            return;
+        }
+        [GIDSignIn.sharedInstance configureDebugProviderWithAPIKey:apiKey completion:finish];
+        return;
+    }
+#endif
+    [GIDSignIn.sharedInstance configureWithCompletion:finish];
 }
 
 + (instancetype)shared {
@@ -383,21 +461,19 @@ static BOOL PPAppCheckErrorLooksLikeAppAttestFailure(NSError *error) {
         }
         [FIRAppCheck setAppCheckProviderFactory:[[PPAppCheckProviderFactory alloc] init]];
         if (PPShouldUseDebugAppCheckProvider()) {
-            NSLog(@"[AppCheck] Debug provider active. If requests are still blocked, register the printed debug token in Firebase Console > App Check > Manage debug tokens.");
+            DLog(@"[AppCheck] Debug provider active. Firebase and Google Identity debug tokens require registration for this app.");
         }
 
         if (![FIRApp defaultApp]) {
             [FIRApp configure];
             DLog(@"Firebase configured ✅");
-            [self pp_logAndProbeDebugAppCheckIfNeeded];
-            [GIDSignIn.sharedInstance configureWithCompletion:nil];
-            
             [FUM startAuthListenerWithChangeBlock:^(FIRUser * _Nullable authUser, UserModel * _Nullable userModel) { }];
             
         } else {
             DLog(@"Firebase already configured, skipping");
-            [self pp_logAndProbeDebugAppCheckIfNeeded];
         }
+        [self prepareGoogleSignInWithCompletion:nil];
+        [self pp_logAndProbeDebugAppCheckIfNeeded];
     });
 }
 

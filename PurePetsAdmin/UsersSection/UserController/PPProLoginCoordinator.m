@@ -683,6 +683,9 @@ allowRetryOnInternalError:(BOOL)allowRetryOnInternalError
 - (NSString *)pp_authErrorSubtitle:(NSError * _Nullable)error {
     NSString *fallback = kLang(@"StatusLoginFailed");
     if (!error) return fallback;
+    if ([error.domain isEqualToString:PPAdminGoogleAppCheckErrorDomain]) {
+        return error.localizedDescription;
+    }
 
     if ([error.domain isEqualToString:ASAuthorizationErrorDomain] &&
         error.code == ASAuthorizationErrorUnknown) {

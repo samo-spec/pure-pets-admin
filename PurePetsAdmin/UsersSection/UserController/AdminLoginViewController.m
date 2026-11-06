@@ -1,5 +1,6 @@
 //  AdminLoginViewController.m
 #import "AdminLoginViewController.h"
+#import "AppManager.h"
 #import "Lottie.h"
 
 @import Firebase;
@@ -830,6 +831,9 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
 - (NSString *)pp_authErrorSubtitle:(NSError * _Nullable)error {
     NSString *fallback = kLang(@"StatusLoginFailed");
     if (!error) return fallback;
+    if ([error.domain isEqualToString:PPAdminGoogleAppCheckErrorDomain]) {
+        return error.localizedDescription;
+    }
 
     NSString *backendMessage = [self pp_authBackendMessageFromError:error];
     if (backendMessage.length > 0) {

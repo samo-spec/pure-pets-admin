@@ -18,6 +18,8 @@ typedef NS_ENUM(NSInteger, DataSource)
 
 NS_ASSUME_NONNULL_BEGIN
 
+FOUNDATION_EXPORT NSString * const PPAdminGoogleAppCheckErrorDomain;
+
 @interface AppManager : NSObject
   
 
@@ -33,6 +35,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Firebase setup
 - (void)configureFirebase;
+
+/// Prepares Google's separate App Check client. Completion is delivered on main;
+/// concurrent callers share setup, and a failed attempt can be retried.
+- (void)prepareGoogleSignInWithCompletion:(void (^ _Nullable)(NSError * _Nullable error))completion;
 
 /// Current user
 @property (nonatomic, strong, nullable) FIRUser *currentUser;

@@ -806,6 +806,8 @@
 "StatusNetworkError"         = "A network error occurred. Check your connection and try again.";
 "StatusAccountDisabled"      = "This admin account is disabled or suspended.";
 "StatusAppCheckInvalid"      = "App verification failed. Please update the app or contact support.";
+"auth_google_verification_failed" = "We couldn’t verify the app for Google sign-in. Try again. If this continues, update the app or contact support.";
+"auth_google_configuration_error" = "Google sign-in is unavailable in this version. Please update the app or contact support.";
 "StatusFetchClaims"          = "Could not verify access rights.";
 "StatusNoAccess"             = "You do not have admin access.";
 "StatusUserDocError"         = "Error fetching user profile.";

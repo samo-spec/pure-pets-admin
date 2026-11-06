@@ -8,6 +8,7 @@
 
 //  FUManager.m
 #import "FUManager.h"
+#import "AppManager.h"
 #import "PPStaffAuth.h"
  
 #import <GoogleSignIn/GoogleSignIn.h>
@@ -361,39 +362,53 @@ static inline BOOL FUShouldTreatAuthErrorAsTransient(NSError * _Nullable error) 
     NSString *clientID = [FIRApp defaultApp].options.clientID;
     if (clientID.length == 0) {
         [self p_finishUser:nil
-                     error:[self p_err:@"Google Sign-In is not configured for this app." code:108]
+                     error:[self p_err:kLang(@"auth_google_configuration_error") code:108]
                 completion:completion];
         return;
     }
 
-    // GIDSignIn.sharedInstance.configuration removed to preserve App Check
-    [GIDSignIn.sharedInstance signInWithPresentingViewController:presentingVC completion:^(GIDSignInResult * _Nullable signInResult, NSError * _Nullable error) {
-        if (error) {
-            [self p_finishUser:nil error:error completion:completion];
+    __weak UIViewController *weakPresenter = presentingVC;
+    [[AppManager shared] prepareGoogleSignInWithCompletion:^(NSError * _Nullable preparationError) {
+        if (preparationError) {
+            [self p_finishUser:nil error:preparationError completion:completion];
             return;
         }
 
-        GIDGoogleUser *googleUser = signInResult.user;
-        NSString *idToken = googleUser.idToken.tokenString;
-        NSString *accessToken = googleUser.accessToken.tokenString;
-        if (idToken.length == 0 || accessToken.length == 0) {
-            [self p_finishUser:nil
-                         error:[self p_err:@"Google Sign-In did not return valid auth tokens." code:109]
-                    completion:completion];
+        // Preparation may finish after the login screen has been dismissed.
+        UIViewController *presenter = weakPresenter;
+        if (!presenter || !presenter.isViewLoaded || !presenter.view.window) {
+            NSError *cancelled = [NSError errorWithDomain:kGIDSignInErrorDomain
+                                                    code:kGIDSignInErrorCodeCanceled
+                                                userInfo:nil];
+            [self p_finishUser:nil error:cancelled completion:completion];
             return;
         }
 
-        FIRAuthCredential *credential = [FIRGoogleAuthProvider credentialWithIDToken:idToken
-                                                                         accessToken:accessToken];
-        
-        
-
-        [[FIRAuth auth] signInWithCredential:credential completion:^(FIRAuthDataResult * _Nullable res, NSError * _Nullable err) {
-            FIRUser *effectiveUser = res.user ?: [FIRAuth auth].currentUser;
-            [self p_finishUser:effectiveUser error:err completion:completion];
-            if (effectiveUser && !err) {
-                [self ensureUserDocumentExistsForCurrentUserWithExtra:nil completion:^(NSError * _Nullable e){}];
+        [GIDSignIn.sharedInstance signInWithPresentingViewController:presenter completion:^(GIDSignInResult * _Nullable signInResult, NSError * _Nullable error) {
+            if (error) {
+                [self p_finishUser:nil error:error completion:completion];
+                return;
             }
+
+            GIDGoogleUser *googleUser = signInResult.user;
+            NSString *idToken = googleUser.idToken.tokenString;
+            NSString *accessToken = googleUser.accessToken.tokenString;
+            if (idToken.length == 0 || accessToken.length == 0) {
+                [self p_finishUser:nil
+                             error:[self p_err:kLang(@"StatusLoginFailed") code:109]
+                        completion:completion];
+                return;
+            }
+
+            FIRAuthCredential *credential = [FIRGoogleAuthProvider credentialWithIDToken:idToken
+                                                                             accessToken:accessToken];
+            [[FIRAuth auth] signInWithCredential:credential completion:^(FIRAuthDataResult * _Nullable res, NSError * _Nullable err) {
+                FIRUser *effectiveUser = res.user ?: [FIRAuth auth].currentUser;
+                [self p_finishUser:effectiveUser error:err completion:completion];
+                if (effectiveUser && !err) {
+                    [self ensureUserDocumentExistsForCurrentUserWithExtra:nil completion:^(NSError * _Nullable e){}];
+                }
+            }];
         }];
     }];
 }
