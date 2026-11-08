@@ -148,6 +148,22 @@ public final class SecurityPermissionCatalog: @unchecked Sendable {
     public let allPermissions: [SecurityPermissionItem]
     public let totalPermissionsCount: Int
 
+    /// Permission identities and bilingual labels come from Infra's generated
+    /// catalog. Displaying a choice never grants it; the IAM command authorizes
+    /// the submitted role snapshot independently.
+    private static func canonicalPermissionItems(_ keys: [String], moduleKey: String) -> [SecurityPermissionItem] {
+        guard let module = PPStaffPermissionModules().first(where: { ($0["key"] as? String) == moduleKey }),
+              let actions = module["actions"] as? [[String: Any]] else { return [] }
+        return keys.compactMap { key in
+            guard let action = actions.first(where: { ($0["key"] as? String) == key }),
+                  let ar = action["labelAr"] as? String, !ar.isEmpty,
+                  let en = action["labelEn"] as? String, !en.isEmpty else { return nil }
+            let risk = action["riskTier"] as? String
+            return SecurityPermissionItem(key: key, titleAr: ar, titleEn: en, moduleKey: moduleKey,
+                                          isHighRisk: risk == "T3" || risk == "T4")
+        }
+    }
+
     private init() {
         let list: [SecurityPermissionModule] = [
             SecurityPermissionModule(
@@ -226,7 +242,7 @@ public final class SecurityPermissionCatalog: @unchecked Sendable {
                     SecurityPermissionItem(key: "delivery.dispatch", titleAr: "جدولة وتعيين السائقين والمناديب", titleEn: "Dispatch & Assign Drivers", moduleKey: "delivery", isHighRisk: false),
                     SecurityPermissionItem(key: "delivery.override", titleAr: "التدخل السيادي وإعادة التوجيه", titleEn: "Sovereign Delivery Override", moduleKey: "delivery", isHighRisk: true),
                     SecurityPermissionItem(key: "delivery.cod.reconcile", titleAr: "تسوية مبالغ الدفع عند الاستلام (COD)", titleEn: "Reconcile Cash on Delivery", moduleKey: "delivery", isHighRisk: true)
-                ]
+                ] + Self.canonicalPermissionItems([kStaffPermDeliveryTasksManage], moduleKey: "delivery")
             ),
             SecurityPermissionModule(
                 key: "pos",
@@ -334,8 +350,7 @@ public final class SecurityPermissionCatalog: @unchecked Sendable {
                 titleAr: "الإشعارات والتنبيهات المباشرة",
                 titleEn: "Broadcast Notifications",
                 icon: "bell.badge.fill",
-                permissions: [
-                    SecurityPermissionItem(key: "notifications.view", titleAr: "عرض سجل الإشعارات المرسلة", titleEn: "View Push Notification History", moduleKey: "notifications", isHighRisk: false),
+                permissions: Self.canonicalPermissionItems([kStaffPermNotificationsView], moduleKey: "notifications") + [
                     SecurityPermissionItem(key: "notifications.send", titleAr: "إرسال إشعارات جماعية للعملاء", titleEn: "Broadcast Push Notifications", moduleKey: "notifications", isHighRisk: true)
                 ]
             ),

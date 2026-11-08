@@ -5,6 +5,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1] / "PurePetsAdmin"
 COCKPIT = (ROOT / "Delivery" / "PPDriverWorkspaceViewController.m").read_text()
 MANAGEMENT = (ROOT / "Features" / "Delivery" / "DeliveryListView.swift").read_text()
+ROLE_EDITOR = (ROOT / "Features" / "Customers" / "AdminRoleRankSecurityLevelsView.swift").read_text()
+IAM_CATALOG = (ROOT / "UsersSection" / "SecFil" / "PPStaffAuthCatalog.generated.m").read_text()
 
 
 class DriverCockpitContractTests(unittest.TestCase):
@@ -41,6 +43,18 @@ class DriverCockpitContractTests(unittest.TestCase):
     def test_dispatch_availability_counts_only_eligible_drivers(self):
         self.assertIn("driver.eligible", MANAGEMENT)
         self.assertIn("driverCanReceiveOffers(", MANAGEMENT)
+
+    def test_custom_role_picker_exposes_the_canonical_driver_grant(self):
+        self.assertIn('Self.canonicalPermissionItems([kStaffPermDeliveryTasksManage], moduleKey: "delivery")', ROLE_EDITOR)
+        self.assertIn('PPStaffPermissionModules()', ROLE_EDITOR)
+        self.assertIn('module["actions"]', ROLE_EDITOR)
+        self.assertIn('action["labelAr"]', ROLE_EDITOR)
+        self.assertIn('action["labelEn"]', ROLE_EDITOR)
+        self.assertIn('@"key": @"delivery.tasks.manage"', IAM_CATALOG)
+
+    def test_driver_notification_permission_uses_the_canonical_bilingual_label(self):
+        self.assertIn('Self.canonicalPermissionItems([kStaffPermNotificationsView], moduleKey: "notifications")', ROLE_EDITOR)
+        self.assertNotIn('titleEn: "View Push Notification History"', ROLE_EDITOR)
 
     def test_contact_dispatch_uses_authoritative_qatar_hotline(self):
         self.assertIn('tel://+97459997720', COCKPIT)
