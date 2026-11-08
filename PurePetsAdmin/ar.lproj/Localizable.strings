@@ -13639,3 +13639,19 @@
 "Delivery_Driver_Account_Control_Subtitle" = "إيقاف صلاحية الحساب مختلف عن إيقاف التكليفات، ويتطلب تأكيدًا.";
 
 "Driver_Proof_Assistance_Title" = "يلزم توثيق التسليم";
+
+/* Per-company driver acceptance authority */
+"Delivery_Driver_Acceptance_Title" = "صلاحية اختيار الطلبات";
+"Delivery_Driver_Acceptance_Self" = "يمكنه قبول الطلبات غير المسندة";
+"Delivery_Driver_Acceptance_Assigned" = "الطلبات المسندة إليه فقط";
+"Delivery_Driver_Acceptance_Self_Detail" = "يمكنه اختيار التوصيلات المؤهلة غير المسندة في هذه الشركة. تظل شروط التوفر والإسناد سارية.";
+"Delivery_Driver_Acceptance_Assigned_Detail" = "يتلقى فقط التوصيلات التي تسندها الشركة إليه شخصيًا.";
+"Delivery_Driver_Acceptance_Managed" = "تتحكم الشركة أو مسؤول العمليات المخوّل في هذه الصلاحية.";
+"Delivery_Driver_Acceptance_Grant" = "السماح باختيار الطلبات";
+"Delivery_Driver_Acceptance_Revoke" = "اشتراط الإسناد من الشركة";
+"Delivery_Driver_Acceptance_Confirm_Title" = "تغيير صلاحية هذا السائق؟";
+"Delivery_Driver_Acceptance_Grant_Confirm" = "سيتمكن هذا السائق من قبول التوصيلات المؤهلة غير المسندة في هذه الشركة دون أن يختاره المنسق.";
+"Delivery_Driver_Acceptance_Revoke_Confirm" = "ستسند الشركة وحدها التوصيلات الجديدة إلى هذا السائق. ستستمر التوصيلات المسندة إليه حاليًا.";
+"Delivery_Driver_Acceptance_Saving" = "جارٍ تأكيد الصلاحية…";
+"Delivery_Driver_Acceptance_Saved" = "تم تأكيد الصلاحية";
+"Delivery_Driver_Acceptance_Sync_Error" = "تعذر تأكيد التغيير. تحقق من الاتصال وحاول مجددًا. أعد فتح الملف إذا تغيرت صلاحياته.";

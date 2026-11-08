@@ -169,6 +169,8 @@ static NSError *PPDeliveryInvalidResponseError(void) {
         _shiftStatus = PPDeliveryString(source[@"shiftStatus"]);
         _workState = PPDeliveryString(source[@"workState"]);
         _canReceiveAssignments = [source[@"canReceiveAssignments"] boolValue];
+        _canSelfAcceptOrders = [source[@"canSelfAcceptOrders"] isEqual:@YES];
+        _canManageSelfAcceptance = [source[@"canManageSelfAcceptance"] isEqual:@YES];
         _activeDeliveryCount = MAX(0, [source[@"activeDeliveryCount"] integerValue]);
         _maxConcurrentDeliveries = [source[@"maxConcurrentDeliveries"] isKindOfClass:NSNumber.class]
             ? source[@"maxConcurrentDeliveries"]
@@ -201,6 +203,8 @@ static NSError *PPDeliveryInvalidResponseError(void) {
         _online = [source[@"isOnline"] boolValue];
         _available = source[@"isAvailable"] == nil ? YES : [source[@"isAvailable"] boolValue];
         _canReceiveAssignments = [source[@"canReceiveAssignments"] boolValue];
+        _canSelfAcceptOrders = [source[@"canSelfAcceptOrders"] isEqual:@YES];
+        _canManageSelfAcceptance = [source[@"canManageSelfAcceptance"] isEqual:@YES];
         _activeDeliveryCount = MAX(0, [source[@"activeDeliveryCount"] integerValue]);
         _revision = MAX(0, [source[@"revision"] integerValue]);
         _lastSeenAt = PPDeliveryDate(source[@"lastSeenAt"]);
@@ -678,6 +682,64 @@ static NSError *PPDeliveryInvalidResponseError(void) {
                 }
             completion:^(__unused id result, NSError *error) {
         if (completion) completion(error);
+    }];
+}
+
+- (void)setDriverSelfAcceptance:(BOOL)allowed
+                     driverUID:(NSString *)driverUID
+                     companyID:(NSString *)companyID
+              expectedRevision:(NSInteger)expectedRevision
+                     commandID:(NSString *)commandID
+                    completion:(void(^)(PPDeliveryCompanyMemberRecord *, NSError *))completion {
+    NSString *actorUID = [FIRAuth auth].currentUser.uid.copy ?: @"";
+    if (actorUID.length == 0 || driverUID.length == 0 || companyID.length == 0 || commandID.length == 0 || expectedRevision < 0) {
+        if (completion) completion(nil, PPDeliveryInvalidResponseError());
+        return;
+    }
+    [self callFunction:@"setDeliveryDriverAcceptancePolicy"
+                params:@{@"companyId": companyID, @"driverUid": driverUID,
+                         @"canSelfAcceptOrders": @(allowed), @"expectedRevision": @(expectedRevision),
+                         @"commandId": commandID,
+                         @"reason": allowed ? @"driver_self_acceptance.enabled" : @"driver_self_acceptance.disabled"}
+            completion:^(id result, NSError *error) {
+        if (![[FIRAuth auth].currentUser.uid isEqualToString:actorUID]) {
+            if (completion) completion(nil, [NSError errorWithDomain:FIRFunctionsErrorDomain code:FIRFunctionsErrorCodeUnauthenticated
+                userInfo:@{NSLocalizedDescriptionKey: kLang(@"Delivery_Driver_Acceptance_Sync_Error")}]);
+            return;
+        }
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        NSDictionary *response = PPDeliveryDictionary(result);
+        NSNumber *revision = [response[@"revision"] isKindOfClass:NSNumber.class] ? response[@"revision"] : nil;
+        if (!revision || ![response[@"companyId"] isEqual:companyID] ||
+            ![response[@"driverUid"] isEqual:driverUID] || ![response[@"canSelfAcceptOrders"] isEqual:@(allowed)]) {
+            if (completion) completion(nil, PPDeliveryInvalidResponseError());
+            return;
+        }
+        // A command receipt is not proof that the displayed projection is current.
+        [self fetchCompanyMembersForCompanyID:companyID completion:^(NSArray<PPDeliveryCompanyMemberRecord *> *members, NSError *readError) {
+            if (![[FIRAuth auth].currentUser.uid isEqualToString:actorUID]) {
+                if (completion) completion(nil, [NSError errorWithDomain:FIRFunctionsErrorDomain code:FIRFunctionsErrorCodeUnauthenticated
+                    userInfo:@{NSLocalizedDescriptionKey: kLang(@"Delivery_Driver_Acceptance_Sync_Error")}]);
+                return;
+            }
+            if (readError) {
+                if (completion) completion(nil, readError);
+                return;
+            }
+            for (PPDeliveryCompanyMemberRecord *member in members) {
+                if ([member.uid isEqual:driverUID] && member.canSelfAcceptOrders == allowed &&
+                    member.revision >= revision.integerValue) {
+                    if (completion) completion(member, nil);
+                    return;
+                }
+            }
+            NSError *pending = [NSError errorWithDomain:PPDeliveryServiceErrorDomain code:409
+                                               userInfo:@{NSLocalizedDescriptionKey: kLang(@"Delivery_Driver_Acceptance_Sync_Error")}];
+            if (completion) completion(nil, pending);
+        }];
     }];
 }
 

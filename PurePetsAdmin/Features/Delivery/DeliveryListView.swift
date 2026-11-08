@@ -401,7 +401,7 @@ private final class DeliveryCommandCenterViewModel: ObservableObject {
         let permissions = Set(snapshot.permissions)
         let legacy = snapshot.permissionSource == "legacy_official_delivery_bridge"
         var result = deliveryTabs
-        if legacy || permissions.contains("delivery.driver.view") { result.append(.drivers) }
+        if legacy || permissions.contains("delivery.driver.view") || permissions.contains("delivery.driver.manage_acceptance") { result.append(.drivers) }
         result.append(.overview)
         result.append(.exceptions)
         if legacy || permissions.contains("delivery.cod.view") { result.append(.cod) }
@@ -492,6 +492,52 @@ private final class DeliveryCommandCenterViewModel: ObservableObject {
                     return
                 }
                 self.companyMembers = members ?? []
+            }
+        }
+    }
+
+    // Idempotency is tied to the reviewed intent and membership revision.
+    private var acceptanceCommandIDs: [String: String] = [:]
+
+    func setDriverSelfAcceptance(_ allowed: Bool, driverUID: String) {
+        guard let member = member(for: driverUID), member.canManageSelfAcceptance,
+              !officialCompanyID.isEmpty, !isExecuting else { return }
+        let companyID = officialCompanyID
+        let key = "\(companyID)/\(driverUID)/\(member.revision)/\(allowed)"
+        let commandID = acceptanceCommandIDs[key] ?? UUID().uuidString
+        acceptanceCommandIDs[key] = commandID
+        isExecuting = true
+        memberIncident = nil
+        memberErrorKey = nil
+        memberConfirmationKey = nil
+        PPDeliveryService.shared().setDriverSelfAcceptance(allowed, driverUID: driverUID,
+            companyID: companyID, expectedRevision: member.revision, commandID: commandID) { [weak self] confirmed, error in
+            // Cross the queue boundary with value types; UIKit projection
+            // objects remain owned by the main-actor view model.
+            let confirmedUID = confirmed?.uid ?? ""
+            let confirmedAllowed = confirmed?.canSelfAcceptOrders ?? false
+            let confirmedCanManage = confirmed?.canManageSelfAcceptance ?? false
+            let confirmedRevision = confirmed?.revision ?? 0
+            Task { @MainActor in
+                guard let self else { return }
+                self.isExecuting = false
+                guard self.officialCompanyID == companyID else { return }
+                if let error {
+                    self.recordMemberMutationError(error as NSError)
+                    self.loadMembers()
+                    return
+                }
+                guard confirmedUID == driverUID else { return }
+                if let index = self.companyMembers.firstIndex(where: { $0.uid == driverUID }) {
+                    let current = self.companyMembers[index]
+                    current.canSelfAcceptOrders = confirmedAllowed
+                    current.canManageSelfAcceptance = confirmedCanManage
+                    current.revision = confirmedRevision
+                    self.companyMembers[index] = current
+                }
+                self.acceptanceCommandIDs.removeValue(forKey: key)
+                self.memberConfirmationKey = "Delivery_Driver_Acceptance_Saved"
+                self.load(refresh: true)
             }
         }
     }
@@ -2389,6 +2435,43 @@ private struct DeliveryDossierSheet: View {
     }
 }
 
+private struct SheetDismissButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.88 : 1.0)
+            .opacity(configuration.isPressed ? 0.72 : 1.0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
+private struct SheetDismissButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(AdminSurface.surface)
+                    .overlay(
+                        Circle()
+                            .stroke(AdminSurface.hairline.opacity(0.55), lineWidth: 0.5)
+                    )
+                    .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(AdminSurface.primaryText)
+            }
+            .frame(width: 34, height: 34)
+            .contentShape(Circle())
+        }
+        .buttonStyle(SheetDismissButtonStyle())
+        .accessibilityLabel(deliveryText("Close"))
+    }
+}
+
 private struct DeliveryDriverPickerSheet: View {
     let action: PPDeliveryAllowedAction
     let drivers: [PPDeliveryDriverRecord]
@@ -2396,7 +2479,6 @@ private struct DeliveryDriverPickerSheet: View {
     let onSelect: (PPDeliveryDriverRecord) -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var driverToConfirm: PPDeliveryDriverRecord?
 
     var body: some View {
         NavigationView {
@@ -2428,21 +2510,8 @@ private struct DeliveryDriverPickerSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(deliveryText("Close")) { dismiss() }
+                    SheetDismissButton { dismiss() }
                 }
-            }
-            .alert(deliveryText("DeliveryDetail_AcceptDelivery"), isPresented: Binding(
-                get: { driverToConfirm != nil },
-                set: { if !$0 { driverToConfirm = nil } }
-            ), presenting: driverToConfirm) { driver in
-                Button(deliveryText("Cancel"), role: .cancel) { driverToConfirm = nil }
-                Button(deliveryText("DeliveryDetail_AcceptDelivery")) {
-                    guard driver.eligible && !isExecuting else { return }
-                    onSelect(driver)
-                    driverToConfirm = nil
-                }
-            } message: { driver in
-                Text(deliveryFormat("DeliveryDetail_AcceptDriverConfirmation", "\u{2068}\(driver.displayName)\u{2069}"))
             }
         }
         .navigationViewStyle(.stack)
@@ -2486,8 +2555,8 @@ private struct DeliveryDriverPickerSheet: View {
         let accent: Color = driver.eligible ? AdminSurface.primary : .orange
         return Button {
             guard driver.eligible && !isExecuting else { return }
-            if action.action == "ACCEPT_AND_ASSIGN" {
-                driverToConfirm = driver
+            if ["ACCEPT_AND_ASSIGN", "REASSIGN"].contains(action.action) {
+                confirmDriverAssignment(driver)
             } else {
                 onSelect(driver)
             }
@@ -2540,6 +2609,42 @@ private struct DeliveryDriverPickerSheet: View {
         .accessibilityElement(children: .combine)
         .accessibilityHint(driver.eligible ? deliveryCommandText(action.action) : deliveryText("Delivery_Why_Unavailable"))
     }
+
+    private func confirmDriverAssignment(_ driver: PPDeliveryDriverRecord) {
+        guard driver.eligible && !isExecuting else { return }
+
+        let title: String
+        let confirmTitle: String
+        let iconName: String
+
+        if action.action == "ACCEPT_AND_ASSIGN" {
+            title = deliveryText("DeliveryDetail_AcceptDelivery")
+            confirmTitle = deliveryText("DeliveryDetail_AcceptDelivery")
+            iconName = "person.crop.circle.badge.checkmark"
+        } else {
+            title = deliveryCommandText(action.action)
+            confirmTitle = deliveryText("Confirm")
+            iconName = "arrow.triangle.2.circlepath.circle.fill"
+        }
+
+        let message = deliveryFormat("DeliveryDetail_AcceptDriverConfirmation", "\u{2068}\(driver.displayName)\u{2069}")
+        let icon = UIImage(systemName: iconName) ?? UIImage(systemName: "checkmark.circle.fill")
+
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: title,
+            subtitle: message,
+            confirmButton: confirmTitle,
+            cancelButton: deliveryText("Cancel"),
+            icon: icon,
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                guard driver.eligible && !isExecuting else { return }
+                onSelect(driver)
+            },
+            cancelBlock: nil
+        )
+    }
 }
 
 private struct DeliveryDriverDetailSheet: View {
@@ -2590,6 +2695,7 @@ private struct DeliveryDriverDetailSheet: View {
                                 .accessibilityElement(children: .combine)
                         }
                         contactActions
+                        acceptancePolicyCard
                         managementActions
                     }
                     .padding(.horizontal, 18)
@@ -2839,6 +2945,59 @@ private struct DeliveryDriverDetailSheet: View {
     }
 
     @ViewBuilder
+    private var acceptancePolicyCard: some View {
+        let allowed = member?.canSelfAcceptOrders ?? effectiveDriver.canSelfAcceptOrders
+        let canChange = member?.canManageSelfAcceptance == true
+        return AdminCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Label(deliveryText("Delivery_Driver_Acceptance_Title"), systemImage: "lock.shield")
+                    .font(AdminType.headline)
+                    .foregroundColor(AdminSurface.primaryText)
+                    .accessibilityAddTraits(.isHeader)
+                Text(deliveryText(allowed ? "Delivery_Driver_Acceptance_Self" : "Delivery_Driver_Acceptance_Assigned"))
+                    .font(AdminType.subheadlineBold)
+                    .foregroundColor(AdminSurface.primaryText)
+                Text(deliveryText(allowed ? "Delivery_Driver_Acceptance_Self_Detail" : "Delivery_Driver_Acceptance_Assigned_Detail"))
+                    .font(AdminType.caption1)
+                    .foregroundColor(AdminSurface.secondaryText)
+                if canChange {
+                    Button {
+                        PPAlertHelper.showConfirmation(in: nil,
+                            title: deliveryText("Delivery_Driver_Acceptance_Confirm_Title"),
+                            subtitle: deliveryText(allowed ? "Delivery_Driver_Acceptance_Revoke_Confirm" : "Delivery_Driver_Acceptance_Grant_Confirm"),
+                            confirmButton: deliveryText("Confirm"), cancelButton: deliveryText("Cancel"),
+                            icon: UIImage(systemName: "lock.shield"),
+                            confirmBlock: { _, didConfirm in
+                                guard didConfirm else { return }
+                                viewModel.setDriverSelfAcceptance(!allowed, driverUID: effectiveDriver.uid)
+                            }, cancelBlock: nil)
+                    } label: {
+                        Label(deliveryText(allowed ? "Delivery_Driver_Acceptance_Revoke" : "Delivery_Driver_Acceptance_Grant"),
+                              systemImage: allowed ? "lock" : "checkmark.shield")
+                            .font(AdminType.subheadlineBold)
+                            .foregroundColor(AdminSurface.primary)
+                            .frame(maxWidth: .infinity, minHeight: 52)
+                            .padding(.horizontal, 12)
+                            .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(viewModel.isExecuting || (!allowed && member?.status.lowercased() != "active"))
+                } else {
+                    Text(deliveryText("Delivery_Driver_Acceptance_Managed"))
+                        .font(AdminType.caption1)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+                if viewModel.memberConfirmationKey == "Delivery_Driver_Acceptance_Saved" {
+                    Label(deliveryText("Delivery_Driver_Acceptance_Saved"), systemImage: "checkmark.circle.fill")
+                        .font(AdminType.caption1)
+                        .foregroundColor(.green)
+                        .accessibilityAddTraits(.updatesFrequently)
+                }
+            }
+            .padding(18)
+        }
+    }
+
     private var managementActions: some View {
         if viewModel.canManageDrivers {
             AdminCard {
@@ -3035,7 +3194,7 @@ private struct DeliveryDriverInviteSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(deliveryText("Close"), action: onDismiss)
+                    SheetDismissButton(action: onDismiss)
                 }
             }
         }

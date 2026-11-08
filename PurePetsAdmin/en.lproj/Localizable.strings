@@ -13610,3 +13610,19 @@
 "Delivery_Driver_Account_Control_Subtitle" = "Suspending account access is separate from dispatch availability and needs confirmation.";
 
 "Driver_Proof_Assistance_Title" = "Proof verification required";
+
+/* Per-company driver acceptance authority */
+"Delivery_Driver_Acceptance_Title" = "Who can choose orders";
+"Delivery_Driver_Acceptance_Self" = "Can accept unassigned orders";
+"Delivery_Driver_Acceptance_Assigned" = "Assigned orders only";
+"Delivery_Driver_Acceptance_Self_Detail" = "May choose eligible unassigned deliveries in this company. Availability and assignment rules still apply.";
+"Delivery_Driver_Acceptance_Assigned_Detail" = "Receives only deliveries assigned specifically to this driver by the company.";
+"Delivery_Driver_Acceptance_Managed" = "Controlled by the company or an authorized operations admin.";
+"Delivery_Driver_Acceptance_Grant" = "Allow self-acceptance";
+"Delivery_Driver_Acceptance_Revoke" = "Require company assignment";
+"Delivery_Driver_Acceptance_Confirm_Title" = "Change this driver's permission?";
+"Delivery_Driver_Acceptance_Grant_Confirm" = "This driver will be able to accept eligible unassigned deliveries in this company without a dispatcher choosing them.";
+"Delivery_Driver_Acceptance_Revoke_Confirm" = "Only the company will assign new deliveries to this driver. Existing assigned deliveries will continue.";
+"Delivery_Driver_Acceptance_Saving" = "Confirming permission…";
+"Delivery_Driver_Acceptance_Saved" = "Permission confirmed";
+"Delivery_Driver_Acceptance_Sync_Error" = "Couldn't confirm the change. Check your connection and try again. Reopen the profile if its permissions changed.";

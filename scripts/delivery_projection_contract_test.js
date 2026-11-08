@@ -59,3 +59,18 @@ assert.match(dates, /nanosValue < 0 \|\| nanosValue >= 1000000000\.0/);
 assert.match(dates, /formatter\.formatOptions = NSISO8601DateFormatWithInternetDateTime;/);
 
 console.log("PASS: protected projection stays callable-only; errors, empty success, response shape, denied cache, refresh completion and timestamp compatibility checked (source contracts only).");
+
+
+const policy = between(service, "- (void)setDriverSelfAcceptance:", "- (void)fetchCompanyMembersForCompanyID:");
+for (const token of ['setDeliveryDriverAcceptancePolicy', '@"canSelfAcceptOrders"', '@"expectedRevision"',
+  '@"commandId"', '@"reason"', 'fetchCompanyMembersForCompanyID', 'member.canSelfAcceptOrders == allowed',
+  'member.revision >= revision.integerValue']) assert.ok(policy.includes(token), "Driver policy: " + token);
+const policyAction = between(view, "    func setDriverSelfAcceptance(", "    func inviteDriver(");
+assert.equal((policy.match(/currentUser\.uid isEqualToString:actorUID/g) || []).length, 2,
+  "Receipt and readback must stay bound to the issuing account");
+assert.match(policyAction, /member.canManageSelfAcceptance/);
+assert.match(policyAction, /acceptanceCommandIDs/);
+assert.match(policyAction, /guard self.officialCompanyID == companyID/);
+assert.match(view, /private var acceptancePolicyCard/);
+assert.match(view, /permissions.contains\("delivery.driver.manage_acceptance"\)/);
+console.log("PASS: driver acceptance management uses server authority, a stable command and confirmed target readback.");
