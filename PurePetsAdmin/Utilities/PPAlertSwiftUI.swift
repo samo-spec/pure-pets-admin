@@ -130,6 +130,12 @@ private final class PPAlertRequest: ObservableObject {
         if let placeholder, !placeholder.isEmpty { return placeholder }
         return Language.get("Alert_Input_Accessibility_Label", alter: nil)
     }
+    var resolvedPlaceholder: String {
+        if let placeholder, !placeholder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return placeholder
+        }
+        return Language.get("PPAlert_Default_Input_Placeholder", alter: isRTL ? "أدخل البيانات المطلوبة" : "Enter the required information")
+    }
     var usesLTRInput: Bool {
         switch keyboardType {
         case .emailAddress, .URL, .numberPad, .decimalPad, .phonePad,
@@ -406,26 +412,31 @@ private struct PPAlertSurface: View {
         GeometryReader { geometry in
             let margin: CGFloat = geometry.size.width < 360 ? 16 : 24
             let wide = geometry.size.width >= 600
-            let bottomMargin: CGFloat = wide ? margin : max(geometry.safeAreaInsets.bottom, 24) + 48
-            let topOffset: CGFloat = wide ? -44 : -16
-            let verticalAllowance: CGFloat = margin + bottomMargin + abs(topOffset)
+            let isKeyboardVisible = inputFocused || geometry.safeAreaInsets.bottom > 80
+            let normalBottomMargin = wide ? margin : max(geometry.safeAreaInsets.bottom, 24) + 48
+            let bottomMargin: CGFloat = isKeyboardVisible ? (wide ? margin : 12) : normalBottomMargin
+            let topOffset: CGFloat = isKeyboardVisible ? 0 : (wide ? -44 : -16)
+            let topPadding: CGFloat = isKeyboardVisible ? 12 : margin
+            let verticalAllowance: CGFloat = topPadding + bottomMargin + abs(topOffset)
+            let availableHeight = max(240, geometry.size.height - verticalAllowance)
             ZStack {
                 Color.black.opacity(0.36)
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
                     .onTapGesture { cancelIfAllowed() }
                     .accessibilityHidden(true)
-                decisionSurface(padding: margin, availableHeight: max(0, geometry.size.height - verticalAllowance))
+                decisionSurface(padding: margin, availableHeight: availableHeight)
                     .frame(maxWidth: wide ? 520 : 440)
-                    .frame(maxHeight: max(0, geometry.size.height - verticalAllowance),
+                    .frame(maxHeight: availableHeight,
                            alignment: wide ? .center : .bottom)
                     .padding(.horizontal, margin)
-                    .padding(.top, margin)
+                    .padding(.top, topPadding)
                     .padding(.bottom, bottomMargin)
                     .offset(y: topOffset)
                     .frame(maxWidth: .infinity, maxHeight: .infinity,
                            alignment: wide ? .center : .bottom)
             }
+            .animation(.spring(response: 0.35, dampingFraction: 0.86), value: isKeyboardVisible)
         }
         .environment(\.layoutDirection, request.isRTL ? .rightToLeft : .leftToRight)
         .environment(\.locale, Locale(identifier: request.languageCode))
@@ -551,9 +562,9 @@ private struct PPAlertSurface: View {
                 .accessibilityHidden(true)
             Group {
                 if request.secureEntry {
-                    SecureField("", text: $request.text)
+                    SecureField(request.resolvedPlaceholder, text: $request.text)
                 } else {
-                    TextField("", text: $request.text)
+                    TextField(request.resolvedPlaceholder, text: $request.text)
                 }
             }
             .font(PPBrandFont.regular(19, relativeTo: .body))

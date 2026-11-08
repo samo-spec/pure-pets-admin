@@ -34,19 +34,21 @@ private enum FulfillmentTokens {
     static let inkSecondary = AdminSurface.secondaryText
     static let inkTertiary = Color(uiColor: .ppTextTertiary)
 
-    // Vibrant Semantic Tones
-    static let amber = Color(red: 0.96, green: 0.62, blue: 0.05) // #F59E0B
-    static let amberSoft = Color(red: 0.96, green: 0.62, blue: 0.05).opacity(0.12)
-    static let blue = Color(red: 0.15, green: 0.39, blue: 0.92)  // #2563EB
-    static let blueSoft = Color(red: 0.15, green: 0.39, blue: 0.92).opacity(0.12)
-    static let indigo = Color(red: 0.39, green: 0.40, blue: 0.95) // #6366F1
-    static let indigoSoft = Color(red: 0.39, green: 0.40, blue: 0.95).opacity(0.12)
-    static let emerald = Color(red: 0.06, green: 0.73, blue: 0.51) // #10B981
-    static let emeraldSoft = Color(red: 0.06, green: 0.73, blue: 0.51).opacity(0.12)
-    static let crimson = Color(red: 0.94, green: 0.27, blue: 0.27) // #EF4444
-    static let crimsonSoft = Color(red: 0.94, green: 0.27, blue: 0.27).opacity(0.12)
-    static let neutral = Color(red: 0.39, green: 0.45, blue: 0.55) // #64748B
-    static let neutralSoft = Color(red: 0.39, green: 0.45, blue: 0.55).opacity(0.12)
+    // Vibrant Semantic Tones — Strictly Aligned with iOS PPOrderStatusAppearance
+    static let amber = Color(red: 1.0, green: 0.624, blue: 0.039) // Apple System Orange/Amber #FF9F0A (Placed / Pending)
+    static let amberSoft = Color(red: 1.0, green: 0.624, blue: 0.039).opacity(0.12)
+    static let blue = Color(red: 0.0, green: 0.478, blue: 1.0)     // Apple System Blue #007AFF (Confirmed / Paid)
+    static let blueSoft = Color(red: 0.0, green: 0.478, blue: 1.0).opacity(0.12)
+    static let indigo = Color(red: 0.345, green: 0.337, blue: 0.839) // Apple System Indigo #5856D6 (Preparing / Ready)
+    static let indigoSoft = Color(red: 0.345, green: 0.337, blue: 0.839).opacity(0.12)
+    static let purple = Color(red: 0.686, green: 0.322, blue: 0.871) // Apple System Purple/Violet #AF52DE (Assigned / In Transit)
+    static let purpleSoft = Color(red: 0.686, green: 0.322, blue: 0.871).opacity(0.12)
+    static let emerald = Color(red: 0.204, green: 0.780, blue: 0.349) // Apple System Green #34C759 (Delivered / Completed)
+    static let emeraldSoft = Color(red: 0.204, green: 0.780, blue: 0.349).opacity(0.12)
+    static let crimson = Color(red: 1.0, green: 0.271, blue: 0.227) // Apple System Red #FF453A (Cancelled / Delayed / Returned)
+    static let crimsonSoft = Color(red: 1.0, green: 0.271, blue: 0.227).opacity(0.12)
+    static let neutral = Color(red: 0.557, green: 0.557, blue: 0.576) // Apple System Gray #8E8E93 (Neutral / Hold)
+    static let neutralSoft = Color(red: 0.557, green: 0.557, blue: 0.576).opacity(0.12)
 
     static let cornerSmall: CGFloat = 10
     static let cornerMedium: CGFloat = 16
@@ -306,14 +308,38 @@ struct FulfillmentRecordSnapshot: Identifiable, Sendable {
     }
 
     var statusTone: Color {
-        switch status {
-        case "new_request", "pending": return FulfillmentTokens.amber
-        case "accepted", "preparing", "processing", "in_progress": return FulfillmentTokens.blue
-        case "ready_for_pickup", "delivery_requested": return FulfillmentTokens.indigo
-        case "delivery_assigned", "awaiting_handover", "handed_over", "picked_up", "in_transit": return Color.purple
-        case "delivered", "payment_confirmed", "completed": return FulfillmentTokens.emerald
-        case "cancelled", "rejected", "failed", "returned": return FulfillmentTokens.crimson
-        default: return FulfillmentTokens.neutral
+        let key = status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch key {
+        // Cancelled / Delayed / Returned / Failed / Rejected -> System Red (#FF453A)
+        case "delivery_cancelled", "cancelled", "canceled", "abandoned",
+             "returned_to_store", "returned", "refunded", "partially_refunded",
+             "delivery_delayed", "delivery_failed", "failed", "rejected", "declined", "expired", "voided", "error":
+            return FulfillmentTokens.crimson
+
+        // Delivered / Completed -> System Green (#34C759)
+        case "completed", "fulfilled", "closed", "delivered":
+            return FulfillmentTokens.emerald
+
+        // Assigned / In Transit / Out for Delivery / Shipped / Handed Over / Picked Up -> System Violet (#AF52DE)
+        case "picked_up", "in_transit", "out_for_delivery", "on_the_way", "shipped", "shipping", "handed_over",
+             "delivery_partner_assigned", "delivery_assigned", "awaiting_handover", "accepted_by_company", "assigned_to_driver":
+            return FulfillmentTokens.purple
+
+        // Ready / Preparing / Accepted -> System Indigo (#5856D6)
+        case "ready_for_delivery", "ready_to_ship", "delivery_requested", "delivery_reassigned", "ready_for_pickup", "ready",
+             "preparing_for_shipment", "processing", "preparing", "packed", "start_preparing", "accepted", "in_progress":
+            return FulfillmentTokens.indigo
+
+        // Confirmed / Paid -> System Blue (#007AFF)
+        case "confirmed", "paid", "payment_confirmed", "payment_verified", "payment_collected", "success", "approved", "captured", "authorized", "verified":
+            return FulfillmentTokens.blue
+
+        // Placed / Pending / New Request -> System Amber (#FF9F0A)
+        case "pending", "placed", "created", "new_request", "waiting", "payment_pending", "pending_review", "pending_collection":
+            return FulfillmentTokens.amber
+
+        default:
+            return FulfillmentTokens.neutral
         }
     }
 
@@ -405,19 +431,107 @@ struct FulfillmentEventSnapshot: Identifiable, Sendable {
         }
     }
     var displayAction: String {
-        let key: String
-        switch eventType {
-        case "accept": key = "Fulfillment_Quick_Accept"
-        case "start_preparing": key = "Fulfillment_Quick_Prepare"
-        case "mark_ready": key = "Fulfillment_Quick_Ready"
-        case "request_delivery": key = "Fulfillment_Quick_Request_Delivery"
-        case "reject": key = "Fulfillment_Status_Rejected"
-        case "cancel_request": key = "Fulfillment_Status_Cancelled"
-        case "confirm_handover": key = "Fulfillment_Status_HandedOver"
-        case "admin_override": key = "Fulfillment_Admin_Override_Title"
-        default: return eventType
+        let clean = eventType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let isRTL = Language.isRTL()
+        switch clean {
+        case "created", "fulfillment_created":
+            return Language.get("Fulfillment_Event_Created", alter: isRTL ? "إنشاء سجل التنفيذ" : "Fulfillment created")
+        case "status_changed":
+            return Language.get("Fulfillment_Event_StatusChanged", alter: isRTL ? "تحديث حالة التنفيذ" : "Status changed")
+        case "payment_confirmed":
+            return Language.get("Fulfillment_Event_PaymentConfirmed", alter: isRTL ? "تأكيد الدفع" : "Payment confirmed")
+        case "accept":
+            return Language.get("Fulfillment_Quick_Accept", alter: isRTL ? "قبول الطلب" : "Accept order")
+        case "start_preparing":
+            return Language.get("Fulfillment_Quick_Prepare", alter: isRTL ? "بدء التجهيز" : "Start preparing")
+        case "mark_ready", "ready_for_pickup":
+            return Language.get("Fulfillment_Quick_Ready", alter: isRTL ? "تأكيد الجاهزية للشحن" : "Ready for pickup")
+        case "request_delivery":
+            return Language.get("Fulfillment_Quick_Request_Delivery", alter: isRTL ? "طلب مندوب توصيل" : "Request delivery")
+        case "reject":
+            return Language.get("Fulfillment_Status_Rejected", alter: isRTL ? "رفض الطلب" : "Reject order")
+        case "cancel_request":
+            return Language.get("Fulfillment_Status_Cancelled", alter: isRTL ? "إلغاء الطلب" : "Cancel order")
+        case "confirm_handover", "handed_over":
+            return Language.get("Fulfillment_Status_HandedOver", alter: isRTL ? "تأكيد التسليم للمندوب" : "Handed over to driver")
+        case "order_accept_delivery":
+            return Language.get("Fulfillment_Event_AcceptDelivery", alter: isRTL ? "قبول مهمة التوصيل" : "Delivery accepted")
+        case "order_confirm_handover":
+            return Language.get("Fulfillment_Event_ConfirmHandover", alter: isRTL ? "تأكيد استلام الشحنة" : "Handover confirmed")
+        case "order_mark_shipped":
+            return Language.get("Fulfillment_Event_MarkShipped", alter: isRTL ? "استلام الشحنة من المتجر" : "Order shipped / picked up")
+        case "order_mark_in_transit":
+            return Language.get("Fulfillment_Event_MarkInTransit", alter: isRTL ? "بدء النقل (في الطريق)" : "In transit")
+        case "order_mark_delivered":
+            return Language.get("Fulfillment_Event_MarkDelivered", alter: isRTL ? "تأكيد التوصيل للعميل" : "Delivered to customer")
+        case "order_collect_payment":
+            return Language.get("Fulfillment_Event_CollectPayment", alter: isRTL ? "تحصيل الدفع عند الاستلام" : "Payment collected")
+        case "order_mark_completed":
+            return Language.get("Fulfillment_Event_MarkCompleted", alter: isRTL ? "إكمال الطلب والتوصيل" : "Order completed")
+        case "order_cancel_delivery":
+            return Language.get("Fulfillment_Event_CancelDelivery", alter: isRTL ? "إلغاء مهمة التوصيل" : "Delivery cancelled")
+        case "order_cancel":
+            return Language.get("Fulfillment_Status_Cancelled", alter: isRTL ? "إلغاء الطلب" : "Order cancelled")
+        case "admin_override", "fulfillment_admin_override":
+            return Language.get("Fulfillment_Admin_Override_Title", alter: isRTL ? "تعديل الحالة الإداري" : "Admin override")
+        default:
+            if clean.hasPrefix("official_fulfillment_initialized_") {
+                let suffix = clean.replacingOccurrences(of: "official_fulfillment_initialized_", with: "")
+                return isRTL ? "بدء التنفيذ الرسمي: \(suffix)" : "Official fulfillment initialized: \(suffix)"
+            }
+            return clean.replacingOccurrences(of: "_", with: " ").capitalized
         }
-        return Language.get(key, alter: eventType)
+    }
+
+    var displayActorRole: String? {
+        guard let actorRole, !actorRole.isEmpty else { return nil }
+        let clean = actorRole.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let isRTL = Language.isRTL()
+        switch clean {
+        case "platform_admin", "admin":
+            return Language.get("Fulfillment_Actor_Admin", alter: isRTL ? "إدارة المنصة" : "Platform Admin")
+        case "platform_staff":
+            return Language.get("Fulfillment_Actor_PlatformStaff", alter: isRTL ? "موظف المنصة" : "Platform Staff")
+        case "staff":
+            return Language.get("Fulfillment_Actor_Staff", alter: isRTL ? "الموظف" : "Staff")
+        case "delivery", "driver":
+            return Language.get("Fulfillment_Actor_Delivery", alter: isRTL ? "مندوب التوصيل" : "Delivery Driver")
+        case "provider":
+            return Language.get("Fulfillment_Actor_Provider", alter: isRTL ? "المتجر" : "Provider / Store")
+        case "system":
+            return Language.get("Fulfillment_Actor_System", alter: isRTL ? "النظام" : "System")
+        case "customer":
+            return Language.get("Fulfillment_Actor_Customer", alter: isRTL ? "العميل" : "Customer")
+        default:
+            return clean.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+
+    var displayNote: String? {
+        guard let note, !note.isEmpty else { return nil }
+        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isRTL = Language.isRTL()
+        if trimmed.hasPrefix("Driver task:") {
+            let task = trimmed.replacingOccurrences(of: "Driver task:", with: "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            switch task {
+            case "COMPLETE":
+                return isRTL ? "مهمة السائق: إكمال الطلب" : "Driver task: Complete order"
+            case "CONFIRM_PAYMENT":
+                return isRTL ? "مهمة السائق: تحصيل الدفع" : "Driver task: Confirm payment"
+            case "DELIVER":
+                return isRTL ? "مهمة السائق: تسليم الشحنة" : "Driver task: Deliver to customer"
+            case "START_TRANSIT":
+                return isRTL ? "مهمة السائق: بدء النقل" : "Driver task: Start transit"
+            case "PICK_UP", "PICKUP":
+                return isRTL ? "مهمة السائق: استلام الشحنة" : "Driver task: Pick up package"
+            default:
+                return isRTL ? "مهمة السائق: \(task)" : "Driver task: \(task)"
+            }
+        }
+        if trimmed == "Staff accepted delivery and assigned an eligible driver." {
+            return isRTL ? "تم قبول مهمة التوصيل وتعيين مندوب مؤهل." : "Staff accepted delivery and assigned an eligible driver."
+        }
+        return trimmed
     }
 
 }
@@ -2031,6 +2145,7 @@ struct FulfillmentDossierView: View {
             title: currentRecord.parentOrderNumber,
             subtitle: currentRecord.displayStatus,
             statusDotColor: currentRecord.statusTone,
+            customTopSpacing: 0,
             onBack: {
                 if let onDismiss {
                     onDismiss()
@@ -2520,15 +2635,18 @@ struct FulfillmentDossierView: View {
                                 }
 
                                 if let actor = ev.actorUID, !actor.isEmpty {
-                                    Text([ev.actorRole, actor].compactMap { $0 }.joined(separator: " · "))
+                                    let roleTitle = ev.displayActorRole ?? ev.actorRole
+                                    Text([roleTitle, actor].compactMap { $0 }.joined(separator: " · "))
                                         .font(AdminType.caption2)
                                         .foregroundStyle(FulfillmentTokens.inkTertiary)
                                         .environment(\.layoutDirection, .leftToRight)
                                         .textSelection(.enabled)
                                 }
-                                if let note = ev.note, !note.isEmpty {
+                                if let note = ev.displayNote, !note.isEmpty {
                                     Text(note)
                                         .font(AdminType.caption2)
+                                        .foregroundStyle(FulfillmentTokens.inkSecondary)
+                                }
                                         .foregroundStyle(FulfillmentTokens.inkSecondary)
                                 }
                             }
@@ -2542,67 +2660,187 @@ struct FulfillmentDossierView: View {
         .overlay(RoundedRectangle(cornerRadius: FulfillmentTokens.cornerCard, style: .continuous).stroke(FulfillmentTokens.hairline))
     }
 
-    // 7. Sticky Command Dock
+    // 7. Sticky Command Dock — NextGen V7 Studio Reinvention
     private var stickyCommandDock: some View {
         VStack(spacing: 8) {
+            // Live Status Notifications / Progress
             if let progress = actionModel.actionProgressMessage {
-                Label(progress, systemImage: "arrow.triangle.2.circlepath").font(AdminType.caption1)
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .scaleEffect(0.75)
+                    Text(progress)
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(FulfillmentTokens.inkPrimary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(Capsule().stroke(FulfillmentTokens.hairline, lineWidth: 0.75))
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
             if let error = actionModel.errorMessage {
                 AdminErrorBanner(message: error, retry: {
                     if actionModel.hasQuickActionRetry { actionModel.retryLastQuickAction() }
                     else { restartRecordListener() }
                 })
+                .transition(.opacity)
             }
             if let success = actionModel.actionSuccessToast {
-                Text(success).font(AdminType.caption1).foregroundStyle(FulfillmentTokens.emerald)
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 13, weight: .bold))
+                    Text(success)
+                        .font(AdminType.caption2Bold)
+                }
+                .foregroundStyle(FulfillmentTokens.emerald)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(FulfillmentTokens.emeraldSoft, in: Capsule())
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
-            HStack(spacing: 12) {
-                // Next Quick Action Button
+
+            // NextGen V7 Command Island
+            HStack(spacing: 10) {
                 if let action = currentRecord.nextQuickAction {
+                    // Active Stage: Primary Action Advance Button
                     Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         actionModel.quickAdvance(record: currentRecord, targetStatus: action.targetStatus)
                     } label: {
-                        HStack {
+                        HStack(spacing: 8) {
                             Image(systemName: action.symbol)
+                                .font(.system(size: 16, weight: .bold))
                             Text(action.title)
+                                .font(AdminType.subheadlineBold)
                         }
-                        .font(AdminType.subheadlineBold)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(currentRecord.statusTone, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .shadow(color: currentRecord.statusTone.opacity(0.35), radius: 8, y: 3)
+                        .frame(height: 52)
+                        .background(
+                            LinearGradient(
+                                colors: [currentRecord.statusTone, currentRecord.statusTone.opacity(0.88)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(Color.white.opacity(0.24), lineWidth: 1)
+                        )
+                        .shadow(color: currentRecord.statusTone.opacity(0.32), radius: 10, x: 0, y: 5)
                     }
                     .buttonStyle(.plain)
                     .disabled(!canAct)
-                }
 
-                // Open Parent Order in Payments
-                if !currentRecord.parentOrderID.isEmpty {
-                    Button {
-                        onOpenParentOrder(currentRecord.parentOrderID)
-                    } label: {
-                        Image(systemName: "creditcard.fill")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(FulfillmentTokens.inkPrimary)
-                            .frame(width: 50, height: 50)
-                            .background(FulfillmentTokens.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(FulfillmentTokens.hairline))
+                    // Secondary: Open Parent Order Button
+                    if !currentRecord.parentOrderID.isEmpty {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            onOpenParentOrder(currentRecord.parentOrderID)
+                        } label: {
+                            Image(systemName: "creditcard.fill")
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundStyle(FulfillmentTokens.inkPrimary)
+                                .frame(width: 52, height: 52)
+                                .background(Color(uiColor: .ppElevatedSurface), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .stroke(FulfillmentTokens.hairline, lineWidth: 1)
+                                )
+                                .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 3)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Language.get("Fulfillment_View_Parent_Order", alter: "فتح الطلب في المدفوعات"))
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Language.get("Fulfillment_View_Parent_Order", alter: "فتح الطلب في المدفوعات"))
+                } else {
+                    // Terminal / Completed / Read-Only State: Balanced Command Capsule
+                    HStack(spacing: 12) {
+                        // Status Badge on Leading
+                        HStack(spacing: 10) {
+                            ZStack {
+                                Circle()
+                                    .fill(currentRecord.statusTone.opacity(0.14))
+                                    .frame(width: 38, height: 38)
+                                Image(systemName: currentRecord.statusSymbol)
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundStyle(currentRecord.statusTone)
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(currentRecord.displayStatus)
+                                    .font(AdminType.subheadlineBold)
+                                    .foregroundStyle(currentRecord.statusTone)
+                                Text(Language.isRTL() ? "تم إغلاق دورة التنفيذ" : "Fulfillment cycle finalized")
+                                    .font(AdminType.caption2)
+                                    .foregroundStyle(FulfillmentTokens.inkSecondary)
+                            }
+                        }
+
+                        Spacer(minLength: 8)
+
+                        // Parent Order Navigation Button on Trailing
+                        if !currentRecord.parentOrderID.isEmpty {
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                onOpenParentOrder(currentRecord.parentOrderID)
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "creditcard.fill")
+                                        .font(.system(size: 13, weight: .bold))
+                                    Text(Language.isRTL() ? "سجل المدفوعات والطلب" : "Payment & Order")
+                                        .font(AdminType.captionBold)
+                                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                                        .font(.system(size: 10, weight: .bold))
+                                }
+                                .foregroundStyle(FulfillmentTokens.inkPrimary)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(Color(uiColor: .ppElevatedSurface), in: Capsule())
+                                .overlay(Capsule().stroke(FulfillmentTokens.hairline, lineWidth: 1))
+                                .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(Language.get("Fulfillment_View_Parent_Order", alter: "فتح الطلب في المدفوعات"))
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .frame(height: 52)
                 }
             }
+            .padding(8)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color(uiColor: .ppElevatedSurface).opacity(0.92))
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.45), Color.white.opacity(0.12)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(color: Color.black.opacity(0.08), radius: 18, x: 0, y: 8)
+            .shadow(color: currentRecord.statusTone.opacity(0.16), radius: 12, x: 0, y: 4)
         }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.top, 12)
-        .padding(.bottom, 24)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
         .background(
-            FulfillmentTokens.canvas
-                .opacity(0.95)
-                .background(.ultraThinMaterial)
-                .ignoresSafeArea(edges: .bottom)
+            LinearGradient(
+                colors: [
+                    FulfillmentTokens.canvas.opacity(0.0),
+                    FulfillmentTokens.canvas.opacity(0.7),
+                    FulfillmentTokens.canvas.opacity(0.95)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea(edges: .bottom)
         )
     }
 

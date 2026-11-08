@@ -9,7 +9,7 @@
 
 NSString * const PPStaffIAMPolicyVersion = @"2.0.0-draft.1";
 NSString * const PPStaffIAMSchemaVersion = @"2.0.0";
-NSString * const PPStaffIAMPolicySHA256 = @"5e6f49f7c9c361c41e4a4919b0c44320e8455cb474d000859f3b9b7c3054d435";
+NSString * const PPStaffIAMPolicySHA256 = @"f6e761e18b7ec5e3eb7e1a3f9ab857f6b41f3975e232b1294094f273d30365ca";
 
 #pragma mark - Role Definitions
 
@@ -201,6 +201,7 @@ NSString * const kStaffPermPosCreditClear = @"pos.credit.clear";
 NSString * const kStaffPermPosCreditWriteoff = @"pos.credit.writeoff";
 NSString * const kStaffPermPosCreditRefund = @"pos.credit.refund";
 NSString * const kStaffPermDeliveryTasksManage = @"delivery.tasks.manage";
+NSString * const kStaffPermDeliveryDriverManageAcceptance = @"delivery.driver.manage_acceptance";
 
 #pragma mark - Catalog Accessor Implementations
 
@@ -404,6 +405,7 @@ NSArray<NSString *> * PPStaffAllPermissionKeys(void) {
             kStaffPermPosCreditWriteoff,
             kStaffPermPosCreditRefund,
             kStaffPermDeliveryTasksManage,
+            kStaffPermDeliveryDriverManageAcceptance,
         ];
     });
     return keys;
@@ -516,6 +518,7 @@ NSArray<NSDictionary<NSString *, id> *> * PPStaffPermissionModules(void) {
                    @{ @"key": @"delivery.cod.reconcile", @"labelEn": @"Reconcile cash on delivery", @"labelAr": @"تسوية الدفع عند الاستلام", @"riskTier": @"T3", @"protected": @YES },
                    @{ @"key": @"delivery.settings.manage", @"labelEn": @"Manage delivery settings", @"labelAr": @"إدارة إعدادات التوصيل", @"riskTier": @"T4", @"protected": @YES },
                    @{ @"key": @"delivery.tasks.manage", @"labelEn": @"Manage own delivery tasks", @"labelAr": @"إدارة مهام التوصيل الخاصة بي", @"riskTier": @"T2", @"protected": @NO },
+                   @{ @"key": @"delivery.driver.manage_acceptance", @"labelEn": @"Manage driver self-acceptance", @"labelAr": @"إدارة صلاحية قبول السائق للطلبات", @"riskTier": @"T2", @"protected": @NO },
                ] },
             @{ @"key": @"pos",
                @"labelEn": @"Point of Sale",
@@ -849,6 +852,7 @@ NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role) {
             kStaffPermIamPolicyRead,
             kStaffPermIamPolicyUpdate,
             kStaffPermIamRootAssign,
+            kStaffPermDeliveryDriverManageAcceptance,
         ];
     }
 
@@ -954,6 +958,7 @@ NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role) {
             kStaffPermCommunityConfigurationManage,
             kStaffPermCommunityAnalyticsView,
             kStaffPermCommunityAuditView,
+            kStaffPermDeliveryDriverManageAcceptance,
         ];
     }
 
