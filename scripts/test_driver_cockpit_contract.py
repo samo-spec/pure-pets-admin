@@ -61,7 +61,8 @@ class DriverCockpitContractTests(unittest.TestCase):
 
     def test_proof_receiver_respects_rtl_and_bidi_isolation(self):
         self.assertIn('[Language alignmentForCurrentLanguage]', COCKPIT)
-        self.assertIn(r'\u2068#%@\u2069', COCKPIT)
+        self.assertIn(r'\u{2066}#\(num)\u{2069}', MANAGEMENT)
+        self.assertIn('Text(model.orderNumberIsolated)', MANAGEMENT)
 
     def test_telemetry_beacon_respects_reduce_motion(self):
         self.assertIn('PPDriverPulseBeaconView', COCKPIT)

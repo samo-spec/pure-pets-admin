@@ -3153,3 +3153,482 @@ private struct DeliveryCompanyCardButtonStyle: ButtonStyle {
             .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: configuration.isPressed)
     }
 }
+
+// MARK: - Category-Defining Driver Task SwiftUI Card (NextGen V7)
+
+public struct PPDriverTaskCardModel: Equatable {
+    public let taskId: String
+    public let authority: String
+    public let rawOrderNumber: String
+    public let orderNumberIsolated: String
+    public let status: String
+    public let statusText: String
+    public let statusColor: Color
+    public let pickupTitle: String
+    public let pickupAddress: String
+    public let dropoffTitle: String
+    public let dropoffAddress: String
+    public let customerName: String
+    public let isMine: Bool
+    public let isFocused: Bool
+    public let isDetail: Bool
+    public let cashRequired: Bool
+    public let cashCollected: Bool
+    public let cashAmountText: String?
+    public let actionLabel: String
+
+    public init(from task: [String: Any], focused: Bool, detail: Bool) {
+        self.taskId = (task["taskId"] as? String) ?? ""
+        self.authority = (task["authority"] as? String) ?? ""
+
+        let num = (task["orderNumber"] as? String) ?? ""
+        self.rawOrderNumber = num
+        self.orderNumberIsolated = num.isEmpty ? "#PP-TASK" : "\u{2066}#\(num)\u{2069}"
+
+        let rawStatus = (task["status"] as? String) ?? ""
+        self.status = rawStatus
+
+        let statusKeys: [String: String] = [
+            "delivery_requested": "Driver_Status_New",
+            "accepted_by_company": "Driver_Status_New",
+            "delivery_assigned": "Driver_Status_Handover",
+            "awaiting_handover": "Driver_Status_Pickup",
+            "assigned_to_driver": "Driver_Status_Pickup",
+            "handed_over": "Driver_Status_Collected",
+            "picked_up": "Driver_Status_Collected",
+            "in_transit": "Driver_Status_Transit",
+            "delivered": "Driver_Status_Delivered",
+            "payment_pending": "Driver_Status_Payment",
+            "payment_confirmed": "Driver_Status_Paid",
+            "completed": "Driver_Status_Complete",
+            "cancelled": "Driver_Status_Cancelled",
+            "failed": "Driver_Status_Attention",
+            "returned": "Driver_Status_Returned",
+            "rejected": "Driver_Status_Cancelled"
+        ]
+        let stKey = statusKeys[rawStatus] ?? "Driver_Status_Updated"
+        self.statusText = deliveryText(stKey)
+
+        switch rawStatus.lowercased() {
+        case "delivered", "completed", "payment_confirmed":
+            self.statusColor = AdminSurface.emerald
+        case "in_transit", "handed_over", "picked_up":
+            self.statusColor = Color(red: 0.18, green: 0.48, blue: 0.96)
+        case "delivery_assigned", "awaiting_handover", "assigned_to_driver", "delivery_requested", "payment_pending":
+            self.statusColor = AdminSurface.amber
+        case "cancelled", "failed", "rejected", "returned":
+            self.statusColor = AdminSurface.crimson
+        default:
+            self.statusColor = AdminSurface.primary
+        }
+
+        let pickupDict = deliveryDictionary(task["pickup"])
+        let dropoffDict = deliveryDictionary(task["dropoff"])
+        self.pickupTitle = deliveryText("Driver_Pickup")
+        self.pickupAddress = PPDriverTaskCardModel.formatAddress(pickupDict)
+        self.dropoffTitle = deliveryText("Driver_Dropoff")
+        self.dropoffAddress = PPDriverTaskCardModel.formatAddress(dropoffDict)
+
+        self.customerName = (task["customerName"] as? String) ?? ""
+        self.isMine = (task["mine"] as? Bool) ?? ((task["mine"] as? NSNumber)?.boolValue ?? false)
+        self.isFocused = focused
+        self.isDetail = detail
+
+        let cashDict = deliveryDictionary(task["cash"])
+        let req = (cashDict["required"] as? Bool) ?? ((cashDict["required"] as? NSNumber)?.boolValue ?? false)
+        let col = (cashDict["collected"] as? Bool) ?? ((cashDict["collected"] as? NSNumber)?.boolValue ?? false)
+        self.cashRequired = req
+        self.cashCollected = col
+
+        if req && !col {
+            let amount = cashDict["amount"] as? NSNumber
+            let currency = (cashDict["currency"] as? String) ?? ""
+            if let amount = amount, !currency.isEmpty {
+                let formatter = NumberFormatter()
+                formatter.locale = Locale(identifier: Language.currentLanguageCode())
+                formatter.numberStyle = .currency
+                formatter.currencyCode = currency
+                let formatted = formatter.string(from: amount) ?? "\(amount) \(currency)"
+                self.cashAmountText = deliveryFormat("Driver_Cash_Format", formatted)
+            } else {
+                self.cashAmountText = deliveryText("Driver_Cash_Unavailable")
+            }
+        } else {
+            self.cashAmountText = nil
+        }
+
+        let actions = (task["actions"] as? [String]) ?? []
+        let nextAction = actions.first ?? ""
+        if focused && isMine && !nextAction.isEmpty {
+            let actionKey: String
+            switch nextAction.uppercased() {
+            case "CLAIM": actionKey = "Driver_Action_Claim"
+            case "PICK_UP": actionKey = "Driver_Action_Pickup"
+            case "START_TRANSIT": actionKey = "Driver_Action_Transit"
+            case "DELIVER": actionKey = "Driver_Action_Deliver"
+            case "CONFIRM_PAYMENT": actionKey = "Driver_Action_Cash"
+            case "COMPLETE": actionKey = "Driver_Action_Complete"
+            default: actionKey = "Driver_Open"
+            }
+            self.actionLabel = deliveryFormat("Driver_Review_Next_Format", deliveryText(actionKey))
+        } else {
+            self.actionLabel = deliveryText("Driver_Open")
+        }
+    }
+
+    private static func formatAddress(_ address: [String: Any]) -> String {
+        for key in ["formattedAddress", "fullAddress", "address", "addressLine1", "label"] {
+            if let str = address[key] as? String, !str.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return str
+            }
+        }
+        var parts: [String] = []
+        for key in ["buildingNumber", "streetName", "street", "zoneNumber", "area", "city"] {
+            if let str = address[key] as? String, !str.isEmpty, !parts.contains(str) {
+                parts.append(str)
+            } else if let num = address[key] as? NSNumber {
+                let s = num.stringValue
+                if !s.isEmpty && !parts.contains(s) { parts.append(s) }
+            }
+        }
+        return parts.isEmpty ? deliveryText("Driver_Address_Pending") : parts.joined(separator: " · ")
+    }
+}
+
+public struct PPDriverTaskSwiftUICardView: View {
+    public let model: PPDriverTaskCardModel
+    @Environment(\.layoutDirection) private var layoutDirection
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    public init(model: PPDriverTaskCardModel) {
+        self.model = model
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header Row: Status Capsule + Monospaced Order Identifier
+            headerRow
+
+            // Subtle hairline divider
+            Rectangle()
+                .fill(AdminSurface.hairline.opacity(0.45))
+                .frame(height: 0.5)
+
+            // Route Journey Visualizer
+            flightPathSection
+
+            // Cash on Delivery Card (if required)
+            if model.cashRequired && !model.cashCollected, let cashText = model.cashAmountText {
+                cashVaultCard(cashText)
+            }
+
+            // Claiming info / Recipient details
+            if !model.isMine {
+                HStack(spacing: 8) {
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    Text(deliveryText("Driver_Private_Until_Claim"))
+                        .font(AdminType.footnote)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .multilineTextAlignment(.leading)
+                }
+                .padding(.horizontal, 4)
+            }
+
+            if model.isDetail && !model.customerName.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(deliveryText("Driver_Receiver"))
+                        .font(AdminType.caption)
+                        .fontWeight(.bold)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    Text(model.customerName)
+                        .font(AdminType.headline)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                .padding(.horizontal, 4)
+            }
+
+            // Action Dock Affordance
+            if !model.isDetail {
+                actionDockRow
+            }
+        }
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: model.isFocused ? 24 : 20, style: .continuous)
+                .fill(AdminSurface.card)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: model.isFocused ? 24 : 20, style: .continuous)
+                .stroke(
+                    model.isFocused
+                        ? AdminSurface.primary.opacity(0.42)
+                        : AdminSurface.hairline.opacity(0.65),
+                    lineWidth: model.isFocused ? 1.5 : 1.0
+                )
+        )
+        .shadow(
+            color: model.isFocused
+                ? AdminSurface.primary.opacity(0.12)
+                : Color.black.opacity(0.04),
+            radius: model.isFocused ? 14 : 7,
+            x: 0,
+            y: model.isFocused ? 6 : 2
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilitySummary)
+        .accessibilityHint(model.isDetail ? "" : deliveryText("Driver_Open"))
+    }
+
+    private var headerRow: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 10) {
+                statusCapsule
+                Spacer(minLength: 8)
+                orderBadge
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    statusCapsule
+                    Spacer()
+                }
+                orderBadge
+            }
+        }
+    }
+
+    private var statusCapsule: some View {
+        HStack(spacing: 7) {
+            ZStack {
+                Circle()
+                    .fill(model.statusColor.opacity(0.28))
+                    .frame(width: 14, height: 14)
+                Circle()
+                    .fill(model.statusColor)
+                    .frame(width: 7, height: 7)
+            }
+
+            Text(model.statusText)
+                .font(AdminType.caption)
+                .fontWeight(.bold)
+                .foregroundStyle(model.statusColor)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(
+            Capsule(style: .continuous)
+                .fill(model.statusColor.opacity(0.12))
+        )
+    }
+
+    private var orderBadge: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "shippingbox.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(AdminSurface.secondaryText)
+
+            Text(model.orderNumberIsolated)
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .foregroundStyle(AdminSurface.primaryText)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color(uiColor: .ppBackgroundSecondary).opacity(0.75))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(AdminSurface.hairline.opacity(0.6), lineWidth: 0.5)
+        )
+    }
+
+    private var flightPathSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Pickup Stop
+            HStack(alignment: .top, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(AdminSurface.primary.opacity(0.12))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: "shippingbox.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(model.pickupTitle.uppercased())
+                        .font(AdminType.caption)
+                        .fontWeight(.bold)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .tracking(0.5)
+
+                    Text(model.pickupAddress)
+                        .font(AdminType.bodyBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            // Connecting vertical dashed filament
+            HStack(spacing: 0) {
+                VStack(spacing: 3) {
+                    ForEach(0..<4) { _ in
+                        Circle()
+                            .fill(AdminSurface.hairline.opacity(0.9))
+                            .frame(width: 2.5, height: 2.5)
+                    }
+                }
+                .frame(width: 32)
+                .padding(.vertical, 4)
+
+                Spacer()
+            }
+
+            // Dropoff Stop
+            HStack(alignment: .top, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(AdminSurface.emerald.opacity(0.14))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: "mappin.and.ellipse")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(AdminSurface.emerald)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(model.dropoffTitle.uppercased())
+                        .font(AdminType.caption)
+                        .fontWeight(.bold)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .tracking(0.5)
+
+                    Text(model.dropoffAddress)
+                        .font(AdminType.bodyBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if model.isMine && !model.customerName.isEmpty {
+                        HStack(spacing: 6) {
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                            Text(model.customerName)
+                                .font(AdminType.subheadline)
+                                .foregroundStyle(AdminSurface.primaryText)
+                        }
+                        .padding(.top, 2)
+                    }
+                }
+            }
+        }
+    }
+
+    private func cashVaultCard(_ cashText: String) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(AdminSurface.amber.opacity(0.18))
+                    .frame(width: 36, height: 36)
+                Image(systemName: "banknote.fill")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(AdminSurface.amber)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(deliveryText("Driver_Status_Payment"))
+                    .font(AdminType.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(AdminSurface.secondaryText)
+
+                Text(cashText)
+                    .font(.system(size: 15, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AdminSurface.primaryText)
+            }
+
+            Spacer()
+
+            Image(systemName: "shield.lefthalf.filled")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(AdminSurface.amber.opacity(0.85))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(AdminSurface.amber.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(AdminSurface.amber.opacity(0.26), lineWidth: 1)
+        )
+    }
+
+    private var actionDockRow: some View {
+        HStack {
+            HStack(spacing: 7) {
+                if model.isFocused && model.isMine {
+                    Circle()
+                        .fill(AdminSurface.primary)
+                        .frame(width: 7, height: 7)
+                }
+                Text(model.actionLabel)
+                    .font(AdminType.subheadlineBold)
+                    .foregroundStyle(AdminSurface.primary)
+            }
+
+            Spacer()
+
+            Image(systemName: layoutDirection == .rightToLeft ? "chevron.left" : "chevron.right")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(AdminSurface.primary)
+        }
+        .padding(.top, 2)
+    }
+
+    private var accessibilitySummary: String {
+        var items = [
+            model.orderNumberIsolated,
+            model.statusText,
+            model.pickupTitle,
+            model.pickupAddress,
+            model.dropoffTitle,
+            model.dropoffAddress
+        ]
+        if let cash = model.cashAmountText {
+            items.append(cash)
+        }
+        if !model.customerName.isEmpty {
+            items.append(model.customerName)
+        }
+        return items.joined(separator: ", ")
+    }
+}
+
+// MARK: - Category-Defining PPDriverTaskCellBridge
+
+@MainActor
+@objc(PPDriverTaskCellBridge)
+public final class PPDriverTaskCellBridge: NSObject {
+    @objc public static func configure(cell: UITableViewCell,
+                                       task: [String: Any],
+                                       focused: Bool,
+                                       detail: Bool) {
+        cell.backgroundColor = .clear
+        cell.selectionStyle = .none
+        let model = PPDriverTaskCardModel(from: task, focused: focused, detail: detail)
+        if #available(iOS 16.0, *) {
+            cell.contentConfiguration = UIHostingConfiguration {
+                PPDriverTaskSwiftUICardView(model: model)
+            }
+            .margins(.horizontal, 16)
+            .margins(.vertical, 6)
+        }
+    }
+}

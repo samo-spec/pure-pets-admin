@@ -393,6 +393,13 @@ public struct PlatformRoleModel: Identifiable, Hashable, Sendable {
     public let permissions: Set<String>
     public let assignedStaffUids: Set<String>
     public var revision: Int = 0
+    public var isModifiedBuiltIn: Bool = false
+    public var overrideDocumentId: String? = nil
+    public var builtInOverrideKey: String? = nil
+
+    public var canResetToDefault: Bool {
+        isBuiltIn && isModifiedBuiltIn
+    }
 
     public var localizedTitle: String {
         Language.isRTL() ? titleAr : titleEn
@@ -420,13 +427,17 @@ public struct PlatformRoleModel: Identifiable, Hashable, Sendable {
         hasher.combine(rank)
         hasher.combine(permissions)
         hasher.combine(assignedStaffUids)
+        hasher.combine(isModifiedBuiltIn)
+        hasher.combine(overrideDocumentId)
     }
 
     public static func == (lhs: PlatformRoleModel, rhs: PlatformRoleModel) -> Bool {
         lhs.id == rhs.id &&
         lhs.rank == rhs.rank &&
         lhs.permissions == rhs.permissions &&
-        lhs.assignedStaffUids == rhs.assignedStaffUids
+        lhs.assignedStaffUids == rhs.assignedStaffUids &&
+        lhs.isModifiedBuiltIn == rhs.isModifiedBuiltIn &&
+        lhs.overrideDocumentId == rhs.overrideDocumentId
     }
 
     // MARK: - Canonical Built-in Foundation Roles (16 Roles)
@@ -776,6 +787,7 @@ public final class AdminRoleRankViewModel: ObservableObject {
     @Published public var inspectingMatrixRole: PlatformRoleModel? = nil
     @Published public var inspectingStaffRole: PlatformRoleModel? = nil
     @Published public var editingRole: PlatformRoleModel? = nil
+    @Published public var cloningRole: PlatformRoleModel? = nil
     @Published public var isShowingEditor: Bool = false
     @Published public var roleToDelete: PlatformRoleModel? = nil
     @Published public var deletionErrorMessage: String? = nil
@@ -863,10 +875,18 @@ public final class AdminRoleRankViewModel: ObservableObject {
             }
         }
 
-        // 1. Built-in Canonical System Foundation Roles (15 Roles)
-        var roles = PlatformRoleModel.builtInFoundationRoles(staffRoleMap: staffRoleMap)
+        // 1. Built-in Canonical System Foundation Roles
+        let foundationRoles = PlatformRoleModel.builtInFoundationRoles(staffRoleMap: staffRoleMap)
+        var foundationMap: [String: PlatformRoleModel] = [:]
+        for r in foundationRoles {
+            foundationMap[r.key] = r
+            foundationMap[r.id] = r
+        }
 
-        // 2. Custom Roles Parsed from Firestore
+        var customRoles: [PlatformRoleModel] = []
+        var overrideRoles: [String: PlatformRoleModel] = [:]
+
+        // 2. Custom Roles and Overrides Parsed from Firestore
         for doc in rawCustomRoleDocs {
             let data = doc.data()
             if (data["status"] as? String) == "retired" { continue }
@@ -878,6 +898,7 @@ public final class AdminRoleRankViewModel: ObservableObject {
             let accent = data["accentHex"] as? String ?? "#E11D48"
             let tierRaw = data["securityLevel"] as? String ?? ""
             let tier = SecurityClearanceTier(rawValue: tierRaw) ?? SecurityClearanceTier.tierForRank(rankNum)
+            let builtInOverrideKey = data["builtInOverrideKey"] as? String
 
             let titleAr = nameMap["ar"]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
                 ? nameMap["ar"]!
@@ -893,29 +914,80 @@ public final class AdminRoleRankViewModel: ObservableObject {
             let roleKey = doc.documentID.hasPrefix("custom_") ? doc.documentID : "custom_\(doc.documentID)"
             let revision = (data["revision"] as? NSNumber)?.intValue ?? 0
 
-            roles.append(
-                PlatformRoleModel(
-                    id: doc.documentID,
-                    key: roleKey,
+            // Check if this document represents an override for a built-in role
+            var targetBuiltInKey: String? = builtInOverrideKey
+            if targetBuiltInKey == nil && doc.documentID.hasPrefix("custom_override_") {
+                let suffix = String(doc.documentID.dropFirst(16))
+                if let baseRole = foundationRoles.first(where: { suffix == $0.key || suffix.hasPrefix("\($0.key)_") }) {
+                    targetBuiltInKey = baseRole.key
+                } else {
+                    targetBuiltInKey = suffix
+                }
+            }
+
+            if let targetBuiltInKey, let foundation = foundationMap[targetBuiltInKey] {
+                var combinedStaff = foundation.assignedStaffUids
+                combinedStaff.formUnion(staffUids)
+                if let mappedUids = staffRoleMap[foundation.key] { combinedStaff.formUnion(mappedUids) }
+                if let mappedUids = staffRoleMap[foundation.id] { combinedStaff.formUnion(mappedUids) }
+
+                let overridden = PlatformRoleModel(
+                    id: foundation.id,
+                    key: foundation.key,
                     titleAr: titleAr,
                     titleEn: titleEn,
                     descAr: descAr,
                     descEn: descEn,
                     rank: rankNum,
                     clearanceTier: tier,
-                    isBuiltIn: false,
+                    isBuiltIn: true,
                     iconName: icon,
                     accentHex: accent,
                     permissions: Set(perms),
-                    assignedStaffUids: staffUids,
-                    revision: revision
+                    assignedStaffUids: combinedStaff,
+                    revision: revision,
+                    isModifiedBuiltIn: true,
+                    overrideDocumentId: doc.documentID,
+                    builtInOverrideKey: targetBuiltInKey
                 )
-            )
+                overrideRoles[targetBuiltInKey] = overridden
+            } else {
+                customRoles.append(
+                    PlatformRoleModel(
+                        id: doc.documentID,
+                        key: roleKey,
+                        titleAr: titleAr,
+                        titleEn: titleEn,
+                        descAr: descAr,
+                        descEn: descEn,
+                        rank: rankNum,
+                        clearanceTier: tier,
+                        isBuiltIn: false,
+                        iconName: icon,
+                        accentHex: accent,
+                        permissions: Set(perms),
+                        assignedStaffUids: staffUids,
+                        revision: revision,
+                        isModifiedBuiltIn: false,
+                        overrideDocumentId: nil,
+                        builtInOverrideKey: nil
+                    )
+                )
+            }
         }
 
-        // Sort descending by Numerical Rank
-        roles.sort { $0.rank > $1.rank }
-        self.allRoles = roles
+        // 3. Assemble merged role hierarchy
+        var merged: [PlatformRoleModel] = []
+        for foundation in foundationRoles {
+            if let overridden = overrideRoles[foundation.key] ?? overrideRoles[foundation.id] {
+                merged.append(overridden)
+            } else {
+                merged.append(foundation)
+            }
+        }
+        merged.append(contentsOf: customRoles)
+        merged.sort { $0.rank > $1.rank }
+        self.allRoles = merged
         applyFilter()
     }
 
@@ -942,9 +1014,8 @@ public final class AdminRoleRankViewModel: ObservableObject {
 
     // MARK: - Mutations with Audit Logging
 
-    public func saveCustomRole(
-        existingId: String?,
-        expectedRevision: Int,
+    public func saveRole(
+        role: PlatformRoleModel?,
         titleAr: String,
         titleEn: String,
         descAr: String,
@@ -957,9 +1028,10 @@ public final class AdminRoleRankViewModel: ObservableObject {
         idempotencyKey: String? = nil,
         completion: @escaping (Bool, String?) -> Void
     ) {
-        let authorized = existingId?.isEmpty == false ? canUpdateRole : canCreateRole
+        let isEditing = role != nil
+        let authorized = isEditing ? canUpdateRole : canCreateRole
         guard authorized else {
-            let msg = Language.get("RoleRank_Unauthorized", alter: "ليس لديك الصلاحية الكافية لتعديل أو إنشاء الأدوار المخصصة")
+            let msg = Language.get("RoleRank_Unauthorized", alter: "ليس لديك الصلاحية الكافية لتعديل أو إنشاء الأدوار")
             self.errorMessage = msg
             completion(false, msg)
             return
@@ -968,7 +1040,7 @@ public final class AdminRoleRankViewModel: ObservableObject {
         let cleanAr = titleAr.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanEn = titleEn.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanAr.isEmpty || !cleanEn.isEmpty else {
-            let msg = Language.get("RoleRank_EmptyName", alter: "يرجى إدخال اسم الدور المخصص")
+            let msg = Language.get("RoleRank_EmptyName", alter: "يرجى إدخال اسم الدور")
             self.errorMessage = msg
             completion(false, msg)
             return
@@ -993,13 +1065,13 @@ public final class AdminRoleRankViewModel: ObservableObject {
         }
 
         guard !canonicalPermissions.isEmpty else {
-            let msg = Language.get("RoleRank_EmptyPermissions", alter: "يجب اختيار صلاحية واحدة على الأقل للدور المخصص")
+            let msg = Language.get("RoleRank_EmptyPermissions", alter: "يجب اختيار صلاحية واحدة على الأقل للدور")
             self.errorMessage = msg
             completion(false, msg)
             return
         }
 
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "name": [
                 "ar": finalAr,
                 "en": finalEn
@@ -1020,24 +1092,68 @@ public final class AdminRoleRankViewModel: ObservableObject {
             : UUID().uuidString
 
         let functions = Functions.functions(region: "us-central1")
-        if let existingId, !existingId.isEmpty {
-            var command = payload
-            command["roleId"] = existingId
-            command["expectedRevision"] = max(0, expectedRevision)
-            command["idempotencyKey"] = opKey
-            command["reason"] = "admin_role_rank_custom_role_update"
-            functions.httpsCallable("updateStaffRole").call(command) { [weak self] _, error in
-                guard let self = self else { return }
-                if let error {
-                    let desc = error.localizedDescription
-                    self.errorMessage = desc
-                    completion(false, desc)
-                    return
+
+        if let existingRole = role {
+            if existingRole.isBuiltIn {
+                // Built-in Role Override
+                payload["builtInOverrideKey"] = existingRole.key
+                if let overrideDocId = existingRole.overrideDocumentId, !overrideDocId.isEmpty {
+                    var command = payload
+                    command["roleId"] = overrideDocId
+                    command["expectedRevision"] = max(0, existingRole.revision)
+                    command["idempotencyKey"] = opKey
+                    command["reason"] = "admin_role_rank_builtin_override_update"
+                    functions.httpsCallable("updateStaffRole").call(command) { [weak self] _, error in
+                        guard let self = self else { return }
+                        if let error {
+                            let desc = error.localizedDescription
+                            self.errorMessage = desc
+                            completion(false, desc)
+                            return
+                        }
+                        self.toastMessage = Language.get("RoleRank_Save_Success", alter: "تم حفظ وتطبيق الدور بنجاح")
+                        completion(true, nil)
+                    }
+                } else {
+                    let freshOverrideId = "custom_override_\(existingRole.key)_\(UUID().uuidString.prefix(6).lowercased())"
+                    var command = payload
+                    command["roleId"] = freshOverrideId
+                    command["expectedRevision"] = 0
+                    command["idempotencyKey"] = opKey
+                    command["reason"] = "admin_role_rank_builtin_override_create"
+                    functions.httpsCallable("createStaffRole").call(command) { [weak self] _, error in
+                        guard let self = self else { return }
+                        if let error {
+                            let desc = error.localizedDescription
+                            self.errorMessage = desc
+                            completion(false, desc)
+                            return
+                        }
+                        self.toastMessage = Language.get("RoleRank_Save_Success", alter: "تم حفظ وتطبيق الدور بنجاح")
+                        completion(true, nil)
+                    }
                 }
-                self.toastMessage = Language.get("RoleRank_Save_Success", alter: "تم حفظ وتطبيق الدور بنجاح")
-                completion(true, nil)
+            } else {
+                // Custom Role Update
+                var command = payload
+                command["roleId"] = existingRole.id
+                command["expectedRevision"] = max(0, existingRole.revision)
+                command["idempotencyKey"] = opKey
+                command["reason"] = "admin_role_rank_custom_role_update"
+                functions.httpsCallable("updateStaffRole").call(command) { [weak self] _, error in
+                    guard let self = self else { return }
+                    if let error {
+                        let desc = error.localizedDescription
+                        self.errorMessage = desc
+                        completion(false, desc)
+                        return
+                    }
+                    self.toastMessage = Language.get("RoleRank_Save_Success", alter: "تم حفظ وتطبيق الدور بنجاح")
+                    completion(true, nil)
+                }
             }
         } else {
+            // New Custom Role Create
             var command = payload
             command["expectedRevision"] = 0
             command["idempotencyKey"] = opKey
@@ -1053,6 +1169,66 @@ public final class AdminRoleRankViewModel: ObservableObject {
                 self.toastMessage = Language.get("RoleRank_Save_Success", alter: "تم حفظ وتطبيق الدور بنجاح")
                 completion(true, nil)
             }
+        }
+    }
+
+    public func saveCustomRole(
+        existingId: String?,
+        expectedRevision: Int,
+        titleAr: String,
+        titleEn: String,
+        descAr: String,
+        descEn: String,
+        rank: Int,
+        tier: SecurityClearanceTier,
+        iconName: String,
+        accentHex: String,
+        permissions: Set<String>,
+        idempotencyKey: String? = nil,
+        completion: @escaping (Bool, String?) -> Void
+    ) {
+        let existingRole = existingId != nil ? allRoles.first(where: { $0.id == existingId }) : nil
+        saveRole(
+            role: existingRole,
+            titleAr: titleAr,
+            titleEn: titleEn,
+            descAr: descAr,
+            descEn: descEn,
+            rank: rank,
+            tier: tier,
+            iconName: iconName,
+            accentHex: accentHex,
+            permissions: permissions,
+            idempotencyKey: idempotencyKey,
+            completion: completion
+        )
+    }
+
+    public func resetRoleToDefault(role: PlatformRoleModel, completion: @escaping (Bool) -> Void) {
+        guard canUpdateRole || canDeleteRole else {
+            completion(false)
+            return
+        }
+        guard role.isBuiltIn, let overrideDocId = role.overrideDocumentId else {
+            completion(false)
+            return
+        }
+
+        let command: [String: Any] = [
+            "roleId": overrideDocId,
+            "expectedRevision": max(0, role.revision),
+            "idempotencyKey": UUID().uuidString,
+            "reason": "admin_role_rank_reset_builtin_role_to_default"
+        ]
+        Functions.functions(region: "us-central1").httpsCallable("deleteStaffRole").call(command) { [weak self] _, error in
+            guard let self = self else { return }
+            if let error {
+                self.errorMessage = error.localizedDescription
+                completion(false)
+                return
+            }
+            self.toastMessage = Language.get("RoleRank_Reset_Success", alter: "تمت استعادة الإعدادات الافتراضية بنجاح")
+            completion(true)
         }
     }
 
@@ -1178,9 +1354,8 @@ public struct AdminRoleRankSecurityLevelsView: View {
                 destination: RoleRankEditorSheet(
                     existingRole: viewModel.editingRole,
                     onSave: { roleData, onComplete in
-                        viewModel.saveCustomRole(
-                            existingId: viewModel.editingRole?.id,
-                            expectedRevision: viewModel.editingRole?.revision ?? 0,
+                        viewModel.saveRole(
+                            role: viewModel.editingRole,
                             titleAr: roleData.titleAr,
                             titleEn: roleData.titleEn,
                             descAr: roleData.descAr,
@@ -1210,6 +1385,35 @@ public struct AdminRoleRankSecurityLevelsView: View {
             }
             .hidden()
         )
+        .sheet(item: $viewModel.cloningRole) { role in
+            RoleCloneSheet(
+                sourceRole: role,
+                onSave: { roleData, onComplete in
+                    viewModel.saveRole(
+                        role: nil,
+                        titleAr: roleData.titleAr,
+                        titleEn: roleData.titleEn,
+                        descAr: roleData.descAr,
+                        descEn: roleData.descEn,
+                        rank: roleData.rank,
+                        tier: roleData.tier,
+                        iconName: roleData.iconName,
+                        accentHex: roleData.accentHex,
+                        permissions: roleData.permissions,
+                        idempotencyKey: roleData.idempotencyKey
+                    ) { success, error in
+                        onComplete(success, error)
+                        if success {
+                            viewModel.cloningRole = nil
+                        }
+                    }
+                },
+                onDismiss: {
+                    viewModel.cloningRole = nil
+                }
+            )
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
         .sheet(item: $viewModel.inspectingMatrixRole) { role in
             RolePermissionsMatrixSheet(role: role)
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
@@ -1549,9 +1753,11 @@ public struct AdminRoleRankSecurityLevelsView: View {
                         onInspectStaff: {
                             viewModel.inspectingStaffRole = role
                         },
+                        onResetToDefault: {
+                            promptResetRoleConfirmation(for: role)
+                        },
                         onClone: {
-                            viewModel.editingRole = nil
-                            viewModel.isShowingEditor = true
+                            viewModel.cloningRole = role
                         },
                         onEdit: {
                             viewModel.editingRole = role
@@ -1564,6 +1770,27 @@ public struct AdminRoleRankSecurityLevelsView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Reset Role to Default Confirmation (PPAlertHelper)
+
+    private func promptResetRoleConfirmation(for role: PlatformRoleModel) {
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("RoleRank_Reset_Confirm_Title", alter: "استعادة الإعدادات الافتراضية للدور"),
+            subtitle: String.localizedStringWithFormat(
+                Language.get("RoleRank_Reset_Confirm_Message", alter: "هل أنت متأكد من استعادة الإعدادات الافتراضية للدور '%@'؟ سيتم إلغاء كافة التعديلات والتخصيصات."),
+                role.localizedTitle
+            ),
+            confirmButton: Language.get("RoleRank_Reset_Btn", alter: "استعادة الافتراضي"),
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "arrow.counterclockwise"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                viewModel.resetRoleToDefault(role: role) { _ in }
+            },
+            cancelBlock: nil
+        )
     }
 
     // MARK: - Delete Role Confirmation (PPAlertHelper)
@@ -1597,6 +1824,7 @@ private struct SovereignRoleRankCard: View {
     let canDelete: Bool
     let onInspectMatrix: () -> Void
     let onInspectStaff: () -> Void
+    let onResetToDefault: () -> Void
     let onClone: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
@@ -1643,6 +1871,19 @@ private struct SovereignRoleRankCard: View {
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 1.5)
                                 .background(role.clearanceTier.primaryColor.opacity(0.12), in: Capsule())
+
+                            if role.isModifiedBuiltIn {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "arrow.triangle.2.circlepath")
+                                        .font(.system(size: 8, weight: .bold))
+                                    Text(Language.get("RoleRank_Modified_Badge", alter: "مُعدّل"))
+                                        .font(Font.custom("Beiruti-Bold", size: 9.5))
+                                }
+                                .foregroundColor(AdminSurface.amber)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1.5)
+                                .background(AdminSurface.amber.opacity(0.12), in: Capsule())
+                            }
                         } else {
                             Text(Language.get("CustomRole", alter: "مخصص"))
                                 .font(Font.custom("Beiruti-Bold", size: 9.5))
@@ -1774,34 +2015,59 @@ private struct SovereignRoleRankCard: View {
 
                 Spacer()
 
-                if !role.isBuiltIn {
-                    if canEdit {
-                        Button(action: onEdit) {
-                            Image(systemName: "pencil")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(Color(uiColor: .ppPrimary))
-                                .frame(width: 32, height: 32)
-                                .background(Color(uiColor: .ppPrimary).opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                if role.canResetToDefault {
+                    Button(action: onResetToDefault) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.system(size: 11, weight: .bold))
+                            Text(Language.get("RoleRank_Reset_Btn", alter: "استعادة الافتراضي"))
+                                .font(Font.custom("Beiruti-Bold", size: 11))
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(Language.get("RoleRank_Edit_Btn", alter: "تعديل الدور"))
+                        .foregroundColor(AdminSurface.amber)
+                        .padding(.horizontal, 8)
+                        .frame(height: 32)
+                        .background(AdminSurface.amber.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(AdminSurface.amber.opacity(0.3), lineWidth: 0.8)
+                        )
                     }
-                    if canDelete {
-                        Button(action: onDelete) {
-                            Image(systemName: "trash")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(Color(uiColor: .ppError))
-                                .frame(width: 32, height: 32)
-                                .background(Color(uiColor: .ppError).opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(Language.get("RoleRank_Delete_Btn", alter: "حذف الدور"))
-                    }
-                } else if canEdit || canDelete {
-                    Image(systemName: "lock.shield.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Language.get("RoleRank_Reset_Btn", alter: "استعادة الافتراضي"))
+                }
+
+                Button(action: onClone) {
+                    Image(systemName: "doc.on.doc.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color(uiColor: .ppPrimary))
                         .frame(width: 32, height: 32)
+                        .background(Color(uiColor: .ppPrimary).opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Language.get("RoleRank_Copy_Btn", alter: "نسخ لمستوى جديد"))
+
+                if canEdit {
+                    Button(action: onEdit) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Color(uiColor: .ppPrimary))
+                            .frame(width: 32, height: 32)
+                            .background(Color(uiColor: .ppPrimary).opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Language.get("RoleRank_Edit_Btn", alter: "تعديل الدور"))
+                }
+
+                if !role.isBuiltIn && canDelete {
+                    Button(action: onDelete) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Color(uiColor: .ppError))
+                            .frame(width: 32, height: 32)
+                            .background(Color(uiColor: .ppError).opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Language.get("RoleRank_Delete_Btn", alter: "حذف الدور"))
                 }
             }
         }
@@ -2516,6 +2782,582 @@ public struct RoleRankEditorSheet: View {
                     }
                     .padding(10)
                     .background(AdminSurface.background, in: RoundedRectangle(cornerRadius: 12))
+                }
+            }
+        }
+        .padding(14)
+        .background(AdminSurface.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func presetButton(title: String, action: @escaping () -> Void) -> some View {
+        Button(action: {
+            UISelectionFeedbackGenerator().selectionChanged()
+            action()
+        }) {
+            Text(title)
+                .font(Font.custom("Beiruti-Bold", size: 11))
+                .foregroundColor(Color(uiColor: .ppPrimary))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Color(uiColor: .ppPrimary).opacity(0.09), in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - 11. NextGen V7 Sheet: Role Clone & Re-tiering Studio
+
+public struct RoleCloneSheet: View {
+    let sourceRole: PlatformRoleModel
+    let onSave: (RoleRankEditorData, @escaping (Bool, String?) -> Void) -> Void
+    let onDismiss: () -> Void
+
+    @State private var sessionKey: String = UUID().uuidString
+    @State private var titleAr: String
+    @State private var titleEn: String
+    @State private var descAr: String
+    @State private var descEn: String
+    @State private var rank: Double
+    @State private var targetTier: SecurityClearanceTier
+    @State private var iconName: String
+    @State private var accentHex: String
+    @State private var selectedPermissions: Set<String>
+    @State private var isSaving: Bool = false
+    @State private var localErrorMessage: String? = nil
+    @State private var isPermissionsExpanded: Bool = false
+
+    private let availableIcons = [
+        "doc.on.doc.fill", "shield.fill", "crown.fill", "gearshape.2.fill", "cube.box.fill",
+        "creditcard.fill", "cart.fill", "building.2.fill", "headphones",
+        "star.fill", "sparkles", "person.badge.shield.checkmark.fill", "eye.fill"
+    ]
+
+    private let availableColors = [
+        "#B81430", "#D4AF37", "#1472B8", "#2563EB",
+        "#0D9488", "#10B981", "#7C3AED", "#EA580C", "#64748B"
+    ]
+
+    public init(sourceRole: PlatformRoleModel, onSave: @escaping (RoleRankEditorData, @escaping (Bool, String?) -> Void) -> Void, onDismiss: @escaping () -> Void) {
+        self.sourceRole = sourceRole
+        self.onSave = onSave
+        self.onDismiss = onDismiss
+
+        let suffixAr = Language.get("RoleRank_Clone_Name_Suffix_Ar", alter: "(نسخة)")
+        let suffixEn = Language.get("RoleRank_Clone_Name_Suffix_En", alter: "(Copy)")
+        _titleAr = State(initialValue: "\(sourceRole.titleAr) \(suffixAr)")
+        _titleEn = State(initialValue: "\(sourceRole.titleEn) \(suffixEn)")
+        _descAr = State(initialValue: sourceRole.descAr)
+        _descEn = State(initialValue: sourceRole.descEn)
+        _rank = State(initialValue: Double(sourceRole.rank))
+        _targetTier = State(initialValue: sourceRole.clearanceTier)
+        _iconName = State(initialValue: sourceRole.iconName)
+        _accentHex = State(initialValue: sourceRole.accentHex ?? "#2563EB")
+
+        var perms = Set<String>()
+        for p in sourceRole.permissions {
+            var key = p.trimmingCharacters(in: .whitespacesAndNewlines)
+            if key == "pos.credit_terms.issue" { key = "pos.credit.issue" }
+            if key == "pos.credit_terms.approve" { key = "pos.credit.approve" }
+            if key == "hotel.manage" { key = "hotel.reservations.manage" }
+            if !key.isEmpty { perms.insert(key) }
+        }
+        _selectedPermissions = State(initialValue: perms)
+    }
+
+    public var body: some View {
+        ZStack {
+            AdminSurface.background.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                cloneNavBar
+
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 16) {
+                        if let error = localErrorMessage {
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.white)
+                                Text(error)
+                                    .font(Font.custom("Beiruti-Bold", size: 13))
+                                    .foregroundColor(.white)
+                                    .multilineTextAlignment(.leading)
+                                Spacer()
+                                Button {
+                                    withAnimation { localErrorMessage = nil }
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.white.opacity(0.8))
+                                }
+                            }
+                            .padding(12)
+                            .background(Color(uiColor: .ppError), in: RoundedRectangle(cornerRadius: 12))
+                        }
+
+                        sourceHeroBanner
+                        tierSelectorGrid
+                        rankSliderCard
+                        identityCard
+                        iconAndThemeCard
+                        permissionsMatrixCard
+                    }
+                    .padding(AdminSpacing.base)
+                    .padding(.bottom, 24)
+                }
+            }
+        }
+        .navigationBarHidden(true)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+
+    // MARK: - Navigation Bar
+    private var cloneNavBar: some View {
+        AdminSovereignNavigationBar(
+            title: Language.get("RoleRank_Copy_Sheet_Title", alter: "نسخ الدور لمستوى جديد"),
+            subtitle: Language.get("RoleRank_Copy_Sheet_Subtitle", alter: "استنساخ الصلاحيات وتعيين اسم ومستوى أمني جديد"),
+            customTopSpacing: 0,
+            onBack: onDismiss
+        ) {
+            Button(action: saveTapped) {
+                HStack(spacing: 6) {
+                    if isSaving {
+                        ProgressView().tint(.white).scaleEffect(0.8)
+                    } else {
+                        Image(systemName: "plus.square.on.square")
+                            .font(.system(size: 12, weight: .heavy))
+                        Text(Language.get("RoleRank_Create_Copy_Action", alter: "إنشاء الدور المنسوخ"))
+                            .font(Font.custom("Beiruti-Bold", size: 13.5))
+                    }
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 14)
+                .frame(height: 38)
+                .background(canSave ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.3), in: Capsule())
+                .shadow(color: canSave ? AdminSurface.primary.opacity(0.32) : Color.clear, radius: 6, y: 2)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canSave || isSaving)
+        }
+    }
+
+    private var canSave: Bool {
+        (!titleAr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+         !titleEn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) &&
+        !selectedPermissions.isEmpty
+    }
+
+    private func saveTapped() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        isSaving = true
+        localErrorMessage = nil
+        let data = RoleRankEditorData(
+            titleAr: titleAr,
+            titleEn: titleEn,
+            descAr: descAr,
+            descEn: descEn,
+            rank: Int(rank),
+            tier: targetTier,
+            iconName: iconName,
+            accentHex: accentHex,
+            permissions: selectedPermissions,
+            idempotencyKey: sessionKey
+        )
+        onSave(data) { success, error in
+            if !success {
+                isSaving = false
+                localErrorMessage = error ?? Language.get("RoleRank_Save_Failed", alter: "تعذر حفظ الدور المخصص، يرجى المحاولة مرة أخرى")
+            }
+        }
+    }
+
+    // MARK: - Source Role Hero Banner
+    private var sourceHeroBanner: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(sourceRole.accentColor.opacity(0.14))
+                    .frame(width: 46, height: 46)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(sourceRole.accentColor.opacity(0.4), lineWidth: 1)
+                    )
+
+                VStack(spacing: 0) {
+                    Image(systemName: sourceRole.iconName)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(sourceRole.accentColor)
+                    Text("#\(sourceRole.rank)")
+                        .font(.system(size: 12, weight: .black, design: .monospaced))
+                        .foregroundColor(sourceRole.accentColor)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(Language.get("RoleRank_Source_Role", alter: "الدور المصدر"))
+                        .font(Font.custom("Beiruti-Medium", size: 10.5))
+                        .foregroundColor(AdminSurface.secondaryText)
+                    Text("•")
+                        .font(.system(size: 10))
+                        .foregroundColor(AdminSurface.secondaryText)
+                    Text(sourceRole.clearanceTier.shortName)
+                        .font(Font.custom("Beiruti-Bold", size: 10.5))
+                        .foregroundColor(sourceRole.clearanceTier.primaryColor)
+                }
+
+                Text(sourceRole.localizedTitle)
+                    .font(Font.custom("Beiruti-Bold", size: 15))
+                    .foregroundColor(AdminSurface.primaryText)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.shield.fill")
+                    .font(.system(size: 11, weight: .bold))
+                Text(String.localizedStringWithFormat(
+                    Language.get("RoleRank_PermissionCapacity", alter: "%d صلاحية"),
+                    selectedPermissions.count,
+                    SecurityPermissionCatalog.shared.totalPermissionsCount,
+                    Int(sourceRole.coveragePercentage * 100)
+                ))
+                .font(Font.custom("Beiruti-Bold", size: 11))
+            }
+            .foregroundColor(Color(uiColor: .ppPrimary))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Color(uiColor: .ppPrimary).opacity(0.10), in: Capsule())
+        }
+        .padding(14)
+        .background(AdminSurface.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(sourceRole.accentColor.opacity(0.25), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Target Clearance Tier Selector Grid
+    private var tierSelectorGrid: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Language.get("RoleRank_Target_Tier", alter: "المستوى الأمني المستهدف"))
+                    .font(Font.custom("Beiruti-Bold", size: 14.5))
+                    .foregroundColor(AdminSurface.primaryText)
+                Text(Language.get("RoleRank_Select_Tier_Hint", alter: "اختر المستوى الأمني لمعايرة الرتبة والحد الأدنى للوصول تلقائياً"))
+                    .font(Font.custom("Beiruti-Regular", size: 12))
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+
+            VStack(spacing: 8) {
+                ForEach(SecurityClearanceTier.allCases) { tier in
+                    let isSelected = targetTier == tier
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                            targetTier = tier
+                            rank = Double(tier.defaultRankFloor)
+                        }
+                        UISelectionFeedbackGenerator().selectionChanged()
+                    } label: {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                Circle()
+                                    .fill(tier.primaryColor.opacity(isSelected ? 0.20 : 0.10))
+                                    .frame(width: 38, height: 38)
+                                Image(systemName: tier.iconName)
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundColor(tier.primaryColor)
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text(tier.title)
+                                        .font(Font.custom("Beiruti-Bold", size: 14))
+                                        .foregroundColor(AdminSurface.primaryText)
+
+                                    Text("#\(tier.defaultRankFloor)+")
+                                        .font(.system(size: 10.5, weight: .heavy, design: .monospaced))
+                                        .foregroundColor(tier.primaryColor)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 1.5)
+                                        .background(tier.primaryColor.opacity(0.12), in: Capsule())
+                                }
+
+                                Text(tier.localizedDescription)
+                                    .font(Font.custom("Beiruti-Regular", size: 11.5))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.leading)
+                            }
+
+                            Spacer()
+
+                            ZStack {
+                                Circle()
+                                    .fill(isSelected ? tier.primaryColor : AdminSurface.background)
+                                    .frame(width: 22, height: 22)
+                                    .overlay(
+                                        Circle().strokeBorder(isSelected ? Color.clear : AdminSurface.hairline, lineWidth: 1.5)
+                                    )
+                                if isSelected {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 11, weight: .black))
+                                        .foregroundColor(.white)
+                                }
+                            }
+                        }
+                        .padding(12)
+                        .background(AdminSurface.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(isSelected ? tier.primaryColor : Color(uiColor: .ppSurfaceBorder).opacity(0.7), lineWidth: isSelected ? 1.8 : 0.8)
+                        )
+                        .shadow(color: isSelected ? tier.primaryColor.opacity(0.16) : Color.clear, radius: 6, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(14)
+        .background(AdminSurface.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    // MARK: - Rank Slider Card
+    private var rankSliderCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(Language.get("RoleRank_RankSlider_Title", alter: "الرتبة التسلسلية (١ - ٩٩)"))
+                    .font(Font.custom("Beiruti-Bold", size: 14.5))
+                    .foregroundColor(AdminSurface.primaryText)
+                Spacer()
+                Text("#\(Int(rank))")
+                    .font(.system(size: 16, weight: .black, design: .monospaced))
+                    .foregroundColor(targetTier.primaryColor)
+            }
+
+            Slider(value: $rank, in: 1...99, step: 1) {
+                Text("Rank")
+            }
+            .tint(targetTier.primaryColor)
+
+            HStack {
+                Text(targetTier.title)
+                    .font(Font.custom("Beiruti-Bold", size: 12))
+                    .foregroundColor(targetTier.primaryColor)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 3)
+                    .background(targetTier.primaryColor.opacity(0.12), in: Capsule())
+
+                Spacer()
+
+                Text(Language.get("RoleRank_RankSlider_Hint", alter: "تحدد الرتبة أولوية القيادة"))
+                    .font(Font.custom("Beiruti-Regular", size: 11))
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+        }
+        .padding(14)
+        .background(AdminSurface.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    // MARK: - New Role Identity Card
+    private var identityCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(Language.isRTL() ? "اسم وبيانات الدور المنسوخ" : "New Role Identity")
+                .font(Font.custom("Beiruti-Bold", size: 14.5))
+                .foregroundColor(AdminSurface.primaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            VStack(spacing: 8) {
+                TextField(Language.get("RoleRank_RoleName_Ar", alter: "اسم الدور بالعربية *"), text: $titleAr)
+                    .font(Font.custom("Beiruti-Regular", size: 14))
+                    .multilineTextAlignment(.leading)
+                    .padding(10)
+                    .background(AdminSurface.background, in: RoundedRectangle(cornerRadius: 10))
+
+                TextField(Language.get("RoleRank_RoleName_En", alter: "اسم الدور بالإنجليزية *"), text: $titleEn)
+                    .font(Font.custom("Beiruti-Regular", size: 14))
+                    .multilineTextAlignment(.leading)
+                    .padding(10)
+                    .background(AdminSurface.background, in: RoundedRectangle(cornerRadius: 10))
+
+                TextField(Language.get("RoleRank_RoleDesc_Ar", alter: "وصف المهام والمسؤوليات بالعربية"), text: $descAr)
+                    .font(Font.custom("Beiruti-Regular", size: 13))
+                    .multilineTextAlignment(.leading)
+                    .padding(10)
+                    .background(AdminSurface.background, in: RoundedRectangle(cornerRadius: 10))
+
+                TextField(Language.get("RoleRank_RoleDesc_En", alter: "وصف المهام والمسؤوليات بالإنجليزية"), text: $descEn)
+                    .font(Font.custom("Beiruti-Regular", size: 13))
+                    .multilineTextAlignment(.leading)
+                    .padding(10)
+                    .background(AdminSurface.background, in: RoundedRectangle(cornerRadius: 10))
+            }
+        }
+        .padding(14)
+        .background(AdminSurface.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    // MARK: - Icon & Theme Card
+    private var iconAndThemeCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(Language.get("RoleRank_Color_Select_Title", alter: "اللون المميز والأيقونة"))
+                .font(Font.custom("Beiruti-Bold", size: 14.5))
+                .foregroundColor(AdminSurface.primaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Icons
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(availableIcons, id: \.self) { icon in
+                        let isSelected = iconName == icon
+                        Button {
+                            iconName = icon
+                        } label: {
+                            Image(systemName: icon)
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
+                                .frame(width: 38, height: 38)
+                                .background(isSelected ? Color(hex: accentHex) : AdminSurface.background, in: RoundedRectangle(cornerRadius: 10))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            // Colors
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(availableColors, id: \.self) { hex in
+                        let isSelected = accentHex == hex
+                        Button {
+                            accentHex = hex
+                        } label: {
+                            Circle()
+                                .fill(Color(hex: hex))
+                                .frame(width: 28, height: 28)
+                                .overlay(
+                                    Circle().strokeBorder(isSelected ? Color.white : Color.clear, lineWidth: 2)
+                                )
+                                .shadow(color: Color(hex: hex).opacity(isSelected ? 0.5 : 0), radius: 4)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(AdminSurface.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    // MARK: - Permissions Matrix Card
+    private var permissionsMatrixCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(Language.get("RoleRank_Inherited_Perms", alter: "الصلاحيات المنسوخة"))
+                    .font(Font.custom("Beiruti-Bold", size: 14.5))
+                    .foregroundColor(AdminSurface.primaryText)
+                Spacer()
+                Text("\(selectedPermissions.count) / \(SecurityPermissionCatalog.shared.totalPermissionsCount)")
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .foregroundColor(Color(uiColor: .ppPrimary))
+            }
+
+            // Presets
+            HStack(spacing: 8) {
+                presetButton(title: Language.get("RoleRank_Preset_Full", alter: "تفويض كامل")) {
+                    selectedPermissions = Set(SecurityPermissionCatalog.shared.allPermissions.map { $0.key })
+                }
+                presetButton(title: Language.get("RoleRank_Preset_Ops", alter: "عمليات ومخزون")) {
+                    selectedPermissions = Set([
+                        "dashboard.view", "stock.view", "stock.manage", "pos.view", "pos.sell", "pos.credit.read", "pos.credit_terms.manage", "pos.credit.issue", "delivery.view", "branches.view"
+                    ])
+                }
+                presetButton(title: Language.get("RoleRank_Preset_ReadOnly", alter: "رصد فقط")) {
+                    selectedPermissions = Set(["dashboard.view", "reports.view"])
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Disclosure toggle to inspect/customize
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    isPermissionsExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: isPermissionsExpanded ? "chevron.up.circle.fill" : "slider.horizontal.3")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text(isPermissionsExpanded ? (Language.isRTL() ? "إخفاء تفاصيل الصلاحيات" : "Collapse Permissions") : (Language.isRTL() ? "تخصيص وتعديل الصلاحيات الفردية" : "Customize Specific Permissions"))
+                        .font(Font.custom("Beiruti-Bold", size: 12))
+                    Spacer()
+                }
+                .foregroundColor(Color(uiColor: .ppPrimary))
+                .padding(.vertical, 4)
+            }
+            .buttonStyle(.plain)
+
+            if isPermissionsExpanded {
+                VStack(spacing: 10) {
+                    ForEach(SecurityPermissionCatalog.shared.modules) { module in
+                        let allGranted = module.permissions.allSatisfy { selectedPermissions.contains($0.key) }
+                        let anyGranted = module.permissions.contains { selectedPermissions.contains($0.key) }
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Button {
+                                    if allGranted {
+                                        for p in module.permissions { selectedPermissions.remove(p.key) }
+                                    } else {
+                                        for p in module.permissions { selectedPermissions.insert(p.key) }
+                                    }
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: allGranted ? "checkmark.square.fill" : (anyGranted ? "minus.square.fill" : "square"))
+                                            .foregroundColor(anyGranted ? Color(uiColor: .ppPrimary) : AdminSurface.secondaryText)
+                                        Text(module.localizedTitle)
+                                            .font(Font.custom("Beiruti-Bold", size: 13))
+                                            .foregroundColor(AdminSurface.primaryText)
+                                            .multilineTextAlignment(.leading)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+
+                                Spacer()
+                            }
+
+                            ForEach(module.permissions) { perm in
+                                let checked = selectedPermissions.contains(perm.key)
+                                Button {
+                                    if checked {
+                                        selectedPermissions.remove(perm.key)
+                                    } else {
+                                        selectedPermissions.insert(perm.key)
+                                    }
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: checked ? "checkmark.circle.fill" : "circle")
+                                            .font(.system(size: 13))
+                                            .foregroundColor(checked ? Color(uiColor: .ppPrimary) : AdminSurface.secondaryText.opacity(0.5))
+                                        Text(perm.localizedTitle)
+                                            .font(Font.custom("Beiruti-Regular", size: 12))
+                                            .foregroundColor(checked ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                                            .multilineTextAlignment(.leading)
+                                        Spacer()
+                                    }
+                                    .padding(.leading, 18)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(10)
+                        .background(AdminSurface.background, in: RoundedRectangle(cornerRadius: 12))
+                    }
                 }
             }
         }
