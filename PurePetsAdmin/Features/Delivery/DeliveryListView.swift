@@ -2998,6 +2998,7 @@ private struct DeliveryDriverDetailSheet: View {
         }
     }
 
+    @ViewBuilder
     private var managementActions: some View {
         if viewModel.canManageDrivers {
             AdminCard {

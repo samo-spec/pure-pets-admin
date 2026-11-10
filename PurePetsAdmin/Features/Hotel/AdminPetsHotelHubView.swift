@@ -2,9 +2,8 @@
 //  AdminPetsHotelHubView.swift
 //  PurePetsAdmin
 //
-//  SwiftyMax NextGen V6 Sovereign Pets Hotel Command Hub.
-//  Category-defining, beyond-FAANG dual native architecture for iPhone and iPad separately.
-//  Strictly governed by Beiruti (PPBrandFont) typography across all states.
+//  Native Hotel reception and operations, within the Admin Command Center.
+//  NextGen V9 presentation preserves the existing routes and server projections.
 //
 
 import SwiftUI
@@ -15,6 +14,7 @@ public struct AdminPetsHotelHubView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private let onDismiss: (() -> Void)?
 
     public init(onDismiss: (() -> Void)? = nil) {
@@ -23,6 +23,7 @@ public struct AdminPetsHotelHubView: View {
 
     private var isPadConsole: Bool {
         UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass == .regular
+            && !dynamicTypeSize.isAccessibilitySize
     }
 
     public var body: some View {
@@ -117,6 +118,7 @@ public struct AdminPetsHotelHubView: View {
             .hidden()
             .accessibilityHidden(true)
         }
+        .adminHotelWorkflow(viewModel: viewModel)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .fullScreenCover(item: $viewModel.suiteEditorModalAccommodation) { acc in
             AdminPetsHotelSuiteEditorSheet(accommodation: acc, viewModel: viewModel)
@@ -159,6 +161,284 @@ public struct AdminPetsHotelHubView: View {
     }
 }
 
+// MARK: - Shared Hotel workflow presentation
+
+/// One presentation policy for the existing Hotel routes and sheets. The
+/// ViewModel remains the command owner; this layer cannot authorize a write.
+@MainActor
+private struct AdminHotelWorkflowModifier: ViewModifier {
+    @ObservedObject var viewModel: AdminPetsHotelViewModel
+    let isBusy: Bool
+    let showsErrors: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var isWorking: Bool { isBusy || viewModel.isSubmitting }
+
+    func body(content: Content) -> some View {
+        content
+            .disabled(isWorking)
+            .interactiveDismissDisabled(isWorking)
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+            .environment(\.locale, Locale(identifier: Language.currentLanguageCode() ?? "ar"))
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if isWorking {
+                    HStack(spacing: AdminSpacing.md) {
+                        ProgressView()
+                            .tint(AdminSurface.primary)
+                        Text(Language.get(
+                            "Hotel_Workflow_Saving",
+                            alter: "جارٍ حفظ العملية لدى الخادم…"
+                        ))
+                        .font(AdminType.callout)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(AdminSpacing.base)
+                    .background(AdminSurface.surface)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("hotel.workflow.pending")
+                } else if showsErrors, let message = viewModel.errorMessage {
+                    Label(message, systemImage: "exclamationmark.triangle.fill")
+                        .font(AdminType.callout)
+                        .foregroundStyle(AdminSurface.danger)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(AdminSpacing.base)
+                        .background(AdminSurface.surface)
+                        .accessibilityIdentifier("hotel.workflow.error")
+                }
+            }
+            .transaction { transaction in
+                if reduceMotion {
+                    transaction.animation = nil
+                    transaction.disablesAnimations = true
+                }
+            }
+    }
+}
+
+extension View {
+    @MainActor
+    func adminHotelWorkflow(
+        viewModel: AdminPetsHotelViewModel,
+        isBusy: Bool = false,
+        showsErrors: Bool = false
+    ) -> some View {
+        modifier(AdminHotelWorkflowModifier(
+            viewModel: viewModel,
+            isBusy: isBusy,
+            showsErrors: showsErrors
+        ))
+    }
+}
+
+// MARK: - Reception agenda
+
+/// Uses the same bounded server projections as the rest of the Hotel. No new
+/// listeners, clinical assumptions, or client-generated lifecycle state.
+@MainActor
+private struct AdminHotelReceptionAgenda: View {
+    @ObservedObject var viewModel: AdminPetsHotelViewModel
+
+    var body: some View {
+        if viewModel.canViewHotel && !viewModel.requiresBranchSelection {
+            VStack(alignment: .leading, spacing: AdminSpacing.base) {
+                VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                    Text(Language.get("Hotel_Reception_Title", alter: "مكتب الاستقبال"))
+                        .font(AdminType.title2)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .accessibilityAddTraits(.isHeader)
+                    Text(Language.get(
+                        "Hotel_Reception_Subtitle",
+                        alter: "الوصول والمغادرة اليوم، والخطوة التالية لكل نزيل."
+                    ))
+                    .font(AdminType.callout)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if viewModel.isLoading {
+                    ProgressView(Language.get("Loading", alter: "جارٍ التحميل…"))
+                        .font(AdminType.callout)
+                        .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable)
+                } else {
+                    arrivals
+                    Divider().overlay(AdminSurface.hairline)
+                    departures
+
+                    if viewModel.arrivalsToday.isEmpty &&
+                        viewModel.departuresToday.isEmpty &&
+                        viewModel.errorMessage == nil {
+                        Label(
+                            Language.get(
+                                "Hotel_Reception_NoMovements",
+                                alter: "لا توجد مواعيد وصول أو مغادرة اليوم."
+                            ),
+                            systemImage: "calendar.badge.checkmark"
+                        )
+                        .font(AdminType.callout)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .padding(AdminSpacing.base)
+            .background(AdminSurface.surface, in: RoundedRectangle(
+                cornerRadius: AdminRadius.hero,
+                style: .continuous
+            ))
+            .overlay {
+                RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin)
+            }
+            .accessibilityIdentifier("hotel.reception.agenda")
+        }
+    }
+
+    private var arrivals: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+            sectionHeading(
+                Language.get("Hotel_Res_ArrivalsToday", alter: "وصول اليوم"),
+                count: viewModel.arrivalsTodayCount
+            ) {
+                viewModel.reservationStatusFilter = "all"
+                viewModel.searchQuery = ""
+                viewModel.selectedWing = nil
+                viewModel.selectedTab = .reservations
+            }
+
+            ForEach(viewModel.arrivalsToday.sorted { $0.checkInDate < $1.checkInDate }.prefix(4)) { reservation in
+                receptionRow(
+                    name: reservation.petName,
+                    context: reservation.status.title,
+                    time: reservation.checkInDate,
+                    symbol: "arrow.down.to.line",
+                    actionTitle: viewModel.canCheckIn
+                        ? Language.get("Hotel_CheckIn_Title", alter: "تسجيل وصول النزيل")
+                        : Language.get("Hotel_Res_DetailTitle", alter: "تفاصيل الحجز")
+                ) {
+                    guard !viewModel.isSubmitting else { return }
+                    if viewModel.canCheckIn {
+                        viewModel.checkInModalReservation = reservation
+                    } else {
+                        viewModel.selectedReservationDetail = reservation
+                    }
+                }
+                .accessibilityIdentifier("hotel.reception.arrival.\(reservation.id)")
+            }
+        }
+    }
+
+    private var departures: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+            sectionHeading(
+                Language.get("Hotel_DeparturesToday", alter: "مغادرة اليوم (تسليم)"),
+                count: viewModel.departuresTodayCount
+            ) {
+                viewModel.searchQuery = ""
+                viewModel.selectedWing = nil
+                viewModel.selectedTab = .guests
+            }
+
+            ForEach(viewModel.departuresToday.sorted { $0.expectedCheckOutTime < $1.expectedCheckOutTime }.prefix(4)) { stay in
+                receptionRow(
+                    name: stay.petName,
+                    context: stay.roomNumber.isEmpty ? stay.wing.title : stay.roomNumber,
+                    time: stay.expectedCheckOutTime,
+                    symbol: "arrow.up.from.line",
+                    actionTitle: viewModel.canCheckOut
+                        ? Language.get("Hotel_Checkout_Title", alter: "تسجيل مغادرة النزيل")
+                        : Language.get("Hotel_StayDetails", alter: "تفاصيل الإقامة")
+                ) {
+                    guard !viewModel.isSubmitting else { return }
+                    if viewModel.canCheckOut {
+                        viewModel.checkOutModalStay = stay
+                    } else {
+                        viewModel.selectedStayDetail = stay
+                    }
+                }
+                .accessibilityIdentifier("hotel.reception.departure.\(stay.id)")
+            }
+        }
+    }
+
+    private func sectionHeading(_ title: String, count: Int, action: @escaping () -> Void) -> some View {
+        HStack(spacing: AdminSpacing.sm) {
+            Text(title)
+                .font(AdminType.headline)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(count, format: .number)
+                .font(AdminType.headline)
+                .monospacedDigit()
+                .foregroundStyle(AdminSurface.secondaryText)
+            Spacer(minLength: AdminSpacing.sm)
+            Button(action: action) {
+                Text(Language.get("ViewAll", alter: "عرض الكل"))
+                    .font(AdminType.footnoteBold)
+                    .foregroundStyle(AdminSurface.primary)
+                    .frame(minHeight: AdminTouchTarget.minimum)
+            }
+            .buttonStyle(.plain)
+        }
+        .foregroundStyle(AdminSurface.primaryText)
+    }
+
+    private func receptionRow(
+        name: String,
+        context: String,
+        time: Date,
+        symbol: String,
+        actionTitle: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: AdminSpacing.md) {
+                Image(systemName: symbol)
+                    .font(.system(size: AdminIconSize.medium, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primary)
+                    .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                    .background(AdminSurface.primarySoft, in: RoundedRectangle(
+                        cornerRadius: AdminRadius.medium,
+                        style: .continuous
+                    ))
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                    Text(name)
+                        .font(AdminType.headline)
+                        .foregroundStyle(AdminSurface.primaryText)
+                    Text(context)
+                        .font(AdminType.footnote)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    HStack(spacing: AdminSpacing.sm) {
+                        Text(actionTitle)
+                            .font(AdminType.footnoteBold)
+                            .foregroundStyle(AdminSurface.primary)
+                        Text(time, style: .time)
+                            .font(AdminType.footnote)
+                            .monospacedDigit()
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .multilineTextAlignment(.leading)
+            .padding(AdminSpacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(AdminSurface.control, in: RoundedRectangle(
+                cornerRadius: AdminRadius.card,
+                style: .continuous
+            ))
+            .contentShape(RoundedRectangle(cornerRadius: AdminRadius.card))
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 // MARK: - iPhone Sovereign Architecture
 private struct iPhoneHotelHubView: View {
     @ObservedObject var viewModel: AdminPetsHotelViewModel
@@ -167,13 +447,13 @@ private struct iPhoneHotelHubView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            let liveLabel = Language.get("Hotel_Status_Live", alter: "مباشر")
+            let liveLabel = Language.get("Hotel_Reception_Title", alter: "مكتب الاستقبال")
             AdminSovereignNavigationBar(
                 title: Language.get("Hotel_Title", alter: "فندق ورعاية الحيوانات"),
                 subtitle: BranchContextStore.shared.currentBranchDisplayName.isEmpty
                     ? Language.get("Hotel_Workspace", alter: "مساحة الفندق • مباشر")
                     : "\(BranchContextStore.shared.currentBranchDisplayName) • \(liveLabel)",
-                statusDotColor: Color(red: 0.16, green: 0.78, blue: 0.48),
+                statusDotColor: nil,
                 onBack: {
                     if let onDismiss {
                         onDismiss()
@@ -245,6 +525,8 @@ private struct iPhoneOverviewFlightDeck: View {
                 AdminHotelSetupAssistantCard(viewModel: viewModel)
             }
 
+            AdminHotelReceptionAgenda(viewModel: viewModel)
+
             // Live Spatial Occupancy Radar Card
             HotelOccupancyRadarCard(viewModel: viewModel)
 
@@ -273,13 +555,13 @@ private struct iPadHotelConsoleView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            let dashboardLabel = Language.get("Hotel_Status_Overview_Dashboard", alter: "لوحة التحكم الشاملة")
+            let dashboardLabel = Language.get("Hotel_Reception_Title", alter: "مكتب الاستقبال")
             AdminSovereignNavigationBar(
                 title: Language.get("Hotel_Title", alter: "فندق ورعاية الحيوانات"),
                 subtitle: BranchContextStore.shared.currentBranchDisplayName.isEmpty
                     ? Language.get("Hotel_Workspace", alter: "مساحة الفندق • مباشر")
                     : "\(BranchContextStore.shared.currentBranchDisplayName) • \(dashboardLabel)",
-                statusDotColor: Color(red: 0.16, green: 0.78, blue: 0.48),
+                statusDotColor: nil,
                 onBack: {
                     if let onDismiss {
                         onDismiss()
@@ -377,6 +659,8 @@ private struct iPadOverviewWorkspace: View {
 
     var body: some View {
         VStack(spacing: 18) {
+            AdminHotelReceptionAgenda(viewModel: viewModel)
+
             HotelWingCapacitySection(viewModel: viewModel)
 
             if !viewModel.inHouseGuests.isEmpty {
@@ -968,75 +1252,61 @@ private struct HotelAttentionSentinelDeck: View {
 // MARK: - Component: Quick Operations Horizon Deck
 private struct HotelQuickOperationsDeck: View {
     @ObservedObject var viewModel: AdminPetsHotelViewModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(spacing: 10) {
-            // New Reservation Action
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                viewModel.newReservationModalOpen = true
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "calendar.badge.plus")
-                        .font(PPBrandFont.bold(size: 14))
-                    Text(Language.get("Hotel_QuickAction_NewReservation", alter: "حجز جديد"))
-                        .font(PPBrandFont.bold(size: 13.5))
-                }
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 11)
-                .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
-            .buttonStyle(PlainButtonStyle())
+        LazyVGrid(
+            columns: dynamicTypeSize.isAccessibilitySize
+                ? [GridItem(.flexible())]
+                : [GridItem(.adaptive(minimum: 144), spacing: AdminSpacing.sm)],
+            spacing: AdminSpacing.sm
+        ) {
+            operation(
+                Language.get("Hotel_QuickAction_NewReservation", alter: "حجز جديد"),
+                symbol: "calendar.badge.plus",
+                allowed: viewModel.canManageReservations,
+                primary: true
+            ) { viewModel.newReservationModalOpen = true }
 
-            // Add Suite Action
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                viewModel.isCreatingNewSuite = true
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "plus.square.fill")
-                        .font(PPBrandFont.bold(size: 14))
-                    Text(Language.get("Hotel_QuickAction_AddSuite", alter: "إضافة جناح"))
-                        .font(PPBrandFont.bold(size: 13.5))
-                }
-                .foregroundStyle(AdminSurface.primaryText)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 11)
-                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.75)
-                )
-            }
-            .buttonStyle(PlainButtonStyle())
-            .disabled(!viewModel.canManageAccommodations)
-            .opacity(viewModel.canManageAccommodations ? 1.0 : 0.4)
+            operation(
+                Language.get("Hotel_QuickAction_AddSuite", alter: "إضافة جناح"),
+                symbol: "plus.square.fill",
+                allowed: viewModel.canManageAccommodations
+            ) { viewModel.isCreatingNewSuite = true }
 
-            // Add Accommodation Type Action
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                viewModel.isCreatingNewType = true
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "square.stack.3d.up.fill")
-                        .font(PPBrandFont.bold(size: 14))
-                    Text(Language.get("Hotel_QuickAction_ManageTypes", alter: "الأنواع"))
-                        .font(PPBrandFont.bold(size: 13.5))
-                }
-                .foregroundStyle(AdminSurface.primaryText)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 11)
-                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.75)
-                )
-            }
-            .buttonStyle(PlainButtonStyle())
-            .disabled(!viewModel.canManageAccommodations)
-            .opacity(viewModel.canManageAccommodations ? 1.0 : 0.4)
+            operation(
+                Language.get("Hotel_QuickAction_ManageTypes", alter: "الأنواع"),
+                symbol: "square.stack.3d.up.fill",
+                allowed: viewModel.canManageAccommodations
+            ) { viewModel.isCreatingNewType = true }
         }
+    }
+
+    private func operation(
+        _ title: String,
+        symbol: String,
+        allowed: Bool,
+        primary: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            guard allowed, !viewModel.isSubmitting else { return }
+            action()
+        } label: {
+            Label(title, systemImage: symbol)
+                .font(AdminType.headline)
+                .fixedSize(horizontal: false, vertical: true)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable)
+                .padding(AdminSpacing.sm)
+                .foregroundStyle(primary ? Color.white : AdminSurface.primaryText)
+                .background(
+                    primary ? AdminSurface.primary : AdminSurface.control,
+                    in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(!allowed || viewModel.isSubmitting)
     }
 }
 

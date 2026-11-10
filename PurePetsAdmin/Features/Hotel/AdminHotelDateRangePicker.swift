@@ -68,8 +68,13 @@ public struct AdminHotelDateRangePicker: View {
 
     @State private var currentDisplayedMonth: Date = Date()
     @State private var isSelectingDeparture: Bool = false
-    @State private var activePreset: HotelStayDurationPreset? = .threeNights
     @State private var showTimeControls: Bool = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var activePreset: HotelStayDurationPreset? {
+        HotelStayDurationPreset.allCases.first { $0.nights == numberOfNights }
+    }
 
     private let calendar: Calendar = {
         var cal = Calendar(identifier: .gregorian)
@@ -96,122 +101,131 @@ public struct AdminHotelDateRangePicker: View {
     }
 
     public var body: some View {
-        VStack(spacing: 14) {
-            // 1. Live Horizon Summary Corridor
-            horizonSummaryHeader
-
-            // 2. Quick Stay Duration Presets
-            presetsScrollBar
-
-            // 3. Interactive Monthly Calendar Grid
-            calendarDeck
-
-            // 4. Integrated Check-in & Check-out Time Strip
-            timeControlsBar
+        VStack(spacing: AdminSpacing.base) {
+            if dynamicTypeSize.isAccessibilitySize {
+                nativeDateControls
+                presetsScrollBar
+            } else {
+                horizonSummaryHeader
+                presetsScrollBar
+                calendarDeck
+                timeControlsBar
+            }
         }
-        .padding(14)
-        .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(AdminSurface.hairline, lineWidth: 0.8)
-        )
+        .padding(AdminSpacing.base)
+        .background(AdminSurface.card, in: RoundedRectangle(
+            cornerRadius: AdminRadius.card,
+            style: .continuous
+        ))
+        .overlay {
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin)
+        }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .environment(\.locale, Locale(identifier: Language.currentLanguageCode() ?? "ar"))
+        .onChange(of: [arrivalDate, departureDate]) { _ in
+            onRangeChanged?(arrivalDate, departureDate)
+        }
+        .transaction { transaction in
+            if reduceMotion {
+                transaction.animation = nil
+                transaction.disablesAnimations = true
+            }
+        }
+    }
+
+    /// System date controls retain semantic labels and a complete editing path
+    /// when a seven-column calendar cannot grow with accessibility text.
+    private var nativeDateControls: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.base) {
+            DatePicker(
+                Language.get("Hotel_Arrival_Title", alter: "الوصول"),
+                selection: Binding(
+                    get: { arrivalDate },
+                    set: { date in
+                        let duration = max(1, departureDate.timeIntervalSince(arrivalDate))
+                        arrivalDate = date
+                        if departureDate <= date {
+                            departureDate = date.addingTimeInterval(duration)
+                        }
+                    }
+                ),
+                in: min(arrivalDate, calendar.startOfDay(for: Date()))...,
+                displayedComponents: [.date, .hourAndMinute]
+            )
+            DatePicker(
+                Language.get("Hotel_Departure_Title", alter: "المغادرة"),
+                selection: $departureDate,
+                in: arrivalDate.addingTimeInterval(1)...,
+                displayedComponents: [.date, .hourAndMinute]
+            )
+        }
+        .datePickerStyle(.compact)
+        .font(AdminType.body)
     }
 
     // MARK: - 1. Horizon Summary Header
 
     private var horizonSummaryHeader: some View {
-        HStack(spacing: 10) {
-            // Arrival Pod
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 5) {
-                    Image(systemName: "airplane.arrival")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(Color(uiColor: .systemGreen))
-                    Text(Language.get("Hotel_Arrival_Title", alter: "الوصول"))
-                        .font(DatePickerBeiruti.bold(12))
-                        .foregroundStyle(AdminSurface.secondaryText)
-                }
-
-                Text(formatShortDate(arrivalDate))
-                    .font(DatePickerBeiruti.bold(14))
-                    .foregroundStyle(AdminSurface.primaryText)
-
-                Text(formatTimeString(arrivalDate))
-                    .font(DatePickerBeiruti.medium(11))
-                    .foregroundStyle(Color(uiColor: .systemGreen))
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(10)
-            .background(
-                Color(uiColor: .ppForeground),
-                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        HStack(alignment: .center, spacing: AdminSpacing.sm) {
+            dateSummary(
+                title: Language.get("Hotel_Arrival_Title", alter: "الوصول"),
+                date: arrivalDate,
+                isDeparture: false
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(!isSelectingDeparture ? Color(uiColor: .systemGreen).opacity(0.8) : AdminSurface.hairline, lineWidth: !isSelectingDeparture ? 1.5 : 0.6)
-            )
-            .onTapGesture {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                    isSelectingDeparture = false
-                }
-            }
 
-            // Central Nights Badge
-            VStack(spacing: 2) {
-                Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(AdminSurface.primary)
-
+            VStack(spacing: AdminSpacing.xs) {
+                Image(systemName: "moon.stars")
+                    .accessibilityHidden(true)
                 Text("\(numberOfNights) \(Language.get("Hotel_NightsPluralUnit", alter: "ليالٍ"))")
-                    .font(DatePickerBeiruti.bold(12))
-                    .foregroundStyle(AdminSurface.primary)
+                    .font(AdminType.footnoteBold)
+            }
+            .foregroundStyle(AdminSurface.primary)
+            .padding(AdminSpacing.sm)
+            .accessibilityElement(children: .combine)
 
-                Text("\(numberOfNights + 1) \(Language.get("Hotel_DaysPluralUnit", alter: "أيام"))")
-                    .font(DatePickerBeiruti.regular(10))
+            dateSummary(
+                title: Language.get("Hotel_Departure_Title", alter: "المغادرة"),
+                date: departureDate,
+                isDeparture: true
+            )
+        }
+    }
+
+    private func dateSummary(title: String, date: Date, isDeparture: Bool) -> some View {
+        let isSelected = isSelectingDeparture == isDeparture
+        let accent = isDeparture ? AdminSurface.amber : AdminSurface.emerald
+        return Button {
+            isSelectingDeparture = isDeparture
+        } label: {
+            VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                Text(title)
+                    .font(AdminType.footnote)
                     .foregroundStyle(AdminSurface.secondaryText)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(AdminSurface.primary.opacity(0.12), in: Capsule())
-
-            // Departure Pod
-            VStack(alignment: .trailing, spacing: 2) {
-                HStack(spacing: 5) {
-                    Text(Language.get("Hotel_Departure_Title", alter: "المغادرة"))
-                        .font(DatePickerBeiruti.bold(12))
-                        .foregroundStyle(AdminSurface.secondaryText)
-                    Image(systemName: "airplane.departure")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(Color.orange)
-                }
-
-                Text(formatShortDate(departureDate))
-                    .font(DatePickerBeiruti.bold(14))
+                Text(formatShortDate(date))
+                    .font(AdminType.headline)
                     .foregroundStyle(AdminSurface.primaryText)
-
-                Text(formatTimeString(departureDate))
-                    .font(DatePickerBeiruti.medium(11))
-                    .foregroundStyle(Color.orange)
+                Text(formatTimeString(date))
+                    .font(AdminType.footnote)
+                    .foregroundStyle(accent)
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .padding(10)
-            .background(
-                Color(uiColor: .ppForeground),
-                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(isSelectingDeparture ? Color.orange.opacity(0.8) : AdminSurface.hairline, lineWidth: isSelectingDeparture ? 1.5 : 0.6)
-            )
-            .onTapGesture {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                    isSelectingDeparture = true
-                }
+            .fixedSize(horizontal: false, vertical: true)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum, alignment: .leading)
+            .padding(AdminSpacing.sm)
+            .background(AdminSurface.control, in: RoundedRectangle(
+                cornerRadius: AdminRadius.medium,
+                style: .continuous
+            ))
+            .overlay {
+                RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                    .stroke(isSelected ? accent : AdminSurface.hairline, lineWidth: isSelected ? 1.5 : 1)
             }
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityValue(fullDateLabel(date))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     // MARK: - 2. Presets Scroll Bar
@@ -229,6 +243,7 @@ public struct AdminHotelDateRangePicker: View {
                             .foregroundStyle(isSelected ? Color.white : AdminSurface.primaryText)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
+                            .frame(minHeight: AdminTouchTarget.minimum)
                             .background(
                                 isSelected ? AdminSurface.primary : Color(uiColor: .ppForeground),
                                 in: Capsule()
@@ -247,6 +262,14 @@ public struct AdminHotelDateRangePicker: View {
     // MARK: - 3. Interactive Calendar Grid
 
     private var calendarDeck: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            calendarContent
+                .frame(minWidth: AdminTouchTarget.minimum * 7 + AdminSpacing.md * 2)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var calendarContent: some View {
         VStack(spacing: 8) {
             // Month Switcher Header
             HStack {
@@ -256,10 +279,11 @@ public struct AdminHotelDateRangePicker: View {
                     Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(AdminSurface.primaryText)
-                        .padding(8)
-                        .background(Color(uiColor: .ppForeground), in: Circle())
+                        .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                        .background(AdminSurface.control, in: Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(Language.get("Hotel_Calendar_PreviousMonth", alter: "الشهر السابق"))
 
                 Spacer()
 
@@ -275,10 +299,11 @@ public struct AdminHotelDateRangePicker: View {
                     Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(AdminSurface.primaryText)
-                        .padding(8)
-                        .background(Color(uiColor: .ppForeground), in: Circle())
+                        .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                        .background(AdminSurface.control, in: Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(Language.get("Hotel_Calendar_NextMonth", alter: "الشهر التالي"))
             }
             .padding(.horizontal, 4)
 
@@ -302,7 +327,7 @@ public struct AdminHotelDateRangePicker: View {
                         calendarDayCell(date)
                     } else {
                         Color.clear
-                            .frame(height: 38)
+                            .frame(height: AdminTouchTarget.minimum)
                     }
                 }
             }
@@ -377,10 +402,17 @@ public struct AdminHotelDateRangePicker: View {
                             AdminSurface.primaryText
                         )
                 }
-                .frame(maxWidth: .infinity, minHeight: 36)
+                .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum)
             }
             .buttonStyle(.plain)
             .disabled(isPast)
+            .accessibilityLabel(fullDateLabel(date))
+            .accessibilityValue(
+                isArrival ? Language.get("Hotel_Arrival_Title", alter: "الوصول") :
+                isDeparture ? Language.get("Hotel_Departure_Title", alter: "المغادرة") :
+                isInRange ? Language.get("Hotel_Calendar_InRange", alter: "ضمن فترة الإقامة") : ""
+            )
+            .accessibilityAddTraits(isArrival || isDeparture ? .isSelected : [])
         }
     }
 
@@ -407,6 +439,7 @@ public struct AdminHotelDateRangePicker: View {
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
+                .frame(minHeight: AdminTouchTarget.minimum)
                 .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             .buttonStyle(.plain)
@@ -422,7 +455,7 @@ public struct AdminHotelDateRangePicker: View {
                                 .foregroundStyle(AdminSurface.secondaryText)
                         }
 
-                        DatePicker("", selection: $arrivalDate, displayedComponents: [.hourAndMinute])
+                        DatePicker(Language.get("Hotel_CheckinTime_Label", alter: "وقت تسجيل الوصول"), selection: $arrivalDate, displayedComponents: [.hourAndMinute])
                             .labelsHidden()
                             .font(DatePickerBeiruti.bold(12))
                     }
@@ -439,7 +472,7 @@ public struct AdminHotelDateRangePicker: View {
                                 .foregroundStyle(AdminSurface.secondaryText)
                         }
 
-                        DatePicker("", selection: $departureDate, displayedComponents: [.hourAndMinute])
+                        DatePicker(Language.get("Hotel_CheckoutTime_Label", alter: "وقت تسجيل المغادرة"), selection: $departureDate, displayedComponents: [.hourAndMinute])
                             .labelsHidden()
                             .font(DatePickerBeiruti.bold(12))
                     }
@@ -471,7 +504,6 @@ public struct AdminHotelDateRangePicker: View {
             // Automatically prompt to select departure next
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                 isSelectingDeparture = true
-                activePreset = nil
             }
         } else {
             // Selecting Check-out date
@@ -479,30 +511,24 @@ public struct AdminHotelDateRangePicker: View {
                 departureDate = combine(date: cleanTapped, withTimeFrom: departureDate)
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                     isSelectingDeparture = false
-                    activePreset = nil
                 }
             } else {
                 // Tapped on or before arrival -> treat as new check-in date
                 let newArrival = combine(date: cleanTapped, withTimeFrom: arrivalDate)
                 arrivalDate = newArrival
                 departureDate = calendar.date(byAdding: .day, value: 1, to: newArrival) ?? newArrival.addingTimeInterval(86400)
-                activePreset = nil
             }
         }
-
-        onRangeChanged?(arrivalDate, departureDate)
     }
 
     private func applyPreset(_ preset: HotelStayDurationPreset) {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        activePreset = preset
         let nights = preset.nights
         let cleanArrival = calendar.startOfDay(for: arrivalDate)
 
         if let targetDeparture = calendar.date(byAdding: .day, value: nights, to: cleanArrival) {
             departureDate = combine(date: targetDeparture, withTimeFrom: departureDate)
             isSelectingDeparture = false
-            onRangeChanged?(arrivalDate, departureDate)
         }
     }
 
@@ -530,10 +556,17 @@ public struct AdminHotelDateRangePicker: View {
         return df.string(from: date).capitalized
     }
 
+    private func fullDateLabel(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: Language.currentLanguageCode() ?? "ar")
+        formatter.dateStyle = .full
+        return formatter.string(from: date)
+    }
+
     private func formatShortDate(_ date: Date) -> String {
         let df = DateFormatter()
         df.locale = Locale(identifier: Language.currentLanguageCode())
-        df.dateFormat = "EEE، d MMM"
+        df.setLocalizedDateFormatFromTemplate("EEEdMMM")
         return df.string(from: date)
     }
 

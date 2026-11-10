@@ -16,6 +16,7 @@ public struct AdminPetsHotelCheckInSheet: View {
     @ObservedObject var viewModel: AdminPetsHotelViewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var selectedRoom: AdminHotelAccommodation?
     @State private var verification = AdminHotelCheckInVerification()
@@ -23,6 +24,8 @@ public struct AdminPetsHotelCheckInSheet: View {
     @State private var availabilitySnapshot: AdminHotelAvailabilitySnapshot?
     @State private var availabilityErrorMessage: String?
     @State private var isLoadingAvailability = false
+    @State private var availabilityTask: Task<Void, Never>?
+    @State private var availabilityRequestID = UUID()
     @State private var newBelongingName: String = ""
     @State private var internalNotes: String = ""
     @State private var showVerificationDetails: Bool = true
@@ -39,7 +42,7 @@ public struct AdminPetsHotelCheckInSheet: View {
     }
 
     private var isPad: Bool {
-        horizontalSizeClass == .regular && UIDevice.current.userInterfaceIdiom == .pad
+        horizontalSizeClass == .regular && UIDevice.current.userInterfaceIdiom == .pad && !dynamicTypeSize.isAccessibilitySize
     }
 
     /// The reservation projection intentionally does not expose care declarations.
@@ -142,6 +145,7 @@ public struct AdminPetsHotelCheckInSheet: View {
             }
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
+        .adminHotelWorkflow(viewModel: viewModel)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
             if (reservation.depositMinor ?? 0) > 0 &&
@@ -150,21 +154,43 @@ public struct AdminPetsHotelCheckInSheet: View {
             }
             loadAvailability()
         }
+        .onChange(of: authoritativeCheckInStay?.id) { _ in
+            loadAvailability()
+        }
+        .onDisappear {
+            availabilityTask?.cancel()
+            availabilityTask = nil
+        }
     }
 
     private func loadAvailability() {
+        availabilityTask?.cancel()
+        let requestID = UUID()
+        availabilityRequestID = requestID
         isLoadingAvailability = true
         availabilitySnapshot = nil
         availabilityErrorMessage = nil
         selectedRoom = nil
-        Task {
+        guard let stay = authoritativeCheckInStay else {
+            isLoadingAvailability = false
+            availabilityErrorMessage = Language.get(
+                "Hotel_Err_StayRequired",
+                alter: "لا يوجد سجل إقامة جاهز لهذا الحجز."
+            )
+            return
+        }
+        availabilityTask = Task {
             do {
-                availabilitySnapshot = try await viewModel.availabilitySnapshot(for: reservation, stay: authoritativeCheckInStay)
+                let snapshot = try await viewModel.availabilitySnapshot(for: reservation, stay: stay)
+                guard !Task.isCancelled, availabilityRequestID == requestID else { return }
+                availabilitySnapshot = snapshot
                 autoSuggestAvailableRoom()
             } catch {
+                guard !Task.isCancelled, availabilityRequestID == requestID else { return }
                 availabilityErrorMessage = error.localizedDescription
             }
             isLoadingAvailability = false
+            availabilityTask = nil
         }
     }
 
@@ -184,19 +210,20 @@ public struct AdminPetsHotelCheckInSheet: View {
     }
 
     private func performCheckIn() {
-        guard let room = selectedRoom, let stay = authoritativeCheckInStay else { return }
+        guard !viewModel.isSubmitting,
+              let room = selectedRoom, let stay = authoritativeCheckInStay else { return }
+        let submittedBelongings = belongings
+        let submittedVerification = verification
+        let submittedNotes = internalNotes.isEmpty ? nil : internalNotes
         Task {
             await viewModel.executeCheckIn(
                 reservation: reservation,
                 stay: stay,
                 assignedRoom: room,
-                belongings: belongings,
-                verification: verification,
-                notes: internalNotes.isEmpty ? nil : internalNotes
+                belongings: submittedBelongings,
+                verification: submittedVerification,
+                notes: submittedNotes
             )
-            if viewModel.errorMessage == nil {
-                dismiss()
-            }
         }
     }
 }
@@ -294,79 +321,17 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
             // Floating Glass Action Bar (Pinned above safe area)
             iPhoneDockedActionBar
         }
-        .edgesIgnoringSafeArea(.top)
     }
 
     // MARK: - iPhone Top Navigation Bar
     private var iPhoneNavBar: some View {
-        let refNo = !reservation.reservationNumber.isEmpty ? reservation.reservationNumber : String(reservation.id.prefix(8)).uppercased()
-        return VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 10) {
-                // Dismiss circular button
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    onDismiss()
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(AdminSurface.control)
-                            .frame(width: 36, height: 36)
-                        Image(systemName: "xmark")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(AdminSurface.primaryText)
-                    }
-                    .overlay(
-                        Circle()
-                            .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.75)
-                    )
-                }
-                .buttonStyle(PlainButtonStyle())
-                .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
-
-                // Titles with Live Pulse Beacon
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(Language.get("Hotel_CheckIn_Title", alter: "تسجيل وصول النزيل"))
-                        .font(Font.custom("Beiruti-Bold", size: 18))
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(1)
-
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(Color(red: 0.16, green: 0.72, blue: 0.44))
-                            .frame(width: 6, height: 6)
-                        Text("\(reservation.petName) • \(refNo)")
-                            .font(Font.custom("Beiruti-Medium", size: 12))
-                            .foregroundStyle(AdminSurface.secondaryText)
-                            .lineLimit(1)
-                    }
-                }
-
-                Spacer()
-
-                // Wing Capsule Tag
-                HStack(spacing: 5) {
-                    Image(systemName: reservation.wing.icon)
-                        .font(.system(size: 11, weight: .bold))
-                    Text(reservation.wing.title)
-                        .font(Font.custom("Beiruti-Bold", size: 12))
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(reservation.wing.tint.opacity(0.14), in: Capsule())
-                .foregroundStyle(reservation.wing.tint)
-                .overlay(
-                    Capsule()
-                        .strokeBorder(reservation.wing.tint.opacity(0.28), lineWidth: 0.75)
-                )
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, max(PPStatusBarHelper.statusBarHeight, 44))
-            .padding(.bottom, 10)
-            .background(AdminSurface.background)
-
-            Divider()
-                .background(Color(uiColor: .ppSurfaceBorder).opacity(0.4))
-        }
+        AdminSovereignNavigationBar(
+            title: Language.get("Hotel_CheckIn_Title", alter: "تسجيل وصول النزيل"),
+            subtitle: "\(reservation.petName) • \(reservation.reservationNumber)",
+            statusDotColor: nil,
+            isModal: true,
+            onBack: onDismiss
+        )
     }
 
     // MARK: - iPhone Guest Hero Card
@@ -1016,7 +981,7 @@ private struct AdminPetsHotelCheckIn_iPhone: View {
 
     // MARK: - iPhone Docked Floating Action Bar
     private var iPhoneDockedActionBar: some View {
-        let isReady = isVerificationComplete && selectedRoom != nil && authoritativeStay != nil && !viewModel.isSubmitting
+        let isReady = viewModel.canCheckIn && isVerificationComplete && selectedRoom != nil && authoritativeStay != nil && !viewModel.isSubmitting
 
         return VStack(spacing: 6) {
             // Status warning hint if disabled
@@ -1847,7 +1812,7 @@ private struct AdminPetsHotelCheckIn_iPad: View {
 
     // MARK: - iPad Bottom Action Bar
     private var iPadBottomActionBar: some View {
-        let isReady = isVerificationComplete && selectedRoom != nil && authoritativeStay != nil && !viewModel.isSubmitting
+        let isReady = viewModel.canCheckIn && isVerificationComplete && selectedRoom != nil && authoritativeStay != nil && !viewModel.isSubmitting
 
         return VStack(spacing: 0) {
             Divider()
@@ -2448,64 +2413,46 @@ private struct AdminHotelVerificationCard: View {
     let onToggle: () -> Void
 
     var body: some View {
-        Button(action: onToggle) {
-            HStack(spacing: 12) {
-                // Icon Emblem Container
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(isVerified ? Color(red: 0.16, green: 0.72, blue: 0.44).opacity(0.18) : AdminSurface.surface)
-                        .frame(width: 38, height: 38)
-                    Image(systemName: icon)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(isVerified ? Color(red: 0.16, green: 0.72, blue: 0.44) : AdminSurface.secondaryText)
-                }
+        Toggle(isOn: Binding(
+            get: { isVerified },
+            set: { if $0 != isVerified { onToggle() } }
+        )) {
+            HStack(alignment: .top, spacing: AdminSpacing.md) {
+                Image(systemName: icon)
+                    .font(.system(size: AdminIconSize.medium, weight: .semibold))
+                    .foregroundStyle(isVerified ? AdminSurface.emerald : AdminSurface.secondaryText)
+                    .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                    .background(AdminSurface.surface, in: RoundedRectangle(
+                        cornerRadius: AdminRadius.medium,
+                        style: .continuous
+                    ))
+                    .accessibilityHidden(true)
 
-                // Title & Subtitle Stack
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: AdminSpacing.xs) {
                     Text(title)
-                        .font(Font.custom("Beiruti-Bold", size: 14))
+                        .font(AdminType.headline)
                         .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(1)
-                    if let subtitle = subtitle, !subtitle.isEmpty {
+                    if let subtitle, !subtitle.isEmpty {
                         Text(subtitle)
-                            .font(Font.custom("Beiruti-Regular", size: 11.5))
+                            .font(AdminType.footnote)
                             .foregroundStyle(AdminSurface.secondaryText)
-                            .lineLimit(1)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                // Custom Tactile Haptic Switch Capsule
-                ZStack {
-                    Capsule()
-                        .fill(isVerified ? Color(red: 0.16, green: 0.72, blue: 0.44) : Color(uiColor: .systemGray4))
-                        .frame(width: 44, height: 26)
-
-                    Circle()
-                        .fill(.white)
-                        .frame(width: 22, height: 22)
-                        .shadow(color: Color.black.opacity(0.14), radius: 2, y: 1)
-                        .offset(x: isVerified ? 9 : -9)
-                        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isVerified)
-                }
+                .fixedSize(horizontal: false, vertical: true)
+                .multilineTextAlignment(.leading)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(isVerified ? Color(red: 0.16, green: 0.72, blue: 0.44).opacity(0.06) : AdminSurface.control)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(isVerified ? Color(red: 0.16, green: 0.72, blue: 0.44).opacity(0.35) : Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: 0.75)
-            )
         }
-        .buttonStyle(PlainButtonStyle())
-        .hoverEffect(.highlight)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(title)
-        .accessibilityValue(isVerified ? Language.get("Checked", alter: "تم التحقق") : Language.get("Unchecked", alter: "لم يتم التحقق"))
-        .accessibilityHint(Language.get("DoubleTapToToggle", alter: "اضغط مرتين للتبديل"))
+        .toggleStyle(SwitchToggleStyle(tint: AdminSurface.emerald))
+        .padding(AdminSpacing.md)
+        .frame(minHeight: AdminTouchTarget.comfortable)
+        .background(AdminSurface.control, in: RoundedRectangle(
+            cornerRadius: AdminRadius.card,
+            style: .continuous
+        ))
+        .overlay {
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .stroke(isVerified ? AdminSurface.emerald.opacity(0.4) : AdminSurface.hairline)
+        }
     }
 }
 
@@ -2667,12 +2614,11 @@ public struct AdminPetsHotelCheckOutSheet: View {
     @ObservedObject var viewModel: AdminPetsHotelViewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var verification = AdminHotelCheckOutVerification()
     @State private var earlyReason: String = "early_departure_by_owner"
     @State private var showSettlementSheet: Bool = false
-    @State private var checkoutSuccess: Bool = false
-    @State private var auraBreathing: Bool = false
 
     public init(stay: AdminHotelStay, viewModel: AdminPetsHotelViewModel) {
         self.stay = stay
@@ -2689,7 +2635,7 @@ public struct AdminPetsHotelCheckOutSheet: View {
     }
 
     private var isPad: Bool {
-        horizontalSizeClass == .regular && UIDevice.current.userInterfaceIdiom == .pad
+        horizontalSizeClass == .regular && UIDevice.current.userInterfaceIdiom == .pad && !dynamicTypeSize.isAccessibilitySize
     }
 
     private var isCheckOutVerificationComplete: Bool {
@@ -2734,25 +2680,13 @@ public struct AdminPetsHotelCheckOutSheet: View {
                 }
             }
 
-            if checkoutSuccess {
-                AdminPetsHotelCelebrationOverlay(
-                    petName: currentStay.petName,
-                    wing: currentStay.wing,
-                    onDismiss: { dismiss() }
-                )
-                .transition(.opacity.combined(with: .scale(scale: 0.94)))
-                .zIndex(100)
-            }
+
         }
         .navigationBarHidden(true)
+        .adminHotelWorkflow(viewModel: viewModel)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .sheet(isPresented: $showSettlementSheet) {
             AdminHotelQuickSettlementSheet(stay: currentStay, viewModel: viewModel)
-        }
-        .onAppear {
-            withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
-                auraBreathing = true
-            }
         }
     }
 
@@ -2778,23 +2712,19 @@ public struct AdminPetsHotelCheckOutSheet: View {
     }
 
     private func performCheckOut() {
+        guard !viewModel.isSubmitting else { return }
+        let submittedStay = currentStay
+        let submittedVerification = verification
+        let submittedReason = isEarly ? earlyReason : nil
         Task {
             await viewModel.executeCheckOut(
-                stay: currentStay,
-                verification: verification,
-                earlyReason: isEarly ? earlyReason : nil
+                stay: submittedStay,
+                verification: submittedVerification,
+                earlyReason: submittedReason
             )
-            if viewModel.errorMessage == nil {
-                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                    checkoutSuccess = true
-                }
-                try? await Task.sleep(nanoseconds: 1_600_000_000)
-                dismiss()
-            }
         }
     }
+
 }
 
 // MARK: - iPhone Dedicated Architecture
@@ -3646,80 +3576,43 @@ private struct AdminPetsHotelProtocolPod<ExtraContent: View>: View {
     @ViewBuilder let extraContent: () -> ExtraContent
 
     var body: some View {
-        Button(action: onToggle) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .top, spacing: 12) {
-                    // Pod Category Icon
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(isVerified ? AdminSurface.emerald.opacity(0.14) : accentColor.opacity(0.14))
-                            .frame(width: 42, height: 42)
-                        Image(systemName: icon)
-                            .font(PPBrandFont.bold(size: 18))
-                            .foregroundStyle(isVerified ? AdminSurface.emerald : accentColor)
-                    }
-
-                    // Content
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(title)
-                            .font(PPBrandFont.bold(size: 15))
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .multilineTextAlignment(.leading)
-
-                        Text(subtitle)
-                            .font(PPBrandFont.medium(size: 12))
-                            .foregroundStyle(AdminSurface.secondaryText)
-                            .multilineTextAlignment(.leading)
-                    }
-
-                    Spacer()
-
-                    // Tactile Verification Seal Button
-                    ZStack {
-                        Circle()
-                            .fill(isVerified ? AdminSurface.emerald : AdminSurface.hairline.opacity(0.35))
-                            .frame(width: 28, height: 28)
-                        Image(systemName: isVerified ? "checkmark" : "circle")
-                            .font(PPBrandFont.bold(size: 13))
-                            .foregroundStyle(isVerified ? .white : AdminSurface.secondaryText)
-                    }
-                    .scaleEffect(isVerified ? 1.05 : 1.0)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isVerified)
+        VStack(alignment: .leading, spacing: AdminSpacing.md) {
+            Toggle(isOn: Binding(
+                get: { isVerified },
+                set: { if $0 != isVerified { onToggle() } }
+            )) {
+                VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                    Label(title, systemImage: icon)
+                        .font(AdminType.headline)
+                        .foregroundStyle(AdminSurface.primaryText)
+                    Text(subtitle)
+                        .font(AdminType.footnote)
+                        .foregroundStyle(AdminSurface.secondaryText)
                 }
-
-                extraContent()
-
-                // Bottom Status Pill
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(isVerified ? AdminSurface.emerald : AdminSurface.amber)
-                        .frame(width: 6, height: 6)
-                    Text(isVerified ? verifiedNotice : pendingNotice)
-                        .font(PPBrandFont.bold(size: 11))
-                        .foregroundStyle(isVerified ? AdminSurface.emerald : AdminSurface.amber)
-                    Spacer()
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(
-                    isVerified ? AdminSurface.emerald.opacity(0.08) : AdminSurface.amber.opacity(0.08),
-                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-                )
+                .fixedSize(horizontal: false, vertical: true)
+                .multilineTextAlignment(.leading)
             }
-            .padding(14)
-            .background(
-                isVerified ? AdminSurface.control : AdminSurface.control.opacity(0.9),
-                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .toggleStyle(SwitchToggleStyle(tint: AdminSurface.emerald))
+
+            extraContent()
+
+            Label(
+                isVerified ? verifiedNotice : pendingNotice,
+                systemImage: isVerified ? "checkmark.circle.fill" : "circle"
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(
-                        isVerified ? AdminSurface.emerald.opacity(0.4) : AdminSurface.hairline,
-                        lineWidth: isVerified ? 1.25 : 0.75
-                    )
-            )
+            .font(AdminType.footnote)
+            .foregroundStyle(isVerified ? AdminSurface.emerald : AdminSurface.amber)
+            .fixedSize(horizontal: false, vertical: true)
         }
-        .buttonStyle(PlainButtonStyle())
+        .padding(AdminSpacing.base)
+        .background(AdminSurface.control, in: RoundedRectangle(
+            cornerRadius: AdminRadius.card,
+            style: .continuous
+        ))
+        .overlay {
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .stroke(isVerified ? AdminSurface.emerald.opacity(0.4) : AdminSurface.hairline)
+        }
     }
 }
 
@@ -3730,6 +3623,11 @@ private struct AdminPetsHotelSlideToDischargeBar: View {
     let canCheckOut: Bool
     let outstandingMinor: Int
     let onSlideComplete: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var showsHandoverConfirmation = false
 
     @State private var dragOffset: CGFloat = 0
     @State private var isDragging: Bool = false
@@ -3743,6 +3641,40 @@ private struct AdminPetsHotelSlideToDischargeBar: View {
     }
 
     var body: some View {
+        Group {
+            if voiceOverEnabled || reduceMotion || dynamicTypeSize.isAccessibilitySize {
+                Button {
+                    showsHandoverConfirmation = true
+                } label: {
+                    Label(
+                        Language.get("Hotel_Checkout_ConfirmHandover", alter: "تأكيد المغادرة وتسليم النزيل"),
+                        systemImage: "checkmark.circle.fill"
+                    )
+                    .font(AdminType.headline)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable)
+                    .padding(AdminSpacing.sm)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(AdminSurface.primary)
+                .disabled(isLocked)
+                .confirmationDialog(
+                    Language.get("Hotel_Checkout_ConfirmHandover", alter: "تأكيد المغادرة وتسليم النزيل"),
+                    isPresented: $showsHandoverConfirmation,
+                    titleVisibility: .visible
+                ) {
+                    Button(Language.get("Confirm", alter: "تأكيد")) {
+                        guard !isLocked else { return }
+                        onSlideComplete()
+                    }
+                }
+            } else {
+                slideControl
+            }
+        }
+    }
+
+    private var slideControl: some View {
         GeometryReader { geo in
             let maxDistance = max(10, geo.size.width - knobSize - 8)
             let isRTL = Language.isRTL()
@@ -3756,6 +3688,18 @@ private struct AdminPetsHotelSlideToDischargeBar: View {
                             : Color(red: 0.82, green: 0.15, blue: 0.35).opacity(0.15)
                     )
                     .frame(height: barHeight)
+        .disabled(isLocked)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Language.get("Hotel_Checkout_ConfirmHandover", alter: "تأكيد المغادرة وتسليم النزيل"))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction {
+            guard !isLocked else { return }
+            onSlideComplete()
+        }
+        .onChange(of: isLocked) { _ in
+            dragOffset = 0
+            isDragging = false
+        }
 
                 // Track Progress Fill
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
@@ -4066,14 +4010,20 @@ public struct AdminHotelQuickSettlementSheet: View {
 
                     // Confirm Settlement Button
                     Button {
+                        guard !isProcessing, !viewModel.isSubmitting,
+                              viewModel.canManageBilling, stay.outstandingMinor > 0 else { return }
+                        isProcessing = true
+                        let submittedMethod = selectedMethod
+                        let submittedReference = reference.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let submittedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let submittedAmount = stay.outstandingMinor
                         Task {
-                            isProcessing = true
                             let ok = await viewModel.recordSettlement(
                                 stayId: stay.id,
-                                method: selectedMethod,
-                                amountMinor: stay.outstandingMinor,
-                                reference: reference.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : reference,
-                                notes: notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : notes
+                                method: submittedMethod,
+                                amountMinor: submittedAmount,
+                                reference: submittedReference.isEmpty ? nil : submittedReference,
+                                notes: submittedNotes.isEmpty ? nil : submittedNotes
                             )
                             isProcessing = false
                             if ok {
@@ -4102,7 +4052,7 @@ public struct AdminHotelQuickSettlementSheet: View {
                         )
                         .shadow(color: Color(red: 0.16, green: 0.72, blue: 0.44).opacity(0.35), radius: 10, y: 4)
                     }
-                    .disabled(isProcessing || viewModel.isSubmitting)
+                    .disabled(isProcessing || viewModel.isSubmitting || !viewModel.canManageBilling || stay.outstandingMinor <= 0)
                     .buttonStyle(PlainButtonStyle())
                 }
                 .padding(18)
@@ -4110,6 +4060,7 @@ public struct AdminHotelQuickSettlementSheet: View {
         }
         .background(AdminSurface.background.ignoresSafeArea())
         .navigationBarHidden(true)
+        .adminHotelWorkflow(viewModel: viewModel, isBusy: isProcessing)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
@@ -4151,91 +4102,94 @@ public struct AdminPetsHotelRoomStatusSheet: View {
         VStack(spacing: 0) {
             roomStatusNavBar
 
-            VStack(alignment: .leading, spacing: 16) {
-                // Header
-                HStack(spacing: 12) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(room.wing.tint.opacity(0.18))
-                            .frame(width: 52, height: 52)
-                        Image(systemName: room.wing.icon)
-                            .font(.system(size: 24, weight: .bold))
-                            .foregroundStyle(room.wing.tint)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Header
+                    HStack(spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(room.wing.tint.opacity(0.18))
+                                .frame(width: 52, height: 52)
+                            Image(systemName: room.wing.icon)
+                                .font(.system(size: 24, weight: .bold))
+                                .foregroundStyle(room.wing.tint)
+                        }
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(room.name)
+                                .font(Font.custom("Beiruti-Bold", size: 18))
+                                .foregroundStyle(AdminSurface.primaryText)
+                            Text("\(room.accommodationNumber) • \(room.wing.title)")
+                                .font(Font.custom("Beiruti-Medium", size: 13))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                        }
+                        Spacer()
+                    }
+                    .padding(14)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+                    Text(Language.get("Hotel_ChangeStatusPrompt", alter: "تحديث الحالة التشغيلية للجناح:"))
+                        .font(Font.custom("Beiruti-Bold", size: 15))
+                        .foregroundStyle(AdminSurface.secondaryText)
+
+                    // Status Options List
+                    VStack(spacing: 8) {
+                        ForEach([HotelAccommodationStatus.available, .cleaning, .inspection, .maintenance, .blocked, .isolation], id: \.self) { status in
+                            let isCurrent = room.status == status
+                            Button {
+                                Task {
+                                    if await viewModel.setRoomStatus(room: room, newStatus: status) {
+                                        dismiss()
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: 12) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(status.color.opacity(0.15))
+                                            .frame(width: 36, height: 36)
+                                        Image(systemName: status.icon)
+                                            .font(.system(size: 15, weight: .bold))
+                                            .foregroundStyle(status.color)
+                                    }
+
+                                    Text(status.title)
+                                        .font(Font.custom("Beiruti-Bold", size: 15))
+                                        .foregroundStyle(AdminSurface.primaryText)
+
+                                    Spacer()
+
+                                    if isCurrent {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 14, weight: .bold))
+                                            .foregroundStyle(status.color)
+                                    }
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .fill(isCurrent ? status.color.opacity(0.1) : AdminSurface.surface)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .strokeBorder(isCurrent ? status.color.opacity(0.4) : Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .disabled(isCurrent || viewModel.isSubmitting || !viewModel.canManageAccommodations)
+                        }
                     }
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(room.name)
-                            .font(Font.custom("Beiruti-Bold", size: 18))
-                            .foregroundStyle(AdminSurface.primaryText)
-                        Text("\(room.accommodationNumber) • \(room.wing.title)")
-                            .font(Font.custom("Beiruti-Medium", size: 13))
-                            .foregroundStyle(AdminSurface.secondaryText)
-                    }
                     Spacer()
                 }
-                .padding(14)
-                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-
-                Text(Language.get("Hotel_ChangeStatusPrompt", alter: "تحديث الحالة التشغيلية للجناح:"))
-                    .font(Font.custom("Beiruti-Bold", size: 15))
-                    .foregroundStyle(AdminSurface.secondaryText)
-
-                // Status Options List
-                VStack(spacing: 8) {
-                    ForEach([HotelAccommodationStatus.available, .cleaning, .inspection, .maintenance, .blocked, .isolation], id: \.self) { status in
-                        let isCurrent = room.status == status
-                        Button {
-                            Task {
-                                if await viewModel.setRoomStatus(room: room, newStatus: status) {
-                                    dismiss()
-                                }
-                            }
-                        } label: {
-                            HStack(spacing: 12) {
-                                ZStack {
-                                    Circle()
-                                        .fill(status.color.opacity(0.15))
-                                        .frame(width: 36, height: 36)
-                                    Image(systemName: status.icon)
-                                        .font(.system(size: 15, weight: .bold))
-                                        .foregroundStyle(status.color)
-                                }
-
-                                Text(status.title)
-                                    .font(Font.custom("Beiruti-Bold", size: 15))
-                                    .foregroundStyle(AdminSurface.primaryText)
-
-                                Spacer()
-
-                                if isCurrent {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 14, weight: .bold))
-                                        .foregroundStyle(status.color)
-                                }
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .fill(isCurrent ? status.color.opacity(0.1) : AdminSurface.surface)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .strokeBorder(isCurrent ? status.color.opacity(0.4) : Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 1)
-                            )
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .disabled(isCurrent || viewModel.isSubmitting || !viewModel.canManageAccommodations)
-                    }
-                }
-
-                Spacer()
+                .padding(.horizontal, 18)
+                .padding(.top, 16)
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 16)
         }
         .background(AdminSurface.background.ignoresSafeArea())
         .navigationBarHidden(true)
+        .adminHotelWorkflow(viewModel: viewModel, showsErrors: true)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 

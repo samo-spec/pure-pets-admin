@@ -191,6 +191,7 @@ public struct AdminPetsHotelReservationsManagementView: View {
                 .shadow(color: AdminSurface.primary.opacity(0.3), radius: 6, y: 2)
             }
             .buttonStyle(PlainButtonStyle())
+            .disabled(!viewModel.canManageReservations || viewModel.isSubmitting)
         }
     }
 
@@ -210,7 +211,9 @@ public struct AdminPetsHotelReservationsManagementView: View {
                 Text(Language.get("Hotel_Res_CreateFirst", alter: "تسجيل حجز فندقي جديد"))
                     .font(Font.custom("Beiruti-Bold", size: 14))
                     .foregroundStyle(AdminSurface.primary)
+                    .frame(minHeight: AdminTouchTarget.minimum)
             }
+            .disabled(!viewModel.canManageReservations || viewModel.isSubmitting)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
@@ -356,7 +359,7 @@ public struct AdminPetsHotelReservationCard: View {
                 // Action Buttons based on status
                 HStack(spacing: 8) {
                     // Confirm action if pending
-                    if reservation.status == .pendingConfirmation || reservation.status == .draft {
+                    if viewModel.canManageReservations && (reservation.status == .pendingConfirmation || reservation.status == .draft) {
                         Button {
                             Task {
                                 await viewModel.confirmReservation(reservation: reservation)
@@ -468,6 +471,7 @@ public struct AdminPetsHotelReservationDetailSheet: View {
     public var onBack: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(
@@ -489,7 +493,7 @@ public struct AdminPetsHotelReservationDetailSheet: View {
     @State private var showCopiedToast: Bool = false
 
     private var isIPad: Bool {
-        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact
+        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact && !dynamicTypeSize.isAccessibilitySize
     }
 
     private var effectiveReservation: AdminHotelReservation {
@@ -551,17 +555,18 @@ public struct AdminPetsHotelReservationDetailSheet: View {
         }
         .navigationBarHidden(true)
         .navigationBarBackButtonHidden(true)
+        .adminHotelWorkflow(viewModel: viewModel, showsErrors: true)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .fullScreenCover(isPresented: $isExtending) {
-            AdminPetsHotelExtendStayDialog(reservation: reservation, viewModel: viewModel)
+            AdminPetsHotelExtendStayDialog(reservation: effectiveReservation, viewModel: viewModel)
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .fullScreenCover(isPresented: $isEditingReservation) {
-            AdminPetsHotelEditReservationDialog(reservation: reservation, viewModel: viewModel)
+            AdminPetsHotelEditReservationDialog(reservation: effectiveReservation, viewModel: viewModel)
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .sheet(isPresented: $isShowingReasonSheet) {
-            AdminPetsHotelReasonSheet(reservation: reservation, action: pendingAction, viewModel: viewModel)
+            AdminPetsHotelReasonSheet(reservation: effectiveReservation, action: pendingAction, viewModel: viewModel)
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
     }
@@ -574,7 +579,7 @@ public struct AdminPetsHotelReservationDetailSheet: View {
             AdminSovereignNavigationBar(
                 title: reservation.reservationNumber.isEmpty ? Language.get("Hotel_Res_DetailTitle", alter: "تفاصيل الحجز") : reservation.reservationNumber,
                 subtitle: "\(reservation.petName) • \(reservation.wing.title)",
-                statusDotColor: reservation.status.color,
+                statusDotColor: effectiveReservation.status.color,
                 isModal: !isPushMode,
                 customTopSpacing: 0,
                 onBack: {
@@ -587,7 +592,7 @@ public struct AdminPetsHotelReservationDetailSheet: View {
             ) {
                 HStack(spacing: 8) {
                     // Edit Reservation Button
-                    if reservation.status != .completed && reservation.status != .cancelled {
+                    if viewModel.canManageReservations && (effectiveReservation.status != .completed && effectiveReservation.status != .cancelled) {
                         Button {
                             isEditingReservation = true
                         } label: {
@@ -610,15 +615,15 @@ public struct AdminPetsHotelReservationDetailSheet: View {
                     // Status Capsule Header Pill
                     HStack(spacing: 5) {
                         Circle()
-                            .fill(reservation.status.color)
+                            .fill(effectiveReservation.status.color)
                             .frame(width: 7, height: 7)
-                        Text(reservation.status.title)
+                        Text(effectiveReservation.status.title)
                             .font(HotelBeiruti.bold(12))
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(reservation.status.color.opacity(0.12), in: Capsule())
-                    .foregroundStyle(reservation.status.color)
+                    .background(effectiveReservation.status.color.opacity(0.12), in: Capsule())
+                    .foregroundStyle(effectiveReservation.status.color)
                 }
             }
 
@@ -742,15 +747,15 @@ public struct AdminPetsHotelReservationDetailSheet: View {
                     // Status Pill
                     HStack(spacing: 5) {
                         Circle()
-                            .fill(reservation.status.color)
+                            .fill(effectiveReservation.status.color)
                             .frame(width: 7, height: 7)
-                        Text(reservation.status.title)
+                        Text(effectiveReservation.status.title)
                             .font(HotelBeiruti.bold(12))
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
-                    .background(reservation.status.color.opacity(0.12), in: Capsule())
-                    .foregroundStyle(reservation.status.color)
+                    .background(effectiveReservation.status.color.opacity(0.12), in: Capsule())
+                    .foregroundStyle(effectiveReservation.status.color)
                 }
 
                 Text("\(reservation.petName) • \(reservation.wing.title)")
@@ -839,7 +844,7 @@ public struct AdminPetsHotelReservationDetailSheet: View {
                 }
 
                 // Confirm Button (If pending)
-                if effectiveReservation.status == .pendingConfirmation || effectiveReservation.status == .draft {
+                if viewModel.canManageReservations && (effectiveReservation.status == .pendingConfirmation || effectiveReservation.status == .draft) {
                     Button {
                         Task {
                             await viewModel.confirmReservation(reservation: effectiveReservation)
@@ -865,7 +870,7 @@ public struct AdminPetsHotelReservationDetailSheet: View {
                 }
 
                 // Edit Reservation Button
-                if effectiveReservation.status != .completed && effectiveReservation.status != .cancelled {
+                if viewModel.canManageReservations && (effectiveReservation.status != .completed && effectiveReservation.status != .cancelled) {
                     Button {
                         isEditingReservation = true
                     } label: {
@@ -887,7 +892,7 @@ public struct AdminPetsHotelReservationDetailSheet: View {
                 }
 
                 // Extend Stay Button
-                if effectiveReservation.status != .completed && effectiveReservation.status != .cancelled {
+                if viewModel.canManageReservations && (effectiveReservation.status != .completed && effectiveReservation.status != .cancelled) {
                     Button {
                         isExtending = true
                     } label: {
@@ -909,7 +914,7 @@ public struct AdminPetsHotelReservationDetailSheet: View {
                 }
 
                 // Cancel Reservation Button
-                if reservation.status != .completed && reservation.status != .cancelled && reservation.status != .checkedIn && reservation.status != .inStay {
+                if viewModel.canManageReservations && (effectiveReservation.status != .completed && effectiveReservation.status != .cancelled && effectiveReservation.status != .checkedIn && effectiveReservation.status != .inStay) {
                     Button {
                         pendingAction = "cancel_reservation"
                         isShowingReasonSheet = true
@@ -970,15 +975,15 @@ public struct AdminPetsHotelReservationDetailSheet: View {
                         // Status Tag
                         HStack(spacing: 4) {
                             Circle()
-                                .fill(reservation.status.color)
+                                .fill(effectiveReservation.status.color)
                                 .frame(width: 6, height: 6)
-                            Text(reservation.status.title)
+                            Text(effectiveReservation.status.title)
                                 .font(HotelBeiruti.bold(11))
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
-                        .background(reservation.status.color.opacity(0.14), in: Capsule())
-                        .foregroundStyle(reservation.status.color)
+                        .background(effectiveReservation.status.color.opacity(0.14), in: Capsule())
+                        .foregroundStyle(effectiveReservation.status.color)
                     }
 
                     Text(reservation.petBreed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? reservation.wing.title : "\(reservation.petBreed) • \(reservation.wing.title)")
@@ -1728,7 +1733,7 @@ public struct AdminPetsHotelReservationDetailSheet: View {
     private var iPhoneFloatingActionDock: some View {
         VStack(spacing: 8) {
             // Confirm button (If pending)
-            if effectiveReservation.status == .pendingConfirmation || effectiveReservation.status == .draft {
+            if viewModel.canManageReservations && (effectiveReservation.status == .pendingConfirmation || effectiveReservation.status == .draft) {
                 Button {
                     Task {
                         await viewModel.confirmReservation(reservation: effectiveReservation)
@@ -1807,7 +1812,7 @@ public struct AdminPetsHotelReservationDetailSheet: View {
             // Secondary Row: Edit Reservation Data & Extend Stay Actions
             HStack(spacing: 10) {
                 // Edit Reservation Data button
-                if effectiveReservation.status != .completed && effectiveReservation.status != .cancelled {
+                if viewModel.canManageReservations && (effectiveReservation.status != .completed && effectiveReservation.status != .cancelled) {
                     Button {
                         isEditingReservation = true
                     } label: {
@@ -1828,7 +1833,7 @@ public struct AdminPetsHotelReservationDetailSheet: View {
                 }
 
                 // Extend Stay button
-                if effectiveReservation.status != .completed && effectiveReservation.status != .cancelled {
+                if viewModel.canManageReservations && (effectiveReservation.status != .completed && effectiveReservation.status != .cancelled) {
                     Button {
                         isExtending = true
                     } label: {
@@ -1850,7 +1855,7 @@ public struct AdminPetsHotelReservationDetailSheet: View {
             }
 
             // Cancel Reservation button
-            if effectiveReservation.status != .completed && effectiveReservation.status != .cancelled && effectiveReservation.status != .checkedIn && effectiveReservation.status != .inStay {
+            if viewModel.canManageReservations && (effectiveReservation.status != .completed && effectiveReservation.status != .cancelled && effectiveReservation.status != .checkedIn && effectiveReservation.status != .inStay) {
                 Button {
                     pendingAction = "cancel_reservation"
                     isShowingReasonSheet = true
@@ -1948,10 +1953,10 @@ public struct AdminPetsHotelReservationDetailSheet: View {
 
     private func horizonCountdownBadge(for reservation: AdminHotelReservation) -> (text: String, color: Color) {
         let cal = Calendar.current
-        if reservation.status == .inStay {
+        if effectiveReservation.status == .inStay {
             return (Language.get("Hotel_Stay_InHouse", alter: "النزيل مقيم حالياً بالفندق"), Color(red: 0.55, green: 0.25, blue: 0.85))
         }
-        if reservation.status == .completed || reservation.status == .earlyCheckout {
+        if effectiveReservation.status == .completed || effectiveReservation.status == .earlyCheckout {
             return (Language.get("Hotel_Stay_Departed", alter: "اكتملت الإقامة وغادر النزيل"), Color(red: 0.16, green: 0.72, blue: 0.44))
         }
         if cal.isDateInToday(reservation.checkInDate) {
@@ -1965,7 +1970,7 @@ public struct AdminPetsHotelReservationDetailSheet: View {
             let days = cal.dateComponents([.day], from: cal.startOfDay(for: now), to: cal.startOfDay(for: reservation.checkInDate)).day ?? 1
             return (String.localizedStringWithFormat(Language.get("Hotel_Stay_Countdown_Days", alter: "متبقي %d أيام"), days), Color(red: 0.88, green: 0.50, blue: 0.15))
         }
-        return (reservation.status.title, reservation.status.color)
+        return (effectiveReservation.status.title, effectiveReservation.status.color)
     }
 }
 
@@ -2088,6 +2093,7 @@ public struct AdminPetsHotelCreateReservationSheet: View {
     @ObservedObject var viewModel: AdminPetsHotelViewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public var isPushMode: Bool = false
@@ -2153,10 +2159,10 @@ public struct AdminPetsHotelCreateReservationSheet: View {
     @State private var isSubmitting: Bool = false
     @State private var validationError: String? = nil
     @State private var shakeError: Bool = false
-    @State private var morphicPulse: Bool = false
+    private let morphicPulse = false
 
     private var isIPad: Bool {
-        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact
+        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact && !dynamicTypeSize.isAccessibilitySize
     }
 
     private var numberOfNights: Int {
@@ -2270,13 +2276,11 @@ public struct AdminPetsHotelCreateReservationSheet: View {
         .navigationBarBackButtonHidden(true)
         .navigationBarHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+        .adminHotelWorkflow(viewModel: viewModel, isBusy: isSubmitting)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
             if selectedTypeId.isEmpty {
                 selectedTypeId = viewModel.accommodationTypes.first?.id ?? ""
-            }
-            withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
-                morphicPulse = true
             }
         }
     }
@@ -4364,6 +4368,7 @@ public struct AdminPetsHotelExtendStayDialog: View {
     @ObservedObject var viewModel: AdminPetsHotelViewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // State
@@ -4376,7 +4381,7 @@ public struct AdminPetsHotelExtendStayDialog: View {
     @State private var showSuccessBanner: Bool = false
 
     private var isPad: Bool {
-        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact
+        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact && !dynamicTypeSize.isAccessibilitySize
     }
 
     public init(reservation: AdminHotelReservation, viewModel: AdminPetsHotelViewModel) {
@@ -4423,6 +4428,7 @@ public struct AdminPetsHotelExtendStayDialog: View {
         }
         .navigationBarHidden(true)
         .navigationBarBackButtonHidden(true)
+        .adminHotelWorkflow(viewModel: viewModel, isBusy: isSubmitting)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
@@ -5636,7 +5642,7 @@ public struct PPSovereignHotelEditDeck: View {
     let viewModel: AdminPetsHotelViewModel
     let onClose: () -> Void
 
-    @State private var beaconPulsing: Bool = false
+    private let beaconPulsing = false
 
     private var speciesIconName: String {
         switch petSpecies.lowercased() {
@@ -5832,11 +5838,6 @@ public struct PPSovereignHotelEditDeck: View {
                 .fill(.ultraThinMaterial)
                 .background(AdminSurface.surface.opacity(0.88))
         )
-        .onAppear {
-            withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
-                beaconPulsing = true
-            }
-        }
     }
 
     private var telemetryRail: some View {
@@ -5986,6 +5987,7 @@ public struct AdminPetsHotelEditReservationDialog: View {
     @ObservedObject var viewModel: AdminPetsHotelViewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Customer state
@@ -6035,7 +6037,7 @@ public struct AdminPetsHotelEditReservationDialog: View {
     @State private var showSuccessBanner: Bool = false
 
     private var isPad: Bool {
-        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact
+        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact && !dynamicTypeSize.isAccessibilitySize
     }
 
     private var numberOfNights: Int {
@@ -6273,6 +6275,7 @@ public struct AdminPetsHotelEditReservationDialog: View {
         }
         .navigationBarHidden(true)
         .navigationBarBackButtonHidden(true)
+        .adminHotelWorkflow(viewModel: viewModel, isBusy: isSubmitting)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
             if selectedTypeId.isEmpty {
@@ -7297,83 +7300,86 @@ public struct AdminPetsHotelReasonSheet: View {
                 onBack: { dismiss() }
             )
 
-            VStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(Language.get("Hotel_Reason_SheetTitle", alter: "سبب الإلغاء أو التعديل"))
-                        .font(Font.custom("Beiruti-Bold", size: 16))
-                        .foregroundStyle(AdminSurface.primaryText)
-
-                    Text(Language.get("Hotel_Reason_SheetHint", alter: "يتطلب النظام تحديد سبب موثق لتعديل أو إلغاء الحجز."))
-                        .font(Font.custom("Beiruti-Medium", size: 12))
-                        .foregroundStyle(AdminSurface.secondaryText)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                // Reason Selection Matrix
-                VStack(spacing: 8) {
-                    ForEach(reasonOptions, id: \.id) { option in
-                        let isSelected = selectedReasonCode == option.id
-                        Button {
-                            selectedReasonCode = option.id
-                        } label: {
-                            HStack {
-                                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundStyle(isSelected ? Color.red : AdminSurface.secondaryText)
-
-                                Text(option.title)
-                                    .font(Font.custom("Beiruti-Medium", size: 14))
-                                    .foregroundStyle(AdminSurface.primaryText)
-
-                                Spacer()
-                            }
-                            .padding(12)
-                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
-
-                TextField(Language.get("Notes_Optional", alter: "ملاحظات إضافية (اختياري)..."), text: $note)
-                    .font(Font.custom("Beiruti-Medium", size: 13))
-                    .padding(12)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                Spacer()
-
-                Button {
-                    isSubmitting = true
-                    Task {
-                        let success = await viewModel.transitionReservation(
-                            reservation: reservation,
-                            action: action,
-                            reasonCode: selectedReasonCode,
-                            note: note.isEmpty ? nil : note
-                        )
-                        isSubmitting = false
-                        if success {
-                            dismiss()
-                        }
-                    }
-                } label: {
-                    HStack {
-                        if isSubmitting {
-                            ProgressView().tint(.white)
-                        }
-                        Text(Language.get("Hotel_ConfirmCancellationCTA", alter: "تأكيد إلغاء الحجز"))
+            ScrollView {
+                VStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(Language.get("Hotel_Reason_SheetTitle", alter: "سبب الإلغاء أو التعديل"))
                             .font(Font.custom("Beiruti-Bold", size: 16))
+                            .foregroundStyle(AdminSurface.primaryText)
+
+                        Text(Language.get("Hotel_Reason_SheetHint", alter: "يتطلب النظام تحديد سبب موثق لتعديل أو إلغاء الحجز."))
+                            .font(Font.custom("Beiruti-Medium", size: 12))
+                            .foregroundStyle(AdminSurface.secondaryText)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.red, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    // Reason Selection Matrix
+                    VStack(spacing: 8) {
+                        ForEach(reasonOptions, id: \.id) { option in
+                            let isSelected = selectedReasonCode == option.id
+                            Button {
+                                selectedReasonCode = option.id
+                            } label: {
+                                HStack {
+                                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                        .font(.system(size: 16, weight: .bold))
+                                        .foregroundStyle(isSelected ? Color.red : AdminSurface.secondaryText)
+
+                                    Text(option.title)
+                                        .font(Font.custom("Beiruti-Medium", size: 14))
+                                        .foregroundStyle(AdminSurface.primaryText)
+
+                                    Spacer()
+                                }
+                                .padding(12)
+                                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                    }
+
+                    TextField(Language.get("Notes_Optional", alter: "ملاحظات إضافية (اختياري)..."), text: $note)
+                        .font(Font.custom("Beiruti-Medium", size: 13))
+                        .padding(12)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                    Spacer()
+
+                    Button {
+                        isSubmitting = true
+                        Task {
+                            let success = await viewModel.transitionReservation(
+                                reservation: reservation,
+                                action: action,
+                                reasonCode: selectedReasonCode,
+                                note: note.isEmpty ? nil : note
+                            )
+                            isSubmitting = false
+                            if success {
+                                dismiss()
+                            }
+                        }
+                    } label: {
+                        HStack {
+                            if isSubmitting {
+                                ProgressView().tint(.white)
+                            }
+                            Text(Language.get("Hotel_ConfirmCancellationCTA", alter: "تأكيد إلغاء الحجز"))
+                                .font(Font.custom("Beiruti-Bold", size: 16))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.red, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .foregroundStyle(.white)
+                    }
+                    .disabled(isSubmitting)
                 }
-                .disabled(isSubmitting)
+                .padding(18)
             }
-            .padding(18)
         }
         .background(AdminSurface.background.ignoresSafeArea())
         .navigationBarHidden(true)
+        .adminHotelWorkflow(viewModel: viewModel, isBusy: isSubmitting, showsErrors: true)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 }

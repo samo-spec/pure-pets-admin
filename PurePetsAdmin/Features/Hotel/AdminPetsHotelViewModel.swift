@@ -349,6 +349,9 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         roomStatusModalAccommodation = nil
         suiteEditorModalAccommodation = nil
         typeEditorModalType = nil
+        newReservationModalOpen = false
+        isCreatingNewSuite = false
+        isCreatingNewType = false
     }
 
     private func setLoadError(_ error: Error, source: String) {
@@ -547,6 +550,7 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         verification: AdminHotelCheckInVerification = AdminHotelCheckInVerification(),
         notes: String?
     ) async {
+        guard !isSubmitting else { return }
         guard canCheckIn else {
             errorMessage = AdminPetsHotelError.permissionDenied.localizedDescription
             return
@@ -619,6 +623,7 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         verification: AdminHotelCheckOutVerification = AdminHotelCheckOutVerification(),
         earlyReason: String? = nil
     ) async {
+        guard !isSubmitting else { return }
         guard canCheckOut else {
             errorMessage = AdminPetsHotelError.permissionDenied.localizedDescription
             return
@@ -666,6 +671,7 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         reference: String? = nil,
         notes: String? = nil
     ) async -> Bool {
+        guard !isSubmitting else { return false }
         guard canManageBilling else {
             errorMessage = AdminPetsHotelError.permissionDenied.localizedDescription
             return false
@@ -697,6 +703,7 @@ public final class AdminPetsHotelViewModel: ObservableObject {
     }
 
     public func setRoomStatus(room: AdminHotelAccommodation, newStatus: HotelAccommodationStatus) async -> Bool {
+        guard !isSubmitting else { return false }
         guard canManageAccommodations else {
             errorMessage = AdminPetsHotelError.permissionDenied.localizedDescription
             return false
@@ -734,6 +741,7 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         notes: String?,
         active: Bool
     ) async -> Bool {
+        guard !isSubmitting else { return false }
         guard canManageAccommodations, let branchId = currentBranchId else {
             errorMessage = AdminPetsHotelError.permissionDenied.localizedDescription
             return false
@@ -783,6 +791,7 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         description: String?,
         active: Bool
     ) async -> Bool {
+        guard !isSubmitting else { return false }
         guard canManageAccommodations, let branchId = currentBranchId else {
             errorMessage = AdminPetsHotelError.permissionDenied.localizedDescription
             return false
@@ -827,6 +836,7 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         confirmReprice: Bool = false,
         expectedNewRateMinor: Int? = nil
     ) async -> Bool {
+        guard !isSubmitting else { return false }
         guard canManageAccommodations else {
             errorMessage = AdminPetsHotelError.permissionDenied.localizedDescription
             return false
@@ -884,6 +894,7 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         notes: String?,
         confirmImmediately: Bool
     ) async -> Bool {
+        guard !isSubmitting else { return false }
         guard canManageReservations else {
             errorMessage = AdminPetsHotelError.permissionDenied.localizedDescription
             return false
@@ -1269,6 +1280,7 @@ public final class AdminPetsHotelViewModel: ObservableObject {
     }
 
     public func confirmReservation(reservation: AdminHotelReservation) async {
+        guard !isSubmitting else { return }
         guard canManageReservations else {
             errorMessage = AdminPetsHotelError.permissionDenied.localizedDescription
             return
@@ -1290,6 +1302,7 @@ public final class AdminPetsHotelViewModel: ObservableObject {
     }
 
     public func extendReservation(reservation: AdminHotelReservation, newDepartureAt: Date, reasonCode: String = "operator_request", note: String? = nil) async -> Bool {
+        guard !isSubmitting else { return false }
         guard canManageReservations else {
             errorMessage = AdminPetsHotelError.permissionDenied.localizedDescription
             return false
@@ -1345,6 +1358,11 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         medicationsText: String? = nil,
         depositMinor: Int? = nil
     ) async -> Bool {
+        guard !isSubmitting else { return false }
+        guard canManageReservations else {
+            errorMessage = AdminPetsHotelError.permissionDenied.localizedDescription
+            return false
+        }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         isSubmitting = true
         errorMessage = nil
@@ -1462,6 +1480,11 @@ public final class AdminPetsHotelViewModel: ObservableObject {
     }
 
     public func transitionReservation(reservation: AdminHotelReservation, action: String, reasonCode: String? = nil, note: String? = nil) async -> Bool {
+        guard !isSubmitting else { return false }
+        guard canManageReservations else {
+            errorMessage = AdminPetsHotelError.permissionDenied.localizedDescription
+            return false
+        }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         isSubmitting = true
         errorMessage = nil

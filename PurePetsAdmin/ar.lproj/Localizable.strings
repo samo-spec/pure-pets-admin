@@ -7149,11 +7149,8 @@
 
 "Hotel_Err_CreateReservationFailed" = "تعذر إنشاء الحجز، يرجى المحاولة مجدداً.";
 
-"Hotel_Err_CustomerNameRequired" = "يرجى إدخال اسم المالك بالكامل.";
 
-"Hotel_Err_CustomerPhoneRequired" = "يرجى إدخال رقم هاتف المالك.";
 
-"Hotel_Err_PetNameRequired" = "يرجى إدخال اسم النزيل.";
 
 "Hotel_Name_Dog1" = "وحدة كلاب صغيرة 1";
 "Hotel_Name_Dog2" = "وحدة كلاب كبيرة 1";
@@ -13655,3 +13652,31 @@
 "Delivery_Driver_Acceptance_Saving" = "جارٍ تأكيد الصلاحية…";
 "Delivery_Driver_Acceptance_Saved" = "تم تأكيد الصلاحية";
 "Delivery_Driver_Acceptance_Sync_Error" = "تعذر تأكيد التغيير. تحقق من الاتصال وحاول مجددًا. أعد فتح الملف إذا تغيرت صلاحياته.";
+
+/* Hotel reception and native workflow */
+"Hotel_Workflow_Saving" = "جارٍ حفظ العملية لدى الخادم…";
+"Hotel_Reception_Title" = "مكتب الاستقبال";
+"Hotel_Reception_Subtitle" = "الوصول والمغادرة اليوم، والخطوة التالية لكل نزيل.";
+"Hotel_Reception_NoMovements" = "لا توجد مواعيد وصول أو مغادرة اليوم.";
+"Hotel_StayDetails" = "تفاصيل الإقامة";
+"Hotel_Checkout_ConfirmHandover" = "تأكيد المغادرة وتسليم النزيل";
+"Hotel_Err_TypeSaveFailed" = "تعذر حفظ فئة الإقامة. حاول مرة أخرى.";
+"Hotel_Calendar_PreviousMonth" = "الشهر السابق";
+"Hotel_Calendar_NextMonth" = "الشهر التالي";
+"Hotel_Calendar_InRange" = "ضمن فترة الإقامة";
+
+/* Hotel category-name examples preserve the edited field language. */
+"Hotel_Type_Example_Dogs_Ar" = "مثال: كلاب صغيرة";
+"Hotel_Type_Example_Dogs_En" = "e.g. Small Dogs";
+"Hotel_Type_Example_Cats_Ar" = "مثال: قطط صغيرة";
+"Hotel_Type_Example_Cats_En" = "e.g. Small Cats";
+"Hotel_Type_Example_Birds_Ar" = "مثال: طيور صغيرة";
+"Hotel_Type_Example_Birds_En" = "e.g. Small Birds";
+"Hotel_Type_Example_SmallPets_Ar" = "مثال: أرانب وحيوانات صغيرة";
+"Hotel_Type_Example_SmallPets_En" = "e.g. Rabbits & Small Pets";
+"Hotel_Type_Example_Isolation_Ar" = "مثال: عزل الطيور";
+"Hotel_Type_Example_Isolation_En" = "e.g. Bird Isolation";
+"Hotel_Type_Example_Observation_Ar" = "مثال: ملاحظة طبية للكلاب";
+"Hotel_Type_Example_Observation_En" = "e.g. Medical Observation - Dogs";
+"Hotel_Type_Example_Daycare_Ar" = "مثال: رعاية نهارية للكلاب";
+"Hotel_Type_Example_Daycare_En" = "e.g. Dog Daycare";

@@ -2647,8 +2647,6 @@ struct FulfillmentDossierView: View {
                                         .font(AdminType.caption2)
                                         .foregroundStyle(FulfillmentTokens.inkSecondary)
                                 }
-                                        .foregroundStyle(FulfillmentTokens.inkSecondary)
-                                }
                             }
                         }
                     }

@@ -603,7 +603,9 @@ public struct AdminPetsHotelSuitesManagementView: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
                 .background(room.status.color.opacity(0.12), in: Capsule())
+                .frame(minHeight: AdminTouchTarget.minimum)
             }
+            .disabled(!viewModel.canManageAccommodations || viewModel.isSubmitting)
         }
         .padding(12)
         .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -778,7 +780,9 @@ public struct AdminPetsHotelSuiteCard: View {
                     .padding(.vertical, 4)
                     .background(room.status.color.opacity(0.12), in: Capsule())
                     .foregroundStyle(room.status.color)
+                    .frame(minHeight: AdminTouchTarget.minimum)
                 }
+                .disabled(!viewModel.canManageAccommodations || viewModel.isSubmitting)
 
                 Spacer()
 
@@ -878,6 +882,7 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
     @ObservedObject var viewModel: AdminPetsHotelViewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
 
     public var isPushMode: Bool = false
@@ -895,12 +900,13 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
     @State private var isSubmitting: Bool = false
     @State private var validationError: String? = nil
     @State private var showNewTypeSheet: Bool = false
-    @State private var morphicPulse: Bool = false
+    private let morphicPulse = false
 
     private var isEditMode: Bool { accommodation != nil }
 
     private var isIPad: Bool {
-        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact
+        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass == .regular
+            && !dynamicTypeSize.isAccessibilitySize
     }
 
     public init(
@@ -933,12 +939,10 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
         .navigationBarBackButtonHidden(true)
         .navigationBarHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+        .adminHotelWorkflow(viewModel: viewModel, isBusy: isSubmitting, showsErrors: true)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
             populateFields()
-            withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
-                morphicPulse = true
-            }
         }
         .fullScreenCover(isPresented: $showNewTypeSheet) {
             AdminPetsHotelAccommodationTypeEditorSheet(accommodationType: nil, viewModel: viewModel)
@@ -2411,6 +2415,7 @@ public struct AdminPetsHotelAccommodationTypeEditorSheet: View {
     @ObservedObject var viewModel: AdminPetsHotelViewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var code: String = ""
     @State private var nameAr: String = ""
@@ -2428,7 +2433,10 @@ public struct AdminPetsHotelAccommodationTypeEditorSheet: View {
     @State private var validationAttempted: Bool = false
 
     private var isEditMode: Bool { accommodationType != nil }
-    private var isPad: Bool { horizontalSizeClass == .regular || UIDevice.current.userInterfaceIdiom == .pad }
+    private var isPad: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass == .regular
+            && !dynamicTypeSize.isAccessibilitySize
+    }
 
     public init(accommodationType: AdminHotelAccommodationType?, viewModel: AdminPetsHotelViewModel) {
         self.accommodationType = accommodationType
@@ -2483,6 +2491,7 @@ public struct AdminPetsHotelAccommodationTypeEditorSheet: View {
         .navigationBarBackButtonHidden(true)
         .navigationBarHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+        .adminHotelWorkflow(viewModel: viewModel, isBusy: isSubmitting)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
             populateFields()
@@ -2578,7 +2587,7 @@ public struct AdminPetsHotelAccommodationTypeEditorSheet: View {
                 dismiss()
             } else {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
-                validationError = viewModel.errorMessage ?? "Failed to save category"
+                validationError = viewModel.errorMessage ?? Language.get("Hotel_Err_TypeSaveFailed", alter: "تعذر حفظ فئة الإقامة. حاول مرة أخرى.")
             }
         }
     }
@@ -2971,7 +2980,7 @@ private struct AdminHotelTierLivingVitrine: View {
     var isCompact: Bool = true
 
     @Environment(\.colorScheme) private var colorScheme
-    @State private var isPulsing: Bool = false
+    private let isPulsing = false
 
     private var displayRate: String {
         let trimmed = nightlyRateMajor.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2980,25 +2989,25 @@ private struct AdminHotelTierLivingVitrine: View {
 
     private var sampleCategoryNameAr: String {
         switch wing {
-        case .dogs: return "مثال: كلاب صغيرة"
-        case .cats: return "مثال: قطط صغيرة"
-        case .birds: return "مثال: طيور صغيرة"
-        case .smallPets: return "مثال: أرانب وحيوانات صغيرة"
-        case .isolation: return "مثال: عزل الطيور"
-        case .medicalObservation: return "مثال: ملاحظة طبية للكلاب"
-        case .daycare: return "مثال: رعاية نهارية للكلاب"
+        case .dogs: return Language.get("Hotel_Type_Example_Dogs_Ar", alter: "مثال: كلاب صغيرة")
+        case .cats: return Language.get("Hotel_Type_Example_Cats_Ar", alter: "مثال: قطط صغيرة")
+        case .birds: return Language.get("Hotel_Type_Example_Birds_Ar", alter: "مثال: طيور صغيرة")
+        case .smallPets: return Language.get("Hotel_Type_Example_SmallPets_Ar", alter: "مثال: أرانب وحيوانات صغيرة")
+        case .isolation: return Language.get("Hotel_Type_Example_Isolation_Ar", alter: "مثال: عزل الطيور")
+        case .medicalObservation: return Language.get("Hotel_Type_Example_Observation_Ar", alter: "مثال: ملاحظة طبية للكلاب")
+        case .daycare: return Language.get("Hotel_Type_Example_Daycare_Ar", alter: "مثال: رعاية نهارية للكلاب")
         }
     }
 
     private var sampleCategoryNameEn: String {
         switch wing {
-        case .dogs: return "e.g. Small Dogs"
-        case .cats: return "e.g. Small Cats"
-        case .birds: return "e.g. Small Birds"
-        case .smallPets: return "e.g. Rabbits & Small Pets"
-        case .isolation: return "e.g. Bird Isolation"
-        case .medicalObservation: return "e.g. Medical Observation - Dogs"
-        case .daycare: return "e.g. Dog Daycare"
+        case .dogs: return Language.get("Hotel_Type_Example_Dogs_En", alter: "e.g. Small Dogs")
+        case .cats: return Language.get("Hotel_Type_Example_Cats_En", alter: "e.g. Small Cats")
+        case .birds: return Language.get("Hotel_Type_Example_Birds_En", alter: "e.g. Small Birds")
+        case .smallPets: return Language.get("Hotel_Type_Example_SmallPets_En", alter: "e.g. Rabbits & Small Pets")
+        case .isolation: return Language.get("Hotel_Type_Example_Isolation_En", alter: "e.g. Bird Isolation")
+        case .medicalObservation: return Language.get("Hotel_Type_Example_Observation_En", alter: "e.g. Medical Observation - Dogs")
+        case .daycare: return Language.get("Hotel_Type_Example_Daycare_En", alter: "e.g. Dog Daycare")
         }
     }
 
@@ -3182,11 +3191,6 @@ private struct AdminHotelTierLivingVitrine: View {
             radius: 8,
             y: 3
         )
-        .onAppear {
-            withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
-                isPulsing = true
-            }
-        }
     }
 
     private func speciesMiniChip(_ species: String) -> some View {

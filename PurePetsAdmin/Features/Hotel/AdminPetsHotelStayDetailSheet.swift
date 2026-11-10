@@ -20,6 +20,7 @@ public struct AdminPetsHotelStayDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var isLoadingDossier: Bool = false
@@ -46,7 +47,7 @@ public struct AdminPetsHotelStayDetailSheet: View {
     }
 
     private var isPad: Bool {
-        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact
+        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact && !dynamicTypeSize.isAccessibilitySize
     }
 
     public var body: some View {
@@ -113,10 +114,11 @@ public struct AdminPetsHotelStayDetailSheet: View {
         }
         .navigationBarHidden(true)
         .navigationBarBackButtonHidden(true)
+        .adminHotelWorkflow(viewModel: viewModel, showsErrors: true)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .task {
             if viewModel.canViewCare {
-                await reloadDossier()
+                reloadDossier()
             }
         }
     }
@@ -130,8 +132,9 @@ public struct AdminPetsHotelStayDetailSheet: View {
     }
 
     private func reloadDossier() {
+        guard viewModel.canViewCare, !isLoadingDossier else { return }
+        isLoadingDossier = true
         Task {
-            isLoadingDossier = true
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             await viewModel.loadStayDossier(stayId: stay.id, updatePresentedDetail: true)
             withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
