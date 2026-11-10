@@ -56,11 +56,17 @@ static UIStackView *DStack(NSArray<UIView *> *views, CGFloat spacing) {
 }
 
 static NSString *DAddress(NSDictionary *address) {
-    for (NSString *key in @[@"formattedAddress",@"fullAddress",@"address",@"addressLine1",@"label"]) {
+    NSDictionary *branchName = DDict(address[@"branchName"]);
+    if (branchName.count) {
+        NSString *name = Language.isRTL ? DText(branchName[@"ar"]) : DText(branchName[@"en"]);
+        if (!name.length) name = DText(branchName[@"ar"]).length ? DText(branchName[@"ar"]) : DText(branchName[@"en"]);
+        if (name.length) return name;
+    }
+    for (NSString *key in @[@"formattedAddress",@"fullAddress",@"address",@"addressLine1",@"locationName",@"locatioName",@"label"]) {
         if (DText(address[key]).length) return DText(address[key]);
     }
     NSMutableArray *parts = [NSMutableArray array];
-    for (NSString *key in @[@"buildingNumber",@"streetName",@"street",@"zoneNumber",@"area",@"city"]) {
+    for (NSString *key in @[@"buildingNumber",@"streetName",@"street",@"zoneNumber",@"area",@"city",@"country"]) {
         id value = address[key]; NSString *part = DText(value);
         if ([value isKindOfClass:NSNumber.class]) part = [value stringValue];
         if (part.length && ![parts containsObject:part]) [parts addObject:part];

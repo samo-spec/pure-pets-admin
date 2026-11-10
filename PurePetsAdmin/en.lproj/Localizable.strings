@@ -4554,6 +4554,11 @@
 "Delivery_Driver_Error_User_Not_Found" = "No Pure Pets account matched that identity.";
 "Delivery_Driver_Error_Already_Member" = "This account is already a member of the official delivery fleet.";
 "Delivery_Driver_Error_Conflict" = "The driver membership changed. Refresh and review the latest state before trying again.";
+"Delivery_Driver_Error_Account_Inactive" = "This account is inactive or its account details are incomplete. Review its account type and active status in user management before adding it to the fleet.";
+"Delivery_Driver_Error_Registration_Required" = "This account must complete Pure Pets registration before it can be added as a driver.";
+"Delivery_Driver_Error_Workforce_Grant" = "This staff account needs driver-task and notification access before it can join the official fleet. Ask an authorized administrator to review its permissions.";
+"Delivery_Driver_Error_Provisioning_Authority" = "Adding a new official-fleet driver requires a Platform Technical Root account with staff-creation permission.";
+"Delivery_Driver_Error_Precondition" = "The account or fleet is not ready for this change. Review the account status and fleet settings before trying again.";
 "Delivery_Driver_Error_Service" = "Driver membership could not be updated. Retry when the delivery service is available.";
 
 /* ===================== PPAlert feedback system ===================== */

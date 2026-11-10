@@ -598,6 +598,25 @@ private final class DeliveryCommandCenterViewModel: ObservableObject {
     }
 
     private func recordMemberMutationError(_ error: NSError) {
+        // A failed precondition is not necessarily a changed membership.
+        // Preserve the server's specific account/grant rejection before the
+        // generic Firebase-code and permission fallbacks.
+        switch PPDeliveryService.domainCode(for: error) {
+        case "DELIVERY_DRIVER_TARGET_ACCOUNT_INACTIVE":
+            memberErrorKey = "Delivery_Driver_Error_Account_Inactive"
+            return
+        case "DELIVERY_DRIVER_TARGET_REGISTRATION_REQUIRED":
+            memberErrorKey = "Delivery_Driver_Error_Registration_Required"
+            return
+        case "DELIVERY_WORKFORCE_GRANT_REQUIRED":
+            memberErrorKey = "Delivery_Driver_Error_Workforce_Grant"
+            return
+        case "DELIVERY_DRIVER_PROVISIONING_AUTHORITY_REQUIRED":
+            memberErrorKey = "Delivery_Driver_Error_Provisioning_Authority"
+            return
+        default:
+            break
+        }
         if PPDeliveryService.isPermissionError(error) {
             memberIncident = DeliveryIncident.classify(error)
             return
@@ -609,7 +628,9 @@ private final class DeliveryCommandCenterViewModel: ObservableObject {
             memberErrorKey = "Delivery_Driver_Error_User_Not_Found"
         case 6:
             memberErrorKey = "Delivery_Driver_Error_Already_Member"
-        case 9, 10:
+        case 9:
+            memberErrorKey = "Delivery_Driver_Error_Precondition"
+        case 10:
             memberErrorKey = "Delivery_Driver_Error_Conflict"
         default:
             memberErrorKey = "Delivery_Driver_Error_Service"

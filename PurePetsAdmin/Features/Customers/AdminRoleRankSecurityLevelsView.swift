@@ -242,7 +242,13 @@ public final class SecurityPermissionCatalog: @unchecked Sendable {
                     SecurityPermissionItem(key: "delivery.dispatch", titleAr: "جدولة وتعيين السائقين والمناديب", titleEn: "Dispatch & Assign Drivers", moduleKey: "delivery", isHighRisk: false),
                     SecurityPermissionItem(key: "delivery.override", titleAr: "التدخل السيادي وإعادة التوجيه", titleEn: "Sovereign Delivery Override", moduleKey: "delivery", isHighRisk: true),
                     SecurityPermissionItem(key: "delivery.cod.reconcile", titleAr: "تسوية مبالغ الدفع عند الاستلام (COD)", titleEn: "Reconcile Cash on Delivery", moduleKey: "delivery", isHighRisk: true)
-                ] + Self.canonicalPermissionItems([kStaffPermDeliveryTasksManage], moduleKey: "delivery")
+                ] + Self.canonicalPermissionItems([
+                    kStaffPermDeliveryTasksManage,
+                    kStaffPermDeliveryAssign,
+                    kStaffPermDeliveryDriverView,
+                    kStaffPermDeliveryDriverManage,
+                    kStaffPermDeliveryDriverManageAcceptance
+                ], moduleKey: "delivery")
             ),
             SecurityPermissionModule(
                 key: "pos",

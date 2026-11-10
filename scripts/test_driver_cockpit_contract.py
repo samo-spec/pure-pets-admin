@@ -45,7 +45,8 @@ class DriverCockpitContractTests(unittest.TestCase):
         self.assertIn("driverCanReceiveOffers(", MANAGEMENT)
 
     def test_custom_role_picker_exposes_the_canonical_driver_grant(self):
-        self.assertIn('Self.canonicalPermissionItems([kStaffPermDeliveryTasksManage], moduleKey: "delivery")', ROLE_EDITOR)
+        self.assertIn('kStaffPermDeliveryTasksManage', ROLE_EDITOR)
+        self.assertIn('moduleKey: "delivery"', ROLE_EDITOR)
         self.assertIn('PPStaffPermissionModules()', ROLE_EDITOR)
         self.assertIn('module["actions"]', ROLE_EDITOR)
         self.assertIn('action["labelAr"]', ROLE_EDITOR)
@@ -67,6 +68,28 @@ class DriverCockpitContractTests(unittest.TestCase):
     def test_telemetry_beacon_respects_reduce_motion(self):
         self.assertIn('PPDriverPulseBeaconView', COCKPIT)
         self.assertIn('UIAccessibilityIsReduceMotionEnabled()', COCKPIT)
+
+    def test_registration_errors_preserve_account_and_grant_causes(self):
+        start = MANAGEMENT.index('private func recordMemberMutationError(')
+        end = MANAGEMENT.index('func openDossier(', start)
+        errors = MANAGEMENT[start:end]
+        mappings = {
+            'DELIVERY_DRIVER_TARGET_ACCOUNT_INACTIVE': 'Delivery_Driver_Error_Account_Inactive',
+            'DELIVERY_DRIVER_TARGET_REGISTRATION_REQUIRED': 'Delivery_Driver_Error_Registration_Required',
+            'DELIVERY_WORKFORCE_GRANT_REQUIRED': 'Delivery_Driver_Error_Workforce_Grant',
+            'DELIVERY_DRIVER_PROVISIONING_AUTHORITY_REQUIRED': 'Delivery_Driver_Error_Provisioning_Authority',
+        }
+        self.assertLess(errors.index('PPDeliveryService.domainCode(for: error)'),
+                        errors.index('PPDeliveryService.isPermissionError(error)'))
+        for domain_code, key in mappings.items():
+            self.assertIn(f'case "{domain_code}":\n            memberErrorKey = "{key}"', errors)
+        self.assertNotIn('case 9, 10:', errors)
+        self.assertIn('case 9:\n            memberErrorKey = "Delivery_Driver_Error_Precondition"', errors)
+        self.assertIn('case 10:\n            memberErrorKey = "Delivery_Driver_Error_Conflict"', errors)
+        for language in ['ar', 'en']:
+            strings = (ROOT / f'{language}.lproj' / 'Localizable.strings').read_text()
+            for key in [*mappings.values(), 'Delivery_Driver_Error_Precondition']:
+                self.assertEqual(strings.count(f'"{key}" ='), 1, f'{language}: {key}')
 
 
 if __name__ == "__main__":
