@@ -69,6 +69,7 @@ private enum ProviderTheme {
 
 public enum ProviderTab: String, CaseIterable, Sendable {
     case applications
+    case subscriptions
     case plans
     case features
     case accounting
@@ -76,6 +77,7 @@ public enum ProviderTab: String, CaseIterable, Sendable {
     var localizedTitle: String {
         switch self {
         case .applications: return Language.get("Providers_Applications_Tab", alter: "الطلبات")
+        case .subscriptions: return Language.get("PartnerSub_Tab", alter: nil)
         case .plans: return Language.get("Providers_Plans_Tab", alter: "الباقات")
         case .features: return Language.get("Providers_Features_Tab", alter: "الميزات")
         case .accounting: return Language.get("Providers_Accounting_Tab", alter: "المحاسبة")
@@ -85,6 +87,7 @@ public enum ProviderTab: String, CaseIterable, Sendable {
     var icon: String {
         switch self {
         case .applications: return "tray.full.fill"
+        case .subscriptions: return "calendar.badge.clock"
         case .plans: return "sparkles.rectangle.stack.fill"
         case .features: return "slider.horizontal.3"
         case .accounting: return "banknote.fill"
@@ -226,6 +229,7 @@ public struct AdminProvidersView: View {
             Spacer(minLength: 8)
 
             // Center: Integrated Workspace Tabs inside Header Bar
+            ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
                 ForEach(Array(ProviderTab.allCases.enumerated()), id: \.element) { index, tab in
                     let isSelected = selectedTab == tab
@@ -244,6 +248,7 @@ public struct AdminProvidersView: View {
                         .foregroundStyle(isSelected ? Color.white : AdminSurface.primaryText)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
+                        .frame(minHeight: 44)
                         .background(
                             isSelected ? AdminSurface.primary : AdminSurface.control,
                             in: Capsule(style: .continuous)
@@ -259,6 +264,7 @@ public struct AdminProvidersView: View {
                 Capsule(style: .continuous)
                     .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: 0.75)
             )
+            }
 
             Spacer(minLength: 8)
 
@@ -311,6 +317,7 @@ public struct AdminProvidersView: View {
 
     // MARK: - iPhone Tab Picker
     private var providerTabPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
         HStack(spacing: 6) {
             ForEach(ProviderTab.allCases, id: \.self) { tab in
                 let isSelected = selectedTab == tab
@@ -341,7 +348,9 @@ public struct AdminProvidersView: View {
                         }
                     }
                     .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
-                    .frame(maxWidth: .infinity, minHeight: 38)
+                    .fixedSize(horizontal: true, vertical: true)
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 44)
                     .background(
                         isSelected
                             ? AnyView(
@@ -367,6 +376,7 @@ public struct AdminProvidersView: View {
             }
         }
         .padding(.horizontal, AdminSpacing.screenMargin)
+        }
     }
 
     @ViewBuilder
@@ -374,6 +384,8 @@ public struct AdminProvidersView: View {
         switch selectedTab {
         case .applications:
             AdminProviderApplicationsView(viewModel: sharedViewModel, isRegular: isRegular)
+        case .subscriptions:
+            AdminLegacyViewControllerWrapper { PPProviderSubscriptionsViewController() }
         case .plans:
             AdminLegacyViewControllerWrapper { PPProviderPlansViewController() }
         case .features:

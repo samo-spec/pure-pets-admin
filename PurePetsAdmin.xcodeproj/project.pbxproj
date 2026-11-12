@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		99CB650CAE4A4C5BB49DA371 /* PPProviderSubscriptionsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = ACE76CEA9BA84E469E09EA21 /* PPProviderSubscriptionsViewController.m */; };
+		2B7B3E3ABF4C4B77B37B708A /* PPProviderSubscriptionPresentation.m in Sources */ = {isa = PBXBuildFile; fileRef = B2DA213526B34D2F9D8ED4A1 /* PPProviderSubscriptionPresentation.m */; };
 		F518A0013018000100F51801 /* PPPharmacyInventoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F518A0023018000100F51802 /* PPPharmacyInventoryView.swift */; };
 		0FA0F4A7616B40D6BEB51BEA /* PPAlertSwiftUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23C621F144EE4FDFBD3569A9 /* PPAlertSwiftUI.swift */; };
 		0E459C5F97C3462EBFC81034 /* Features/Providers/ProvidersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 174216D85CB0499686726B1E /* Features/Providers/ProvidersView.swift */; };
@@ -432,6 +434,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		73233980058F4300A8BAA9BF /* PPProviderSubscriptionsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPProviderSubscriptionsViewController.h; sourceTree = "<group>"; };
+		ACE76CEA9BA84E469E09EA21 /* PPProviderSubscriptionsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPProviderSubscriptionsViewController.m; sourceTree = "<group>"; };
+		8F38181D4DC24B48B8C59110 /* PPProviderSubscriptionPresentation.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPProviderSubscriptionPresentation.h; sourceTree = "<group>"; };
+		B2DA213526B34D2F9D8ED4A1 /* PPProviderSubscriptionPresentation.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPProviderSubscriptionPresentation.m; sourceTree = "<group>"; };
 		F518A0023018000100F51802 /* PPPharmacyInventoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPPharmacyInventoryView.swift; sourceTree = "<group>"; };
 		23C621F144EE4FDFBD3569A9 /* PPAlertSwiftUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPAlertSwiftUI.swift; sourceTree = "<group>"; };
 		037779E2FB6A43D1886C40F6 /* Features/Payments/PaymentSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Payments/PaymentSettingsView.swift; sourceTree = "<group>"; };
@@ -1962,6 +1968,10 @@
 				F2A24AF33003C4D3003AB79D /* PPProviderPlansViewController.h */,
 				F2A24AF43003C4D3003AB79D /* PPProviderPlansViewController.m */,
 				F2A24AF53003C4D3003AB79D /* PPProviderService.h */,
+				73233980058F4300A8BAA9BF /* PPProviderSubscriptionsViewController.h */,
+				ACE76CEA9BA84E469E09EA21 /* PPProviderSubscriptionsViewController.m */,
+				8F38181D4DC24B48B8C59110 /* PPProviderSubscriptionPresentation.h */,
+				B2DA213526B34D2F9D8ED4A1 /* PPProviderSubscriptionPresentation.m */,
 				F2A24AF63003C4D3003AB79D /* PPProviderService.m */,
 				F2A24B073003C4D3003AB79D /* PPProviderUI.h */,
 				F2A24B083003C4D3003AB79D /* PPProviderUI.m */,
@@ -2744,6 +2754,8 @@
 				45F1BF21C1E74B3889297300 /* PPDriverWorkspaceService.m in Sources */,
 				F2A24B023003C4D3003AB79D /* PPProviderFeatureAccessViewController.m in Sources */,
 				F2A24B033003C4D3003AB79D /* PPProviderService.m in Sources */,
+				99CB650CAE4A4C5BB49DA371 /* PPProviderSubscriptionsViewController.m in Sources */,
+				2B7B3E3ABF4C4B77B37B708A /* PPProviderSubscriptionPresentation.m in Sources */,
 				F2A24B043003C4D3003AB79D /* PPProviderAccountingViewController.m in Sources */,
 				F2A24B053003C4D3003AB79D /* PPAccountingService.m in Sources */,
 				F2A24B063003C4D3003AB79D /* PPProviderUI.m in Sources */,

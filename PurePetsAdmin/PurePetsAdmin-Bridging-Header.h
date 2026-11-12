@@ -57,6 +57,7 @@
 #import "Providers/PPProviderAccountingViewController.h"
 #import "Providers/PPProviderApplicationsViewController.h"
 #import "Providers/PPProviderService.h"
+#import "Providers/PPProviderSubscriptionsViewController.h"
 #import "Providers/PPProviderFeatureAccessViewController.h"
 #import "Providers/PPProviderPlansViewController.h"
 #import "POS/PPPOSService.h"

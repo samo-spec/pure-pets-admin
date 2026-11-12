@@ -1,5 +1,7 @@
 #import "PPProviderService.h"
 #import "PPStaffAuth.h"
+#import "Language.h"
+#import "PPFirebaseCompat.h"
 @import FirebaseFirestore;
 @import FirebaseAuth;
 @import FirebaseFunctions;
@@ -121,7 +123,82 @@ static NSError *PPProviderLedgerAccessError(void) {
 
 @end
 
+@interface PPProviderService ()
+- (void)fetchSubscriptionWorkspace:(NSDictionary *)query actorUID:(NSString *)actorUID
+                          attempt:(NSUInteger)attempt shouldContinue:(BOOL (^)(void))shouldContinue
+                       completion:(void(^)(NSDictionary *, NSError *))completion;
+@end
+
 @implementation PPProviderService
+
+- (void)fetchSubscriptionWorkspace:(NSDictionary *)query completion:(void(^)(NSDictionary *, NSError *))completion {
+    [self fetchSubscriptionWorkspace:query shouldContinue:nil completion:completion];
+}
+
+- (void)fetchSubscriptionWorkspace:(NSDictionary *)query shouldContinue:(BOOL (^)(void))shouldContinue
+                       completion:(void(^)(NSDictionary *, NSError *))completion {
+    NSDictionary *request = [query copy];
+    NSString *actorUID = [FIRAuth auth].currentUser.uid ?: @"";
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self fetchSubscriptionWorkspace:request actorUID:actorUID attempt:0 shouldContinue:shouldContinue completion:completion];
+    });
+}
+
+- (void)fetchSubscriptionWorkspace:(NSDictionary *)query actorUID:(NSString *)actorUID
+                          attempt:(NSUInteger)attempt shouldContinue:(BOOL (^)(void))shouldContinue
+                       completion:(void(^)(NSDictionary *, NSError *))completion {
+    if (shouldContinue && !shouldContinue()) {
+        if (completion) completion(nil, [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorCancelled userInfo:nil]);
+        return;
+    }
+    if (!actorUID.length || ![actorUID isEqualToString:[FIRAuth auth].currentUser.uid]) {
+        if (completion) completion(nil, [NSError errorWithDomain:FIRFunctionsErrorDomain code:FIRFunctionsErrorCodeUnauthenticated userInfo:nil]);
+        return;
+    }
+    FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"getProviderSubscriptionWorkspace"];
+    callable.timeoutInterval = 25;
+    [callable callWithObject:query completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        NSDictionary *response = [result.data isKindOfClass:NSDictionary.class] ? result.data : nil;
+        NSError *failure = error;
+        if (!failure && (![response[@"contractVersion"] isKindOfClass:NSNumber.class] || [response[@"contractVersion"] integerValue] != 1)) {
+            failure = [NSError errorWithDomain:NSCocoaErrorDomain code:NSPropertyListReadCorruptError userInfo:@{NSLocalizedDescriptionKey:kLang(@"PartnerSub_LoadFailed")}];
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (shouldContinue && !shouldContinue()) {
+                if (completion) completion(nil, [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorCancelled userInfo:nil]);
+                return;
+            }
+            if (![actorUID isEqualToString:[FIRAuth auth].currentUser.uid]) {
+                if (completion) completion(nil, [NSError errorWithDomain:FIRFunctionsErrorDomain code:FIRFunctionsErrorCodeUnauthenticated userInfo:nil]);
+                return;
+            }
+            BOOL transient = [failure.domain isEqualToString:FIRFunctionsErrorDomain] &&
+                [@[@(FIRFunctionsErrorCodeInternal), @(FIRFunctionsErrorCodeUnavailable),
+                   @(FIRFunctionsErrorCodeDeadlineExceeded), @(FIRFunctionsErrorCodeResourceExhausted)] containsObject:@(failure.code)];
+            if ([failure.domain isEqualToString:NSURLErrorDomain]) {
+                transient = failure.code == NSURLErrorTimedOut || failure.code == NSURLErrorNetworkConnectionLost;
+            }
+            // Workspace reads have no business effect. Never apply this policy
+            // to executeSubscriptionCommand or retry authorization/input failures.
+            if (transient && attempt < 2) {
+                NSTimeInterval delay = (attempt == 0 ? 0.8 : 1.6) + arc4random_uniform(251) / 1000.0;
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    [self fetchSubscriptionWorkspace:query actorUID:actorUID attempt:attempt + 1 shouldContinue:shouldContinue completion:completion];
+                });
+                return;
+            }
+            if (completion) completion(response, failure);
+        });
+    }];
+}
+
+- (void)executeSubscriptionCommand:(NSDictionary *)command completion:(void(^)(NSDictionary *, NSError *))completion {
+    FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"executeProviderSubscriptionCommand"];
+    callable.timeoutInterval = 40;
+    [callable callWithObject:command completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion([result.data isKindOfClass:NSDictionary.class] ? result.data : nil, error); });
+    }];
+}
 
 + (instancetype)shared {
     static PPProviderService *instance;

@@ -70,6 +70,13 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface PPProviderService : NSObject
 + (instancetype)shared;
+- (void)fetchSubscriptionWorkspace:(NSDictionary *)query completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion;
+/// Read-only recovery. The continuation is checked on the main queue before
+/// each request/retry, allowing the screen's request generation to cancel work.
+- (void)fetchSubscriptionWorkspace:(NSDictionary *)query
+                   shouldContinue:(BOOL (^ _Nullable)(void))shouldContinue
+                       completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion;
+- (void)executeSubscriptionCommand:(NSDictionary *)command completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion;
 - (void)fetchApplicationsWithCompletion:(void(^)(NSArray<PPProviderApplication *> *apps, NSError * _Nullable error))completion;
 - (id<FIRListenerRegistration>)listenApplicationsWithUpdate:(void(^)(NSArray<PPProviderApplication *> *apps, NSError * _Nullable error))updateBlock;
 - (void)fetchPlansWithCompletion:(void(^)(NSArray<PPProviderPlan *> *plans, NSError * _Nullable error))completion;
