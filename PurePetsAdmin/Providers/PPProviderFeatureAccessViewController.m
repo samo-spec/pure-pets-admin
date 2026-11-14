@@ -758,6 +758,9 @@ static NSString *PPSymbolForProviderType(NSString *providerType) {
 }
 
 - (void)pp_setupCustomNavBar {
+    if (self.isEmbeddedInTab) {
+        return;
+    }
     self.customNavBar = [UIView new];
     self.customNavBar.translatesAutoresizingMaskIntoConstraints = NO;
     self.customNavBar.backgroundColor = PPProviderSurfaceColor();
@@ -890,8 +893,12 @@ static NSString *PPSymbolForProviderType(NSString *providerType) {
     self.stateView.retryHandler = ^{ [weakSelf loadData]; };
     self.tableView.backgroundView = self.stateView;
 
+    NSLayoutYAxisAnchor *topTarget = (self.isEmbeddedInTab || !self.customNavBar)
+        ? self.view.topAnchor
+        : self.customNavBar.bottomAnchor;
+
     [NSLayoutConstraint activateConstraints:@[
-        [self.tableView.topAnchor constraintEqualToAnchor:self.customNavBar.bottomAnchor],
+        [self.tableView.topAnchor constraintEqualToAnchor:topTarget],
         [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],

@@ -45,7 +45,8 @@ typedef void (^PPAlertSimpleActionBlock)(void);
 + (void)showSuccessIn:(UIViewController * _Nullable)vc
                 title:(NSString *)title
              subtitle:(NSString *)subtitle
-             OKAction:(AlertCompletionBlock _Nullable)okAction;
+             OKAction:(AlertCompletionBlock _Nullable)okAction
+    NS_SWIFT_NAME(showSuccess(in:title:subtitle:okAction:));
 
 
 + (void)showFailIn:(UIViewController * _Nullable)vc
@@ -85,6 +86,15 @@ typedef void (^PPAlertSimpleActionBlock)(void);
                          primaryBlock:(PPAlertSimpleActionBlock _Nullable)primaryBlock
                        secondaryBlock:(PPAlertSimpleActionBlock _Nullable)secondaryBlock
                         tertiaryBlock:(PPAlertSimpleActionBlock _Nullable)tertiaryBlock;
+
+/// Presents a scrollable choice list through the same window-scoped PPAlert
+/// queue. Cancellation does not select an option; indexes match the input list.
++ (void)showOptionsIn:(UIViewController * _Nullable)vc
+                title:(NSString *)title
+             subtitle:(NSString * _Nullable)subtitle
+              options:(NSArray<NSString *> *)options
+          cancelTitle:(NSString *)cancelTitle
+            selection:(void (^)(NSUInteger index))selection;
 
 + (void)showTextFieldAlertIn:(UIViewController * _Nullable)vc
                    title:(NSString *)title

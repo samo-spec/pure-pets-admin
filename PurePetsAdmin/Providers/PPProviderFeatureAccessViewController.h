@@ -4,6 +4,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface PPProviderFeatureAccessViewController : UIViewController <UITableViewDataSource, UITableViewDelegate>
 @property (nonatomic, strong) UITableView *tableView;
+@property (nonatomic, assign) BOOL isEmbeddedInTab;
 @end
 
 NS_ASSUME_NONNULL_END

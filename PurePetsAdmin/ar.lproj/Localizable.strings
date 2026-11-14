@@ -13737,6 +13737,16 @@
 "PartnerSub_Saved" = "تم تحديث الاشتراك";
 "PartnerSub_Uncertain" = "لم تُؤكد النتيجة. أعد محاولة التغيير المعلّق بنفس الطلب.";
 "PartnerSub_CommandRejected" = "تعذّر تطبيق التغيير. حدّث البيانات وراجع الحالة الحالية وصلاحياتك.";
+"PartnerSub_AccountIneligible" = "يتطلب اشتراك الشريك حساب مستخدم نشطًا. لا يمكن ربط اشتراك شريك مُدار بحساب موظف. راجع الحساب المعتمد للشريك قبل إعادة المحاولة.";
+"PartnerSub_ApprovalRequired" = "يجب اعتماد الشريك قبل تعديل اشتراكه. أكمل مراجعة طلب الشريك أولًا.";
+"PartnerSub_ManagePermission" = "تتطلب إدارة الاشتراكات صلاحية عامة لإدارة الشركاء. حدّث جلستك وراجع صلاحياتك.";
+"PartnerSub_PartnerUnavailable" = "ملف الشريك أو حسابه غير متاح. حدّث تفاصيل الشريك قبل المتابعة.";
+"PartnerSub_CommandConflict" = "استُخدم هذا الطلب سابقًا ببيانات مختلفة. حدّث الاشتراك وراجع حالته قبل إرسال تغيير جديد.";
+"PartnerSub_PlanChanged" = "تغيّرت الباقة المختارة. حدّث الباقات المتاحة وراجع الشروط الجديدة قبل التأكيد.";
+"PartnerSub_SubscriptionChanged" = "تغيّر الاشتراك منذ فتحه. حدّث البيانات وراجع حالته الحالية قبل تأكيد تغيير آخر.";
+"PartnerSub_InvalidCommand" = "طلب الاشتراك غير صالح. حدّث البيانات واختر باقة متاحة وأدخل سببًا من ٣ إلى ٥٠٠ حرف.";
+"PartnerSub_PlanUnavailable" = "الباقة غير متاحة أو بيانات تسعيرها غير مكتملة. حدّث البيانات واختر باقة نشطة صالحة.";
+"PartnerSub_PlanTermsMismatch" = "يجب أن يحتفظ تغيير الباقة بالعملة ودورية الفوترة الحاليتين. راجع الاشتراك قبل اختيار مدة مختلفة.";
 "PartnerSub_UpdateFailed" = "تحديث الاشتراك";
 "PartnerSub_Reason" = "سبب التغيير";
 "PartnerSub_ReasonHint" = "أدخل من ٣ إلى ٥٠٠ حرف. تُحفظ الملاحظة في سجل تدقيق الموظفين.";
@@ -13819,3 +13829,17 @@
 "Accounting_Subtitle" = "القيود والتقارير المالية";
 "Settings_Title" = "إعدادات النظام والتدقيق";
 "Settings_Subtitle" = "سجل العمليات والتهيئة";
+
+"PartnerSub_Status_requests" = "طلبات المراجعة";
+"PartnerSub_Action_approve_request" = "مراجعة الطلب والموافقة";
+"PartnerSub_Action_reject_request" = "رفض الطلب";
+"PartnerSub_Impact_approve_request" = "تطبيق الطلب المحدد على هذا الاشتراك بعد المراجعة.";
+"PartnerSub_Impact_reject_request" = "رفض الطلب فقط؛ لا تتغير المدة أو صلاحيات الحساب.";
+"PartnerReq_Pending" = "طلب بانتظار المراجعة";
+"PartnerReq_Status_pending" = "طلب الاشتراك قيد المراجعة";
+"PartnerReq_Status_approved" = "طلب اشتراك تمت الموافقة عليه";
+"PartnerReq_Status_rejected" = "طلب اشتراك مرفوض";
+"PartnerReq_Notes" = "ملاحظات مقدم الخدمة";
+"PartnerReq_NoNotes" = "لم تُقدَّم ملاحظات.";
+"PartnerReq_Changed" = "تغيّرت شروط الطلب";
+"PartnerReq_RefreshBeforeReview" = "حدّث التفاصيل قبل المراجعة. يمكن رفض الطلب القديم، لكن لا يمكن تطبيق شروط تغيّرت.";

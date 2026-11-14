@@ -13708,6 +13708,16 @@
 "PartnerSub_Saved" = "Subscription updated";
 "PartnerSub_Uncertain" = "The result is not confirmed. Retry the pending change using the same request.";
 "PartnerSub_CommandRejected" = "The change could not be applied. Refresh and review the current status and your permissions.";
+"PartnerSub_AccountIneligible" = "Provider subscriptions require an active user account. Staff accounts cannot own a managed provider subscription. Review the partner's approved account before retrying.";
+"PartnerSub_ApprovalRequired" = "The provider must be approved before its subscription can be changed. Complete the provider review first.";
+"PartnerSub_ManagePermission" = "Managing provider subscriptions requires global provider management permission. Refresh your session and review your access.";
+"PartnerSub_PartnerUnavailable" = "The provider profile or its account is unavailable. Refresh the partner details before continuing.";
+"PartnerSub_CommandConflict" = "This request was already used with different details. Refresh and review the current subscription before submitting a new change.";
+"PartnerSub_PlanChanged" = "The selected plan has changed. Refresh the available plans and review the updated terms before confirming.";
+"PartnerSub_SubscriptionChanged" = "The subscription has changed since it was opened. Refresh and review its current state before confirming another change.";
+"PartnerSub_InvalidCommand" = "The subscription request is invalid. Refresh the details, select an available plan, and enter a reason of 3 to 500 characters.";
+"PartnerSub_PlanUnavailable" = "This plan is unavailable or its pricing is incomplete. Refresh and select a valid active plan.";
+"PartnerSub_PlanTermsMismatch" = "A plan change must keep the current currency and billing interval. Review the subscription before choosing a different term.";
 "PartnerSub_UpdateFailed" = "Subscription update";
 "PartnerSub_Reason" = "Reason for this change";
 "PartnerSub_ReasonHint" = "Enter 3–500 characters. This note is retained in the staff audit history.";
@@ -13790,3 +13800,17 @@
 "Accounting_Subtitle" = "Financial journal & summaries";
 "Settings_Title" = "System Settings & Audit";
 "Settings_Subtitle" = "Audit logs & system configuration";
+
+"PartnerSub_Status_requests" = "Review requests";
+"PartnerSub_Action_approve_request" = "Review and approve request";
+"PartnerSub_Action_reject_request" = "Reject request";
+"PartnerSub_Impact_approve_request" = "Apply the selected request to this agreement after review.";
+"PartnerSub_Impact_reject_request" = "Reject only this request; its term and account access remain unchanged.";
+"PartnerReq_Pending" = "Request awaiting review";
+"PartnerReq_Status_pending" = "Subscription request awaiting review";
+"PartnerReq_Status_approved" = "Approved subscription request";
+"PartnerReq_Status_rejected" = "Rejected subscription request";
+"PartnerReq_Notes" = "Provider notes";
+"PartnerReq_NoNotes" = "No notes supplied.";
+"PartnerReq_Changed" = "Request terms changed";
+"PartnerReq_RefreshBeforeReview" = "Refresh before reviewing. A stale request can be rejected, but changed terms cannot be applied.";

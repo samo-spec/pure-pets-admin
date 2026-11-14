@@ -50,6 +50,7 @@ public final class BranchContextStore: ObservableObject {
     @Published public private(set) var availableBranches: [PPBranchModel] = []
     @Published public private(set) var isGlobal: Bool = false
     public var isGlobalAccess: Bool { isGlobal }
+    public var canSwitchBranch: Bool { availableBranches.count > 1 }
     @Published public private(set) var needsBranchSelection: Bool = false
     @Published public private(set) var currentBranchDisplayName: String = ""
     @Published public private(set) var currentStaff: PPStaffDoc?

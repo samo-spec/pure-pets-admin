@@ -429,7 +429,7 @@ enum AdminCommandInk {
     static let tertiary = AdminSurface.primaryText.opacity(0.58)
 }
 
-private enum AdminCommandTone: Equatable {
+fileprivate enum AdminCommandTone: Equatable {
     case critical
     case elevated
     case stable
@@ -598,7 +598,7 @@ struct AdminCommandCenterScreenView: View {
     }
 
     private var canSwitchBranch: Bool {
-        branchContext.canSwitchBranch
+        branchContext.availableBranches.count > 1
     }
 
     private var locale: Locale {
@@ -1314,7 +1314,7 @@ struct AdminCommandCenterScreenView: View {
 /// - Fast-access Sovereign Command Routes (Inventory, POS, Orders, Staff, Accounting, Settings)
 /// - Destructive session sign-out action
 /// - Strict adherence to Arabic RTL / English LTR mirroring, Beiruti typography, and design tokens
-struct AdminNextGenSidePanelNav: View {
+private struct AdminNextGenSidePanelNav: View {
     @Binding var isPresented: Bool
 
     let displayName: String
@@ -1324,7 +1324,7 @@ struct AdminNextGenSidePanelNav: View {
     let branchName: String
     let canSwitchBranch: Bool
     let readinessText: String
-    let readinessTone: AdminCommandTone
+    fileprivate let readinessTone: AdminCommandTone
     let languageTitle: String
     let currentLocaleCode: String
     var isRegular: Bool = false
@@ -1779,7 +1779,7 @@ struct AdminNextGenSidePanelNav: View {
                 sideNavItem(
                     tag: "accessories",
                     icon: "shippingbox.fill",
-                    color: Color(uiColor: .ppSecondary),
+                    color: Color(uiColor: .ppQuickActionServices),
                     title: Language.get("Inventory_Title", alter: "المخزون والمنتجات"),
                     subtitle: Language.get("Inventory_Subtitle", alter: "إدارة المخزون والتسعير")
                 )
@@ -1939,7 +1939,7 @@ struct AdminNextGenSidePanelNav: View {
 /// Category-defining animated background with telemetry-tuned living resonance,
 /// sapphire-crystal specular caustics, and light-sculpted physical bezel strokes.
 private struct CommandCenterCockpitBackground: View {
-    let readinessTone: AdminCommandTone
+    fileprivate let readinessTone: AdminCommandTone
     let cornerRadius: CGFloat
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -2130,7 +2130,7 @@ private struct CommandCenterCockpitBackground: View {
 
 /// Fluid Recessed Optic Chamber for the Working Branch Selector inside the top bar.
 private struct CommandCenterChamberBackground: View {
-    let readinessTone: AdminCommandTone
+    fileprivate let readinessTone: AdminCommandTone
     let cornerRadius: CGFloat
 
     @Environment(\.colorSchemeContrast) private var contrast
@@ -2188,7 +2188,7 @@ private struct CommandCenterChrome: View {
     let roleName: String
     let capabilityText: String
     let readinessText: String
-    let readinessTone: AdminCommandTone
+    fileprivate let readinessTone: AdminCommandTone
     let onReadinessTap: (() -> Void)?
     let languageTitle: String
     let onAccount: () -> Void

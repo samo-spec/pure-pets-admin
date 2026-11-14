@@ -6,6 +6,13 @@
 @import FirebaseAuth;
 @import FirebaseFunctions;
 
+#ifndef FIRFunctionsErrorDomain
+#define FIRFunctionsErrorDomain @"com.firebase.functions"
+#endif
+#ifndef FIRFunctionsErrorDetailsKey
+#define FIRFunctionsErrorDetailsKey @"details"
+#endif
+
 static NSDate *PPProviderServiceDate(id value) {
     if ([value isKindOfClass:NSDate.class]) return value;
     if ([value isKindOfClass:FIRTimestamp.class]) return [(FIRTimestamp *)value dateValue];
@@ -193,9 +200,13 @@ static NSError *PPProviderLedgerAccessError(void) {
 }
 
 - (void)executeSubscriptionCommand:(NSDictionary *)command completion:(void(^)(NSDictionary *, NSError *))completion {
-    FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"executeProviderSubscriptionCommand"];
+    BOOL rejectsRequest = [command[@"action"] isKindOfClass:NSString.class] && [command[@"action"] isEqualToString:@"reject_request"];
+    NSMutableDictionary *payload = command.mutableCopy;
+    if (rejectsRequest) [payload removeObjectForKey:@"action"];
+    FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:
+        rejectsRequest ? @"rejectProviderSubscriptionRequest" : @"executeProviderSubscriptionCommand"];
     callable.timeoutInterval = 40;
-    [callable callWithObject:command completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion([result.data isKindOfClass:NSDictionary.class] ? result.data : nil, error); });
     }];
 }

@@ -450,6 +450,9 @@ static NSString *PPSectorSymbolName(NSString * _Nullable providerType) {
 #pragma mark - Navigation Bar
 
 - (void)pp_setupCustomNavBar {
+    if (self.isEmbeddedInTab) {
+        return;
+    }
     self.customNavBar = [UIView new];
     self.customNavBar.translatesAutoresizingMaskIntoConstraints = NO;
     self.customNavBar.backgroundColor = [UIColor ppSurface];
@@ -590,8 +593,12 @@ static NSString *PPSectorSymbolName(NSString * _Nullable providerType) {
     self.stateView.retryHandler = ^{ [weakSelf loadData]; };
     self.tableView.backgroundView = self.stateView;
 
+    NSLayoutYAxisAnchor *topTarget = (self.isEmbeddedInTab || !self.customNavBar)
+        ? self.view.topAnchor
+        : self.customNavBar.bottomAnchor;
+
     [NSLayoutConstraint activateConstraints:@[
-        [self.tableView.topAnchor constraintEqualToAnchor:self.customNavBar.bottomAnchor],
+        [self.tableView.topAnchor constraintEqualToAnchor:topTarget],
         [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
@@ -721,12 +728,40 @@ static NSString *PPSectorSymbolName(NSString * _Nullable providerType) {
     [self.tableHeaderView addSubview:self.searchCountLabel];
 
     // Layout
-    [NSLayoutConstraint activateConstraints:@[
-        // Bento Horizon
-        [self.bentoHorizonView.topAnchor constraintEqualToAnchor:self.tableHeaderView.topAnchor constant:12.0],
-        [self.bentoHorizonView.leadingAnchor constraintEqualToAnchor:self.tableHeaderView.leadingAnchor constant:16.0],
-        [self.bentoHorizonView.trailingAnchor constraintEqualToAnchor:self.tableHeaderView.trailingAnchor constant:-16.0],
+    if (self.isEmbeddedInTab) {
+        self.addPlanButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        self.addPlanButton.translatesAutoresizingMaskIntoConstraints = NO;
+        self.addPlanButton.backgroundColor = [UIColor ppPrimary];
+        self.addPlanButton.tintColor = [UIColor whiteColor];
+        self.addPlanButton.layer.cornerRadius = 16.0;
+        self.addPlanButton.layer.shadowColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.3].CGColor;
+        self.addPlanButton.layer.shadowOffset = CGSizeMake(0, 3);
+        self.addPlanButton.layer.shadowRadius = 6.0;
+        self.addPlanButton.layer.shadowOpacity = 1.0;
+        [self.addPlanButton setTitle:[NSString stringWithFormat:@"+ %@", kLang(@"Providers_Plans_New")] forState:UIControlStateNormal];
+        self.addPlanButton.titleLabel.font = [UIFont fontWithName:@"Beiruti-Bold" size:13.5] ?: [UIFont systemFontOfSize:13.5 weight:UIFontWeightBold];
+        self.addPlanButton.contentEdgeInsets = UIEdgeInsetsMake(6, 14, 6, 14);
+        [self.addPlanButton addTarget:self action:@selector(pp_presentNewPlanForm) forControlEvents:UIControlEventTouchUpInside];
+        [self.tableHeaderView addSubview:self.addPlanButton];
 
+        [NSLayoutConstraint activateConstraints:@[
+            [self.addPlanButton.topAnchor constraintEqualToAnchor:self.tableHeaderView.topAnchor constant:8.0],
+            [self.addPlanButton.trailingAnchor constraintEqualToAnchor:self.tableHeaderView.trailingAnchor constant:-16.0],
+            [self.addPlanButton.heightAnchor constraintEqualToConstant:32.0],
+
+            [self.bentoHorizonView.topAnchor constraintEqualToAnchor:self.addPlanButton.bottomAnchor constant:8.0],
+            [self.bentoHorizonView.leadingAnchor constraintEqualToAnchor:self.tableHeaderView.leadingAnchor constant:16.0],
+            [self.bentoHorizonView.trailingAnchor constraintEqualToAnchor:self.tableHeaderView.trailingAnchor constant:-16.0],
+        ]];
+    } else {
+        [NSLayoutConstraint activateConstraints:@[
+            [self.bentoHorizonView.topAnchor constraintEqualToAnchor:self.tableHeaderView.topAnchor constant:12.0],
+            [self.bentoHorizonView.leadingAnchor constraintEqualToAnchor:self.tableHeaderView.leadingAnchor constant:16.0],
+            [self.bentoHorizonView.trailingAnchor constraintEqualToAnchor:self.tableHeaderView.trailingAnchor constant:-16.0],
+        ]];
+    }
+
+    [NSLayoutConstraint activateConstraints:@[
         [bentoStack.topAnchor constraintEqualToAnchor:self.bentoHorizonView.topAnchor constant:12.0],
         [bentoStack.leadingAnchor constraintEqualToAnchor:self.bentoHorizonView.leadingAnchor constant:12.0],
         [bentoStack.trailingAnchor constraintEqualToAnchor:self.bentoHorizonView.trailingAnchor constant:-12.0],

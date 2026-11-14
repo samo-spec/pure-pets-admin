@@ -387,9 +387,17 @@ public struct AdminProvidersView: View {
         case .subscriptions:
             AdminLegacyViewControllerWrapper { PPProviderSubscriptionsViewController() }
         case .plans:
-            AdminLegacyViewControllerWrapper { PPProviderPlansViewController() }
+            AdminLegacyViewControllerWrapper {
+                let vc = PPProviderPlansViewController()
+                vc.isEmbeddedInTab = true
+                return vc
+            }
         case .features:
-            AdminLegacyViewControllerWrapper { PPProviderFeatureAccessViewController() }
+            AdminLegacyViewControllerWrapper {
+                let vc = PPProviderFeatureAccessViewController()
+                vc.isEmbeddedInTab = true
+                return vc
+            }
         case .accounting:
             AdminProviderAccountingView(isEmbeddedInTab: true)
         }
@@ -1932,6 +1940,12 @@ public struct AdminProviderApplicationDetailView: View {
     @State private var showingReviewSheet = false
     @State private var copiedField: String? = nil
     @State private var selectedInspectionDoc: PPDocumentInspectionItem? = nil
+    @State private var subscriptionWorkspace: [String: Any]? = nil
+    @State private var isLoadingSubscription: Bool = false
+    @State private var subscriptionError: String? = nil
+    @State private var activeSubscriptionActionItem: SubscriptionActionItem? = nil
+    @State private var showingAdvancedSubscriptionDossier: Bool = false
+    @State private var subscriptionSuccessBanner: String? = nil
     
     init(
         application: PPProviderApplication,
@@ -1982,11 +1996,39 @@ public struct AdminProviderApplicationDetailView: View {
                 }
             }
         }
+        .onAppear {
+            loadSubscription()
+        }
         .sheet(isPresented: $showingReviewSheet) {
             ProviderReviewDecisionSheet(application: application, viewModel: viewModel)
         }
         .sheet(item: $selectedInspectionDoc) { docItem in
             PPDocumentInspectionSheet(application: application, documentItem: docItem, viewModel: viewModel)
+        }
+        .sheet(item: $activeSubscriptionActionItem) { actionItem in
+            ProviderSubscriptionActionSheet(
+                application: application,
+                profileId: resolvedProfileId,
+                action: actionItem.action,
+                workspace: subscriptionWorkspace,
+                onSuccess: {
+                    withAnimation {
+                        subscriptionSuccessBanner = Language.get("PartnerSub_ActionDone", alter: "تم تنفيذ الإجراء وتحديث اشتراك المزود بنجاح")
+                    }
+                    loadSubscription()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+                        withAnimation {
+                            subscriptionSuccessBanner = nil
+                        }
+                    }
+                }
+            )
+        }
+        .sheet(isPresented: $showingAdvancedSubscriptionDossier) {
+            let actorUid = PPStaffAuth.shared().cachedCurrentStaff?.uid ?? ""
+            PPSSubscriptionDetailWrapper(profileId: resolvedProfileId, actorUid: actorUid) {
+                loadSubscription()
+            }
         }
         .navigationBarHidden(true)
         .navigationBarBackButtonHidden(true)
@@ -2837,60 +2879,226 @@ public struct AdminProviderApplicationDetailView: View {
         }
     }
     
-    // MARK: - Plan & Commercial Terms
+    // MARK: - Plan & Commercial Terms / Subscription Governance
     
     private var planSection: some View {
-        let planSnapshot = application.planSnapshot
-        let planName = (planSnapshot["name"] as? String)
-            ?? ((planSnapshot["name"] as? NSDictionary)?["ar"] as? String)
-            ?? application.planId
-        let commission = (planSnapshot["commissionRate"] as? Double) ?? 0
-        let price = (planSnapshot["price"] as? Double) ?? (planSnapshot["price"] as? NSNumber)?.doubleValue ?? 0
+        let partner = subscriptionWorkspace?["partner"] as? [String: Any]
+        let sub = partner?["subscription"] as? [String: Any]
+        let planSnapshot = (sub?["planSnapshot"] as? [String: Any]) ?? application.planSnapshot
+        let rawStatus = (partner?["status"] as? String) ?? (sub?["status"] as? String) ?? (application.status == "approved" ? "active" : "unmanaged")
+        let statusTone = subscriptionStatusTone(for: rawStatus)
+        
+        let planName = localizedPlanName(planSnapshot["name"]) ?? (application.planId.isEmpty ? Language.get("StandardPlan", alter: "الباقة القياسية") : application.planId)
+        let commission = (planSnapshot["commissionRate"] as? Double) ?? (planSnapshot["platformCommissionRate"] as? Double) ?? 0
+        let price = (planSnapshot["price"] as? Double) ?? (planSnapshot["priceAmount"] as? Double) ?? (planSnapshot["price"] as? NSNumber)?.doubleValue ?? 0
         let currency = (planSnapshot["currency"] as? String) ?? "QAR"
+        let billingInterval = (planSnapshot["billingInterval"] as? String) ?? "monthly"
+        let intervalText = localizedBillingInterval(billingInterval)
+        
+        let rawAllowed = partner?["allowedActions"] as? [String]
+        let effectiveAllowedActions: [String] = {
+            if let actions = rawAllowed, !actions.isEmpty {
+                return actions
+            }
+            switch rawStatus {
+            case "active": return ["change_plan", "pause", "renew", "cancel"]
+            case "paused": return ["activate", "change_plan", "renew", "cancel"]
+            case "expired": return ["create", "renew", "cancel"]
+            case "cancelled", "unmanaged": return ["create"]
+            default: return ["create"]
+            }
+        }()
         
         return VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(
-                title: Language.get("Providers_Plan_Title", alter: "باقة الاشتراك والشروط التجارية"),
-                detail: Language.get("Providers_Plan_Detail", alter: "الباقة المحددة وعمولة المنصة المعتمدة.")
-            )
+            HStack {
+                SectionHeader(
+                    title: Language.get("Providers_Plan_Title", alter: "باقة واشتراك المزود"),
+                    detail: Language.get("Providers_Plan_Detail", alter: "إدارة الباقة، الرسوم، والتحكم بدورة حياة الاشتراك (إيقاف، ترقية، إلغاء).")
+                )
+                Spacer()
+                if isLoadingSubscription {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                } else {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        loadSubscription()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(AdminCommandInk.secondary)
+                            .padding(6)
+                            .background(AdminSurface.control, in: Circle())
+                    }
+                    .buttonStyle(ProviderPressStyle())
+                    .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
+                }
+            }
             
-            VStack(spacing: 12) {
-                HStack {
+            VStack(spacing: 14) {
+                // Success Banner if an action just occurred
+                if let banner = subscriptionSuccessBanner {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(ProviderTheme.approved)
+                        Text(banner)
+                            .font(AdminType.caption1Bold)
+                            .foregroundStyle(ProviderTheme.approved)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(ProviderTheme.approved.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+                
+                // Top Row: Plan Name, Sparkle Icon, Status Badge
+                HStack(alignment: .center, spacing: 12) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(AdminSurface.primary.opacity(0.12))
+                            .fill(statusTone.color.opacity(0.12))
                             .frame(width: 44, height: 44)
-                        Image(systemName: "sparkles.rectangle.stack.fill")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(AdminSurface.primary)
+                        Image(systemName: statusTone.symbol)
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(statusTone.color)
                     }
                     
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(planName.isEmpty ? Language.get("StandardPlan", alter: "الباقة القياسية") : planName)
+                        Text(planName)
                             .font(AdminType.headline)
                             .foregroundStyle(AdminSurface.primaryText)
-                        Text(Language.get("ActiveTerms", alter: "الشروط والعمولة النشطة"))
+                        
+                        Text(intervalText + " · " + Language.get("Providers_SubscriptionActiveTerms", alter: "شروط العضوية المعتمدة"))
                             .font(AdminType.caption2)
                             .foregroundStyle(AdminCommandInk.secondary)
                     }
                     
                     Spacer()
                     
-                    if commission > 0 {
-                        Text("\(String(format: "%.1f", commission))% " + Language.get("Commission", alter: "عمولة"))
-                            .font(AdminType.captionBold)
-                            .foregroundStyle(ProviderTheme.approved)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(ProviderTheme.approved.opacity(0.12), in: Capsule(style: .continuous))
-                    } else if price > 0 {
-                        Text("\(String(format: "%.2f", price)) \(currency)")
-                            .font(AdminType.captionBold)
-                            .foregroundStyle(AdminSurface.primary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(AdminSurface.primary.opacity(0.12), in: Capsule(style: .continuous))
+                    // Live Status Capsule
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(statusTone.color)
+                            .frame(width: 6, height: 6)
+                        Text(statusTone.text)
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(statusTone.color)
                     }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(statusTone.color.opacity(0.12), in: Capsule(style: .continuous))
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder(statusTone.color.opacity(0.25), lineWidth: 0.75)
+                    )
+                }
+                
+                // Terms & Dates Grid
+                HStack(spacing: 12) {
+                    // Commercial Rate Metric Card
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(Language.get("Providers_CommercialTerms", alter: "العمولة / الرسوم"))
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                        
+                        if commission > 0 {
+                            Text("\(String(format: "%.1f", commission))% " + Language.get("Commission", alter: "عمولة"))
+                                .font(AdminType.calloutBold)
+                                .foregroundStyle(ProviderTheme.approved)
+                        } else if price > 0 {
+                            Text("\(String(format: "%.2f", price)) \(currency)")
+                                .font(AdminType.calloutBold)
+                                .foregroundStyle(AdminSurface.primary)
+                        } else {
+                            Text(Language.get("Providers_ZeroCommission", alter: "بدون عمولة / مجاني"))
+                                .font(AdminType.calloutBold)
+                                .foregroundStyle(AdminSurface.primaryText)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(AdminSurface.background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    
+                    // Period / Dates Metric Card
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(Language.get("Providers_SubscriptionPeriod", alter: "فترة الصلاحية"))
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                        
+                        if let expiresAt = sub?["expiresAt"] {
+                            Text(formatSubscriptionDate(expiresAt))
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        } else {
+                            Text(Language.get("PartnerSub_NoEnd", alter: "غير محددة المدة"))
+                                .font(AdminType.captionBold)
+                                .foregroundStyle(AdminCommandInk.secondary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(AdminSurface.background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                
+                Divider()
+                    .padding(.vertical, 2)
+                
+                // MARK: Subscription Control Action Deck
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(Language.get("Providers_SubscriptionActions", alter: "إجراءات وحوكمة الاشتراك"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                    
+                    // Dynamic Responsive Actions Grid
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                        ForEach(effectiveAllowedActions, id: \.self) { action in
+                            let config = actionConfig(for: action)
+                            Button {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                activeSubscriptionActionItem = SubscriptionActionItem(action: action)
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: config.icon)
+                                        .font(.system(size: 14, weight: .bold))
+                                        .foregroundStyle(config.color)
+                                    Text(config.title)
+                                        .font(AdminType.caption1Bold)
+                                        .foregroundStyle(AdminSurface.primaryText)
+                                        .lineLimit(1)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .background(config.color.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .strokeBorder(config.color.opacity(0.30), lineWidth: 0.75)
+                                )
+                            }
+                            .buttonStyle(ProviderPressStyle())
+                        }
+                    }
+                    
+                    // Advanced Full Dossier Link Button
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        showingAdvancedSubscriptionDossier = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .font(.system(size: 11, weight: .bold))
+                            Text(Language.get("Providers_FullSubscriptionDossier", alter: "سجل العمليات والتدقيق الموسّع للاشتراك"))
+                                .font(AdminType.caption2Bold)
+                            Spacer()
+                            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .padding(.top, 4)
+                    }
+                    .buttonStyle(ProviderPressStyle())
                 }
             }
             .padding(16)
@@ -3058,6 +3266,535 @@ public struct AdminProviderApplicationDetailView: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+    
+    // MARK: - Subscription Lifecycle & Action Helpers
+    
+    private var resolvedProfileId: String {
+        if !application.profileId.isEmpty {
+            return application.profileId
+        }
+        if !application.applicationID.isEmpty {
+            return application.applicationID
+        }
+        return application.userId
+    }
+    
+    private func loadSubscription() {
+        let profileId = resolvedProfileId
+        guard !profileId.isEmpty else { return }
+        isLoadingSubscription = true
+        subscriptionError = nil
+        
+        PPProviderService.shared().fetchSubscriptionWorkspace(["profileId": profileId]) { workspace, error in
+            isLoadingSubscription = false
+            if let error = error {
+                subscriptionError = error.localizedDescription
+                return
+            }
+            if let workspace = workspace {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    subscriptionWorkspace = workspace
+                }
+            }
+        }
+    }
+    
+    private func actionConfig(for action: String) -> (title: String, icon: String, color: Color) {
+        switch action {
+        case "pause":
+            return (
+                Language.get("PartnerSub_Action_pause", alter: "إيقاف مؤقت"),
+                "pause.circle.fill",
+                ProviderTheme.pending
+            )
+        case "activate":
+            return (
+                Language.get("PartnerSub_Action_activate", alter: "استئناف / تفعيل"),
+                "play.circle.fill",
+                ProviderTheme.approved
+            )
+        case "change_plan":
+            return (
+                Language.get("PartnerSub_Action_change_plan", alter: "تغيير / ترقية الباقة"),
+                "arrow.triangle.2.circlepath.circle.fill",
+                AdminSurface.primary
+            )
+        case "renew":
+            return (
+                Language.get("PartnerSub_Action_renew", alter: "تجديد الاشتراك"),
+                "repeat.circle.fill",
+                ProviderTheme.approved
+            )
+        case "cancel":
+            return (
+                Language.get("PartnerSub_Action_cancel", alter: "إلغاء الاشتراك"),
+                "xmark.circle.fill",
+                ProviderTheme.rejected
+            )
+        case "create":
+            return (
+                Language.get("PartnerSub_Action_create", alter: "بدء وتعيين باقة"),
+                "plus.circle.fill",
+                AdminSurface.primary
+            )
+        default:
+            return (action, "gearshape.fill", AdminSurface.primary)
+        }
+    }
+    
+    private func subscriptionStatusTone(for status: String) -> (text: String, color: Color, symbol: String) {
+        switch status.lowercased() {
+        case "active":
+            return (Language.get("PartnerSub_Status_active", alter: "نشط"), ProviderTheme.approved, "checkmark.circle.fill")
+        case "paused":
+            return (Language.get("PartnerSub_Status_paused", alter: "متوقف مؤقتًا"), ProviderTheme.pending, "pause.circle.fill")
+        case "expired":
+            return (Language.get("PartnerSub_Status_expired", alter: "منتهي الصلاحية"), ProviderTheme.rejected, "exclamationmark.circle.fill")
+        case "cancelled":
+            return (Language.get("PartnerSub_Status_cancelled", alter: "ملغي"), AdminCommandInk.secondary, "xmark.circle.fill")
+        case "unmanaged":
+            return (Language.get("PartnerSub_Status_unmanaged", alter: "غير مدار"), Color.purple, "questionmark.circle.fill")
+        default:
+            return (status, AdminCommandInk.secondary, "circle.fill")
+        }
+    }
+    
+    private func localizedBillingInterval(_ interval: String) -> String {
+        switch interval.lowercased() {
+        case "monthly": return Language.get("Monthly", alter: "شهري")
+        case "quarterly": return Language.get("Quarterly", alter: "ربع سنوي")
+        case "semiannual": return Language.get("Semiannual", alter: "نصف سنوي")
+        case "annual", "yearly": return Language.get("Yearly", alter: "سنوي")
+        default: return interval
+        }
+    }
+    
+    private func formatSubscriptionDate(_ raw: Any) -> String {
+        if let ts = raw as? Double {
+            let date = Date(timeIntervalSince1970: ts > 1_000_000_000_000 ? ts / 1000 : ts)
+            return formatDate(date)
+        }
+        if let num = raw as? NSNumber {
+            let ts = num.doubleValue
+            let date = Date(timeIntervalSince1970: ts > 1_000_000_000_000 ? ts / 1000 : ts)
+            return formatDate(date)
+        }
+        if let dict = raw as? [String: Any], let seconds = dict["_seconds"] as? Double ?? dict["seconds"] as? Double {
+            let date = Date(timeIntervalSince1970: seconds)
+            return formatDate(date)
+        }
+        return "\(raw)"
+    }
+    
+    private func localizedPlanName(_ rawName: Any?) -> String? {
+        if let dict = rawName as? [String: Any] {
+            if Language.isRTL(), let ar = dict["ar"] as? String, !ar.isEmpty {
+                return ar
+            }
+            if let en = dict["en"] as? String, !en.isEmpty {
+                return en
+            }
+            return (dict.values.first as? String)
+        }
+        if let str = rawName as? String, !str.isEmpty {
+            return str
+        }
+        return nil
+    }
+}
+
+// MARK: - Subscription Action Item Model
+
+private struct SubscriptionActionItem: Identifiable {
+    let id = UUID()
+    let action: String
+}
+
+// MARK: - UIKit PPSubscriptionDetailController Wrapper
+
+private struct PPSSubscriptionDetailWrapper: UIViewControllerRepresentable {
+    let profileId: String
+    let onDismiss: () -> Void
+    
+    func makeUIViewController(context: Context) -> UINavigationController {
+        let vc = PPSSubscriptionDetailController()
+        vc.profileID = profileId
+        vc.didClose = {
+            onDismiss()
+        }
+        let nav = UINavigationController(rootViewController: vc)
+        nav.modalPresentationStyle = .pageSheet
+        return nav
+    }
+    
+    func updateUIViewController(_ uiViewController: UINavigationController, context: Context) {}
+}
+
+// MARK: - Provider Subscription Action Sheet View
+
+private struct ProviderSubscriptionActionSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    
+    let action: String
+    let profileId: String
+    let partnerName: String
+    let workspace: [String: Any]?
+    let onActionExecuted: (String) -> Void
+    
+    @State private var selectedPlanId: String = ""
+    @State private var reason: String = ""
+    @State private var isSubmitting: Bool = false
+    @State private var errorMessage: String? = nil
+    
+    private var partner: [String: Any]? {
+        workspace?["partner"] as? [String: Any]
+    }
+    
+    private var subscription: [String: Any]? {
+        partner?["subscription"] as? [String: Any]
+    }
+    
+    private var availablePlans: [[String: Any]] {
+        (workspace?["plans"] as? [[String: Any]]) ?? []
+    }
+    
+    private var requiresPlanSelection: Bool {
+        ["create", "change_plan"].contains(action)
+    }
+    
+    private var actionTitle: String {
+        switch action {
+        case "pause": return Language.get("PartnerSub_Action_pause", alter: "إيقاف مؤقت للاشتراك")
+        case "activate": return Language.get("PartnerSub_Action_activate", alter: "استئناف وتفعيل الاشتراك")
+        case "change_plan": return Language.get("PartnerSub_Action_change_plan", alter: "تغيير / ترقية الباقة")
+        case "renew": return Language.get("PartnerSub_Action_renew", alter: "تجديد فترة الاشتراك")
+        case "cancel": return Language.get("PartnerSub_Action_cancel", alter: "إلغاء الاشتراك")
+        case "create": return Language.get("PartnerSub_Action_create", alter: "بدء وتعيين باقة جديدة")
+        default: return action
+        }
+    }
+    
+    private var actionColor: Color {
+        switch action {
+        case "pause": return ProviderTheme.pending
+        case "activate", "renew": return ProviderTheme.approved
+        case "change_plan", "create": return AdminSurface.primary
+        case "cancel": return ProviderTheme.rejected
+        default: return AdminSurface.primary
+        }
+    }
+    
+    private var isFormValid: Bool {
+        let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedReason.count < 3 || trimmedReason.count > 500 {
+            return false
+        }
+        if requiresPlanSelection && selectedPlanId.isEmpty {
+            return false
+        }
+        return true
+    }
+    
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 16) {
+                    // Header Card
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(actionColor.opacity(0.12))
+                                .frame(width: 44, height: 44)
+                            Image(systemName: actionIcon)
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundStyle(actionColor)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(actionTitle)
+                                .font(AdminType.headline)
+                                .foregroundStyle(AdminSurface.primaryText)
+                            Text(Language.get("Provider", alter: "المزود") + ": \(partnerName)")
+                                .font(AdminType.caption1)
+                                .foregroundStyle(AdminCommandInk.secondary)
+                        }
+                        Spacer()
+                    }
+                    .padding(14)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    
+                    // Error Banner if present
+                    if let err = errorMessage {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(ProviderTheme.rejected)
+                            Text(err)
+                                .font(AdminType.caption1Bold)
+                                .foregroundStyle(ProviderTheme.rejected)
+                            Spacer()
+                        }
+                        .padding(12)
+                        .background(ProviderTheme.rejected.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    
+                    // Plan Picker (if change_plan or create)
+                    if requiresPlanSelection {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(Language.get("PartnerSub_ChoosePlan", alter: "اختر الباقة المطلوبة"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(AdminCommandInk.secondary)
+                            
+                            if availablePlans.isEmpty {
+                                Text(Language.get("PartnerSub_NoPlans", alter: "لا توجد باقات متاحة حالياً"))
+                                    .font(AdminType.caption1)
+                                    .foregroundStyle(AdminCommandInk.secondary)
+                                    .padding(12)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            } else {
+                                ForEach(Array(availablePlans.enumerated()), id: \.offset) { _, plan in
+                                    let pid = (plan["id"] as? String) ?? ""
+                                    let isSelected = selectedPlanId == pid
+                                    let nameDict = plan["name"] as? [String: Any]
+                                    let pName = Language.isRTL() ? (nameDict?["ar"] as? String ?? pid) : (nameDict?["en"] as? String ?? pid)
+                                    let comm = (plan["commissionRate"] as? Double) ?? 0
+                                    let price = (plan["price"] as? Double) ?? (plan["price"] as? NSNumber)?.doubleValue ?? 0
+                                    let curr = (plan["currency"] as? String) ?? "QAR"
+                                    let interval = (plan["billingInterval"] as? String) ?? "monthly"
+                                    
+                                    Button {
+                                        UIImpactFeedbackGenerator(style: .selection).impactOccurred()
+                                        selectedPlanId = pid
+                                    } label: {
+                                        HStack(spacing: 12) {
+                                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                                .font(.system(size: 18, weight: .bold))
+                                                .foregroundStyle(isSelected ? AdminSurface.primary : AdminCommandInk.secondary)
+                                            
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(pName)
+                                                    .font(AdminType.subheadlineBold)
+                                                    .foregroundStyle(AdminSurface.primaryText)
+                                                HStack(spacing: 8) {
+                                                    if comm > 0 {
+                                                        Text("\(String(format: "%.1f", comm))% " + Language.get("Commission", alter: "عمولة"))
+                                                            .font(AdminType.caption2)
+                                                            .foregroundStyle(ProviderTheme.approved)
+                                                    }
+                                                    if price > 0 {
+                                                        Text("\(String(format: "%.2f", price)) \(curr)")
+                                                            .font(AdminType.caption2)
+                                                            .foregroundStyle(AdminSurface.primary)
+                                                    }
+                                                    Text("· \(interval)")
+                                                        .font(AdminType.caption2)
+                                                        .foregroundStyle(AdminCommandInk.secondary)
+                                                }
+                                            }
+                                            Spacer()
+                                        }
+                                        .padding(12)
+                                        .background(isSelected ? AdminSurface.primary.opacity(0.08) : AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                                .strokeBorder(isSelected ? AdminSurface.primary : Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: isSelected ? 1.5 : 0.75)
+                                        )
+                                    }
+                                    .buttonStyle(ProviderPressStyle())
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Reason / Justification Input Card
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text(Language.get("Reason", alter: "سبب ومبرر الإجراء (للتدقيق الإداري)"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(AdminCommandInk.secondary)
+                            Spacer()
+                            Text("\(reason.trimmingCharacters(in: .whitespacesAndNewlines).count)/500")
+                                .font(AdminType.caption2)
+                                .foregroundStyle(reason.count >= 3 ? AdminCommandInk.secondary : ProviderTheme.pending)
+                        }
+                        
+                        // Quick Reason Chips
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(quickReasonTemplates, id: \.self) { item in
+                                    Button {
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                        reason = item
+                                    } label: {
+                                        Text(item)
+                                            .font(AdminType.caption2)
+                                            .foregroundStyle(reason == item ? Color.white : AdminSurface.primaryText)
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 6)
+                                            .background(reason == item ? AdminSurface.primary : AdminSurface.surface, in: Capsule())
+                                            .overlay(
+                                                Capsule()
+                                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.5)
+                                            )
+                                    }
+                                    .buttonStyle(ProviderPressStyle())
+                                }
+                            }
+                            .padding(.horizontal, 2)
+                        }
+                        
+                        TextEditor(text: $reason)
+                            .frame(minHeight: 80)
+                            .padding(8)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
+                            )
+                    }
+                    
+                    // Confirm Execution Button
+                    Button {
+                        executeCommand()
+                    } label: {
+                        HStack(spacing: 8) {
+                            if isSubmitting {
+                                ProgressView()
+                                    .tint(.white)
+                            } else {
+                                Image(systemName: "checkmark.seal.fill")
+                                    .font(.system(size: 15, weight: .bold))
+                                Text(Language.get("ConfirmAndExecute", alter: "تأكيد وتنفيذ الإجراء"))
+                                    .font(AdminType.calloutBold)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .foregroundStyle(Color.white)
+                        .background(
+                            isFormValid && !isSubmitting ? actionColor : Color.gray.opacity(0.4),
+                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        )
+                    }
+                    .disabled(!isFormValid || isSubmitting)
+                    .buttonStyle(ProviderPressStyle())
+                    .padding(.top, 8)
+                }
+                .padding(16)
+            }
+            .background(AdminSurface.background.ignoresSafeArea())
+            .navigationTitle(actionTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(Language.get("Cancel", alter: "إلغاء")) {
+                        dismiss()
+                    }
+                    .font(AdminType.caption1)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                }
+            }
+            .onAppear {
+                if selectedPlanId.isEmpty {
+                    if let first = availablePlans.first, let pid = first["id"] as? String {
+                        selectedPlanId = pid
+                    }
+                }
+            }
+        }
+    }
+    
+    private var actionIcon: String {
+        switch action {
+        case "pause": return "pause.circle.fill"
+        case "activate": return "play.circle.fill"
+        case "change_plan": return "arrow.triangle.2.circlepath.circle.fill"
+        case "renew": return "repeat.circle.fill"
+        case "cancel": return "xmark.circle.fill"
+        case "create": return "plus.circle.fill"
+        default: return "gearshape.fill"
+        }
+    }
+    
+    private var quickReasonTemplates: [String] {
+        switch action {
+        case "pause":
+            return [
+                Language.get("PartnerSub_Reason_TempRequest", alter: "بناءً على طلب الشريك المؤقت"),
+                Language.get("PartnerSub_Reason_SeasonalBreak", alter: "توقف موسمي مجدول"),
+                Language.get("PartnerSub_Reason_ComplianceHold", alter: "تعليق إداري مؤقت لتدقيق الأوراق")
+            ]
+        case "activate":
+            return [
+                Language.get("PartnerSub_Reason_AuditCleared", alter: "استكمال التدقيق واستئناف النشاط"),
+                Language.get("PartnerSub_Reason_PartnerResume", alter: "استئناف العمل بطلب المزود"),
+                Language.get("PartnerSub_Reason_TermsApproved", alter: "اعتماد الشروط وتفعيل الباقة")
+            ]
+        case "change_plan":
+            return [
+                Language.get("PartnerSub_Reason_UpgradeTier", alter: "ترقية الباقة لزيادة الامتيازات"),
+                Language.get("PartnerSub_Reason_VolumeGrowth", alter: "تعديل الشروط لنمو حجم الأعمال"),
+                Language.get("PartnerSub_Reason_FleetExpand", alter: "توسيع التغطية والأسطول")
+            ]
+        case "renew":
+            return [
+                Language.get("PartnerSub_Reason_RegularRenewal", alter: "تجديد دوري معتمد للاشتراك"),
+                Language.get("PartnerSub_Reason_PaymentSettled", alter: "سداد المستحقات وتمديد المدة"),
+                Language.get("PartnerSub_Reason_AnnualReup", alter: "تجديد سنوي وفق العقد")
+            ]
+        case "cancel":
+            return [
+                Language.get("PartnerSub_Reason_PartnerExit", alter: "إنهاء التعاقد بطلب الطرفين"),
+                Language.get("PartnerSub_Reason_Inactivity", alter: "إلغاء لعدم النشاط التجاري"),
+                Language.get("PartnerSub_Reason_PolicyViolation", alter: "إلغاء إداري لمخالفة اللائحة")
+            ]
+        case "create":
+            return [
+                Language.get("PartnerSub_Reason_NewOnboarding", alter: "تعيين الباقة الأولية للمزود الجديد"),
+                Language.get("PartnerSub_Reason_ApprovalActivation", alter: "تفعيل الاشتراك إثر اعتماد ملف الانضمام"),
+                Language.get("PartnerSub_Reason_ContractStart", alter: "بدء التعاقد الرسمي")
+            ]
+        default:
+            return [Language.get("PartnerSub_Reason_AdminDecision", alter: "قرار إداري معتمد")]
+        }
+    }
+    
+    private func executeCommand() {
+        guard isFormValid, !isSubmitting else { return }
+        isSubmitting = true
+        errorMessage = nil
+        
+        let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        let currentVersion = (partner?["version"] as? Int) ?? (partner?["version"] as? NSNumber)?.intValue ?? 0
+        
+        var payload: [String: Any] = [
+            "profileId": profileId,
+            "action": action,
+            "expectedVersion": currentVersion,
+            "reason": trimmedReason,
+            "idempotencyKey": UUID().uuidString.lowercased()
+        ]
+        
+        if requiresPlanSelection {
+            payload["planId"] = selectedPlanId
+            if let matchingPlan = availablePlans.first(where: { ($0["id"] as? String) == selectedPlanId }),
+               let hash = matchingPlan["planHash"] as? String {
+                payload["expectedPlanHash"] = hash
+            }
+        }
+        
+        PPProviderService.shared().executeSubscriptionCommand(payload) { result, error in
+            isSubmitting = false
+            if let error = error {
+                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                errorMessage = error.localizedDescription
+                return
+            }
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onActionExecuted(action)
+            dismiss()
+        }
     }
 }
 

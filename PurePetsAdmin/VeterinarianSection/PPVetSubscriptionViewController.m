@@ -6,6 +6,7 @@
 #import "PPVetSubscriptionViewController.h"
 #import "PPVetModel.h"
 #import "PPVetManager.h"
+#import "PPAlertHelper.h"
 @import Firebase;
 @import FirebaseAuth;
 @import FirebaseMessaging;
@@ -925,8 +926,8 @@ static CGFloat const kPPVetSubGroupedCornerRadius = 22.0;
     NSDate *end    = values[kTagEndDate];
 
     // Validate: end must be after start
-    if (start && end && [end compare:start] != NSOrderedDescending) {
-        [PPHUD showError:kLang(@"Error") subtitle:kLang(@"Vet_Sub_Error_DateOrder")];
+    if (start && end && [NSCalendar.currentCalendar compareDate:end toDate:start toUnitGranularity:NSCalendarUnitDay] != NSOrderedDescending) {
+        [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"Vet_Sub_Error_DateOrder")];
         return;
     }
 
@@ -939,20 +940,24 @@ static CGFloat const kPPVetSubGroupedCornerRadius = 22.0;
                                                    startDate:start
                                                      endDate:end
                                                   completion:^(NSError *error) {
-        [PPHUD dismiss];
-        if (error) {
-            [PPHUD showError:kLang(@"Error") subtitle:error.localizedDescription];
-        } else {
-            weakSelf.vet.subscriptionTier = tier;
-            weakSelf.vet.subscriptionActive = active;
-            weakSelf.vet.subscriptionStartDate = start;
-            weakSelf.vet.subscriptionEndDate = end;
-            [weakSelf updateDynamicSummaryAnimated:YES];
-            [PPHUD showSuccess:kLang(@"Success_Title") subtitle:kLang(@"Vet_Sub_Updated_Success")];
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                [weakSelf.navigationController popViewControllerAnimated:YES];
-            });
-        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [PPHUD dismiss];
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self) return;
+            if (error) {
+                [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription];
+            } else {
+                self.vet.subscriptionTier = tier;
+                self.vet.subscriptionActive = active;
+                self.vet.subscriptionStartDate = start;
+                self.vet.subscriptionEndDate = end;
+                [self updateDynamicSummaryAnimated:YES];
+                [PPAlertHelper showSuccessIn:self title:kLang(@"Success_Title") subtitle:kLang(@"Vet_Sub_Updated_Success")
+                                  OKAction:^(__unused NSString *text, BOOL didConfirm) {
+                    if (didConfirm) [weakSelf.navigationController popViewControllerAnimated:!UIAccessibilityIsReduceMotionEnabled()];
+                }];
+            }
+        });
     }];
 }
 

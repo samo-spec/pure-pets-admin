@@ -425,8 +425,6 @@ public struct AdminProviderAccountingView: View {
                 VStack(spacing: 0) {
                     if !isEmbeddedInTab {
                         sovereignNavigationBar
-                    } else {
-                        embeddedTabBar
                     }
 
                     ScrollView(.vertical, showsIndicators: false) {

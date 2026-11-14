@@ -453,6 +453,45 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
     [alert showInViewController:vc];
 }
 
++ (void)showOptionsIn:(UIViewController * _Nullable)vc
+                title:(NSString *)title
+             subtitle:(NSString * _Nullable)subtitle
+              options:(NSArray<NSString *> *)options
+          cancelTitle:(NSString *)cancelTitle
+            selection:(void (^)(NSUInteger index))selection {
+    NSArray<NSString *> *choices = [options copy];
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self showOptionsIn:vc title:title subtitle:subtitle options:choices cancelTitle:cancelTitle selection:selection];
+        });
+        return;
+    }
+
+    NSMutableArray<PPAlertActionItem *> *actions = [NSMutableArray array];
+    [choices enumerateObjectsUsingBlock:^(NSString *choice, NSUInteger index, BOOL *stop) {
+        if (![choice isKindOfClass:NSString.class] || !choice.length) return;
+        [actions addObject:[PPAlertActionItem itemWithTitle:choice
+                                                   style:PPAlertActionStyleSecondary
+                                              completion:nil
+                                        simpleCompletion:^{ if (selection) selection(index); }]];
+    }];
+    [actions addObject:[PPAlertActionItem itemWithTitle:cancelTitle.length ? cancelTitle : kLang(@"Cancel")
+                                               style:PPAlertActionStyleCancel
+                                          completion:nil
+                                    simpleCompletion:nil]];
+    PPAlert *alert = [[PPAlert alloc] initWithType:PPAlertTypeInfo
+                                           title:title
+                                        subtitle:subtitle ?: @""
+                                            icon:[UIImage systemImageNamed:@"list.bullet"]
+                                         actions:actions
+                                     placeholder:nil
+                                     initialText:nil
+                                     secureEntry:NO
+                                    keyboardType:UIKeyboardTypeDefault
+                    shouldDismissOnBackgroundTap:YES];
+    [alert showInViewController:vc];
+}
+
 + (void)showThreeActionConfirmationIn:(UIViewController *)vc
                                 title:(NSString *)title
                              subtitle:(NSString * _Nullable)subtitle

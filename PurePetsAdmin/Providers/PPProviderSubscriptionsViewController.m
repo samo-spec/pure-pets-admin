@@ -4,6 +4,7 @@
 #import "PPProviderSubscriptionPresentation.h"
 #import "PPDesignTokens.h"
 #import "PPStaffAuth.h"
+#import "PPAlertHelper.h"
 #import <math.h>
 #import "Language.h"
 #import "Styling.h"
@@ -44,10 +45,45 @@ static UILabel *PPSSubLabel(UIFontTextStyle style, BOOL bold) {
     label.textAlignment = Language.alignmentForCurrentLanguage;
     return label;
 }
-static void PPSSubAlert(UIViewController *owner, NSString *title, NSString *message) {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:kLang(@"OK") style:UIAlertActionStyleDefault handler:nil]];
-    [owner presentViewController:alert animated:!UIAccessibilityIsReduceMotionEnabled() completion:nil];
+static BOOL PPSSubCommandWasRejected(NSError *error) {
+    if (![error.domain isEqualToString:FIRFunctionsErrorDomain]) return NO;
+    return [@[@(FIRFunctionsErrorCodeInvalidArgument), @(FIRFunctionsErrorCodeNotFound),
+              @(FIRFunctionsErrorCodeAlreadyExists), @(FIRFunctionsErrorCodePermissionDenied),
+              @(FIRFunctionsErrorCodeFailedPrecondition), @(FIRFunctionsErrorCodeAborted),
+              @(FIRFunctionsErrorCodeUnauthenticated)] containsObject:@(error.code)];
+}
+
+static NSString *PPSSubCommandFailure(NSError *error) {
+    if (![error.domain isEqualToString:FIRFunctionsErrorDomain]) return kLang(@"PartnerSub_CommandRejected");
+    if (error.code == FIRFunctionsErrorCodeUnauthenticated) return kLang(@"PartnerSub_SessionEnded");
+    if (error.code == FIRFunctionsErrorCodePermissionDenied) return kLang(@"PartnerSub_ManagePermission");
+    if (error.code == FIRFunctionsErrorCodeNotFound) return kLang(@"PartnerSub_PartnerUnavailable");
+    if (error.code == FIRFunctionsErrorCodeAlreadyExists) return kLang(@"PartnerSub_CommandConflict");
+    if (error.code == FIRFunctionsErrorCodeAborted) {
+        NSDictionary *details = PPSSubDict(error.userInfo[FIRFunctionsErrorDetailsKey]);
+        return kLang([PPSSubString(details[@"domainCode"]) isEqualToString:@"STALE_PLAN"] ? @"PartnerSub_PlanChanged" : @"PartnerSub_SubscriptionChanged");
+    }
+    if (error.code == FIRFunctionsErrorCodeInvalidArgument) return kLang(@"PartnerSub_InvalidCommand");
+    // Exact, allowlisted messages from the current Infra contract; arbitrary
+    // server text is never displayed as localized product copy.
+    if (error.code == FIRFunctionsErrorCodeFailedPrecondition) {
+        NSString *message = error.localizedDescription;
+        if ([message isEqualToString:@"Partner account is not active."]) return kLang(@"PartnerSub_AccountIneligible");
+        if ([message isEqualToString:@"Provider approval is required."]) return kLang(@"PartnerSub_ApprovalRequired");
+        if ([message isEqualToString:@"Provider plan is unavailable."] ||
+            [message isEqualToString:@"Provider plan pricing is invalid."] ||
+            [message isEqualToString:@"Select an active provider plan."]) return kLang(@"PartnerSub_PlanUnavailable");
+        if ([message isEqualToString:@"A plan change must retain currency and billing interval. Create a new term after cancellation to change them."]) return kLang(@"PartnerSub_PlanTermsMismatch");
+    }
+    return kLang(@"PartnerSub_CommandRejected");
+}
+
+static NSString *PPSSubEligibilityFailure(NSDictionary *partner) {
+    NSString *eligibility = PPSSubString(partner[@"subscriptionEligibility"]);
+    if ([eligibility isEqualToString:@"account_ineligible"]) return kLang(@"PartnerSub_AccountIneligible");
+    if ([eligibility isEqualToString:@"approval_required"]) return kLang(@"PartnerSub_ApprovalRequired");
+    if ([eligibility isEqualToString:@"account_unavailable"]) return kLang(@"PartnerSub_PartnerUnavailable");
+    return @"";
 }
 
 static NSString *PPSSubReadFailure(NSError *error, BOOL hasRetainedRecords) {
@@ -98,16 +134,17 @@ static NSString *PPSSubReadFailure(NSError *error, BOOL hasRetainedRecords) {
 }
 @end
 
-@interface PPSSubscriptionDetailController : UITableViewController <UIAdaptivePresentationControllerDelegate>
-@property (nonatomic, copy) void (^didClose)(void);
-@property (nonatomic, strong) NSString *profileID;
+@interface PPSSubscriptionDetailController ()
 @property (nonatomic, strong) NSDictionary *partner;
 @property (nonatomic, strong) NSArray *plans;
 @property (nonatomic, strong) NSArray *history;
 @property (nonatomic, strong) NSDictionary *pendingCommand;
+@property (nonatomic, copy) NSDictionary *subscriptionRequest;
+@property (nonatomic, copy) NSString *reviewingRequestID;
 @property (nonatomic, strong) NSString *actorUID;
 @property (nonatomic, assign) BOOL canManage;
 @property (nonatomic, assign) BOOL loading;
+@property (nonatomic, assign) BOOL hasCurrentDossier;
 @property (nonatomic, assign) BOOL submitting;
 @property (nonatomic, assign) NSUInteger generation;
 @property (nonatomic, strong) NSString *statusMessage;
@@ -436,7 +473,7 @@ static NSString *PPSSubReadFailure(NSError *error, BOOL hasRetainedRecords) {
         [self.statusRailStackView.heightAnchor constraintEqualToAnchor:self.statusRailScrollView.frameLayoutGuide.heightAnchor]
     ]];
 
-    NSArray<NSString *> *statuses = @[@"all", @"active", @"paused", @"expired", @"cancelled", @"unmanaged"];
+    NSArray<NSString *> *statuses = @[@"all", @"requests", @"active", @"paused", @"expired", @"cancelled", @"unmanaged"];
     for (NSString *status in statuses) {
         UIButton *capsule = [self createCapsuleButtonForStatus:status];
         [self.statusCapsuleButtons addObject:capsule];
@@ -569,7 +606,8 @@ static NSString *PPSSubReadFailure(NSError *error, BOOL hasRetainedRecords) {
 - (void)fetchAfter:(NSString *)cursor {
     if (![self canRead]) { self.partners = @[]; [self applyFilter]; [self.tableView.refreshControl endRefreshing]; return; }
     self.loading = YES; self.loadError = nil; [self updateFetchState]; NSUInteger generation = ++self.generation;
-    NSDictionary *query = cursor.length ? @{@"after":cursor, @"limit":@40} : @{@"limit":@40};
+    NSMutableDictionary *query = [(cursor.length ? @{@"after":cursor, @"limit":@40} : @{@"limit":@40}) mutableCopy];
+    if ([self.filter isEqualToString:@"requests"]) query[@"requestsOnly"] = @YES;
     __weak typeof(self) weakSelf = self;
     [[PPProviderService shared] fetchSubscriptionWorkspace:query shouldContinue:^BOOL{
         return weakSelf && generation == weakSelf.generation;
@@ -586,7 +624,8 @@ static NSString *PPSSubReadFailure(NSError *error, BOOL hasRetainedRecords) {
 - (void)applyFilter {
     NSString *term = [(self.searchField.text ?: @"") stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     self.visiblePartners = [self.partners filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSDictionary *p, NSDictionary *bindings) {
-        BOOL status = [self.filter isEqualToString:@"all"] || [self.filter isEqualToString:p[@"status"]];
+        BOOL status = [self.filter isEqualToString:@"all"] || [self.filter isEqualToString:p[@"status"]] ||
+            ([self.filter isEqualToString:@"requests"] && [PPSSubDict(p[@"subscriptionRequest"])[@"status"] isEqualToString:@"pending"]);
         NSString *text = [NSString stringWithFormat:@"%@ %@ %@ %@", p[@"displayName"] ?: @"", p[@"userId"] ?: @"", PPProviderLocalizedType(p[@"providerType"]), PPProviderLocalizedText(PPSSubDict(p[@"planName"]), @"")];
         return status && (!term.length || [text rangeOfString:term options:NSCaseInsensitiveSearch | NSDiacriticInsensitiveSearch].location != NSNotFound);
     }]];
@@ -599,7 +638,7 @@ static NSString *PPSSubReadFailure(NSError *error, BOOL hasRetainedRecords) {
 - (UIButton *)createCapsuleButtonForStatus:(NSString *)status {
     UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
     button.translatesAutoresizingMaskIntoConstraints = NO;
-    NSArray *statuses = @[@"all", @"active", @"paused", @"expired", @"cancelled", @"unmanaged"];
+    NSArray *statuses = @[@"all", @"requests", @"active", @"paused", @"expired", @"cancelled", @"unmanaged"];
     button.tag = [statuses indexOfObject:status];
     button.layer.cornerRadius = 17;
     button.layer.masksToBounds = YES;
@@ -627,7 +666,8 @@ static NSString *PPSSubReadFailure(NSError *error, BOOL hasRetainedRecords) {
     if ([status isEqualToString:@"all"]) return self.partners.count;
     NSUInteger count = 0;
     for (NSDictionary *p in self.partners) {
-        if ([PPSSubString(p[@"status"]) isEqualToString:status]) {
+        if ([PPSSubString(p[@"status"]) isEqualToString:status] ||
+            ([status isEqualToString:@"requests"] && [PPSSubDict(p[@"subscriptionRequest"])[@"status"] isEqualToString:@"pending"])) {
             count++;
         }
     }
@@ -636,7 +676,7 @@ static NSString *PPSSubReadFailure(NSError *error, BOOL hasRetainedRecords) {
 
 - (UIMenu *)buildFilterMenu API_AVAILABLE(ios(14.0)) {
     NSMutableArray<UIMenuElement *> *actions = [NSMutableArray array];
-    NSArray<NSString *> *statuses = @[@"all", @"active", @"paused", @"expired", @"cancelled", @"unmanaged"];
+    NSArray<NSString *> *statuses = @[@"all", @"requests", @"active", @"paused", @"expired", @"cancelled", @"unmanaged"];
     __weak typeof(self) weakSelf = self;
     
     for (NSString *status in statuses) {
@@ -663,10 +703,16 @@ static NSString *PPSSubReadFailure(NSError *error, BOOL hasRetainedRecords) {
     UISelectionFeedbackGenerator *generator = [[UISelectionFeedbackGenerator alloc] init];
     [generator prepare];
     [generator selectionChanged];
+    BOOL changesRequestQueue = [status isEqualToString:@"requests"] || [self.filter isEqualToString:@"requests"];
     self.filter = status;
+    if (changesRequestQueue) {
+        self.generation++; self.loading = NO; self.hasLoaded = NO;
+        self.partners = @[]; self.nextCursor = nil; self.failedCursor = nil; self.loadError = nil;
+        [self reloadPage];
+    }
     [self applyFilter];
     
-    NSArray<NSString *> *statuses = @[@"all", @"active", @"paused", @"expired", @"cancelled", @"unmanaged"];
+    NSArray<NSString *> *statuses = @[@"all", @"requests", @"active", @"paused", @"expired", @"cancelled", @"unmanaged"];
     NSUInteger index = [statuses indexOfObject:status];
     if (index != NSNotFound && index < self.statusCapsuleButtons.count) {
         UIButton *btn = self.statusCapsuleButtons[index];
@@ -675,7 +721,7 @@ static NSString *PPSSubReadFailure(NSError *error, BOOL hasRetainedRecords) {
 }
 
 - (void)statusCapsuleTapped:(UIButton *)sender {
-    NSArray<NSString *> *statuses = @[@"all", @"active", @"paused", @"expired", @"cancelled", @"unmanaged"];
+    NSArray<NSString *> *statuses = @[@"all", @"requests", @"active", @"paused", @"expired", @"cancelled", @"unmanaged"];
     if (sender.tag < statuses.count) {
         NSString *status = statuses[sender.tag];
         [self selectFilter:status];
@@ -729,7 +775,7 @@ static NSString *PPSSubReadFailure(NSError *error, BOOL hasRetainedRecords) {
 }
 
 - (void)updateStatusRailSelection {
-    NSArray<NSString *> *statuses = @[@"all", @"active", @"paused", @"expired", @"cancelled", @"unmanaged"];
+    NSArray<NSString *> *statuses = @[@"all", @"requests", @"active", @"paused", @"expired", @"cancelled", @"unmanaged"];
     for (NSUInteger i = 0; i < self.statusCapsuleButtons.count && i < statuses.count; i++) {
         NSString *status = statuses[i];
         UIButton *capsule = self.statusCapsuleButtons[i];
@@ -780,16 +826,14 @@ static NSString *PPSSubReadFailure(NSError *error, BOOL hasRetainedRecords) {
     if (@available(iOS 14.0, *)) {
         self.filterButton.menu = [self buildFilterMenu];
     } else {
-        UIAlertController *sheet = [UIAlertController alertControllerWithTitle:kLang(@"PartnerSub_Filter") message:nil preferredStyle:UIAlertControllerStyleActionSheet];
-        for (NSString *status in @[@"all", @"active", @"paused", @"expired", @"cancelled", @"unmanaged"]) {
-            [sheet addAction:[UIAlertAction actionWithTitle:PPSSubStatus(status) style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-                [self selectFilter:status];
-            }]];
-        }
-        [sheet addAction:[UIAlertAction actionWithTitle:kLang(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
-        sheet.popoverPresentationController.sourceView = self.filterButton;
-        sheet.popoverPresentationController.sourceRect = self.filterButton.bounds;
-        [self presentViewController:sheet animated:!UIAccessibilityIsReduceMotionEnabled() completion:nil];
+        NSArray<NSString *> *statuses = @[@"all", @"requests", @"active", @"paused", @"expired", @"cancelled", @"unmanaged"];
+        NSMutableArray<NSString *> *titles = [NSMutableArray array];
+        for (NSString *status in statuses) [titles addObject:PPSSubStatus(status)];
+        __weak typeof(self) weakSelf = self;
+        [PPAlertHelper showOptionsIn:self title:kLang(@"PartnerSub_Filter") subtitle:nil
+                            options:titles cancelTitle:kLang(@"Cancel") selection:^(NSUInteger index) {
+            if (index < statuses.count) [weakSelf selectFilter:statuses[index]];
+        }];
     }
 }
 - (void)updateFetchState {
@@ -855,6 +899,9 @@ static NSString *PPSSubReadFailure(NSError *error, BOOL hasRetainedRecords) {
     cell.summaryLabel.text = [NSString stringWithFormat:@"%@ · %@", PPProviderLocalizedType(p[@"providerType"]), PPProviderLocalizedText(PPSSubDict(p[@"planName"]), kLang(@"PartnerSub_NoPlan"))];
     NSDictionary *sub = PPSSubDict(p[@"subscription"]);
     cell.stateLabel.text = [NSString stringWithFormat:@"%@\n%@", PPSSubStatus(p[@"status"]), sub.count ? PPSSubDate(sub[@"expiresAt"]) : kLang(@"PartnerSub_UnmanagedHint")];
+    if ([PPSSubDict(p[@"subscriptionRequest"])[@"status"] isEqualToString:@"pending"]) {
+        cell.stateLabel.text = [cell.stateLabel.text stringByAppendingFormat:@"\n%@", kLang(@"PartnerReq_Pending")];
+    }
     return cell;
 }
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -940,6 +987,7 @@ static NSString *PPSSubCommandSymbol(NSString *action) {
 }
 - (void)loadDossier {
     if (self.loading || self.submitting) { [self.refreshControl endRefreshing]; return; }
+    self.hasCurrentDossier = NO;
     if (![self canRead]) { self.partner = nil; self.history = @[]; self.plans = @[]; self.statusMessage = kLang(@"PartnerSub_Permission"); [self.tableView reloadData]; return; }
     self.loading = YES; self.statusMessage = kLang(@"PartnerSub_Loading"); [self.tableView reloadData]; NSUInteger generation = ++self.generation;
     __weak typeof(self) weakSelf = self;
@@ -950,19 +998,31 @@ static NSString *PPSSubCommandSymbol(NSString *action) {
         self.loading = NO; [self.refreshControl endRefreshing];
         if (![self canRead]) { self.partner = nil; self.history = @[]; self.statusMessage = kLang(@"PartnerSub_Permission"); }
         else if (error) self.statusMessage = PPSSubReadFailure(error, self.partner.count > 0);
-        else { self.partner = PPSSubDict(result[@"partner"]); self.plans = PPSSubArray(result[@"plans"]); self.history = PPSSubArray(result[@"history"]);
+        else { self.partner = PPSSubDict(result[@"partner"]); self.plans = PPSSubArray(result[@"plans"]); self.subscriptionRequest = PPSSubDict(result[@"subscriptionRequest"]); self.history = PPSSubArray(result[@"history"]); self.hasCurrentDossier = YES;
             self.canManage = [result[@"canManage"] boolValue]; self.statusMessage = self.pendingCommand ? kLang(@"PartnerSub_Uncertain") : kLang(@"PartnerSub_ManualTerms"); }
         [self.tableView reloadData];
     }];
 }
-- (NSArray *)actions { return self.pendingCommand ? @[@"retry"] : ([self mayWrite] && !self.loading ? PPSSubArray(self.partner[@"allowedActions"]) : @[]); }
+- (NSArray *)actions {
+    if (self.loading || ![self mayWrite]) return @[];
+    if (self.pendingCommand) return @[@"retry"];
+    NSMutableArray *actions = [(self.hasCurrentDossier ? PPSSubArray(self.partner[@"allowedActions"]) : @[]) mutableCopy];
+    if (self.hasCurrentDossier && [self.subscriptionRequest[@"status"] isEqualToString:@"pending"]) {
+        [actions insertObject:@"reject_request" atIndex:0];
+        NSString *requestedAction = PPSSubString(self.subscriptionRequest[@"commandAction"]);
+        if ([self.subscriptionRequest[@"expectedVersion"] isEqual:self.partner[@"version"]] && [actions containsObject:requestedAction]) {
+            [actions insertObject:@"approve_request" atIndex:0];
+        }
+    }
+    return actions;
+}
 - (BOOL)showsFetchNotice {
     return self.loading || self.submitting || self.pendingCommand || (self.statusMessage.length &&
         ![self.statusMessage isEqualToString:kLang(@"PartnerSub_ManualTerms")] && ![self.statusMessage isEqualToString:kLang(@"PartnerSub_Saved")]);
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 4; }
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (section == 0) return self.partner.count ? 1 + (self.showsFetchNotice ? 1 : 0) : 1;
+    if (section == 0) return self.partner.count ? 1 + (self.showsFetchNotice ? 1 : 0) + (self.subscriptionRequest.count ? 2 : 0) : 1;
     if (section == 1) return self.partner.count ? 4 : 0;
     if (section == 2) return self.actions.count ?: (self.partner.count && !self.loading ? 1 : 0);
     return self.history.count ?: (self.partner.count && !self.loading ? 1 : 0);
@@ -998,6 +1058,17 @@ static NSString *PPSSubCommandSymbol(NSString *action) {
             NSString *state = PPSSubString(self.partner[@"status"]);
             return PPSubscriptionHostedCell(PPSubscriptionIdentity(PPSSubString(self.partner[@"displayName"]), PPProviderLocalizedType(self.partner[@"providerType"]), PPSSubStatus(state), PPSSubAgreementColor(state)));
         }
+        NSInteger requestStart = 1 + (self.showsFetchNotice ? 1 : 0);
+        if (self.partner.count && self.subscriptionRequest.count && indexPath.row >= requestStart) {
+            if (indexPath.row == requestStart) {
+                NSString *requestState = PPSSubString(self.subscriptionRequest[@"status"]);
+                NSString *requestTitle = PPSSubKey(@"PartnerReq_Status_", requestState);
+                NSString *requestedPlan = PPProviderLocalizedText(PPSSubDict(self.subscriptionRequest[@"planName"]), kLang(@"PartnerSub_NoPlan"));
+                return PPSubscriptionFactCell(requestTitle, [NSString stringWithFormat:@"%@ · %@", PPSSubAction(PPSSubString(self.subscriptionRequest[@"commandAction"])), requestedPlan], @"doc.text.magnifyingglass");
+            }
+            NSString *notes = PPSSubString(self.subscriptionRequest[@"notes"]);
+            return PPSubscriptionFactCell(kLang(@"PartnerReq_Notes"), notes.length ? notes : kLang(@"PartnerReq_NoNotes"), @"text.bubble");
+        }
         BOOL busy = self.loading || self.submitting;
         NSString *message = self.statusMessage ?: kLang(@"PartnerSub_Loading");
         if (!self.submitting) message = [NSString stringWithFormat:@"%@\n%@", message, kLang(@"PartnerSub_PullToRefresh")];
@@ -1018,7 +1089,9 @@ static NSString *PPSSubCommandSymbol(NSString *action) {
     }
     if (indexPath.section == 2) {
         if (!self.actions.count) {
-            UITableViewCell *cell = PPSubscriptionFactCell(kLang(@"PartnerSub_NoActions"), [self mayWrite] ? kLang(@"PartnerSub_AccessNotice") : kLang(@"PartnerSub_ReadOnly"), @"lock");
+            NSString *reason = PPSSubEligibilityFailure(self.partner);
+            if (!reason.length) reason = [self mayWrite] ? kLang(@"PartnerSub_AccessNotice") : kLang(@"PartnerSub_ReadOnly");
+            UITableViewCell *cell = PPSubscriptionFactCell(kLang(@"PartnerSub_NoActions"), reason, @"lock");
             cell.userInteractionEnabled = NO; return cell;
         }
         NSString *action = self.actions[indexPath.row];
@@ -1033,32 +1106,53 @@ static NSString *PPSSubCommandSymbol(NSString *action) {
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:NO]; if (indexPath.section != 2 || indexPath.row >= self.actions.count || self.submitting || ![self mayWrite]) return;
     NSString *action = self.actions[indexPath.row]; if ([action isEqualToString:@"retry"]) { [self sendPending]; return; }
+    if ([action isEqualToString:@"approve_request"] || [action isEqualToString:@"reject_request"]) {
+        NSDictionary *request = self.subscriptionRequest;
+        NSString *requestedAction = PPSSubString(request[@"commandAction"]);
+        NSDictionary *requestedPlan = nil;
+        if ([action isEqualToString:@"approve_request"] && PPSSubString(request[@"planId"]).length) {
+            for (NSDictionary *plan in self.plans) {
+                if ([PPSSubString(plan[@"id"]) isEqualToString:PPSSubString(request[@"planId"])] &&
+                    [PPSSubString(plan[@"planHash"]) isEqualToString:PPSSubString(request[@"planHash"])]) { requestedPlan = plan; break; }
+            }
+            if (!requestedPlan) { [PPAlertHelper showWarningIn:self title:kLang(@"PartnerReq_Changed") subtitle:kLang(@"PartnerReq_RefreshBeforeReview")]; return; }
+        }
+        self.reviewingRequestID = PPSSubString(request[@"requestId"]);
+        [self confirmAction:[action isEqualToString:@"reject_request"] ? @"reject_request" : requestedAction plan:requestedPlan];
+        return;
+    }
     if ([action isEqualToString:@"create"] || [action isEqualToString:@"change_plan"]) {
-        UIAlertController *sheet = [UIAlertController alertControllerWithTitle:kLang(@"PartnerSub_ChoosePlan") message:kLang(@"PartnerSub_PlanChoiceHint") preferredStyle:UIAlertControllerStyleActionSheet];
-        NSUInteger choices = 0;
+        NSMutableArray<NSDictionary *> *choices = [NSMutableArray array];
+        NSMutableArray<NSString *> *titles = [NSMutableArray array];
         for (NSDictionary *plan in self.plans) {
             if ([action isEqualToString:@"change_plan"] && [PPSSubString(plan[@"id"]) isEqualToString:PPSSubString(self.partner[@"planId"])]) continue;
-            choices++;
             NSString *title = [NSString stringWithFormat:@"%@ · %@", PPProviderLocalizedText(PPSSubDict(plan[@"name"]), PPSSubString(plan[@"id"])), PPProviderLocalizedBillingInterval(plan[@"billingInterval"])];
-            [sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(UIAlertAction *choice) { [self confirmAction:action plan:plan]; }]];
+            [choices addObject:[plan copy]]; [titles addObject:title];
         }
-        if (!choices) { PPSSubAlert(self, kLang(@"PartnerSub_ChoosePlan"), kLang(@"PartnerSub_NoPlans")); return; }
-        [sheet addAction:[UIAlertAction actionWithTitle:kLang(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
-        sheet.popoverPresentationController.sourceView = self.tableView; sheet.popoverPresentationController.sourceRect = [tableView rectForRowAtIndexPath:indexPath];
-        [self presentViewController:sheet animated:!UIAccessibilityIsReduceMotionEnabled() completion:nil];
+        if (!choices.count) { [PPAlertHelper showInfoIn:self title:kLang(@"PartnerSub_ChoosePlan") subtitle:kLang(@"PartnerSub_NoPlans")]; return; }
+        NSArray<NSDictionary *> *reviewedChoices = [choices copy];
+        __weak typeof(self) weakSelf = self;
+        [PPAlertHelper showOptionsIn:self title:kLang(@"PartnerSub_ChoosePlan") subtitle:kLang(@"PartnerSub_PlanChoiceHint")
+                            options:titles cancelTitle:kLang(@"Cancel") selection:^(NSUInteger index) {
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self || index >= reviewedChoices.count || ![self mayWrite] || self.submitting || self.pendingCommand || ![self.actions containsObject:action]) return;
+            [self confirmAction:action plan:reviewedChoices[index]];
+        }];
     } else [self confirmAction:action plan:nil];
 }
 - (void)confirmAction:(NSString *)action plan:(NSDictionary *)plan {
     NSDictionary *reviewedPartner = [self.partner copy]; NSDictionary *reviewedPlan = [plan copy];
     NSString *reviewedProfileID = [self.profileID copy]; NSNumber *reviewedVersion = [reviewedPartner[@"version"] copy] ?: @0;
+    NSString *reviewedRequestID = [self.reviewingRequestID copy]; self.reviewingRequestID = nil;
     PPSSubscriptionConfirmationController *form = [PPSSubscriptionConfirmationController new];
     form.partner = reviewedPartner; form.action = action; form.plan = reviewedPlan;
     __weak typeof(self) weakSelf = self;
     form.onConfirm = ^(NSString *reason) {
-        __strong typeof(weakSelf) self = weakSelf; if (!self || ![self mayWrite] || self.pendingCommand || ![self.profileID isEqualToString:reviewedProfileID]) return;
+        __strong typeof(weakSelf) self = weakSelf; if (!self || ![self mayWrite] || self.pendingCommand || ![self.profileID isEqualToString:reviewedProfileID] || ![self.actions containsObject:action]) return;
         NSMutableDictionary *payload = [@{@"profileId":reviewedProfileID, @"action":action, @"expectedVersion":reviewedVersion,
             @"reason":reason, @"idempotencyKey":NSUUID.UUID.UUIDString.lowercaseString} mutableCopy];
         if (reviewedPlan) { payload[@"planId"] = PPSSubString(reviewedPlan[@"id"]); payload[@"expectedPlanHash"] = PPSSubString(reviewedPlan[@"planHash"]); }
+        if (reviewedRequestID.length) payload[@"requestId"] = reviewedRequestID;
         self.pendingCommand = payload.copy; [[NSUserDefaults standardUserDefaults] setObject:self.pendingCommand forKey:self.draftKey];
         [self sendPending];
     };
@@ -1067,7 +1161,7 @@ static NSString *PPSSubCommandSymbol(NSString *action) {
     [self presentViewController:nav animated:!UIAccessibilityIsReduceMotionEnabled() completion:nil];
 }
 - (void)sendPending {
-    if (![self mayWrite] || self.submitting || !self.pendingCommand) return;
+    if (![self mayWrite] || self.loading || self.submitting || !self.pendingCommand) return;
     self.submitting = YES; self.modalInPresentation = YES; self.navigationController.modalInPresentation = YES; self.navigationItem.leftBarButtonItem.enabled = NO;
     self.statusMessage = kLang(@"PartnerSub_Saving"); [self.tableView reloadData];
     __weak typeof(self) weakSelf = self;
@@ -1076,10 +1170,13 @@ static NSString *PPSSubCommandSymbol(NSString *action) {
         self.submitting = NO; self.modalInPresentation = NO; self.navigationController.modalInPresentation = NO; self.navigationItem.leftBarButtonItem.enabled = YES;
         if (![self canRead]) { self.partner = nil; self.history = @[]; self.statusMessage = kLang(@"PartnerSub_Permission"); [self.tableView reloadData]; return; }
         if (error) {
-            BOOL finalError = [error.domain isEqualToString:FIRFunctionsErrorDomain] && [@[@3,@5,@6,@7,@9,@10,@16] containsObject:@(error.code)];
+            BOOL finalError = PPSSubCommandWasRejected(error);
             if (finalError) { self.pendingCommand = nil; [[NSUserDefaults standardUserDefaults] removeObjectForKey:self.draftKey]; [self loadDossier]; }
-            self.statusMessage = finalError ? kLang(@"PartnerSub_CommandRejected") : kLang(@"PartnerSub_Uncertain");
-            [self.tableView reloadData]; PPSSubAlert(self, kLang(@"PartnerSub_UpdateFailed"), self.statusMessage); return;
+            self.statusMessage = finalError ? PPSSubCommandFailure(error) : kLang(@"PartnerSub_Uncertain");
+            [self.tableView reloadData];
+            if (finalError) [PPAlertHelper showErrorIn:self title:kLang(@"PartnerSub_UpdateFailed") subtitle:self.statusMessage];
+            else [PPAlertHelper showWarningIn:self title:kLang(@"PartnerSub_UpdateFailed") subtitle:self.statusMessage];
+            return;
         }
         NSDictionary *confirmed = PPSSubDict(result[@"partner"]);
         if (![result[@"ok"] isKindOfClass:NSNumber.class] || ![result[@"ok"] boolValue] ||

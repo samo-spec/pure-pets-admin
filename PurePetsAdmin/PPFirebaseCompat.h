@@ -138,8 +138,12 @@ FOUNDATION_EXPORT NSString * const FIRFirestoreErrorDomain;
 #endif
 
 
-static NSString * const FIRFunctionsErrorDomain = @"com.firebase.functions";
-static NSString * const FIRFunctionsErrorDetailsKey = @"details";
+#ifndef FIRFunctionsErrorDomain
+#define FIRFunctionsErrorDomain @"com.firebase.functions"
+#endif
+#ifndef FIRFunctionsErrorDetailsKey
+#define FIRFunctionsErrorDetailsKey @"details"
+#endif
 
 #ifndef PP_FIREBASE_STORAGE_TYPEDEFS_IMPORTED
 typedef NSString *FIRStorageHandle;

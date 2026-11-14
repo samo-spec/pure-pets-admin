@@ -17,6 +17,7 @@ public struct PPVetSubscriptionManagementScreen: View {
     @State private var vet: PPVetModel
     private let onDismiss: () -> Void
     private let onSaved: (PPVetModel) -> Void
+    private let alertPresenter: () -> UIViewController?
 
     @State private var selectedTier: PPVetSubscriptionTier
     @State private var subscriptionActive: Bool
@@ -32,11 +33,13 @@ public struct PPVetSubscriptionManagementScreen: View {
     public init(
         vet: PPVetModel,
         onDismiss: @escaping () -> Void,
-        onSaved: @escaping (PPVetModel) -> Void
+        onSaved: @escaping (PPVetModel) -> Void,
+        alertPresenter: @escaping () -> UIViewController? = { nil }
     ) {
         _vet = State(initialValue: vet)
         self.onDismiss = onDismiss
         self.onSaved = onSaved
+        self.alertPresenter = alertPresenter
 
         _selectedTier = State(initialValue: vet.subscriptionTier)
         _subscriptionActive = State(initialValue: vet.subscriptionActive)
@@ -604,29 +607,48 @@ public struct PPVetSubscriptionManagementScreen: View {
 
     private func saveAction() {
         let vetID = vet.vetID
-        guard !vetID.isEmpty else { return }
+        guard !vetID.isEmpty, !isSaving else { return }
+        let owner = alertPresenter()
+        let tier = selectedTier
+        let active = subscriptionActive
+        let start = startDate
+        let end = endDate
+        guard Calendar.current.compare(end, to: start, toGranularity: .day) == .orderedDescending else {
+            let message = Language.get("Vet_Sub_Error_DateOrder", alter: nil)
+            errorMessage = message
+            PPAlertHelper.showError(in: owner, title: Language.get("Error", alter: nil), subtitle: message)
+            return
+        }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         errorMessage = nil
         isSaving = true
 
         PPVetManager.shared().updateSubscription(
             forVetID: vetID,
-            tier: selectedTier.rawValue,
-            active: subscriptionActive,
-            startDate: startDate,
-            endDate: endDate
+            tier: tier.rawValue,
+            active: active,
+            startDate: start,
+            endDate: end
         ) { error in
-            isSaving = false
-            if let error {
-                errorMessage = error.localizedDescription
-            } else {
-                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                vet.subscriptionTier = selectedTier
-                vet.subscriptionActive = subscriptionActive
-                vet.subscriptionStartDate = startDate
-                vet.subscriptionEndDate = endDate
-                onSaved(vet)
-                onDismiss()
+            DispatchQueue.main.async {
+                isSaving = false
+                if let error {
+                    errorMessage = error.localizedDescription
+                    PPAlertHelper.showError(in: owner, title: Language.get("Error", alter: nil), subtitle: error.localizedDescription)
+                } else {
+                    UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                    vet.subscriptionTier = tier
+                    vet.subscriptionActive = active
+                    vet.subscriptionStartDate = start
+                    vet.subscriptionEndDate = end
+                    onSaved(vet)
+                    PPAlertHelper.showSuccess(
+                        in: owner,
+                        title: Language.get("Success_Title", alter: nil),
+                        subtitle: Language.get("Vet_Sub_Updated_Success", alter: nil),
+                        okAction: { _, didConfirm in if didConfirm { onDismiss() } }
+                    )
+                }
             }
         }
     }
@@ -664,7 +686,8 @@ public class PPVetSubscriptionHostingController: UIViewController {
                     self?.dismiss(animated: true)
                 }
             },
-            onSaved: { _ in }
+            onSaved: { _ in },
+            alertPresenter: { [weak self] in self }
         )
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
 
