@@ -631,7 +631,8 @@ final class FulfillmentListViewModel: ObservableObject {
     @Published private(set) var actionProgressMessage: String?
     @Published private(set) var confirmedRecord: FulfillmentRecordSnapshot?
     @Published private(set) var hasQuickActionRetry = false
-    private var retryableQuickAction: (FulfillmentRecordSnapshot, String)?
+    private var retryableQuickAction: (FulfillmentRecordSnapshot, String, String?)?
+    private var selectingPickupStore = false
 
     private struct CommandEnvelope {
         let id: String
@@ -893,14 +894,27 @@ final class FulfillmentListViewModel: ObservableObject {
 
     // MARK: - Actions
 
-    func quickAdvance(record: FulfillmentRecordSnapshot, targetStatus: String) {
-        guard !isSubmittingAction,
+    func quickAdvance(record: FulfillmentRecordSnapshot, targetStatus: String,
+                      pickupBranchID: String? = nil, pickupSelectionResolved: Bool = false) {
+        guard !isSubmittingAction, !selectingPickupStore,
               let action = record.nextQuickAction,
               action.targetStatus == targetStatus else { return }
-        retryableQuickAction = (record, targetStatus)
+        if action.providerAction == "request_delivery", !pickupSelectionResolved,
+           PPFulfillmentService.isOfficialPlatformFulfillment(record.rawRecord) {
+            selectingPickupStore = true
+            PPDeliveryPickupStoreViewController.present(for: record.rawRecord, from: nil) { [weak self] branchID, confirmed in
+                guard let self else { return }
+                self.selectingPickupStore = false
+                guard confirmed else { return }
+                self.quickAdvance(record: record, targetStatus: targetStatus,
+                                  pickupBranchID: branchID, pickupSelectionResolved: true)
+            }
+            return
+        }
+        retryableQuickAction = (record, targetStatus, pickupBranchID)
         hasQuickActionRetry = false
         let note = String(format: Language.get("Fulfillment_Quick_Audit_Note", alter: "إجراء موظف من تطبيق الإدارة: %@"), action.title)
-        let key = [Auth.auth().currentUser?.uid ?? "", record.id, record.status, targetStatus, "quick", note]
+        let key = [Auth.auth().currentUser?.uid ?? "", record.id, record.status, targetStatus, "quick", note, pickupBranchID ?? ""]
         let cmdID = commands[key]?.id ?? "cmd_\(UUID().uuidString)"
         commands[key] = commands[key] ?? CommandEnvelope(id: cmdID)
         beginAction()
@@ -919,7 +933,7 @@ final class FulfillmentListViewModel: ObservableObject {
         if PPFulfillmentService.isOfficialPlatformFulfillment(record.rawRecord) {
             PPFulfillmentService.shared().transitionOfficialFulfillment(
                 record.rawRecord, expectedStatus: record.status, action: action.providerAction,
-                note: note, commandID: cmdID, completion: completed
+                note: note, pickupBranchID: pickupBranchID, commandID: cmdID, completion: completed
             )
         } else {
             PPFulfillmentService.shared().adminOverride(
@@ -930,8 +944,8 @@ final class FulfillmentListViewModel: ObservableObject {
     }
 
     func retryLastQuickAction() {
-        guard let (record, target) = retryableQuickAction else { return }
-        quickAdvance(record: record, targetStatus: target)
+        guard let (record, target, branchID) = retryableQuickAction else { return }
+        quickAdvance(record: record, targetStatus: target, pickupBranchID: branchID, pickupSelectionResolved: true)
     }
 
     func executeAdminOverride(
@@ -941,13 +955,39 @@ final class FulfillmentListViewModel: ObservableObject {
         reason: String,
         note: String?,
         notify: Bool,
+        pickupBranchID: String? = nil,
+        pickupSelectionResolved: Bool = false,
         completion: @escaping @Sendable (FulfillmentOverrideCommitResult) -> Void
     ) {
-        guard !isSubmittingAction else { completion(.failed); return }
+        guard !isSubmittingAction, !selectingPickupStore else { completion(.failed); return }
+        let baseKey = [Auth.auth().currentUser?.uid ?? "", record.id, expectedStatus,
+                       targetStatus, "override", reason, note ?? "", String(notify)]
+        if targetStatus == "delivery_requested", !pickupSelectionResolved,
+           let retainedKey = commands.keys.first(where: { Array($0.dropLast()) == baseKey }) {
+            // A timeout may hide an accepted command. Retry its reviewed payload
+            // without reopening a status-sensitive picker or choosing a new store.
+            let retainedBranch = retainedKey.last.flatMap { $0.isEmpty ? nil : $0 }
+            executeAdminOverride(record: record, expectedStatus: expectedStatus, targetStatus: targetStatus,
+                reason: reason, note: note, notify: notify, pickupBranchID: retainedBranch,
+                pickupSelectionResolved: true, completion: completion)
+            return
+        }
+        if targetStatus == "delivery_requested", !pickupSelectionResolved,
+           PPFulfillmentService.isOfficialPlatformFulfillment(record.rawRecord) {
+            selectingPickupStore = true
+            PPDeliveryPickupStoreViewController.present(for: record.rawRecord, from: nil) { [weak self] branchID, confirmed in
+                guard let self else { completion(.failed); return }
+                self.selectingPickupStore = false
+                guard confirmed else { completion(.failed); return }
+                self.executeAdminOverride(record: record, expectedStatus: expectedStatus, targetStatus: targetStatus,
+                    reason: reason, note: note, notify: notify, pickupBranchID: branchID,
+                    pickupSelectionResolved: true, completion: completion)
+            }
+            return
+        }
         retryableQuickAction = nil
         hasQuickActionRetry = false
-        let key = [Auth.auth().currentUser?.uid ?? "", record.id, expectedStatus,
-                   targetStatus, "override", reason, note ?? "", String(notify)]
+        let key = baseKey + [pickupBranchID ?? ""]
         let cmdID = commands[key]?.id ?? "override_\(UUID().uuidString)"
         commands[key] = commands[key] ?? CommandEnvelope(id: cmdID)
         beginAction(completion: completion)
@@ -958,7 +998,7 @@ final class FulfillmentListViewModel: ObservableObject {
         }
         PPFulfillmentService.shared().adminOverride(
             record.id, expectedStatus: expectedStatus, targetStatus: targetStatus,
-            reason: reason, note: note, notify: notify, commandID: cmdID
+            reason: reason, note: note, notify: notify, pickupBranchID: pickupBranchID, commandID: cmdID
         ) { [weak self] rawResult, error in
             let receipt = CommandReceipt(dictionary: rawResult)
             Task { @MainActor in
@@ -991,7 +1031,13 @@ final class FulfillmentListViewModel: ObservableObject {
             return
         }
         if let error {
-            finishAction(FulfillmentOverrideCommitResult.from(error: error), completion: completion)
+            let outcome = FulfillmentOverrideCommitResult.from(error: error)
+            switch outcome {
+            case .denied, .conflict, .invalid, .blocked:
+                commands.removeValue(forKey: key)
+            default: break // unknown outcome keeps the exact command for retry
+            }
+            finishAction(outcome, completion: completion)
             errorMessage = Self.userFriendlyErrorMessage(error)
             return
         }

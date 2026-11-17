@@ -13,6 +13,7 @@
 #import "SceneDelegate.h"
 #import "UsersSection/UserController/PPProLoginCoordinator.h"
 #import "Fulfillment/PPFulfillmentService.h"
+#import "Fulfillment/PPDeliveryPickupStoreViewController.h"
 #import "Services/Session/PPAdminSessionBridge.h"
 #import "Services/CommandCenter/PPAdminCommandCenterService.h"
 #import "Shared/Routing/PPAdminRouteFactory.h"

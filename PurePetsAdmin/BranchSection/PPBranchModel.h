@@ -44,6 +44,12 @@ typedef NS_ENUM(NSInteger, PPBranchStockMode) {
 @property (nonatomic, copy) NSString *address;
 @property (nonatomic, copy) NSString *phone;
 
+// ── Geolocation & Pickup Telemetry ────────────────────────────────────────
+@property (nonatomic, assign) double latitude;
+@property (nonatomic, assign) double longitude;
+@property (nonatomic, copy, nullable) NSString *locationPoints;
+@property (nonatomic, assign) BOOL hasCoordinates;
+
 // ── State ─────────────────────────────────────────────────────────────────
 @property (nonatomic, assign) BOOL isActive;
 @property (nonatomic, assign) BOOL isDefault;   ///< Only one branch should be default at a time

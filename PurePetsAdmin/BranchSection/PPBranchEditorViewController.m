@@ -623,6 +623,14 @@ static NSString *const kSwitchCellID = @"PPSwitchCell";
     payload[@"phone"] = self.draft[@"phone"] ?: @"";
     payload[@"stockMode"] = stockRaw;
     payload[@"isDefault"] = self.draft[@"isDefault"] ?: @(NO);
+
+    if (self.branch.hasCoordinates) {
+        payload[@"latitude"] = @(self.branch.latitude);
+        payload[@"longitude"] = @(self.branch.longitude);
+        if (self.branch.locationPoints.length) {
+            payload[@"locationPoints"] = self.branch.locationPoints;
+        }
+    }
     payload[@"isConsumerAppStock"] = self.draft[@"isConsumerAppStock"] ?: @(NO);
     payload[@"isActive"] = @(YES);
     payload[@"updatedAt"] = [FIRFieldValue fieldValueForServerTimestamp];

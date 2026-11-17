@@ -46,6 +46,15 @@ typedef void (^AdminServiceCompletion)(NSDictionary * _Nullable result, NSError 
           expectedRevision:(NSInteger)expectedRevision
                 completion:(AdminServiceCompletion)completion;
 
++ (void)downgradeStaffMemberToUser:(NSString *)uid
+                        completion:(AdminServiceCompletion)completion
+    NS_SWIFT_NAME(downgradeStaffMemberToUser(_:completion:));
+
++ (void)downgradeStaffMemberToUser:(NSString *)uid
+                  expectedRevision:(NSInteger)expectedRevision
+                        completion:(AdminServiceCompletion)completion
+    NS_SWIFT_NAME(downgradeStaffMemberToUser(_:expectedRevision:completion:));
+
 #pragma mark - User Access Management (new)
 
 + (void)createCustomerAccountWithName:(NSString *)name

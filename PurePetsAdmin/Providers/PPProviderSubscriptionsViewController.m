@@ -141,7 +141,6 @@ static NSString *PPSSubReadFailure(NSError *error, BOOL hasRetainedRecords) {
 @property (nonatomic, strong) NSDictionary *pendingCommand;
 @property (nonatomic, copy) NSDictionary *subscriptionRequest;
 @property (nonatomic, copy) NSString *reviewingRequestID;
-@property (nonatomic, strong) NSString *actorUID;
 @property (nonatomic, assign) BOOL canManage;
 @property (nonatomic, assign) BOOL loading;
 @property (nonatomic, assign) BOOL hasCurrentDossier;
@@ -432,7 +431,7 @@ static NSString *PPSSubReadFailure(NSError *error, BOOL hasRetainedRecords) {
     self.filterButton = [UIButton buttonWithType:UIButtonTypeCustom];
     self.filterButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.filterButton.accessibilityLabel = kLang(@"PartnerSub_StatusFilter");
-    [self.filterButton.heightAnchor constraintGreaterThanOrEqualToConstant:42].active = YES;
+    [self.filterButton.heightAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
     [self.filterButton addTarget:self action:@selector(chooseFilter) forControlEvents:UIControlEventTouchUpInside];
     
     self.filterChevronView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"chevron.down" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:11 weight:UIImageSymbolWeightSemibold]]];
@@ -657,7 +656,7 @@ static NSString *PPSSubReadFailure(NSError *error, BOOL hasRetainedRecords) {
         button.titleEdgeInsets = UIEdgeInsetsMake(0, 4, 0, 0);
     }
     
-    [button.heightAnchor constraintGreaterThanOrEqualToConstant:34].active = YES;
+    [button.heightAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
     [button addTarget:self action:@selector(statusCapsuleTapped:) forControlEvents:UIControlEventTouchUpInside];
     return button;
 }
@@ -682,7 +681,8 @@ static NSString *PPSSubReadFailure(NSError *error, BOOL hasRetainedRecords) {
     for (NSString *status in statuses) {
         NSUInteger count = [self countForStatus:status];
         NSString *title = PPSSubStatus(status);
-        NSString *actionTitle = [NSString stringWithFormat:@"%@  (%lu)", title, (unsigned long)count];
+        NSString *actionTitle = [status isEqualToString:@"requests"] && ![self.filter isEqualToString:@"requests"]
+            ? title : [NSString stringWithFormat:@"%@  (%lu)", title, (unsigned long)count];
         UIImage *image = [UIImage systemImageNamed:PPSSubStatusSymbol(status)];
         
         UIAction *action = [UIAction actionWithTitle:actionTitle image:image identifier:nil handler:^(__kindof UIAction * _Nonnull act) {
@@ -783,7 +783,8 @@ static NSString *PPSSubReadFailure(NSError *error, BOOL hasRetainedRecords) {
         NSUInteger count = [self countForStatus:status];
         UIColor *accent = PPSSubStatusAccentColor(status);
         NSString *title = PPSSubStatus(status);
-        NSString *capsuleTitle = [NSString stringWithFormat:@"%@  %lu", title, (unsigned long)count];
+        NSString *capsuleTitle = [status isEqualToString:@"requests"] && ![self.filter isEqualToString:@"requests"]
+            ? title : [NSString stringWithFormat:@"%@  %lu", title, (unsigned long)count];
         
         capsule.selected = isSelected;
         capsule.layer.borderWidth = isSelected ? 1.5 : 1.0;

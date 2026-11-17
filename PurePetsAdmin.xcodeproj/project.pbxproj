@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A6C26B011115000100A6C001 /* PPDeliveryPickupStoreViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = A6C26B021115000100A6C002 /* PPDeliveryPickupStoreViewController.m */; };
+		A6C26B041115000100A6C004 /* PPDeliveryPickupStoreSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C26B051115000100A6C005 /* PPDeliveryPickupStoreSheet.swift */; };
 		99CB650CAE4A4C5BB49DA371 /* PPProviderSubscriptionsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = ACE76CEA9BA84E469E09EA21 /* PPProviderSubscriptionsViewController.m */; };
 		2B7B3E3ABF4C4B77B37B708A /* PPProviderSubscriptionPresentation.m in Sources */ = {isa = PBXBuildFile; fileRef = B2DA213526B34D2F9D8ED4A1 /* PPProviderSubscriptionPresentation.m */; };
 		F518A0013018000100F51801 /* PPPharmacyInventoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F518A0023018000100F51802 /* PPPharmacyInventoryView.swift */; };
@@ -333,6 +335,7 @@
 		F2B1390C302BBC1300C3C672 /* PPGlobalNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2B1390B302BBC1300C3C672 /* PPGlobalNavigation.swift */; };
 		F2B198472E6049FE0023ABAF /* PPSubtitleSwitchCell.m in Sources */ = {isa = PBXBuildFile; fileRef = F2B198462E6049FE0023ABAF /* PPSubtitleSwitchCell.m */; };
 		F2BB00027BA040D3A26BE0C2 /* Features/Operations/PPBranchEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2BB000128C24320B208A2D1 /* Features/Operations/PPBranchEditorView.swift */; };
+		F2BB00047BA040D3A26BE0C4 /* Features/Operations/PPBranchLocationPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2BB000328C24320B208A2D3 /* Features/Operations/PPBranchLocationPicker.swift */; };
 		F2C23F3330055AD6005E31C6 /* PPChatsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2C23F3230055AD6005E31C6 /* PPChatsViewController.m */; };
 		F2C23F3630055AD6005E31C6 /* PPSettingsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2C23F3530055AD6005E31C6 /* PPSettingsViewController.m */; };
 		F2C71B1C2F97412900716209 /* StaffRolesViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2C71B1B2F97412900716209 /* StaffRolesViewController.m */; };
@@ -434,6 +437,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A6C26B021115000100A6C002 /* PPDeliveryPickupStoreViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPDeliveryPickupStoreViewController.m; sourceTree = "<group>"; };
+		A6C26B051115000100A6C005 /* PPDeliveryPickupStoreSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPDeliveryPickupStoreSheet.swift; sourceTree = "<group>"; };
+		A6C26B031115000100A6C003 /* PPDeliveryPickupStoreViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPDeliveryPickupStoreViewController.h; sourceTree = "<group>"; };
 		73233980058F4300A8BAA9BF /* PPProviderSubscriptionsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPProviderSubscriptionsViewController.h; sourceTree = "<group>"; };
 		ACE76CEA9BA84E469E09EA21 /* PPProviderSubscriptionsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPProviderSubscriptionsViewController.m; sourceTree = "<group>"; };
 		8F38181D4DC24B48B8C59110 /* PPProviderSubscriptionPresentation.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPProviderSubscriptionPresentation.h; sourceTree = "<group>"; };
@@ -947,6 +953,7 @@
 		F2B198452E6049F50023ABAF /* PPSubtitleSwitchCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPSubtitleSwitchCell.h; sourceTree = "<group>"; };
 		F2B198462E6049FE0023ABAF /* PPSubtitleSwitchCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPSubtitleSwitchCell.m; sourceTree = "<group>"; };
 		F2BB000128C24320B208A2D1 /* Features/Operations/PPBranchEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Operations/PPBranchEditorView.swift; sourceTree = "<group>"; };
+		F2BB000328C24320B208A2D3 /* Features/Operations/PPBranchLocationPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Operations/PPBranchLocationPicker.swift; sourceTree = "<group>"; };
 		F2C23F3130055AD6005E31C6 /* PPChatsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPChatsViewController.h; sourceTree = "<group>"; };
 		F2C23F3230055AD6005E31C6 /* PPChatsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPChatsViewController.m; sourceTree = "<group>"; };
 		F2C23F3430055AD6005E31C6 /* PPSettingsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPSettingsViewController.h; sourceTree = "<group>"; };
@@ -1489,6 +1496,7 @@
 				906191B1195A44C48F903980 /* Features/Operations/HomeControlView.swift */,
 				E6564A1528C24320B208A2D2 /* Features/Operations/BranchesView.swift */,
 				F2BB000128C24320B208A2D1 /* Features/Operations/PPBranchEditorView.swift */,
+				F2BB000328C24320B208A2D3 /* Features/Operations/PPBranchLocationPicker.swift */,
 				3F173B5D57994D969B7CF647 /* Features/Operations/AgentsView.swift */,
 				24BFB2EE1EA34564A0AA48A2 /* Features/Operations/ModerationView.swift */,
 				49E8B035587D46E78C90A618 /* Features/More/AuditLogView.swift */,
@@ -1943,6 +1951,9 @@
 				F2A24AE23003C4D3003AB79D /* PPFulfillmentOrdersViewController.swift */,
 				F2A24AE33003C4D3003AB79D /* PPFulfillmentService.h */,
 				F2A24AE43003C4D3003AB79D /* PPFulfillmentService.m */,
+				A6C26B021115000100A6C002 /* PPDeliveryPickupStoreViewController.m */,
+				A6C26B031115000100A6C003 /* PPDeliveryPickupStoreViewController.h */,
+				A6C26B051115000100A6C005 /* PPDeliveryPickupStoreSheet.swift */,
 			);
 			path = Fulfillment;
 			sourceTree = "<group>";
@@ -2747,6 +2758,8 @@
 				F2A24AFA3003C4D3003AB79D /* PPFulfillmentOrdersViewController.swift in Sources */,
 				F2A24AFC3003C4D3003AB79D /* PPProviderPlansViewController.m in Sources */,
 				F2A24AFD3003C4D3003AB79D /* PPFulfillmentService.m in Sources */,
+				A6C26B011115000100A6C001 /* PPDeliveryPickupStoreViewController.m in Sources */,
+				A6C26B041115000100A6C004 /* PPDeliveryPickupStoreSheet.swift in Sources */,
 				F2A24AFE3003C4D3003AB79D /* PPAccountingViewController.m in Sources */,
 				F2A24B003003C4D3003AB79D /* PPDeliveryManagementViewController.m in Sources */,
 				F2A24B013003C4D3003AB79D /* PPDeliveryService.m in Sources */,
@@ -2813,6 +2826,7 @@
 				37053D1B0B8C47789DD2F6E3 /* Features/Operations/HomeControlView.swift in Sources */,
 				BF4031A37BA040D3A26BE0C8 /* Features/Operations/BranchesView.swift in Sources */,
 				F2BB00027BA040D3A26BE0C2 /* Features/Operations/PPBranchEditorView.swift in Sources */,
+				F2BB00047BA040D3A26BE0C4 /* Features/Operations/PPBranchLocationPicker.swift in Sources */,
 				F37952CFA43E4A218077BFBE /* Features/Operations/AgentsView.swift in Sources */,
 				783A5E7AA010485BB961D6F6 /* Features/Operations/ModerationView.swift in Sources */,
 				8173FC7D1C544D2C945552DD /* Features/More/AuditLogView.swift in Sources */,

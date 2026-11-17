@@ -1,6 +1,7 @@
 #import "PPPaymentDetailsViewController.h"
 #import "PPPaymentManagementService.h"
 #import "Fulfillment/PPFulfillmentService.h"
+#import "Fulfillment/PPDeliveryPickupStoreViewController.h"
 #import "Styling.h"
 #import "Language.h"
 
@@ -1198,6 +1199,22 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
 
 - (void)pp_executeOrderAction:(PPPaymentOrderAdminActionType)actionType note:(NSString *)note
 {
+    if (actionType == PPPaymentOrderAdminActionTypeOfficialRequestDelivery && self.officialFulfillment) {
+        self.actionInFlight = YES;
+        __weak typeof(self) weakSelf = self;
+        [PPDeliveryPickupStoreViewController presentForRecord:self.officialFulfillment from:self completion:^(NSString *branchID, BOOL confirmed) {
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self) return;
+            self.actionInFlight = NO;
+            if (confirmed) [self pp_executeOrderAction:actionType note:note pickupBranchID:branchID];
+        }];
+        return;
+    }
+    [self pp_executeOrderAction:actionType note:note pickupBranchID:nil];
+}
+
+- (void)pp_executeOrderAction:(PPPaymentOrderAdminActionType)actionType note:(NSString *)note pickupBranchID:(NSString *)pickupBranchID
+{
     self.actionInFlight = YES;
     [PPHUD showIndeterminateIn:self.view title:kLang(@"PaymentMgmt_Loading_Updating") subtitle:kLang(@"PaymentMgmt_Loading_OrderUpdate")];
 
@@ -1216,13 +1233,16 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
                                                 expectedStatus:fulfillment.status
                                                          action:action
                                                            note:note
+                                                 pickupBranchID:pickupBranchID
                                                       commandID:commandID
                                                      completion:^(__unused NSDictionary * _Nullable result, NSError * _Nullable error) {
             __strong typeof(weakSelf) self = weakSelf;
             self.actionInFlight = NO;
             [PPHUD dismiss];
             if (error) {
-                [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_UpdateOrder")];
+                NSString *message = [error.domain isEqualToString:@"PPFulfillmentService"] && error.code == 418
+                    ? error.localizedDescription : kLang(@"PaymentMgmt_Error_UpdateOrder");
+                [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:message];
                 [self pp_reloadRecordShowHUD:NO];
                 return;
             }

@@ -13,6 +13,7 @@ struct AdminPaymentDetailView: View {
     @StateObject private var viewModel: PaymentDetailViewModel
     @State private var copiedToastMessage: String? = nil
     @State private var toastTask: Task<Void, Never>? = nil
+    @State private var selectingPickupStore = false
 
     init(orderID: String, session: AdminSession? = nil, onDismiss: (() -> Void)? = nil) {
         self.orderID = orderID
@@ -761,6 +762,20 @@ struct AdminPaymentDetailView: View {
     }
 
     private func requestOfficialAction(_ action: String) {
+        guard !selectingPickupStore else { return }
+        if action == "request_delivery", let record = viewModel.officialFulfillment {
+            selectingPickupStore = true
+            PPDeliveryPickupStoreViewController.present(for: record, from: nil) { branchID, confirmed in
+                selectingPickupStore = false
+                guard confirmed else { return }
+                presentOfficialActionPrompt(action, pickupBranchID: branchID)
+            }
+            return
+        }
+        presentOfficialActionPrompt(action)
+    }
+
+    private func presentOfficialActionPrompt(_ action: String, pickupBranchID: String? = nil) {
         let title = officialActionTitle(action)
         presentActionPrompt(
             title: title,
@@ -770,7 +785,7 @@ struct AdminPaymentDetailView: View {
                 format: Language.get("PaymentMgmt_OfficialFulfillment_DefaultNote", alter: "إجراء إداري: %@"),
                 title
             )
-        ) { note in viewModel.transitionOfficialFulfillment(action: action, note: note) }
+        ) { note in viewModel.transitionOfficialFulfillment(action: action, note: note, pickupBranchID: pickupBranchID) }
     }
 
     private func requestOfficialInitializationAction(_ action: String) {
@@ -1640,6 +1655,9 @@ final class PaymentDetailViewModel: ObservableObject {
                 subtitleKey: "Fulfillment_OverridePermissionDenied",
                 subtitleFallback: ""
             )
+        case 418:
+            officialFulfillmentErrorTitle = Language.get("PaymentMgmt_OfficialFulfillment_ActionFailed_Title", alter: "")
+            officialFulfillmentError = nsError.localizedDescription
         default:
             showOfficialFulfillmentFeedback(
                 titleKey: duringAction
@@ -1788,7 +1806,7 @@ final class PaymentDetailViewModel: ObservableObject {
         }
     }
 
-    func transitionOfficialFulfillment(action: String, note: String) {
+    func transitionOfficialFulfillment(action: String, note: String, pickupBranchID: String? = nil) {
         guard let fulfillment = officialFulfillment, !isBusy else { return }
         let safeNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
         guard safeNote.count >= 3 else {
@@ -1810,6 +1828,7 @@ final class PaymentDetailViewModel: ObservableObject {
             expectedStatus: fulfillment.status,
             action: action,
             note: safeNote,
+            pickupBranchID: pickupBranchID,
             commandID: UUID().uuidString
         ) { [weak self] _, error in
             Task { @MainActor in

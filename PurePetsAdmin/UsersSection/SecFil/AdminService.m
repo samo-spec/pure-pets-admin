@@ -179,6 +179,27 @@
                  completion:completion];
 }
 
++ (void)downgradeStaffMemberToUser:(NSString *)uid
+                        completion:(AdminServiceCompletion)completion {
+    [self pp_loadStaffRevision:uid completion:^(NSInteger revision, NSError * _Nullable error) {
+        if (error) {
+            [self pp_completeOnMain:completion result:nil error:error];
+            return;
+        }
+        [self downgradeStaffMemberToUser:uid expectedRevision:revision completion:completion];
+    }];
+}
+
++ (void)downgradeStaffMemberToUser:(NSString *)uid
+                  expectedRevision:(NSInteger)expectedRevision
+                        completion:(AdminServiceCompletion)completion {
+    [self pp_callIAMCommand:@"downgradeStaffMemberToUser"
+                    payload:@{@"uid": uid ?: @""}
+                     reason:@"admin_app_downgrade_staff_member"
+          expectedRevision:expectedRevision
+                 completion:completion];
+}
+
 #pragma mark - User Access Management (new)
 
 + (void)updateUserFeatures:(NSString *)uid

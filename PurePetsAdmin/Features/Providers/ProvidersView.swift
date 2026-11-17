@@ -2007,11 +2007,11 @@ public struct AdminProviderApplicationDetailView: View {
         }
         .sheet(item: $activeSubscriptionActionItem) { actionItem in
             ProviderSubscriptionActionSheet(
-                application: application,
-                profileId: resolvedProfileId,
                 action: actionItem.action,
+                profileId: resolvedProfileId,
+                partnerName: resolvedName,
                 workspace: subscriptionWorkspace,
-                onSuccess: {
+                onActionExecuted: { _ in
                     withAnimation {
                         subscriptionSuccessBanner = Language.get("PartnerSub_ActionDone", alter: "تم تنفيذ الإجراء وتحديث اشتراك المزود بنجاح")
                     }
@@ -2884,7 +2884,7 @@ public struct AdminProviderApplicationDetailView: View {
     private var planSection: some View {
         let partner = subscriptionWorkspace?["partner"] as? [String: Any]
         let sub = partner?["subscription"] as? [String: Any]
-        let planSnapshot = (sub?["planSnapshot"] as? [String: Any]) ?? application.planSnapshot
+        let planSnapshot = (sub?["planSnapshot"] as? [String: Any]) ?? application.planSnapshot as! [String : Any]
         let rawStatus = (partner?["status"] as? String) ?? (sub?["status"] as? String) ?? (application.status == "approved" ? "active" : "unmanaged")
         let statusTone = subscriptionStatusTone(for: rawStatus)
         
@@ -3292,7 +3292,7 @@ public struct AdminProviderApplicationDetailView: View {
                 subscriptionError = error.localizedDescription
                 return
             }
-            if let workspace = workspace {
+            if let workspace = workspace as? [String: Any] {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                     subscriptionWorkspace = workspace
                 }
@@ -3415,11 +3415,13 @@ private struct SubscriptionActionItem: Identifiable {
 
 private struct PPSSubscriptionDetailWrapper: UIViewControllerRepresentable {
     let profileId: String
+    var actorUid: String = ""
     let onDismiss: () -> Void
     
     func makeUIViewController(context: Context) -> UINavigationController {
         let vc = PPSSubscriptionDetailController()
         vc.profileID = profileId
+        vc.actorUID = actorUid
         vc.didClose = {
             onDismiss()
         }
@@ -3429,6 +3431,92 @@ private struct PPSSubscriptionDetailWrapper: UIViewControllerRepresentable {
     }
     
     func updateUIViewController(_ uiViewController: UINavigationController, context: Context) {}
+}
+
+// MARK: - Provider Plan Selection Row View
+
+private struct ProviderPlanSelectionRow: View {
+    let plan: [String: Any]
+    let isSelected: Bool
+    let onSelect: () -> Void
+    
+    private var pid: String {
+        (plan["id"] as? String) ?? ""
+    }
+    
+    private var planName: String {
+        let nameDict = plan["name"] as? [String: Any]
+        return Language.isRTL() ? (nameDict?["ar"] as? String ?? pid) : (nameDict?["en"] as? String ?? pid)
+    }
+    
+    private var commission: Double {
+        (plan["commissionRate"] as? Double) ?? 0
+    }
+    
+    private var price: Double {
+        (plan["price"] as? Double) ?? (plan["price"] as? NSNumber)?.doubleValue ?? 0
+    }
+    
+    private var currency: String {
+        (plan["currency"] as? String) ?? "QAR"
+    }
+    
+    private var interval: String {
+        (plan["billingInterval"] as? String) ?? "monthly"
+    }
+    
+    private var commissionText: String {
+        let formatted = String(format: "%.1f", commission)
+        let commLabel = Language.get("Commission", alter: "عمولة")
+        return "\(formatted)% \(commLabel)"
+    }
+    
+    private var priceText: String {
+        let formatted = String(format: "%.2f", price)
+        return "\(formatted) \(currency)"
+    }
+    
+    var body: some View {
+        Button {
+            UISelectionFeedbackGenerator().selectionChanged()
+            onSelect()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(isSelected ? AdminSurface.primary : AdminCommandInk.secondary)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(planName)
+                        .font(AdminType.subheadlineBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                    HStack(spacing: 8) {
+                        if commission > 0 {
+                            Text(commissionText)
+                                .font(AdminType.caption2)
+                                .foregroundStyle(ProviderTheme.approved)
+                        }
+                        if price > 0 {
+                            Text(priceText)
+                                .font(AdminType.caption2)
+                                .foregroundStyle(AdminSurface.primary)
+                        }
+                        Text("· \(interval)")
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                    }
+                }
+                Spacer()
+            }
+            .padding(12)
+            .background(isSelected ? AdminSurface.primary.opacity(0.08) : AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(isSelected ? AdminSurface.primary : Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: isSelected ? 1.5 : 0.75)
+            )
+        }
+        .buttonStyle(ProviderPressStyle())
+    }
 }
 
 // MARK: - Provider Subscription Action Sheet View
@@ -3500,186 +3588,19 @@ private struct ProviderSubscriptionActionSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    // Header Card
-                    HStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(actionColor.opacity(0.12))
-                                .frame(width: 44, height: 44)
-                            Image(systemName: actionIcon)
-                                .font(.system(size: 20, weight: .bold))
-                                .foregroundStyle(actionColor)
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(actionTitle)
-                                .font(AdminType.headline)
-                                .foregroundStyle(AdminSurface.primaryText)
-                            Text(Language.get("Provider", alter: "المزود") + ": \(partnerName)")
-                                .font(AdminType.caption1)
-                                .foregroundStyle(AdminCommandInk.secondary)
-                        }
-                        Spacer()
-                    }
-                    .padding(14)
-                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    headerCard
                     
-                    // Error Banner if present
                     if let err = errorMessage {
-                        HStack(spacing: 8) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(ProviderTheme.rejected)
-                            Text(err)
-                                .font(AdminType.caption1Bold)
-                                .foregroundStyle(ProviderTheme.rejected)
-                            Spacer()
-                        }
-                        .padding(12)
-                        .background(ProviderTheme.rejected.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        errorBanner(err)
                     }
                     
-                    // Plan Picker (if change_plan or create)
                     if requiresPlanSelection {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(Language.get("PartnerSub_ChoosePlan", alter: "اختر الباقة المطلوبة"))
-                                .font(AdminType.caption2Bold)
-                                .foregroundStyle(AdminCommandInk.secondary)
-                            
-                            if availablePlans.isEmpty {
-                                Text(Language.get("PartnerSub_NoPlans", alter: "لا توجد باقات متاحة حالياً"))
-                                    .font(AdminType.caption1)
-                                    .foregroundStyle(AdminCommandInk.secondary)
-                                    .padding(12)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            } else {
-                                ForEach(Array(availablePlans.enumerated()), id: \.offset) { _, plan in
-                                    let pid = (plan["id"] as? String) ?? ""
-                                    let isSelected = selectedPlanId == pid
-                                    let nameDict = plan["name"] as? [String: Any]
-                                    let pName = Language.isRTL() ? (nameDict?["ar"] as? String ?? pid) : (nameDict?["en"] as? String ?? pid)
-                                    let comm = (plan["commissionRate"] as? Double) ?? 0
-                                    let price = (plan["price"] as? Double) ?? (plan["price"] as? NSNumber)?.doubleValue ?? 0
-                                    let curr = (plan["currency"] as? String) ?? "QAR"
-                                    let interval = (plan["billingInterval"] as? String) ?? "monthly"
-                                    
-                                    Button {
-                                        UIImpactFeedbackGenerator(style: .selection).impactOccurred()
-                                        selectedPlanId = pid
-                                    } label: {
-                                        HStack(spacing: 12) {
-                                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                                .font(.system(size: 18, weight: .bold))
-                                                .foregroundStyle(isSelected ? AdminSurface.primary : AdminCommandInk.secondary)
-                                            
-                                            VStack(alignment: .leading, spacing: 2) {
-                                                Text(pName)
-                                                    .font(AdminType.subheadlineBold)
-                                                    .foregroundStyle(AdminSurface.primaryText)
-                                                HStack(spacing: 8) {
-                                                    if comm > 0 {
-                                                        Text("\(String(format: "%.1f", comm))% " + Language.get("Commission", alter: "عمولة"))
-                                                            .font(AdminType.caption2)
-                                                            .foregroundStyle(ProviderTheme.approved)
-                                                    }
-                                                    if price > 0 {
-                                                        Text("\(String(format: "%.2f", price)) \(curr)")
-                                                            .font(AdminType.caption2)
-                                                            .foregroundStyle(AdminSurface.primary)
-                                                    }
-                                                    Text("· \(interval)")
-                                                        .font(AdminType.caption2)
-                                                        .foregroundStyle(AdminCommandInk.secondary)
-                                                }
-                                            }
-                                            Spacer()
-                                        }
-                                        .padding(12)
-                                        .background(isSelected ? AdminSurface.primary.opacity(0.08) : AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                                .strokeBorder(isSelected ? AdminSurface.primary : Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: isSelected ? 1.5 : 0.75)
-                                        )
-                                    }
-                                    .buttonStyle(ProviderPressStyle())
-                                }
-                            }
-                        }
+                        planPickerSection
                     }
                     
-                    // Reason / Justification Input Card
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text(Language.get("Reason", alter: "سبب ومبرر الإجراء (للتدقيق الإداري)"))
-                                .font(AdminType.caption2Bold)
-                                .foregroundStyle(AdminCommandInk.secondary)
-                            Spacer()
-                            Text("\(reason.trimmingCharacters(in: .whitespacesAndNewlines).count)/500")
-                                .font(AdminType.caption2)
-                                .foregroundStyle(reason.count >= 3 ? AdminCommandInk.secondary : ProviderTheme.pending)
-                        }
-                        
-                        // Quick Reason Chips
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(quickReasonTemplates, id: \.self) { item in
-                                    Button {
-                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                        reason = item
-                                    } label: {
-                                        Text(item)
-                                            .font(AdminType.caption2)
-                                            .foregroundStyle(reason == item ? Color.white : AdminSurface.primaryText)
-                                            .padding(.horizontal, 10)
-                                            .padding(.vertical, 6)
-                                            .background(reason == item ? AdminSurface.primary : AdminSurface.surface, in: Capsule())
-                                            .overlay(
-                                                Capsule()
-                                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.5)
-                                            )
-                                    }
-                                    .buttonStyle(ProviderPressStyle())
-                                }
-                            }
-                            .padding(.horizontal, 2)
-                        }
-                        
-                        TextEditor(text: $reason)
-                            .frame(minHeight: 80)
-                            .padding(8)
-                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
-                            )
-                    }
+                    reasonSection
                     
-                    // Confirm Execution Button
-                    Button {
-                        executeCommand()
-                    } label: {
-                        HStack(spacing: 8) {
-                            if isSubmitting {
-                                ProgressView()
-                                    .tint(.white)
-                            } else {
-                                Image(systemName: "checkmark.seal.fill")
-                                    .font(.system(size: 15, weight: .bold))
-                                Text(Language.get("ConfirmAndExecute", alter: "تأكيد وتنفيذ الإجراء"))
-                                    .font(AdminType.calloutBold)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .foregroundStyle(Color.white)
-                        .background(
-                            isFormValid && !isSubmitting ? actionColor : Color.gray.opacity(0.4),
-                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        )
-                    }
-                    .disabled(!isFormValid || isSubmitting)
-                    .buttonStyle(ProviderPressStyle())
-                    .padding(.top, 8)
+                    confirmButton
                 }
                 .padding(16)
             }
@@ -3703,6 +3624,147 @@ private struct ProviderSubscriptionActionSheet: View {
                 }
             }
         }
+    }
+    
+    private var headerCard: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(actionColor.opacity(0.12))
+                    .frame(width: 44, height: 44)
+                Image(systemName: actionIcon)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(actionColor)
+            }
+            
+            VStack(alignment: .leading, spacing: 3) {
+                Text(actionTitle)
+                    .font(AdminType.headline)
+                    .foregroundStyle(AdminSurface.primaryText)
+                Text(Language.get("Provider", alter: "المزود") + ": \(partnerName)")
+                    .font(AdminType.caption1)
+                    .foregroundStyle(AdminCommandInk.secondary)
+            }
+            Spacer()
+        }
+        .padding(14)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+    
+    @ViewBuilder
+    private func errorBanner(_ err: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(ProviderTheme.rejected)
+            Text(err)
+                .font(AdminType.caption1Bold)
+                .foregroundStyle(ProviderTheme.rejected)
+            Spacer()
+        }
+        .padding(12)
+        .background(ProviderTheme.rejected.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+    
+    private var planPickerSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(Language.get("PartnerSub_ChoosePlan", alter: "اختر الباقة المطلوبة"))
+                .font(AdminType.caption2Bold)
+                .foregroundStyle(AdminCommandInk.secondary)
+            
+            if availablePlans.isEmpty {
+                Text(Language.get("PartnerSub_NoPlans", alter: "لا توجد باقات متاحة حالياً"))
+                    .font(AdminType.caption1)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            } else {
+                ForEach(Array(availablePlans.enumerated()), id: \.offset) { _, plan in
+                    let pid = (plan["id"] as? String) ?? ""
+                    ProviderPlanSelectionRow(
+                        plan: plan,
+                        isSelected: selectedPlanId == pid,
+                        onSelect: { selectedPlanId = pid }
+                    )
+                }
+            }
+        }
+    }
+    
+    private var reasonSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(Language.get("Reason", alter: "سبب ومبرر الإجراء (للتدقيق الإداري)"))
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                Spacer()
+                Text("\(reason.trimmingCharacters(in: .whitespacesAndNewlines).count)/500")
+                    .font(AdminType.caption2)
+                    .foregroundStyle(reason.count >= 3 ? AdminCommandInk.secondary : ProviderTheme.pending)
+            }
+            
+            // Quick Reason Chips
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(quickReasonTemplates, id: \.self) { item in
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            reason = item
+                        } label: {
+                            Text(item)
+                                .font(AdminType.caption2)
+                                .foregroundStyle(reason == item ? Color.white : AdminSurface.primaryText)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(reason == item ? AdminSurface.primary : AdminSurface.surface, in: Capsule())
+                                .overlay(
+                                    Capsule()
+                                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.5)
+                                )
+                        }
+                        .buttonStyle(ProviderPressStyle())
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+            
+            TextEditor(text: $reason)
+                .frame(minHeight: 80)
+                .padding(8)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
+                )
+        }
+    }
+    
+    private var confirmButton: some View {
+        Button {
+            executeCommand()
+        } label: {
+            HStack(spacing: 8) {
+                if isSubmitting {
+                    ProgressView()
+                        .tint(.white)
+                } else {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 15, weight: .bold))
+                    Text(Language.get("ConfirmAndExecute", alter: "تأكيد وتنفيذ الإجراء"))
+                        .font(AdminType.calloutBold)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .foregroundStyle(Color.white)
+            .background(
+                isFormValid && !isSubmitting ? actionColor : Color.gray.opacity(0.4),
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+        }
+        .disabled(!isFormValid || isSubmitting)
+        .buttonStyle(ProviderPressStyle())
+        .padding(.top, 8)
     }
     
     private var actionIcon: String {

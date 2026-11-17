@@ -93,7 +93,10 @@ static NSError *PPFulfillmentActionFailure(NSError *error) {
             @"FULFILLMENT_CANCELLATION_REVIEW_REQUIRED": @"Fulfillment_Safety_InventoryReview",
             @"FULFILLMENT_RESERVATION_REVIEW_REQUIRED": @"Fulfillment_Safety_ReservationReview",
             @"FULFILLMENT_RETURN_REQUIRED": @"Fulfillment_Safety_ReturnRequired",
-            @"FULFILLMENT_DELIVERY_EVIDENCE_REQUIRED": @"Fulfillment_Safety_DeliveryEvidence"
+            @"FULFILLMENT_DELIVERY_EVIDENCE_REQUIRED": @"Fulfillment_Safety_DeliveryEvidence",
+            @"PICKUP_STORE_UNAVAILABLE": @"PickupStore_CurrentUnavailable",
+            @"PICKUP_STORE_OUT_OF_SCOPE": @"PickupStore_CurrentUnavailable",
+            @"PICKUP_STORE_ADDRESS_REQUIRED": @"PickupStore_AddressRequired"
         };
         NSString *key = keys[domainCode];
         if (key.length) {
@@ -1074,6 +1077,11 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
 }
 
 - (void)adminOverrideFulfillment:(NSString *)fulfillmentID expectedStatus:(NSString *)expectedStatus targetStatus:(NSString *)status reason:(NSString *)reason note:(nullable NSString *)note notify:(BOOL)notify commandID:(NSString *)commandID completion:(void(^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
+    [self adminOverrideFulfillment:fulfillmentID expectedStatus:expectedStatus targetStatus:status reason:reason
+                            note:note notify:notify pickupBranchID:nil commandID:commandID completion:completion];
+}
+
+- (void)adminOverrideFulfillment:(NSString *)fulfillmentID expectedStatus:(NSString *)expectedStatus targetStatus:(NSString *)status reason:(NSString *)reason note:(nullable NSString *)note notify:(BOOL)notify pickupBranchID:(nullable NSString *)pickupBranchID commandID:(NSString *)commandID completion:(void(^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
     PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
     if (![staff hasPermission:kStaffPermPaymentsManage] || !PPFulfillmentHasReadableScope(staff)) {
         if (completion) completion(nil, PPFulfillmentReadError([staff hasPermission:kStaffPermPaymentsManage] ? 411 : 410,
@@ -1100,7 +1108,7 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
 
         FIRFunctions *functions = [FIRFunctions functions];
         FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"adminOverrideFulfillment"];
-        [callable callWithObject:@{
+        NSMutableDictionary *payload = [@{
             @"fulfillmentID": fulfillmentID ?: @"",
             @"expectedStatus": expectedStatus ?: @"",
             @"targetStatus": status ?: @"",
@@ -1108,7 +1116,9 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
             @"note": note ?: @"",
             @"notifyCustomer": @(notify),
             @"commandId": commandID ?: @""
-        } completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        } mutableCopy];
+        if (pickupBranchID.length) payload[@"pickupBranchId"] = pickupBranchID;
+        [callable callWithObject:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
             if (!PPFulfillmentStaffSessionIsCurrent(staff)) {
                 if (completion) completion(nil, PPFulfillmentReadError(412, @"PPOrder_Error_SessionChanged"));
                 return;
@@ -1123,10 +1133,52 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
     }];
 }
 
+- (void)fetchPickupOptionsForFulfillment:(PPFulfillmentRecord *)record
+                             completion:(void(^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
+    [self fetchPickupOptionsForFulfillment:record afterBranchID:nil completion:completion];
+}
+
+- (void)fetchPickupOptionsForFulfillment:(PPFulfillmentRecord *)record
+                          afterBranchID:(NSString * _Nullable)afterBranchID
+                             completion:(void(^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    if (![self canAdminOverride] || ![PPFulfillmentService isOfficialPlatformFulfillment:record] ||
+        !record.fulfillmentID.length || ![record.status.lowercaseString isEqualToString:@"ready_for_pickup"]) {
+        if (completion) completion(nil, PPFulfillmentReadError(415, @"PaymentMgmt_OfficialFulfillment_NotManageable"));
+        return;
+    }
+    FIRHTTPSCallable *callable = [[FIRFunctions functions] HTTPSCallableWithName:@"staffGetOfficialFulfillmentPickupOptions"];
+    NSMutableDictionary *payload = [@{ @"fulfillmentID": record.fulfillmentID, @"expectedStatus": record.status } mutableCopy];
+    if (afterBranchID.length) payload[@"afterBranchId"] = afterBranchID;
+    [callable callWithObject:payload
+                 completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (!PPFulfillmentStaffSessionIsCurrent(staff)) {
+            if (completion) completion(nil, PPFulfillmentReadError(412, @"PPOrder_Error_SessionChanged"));
+            return;
+        }
+        NSDictionary *data = [result.data isKindOfClass:NSDictionary.class] ? result.data : nil;
+        if (!error && ![data[@"stores"] isKindOfClass:NSArray.class]) {
+            error = PPFulfillmentReadError(416, @"PickupStore_LoadFailed");
+        }
+        if (completion) completion(data, PPFulfillmentActionFailure(error));
+    }];
+}
+
 - (void)transitionOfficialFulfillment:(PPFulfillmentRecord *)record
                        expectedStatus:(NSString *)expectedStatus
                                 action:(NSString *)action
                                   note:(NSString *)note
+                             commandID:(NSString *)commandID
+                            completion:(void(^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
+    [self transitionOfficialFulfillment:record expectedStatus:expectedStatus action:action note:note
+                        pickupBranchID:nil commandID:commandID completion:completion];
+}
+
+- (void)transitionOfficialFulfillment:(PPFulfillmentRecord *)record
+                       expectedStatus:(NSString *)expectedStatus
+                                action:(NSString *)action
+                                  note:(NSString *)note
+                        pickupBranchID:(NSString * _Nullable)pickupBranchID
                              commandID:(NSString *)commandID
                             completion:(void(^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
     PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
@@ -1171,14 +1223,16 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
         }
 
         FIRHTTPSCallable *callable = [[FIRFunctions functions] HTTPSCallableWithName:@"staffTransitionOfficialFulfillment"];
-        [callable callWithObject:@{
+        NSMutableDictionary *payload = [@{
             @"fulfillmentID": freshRecord.fulfillmentID,
             @"expectedStatus": safeExpectedStatus,
             @"action": safeAction,
             @"note": safeNote,
             @"commandId": safeCommandID,
             @"commandID": safeCommandID,
-        } completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        } mutableCopy];
+        if (pickupBranchID.length) payload[@"pickupBranchId"] = pickupBranchID;
+        [callable callWithObject:payload completion:^(FIRHTTPSCallableResult *result, NSError *error) {
             if (!PPFulfillmentStaffSessionIsCurrent(staff)) {
                 if (completion) completion(nil, PPFulfillmentReadError(412, @"PPOrder_Error_SessionChanged"));
                 return;

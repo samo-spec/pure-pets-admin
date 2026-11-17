@@ -137,6 +137,14 @@ final class AdminStaffManagementViewModel: ObservableObject {
     var activeCount: Int { staffMembers.filter { $0.status == .active }.count }
     var disabledCount: Int { staffMembers.filter { $0.status != .active }.count }
 
+    var isSuperAdminOrAdmin: Bool {
+        let staff = PPStaffAuth.shared().cachedCurrentStaff
+        if staff?.isAdmin() == true || (staff.map { PPStaffAuth.isAdminRole($0.role) } ?? false) { return true }
+        if UserManager.shared().currentUser?.isSuperAdmin == true || UserManager.shared().currentUser?.isAdmin == true { return true }
+        let role = staff?.roleIdentifier ?? ""
+        return role == PPStaffRole.superAdmin.rawValue || role == PPStaffRole.owner.rawValue
+    }
+
     init() {
         evaluatePermissions()
     }
@@ -263,6 +271,28 @@ final class AdminStaffManagementViewModel: ObservableObject {
                     completion(false, errDesc)
                 } else {
                     completion(true, Language.get("Staff_Member_Disabled", alter: "تم تعطيل وصول الموظف"))
+                }
+            }
+        }
+    }
+
+    func downgradeMemberToUser(_ member: PPStaffDoc, completion: @escaping @MainActor @Sendable (Bool, String?) -> Void) {
+        guard canDisableStaff || isSuperAdminOrAdmin, !member.uid.isEmpty else {
+            completion(false, Language.get("StatusNoAccess", alter: "لا تملك صلاحية تنفيذ هذا الإجراء"))
+            return
+        }
+        let uid = member.uid
+        if uid == Auth.auth().currentUser?.uid {
+            completion(false, Language.get("Staff_Error_SelfMutationProhibited", alter: "لا يمكن إلغاء صلاحيات حسابك الحالي بنفسك لحماية الأمان."))
+            return
+        }
+        AdminService.downgradeStaffMemberToUser(uid, expectedRevision: member.revision) { _, error in
+            let errDesc = error?.localizedDescription
+            DispatchQueue.main.async {
+                if let errDesc {
+                    completion(false, errDesc)
+                } else {
+                    completion(true, Language.get("Staff_Member_Downgraded_Success", alter: "تم إلغاء وصول الموظف وتحويل الحساب إلى مستخدم عادي بنجاح"))
                 }
             }
         }
@@ -1209,6 +1239,8 @@ struct AdminStaffMemberEditorView: View {
     @State private var isSaving: Bool = false
     @State private var validationError: String? = nil
     @State private var toastMessage: String? = nil
+    @State private var isShowingDowngradeConfirmation: Bool = false
+    @State private var isDowngrading: Bool = false
 
     // Working branch permissions & scope
     @State private var isGlobalScope: Bool = false
@@ -1228,6 +1260,10 @@ struct AdminStaffMemberEditorView: View {
 
     private var isEditing: Bool { staffDoc != nil }
     private var currentStaff: PPStaffDoc? { PPStaffAuth.shared().cachedCurrentStaff }
+    private var isSelf: Bool {
+        guard let uid = staffDoc?.uid, !uid.isEmpty else { return false }
+        return uid == Auth.auth().currentUser?.uid
+    }
 
     private var allAvailableRoles: [PlatformRoleModel] {
         if !roleRankVM.allRoles.isEmpty {
@@ -1345,6 +1381,11 @@ struct AdminStaffMemberEditorView: View {
                         // 5. Platform Profile Capabilities (Consumer/App features)
                         platformCapabilitiesChamber
 
+                        // 6. Workforce Decommissioning Chamber (Cancel staff access & revert to ordinary user)
+                        if isEditing {
+                            decommissionAndOrdinaryUserChamber
+                        }
+
                         // Validation Error Banner
                         if let error = validationError {
                             HStack(spacing: 8) {
@@ -1380,6 +1421,16 @@ struct AdminStaffMemberEditorView: View {
         .sheet(item: $inspectingRoleForMatrix) { role in
             RolePermissionsMatrixSheet(role: role)
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
+        .alert(isPresented: $isShowingDowngradeConfirmation) {
+            Alert(
+                title: Text(Language.get("Staff_Downgrade_Alert_Title", alter: "إلغاء صلاحية الموظف؟")),
+                message: Text(String(format: Language.get("Staff_Downgrade_Alert_Msg", alter: "هل أنت متأكد من إلغاء وصول الموظف لـ '%@'؟\nسيتم حذف رتبة IAM وصلاحيات الإدارة فورياً وإعادة الحساب إلى مستخدم عادي."), displayName)),
+                primaryButton: .destructive(Text(Language.get("Staff_Downgrade_Confirm_Action", alter: "نعم، حوّل لمستخدم عادي"))) {
+                    downgradeToOrdinaryUser()
+                },
+                secondaryButton: .cancel(Text(Language.get("Cancel", alter: "تراجع")))
+            )
         }
         .navigationBarHidden(true)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
@@ -1976,6 +2027,72 @@ struct AdminStaffMemberEditorView: View {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(currentSelectedRoleModel.accentColor.opacity(0.20), lineWidth: 0.8)
             )
+
+            // ── Decommission / Revert to Ordinary User Action Ribbon ──
+            if isEditing {
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    guard !isSelf else {
+                        validationError = Language.get("Staff_Error_SelfMutationProhibited", alter: "لا يمكن إلغاء صلاحيات حسابك الحالي بنفسك لحماية الأمان.")
+                        return
+                    }
+                    isShowingDowngradeConfirmation = true
+                } label: {
+                    HStack(spacing: 10) {
+                        ZStack {
+                            Circle()
+                                .fill(Color(uiColor: .ppError).opacity(0.12))
+                                .frame(width: 32, height: 32)
+                            Image(systemName: "person.crop.circle.badge.xmark")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(Color(uiColor: .ppError))
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(Language.get("Staff_CancelAccess_Title", alter: "إلغاء صلاحية الموظف والتحويل لمستخدم عادي"))
+                                .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .subheadline))
+                                .foregroundColor(Color(uiColor: .ppError))
+
+                            Text(Language.get("Staff_CancelAccess_Sub", alter: "سحب كافة رتب IAM وحذف سجل الفريق وإعادة الحساب كمستخدم عادي فورياً"))
+                                .font(Font.custom("Beiruti-Regular", size: 10.5, relativeTo: .caption2))
+                                .foregroundColor(AdminSurface.secondaryText)
+                                .lineLimit(1)
+                        }
+
+                        Spacer(minLength: 4)
+
+                        if isDowngrading {
+                            ProgressView()
+                                .tint(Color(uiColor: .ppError))
+                                .scaleEffect(0.8)
+                        } else {
+                            HStack(spacing: 3) {
+                                Text(Language.get("Staff_Revoke_Action", alter: "إلغاء الوصول"))
+                                    .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption))
+                                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                                    .font(.system(size: 9, weight: .bold))
+                            }
+                            .foregroundColor(Color(uiColor: .ppError))
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(Color(uiColor: .ppError).opacity(0.10), in: Capsule())
+                            .overlay(Capsule().stroke(Color(uiColor: .ppError).opacity(0.25), lineWidth: 0.8))
+                        }
+                    }
+                    .padding(10)
+                    .background(
+                        Color(uiColor: .ppError).opacity(0.04),
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color(uiColor: .ppError).opacity(0.18), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(isSaving || isDowngrading || isSelf || !canDisableStaff)
+                .opacity((isSelf || !canDisableStaff) ? 0.55 : 1.0)
+            }
         }
     }
 
@@ -2661,6 +2778,92 @@ struct AdminStaffMemberEditorView: View {
         .padding(.vertical, 2)
     }
 
+    // MARK: - 6. Workforce Decommissioning Chamber (Cancel Staff Access & Revert to Ordinary User)
+
+    private var decommissionAndOrdinaryUserChamber: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.shield.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(Color(uiColor: .ppError))
+                Text(Language.get("Staff_Lifecycle_Safety_Title", alter: "إدارة دورة حياة الحساب وإلغاء صلاحيات الفريق"))
+                    .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .caption))
+                    .foregroundColor(AdminSurface.secondaryText)
+                Spacer()
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(Color(uiColor: .ppError).opacity(0.12))
+                            .frame(width: 44, height: 44)
+                        Image(systemName: "person.badge.minus")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(Color(uiColor: .ppError))
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(Language.get("Staff_Cancel_Full_Access_Title", alter: "إلغاء الوصول الإداري والتحويل إلى مستخدم عادي"))
+                            .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .body))
+                            .foregroundColor(AdminSurface.primaryText)
+
+                        Text(Language.get("Staff_Cancel_Full_Access_Desc", alter: "يؤدي هذا الإجراء إلى حذف ملف الموظف نهائياً، وتجريد الحساب من رتبة IAM، وإلغاء ارتباط كافة الفروع والصلاحيات، وإعادة الحساب فوراً إلى مستخدم عادي فقط."))
+                            .font(Font.custom("Beiruti-Regular", size: 11.5, relativeTo: .caption))
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                Divider().background(AdminSurface.hairline)
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    guard !isSelf else {
+                        validationError = Language.get("Staff_Error_SelfMutationProhibited", alter: "لا يمكن إلغاء صلاحيات حسابك الحالي بنفسك لحماية الأمان.")
+                        return
+                    }
+                    isShowingDowngradeConfirmation = true
+                } label: {
+                    HStack(spacing: 8) {
+                        if isDowngrading {
+                            ProgressView()
+                                .tint(.white)
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "arrow.uturn.backward.circle.fill")
+                                .font(.system(size: 14, weight: .bold))
+                        }
+                        Text(Language.get("Staff_Confirm_Downgrade_Btn", alter: "إلغاء صلاحية الموظف والتحويل لمستخدم عادي"))
+                            .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .body))
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color(uiColor: .ppError), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .shadow(color: Color(uiColor: .ppError).opacity(0.28), radius: 6, y: 2)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(isSaving || isDowngrading || isSelf || !canDisableStaff)
+                .opacity((isSelf || !canDisableStaff) ? 0.55 : 1.0)
+
+                if isSelf {
+                    HStack(spacing: 5) {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 10))
+                        Text(Language.get("Staff_Self_Downgrade_Forbidden", alter: "حسابك الحالي مسجل دخول، لا يمكنك تجريد صلاحياتك بنفسك."))
+                            .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
+                    }
+                    .foregroundColor(Color(uiColor: .ppWarning))
+                    .padding(.top, 2)
+                }
+            }
+            .padding(14)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color(uiColor: .ppError).opacity(0.20), lineWidth: 1))
+        }
+    }
+
     // MARK: - 5. Onboarding Identity Chamber (When Creating / Linking)
 
     private var onboardingIdentityChamber: some View {
@@ -3302,6 +3505,31 @@ struct AdminStaffMemberEditorView: View {
                 }
             } else {
                 DispatchQueue.main.async { completion() }
+            }
+        }
+    }
+
+    private func downgradeToOrdinaryUser() {
+        guard let uid = staffDoc?.uid, !uid.isEmpty else { return }
+        guard !isSelf else {
+            validationError = Language.get("Staff_Error_SelfMutationProhibited", alter: "لا يمكن إلغاء صلاحيات حسابك الحالي بنفسك لحماية الأمان.")
+            return
+        }
+
+        isDowngrading = true
+        validationError = nil
+
+        AdminService.downgradeStaffMemberToUser(uid, expectedRevision: staffDoc?.revision ?? 0) { result, error in
+            let errDesc = error?.localizedDescription
+            DispatchQueue.main.async {
+                self.isDowngrading = false
+                if let errDesc {
+                    self.validationError = errDesc
+                    return
+                }
+
+                let successMsg = Language.get("Staff_Member_Downgraded_Success", alter: "تم إلغاء وصول الموظف وتحويل الحساب إلى مستخدم عادي بنجاح")
+                self.onSaved(successMsg)
             }
         }
     }

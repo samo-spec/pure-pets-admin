@@ -97,6 +97,17 @@ NS_ASSUME_NONNULL_BEGIN
                           reason:(NSString *)reason
                              note:(nullable NSString *)note
                            notify:(BOOL)notify
+                   pickupBranchID:(nullable NSString *)pickupBranchID
+                        commandID:(NSString *)commandID
+                        completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion
+    NS_SWIFT_NAME(adminOverride(_:expectedStatus:targetStatus:reason:note:notify:pickupBranchID:commandID:completion:));
+
+- (void)adminOverrideFulfillment:(NSString *)fulfillmentID
+                   expectedStatus:(NSString *)expectedStatus
+                    targetStatus:(NSString *)status
+                          reason:(NSString *)reason
+                             note:(nullable NSString *)note
+                           notify:(BOOL)notify
                         commandID:(NSString *)commandID
                         completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion
     NS_SWIFT_NAME(adminOverride(_:expectedStatus:targetStatus:reason:note:notify:commandID:completion:));
@@ -104,6 +115,24 @@ NS_ASSUME_NONNULL_BEGIN
 /// Advances only the official platform child through the normal provider-side
 /// lifecycle graph. The callable remains the authoritative permission and
 /// transition gate and synchronizes the parent projection atomically.
+- (void)fetchPickupOptionsForFulfillment:(PPFulfillmentRecord *)record
+                             completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion
+    NS_SWIFT_NAME(fetchPickupOptions(for:completion:));
+
+- (void)fetchPickupOptionsForFulfillment:(PPFulfillmentRecord *)record
+                          afterBranchID:(nullable NSString *)afterBranchID
+                             completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion
+    NS_SWIFT_NAME(fetchPickupOptions(for:afterBranchID:completion:));
+
+- (void)transitionOfficialFulfillment:(PPFulfillmentRecord *)record
+                       expectedStatus:(NSString *)expectedStatus
+                                action:(NSString *)action
+                                  note:(NSString *)note
+                        pickupBranchID:(nullable NSString *)pickupBranchID
+                             commandID:(NSString *)commandID
+                            completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion
+    NS_SWIFT_NAME(transitionOfficialFulfillment(_:expectedStatus:action:note:pickupBranchID:commandID:completion:));
+
 - (void)transitionOfficialFulfillment:(PPFulfillmentRecord *)record
                        expectedStatus:(NSString *)expectedStatus
                                 action:(NSString *)action

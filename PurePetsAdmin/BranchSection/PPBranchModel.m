@@ -21,6 +21,9 @@ static NSString * const kFldNameAr      = @"nameAr";
 static NSString * const kFldNameEn      = @"nameEn";
 static NSString * const kFldAddress     = @"address";
 static NSString * const kFldPhone       = @"phone";
+static NSString * const kFldLatitude    = @"latitude";
+static NSString * const kFldLongitude   = @"longitude";
+static NSString * const kFldLocationPoints = @"locationPoints";
 static NSString * const kFldIsActive    = @"isActive";
 static NSString * const kFldIsDefault   = @"isDefault";
 static NSString * const kFldIsConsumerAppStock = @"isConsumerAppStock";
@@ -57,6 +60,11 @@ static NSString * const kStockModeBranch   = @"branch";
             @"name",           // legacy nested { ar, en } dict
             kFldAddress,
             kFldPhone,
+            kFldLatitude,
+            kFldLongitude,
+            kFldLocationPoints,
+            @"lat",
+            @"lng",
             kFldIsActive,
             kFldIsDefault,
             kFldIsConsumerAppStock,
@@ -98,6 +106,34 @@ static NSString * const kStockModeBranch   = @"branch";
 
     m.address   = PPSafeString(d[kFldAddress]);
     m.phone     = PPSafeString(d[kFldPhone]);
+
+    // Coordinates & Pickup Telemetry
+    double lat = 0.0;
+    double lng = 0.0;
+    BOOL hasCoords = NO;
+    if (d[kFldLatitude] != nil && d[kFldLongitude] != nil) {
+        lat = [d[kFldLatitude] doubleValue];
+        lng = [d[kFldLongitude] doubleValue];
+        hasCoords = (fabs(lat) > 0.0001 || fabs(lng) > 0.0001);
+    } else if (d[@"lat"] != nil && d[@"lng"] != nil) {
+        lat = [d[@"lat"] doubleValue];
+        lng = [d[@"lng"] doubleValue];
+        hasCoords = (fabs(lat) > 0.0001 || fabs(lng) > 0.0001);
+    }
+    NSString *locPoints = PPSafeString(d[kFldLocationPoints]);
+    if (!hasCoords && locPoints.length > 0) {
+        NSArray *parts = [locPoints componentsSeparatedByString:@","];
+        if (parts.count >= 2) {
+            lat = [[parts[0] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]] doubleValue];
+            lng = [[parts[1] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]] doubleValue];
+            hasCoords = (fabs(lat) > 0.0001 || fabs(lng) > 0.0001);
+        }
+    }
+    m.latitude = lat;
+    m.longitude = lng;
+    m.hasCoordinates = hasCoords;
+    m.locationPoints = locPoints.length ? locPoints : (hasCoords ? [NSString stringWithFormat:@"%f,%f", lat, lng] : nil);
+
     m.isActive  = [d[kFldIsActive]  boolValue];
     m.isDefault = [d[kFldIsDefault] boolValue];
     m.isConsumerAppStock = [d[kFldIsConsumerAppStock] boolValue] || [d[@"isUserAppStock"] boolValue] || [d[@"isConsumerStockBranch"] boolValue];
@@ -156,6 +192,13 @@ static NSString * const kStockModeBranch   = @"branch";
 
     d[kFldAddress]   = PPSafeString(self.address);
     d[kFldPhone]     = PPSafeString(self.phone);
+
+    if (self.hasCoordinates) {
+        d[kFldLatitude] = @(self.latitude);
+        d[kFldLongitude] = @(self.longitude);
+        d[kFldLocationPoints] = self.locationPoints.length ? self.locationPoints : [NSString stringWithFormat:@"%f,%f", self.latitude, self.longitude];
+    }
+
     d[kFldIsActive]  = @(self.isActive);
     d[kFldIsDefault] = @(self.isDefault);
     d[kFldIsConsumerAppStock] = @(self.isConsumerAppStock);
@@ -217,6 +260,10 @@ static NSString * const kStockModeBranch   = @"branch";
     copy.nameEn     = self.nameEn;
     copy.address    = self.address;
     copy.phone      = self.phone;
+    copy.latitude   = self.latitude;
+    copy.longitude  = self.longitude;
+    copy.locationPoints = self.locationPoints;
+    copy.hasCoordinates = self.hasCoordinates;
     copy.isActive   = self.isActive;
     copy.isDefault  = self.isDefault;
     copy.isConsumerAppStock = self.isConsumerAppStock;
