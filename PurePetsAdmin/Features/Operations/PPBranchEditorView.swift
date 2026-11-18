@@ -413,10 +413,10 @@ final class BranchEditorState: ObservableObject {
             if isConsumerAppStock {
                 let configRef = Firestore.firestore().collection("AppConfigCol").document("ConsumerStockConfig")
                 batch.setData([
-                    "activeConsumerBranchId": docID,
-                    "activeConsumerBranchCode": trimmedCode.isEmpty ? "PP-\(docID.prefix(6).uppercased())" : trimmedCode,
-                    "activeConsumerBranchNameAr": trimmedAr,
-                    "activeConsumerBranchNameEn": trimmedEn,
+                    "branchId": docID,
+                    "branchCode": trimmedCode.isEmpty ? "PP-\(docID.prefix(6).uppercased())" : trimmedCode,
+                    "nameAr": trimmedAr,
+                    "nameEn": trimmedEn,
                     "updatedAt": FieldValue.serverTimestamp(),
                     "updatedBy": uid
                 ], forDocument: configRef, merge: true)
@@ -791,9 +791,7 @@ struct PPBranchEditorPhoneView: View {
                             .background(AdminSurface.control.opacity(0.6), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .stroke(style: StrokeStyle(lineWidth: 1.2, dash: [6, 4])) {
-                                        AdminSurface.primary.opacity(0.4)
-                                    }
+                                    .stroke(AdminSurface.primary.opacity(0.4), style: StrokeStyle(lineWidth: 1.2, dash: [6, 4]))
                             )
                         }
                         .buttonStyle(BranchPressStyle())
@@ -1572,7 +1570,7 @@ struct BranchHeroIdentityCard: View {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .fill(
                             LinearGradient(
-                                colors: [AdminSurface.primary, Color(uiColor: .ppPrimaryPressed)],
+                                colors: [AdminSurface.primary, AdminSurface.primaryPressed],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )

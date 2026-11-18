@@ -14,12 +14,12 @@
 //
 
 import SwiftUI
-import MapKit
+@preconcurrency import MapKit
 import CoreLocation
 
 // MARK: - Qatar Logistics Hub Presets
 
-public struct QatarHubPreset: Identifiable, Hashable {
+public struct QatarHubPreset: Identifiable, Hashable, @unchecked Sendable {
     public let id: String
     public let nameAr: String
     public let nameEn: String
@@ -46,7 +46,7 @@ public struct QatarHubPreset: Identifiable, Hashable {
         lhs.id == rhs.id
     }
 
-    public static let standardHubs: [QatarHubPreset] = [
+    @MainActor public static let standardHubs: [QatarHubPreset] = [
         QatarHubPreset(
             id: "doha_salwa",
             nameAr: "طريق سلوى - الفرع الرئيسي",
@@ -102,7 +102,7 @@ public struct QatarHubPreset: Identifiable, Hashable {
 // MARK: - Location Picker ViewModel
 
 @MainActor
-public final class PPBranchLocationPickerViewModel: NSObject, ObservableObject, MKLocalSearchCompleterDelegate {
+public final class PPBranchLocationPickerViewModel: NSObject, ObservableObject {
     @Published public var currentCoordinate: CLLocationCoordinate2D
     @Published public var formattedAddress: String = ""
     @Published public var isGeocoding: Bool = false
@@ -116,6 +116,7 @@ public final class PPBranchLocationPickerViewModel: NSObject, ObservableObject, 
     private let geocoder = CLGeocoder()
     private var geocodeWorkItem: DispatchWorkItem?
     private var searchCompleter = MKLocalSearchCompleter()
+    private var searchCompleterAdapter: PPAdminSearchCompleterAdapter?
     public weak var mapView: MKMapView?
 
     public init(initialCoordinate: CLLocationCoordinate2D?, initialAddress: String?) {
@@ -129,7 +130,9 @@ public final class PPBranchLocationPickerViewModel: NSObject, ObservableObject, 
         self.formattedAddress = initialAddress?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         super.init()
 
-        searchCompleter.delegate = self
+        let adapter = PPAdminSearchCompleterAdapter(viewModel: self)
+        self.searchCompleterAdapter = adapter
+        searchCompleter.delegate = adapter
         searchCompleter.resultTypes = [.address, .pointOfInterest]
         // Constrain search region roughly around Qatar
         let qatarCenter = CLLocationCoordinate2D(latitude: 25.2854, longitude: 51.5310)
@@ -227,15 +230,6 @@ public final class PPBranchLocationPickerViewModel: NSObject, ObservableObject, 
         }
     }
 
-    public func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
-        self.searchResults = completer.results
-    }
-
-    public func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
-        // Silently handle autocompletion error
-        self.searchResults = []
-    }
-
     public func selectSearchResult(_ completion: MKLocalSearchCompletion) {
         let request = MKLocalSearch.Request(completion: completion)
         let search = MKLocalSearch(request: request)
@@ -284,6 +278,30 @@ public final class PPBranchLocationPickerViewModel: NSObject, ObservableObject, 
             if self.toastMessage == msg {
                 self.toastMessage = nil
             }
+        }
+    }
+}
+
+// MARK: - Search Completer Adapter (Swift 6 Safe)
+
+private final class PPAdminSearchCompleterAdapter: NSObject, MKLocalSearchCompleterDelegate, @unchecked Sendable {
+    private weak var viewModel: PPBranchLocationPickerViewModel?
+
+    init(viewModel: PPBranchLocationPickerViewModel) {
+        self.viewModel = viewModel
+        super.init()
+    }
+
+    func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
+        let results = completer.results
+        Task { @MainActor [weak viewModel] in
+            viewModel?.searchResults = results
+        }
+    }
+
+    func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
+        Task { @MainActor [weak viewModel] in
+            viewModel?.searchResults = []
         }
     }
 }
@@ -464,7 +482,7 @@ public struct PPBranchLocationPicker: View {
                     Circle()
                         .fill(
                             LinearGradient(
-                                colors: [AdminSurface.primary, Color(uiColor: .ppPrimaryPressed)],
+                                colors: [AdminSurface.primary, AdminSurface.primaryPressed],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
@@ -756,7 +774,7 @@ public struct PPBranchLocationPicker: View {
                     .frame(height: 52)
                     .background(
                         LinearGradient(
-                            colors: [AdminSurface.primary, Color(uiColor: .ppPrimaryPressed)],
+                            colors: [AdminSurface.primary, AdminSurface.primaryPressed],
                             startPoint: .leading,
                             endPoint: .trailing
                         ),
