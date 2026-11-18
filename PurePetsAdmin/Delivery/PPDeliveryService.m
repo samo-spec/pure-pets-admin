@@ -76,6 +76,8 @@ static NSError *PPDeliveryInvalidResponseError(void) {
         NSDictionary *source = PPDeliveryDictionary(dictionary);
         _action = [PPDeliveryString(source[@"action"]) uppercaseString];
         _permission = PPDeliveryString(source[@"permission"]);
+        _authority = PPDeliveryString(source[@"authority"]);
+        _expectedDriverUID = PPDeliveryString(source[@"expectedDriverUid"]);
         _expectedRevision = [source[@"expectedRevision"] respondsToSelector:@selector(integerValue)]
             ? [source[@"expectedRevision"] integerValue]
             : -1;
@@ -132,6 +134,12 @@ static NSError *PPDeliveryInvalidResponseError(void) {
         for (id rawAction in PPDeliveryArray(source[@"allowedActions"])) {
             if (![rawAction isKindOfClass:NSDictionary.class]) continue;
             PPDeliveryAllowedAction *action = [[PPDeliveryAllowedAction alloc] initWithDictionary:rawAction];
+            if ([action.action isEqualToString:@"REASSIGN"] && [_authority isEqualToString:@"FULFILLMENT_V1"]) {
+                if (![action.authority isEqualToString:_authority] || action.expectedDriverUID.length == 0 ||
+                    ![action.expectedDriverUID isEqualToString:_assignedDriverUID] || action.expectedRevision != _revision) continue;
+            } else if (action.authority.length > 0 && ![action.authority isEqualToString:_authority]) {
+                continue;
+            }
             if (action.action.length > 0 && action.expectedRevision >= 0 && action.expectedState.length > 0) {
                 [actions addObject:action];
             }
@@ -641,6 +649,15 @@ static NSError *PPDeliveryInvalidResponseError(void) {
     NSString *safeDriverUID = [driverUID stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     NSString *safeReason = [reason stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (safeDriverUID.length > 0) payload[@"driverUid"] = safeDriverUID;
+    if ([allowedAction.action isEqualToString:@"REASSIGN"] && [allowedAction.authority isEqualToString:@"FULFILLMENT_V1"]) {
+        if (allowedAction.expectedDriverUID.length == 0 || !payload[@"driverUid"] ||
+            [allowedAction.expectedDriverUID isEqualToString:payload[@"driverUid"]]) {
+            if (completion) completion(nil, PPDeliveryInvalidResponseError());
+            return;
+        }
+        payload[@"authority"] = allowedAction.authority;
+        payload[@"expectedDriverUid"] = allowedAction.expectedDriverUID;
+    }
     if (safeReason.length > 0) payload[@"reason"] = safeReason;
     if ([allowedAction.action isEqualToString:@"RECONCILE_COD"]) {
         payload[@"handoverConfirmed"] = @(handoverConfirmed);

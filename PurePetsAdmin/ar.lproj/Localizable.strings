@@ -1508,7 +1508,7 @@
 "PaymentMgmt_Settings_Saved" = "تم تحديث أساسيات الدفع بنجاح";
 "PaymentMgmt_Settings_Error_InvalidDeliveryFee" = "أدخل رسوم توصيل صحيحة أكبر من أو تساوي 0.";
 "PaymentMgmt_Settings_Error_NoMethodEnabled" = "يجب تفعيل طريقة دفع واحدة على الأقل.";
-"PaymentMgmt_Settings_Footer_DeliveryFee" = "يقوم الباك إند بكتابة رسوم التوصيل داخل كل طلب جديد حتى تظل الإجماليات متطابقة في التطبيقين.";
+"PaymentMgmt_Settings_Footer_DeliveryFee" = "تسري التعرفة المحدثة على الطلبات الجديدة المؤهلة فقط، بينما تحتفظ كافة الطلبات السابقة والمعلقة برسومها المعتمدة دون أي تعديل.";
 "PaymentMgmt_Settings_Footer_Methods" = "عند تعطيل طريقة دفع سيتم إخفاؤها فورًا من شاشة الدفع النهائي ومنع الطلبات الجديدة من استخدامها.";
 "PaymentMgmt_Settings_Footer_Metadata" = "جارِ تحميل إعدادات الدفع الحالية...";
 "PaymentMgmt_Settings_Footer_Metadata_Format" = "آخر تحديث: %@\nتم التحديث بواسطة: %@";
@@ -11403,6 +11403,13 @@
 "DeliveryDetail_AcceptDelivery" = "قبول التوصيل";
 "DeliveryDetail_AcceptHint" = "اختر سائقًا مؤهلًا، ثم أكّد قبول التوصيل.";
 "DeliveryDetail_AcceptUnavailable" = "قبول التوصيل غير متاح لصلاحياتك الحالية أو لحالة هذا الطلب. حدّث التفاصيل للتحقق مجددًا.";
+"DeliveryDetail_ChangeDriver" = "تغيير السائق";
+"DeliveryDetail_ChangeDriverHint" = "اختر سائقًا بديلًا مؤهلًا لهذا التوصيل.";
+"DeliveryDetail_CurrentDriverFormat" = "السائق الحالي: %@";
+"DeliveryDetail_ReplacementCandidates" = "اختر السائق البديل";
+"DeliveryDetail_NoReplacement" = "لا يتوفر سائق بديل حاليًا";
+"DeliveryDetail_ReplacementEmptyHint" = "يبقى السائق الحالي معيّنًا. حدّث التفاصيل للتحقق من التوفر مجددًا.";
+"DeliveryDetail_ChangeDriverConfirmation" = "هل تريد تغيير سائق هذا التوصيل من %1$@ إلى %2$@؟";
 "DeliveryDetail_AcceptDriverConfirmation" = "هل تريد قبول هذا التوصيل وتعيينه للسائق %@؟ سيتابع السائق خطوات التوصيل من تطبيقه.";
 "Delivery_Value_ORDER_ACCEPT_DELIVERY" = "تم قبول التوصيل وتعيين السائق";
 

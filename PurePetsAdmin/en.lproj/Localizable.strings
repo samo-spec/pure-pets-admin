@@ -1457,7 +1457,7 @@
 "PaymentMgmt_Settings_Saved" = "Payment basics updated successfully";
 "PaymentMgmt_Settings_Error_InvalidDeliveryFee" = "Enter a valid delivery fee greater than or equal to 0.";
 "PaymentMgmt_Settings_Error_NoMethodEnabled" = "Enable at least one checkout payment method.";
-"PaymentMgmt_Settings_Footer_DeliveryFee" = "The delivery fee is written by the backend into every new order so totals stay consistent in both apps.";
+"PaymentMgmt_Settings_Footer_DeliveryFee" = "The updated delivery fee applies to new eligible orders only; all existing and pending orders remain locked at their confirmed historical rate.";
 "PaymentMgmt_Settings_Footer_Methods" = "Disabling a method immediately hides it in checkout and blocks new orders from using it.";
 "PaymentMgmt_Settings_Footer_Metadata" = "Loading current payment settings…";
 "PaymentMgmt_Settings_Footer_Metadata_Format" = "Last updated: %@\nUpdated by: %@";
@@ -11335,6 +11335,13 @@
 "DeliveryDetail_AcceptDelivery" = "Accept delivery";
 "DeliveryDetail_AcceptHint" = "Choose an eligible driver, then confirm delivery acceptance.";
 "DeliveryDetail_AcceptUnavailable" = "Delivery acceptance is not available for your current access or this order state. Refresh to check again.";
+"DeliveryDetail_ChangeDriver" = "Change driver";
+"DeliveryDetail_ChangeDriverHint" = "Choose an eligible replacement driver for this delivery.";
+"DeliveryDetail_CurrentDriverFormat" = "Currently assigned to %@";
+"DeliveryDetail_ReplacementCandidates" = "Choose a replacement";
+"DeliveryDetail_NoReplacement" = "No replacement available";
+"DeliveryDetail_ReplacementEmptyHint" = "The current driver stays assigned. Refresh to check availability again.";
+"DeliveryDetail_ChangeDriverConfirmation" = "Change the driver for this delivery from %1$@ to %2$@?";
 "DeliveryDetail_AcceptDriverConfirmation" = "Accept this delivery and assign it to %@? The driver will continue the delivery from their app.";
 "Delivery_Value_ORDER_ACCEPT_DELIVERY" = "Delivery accepted and driver assigned";
 

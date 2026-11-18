@@ -579,7 +579,7 @@ struct AdminPaymentSettingsView: View {
                         .foregroundColor(AdminSurface.secondaryText.opacity(0.7))
                         .padding(.top, 1)
 
-                    Text(Language.get("PaymentMgmt_Settings_Footer_DeliveryFee", alter: "يقوم الباك إند بكتابة رسوم التوصيل داخل كل طلب جديد حتى تظل الإجماليات متطابقة في التطبيقين."))
+                    Text(Language.get("PaymentMgmt_Settings_Footer_DeliveryFee", alter: "تسري التعرفة المحدثة على الطلبات الجديدة المؤهلة فقط، بينما تحتفظ كافة الطلبات السابقة والمعلقة برسومها المعتمدة دون أي تعديل."))
                         .font(AdminType.caption2)
                         .foregroundColor(AdminSurface.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)

@@ -7,6 +7,8 @@ FOUNDATION_EXPORT NSString * const PPDeliveryServiceErrorDomain;
 @interface PPDeliveryAllowedAction : NSObject
 @property (nonatomic, copy) NSString *action;
 @property (nonatomic, copy) NSString *permission;
+@property (nonatomic, copy, readonly) NSString *authority;
+@property (nonatomic, copy, readonly) NSString *expectedDriverUID;
 @property (nonatomic, assign) NSInteger expectedRevision;
 @property (nonatomic, copy) NSString *expectedState;
 - (instancetype)initWithDictionary:(NSDictionary *)dictionary;

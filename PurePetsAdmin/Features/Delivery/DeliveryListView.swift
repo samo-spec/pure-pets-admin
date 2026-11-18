@@ -142,6 +142,9 @@ private func deliveryAddressText(_ raw: Any?) -> String {
 
 private func deliveryCurrencyText(_ amount: NSNumber?, currency: String = "QAR") -> String {
     guard let amount else { return deliveryText("Delivery_Not_Available") }
+    if amount.doubleValue == 0.0 {
+        return deliveryText("PaymentMgmt_Settings_FreeDelivery_Badge")
+    }
     let formatter = NumberFormatter()
     formatter.numberStyle = .decimal
     formatter.minimumFractionDigits = 2
@@ -321,6 +324,24 @@ private struct PendingDriverCommand: Identifiable {
     let driver: PPDeliveryDriverRecord
 }
 
+private struct DeliveryDriverChange: Equatable {
+    let requestID: String
+    let fromUID: String
+    let toUID: String
+    let state: String
+    let revision: Int
+}
+
+private extension PPDeliveryRequestRecord {
+    func allows(_ action: PPDeliveryAllowedAction) -> Bool {
+        allowedActions.contains {
+            $0.action == action.action && $0.authority == action.authority &&
+                $0.expectedDriverUID == action.expectedDriverUID && $0.expectedRevision == action.expectedRevision &&
+                $0.expectedState == action.expectedState
+        }
+    }
+}
+
 @MainActor
 private final class DeliveryCommandCenterViewModel: ObservableObject {
     @Published private(set) var snapshot: PPDeliveryCommandCenterSnapshot?
@@ -341,6 +362,12 @@ private final class DeliveryCommandCenterViewModel: ObservableObject {
     @Published var selectedTab: DeliveryAdminTab = .newRequests
     @Published var selectedRequestID: String?
     private var dossierLoadGeneration = UUID()
+    private var lastDriverChange: (change: DeliveryDriverChange, commandID: String)?
+
+    var canExecuteDossierCommands: Bool {
+        dossier?.record.requestID == selectedRequestID && dossier != nil &&
+            !isExecuting && !isLoadingDossier && dossierIncident == nil && commandIncident == nil
+    }
 
     var records: [PPDeliveryRequestRecord] { snapshot?.records ?? [] }
     var drivers: [PPDeliveryDriverRecord] { snapshot?.drivers ?? [] }
@@ -654,7 +681,7 @@ private final class DeliveryCommandCenterViewModel: ObservableObject {
         commandIncident = nil
     }
 
-    func loadDossier(requestID: String? = nil) {
+    func loadDossier(requestID: String? = nil, preservingCommandIncident: Bool = false) {
         guard let requestID = requestID ?? selectedRequestID, !requestID.isEmpty else { return }
         let generation = UUID()
         dossierLoadGeneration = generation
@@ -669,18 +696,39 @@ private final class DeliveryCommandCenterViewModel: ObservableObject {
                     self.dossierIncident = DeliveryIncident.classify(error as NSError)
                     return
                 }
+                guard let dossier, dossier.record.requestID == requestID else {
+                    self.dossierIncident = DeliveryIncident.classify(NSError(domain: PPDeliveryServiceErrorDomain, code: 1))
+                    return
+                }
                 self.dossier = dossier
+                if !preservingCommandIncident { self.commandIncident = nil }
             }
         }
     }
 
     func execute(_ action: PPDeliveryAllowedAction,
                  driverUID: String? = nil,
-                 handoverConfirmed: Bool = false) {
-        guard let requestID = selectedRequestID, !isExecuting else { return }
+                 handoverConfirmed: Bool = false,
+                 expectedRequestID: String? = nil) {
+        guard let requestID = selectedRequestID, let dossier, canExecuteDossierCommands,
+              expectedRequestID == nil || expectedRequestID == requestID,
+              dossier.record.allows(action) else { return }
+
+        var commandID = "admin-ios-\(action.action.lowercased())-\(UUID().uuidString)"
+        if action.action == "REASSIGN", action.authority == "FULFILLMENT_V1" {
+            guard let driverUID, !driverUID.isEmpty, driverUID != action.expectedDriverUID,
+                  dossier.record.assignedDriverUID == action.expectedDriverUID,
+                  dossier.drivers.contains(where: { $0.uid == driverUID && $0.eligible }) else { return }
+            let change = DeliveryDriverChange(requestID: requestID, fromUID: action.expectedDriverUID,
+                                              toUID: driverUID, state: action.expectedState, revision: action.expectedRevision)
+            if let lastDriverChange, lastDriverChange.change == change {
+                commandID = lastDriverChange.commandID
+            } else {
+                lastDriverChange = (change, commandID)
+            }
+        }
         isExecuting = true
         commandIncident = nil
-        let commandID = "admin-ios-\(action.action.lowercased())-\(UUID().uuidString)"
         PPDeliveryService.shared().execute(action: action,
                                            requestID: requestID,
                                            commandID: commandID,
@@ -690,16 +738,21 @@ private final class DeliveryCommandCenterViewModel: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 self.isExecuting = false
+                guard self.selectedRequestID == requestID else {
+                    self.load(refresh: true)
+                    return
+                }
                 if let error {
                     let classified = DeliveryIncident.classify(error as NSError)
                     self.commandIncident = classified
                     if ["DELIVERY_STATE_CONFLICT", "DELIVERY_DRIVER_NOT_ELIGIBLE", "DELIVERY_PERMISSION_DENIED"]
                         .contains(classified.domainCode) {
-                        self.loadDossier(requestID: requestID)
+                        self.loadDossier(requestID: requestID, preservingCommandIncident: true)
                         self.load(refresh: true)
                     }
                     return
                 }
+                self.lastDriverChange = nil
                 self.loadDossier(requestID: requestID)
                 self.load(refresh: true)
             }
@@ -1805,6 +1858,8 @@ private struct PendingDeliveryCommand: Identifiable {
 
 private struct PendingDeliveryAssignment: Identifiable {
     let id = UUID()
+    let requestID: String
+    let currentDriverName: String
     let action: PPDeliveryAllowedAction
 }
 
@@ -1877,20 +1932,30 @@ private struct DeliveryDossierSheet: View {
         .accessibilityAction(.escape) { close() }
         .onChange(of: viewModel.dossier?.record.revision) { _, _ in
             handoverConfirmed = false
-            pendingAssignment = nil
+        }
+        .onChange(of: viewModel.dossier.map { ObjectIdentifier($0) }) { _, _ in
+            guard let pending = pendingAssignment else { return }
+            let record = viewModel.dossier?.record
+            if record?.requestID != pending.requestID || record?.allows(pending.action) != true {
+                pendingAssignment = nil
+            }
+        }
+        .onChange(of: viewModel.dossierIncident?.id) { _, issue in
+            if issue != nil { pendingAssignment = nil }
         }
         .sheet(item: $pendingAssignment) { pending in
             DeliveryDriverPickerSheet(
                 action: pending.action,
+                currentDriverName: pending.currentDriverName,
                 drivers: (viewModel.dossier?.drivers ?? []).filter {
-                    $0.uid != viewModel.dossier?.record.assignedDriverUID
+                    $0.uid != viewModel.dossier?.record.assignedDriverUID &&
+                        (pending.action.action != "REASSIGN" || $0.eligible)
                 },
-                isExecuting: viewModel.isExecuting
+                isExecuting: !viewModel.canExecuteDossierCommands,
+                refresh: { viewModel.loadDossier() }
             ) { driver in
                 pendingAssignment = nil
-                viewModel.execute(pending.action,
-                                  driverUID: driver.uid,
-                                  handoverConfirmed: false)
+                viewModel.execute(pending.action, driverUID: driver.uid, expectedRequestID: pending.requestID)
             }
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
@@ -1910,24 +1975,54 @@ private struct DeliveryDossierSheet: View {
         viewModel.dossier?.record.allowedActions.first { $0.action == "ACCEPT_AND_ASSIGN" }
     }
 
+    private var replacementAction: PPDeliveryAllowedAction? {
+        viewModel.dossier?.record.allowedActions.first { $0.action == "REASSIGN" && $0.authority == "FULFILLMENT_V1" }
+    }
+
+    private func openDriverPicker(_ action: PPDeliveryAllowedAction) {
+        guard viewModel.canExecuteDossierCommands, let record = viewModel.dossier?.record else { return }
+        pendingAssignment = PendingDeliveryAssignment(requestID: record.requestID,
+                                                      currentDriverName: driverName(record), action: action)
+    }
+
+    private func openDriverDirectory() {
+        guard canReviewDeliveryDrivers, !viewModel.isExecuting else { return }
+        viewModel.selectedTab = .drivers
+        close()
+    }
+
     private var needsDeliveryAcceptance: Bool {
         guard let record = viewModel.dossier?.record else { return false }
         return record.authority == "FULFILLMENT_V1" && ["offered", "pending"].contains(record.status.lowercased())
     }
 
     private var deliveryFooterTitle: String {
+        if replacementAction != nil { return deliveryText("DeliveryDetail_ChangeDriver") }
         if needsDeliveryAcceptance { return deliveryText("DeliveryDetail_AcceptDelivery") }
         return deliveryText(canReviewDeliveryDrivers ? "DeliveryDetail_DriversAction" : "DeliveryDetail_RefreshAction")
     }
 
+    private var footerSymbol: String {
+        if replacementAction != nil { return "arrow.triangle.2.circlepath" }
+        if needsDeliveryAcceptance { return "checkmark.circle" }
+        return canReviewDeliveryDrivers ? "person.2" : "arrow.clockwise"
+    }
+
+    private var footerHint: String {
+        if replacementAction != nil { return deliveryText("DeliveryDetail_ChangeDriverHint") }
+        if needsDeliveryAcceptance { return deliveryText("DeliveryDetail_AcceptHint") }
+        return deliveryText(canReviewDeliveryDrivers ? "DeliveryDetail_DriversHint" : "DeliveryDetail_RefreshHint")
+    }
+
     private func continueDelivery() {
-        guard !viewModel.isLoadingDossier, !viewModel.isExecuting else { return }
-        if needsDeliveryAcceptance {
+        guard viewModel.canExecuteDossierCommands else { return }
+        if let action = replacementAction {
+            openDriverPicker(action)
+        } else if needsDeliveryAcceptance {
             guard let action = deliveryAcceptanceAction else { return }
-            pendingAssignment = PendingDeliveryAssignment(action: action)
+            openDriverPicker(action)
         } else if canReviewDeliveryDrivers {
-            viewModel.selectedTab = .drivers
-            close()
+            openDriverDirectory()
         } else {
             viewModel.loadDossier()
         }
@@ -1998,14 +2093,14 @@ private struct DeliveryDossierSheet: View {
                 }
                 Button(action: continueDelivery) {
                     HStack(spacing: 12) {
-                        Image(systemName: needsDeliveryAcceptance ? "checkmark.circle" : (canReviewDeliveryDrivers ? "person.2" : "arrow.clockwise"))
+                        Image(systemName: footerSymbol)
                             .font(.system(.body, weight: .semibold))
                             .accessibilityHidden(true)
                         Text(deliveryFooterTitle)
                             .font(AdminType.headline)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        if needsDeliveryAcceptance || canReviewDeliveryDrivers {
+                        if replacementAction != nil || needsDeliveryAcceptance || canReviewDeliveryDrivers {
                             Image(systemName: "arrow.forward")
                                 .font(.system(.body, weight: .semibold))
                                 .accessibilityHidden(true)
@@ -2018,10 +2113,9 @@ private struct DeliveryDossierSheet: View {
                     .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 }
                 .buttonStyle(DeliveryCompanyCardButtonStyle())
-                .disabled(viewModel.isLoadingDossier || (needsDeliveryAcceptance && deliveryAcceptanceAction == nil))
-                .opacity(viewModel.isLoadingDossier || (needsDeliveryAcceptance && deliveryAcceptanceAction == nil) ? 0.55 : 1)
-                .accessibilityHint(deliveryText(needsDeliveryAcceptance ? "DeliveryDetail_AcceptHint" :
-                    (canReviewDeliveryDrivers ? "DeliveryDetail_DriversHint" : "DeliveryDetail_RefreshHint")))
+                .disabled(!viewModel.canExecuteDossierCommands || (needsDeliveryAcceptance && deliveryAcceptanceAction == nil))
+                .opacity(!viewModel.canExecuteDossierCommands || (needsDeliveryAcceptance && deliveryAcceptanceAction == nil) ? 0.55 : 1)
+                .accessibilityHint(footerHint)
             }
             .padding(.horizontal, 24)
             .padding(.top, 12)
@@ -2141,7 +2235,7 @@ private struct DeliveryDossierSheet: View {
             }
             sectionRule
             adaptiveRow {
-                personSummary("DeliveryWorkspace_Driver", value: driverName(record), symbol: "person.crop.circle")
+                driverSummary(record)
                 personSummary("Delivery_Dossier_Customer", value: record.customerName.isEmpty
                               ? deliveryText("DeliveryDetail_CustomerMissing") : record.customerName, symbol: "person")
             }
@@ -2185,6 +2279,27 @@ private struct DeliveryDossierSheet: View {
         }
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private func driverSummary(_ record: PPDeliveryRequestRecord) -> some View {
+        let summary = personSummary("DeliveryWorkspace_Driver", value: driverName(record), symbol: "person.crop.circle")
+        if replacementAction != nil && canReviewDeliveryDrivers {
+            Button(action: openDriverDirectory) {
+                HStack(spacing: 4) {
+                    summary
+                    Image(systemName: "chevron.forward").font(AdminType.captionBold).accessibilityHidden(true)
+                }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(deliveryText("DeliveryDetail_DriversAction"))
+            .accessibilityValue(driverName(record))
+            .accessibilityHint(deliveryText("DeliveryDetail_DriversHint"))
+        } else {
+            summary
+        }
     }
 
     private func driverName(_ record: PPDeliveryRequestRecord) -> String {
@@ -2420,7 +2535,7 @@ private struct DeliveryDossierSheet: View {
                         ForEach(actions.filter { $0.action != "RECONCILE_COD" }, id: \.action) { action in
                             deliveryActionButton(action, enabled: true) {
                                 if assignmentNames.contains(action.action) {
-                                    pendingAssignment = PendingDeliveryAssignment(action: action)
+                                    openDriverPicker(action)
                                 } else {
                                     let pending = PendingDeliveryCommand(action: action, driverUID: nil, handoverConfirmed: false)
                                     presentCommandAlert(for: pending)
@@ -2495,11 +2610,15 @@ private struct SheetDismissButton: View {
 
 private struct DeliveryDriverPickerSheet: View {
     let action: PPDeliveryAllowedAction
+    let currentDriverName: String
     let drivers: [PPDeliveryDriverRecord]
     let isExecuting: Bool
+    let refresh: () -> Void
     let onSelect: (PPDeliveryDriverRecord) -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var isReplacement: Bool { action.action == "REASSIGN" }
 
     var body: some View {
         NavigationView {
@@ -2511,10 +2630,16 @@ private struct DeliveryDriverPickerSheet: View {
                         if drivers.isEmpty {
                             AdminEmptyStateView(
                                 symbol: "person.2.slash",
-                                title: deliveryText("DeliveryCompany_NoDrivers_Title"),
-                                subtitle: deliveryText("DeliveryCompany_NoDrivers_Subtitle")
+                                title: deliveryText(isReplacement ? "DeliveryDetail_NoReplacement" : "DeliveryCompany_NoDrivers_Title"),
+                                subtitle: deliveryText(isReplacement ? "DeliveryDetail_ReplacementEmptyHint" : "DeliveryCompany_NoDrivers_Subtitle")
                             )
-                            .frame(minHeight: 300)
+                            .frame(minHeight: 180)
+                            if isReplacement {
+                                Button(deliveryText("DeliveryDetail_RefreshAction"), action: refresh)
+                                    .buttonStyle(.bordered)
+                                    .frame(minHeight: 44)
+                                    .disabled(isExecuting)
+                            }
                         } else {
                             LazyVStack(spacing: 12) {
                                 ForEach(drivers, id: \.uid) { driver in
@@ -2527,7 +2652,7 @@ private struct DeliveryDriverPickerSheet: View {
                     .padding(.bottom, 30)
                 }
             }
-            .navigationTitle(deliveryCommandText(action.action))
+            .navigationTitle(isReplacement ? deliveryText("DeliveryDetail_ChangeDriver") : deliveryCommandText(action.action))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -2557,11 +2682,13 @@ private struct DeliveryDriverPickerSheet: View {
                     .frame(width: 52, height: 52)
                     .background(AdminSurface.primary.opacity(0.11), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(deliveryText("Delivery_Assignment_Candidates"))
+                    Text(deliveryText(isReplacement ? "DeliveryDetail_ReplacementCandidates" : "Delivery_Assignment_Candidates"))
                         .font(AdminType.title2)
                         .foregroundColor(AdminSurface.primaryText)
                         .accessibilityAddTraits(.isHeader)
-                    Text(deliveryText("DeliveryCompany_SelectDriver"))
+                    Text(isReplacement
+                         ? deliveryFormat("DeliveryDetail_CurrentDriverFormat", "\u{2068}\(currentDriverName)\u{2069}")
+                         : deliveryText("DeliveryCompany_SelectDriver"))
                         .font(AdminType.subheadline)
                         .foregroundColor(AdminSurface.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -2643,12 +2770,15 @@ private struct DeliveryDriverPickerSheet: View {
             confirmTitle = deliveryText("DeliveryDetail_AcceptDelivery")
             iconName = "person.crop.circle.badge.checkmark"
         } else {
-            title = deliveryCommandText(action.action)
-            confirmTitle = deliveryText("Confirm")
+            title = deliveryText("DeliveryDetail_ChangeDriver")
+            confirmTitle = title
             iconName = "arrow.triangle.2.circlepath.circle.fill"
         }
 
-        let message = deliveryFormat("DeliveryDetail_AcceptDriverConfirmation", "\u{2068}\(driver.displayName)\u{2069}")
+        let replacementName = "\u{2068}\(driver.displayName)\u{2069}"
+        let message = isReplacement
+            ? deliveryFormat("DeliveryDetail_ChangeDriverConfirmation", "\u{2068}\(currentDriverName)\u{2069}", replacementName)
+            : deliveryFormat("DeliveryDetail_AcceptDriverConfirmation", replacementName)
         let icon = UIImage(systemName: iconName) ?? UIImage(systemName: "checkmark.circle.fill")
 
         PPAlertHelper.showConfirmation(
