@@ -582,7 +582,7 @@ static NSError *PPDeliveryInvalidResponseError(void) {
 
 - (void)fetchCommandCenterWithCompletion:(void(^)(PPDeliveryCommandCenterSnapshot *, NSError *))completion {
     [self callFunction:@"getDeliveryCommandCenter"
-                params:@{@"pageSize": @100}
+                params:@{@"pageSize": @100, @"supportsFulfillmentReassignment": @YES}
             completion:^(id result, NSError *error) {
         // Only Infra can resolve the official fleet, scope its jobs and redact
         // protected fields. A denied/unavailable callable is not an empty fleet.
@@ -609,7 +609,7 @@ static NSError *PPDeliveryInvalidResponseError(void) {
         return;
     }
     [self callFunction:@"getDeliveryDossier"
-                params:@{@"requestId": safeRequestID}
+                params:@{@"requestId": safeRequestID, @"supportsFulfillmentReassignment": @YES}
             completion:^(id result, NSError *error) {
         if (error) {
             if (completion) completion(nil, error);

@@ -21,7 +21,7 @@ function between(source, start, end) {
 const fetch = between(service, "- (void)fetchCommandCenterWithCompletion:", "- (void)fetchDossierForRequestID:");
 assert.equal((fetch.match(/callFunction:/g) || []).length, 1);
 assert.match(fetch, /callFunction:@"getDeliveryCommandCenter"/);
-assert.match(fetch, /params:@\{@"pageSize": @100\}/);
+assert.match(fetch, /params:@\{@"pageSize": @100, @"supportsFulfillmentReassignment": @YES\}/);
 assert.doesNotMatch(fetch, /collectionWithPath:|getDocuments|FIRFirestore|fallbackDict|companyId/);
 assert.match(fetch, /if \(error\) \{\s*if \(completion\) completion\(nil, error\);\s*return;/);
 for (const [key, type] of [["jobs", "NSArray"], ["carrier", "NSDictionary"], ["permissions", "NSArray"]]) {
