@@ -382,10 +382,10 @@ public struct AdminProvidersView: View {
     @ViewBuilder
     private func providerTabContent(isRegular: Bool) -> some View {
         switch selectedTab {
-        case .applications:
-            AdminProviderApplicationsView(viewModel: sharedViewModel, isRegular: isRegular)
         case .subscriptions:
             AdminLegacyViewControllerWrapper { PPProviderSubscriptionsViewController() }
+        case .applications:
+            AdminProviderApplicationsView(viewModel: sharedViewModel, isRegular: isRegular)
         case .plans:
             AdminLegacyViewControllerWrapper {
                 let vc = PPProviderPlansViewController()
@@ -393,11 +393,7 @@ public struct AdminProvidersView: View {
                 return vc
             }
         case .features:
-            AdminLegacyViewControllerWrapper {
-                let vc = PPProviderFeatureAccessViewController()
-                vc.isEmbeddedInTab = true
-                return vc
-            }
+            AdminProviderFeaturesView(isRegular: isRegular)
         case .accounting:
             AdminProviderAccountingView(isEmbeddedInTab: true)
         }
@@ -411,6 +407,1269 @@ private struct AdminLegacyViewControllerWrapper: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> UIViewController { factory() }
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+}
+
+// MARK: - NextGen V10 Provider Feature & Entitlement Catalog (First Principles)
+
+public struct ProviderFeatureModel: Identifiable, Hashable, Sendable {
+    public let id: String
+    public let featureKey: String
+    public let titleAr: String
+    public let titleEn: String
+    public let descriptionAr: String
+    public let descriptionEn: String
+    public let planID: String
+    public let planNameAr: String
+    public let planNameEn: String
+    public let providerType: String
+    public let planStatus: String
+    public let enabled: Bool
+    public let limitValue: String
+
+    public var isUnlimited: Bool {
+        let clean = limitValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        return clean.isEmpty || clean == "0" || clean.lowercased() == "unlimited"
+    }
+
+    public var localizedTitle: String {
+        let isArabic = Language.isRTL()
+        if isArabic {
+            if !titleAr.isEmpty { return titleAr }
+            if !titleEn.isEmpty { return titleEn }
+            return featureKey
+        } else {
+            if !titleEn.isEmpty { return titleEn }
+            if !titleAr.isEmpty { return titleAr }
+            return featureKey
+        }
+    }
+
+    public var localizedDescription: String {
+        let isArabic = Language.isRTL()
+        if isArabic {
+            if !descriptionAr.isEmpty { return descriptionAr }
+            return descriptionEn
+        } else {
+            if !descriptionEn.isEmpty { return descriptionEn }
+            return descriptionAr
+        }
+    }
+
+    public var localizedPlanName: String {
+        let isArabic = Language.isRTL()
+        if isArabic {
+            if !planNameAr.isEmpty { return planNameAr }
+            if !planNameEn.isEmpty { return planNameEn }
+            return planID
+        } else {
+            if !planNameEn.isEmpty { return planNameEn }
+            if !planNameAr.isEmpty { return planNameAr }
+            return planID
+        }
+    }
+
+    public var localizedProviderType: String {
+        let type = providerType.lowercased()
+        let direct = Language.get("Providers_Type_\(type)", alter: "")
+        if !direct.isEmpty && direct != "Providers_Type_\(type)" {
+            return direct
+        }
+        return ProviderTheme.localizedType(providerType).text
+    }
+
+    public var sectorIcon: String {
+        let token = providerType.lowercased()
+        if token.contains("market") || token.contains("store") || token.contains("سوق") || token.contains("متجر") {
+            return "cart.fill"
+        } else if token.contains("pharm") || token.contains("med") || token.contains("صيدل") {
+            return "cross.case.fill"
+        } else if token.contains("clinic") || token.contains("vet") || token.contains("عياد") || token.contains("بيطر") {
+            return "stethoscope"
+        } else if token.contains("delivery") || token.contains("توصيل") {
+            return "box.truck.badge.clock.fill"
+        } else if token.contains("hotel") || token.contains("board") || token.contains("فندق") || token.contains("استضاف") {
+            return "bed.double.fill"
+        } else if token.contains("train") || token.contains("تدريب") {
+            return "figure.walk"
+        } else if token.contains("groom") || token.contains("salon") || token.contains("حلاق") {
+            return "scissors"
+        } else if token.contains("product") || token.contains("produce") || token.contains("إنتاج") {
+            return "building.2.crop.break.fill"
+        } else if token.contains("service") || token.contains("خدم") {
+            return "pawprint.fill"
+        }
+        return "shield.lefthalf.filled.badge.checkmark"
+    }
+
+    public var sectorColor: Color {
+        let token = providerType.lowercased()
+        if token.contains("market") || token.contains("store") || token.contains("سوق") || token.contains("متجر") {
+            return Color.blue
+        } else if token.contains("pharm") || token.contains("med") || token.contains("صيدل") {
+            return Color.purple
+        } else if token.contains("clinic") || token.contains("vet") || token.contains("عياد") || token.contains("بيطر") {
+            return Color(red: 0.08, green: 0.74, blue: 0.48) // Emerald
+        } else if token.contains("delivery") || token.contains("توصيل") {
+            return Color(red: 0.95, green: 0.45, blue: 0.15) // Orange
+        } else if token.contains("hotel") || token.contains("board") || token.contains("فندق") {
+            return Color.indigo
+        } else if token.contains("train") || token.contains("تدريب") {
+            return Color.orange
+        } else if token.contains("groom") || token.contains("salon") {
+            return Color.pink
+        } else if token.contains("product") || token.contains("produce") || token.contains("إنتاج") {
+            return Color(red: 0.15, green: 0.68, blue: 0.85) // Cyan
+        } else if token.contains("service") || token.contains("خدم") {
+            return Color.teal
+        }
+        return AdminSurface.primary
+    }
+
+    public func matches(query: String) -> Bool {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !q.isEmpty else { return true }
+        return featureKey.lowercased().contains(q) ||
+            titleAr.lowercased().contains(q) ||
+            titleEn.lowercased().contains(q) ||
+            planNameAr.lowercased().contains(q) ||
+            planNameEn.lowercased().contains(q) ||
+            planID.lowercased().contains(q) ||
+            providerType.lowercased().contains(q) ||
+            localizedProviderType.lowercased().contains(q) ||
+            descriptionAr.lowercased().contains(q) ||
+            descriptionEn.lowercased().contains(q)
+    }
+}
+
+public enum FeatureFilterOption: String, CaseIterable, Identifiable, Sendable {
+    case all
+    case activeOnly
+    case limitsOnly
+    case inactiveOnly
+
+    public var id: String { rawValue }
+
+    public var localizedTitle: String {
+        switch self {
+        case .all: return Language.get("All", alter: "الكل")
+        case .activeOnly: return Language.get("active_features_word", alter: "المفعلة")
+        case .limitsOnly: return Language.get("limits_count_word", alter: "ذات قيود")
+        case .inactiveOnly: return Language.get("Providers_Status_Inactive", alter: "المعطلة")
+        }
+    }
+}
+
+@MainActor
+final class ProviderFeaturesViewModel: ObservableObject {
+    @Published var allFeatures: [ProviderFeatureModel] = []
+    @Published var availableProviderTypes: [String] = []
+    @Published var selectedProviderType: String? = nil // nil = All
+    @Published var activeFilter: FeatureFilterOption = .all
+    @Published var searchQuery: String = ""
+    @Published var isLoading: Bool = false
+    @Published var isRefreshing: Bool = false
+    @Published var error: Error? = nil
+    @Published var selectedFeatureForDetail: ProviderFeatureModel? = nil
+    @Published var copiedKeyToast: String? = nil
+
+    // Telemetry
+    var totalCount: Int { allFeatures.count }
+    var activeCount: Int { allFeatures.filter(\.enabled).count }
+    var sectorsCount: Int { availableProviderTypes.count }
+    var limitsCount: Int { allFeatures.filter { !$0.isUnlimited }.count }
+
+    var activePercentage: Int {
+        totalCount > 0 ? Int((Double(activeCount) / Double(totalCount)) * 100) : 100
+    }
+
+    var filteredFeatures: [ProviderFeatureModel] {
+        var result = allFeatures
+
+        if let selectedType = selectedProviderType, !selectedType.isEmpty {
+            result = result.filter { $0.providerType.caseInsensitiveCompare(selectedType) == .orderedSame }
+        }
+
+        switch activeFilter {
+        case .all:
+            break
+        case .activeOnly:
+            result = result.filter { $0.enabled }
+        case .limitsOnly:
+            result = result.filter { !$0.isUnlimited }
+        case .inactiveOnly:
+            result = result.filter { !$0.enabled }
+        }
+
+        let cleanQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !cleanQuery.isEmpty {
+            result = result.filter { $0.matches(query: cleanQuery) }
+        }
+
+        return result
+    }
+
+    func countForType(_ type: String?) -> Int {
+        guard let type = type, !type.isEmpty else {
+            return allFeatures.count
+        }
+        return allFeatures.filter { $0.providerType.caseInsensitiveCompare(type) == .orderedSame }.count
+    }
+
+    func fetch(isPullToRefresh: Bool = false) {
+        if isPullToRefresh {
+            isRefreshing = true
+        } else {
+            isLoading = true
+        }
+        error = nil
+
+        PPProviderService.shared().fetchPlans { [weak self] plans, err in
+            guard let self = self else { return }
+            Task { @MainActor in
+                self.isLoading = false
+                self.isRefreshing = false
+                if let err = err {
+                    self.error = err
+                    return
+                }
+
+                if plans.isEmpty {
+                    self.allFeatures = []
+                    self.availableProviderTypes = []
+                    return
+                }
+
+                var parsed: [ProviderFeatureModel] = []
+                var typesSet = Set<String>()
+                var orderedTypes: [String] = []
+
+                for plan in plans {
+                    let pID = plan.planID ?? ""
+                    let pStatus = plan.status ?? "inactive"
+                    let pType = plan.providerType ?? ""
+                    let planNameDict = plan.name as? [String: Any] ?? [:]
+                    let pNameAr = planNameDict["ar"] as? String ?? ""
+                    let pNameEn = planNameDict["en"] as? String ?? ""
+
+                    for doc in plan.featureDocuments ?? [] {
+                        let fKey = (doc["featureKey"] as? String) ?? (doc["key"] as? String) ?? (doc["id"] as? String) ?? ""
+                        guard !fKey.isEmpty else { continue }
+
+                        var tAr = ""
+                        var tEn = ""
+                        if let tDict = doc["title"] as? [String: Any] {
+                            tAr = tDict["ar"] as? String ?? ""
+                            tEn = tDict["en"] as? String ?? ""
+                        } else if let tStr = doc["title"] as? String {
+                            tAr = tStr
+                            tEn = tStr
+                        }
+
+                        var dAr = ""
+                        var dEn = ""
+                        if let dDict = (doc["description"] as? [String: Any]) ?? (doc["desc"] as? [String: Any]) {
+                            dAr = dDict["ar"] as? String ?? ""
+                            dEn = dDict["en"] as? String ?? ""
+                        } else if let dStr = (doc["description"] as? String) ?? (doc["desc"] as? String) {
+                            dAr = dStr
+                            dEn = dStr
+                        }
+
+                        let fType = (doc["providerType"] as? String)?.isEmpty == false ? (doc["providerType"] as! String) : pType
+                        let isEnabled = (doc["enabled"] as? NSNumber)?.boolValue ?? (doc["enabled"] as? Bool ?? true)
+
+                        var limitStr = ""
+                        if let lStr = doc["limitValue"] as? String, !lStr.isEmpty {
+                            limitStr = lStr
+                        } else if let lNum = doc["limitValue"] as? NSNumber {
+                            limitStr = lNum.stringValue
+                        } else if let lNum = doc["limit"] as? NSNumber {
+                            limitStr = lNum.stringValue
+                        } else if let lStr = doc["limit"] as? String {
+                            limitStr = lStr
+                        }
+
+                        let modelID = "\(pID)_\(fKey)_\(fType)"
+                        let item = ProviderFeatureModel(
+                            id: modelID,
+                            featureKey: fKey,
+                            titleAr: tAr,
+                            titleEn: tEn,
+                            descriptionAr: dAr,
+                            descriptionEn: dEn,
+                            planID: pID,
+                            planNameAr: pNameAr,
+                            planNameEn: pNameEn,
+                            providerType: fType,
+                            planStatus: pStatus,
+                            enabled: isEnabled,
+                            limitValue: limitStr
+                        )
+                        parsed.append(item)
+
+                        if !fType.isEmpty && !typesSet.contains(fType) {
+                            typesSet.insert(fType)
+                            orderedTypes.append(fType)
+                        }
+                    }
+                }
+
+                self.allFeatures = parsed
+                self.availableProviderTypes = orderedTypes
+            }
+        }
+    }
+
+    func copyFeatureKey(_ key: String) {
+        UIPasteboard.general.string = key
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+            copiedKeyToast = key
+        }
+        Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            if self.copiedKeyToast == key {
+                withAnimation(.easeOut(duration: 0.25)) {
+                    self.copiedKeyToast = nil
+                }
+            }
+        }
+    }
+}
+
+// MARK: - AdminProviderFeaturesView (NextGen V10 Sovereign Interface)
+
+public struct AdminProviderFeaturesView: View {
+    public let isRegular: Bool
+    @StateObject private var viewModel = ProviderFeaturesViewModel()
+
+    public init(isRegular: Bool) {
+        self.isRegular = isRegular
+    }
+
+    public var body: some View {
+        ZStack(alignment: .bottom) {
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 16) {
+                    // 1. Apex Hero & Telemetry Bento Deck
+                    heroTelemetryBentoDeck
+
+                    // 2. Precision Search & Controls Deck
+                    searchAndControlHorizon
+
+                    // 3. Dynamic Sector Carousel Bar
+                    sectorCarouselBar
+
+                    // 4. Main Feature Entitlements Grid / Stack
+                    mainCatalogContent
+                        .padding(.bottom, 40)
+                }
+                .padding(.horizontal, AdminSpacing.screenMargin)
+                .padding(.top, 10)
+            }
+            .refreshable {
+                viewModel.fetch(isPullToRefresh: true)
+            }
+
+            // Floating Copy Toast Notification
+            if let copiedKey = viewModel.copiedKeyToast {
+                copyToastView(key: copiedKey)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.bottom, 20)
+            }
+        }
+        .onAppear {
+            if viewModel.allFeatures.isEmpty {
+                viewModel.fetch()
+            }
+        }
+        .sheet(item: $viewModel.selectedFeatureForDetail) { feature in
+            AdminFeatureInspectorSheet(feature: feature) {
+                viewModel.copyFeatureKey(feature.featureKey)
+            }
+        }
+    }
+
+    // MARK: - 1. Hero & Telemetry Bento Deck
+    private var heroTelemetryBentoDeck: some View {
+        VStack(spacing: 14) {
+            // Hero Title & Description Row
+            HStack(alignment: .top, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(AdminSurface.primary.opacity(0.12))
+                    Image(systemName: "shield.lefthalf.filled.badge.checkmark")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+                .frame(width: 52, height: 52)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(Language.get("Providers_Features_Tag", alter: "تراخيص وميزات المزودين"))
+                            .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
+                            .foregroundStyle(AdminSurface.primary)
+
+                        Circle()
+                            .fill(AdminSurface.primary.opacity(0.4))
+                            .frame(width: 4, height: 4)
+
+                        Text("NextGen V10")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundStyle(AdminSurface.primary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(AdminSurface.primary.opacity(0.08), in: Capsule())
+                    }
+
+                    Text(Language.get("Providers_Features_HeroTitle", alter: "دليل الصلاحيات والميزات"))
+                        .font(PPBrandFont.bold(size: 21, relativeTo: .title3))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+
+                    Text(Language.get("Providers_Features_HeroSubtitle", alter: "استعراض وتدقيق قيود وميزات الخطط المعتمدة لجميع أنواع المزودين."))
+                        .font(PPBrandFont.regular(size: 12.5, relativeTo: .subheadline))
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            // Bento 4-Metrics Interactive Horizon
+            HStack(spacing: 8) {
+                // Metric 1: Total
+                telemetryPill(
+                    title: Language.get("total_features_word", alter: "الإجمالي"),
+                    value: "\(viewModel.totalCount)",
+                    badge: nil,
+                    tint: AdminSurface.primary,
+                    icon: "square.grid.2x2.fill",
+                    isSelected: viewModel.activeFilter == .all && viewModel.selectedProviderType == nil
+                ) {
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                        viewModel.activeFilter = .all
+                        viewModel.selectedProviderType = nil
+                    }
+                }
+
+                // Metric 2: Active
+                telemetryPill(
+                    title: Language.get("active_features_word", alter: "المفعلة"),
+                    value: "\(viewModel.activeCount)",
+                    badge: "\(viewModel.activePercentage)%",
+                    tint: Color(uiColor: .ppSuccess),
+                    icon: "checkmark.seal.fill",
+                    isSelected: viewModel.activeFilter == .activeOnly
+                ) {
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                        viewModel.activeFilter = viewModel.activeFilter == .activeOnly ? .all : .activeOnly
+                    }
+                }
+
+                // Metric 3: Sectors
+                telemetryPill(
+                    title: Language.get("types_count_word", alter: "القطاعات"),
+                    value: "\(viewModel.sectorsCount)",
+                    badge: nil,
+                    tint: Color.indigo,
+                    icon: "building.2.crop.break.fill",
+                    isSelected: false
+                ) {
+                    UISelectionFeedbackGenerator().selectionChanged()
+                }
+
+                // Metric 4: Limits
+                telemetryPill(
+                    title: Language.get("limits_count_word", alter: "القيود"),
+                    value: "\(viewModel.limitsCount)",
+                    badge: nil,
+                    tint: Color.orange,
+                    icon: "gauge.with.needle.fill",
+                    isSelected: viewModel.activeFilter == .limitsOnly
+                ) {
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                        viewModel.activeFilter = viewModel.activeFilter == .limitsOnly ? .all : .limitsOnly
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(AdminSurface.surface)
+                .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 3)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: 0.8)
+        )
+    }
+
+    private func telemetryPill(
+        title: String,
+        value: String,
+        badge: String?,
+        tint: Color,
+        icon: String,
+        isSelected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                HStack(spacing: 4) {
+                    Image(systemName: icon)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(tint)
+
+                    Text(value)
+                        .font(PPBrandFont.bold(size: 17, relativeTo: .headline))
+                        .foregroundStyle(tint)
+
+                    if let badge = badge {
+                        Text(badge)
+                            .font(.system(size: 9.5, weight: .bold))
+                            .foregroundStyle(tint)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(tint.opacity(0.12), in: Capsule())
+                    }
+                }
+
+                Text(title)
+                    .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .padding(.horizontal, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(isSelected ? tint.opacity(0.15) : tint.opacity(0.07))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(isSelected ? tint : Color.clear, lineWidth: 1.2)
+            )
+        }
+        .buttonStyle(ProviderPressStyle())
+    }
+
+    // MARK: - 2. Precision Search & Controls Deck
+    private var searchAndControlHorizon: some View {
+        HStack(spacing: 10) {
+            // Search Bar Field
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(AdminCommandInk.secondary)
+
+                TextField(
+                    Language.get("Providers_Features_Search_Placeholder", alter: "بحث باسم الميزة، المفتاح، الخطة أو القطاع..."),
+                    text: $viewModel.searchQuery
+                )
+                .font(PPBrandFont.medium(size: 13.5, relativeTo: .body))
+                .foregroundStyle(AdminSurface.primaryText)
+                .autocapitalization(.none)
+                .disableAutocorrection(true)
+
+                if !viewModel.searchQuery.isEmpty {
+                    Button {
+                        viewModel.searchQuery = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(AdminCommandInk.secondary)
+                    }
+                }
+
+                // Results Count Chip
+                Text("\(viewModel.filteredFeatures.count)")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundStyle(AdminSurface.primary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 44)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(AdminSurface.control)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: 0.75)
+            )
+
+            // Refresh Button
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                viewModel.fetch()
+            } label: {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(AdminSurface.control)
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                        .rotationEffect(.degrees(viewModel.isLoading ? 360 : 0))
+                        .animation(viewModel.isLoading ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: viewModel.isLoading)
+                }
+            }
+            .buttonStyle(ProviderPressStyle())
+        }
+    }
+
+    // MARK: - 3. Dynamic Sector Carousel Bar
+    private var sectorCarouselBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 7) {
+                // "All" Sector Chip
+                let isAllSelected = viewModel.selectedProviderType == nil
+                Button {
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                        viewModel.selectedProviderType = nil
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "square.grid.2x2.fill")
+                            .font(.system(size: 11, weight: isAllSelected ? .bold : .medium))
+                        Text(Language.get("All", alter: "الكل"))
+                            .font(PPBrandFont.bold(size: 12.5, relativeTo: .caption))
+                        Text("(\(viewModel.totalCount))")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    }
+                    .foregroundStyle(isAllSelected ? Color.white : AdminSurface.primaryText)
+                    .padding(.horizontal, 13)
+                    .frame(height: 36)
+                    .background(
+                        isAllSelected
+                            ? AdminSurface.primary
+                            : AdminSurface.control,
+                        in: Capsule(style: .continuous)
+                    )
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder(isAllSelected ? Color.clear : Color(uiColor: .ppSurfaceBorder).opacity(0.35), lineWidth: 0.75)
+                    )
+                }
+                .buttonStyle(ProviderPressStyle())
+
+                // Individual Sector Chips
+                ForEach(viewModel.availableProviderTypes, id: \.self) { type in
+                    let isSelected = viewModel.selectedProviderType == type
+                    let count = viewModel.countForType(type)
+                    let sectorInfo = ProviderTheme.localizedType(type)
+                    let color = ProviderFeatureModel(
+                        id: "", featureKey: "", titleAr: "", titleEn: "", descriptionAr: "", descriptionEn: "",
+                        planID: "", planNameAr: "", planNameEn: "", providerType: type, planStatus: "", enabled: true, limitValue: ""
+                    ).sectorColor
+
+                    Button {
+                        UISelectionFeedbackGenerator().selectionChanged()
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                            viewModel.selectedProviderType = isSelected ? nil : type
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: sectorInfo.icon)
+                                .font(.system(size: 11, weight: isSelected ? .bold : .medium))
+                            Text(sectorInfo.text)
+                                .font(PPBrandFont.bold(size: 12.5, relativeTo: .caption))
+                            Text("(\(count))")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        }
+                        .foregroundStyle(isSelected ? Color.white : AdminSurface.primaryText)
+                        .padding(.horizontal, 13)
+                        .frame(height: 36)
+                        .background(
+                            isSelected
+                                ? color
+                                : AdminSurface.control,
+                            in: Capsule(style: .continuous)
+                        )
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .strokeBorder(isSelected ? Color.clear : Color(uiColor: .ppSurfaceBorder).opacity(0.35), lineWidth: 0.75)
+                        )
+                    }
+                    .buttonStyle(ProviderPressStyle())
+                }
+            }
+        }
+    }
+
+    // MARK: - 4. Main Catalog Content
+    @ViewBuilder
+    private var mainCatalogContent: some View {
+        if viewModel.isLoading && viewModel.allFeatures.isEmpty {
+            skeletonLoadingStack
+        } else if let error = viewModel.error, viewModel.allFeatures.isEmpty {
+            errorStateView(error: error)
+        } else if viewModel.filteredFeatures.isEmpty {
+            emptyStateView
+        } else {
+            if isRegular {
+                // iPad Aerospace 2-Column Responsive Bento Grid
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
+                    ForEach(viewModel.filteredFeatures) { feature in
+                        AdminFeatureCardView(
+                            feature: feature,
+                            onCopyKey: {
+                                viewModel.copyFeatureKey(feature.featureKey)
+                            },
+                            onInspect: {
+                                viewModel.selectedFeatureForDetail = feature
+                            }
+                        )
+                    }
+                }
+            } else {
+                // iPhone High-Velocity Fluid Vertical Stack
+                LazyVStack(spacing: 11) {
+                    ForEach(viewModel.filteredFeatures) { feature in
+                        AdminFeatureCardView(
+                            feature: feature,
+                            onCopyKey: {
+                                viewModel.copyFeatureKey(feature.featureKey)
+                            },
+                            onInspect: {
+                                viewModel.selectedFeatureForDetail = feature
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Skeleton Loading Stack
+    private var skeletonLoadingStack: some View {
+        VStack(spacing: 12) {
+            ForEach(0..<6, id: \.self) { _ in
+                AdminFeatureSkeletonCard()
+            }
+        }
+    }
+
+    // MARK: - Error State View
+    private func errorStateView(error: Error) -> some View {
+        VStack(spacing: 14) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 38))
+                .foregroundStyle(Color.orange)
+
+            Text(Language.get("Providers_Features_LoadFailed", alter: "تعذر تحميل دليل الميزات"))
+                .font(PPBrandFont.bold(size: 17, relativeTo: .headline))
+                .foregroundStyle(AdminSurface.primaryText)
+
+            Text(error.localizedDescription)
+                .font(PPBrandFont.regular(size: 13, relativeTo: .body))
+                .foregroundStyle(AdminCommandInk.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+
+            Button {
+                viewModel.fetch()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.clockwise")
+                    Text(Language.get("Retry", alter: "إعادة المحاولة"))
+                }
+                .font(PPBrandFont.bold(size: 14, relativeTo: .subheadline))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 22)
+                .padding(.vertical, 10)
+                .background(AdminSurface.primary, in: Capsule())
+            }
+            .buttonStyle(ProviderPressStyle())
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 50)
+    }
+
+    // MARK: - Empty State View
+    private var emptyStateView: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(AdminSurface.control)
+                    .frame(width: 68, height: 68)
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundStyle(AdminCommandInk.secondary)
+            }
+
+            Text(Language.get("Providers_Features_Empty", alter: "لا توجد ميزات مطابقة"))
+                .font(PPBrandFont.bold(size: 17, relativeTo: .headline))
+                .foregroundStyle(AdminSurface.primaryText)
+
+            Text(Language.get("Providers_Features_Empty_Subtitle", alter: "جرّب تغيير كلمات البحث أو إلغاء تحديد فلتر القطاع."))
+                .font(PPBrandFont.regular(size: 13, relativeTo: .subheadline))
+                .foregroundStyle(AdminCommandInk.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 30)
+
+            Button {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                    viewModel.searchQuery = ""
+                    viewModel.selectedProviderType = nil
+                    viewModel.activeFilter = .all
+                }
+            } label: {
+                Text(Language.get("Reset_Filters", alter: "إعادة ضبط البحث والتصفية"))
+                    .font(PPBrandFont.bold(size: 13.5, relativeTo: .subheadline))
+                    .foregroundStyle(AdminSurface.primary)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 8)
+                    .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+            }
+            .buttonStyle(ProviderPressStyle())
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 60)
+    }
+
+    // MARK: - Floating Copy Toast
+    private func copyToastView(key: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(Color(uiColor: .ppSuccess))
+
+            Text(Language.get("Copied_To_Clipboard", alter: "تم نسخ المفتاح:"))
+                .font(PPBrandFont.medium(size: 12.5, relativeTo: .caption))
+                .foregroundStyle(.white)
+
+            Text(key)
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(
+            Capsule(style: .continuous)
+                .fill(Color.black.opacity(0.88))
+                .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 4)
+        )
+    }
+}
+
+// MARK: - Flagship Feature Card View (NextGen V10)
+
+private struct AdminFeatureCardView: View {
+    let feature: ProviderFeatureModel
+    let onCopyKey: () -> Void
+    let onInspect: () -> Void
+
+    var body: some View {
+        Button(action: onInspect) {
+            VStack(alignment: .leading, spacing: 10) {
+                // Top Row: Sector Emblem + Title + Status Beacon
+                HStack(alignment: .center, spacing: 11) {
+                    // Sector Icon Box
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 13, style: .continuous)
+                            .fill(feature.sectorColor.opacity(0.12))
+                        Image(systemName: feature.sectorIcon)
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(feature.sectorColor)
+                    }
+                    .frame(width: 42, height: 42)
+
+                    // Title & Key Column
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(feature.localizedTitle)
+                            .font(PPBrandFont.bold(size: 16, relativeTo: .headline))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .lineLimit(1)
+
+                        // Technical Monospaced Key Tag + Copy Button
+                        HStack(spacing: 4) {
+                            Text("[ \(feature.featureKey) ]")
+                                .font(.system(size: 11.5, weight: .medium, design: .monospaced))
+                                .foregroundStyle(AdminCommandInk.secondary)
+                                .lineLimit(1)
+
+                            Button {
+                                onCopyKey()
+                            } label: {
+                                Image(systemName: "doc.on.doc")
+                                    .font(.system(size: 10.5, weight: .semibold))
+                                    .foregroundStyle(AdminSurface.primary)
+                                    .padding(4)
+                            }
+                            .buttonStyle(ProviderPressStyle())
+                        }
+                    }
+
+                    Spacer(minLength: 4)
+
+                    // Operational Status Beacon
+                    HStack(spacing: 4.5) {
+                        Circle()
+                            .fill(feature.enabled ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppTextSecondary))
+                            .frame(width: 6.5, height: 6.5)
+
+                        Text(feature.enabled ? Language.get("Providers_Status_Active", alter: "نشط") : Language.get("Providers_Status_Inactive", alter: "معطل"))
+                            .font(PPBrandFont.bold(size: 11.5, relativeTo: .caption2))
+                            .foregroundStyle(feature.enabled ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppTextSecondary))
+                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3.5)
+                    .background(
+                        (feature.enabled ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppTextSecondary)).opacity(0.10),
+                        in: Capsule()
+                    )
+
+                    // Directional Chevron
+                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(AdminCommandInk.secondary.opacity(0.5))
+                }
+
+                // Description Preview (if available)
+                if !feature.localizedDescription.isEmpty {
+                    Text(feature.localizedDescription)
+                        .font(PPBrandFont.regular(size: 12, relativeTo: .caption))
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .lineLimit(2)
+                        .padding(.top, -2)
+                }
+
+                // Bottom Badges Row: Sector · Plan · Quota Limit
+                HStack(spacing: 6) {
+                    // Sector Tag
+                    Text(feature.localizedProviderType)
+                        .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
+                        .foregroundStyle(feature.sectorColor)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(feature.sectorColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+                    // Plan Tag
+                    Text(feature.localizedPlanName)
+                        .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+                    Spacer(minLength: 0)
+
+                    // Quota / Limit Badge
+                    if feature.isUnlimited {
+                        HStack(spacing: 3) {
+                            Image(systemName: "infinity")
+                                .font(.system(size: 10, weight: .bold))
+                            Text(Language.get("unlimited_limit", alter: "غير محدود"))
+                                .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
+                        }
+                        .foregroundStyle(Color.teal)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color.teal.opacity(0.10), in: Capsule())
+                    } else {
+                        HStack(spacing: 3) {
+                            Image(systemName: "gauge.with.needle.fill")
+                                .font(.system(size: 10, weight: .bold))
+                            Text("\(feature.limitValue) " + Language.get("limit_units", alter: "عنصر"))
+                                .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
+                        }
+                        .foregroundStyle(Color.orange)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color.orange.opacity(0.12), in: Capsule())
+                    }
+                }
+            }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(AdminSurface.surface)
+                    .shadow(color: Color.black.opacity(0.03), radius: 8, x: 0, y: 2)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: 0.75)
+            )
+        }
+        .buttonStyle(ProviderPressStyle())
+    }
+}
+
+// MARK: - Sovereign Feature Inspector Sheet (NextGen V10)
+
+private struct AdminFeatureInspectorSheet: View {
+    let feature: ProviderFeatureModel
+    let onCopyKey: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                AdminSurface.background.ignoresSafeArea()
+
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 18) {
+                        // 1. Hero Emblem & Title Card
+                        VStack(spacing: 12) {
+                            ZStack {
+                                Circle()
+                                    .fill(feature.sectorColor.opacity(0.14))
+                                    .frame(width: 76, height: 76)
+
+                                Image(systemName: feature.sectorIcon)
+                                    .font(.system(size: 34, weight: .bold))
+                                    .foregroundStyle(feature.sectorColor)
+                            }
+                            .padding(.top, 8)
+
+                            Text(feature.localizedTitle)
+                                .font(PPBrandFont.bold(size: 22, relativeTo: .title3))
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .multilineTextAlignment(.center)
+
+                            HStack(spacing: 6) {
+                                Text(feature.localizedProviderType)
+                                    .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
+                                    .foregroundStyle(feature.sectorColor)
+                                    .padding(.horizontal, 9)
+                                    .padding(.vertical, 4)
+                                    .background(feature.sectorColor.opacity(0.12), in: Capsule())
+
+                                Text(feature.localizedPlanName)
+                                    .font(PPBrandFont.medium(size: 12, relativeTo: .caption))
+                                    .foregroundStyle(AdminSurface.primaryText)
+                                    .padding(.horizontal, 9)
+                                    .padding(.vertical, 4)
+                                    .background(AdminSurface.control, in: Capsule())
+
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(feature.enabled ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppTextSecondary))
+                                        .frame(width: 6, height: 6)
+                                    Text(feature.enabled ? Language.get("Providers_Status_Active", alter: "نشط") : Language.get("Providers_Status_Inactive", alter: "معطل"))
+                                        .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
+                                        .foregroundStyle(feature.enabled ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppTextSecondary))
+                                }
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 4)
+                                .background(
+                                    (feature.enabled ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppTextSecondary)).opacity(0.12),
+                                    in: Capsule()
+                                )
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(18)
+                        .background(
+                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                .fill(AdminSurface.surface)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: 0.8)
+                        )
+
+                        // 2. Technical Code Identifier Card
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(Language.get("Providers_FeatureKey_Title", alter: "المفتاح البرمجي للصلاحية"))
+                                .font(PPBrandFont.bold(size: 13, relativeTo: .caption))
+                                .foregroundStyle(AdminCommandInk.secondary)
+
+                            HStack {
+                                Text(feature.featureKey)
+                                    .font(.system(size: 14.5, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(AdminSurface.primaryText)
+
+                                Spacer()
+
+                                Button {
+                                    onCopyKey()
+                                } label: {
+                                    HStack(spacing: 5) {
+                                        Image(systemName: "doc.on.doc.fill")
+                                            .font(.system(size: 11.5))
+                                        Text(Language.get("Providers_Copy_Key", alter: "نسخ"))
+                                            .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
+                                    }
+                                    .foregroundStyle(AdminSurface.primary)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                                }
+                                .buttonStyle(ProviderPressStyle())
+                            }
+                            .padding(12)
+                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .padding(16)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .fill(AdminSurface.surface)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: 0.8)
+                        )
+
+                        // 3. Technical Specifications Grid
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(Language.get("Providers_Specifications", alter: "المواصفات والحدود التشغيلية"))
+                                .font(PPBrandFont.bold(size: 14, relativeTo: .headline))
+                                .foregroundStyle(AdminSurface.primaryText)
+
+                            VStack(spacing: 8) {
+                                specRow(title: Language.get("Providers_Plan_Title", alter: "الخطة المربوطة"), value: feature.localizedPlanName, icon: "sparkles.rectangle.stack.fill")
+                                specRow(title: Language.get("Providers_Type_Title", alter: "قطاع المزود"), value: feature.localizedProviderType, icon: feature.sectorIcon)
+                                specRow(
+                                    title: Language.get("Providers_Limit_Title", alter: "سقف الاستخدام والقيود"),
+                                    value: feature.isUnlimited ? Language.get("unlimited_limit", alter: "غير محدود") : "\(feature.limitValue) " + Language.get("limit_units", alter: "عنصر"),
+                                    icon: "gauge.with.needle.fill"
+                                )
+                                specRow(title: Language.get("Providers_Plan_Status", alter: "حالة الخطة المعتمدة"), value: feature.planStatus, icon: "checkmark.shield.fill")
+                            }
+                        }
+                        .padding(16)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .fill(AdminSurface.surface)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: 0.8)
+                        )
+
+                        // 4. Description & Notes (if any)
+                        if !feature.localizedDescription.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(Language.get("Description", alter: "الوصف وبيان الصلاحية"))
+                                    .font(PPBrandFont.bold(size: 13.5, relativeTo: .headline))
+                                    .foregroundStyle(AdminSurface.primaryText)
+
+                                Text(feature.localizedDescription)
+                                    .font(PPBrandFont.regular(size: 13, relativeTo: .body))
+                                    .foregroundStyle(AdminCommandInk.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                    .fill(AdminSurface.surface)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: 0.8)
+                            )
+                        }
+
+                        // 5. Direct Copy Action Button
+                        Button {
+                            onCopyKey()
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "doc.on.doc.fill")
+                                Text(Language.get("Providers_Copy_Key", alter: "نسخ المفتاح البرمجي"))
+                            }
+                            .font(PPBrandFont.bold(size: 15, relativeTo: .subheadline))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        }
+                        .buttonStyle(ProviderPressStyle())
+                        .padding(.top, 4)
+                        .padding(.bottom, 20)
+                    }
+                    .padding(16)
+                }
+            }
+            .navigationTitle(Language.get("Providers_Features_Detail_Title", alter: "تفاصيل الصلاحية والميزة"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(AdminCommandInk.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    private func specRow(title: String, value: String, icon: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(AdminSurface.primary)
+                .frame(width: 22)
+
+            Text(title)
+                .font(PPBrandFont.medium(size: 13, relativeTo: .body))
+                .foregroundStyle(AdminCommandInk.secondary)
+
+            Spacer()
+
+            Text(value)
+                .font(PPBrandFont.bold(size: 13.5, relativeTo: .body))
+                .foregroundStyle(AdminSurface.primaryText)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+// MARK: - Skeleton Shimmer Card
+
+private struct AdminFeatureSkeletonCard: View {
+    @State private var phase: CGFloat = 0
+
+    var body: some View {
+        HStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .fill(AdminSurface.control)
+                .frame(width: 42, height: 42)
+
+            VStack(alignment: .leading, spacing: 6) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(AdminSurface.control)
+                    .frame(width: 140, height: 14)
+
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(AdminSurface.control)
+                    .frame(width: 90, height: 10)
+            }
+
+            Spacer()
+
+            RoundedRectangle(cornerRadius: 8)
+                .fill(AdminSurface.control)
+                .frame(width: 50, height: 20)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(AdminSurface.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.3), lineWidth: 0.75)
+        )
+        .opacity(0.65)
+    }
 }
 
 // MARK: - Applications View Model
@@ -4956,6 +6215,42 @@ private struct ProviderPressStyle: ButtonStyle {
         host.didMove(toParent: self)
     }
     
+    public override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(true, animated: animated)
+    }
+}
+
+@objc public final class PPProviderFeaturesHostingController: UIViewController {
+    public override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .ppBackground
+        extendedLayoutIncludesOpaqueBars = true
+        edgesForExtendedLayout = .all
+
+        let host = UIHostingController(rootView: AdminProvidersView(initialTab: .features) { [weak self] in
+            guard let self = self else {
+                PPAdminNavigationFallback.popOrDismiss()
+                return
+            }
+            PPAdminNavigationFallback.popOrDismiss(from: self)
+        }.ignoresSafeArea())
+        host.view.backgroundColor = .clear
+        host.extendedLayoutIncludesOpaqueBars = true
+        host.edgesForExtendedLayout = .all
+
+        addChild(host)
+        view.addSubview(host.view)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
+        host.didMove(toParent: self)
+    }
+
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         navigationController?.setNavigationBarHidden(true, animated: animated)

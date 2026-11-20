@@ -3659,6 +3659,23 @@ void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
                     }
                 }
             }
+            BOOL isPaymentScreen = [tag isEqualToString:@"payments"] ||
+                                   [controller isKindOfClass:NSClassFromString(@"AdminPaymentListHostingController")] ||
+                                   [controller isKindOfClass:NSClassFromString(@"AdminPaymentDetailHostingController")];
+            if (isPaymentScreen) {
+                if (!nav) {
+                    UIViewController *top = [PPAdminNavigationFallback keyWindowTopViewController];
+                    if ([top isKindOfClass:[UINavigationController class]]) {
+                        nav = (UINavigationController *)top;
+                    } else if (top.navigationController) {
+                        nav = top.navigationController;
+                    }
+                }
+                if (nav) {
+                    [nav pushViewController:controller animated:YES];
+                    return;
+                }
+            }
             if (nav) {
                 if (isIPadCommandSpine && nav.topViewController != self) {
                     return;

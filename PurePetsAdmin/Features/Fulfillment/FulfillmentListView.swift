@@ -1198,6 +1198,8 @@ struct AdminFulfillmentListView: View {
         .ignoresSafeArea()
         .background(overridePushLink)
         .background(dossierPushLink)
+        .background(parentOrdersPushLink)
+        .background(parentPaymentOrderPushLink)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .sheet(item: $selectedRecordForDossier) { record in
             FulfillmentDossierSheet(
@@ -1246,19 +1248,6 @@ struct AdminFulfillmentListView: View {
                 sortOption: $viewModel.sortOption
             )
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        }
-        .sheet(item: Binding<IdentifiableString?>(
-            get: { parentPaymentOrderIDToOpen.map { IdentifiableString(id: $0) } },
-            set: { parentPaymentOrderIDToOpen = $0?.id }
-        ), onDismiss: { viewModel.reload() }) { orderID in
-            AdminPaymentDetailView(orderID: orderID.id, session: session) {
-                parentPaymentOrderIDToOpen = nil
-            }
-            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        }
-        .sheet(isPresented: $showingParentOrders, onDismiss: { viewModel.reload() }) {
-            AdminPaymentListView(session: session)
-                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .onAppear { viewModel.startListening() }
         .onDisappear { viewModel.stopListening() }
@@ -1341,6 +1330,59 @@ struct AdminFulfillmentListView: View {
                 actionModel: viewModel
             )
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
+    }
+
+    private var parentOrdersPushLink: some View {
+        NavigationLink(
+            destination: parentOrdersDestination,
+            isActive: $showingParentOrders
+        ) {
+            EmptyView()
+        }
+        .hidden()
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var parentOrdersDestination: some View {
+        AdminPaymentListView(session: session) {
+            showingParentOrders = false
+            viewModel.reload()
+        }
+        .navigationBarHidden(true)
+        .navigationBarBackButtonHidden(true)
+        .navigationTitle("")
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+
+    private var parentPaymentOrderPushLink: some View {
+        NavigationLink(
+            destination: parentPaymentOrderDestination,
+            isActive: Binding(
+                get: { parentPaymentOrderIDToOpen != nil },
+                set: { if !$0 { parentPaymentOrderIDToOpen = nil } }
+            )
+        ) {
+            EmptyView()
+        }
+        .hidden()
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var parentPaymentOrderDestination: some View {
+        if let orderID = parentPaymentOrderIDToOpen {
+            AdminPaymentDetailView(orderID: orderID, session: session) {
+                parentPaymentOrderIDToOpen = nil
+                viewModel.reload()
+            }
+            .navigationBarHidden(true)
+            .navigationBarBackButtonHidden(true)
+            .navigationTitle("")
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        } else {
+            EmptyView()
         }
     }
 
@@ -2092,6 +2134,7 @@ struct FulfillmentDossierView: View {
     @State private var eventsListener: (any ListenerRegistration)?
     @State private var eventsListenerGeneration = UUID()
     @State private var recordForOverridePush: FulfillmentRecordSnapshot?
+    @State private var pushedParentOrderID: String?
     @State private var liveRecord: FulfillmentRecordSnapshot?
     @State private var recordListener: (any ListenerRegistration)?
     @State private var recordListenerGeneration = UUID()
@@ -2170,6 +2213,7 @@ struct FulfillmentDossierView: View {
             }
         }
         .background(overridePushLink)
+        .background(parentPaymentOrderPushLink)
         .onAppear {
             startRecordListener()
             startListeningEvents()
@@ -2300,6 +2344,35 @@ struct FulfillmentDossierView: View {
                 }
             )
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
+    }
+
+    private var parentPaymentOrderPushLink: some View {
+        NavigationLink(
+            destination: parentPaymentOrderDestination,
+            isActive: Binding(
+                get: { pushedParentOrderID != nil },
+                set: { if !$0 { pushedParentOrderID = nil } }
+            )
+        ) {
+            EmptyView()
+        }
+        .hidden()
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var parentPaymentOrderDestination: some View {
+        if let orderID = pushedParentOrderID {
+            AdminPaymentDetailView(orderID: orderID, session: AdminSession(source: PPAdminSessionSnapshot())) {
+                pushedParentOrderID = nil
+            }
+            .navigationBarHidden(true)
+            .navigationBarBackButtonHidden(true)
+            .navigationTitle("")
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        } else {
+            EmptyView()
         }
     }
 
@@ -2781,6 +2854,7 @@ struct FulfillmentDossierView: View {
                     if !currentRecord.parentOrderID.isEmpty {
                         Button {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            pushedParentOrderID = currentRecord.parentOrderID
                             onOpenParentOrder(currentRecord.parentOrderID)
                         } label: {
                             Image(systemName: "creditcard.fill")
@@ -2827,6 +2901,7 @@ struct FulfillmentDossierView: View {
                         if !currentRecord.parentOrderID.isEmpty {
                             Button {
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                pushedParentOrderID = currentRecord.parentOrderID
                                 onOpenParentOrder(currentRecord.parentOrderID)
                             } label: {
                                 HStack(spacing: 6) {
