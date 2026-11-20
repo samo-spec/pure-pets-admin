@@ -145,6 +145,8 @@ typedef NS_ENUM(NSInteger, PPPaymentAdminRequestResolution) {
 @property (nonatomic, assign) NSInteger fulfillmentVersion;
 @property (nonatomic, copy) NSArray<NSString *> *fulfillmentOrderIDs;
 @property (nonatomic, assign) double totalAmount;
+/// Immutable amount recorded at checkout; nil on legacy orders without fee evidence.
+@property (nonatomic, strong, nullable) NSNumber *recordedDeliveryFee;
 @property (nonatomic, strong) NSDate *createdAt;
 @property (nonatomic, strong) NSDate *updatedAt;
 @property (nonatomic, strong, nullable) NSDate *statusUpdatedAt;

@@ -1,4 +1,6 @@
+#import <CoreFoundation/CoreFoundation.h>
 #import "PPPaymentManagementModels.h"
+#import <math.h>
 #import "Language.h"
 
 static NSString *PPPaymentAdminTrimmedString(id value)
@@ -621,6 +623,22 @@ NSString *PPPaymentAdminDisplayTitleForAuditAction(NSString *actionKey)
         totalAmount = [dictionary[@"amount"] doubleValue];
     }
     record.totalAmount = MAX(0.0, totalAmount);
+    NSDictionary *pricingSnapshot = PPPaymentAdminSafeDictionary(dictionary[@"pricingSnapshot"]);
+    // Never consult today's Basic Payment Settings for an existing order.
+    // Explicit free delivery (0) is valid; unknown is not free.
+    NSArray *deliveryCandidates = @[
+        pricingSnapshot[@"deliveryFee"] ?: NSNull.null,
+        dictionary[@"shippingFee"] ?: NSNull.null,
+        dictionary[@"deliveryFee"] ?: NSNull.null
+    ];
+    for (id candidate in deliveryCandidates) {
+        if (![candidate isKindOfClass:NSNumber.class] ||
+            CFGetTypeID((__bridge CFTypeRef)candidate) == CFBooleanGetTypeID()) continue;
+        double value = [candidate doubleValue];
+        if (!isfinite(value) || value < 0.0) continue;
+        record.recordedDeliveryFee = candidate;
+        break;
+    }
     NSDate *now = [NSDate date];
     record.createdAt = PPPaymentAdminDateFromValue(dictionary[@"createdAt"]) ?: now;
     record.updatedAt = PPPaymentAdminDateFromValue(dictionary[@"updatedAt"]) ?: record.createdAt;

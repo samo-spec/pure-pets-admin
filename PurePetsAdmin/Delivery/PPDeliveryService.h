@@ -35,6 +35,7 @@ FOUNDATION_EXPORT NSString * const PPDeliveryServiceErrorDomain;
 @property (nonatomic, copy) NSString *assignedDriverUID;
 @property (nonatomic, copy) NSString *assignedDriverName;
 @property (nonatomic, strong, nullable) NSNumber *deliveryFee;
+@property (nonatomic, copy) NSString *currency;
 @property (nonatomic, copy) NSDictionary *pickupAddress;
 @property (nonatomic, copy) NSDictionary *dropoffAddress;
 @property (nonatomic, copy) NSDictionary *proofOfDelivery;

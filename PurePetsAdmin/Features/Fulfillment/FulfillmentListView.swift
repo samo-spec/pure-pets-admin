@@ -217,7 +217,7 @@ struct FulfillmentRecordSnapshot: Identifiable, Sendable {
     let driverPhone: String?
     let items: [FulfillmentItemSnapshot]
     let subtotal: Double
-    let deliveryFee: Double
+    let deliveryFee: Double?
     let platformCommission: Double
     let providerNet: Double
     let currency: String
@@ -264,7 +264,7 @@ struct FulfillmentRecordSnapshot: Identifiable, Sendable {
 
         let moneyDict = record.money ?? [:]
         self.subtotal = (moneyDict["subtotal"] as? NSNumber)?.doubleValue ?? 0.0
-        self.deliveryFee = (moneyDict["deliveryFee"] as? NSNumber)?.doubleValue ?? 0.0
+        self.deliveryFee = record.parentDeliveryFee?.doubleValue
         self.platformCommission = (moneyDict["platformCommission"] as? NSNumber)?.doubleValue ?? 0.0
         // A real zero is valid (for example a fully discounted child). Only a
         // missing legacy field falls back; never reinterpret zero as absent.
@@ -2390,7 +2390,7 @@ struct FulfillmentDossierView: View {
             }
 
             HStack {
-                DossierLedgerRow(title: Language.get("Fulfillment_Ledger_DeliveryFee", alter: "رسوم التوصيل"), value: String(format: "%.2f", currentRecord.deliveryFee))
+                DossierLedgerRow(title: Language.get("Fulfillment_Ledger_RecordedOrderDeliveryFee", alter: "رسوم توصيل الطلب بالكامل"), value: currentRecord.deliveryFee.map { String(format: "%.2f", $0) } ?? Language.get("Fulfillment_Ledger_UnknownFee", alter: "غير محددة"))
                 Spacer()
                 DossierLedgerRow(title: Language.get("Fulfillment_Ledger_ProviderNet", alter: "صافي المتجر"), value: String(format: "%.2f", currentRecord.providerNet), isBold: true)
             }

@@ -110,6 +110,7 @@ private let kHomeCatalog: [HomeSectionCatalogItem] = [
     HomeSectionCatalogItem(sectionID: 6, type: "PPHomeSectionSuggestions", labelKey: "HomeControl_Section_Suggestions_Label", descKey: "HomeControl_Section_Suggestions_Description", defaultVisible: true, critical: false, conditional: false, symbol: "lightbulb.fill", accentColor: .yellow, category: .commerce),
     HomeSectionCatalogItem(sectionID: 4, type: "PPHomeSectionCarousel", labelKey: "HomeControl_Section_Carousel_Label", descKey: "HomeControl_Section_Carousel_Description", defaultVisible: true, critical: true, conditional: false, symbol: "play.rectangle.fill", accentColor: .mint, category: .commerce),
     HomeSectionCatalogItem(sectionID: 10, type: "PPHomeSectionLastFood", labelKey: "HomeControl_Section_LastFood_Label", descKey: "HomeControl_Section_LastFood_Description", defaultVisible: true, critical: false, conditional: false, symbol: "takeoutbag.and.cup.and.straw.fill", accentColor: .orange, category: .commerce),
+    HomeSectionCatalogItem(sectionID: 21, type: "PPHomeSectionMedicines", labelKey: "HomeControl_Section_Medicines_Label", descKey: "HomeControl_Section_Medicines_Description", defaultVisible: true, critical: false, conditional: false, symbol: "cross.case.circle.fill", accentColor: .red, category: .care),
     HomeSectionCatalogItem(sectionID: 12, type: "PPHomeSectionAdsNearBy", labelKey: "HomeControl_Section_AdsNearBy_Label", descKey: "HomeControl_Section_AdsNearBy_Description", defaultVisible: true, critical: false, conditional: false, symbol: "mappin.and.ellipse", accentColor: .blue, category: .discovery),
     HomeSectionCatalogItem(sectionID: 11, type: "PPHomeSectionNearbyServices", labelKey: "HomeControl_Section_NearbyServices_Label", descKey: "HomeControl_Section_NearbyServices_Description", defaultVisible: true, critical: false, conditional: false, symbol: "cross.fill", accentColor: .red, category: .care),
     HomeSectionCatalogItem(sectionID: 13, type: "PPHomeSectionAdopt", labelKey: "HomeControl_Section_Adopt_Label", descKey: "HomeControl_Section_Adopt_Description", defaultVisible: true, critical: false, conditional: false, symbol: "heart.fill", accentColor: .pink, category: .care),
@@ -685,7 +686,8 @@ public struct AdminHomeControlView: View {
                         .font(AdminType.title3Bold)
                         .foregroundColor(AdminSurface.primaryText)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.9)
+                        .minimumScaleFactor(0.75)
+                        .allowsTightening(true)
 
                     HStack(spacing: 6) {
                         Circle()
@@ -696,8 +698,10 @@ public struct AdminHomeControlView: View {
                         Text(Language.get("CommandCenter_Operations_Workspace", alter: "مساحة عمل العمليات"))
                             .font(AdminType.caption2)
                             .foregroundColor(AdminSurface.secondaryText)
+                            .lineLimit(1)
                     }
                 }
+                .layoutPriority(1)
 
                 Spacer(minLength: 8)
 
@@ -751,13 +755,13 @@ public struct AdminHomeControlView: View {
 
             Text(viewModel.isDirty
                  ? String(format: Language.get("HomeControl_Unsaved_Count", alter: "%d غير محفوظة"), viewModel.unsavedChangesCount)
-                 : Language.get("HomeControl_LiveStatus_Synced", alter: "مباشر ومزامن"))
+                 : Language.get("HomeControl_LiveStatus_Synced", alter: "مباشر"))
                 .font(AdminType.caption2Bold)
                 .foregroundColor(viewModel.isDirty ? AdminSurface.amber : Color.green)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
         .background(
             (viewModel.isDirty ? AdminSurface.amber : Color.green).opacity(0.08),
             in: Capsule()
@@ -780,31 +784,35 @@ public struct AdminHomeControlView: View {
                     }
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 5) {
                         Image(systemName: tab.symbol)
-                            .font(.system(size: 13, weight: isSelected ? .bold : .medium))
+                            .font(.system(size: 12, weight: isSelected ? .bold : .medium))
 
                         Text(tab.title)
-                            .font(isSelected ? AdminType.subheadlineBold : AdminType.subheadline)
-                            .lineLimit(1)
+                            .font(isSelected ? .system(size: 11.5, weight: .bold) : .system(size: 11.5, weight: .medium))
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
+                            .minimumScaleFactor(0.72)
+                            .fixedSize(horizontal: false, vertical: true)
 
                         if tab == .layout {
                             Text("\(viewModel.totalSectionsCount)")
-                                .font(AdminType.caption2Bold)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1.5)
                                 .background(isSelected ? Color.white.opacity(0.25) : AdminSurface.primary.opacity(0.12), in: Capsule())
                         } else if tab == .simulator {
                             Text("\(viewModel.enabledSectionsCount)")
-                                .font(AdminType.caption2Bold)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1.5)
                                 .background(isSelected ? Color.white.opacity(0.25) : Color.green.opacity(0.12), in: Capsule())
                         }
                     }
                     .foregroundColor(isSelected ? .white : AdminSurface.secondaryText)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 42)
+                    .frame(height: 46)
+                    .padding(.horizontal, 4)
                     .background(
                         isSelected ? AdminSurface.primary : AdminSurface.control,
                         in: RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -941,9 +949,11 @@ public struct AdminHomeControlView: View {
                     .foregroundColor(AdminSurface.secondaryText)
                     .font(.system(size: 14, weight: .medium))
 
-                TextField(Language.get("HomeControl_SearchPlaceholder", alter: "ابحث بالاسم أو الوصف..."), text: $viewModel.searchText)
+                TextField(Language.get("HomeControl_SearchPlaceholder", alter: "ابحث في الأقسام"), text: $viewModel.searchText)
                     .font(AdminType.body)
                     .foregroundColor(AdminSurface.primaryText)
+                    .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                    .environment(\.layoutDirection, .leftToRight)
 
                 if !viewModel.searchText.isEmpty {
                     Button {

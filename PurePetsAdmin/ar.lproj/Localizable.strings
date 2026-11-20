@@ -2783,6 +2783,8 @@
 "HomeControl_Section_Carousel_Description" = "بانرات ترويجية تتمرر تلقائياً.";
 "HomeControl_Section_LastFood_Label" = "الغذاء والتغذية";
 "HomeControl_Section_LastFood_Description" = "آخر أصناف الطعام المضافة.";
+"HomeControl_Section_Medicines_Label" = "الأدوية والعلاجات";
+"HomeControl_Section_Medicines_Description" = "شريط أدوية ومستلزمات صحة الحيوانات الأليفة.";
 "HomeControl_Section_AdsNearBy_Label" = "بالقرب من منطقتك";
 "HomeControl_Section_AdsNearBy_Description" = "إعلانات حيوانات قريبة من موقع المستخدم.";
 "HomeControl_Section_NearbyServices_Label" = "الرعاية والخدمات";
@@ -13903,3 +13905,8 @@
 "PickupStore_ErrorHeader" = "تعذر تحميل متاجر الاستلام";
 "PickupStore_InventorySafetyTitle" = "يبقى حجز المخزون محفوظاً";
 "Retry_CountBadge" = "%d محاولات";
+
+"PaymentMgmt_Field_RecordedDeliveryFee" = "رسوم التوصيل وقت الطلب";
+"Fulfillment_Ledger_RecordedOrderDeliveryFee" = "رسوم توصيل الطلب بالكامل";
+"Fulfillment_Ledger_UnknownFee" = "غير محددة";
+"PaymentMgmt_Field_RecordedDeliveryFeeUnavailable" = "رسوم التوصيل غير مسجلة لهذا الطلب";

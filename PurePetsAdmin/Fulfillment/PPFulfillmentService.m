@@ -1,4 +1,6 @@
+#import <CoreFoundation/CoreFoundation.h>
 #import "PPFulfillmentService.h"
+#import <math.h>
 #import "PPStaffAuth.h"
 #import "PPFirebaseCompat.h"
 @import FirebaseAuth;
@@ -348,6 +350,18 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
         _deliveryUserPhone = PPSafeString(dict[@"deliveryUserPhone"]);
         _items = PPSafeArray(dict[@"items"]);
         _money = PPSafeDict(dict[@"money"]);
+        // FulfillmentOrders.money contains only the provider's share.
+        // The one-time parent order delivery charge is stored separately.
+        id parentFee = dict[@"parentDeliveryFee"];
+        if (![parentFee isKindOfClass:NSNumber.class] &&
+            ![PPSafeString(dict[@"deliveryFeeAllocation"]) isEqualToString:@"parent_managed"]) {
+            parentFee = _money[@"deliveryFee"]; // Legacy child-only records.
+        }
+        if ([parentFee isKindOfClass:NSNumber.class] &&
+            CFGetTypeID((__bridge CFTypeRef)parentFee) != CFBooleanGetTypeID()) {
+            double amount = [(NSNumber *)parentFee doubleValue];
+            if (isfinite(amount) && amount >= 0.0) _parentDeliveryFee = parentFee;
+        }
         
         _adminOverrideBy = PPSafeString(dict[@"adminOverrideBy"]);
         _adminOverrideReason = PPSafeString(dict[@"adminOverrideReason"]);

@@ -2332,6 +2332,8 @@
 "HomeControl_Section_Carousel_Description" = "Auto-scrolling promotional banners.";
 "HomeControl_Section_LastFood_Label" = "Food and nutrition";
 "HomeControl_Section_LastFood_Description" = "Recently added food items.";
+"HomeControl_Section_Medicines_Label" = "Medicines and treatments";
+"HomeControl_Section_Medicines_Description" = "Pet medicines and health treatments rail.";
 "HomeControl_Section_AdsNearBy_Label" = "Near your area";
 "HomeControl_Section_AdsNearBy_Description" = "Pet ads near the user's location.";
 "HomeControl_Section_NearbyServices_Label" = "Care and services";
@@ -13874,3 +13876,8 @@
 "PickupStore_ErrorHeader" = "Couldn’t load pickup stores";
 "PickupStore_InventorySafetyTitle" = "Inventory reservation is preserved";
 "Retry_CountBadge" = "%d attempts";
+
+"PaymentMgmt_Field_RecordedDeliveryFee" = "Delivery fee at checkout";
+"Fulfillment_Ledger_RecordedOrderDeliveryFee" = "Delivery fee (whole order)";
+"Fulfillment_Ledger_UnknownFee" = "Unavailable";
+"PaymentMgmt_Field_RecordedDeliveryFeeUnavailable" = "Not recorded on this order";

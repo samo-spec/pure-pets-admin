@@ -335,7 +335,8 @@ static NSString *PPDeliveryErrorText(NSError *error) {
 
     self.orderLabel.text = PPDeliveryOrderReference(record);
     NSString *customer = record.customerName.length ? record.customerName : kLang(@"Delivery_UnknownCustomer");
-    NSString *fee = record.deliveryFee ? [NSString stringWithFormat:@"%.2f %@", record.deliveryFee.doubleValue, kLang(@"Accounting_QAR")] : @"-";
+    NSString *currencyLabel = [record.currency isEqualToString:@"QAR"] ? kLang(@"Accounting_QAR") : (record.currency.length ? record.currency : kLang(@"Accounting_QAR"));
+    NSString *fee = record.deliveryFee ? (record.deliveryFee.doubleValue == 0.0 ? kLang(@"PaymentMgmt_Settings_FreeDelivery_Badge") : [NSString stringWithFormat:@"%.2f %@", record.deliveryFee.doubleValue, currencyLabel]) : @"-";
     NSString *driver = record.assignedDriverName.length ? record.assignedDriverName : kLang(@"Delivery_DriverUnassigned");
     self.detailLabel.text = [NSString stringWithFormat:@"%@ · %@\n%@ · %@", customer, fee, driver, PPDeliveryDateString(record.createdAt)];
 

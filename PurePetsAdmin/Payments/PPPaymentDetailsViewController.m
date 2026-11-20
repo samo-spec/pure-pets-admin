@@ -562,6 +562,11 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
         [rows addObject:@{@"title": kLang(@"PaymentMgmt_Field_Email"), @"detail": customerEmail}];
     }
     [rows addObject:@{@"title": kLang(@"PaymentMgmt_Field_Total"), @"detail": PPPaymentAdminDetailsCurrencyTitle(self.record)}];
+    NSString *recordedFeeText = self.record.recordedDeliveryFee
+        ? [NSString stringWithFormat:@"%@ %.2f", self.record.currency.uppercaseString ?: @"QAR",
+                                     self.record.recordedDeliveryFee.doubleValue]
+        : kLang(@"PaymentMgmt_Field_RecordedDeliveryFeeUnavailable");
+    [rows addObject:@{@"title": kLang(@"PaymentMgmt_Field_RecordedDeliveryFee"), @"detail": recordedFeeText}];
     [rows addObject:@{@"title": kLang(@"PaymentMgmt_Field_PaymentMethod"), @"detail": paymentMethod.length > 0 ? PPPaymentAdminDisplayTitleForPaymentMethod(paymentMethod) : kLang(@"PaymentMgmt_Value_Unknown")}];
     if (paymentStatus.length > 0) {
         [rows addObject:@{@"title": kLang(@"PaymentMgmt_Field_PaymentStatus"), @"detail": PPPaymentAdminDisplayTitleForOrderStatus(paymentStatus)}];

@@ -26,6 +26,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy) NSString *deliveryUserPhone;
 @property (nonatomic, copy) NSArray *items;
 @property (nonatomic, copy) NSDictionary *money;
+/// Historical delivery charge recorded on the parent order (never a per-child payout).
+@property (nonatomic, strong, nullable) NSNumber *parentDeliveryFee;
 @property (nonatomic, copy, nullable) NSDate *createdAt;
 @property (nonatomic, copy, nullable) NSDate *updatedAt;
 @property (nonatomic, copy, nullable) NSDate *adminOverrideAt;

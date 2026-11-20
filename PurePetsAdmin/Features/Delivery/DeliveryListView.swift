@@ -155,6 +155,16 @@ private func deliveryCurrencyText(_ amount: NSNumber?, currency: String = "QAR")
     return "\(value) \(currencyText)"
 }
 
+private func deliveryCurrencyCode(for record: PPDeliveryRequestRecord) -> String {
+    if !record.currency.isEmpty {
+        return record.currency
+    }
+    if let codCurrency = record.cod["currency"] as? String, !codCurrency.isEmpty {
+        return codCurrency
+    }
+    return "QAR"
+}
+
 // An assignment-enabled account is not automatically an available driver.
 private func driverCanReceiveOffers(_ driver: PPDeliveryDriverRecord,
                                     member: PPDeliveryCompanyMemberRecord?) -> Bool {
@@ -1721,7 +1731,7 @@ private struct DeliveryDispatchCard: View {
                         .foregroundStyle(AdminSurface.secondaryText)
                     Text(record.deliveryFee == nil
                          ? deliveryText("DeliveryWorkspace_Unspecified")
-                         : "\u{2068}\(deliveryCurrencyText(record.deliveryFee, currency: record.cod["currency"] as? String ?? "QAR"))\u{2069}")
+                         : "\u{2068}\(deliveryCurrencyText(record.deliveryFee, currency: deliveryCurrencyCode(for: record)))\u{2069}")
                         .font(AdminType.subheadlineBold)
                         .foregroundStyle(AdminSurface.primaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -2242,7 +2252,7 @@ private struct DeliveryDossierSheet: View {
             sectionRule
             dossierFact("DeliveryWorkspace_Fee", record.deliveryFee == nil
                         ? deliveryText("DeliveryWorkspace_Unspecified")
-                        : deliveryCurrencyText(record.deliveryFee, currency: record.cod["currency"] as? String ?? "QAR"))
+                        : deliveryCurrencyText(record.deliveryFee, currency: deliveryCurrencyCode(for: record)))
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -550,6 +550,14 @@ struct AdminPaymentDetailView: View {
                 .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1.0))
 
+                // An old order without a saved fee is unknown, not free.
+                DetailAttributeRow(
+                    label: Language.get("PaymentMgmt_Field_RecordedDeliveryFee", alter: "رسوم التوصيل وقت الطلب"),
+                    value: record.recordedDeliveryFee.map { formatCurrency($0.doubleValue, currency: record.currency as String?) }
+                        ?? Language.get("PaymentMgmt_Field_RecordedDeliveryFeeUnavailable", alter: "رسوم التوصيل غير مسجلة لهذا الطلب"),
+                    icon: "shippingbox.fill"
+                )
+
                 // Verification & Transaction Details (if available)
                 if !payStatus.isEmpty || !verification.isEmpty || !txId.isEmpty {
                     VStack(spacing: 8) {

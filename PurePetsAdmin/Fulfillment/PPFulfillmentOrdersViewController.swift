@@ -367,6 +367,8 @@ private struct PPFulfillmentSnapshot: Identifiable, Equatable, Sendable {
     let status: String
     let items: [PPFulfillmentItemSnapshot]
     let subtotal: Double
+    /// Checkout-time fee belongs to the complete parent order, not the provider payout.
+    let recordedOrderDeliveryFee: Double?
     let platformCommission: Double
     let providerNet: Double
     let currency: String
@@ -392,6 +394,7 @@ private struct PPFulfillmentSnapshot: Identifiable, Equatable, Sendable {
         }
         let money = record.money as? [String: Any] ?? [:]
         subtotal = Self.double(money["subtotal"])
+        recordedOrderDeliveryFee = record.parentDeliveryFee?.doubleValue
         platformCommission = Self.double(money["platformCommission"])
         providerNet = Self.double(money["providerNet"])
         currency = Self.string(money["currency"], fallback: "QAR")
@@ -411,6 +414,7 @@ private struct PPFulfillmentSnapshot: Identifiable, Equatable, Sendable {
             && lhs.ownerID == rhs.ownerID
             && lhs.items.count == rhs.items.count
             && lhs.providerNet == rhs.providerNet
+            && lhs.recordedOrderDeliveryFee == rhs.recordedOrderDeliveryFee
             && lhs.adminOverrideAt == rhs.adminOverrideAt
             && lhs.adminOverrideCommandID == rhs.adminOverrideCommandID
     }
@@ -2920,6 +2924,18 @@ private struct PPFulfillmentDetailScreen: View {
             VStack(spacing: 12) {
                 settlementRow(titleKey: "Fulfillment_Subtotal", amount: viewModel.record.subtotal, emphasized: false)
                 settlementRow(titleKey: "Fulfillment_PlatformCommission", amount: viewModel.record.platformCommission, emphasized: false)
+                HStack {
+                    Text(PPFulfillmentL10n.text("Fulfillment_Ledger_RecordedOrderDeliveryFee"))
+                        .font(AdminType.callout)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                    Spacer()
+                    Text(viewModel.record.recordedOrderDeliveryFee.map {
+                        PPFulfillmentL10n.money($0, currency: viewModel.record.currency)
+                    } ?? PPFulfillmentL10n.text("Fulfillment_Ledger_UnknownFee"))
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                .accessibilityElement(children: .combine)
                 Divider()
                 settlementRow(titleKey: "Fulfillment_ProviderNet", amount: viewModel.record.providerNet, emphasized: true)
             }

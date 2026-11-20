@@ -68,16 +68,16 @@ private enum ProviderTheme {
 // MARK: - Provider Tab Identifier
 
 public enum ProviderTab: String, CaseIterable, Sendable {
-    case applications
     case subscriptions
+    case applications
     case plans
     case features
     case accounting
 
     var localizedTitle: String {
         switch self {
+        case .subscriptions: return Language.get("PartnerSub_Tab", alter: "الاشتراكات")
         case .applications: return Language.get("Providers_Applications_Tab", alter: "الطلبات")
-        case .subscriptions: return Language.get("PartnerSub_Tab", alter: nil)
         case .plans: return Language.get("Providers_Plans_Tab", alter: "الباقات")
         case .features: return Language.get("Providers_Features_Tab", alter: "الميزات")
         case .accounting: return Language.get("Providers_Accounting_Tab", alter: "المحاسبة")
@@ -86,8 +86,8 @@ public enum ProviderTab: String, CaseIterable, Sendable {
 
     var icon: String {
         switch self {
-        case .applications: return "tray.full.fill"
         case .subscriptions: return "calendar.badge.clock"
+        case .applications: return "tray.full.fill"
         case .plans: return "sparkles.rectangle.stack.fill"
         case .features: return "slider.horizontal.3"
         case .accounting: return "banknote.fill"
@@ -95,7 +95,7 @@ public enum ProviderTab: String, CaseIterable, Sendable {
     }
 }
 
-// MARK: - Main Providers Hub (Tabbed: Applications · Plans · Features · Accounting)
+// MARK: - Main Providers Hub (Tabbed: Subscriptions · Applications · Plans · Features · Accounting)
 
 public struct AdminProvidersView: View {
     public var onDismiss: (() -> Void)? = nil
@@ -104,7 +104,7 @@ public struct AdminProvidersView: View {
     @State private var selectedTab: ProviderTab
     @StateObject private var sharedViewModel = ProviderApplicationsViewModel()
 
-    public init(initialTab: ProviderTab = .applications, onDismiss: (() -> Void)? = nil) {
+    public init(initialTab: ProviderTab = .subscriptions, onDismiss: (() -> Void)? = nil) {
         _selectedTab = State(initialValue: initialTab)
         self.onDismiss = onDismiss
     }

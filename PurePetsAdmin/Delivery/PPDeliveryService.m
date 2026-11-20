@@ -1,3 +1,4 @@
+#import <CoreFoundation/CoreFoundation.h>
 #import "PPDeliveryService.h"
 #import "PPFirebaseCompat.h"
 #import <math.h>
@@ -124,7 +125,30 @@ static NSError *PPDeliveryInvalidResponseError(void) {
         _customerName = PPDeliveryString(source[@"customerName"]);
         _assignedDriverUID = PPDeliveryString(source[@"assignedDriverUid"]);
         _assignedDriverName = PPDeliveryString(source[@"assignedDriverName"]);
-        _deliveryFee = [source[@"deliveryFee"] isKindOfClass:NSNumber.class] ? source[@"deliveryFee"] : nil;
+        // NSNull in an earlier projection field must not suppress a valid
+        // historical order fee from another authorized server field.
+        for (id candidate in @[source[@"deliveryFee"] ?: NSNull.null,
+                               source[@"customerDeliveryFee"] ?: NSNull.null,
+                               source[@"parentDeliveryFee"] ?: NSNull.null,
+                               source[@"shippingFee"] ?: NSNull.null]) {
+            double value = -1.0;
+            if ([candidate isKindOfClass:NSNumber.class]) {
+                if (CFGetTypeID((__bridge CFTypeRef)candidate) == CFBooleanGetTypeID()) continue;
+                value = [candidate doubleValue];
+            } else if ([candidate isKindOfClass:NSString.class] && [(NSString *)candidate length] > 0) {
+                NSScanner *scanner = [NSScanner scannerWithString:(NSString *)candidate];
+                if (![scanner scanDouble:&value] || !scanner.isAtEnd) continue;
+            } else {
+                continue;
+            }
+            if (!isfinite(value) || value < 0.0) continue;
+            _deliveryFee = @(value); // Explicit 0 means free; nil means unknown.
+            break;
+        }
+        // Order-fee currency is distinct from cash-collection currency.
+        // The COD map may be NSNull or intentionally not applicable.
+        NSString *feeCurrency = [PPDeliveryString(source[@"currency"]) uppercaseString];
+        _currency = feeCurrency.length == 3 ? feeCurrency : @"QAR";
         _pickupAddress = [PPDeliveryDictionary(source[@"pickupAddress"]) copy];
         _dropoffAddress = [PPDeliveryDictionary(source[@"dropoffAddress"]) copy];
         _proofOfDelivery = [PPDeliveryDictionary(source[@"pod"] ?: source[@"proofOfDelivery"]) copy];
