@@ -460,27 +460,72 @@ enum PuryLaunchDeckComposer {
 /// Top-anchored standby surface. The previous empty state centred a 170pt hero between
 /// two `Spacer`s, which pushed the actual runnable content into the bottom third of the
 /// screen and collapsed badly once the keyboard appeared.
+// MARK: - Query Filter Category
+
+enum PuryQueryFilterCategory: String, CaseIterable, Identifiable {
+    case all
+    case hotelCare
+    case commerceInventory
+    case operationsFinance
+
+    var id: String { rawValue }
+
+    func title(language: String) -> String {
+        switch self {
+        case .all:
+            return PuryLocale.text("Pury_Filter_All", language: language, ar: "الكل", en: "All")
+        case .hotelCare:
+            return PuryLocale.text("Pury_Filter_HotelCare", language: language, ar: "الرعاية والنزلاء", en: "Care & Hotel")
+        case .commerceInventory:
+            return PuryLocale.text("Pury_Filter_Commerce", language: language, ar: "المخزون والتموين", en: "Stock & Supply")
+        case .operationsFinance:
+            return PuryLocale.text("Pury_Filter_Ops", language: language, ar: "العمليات والمالية", en: "Operations")
+        }
+    }
+
+    func icon() -> String {
+        switch self {
+        case .all: return "sparkles"
+        case .hotelCare: return "pawprint.fill"
+        case .commerceInventory: return "cube.box.fill"
+        case .operationsFinance: return "chart.bar.fill"
+        }
+    }
+
+    func matches(queryID: String) -> Bool {
+        switch self {
+        case .all:
+            return true
+        case .hotelCare:
+            return ["vets", "adoption", "guests", "bookings", "missing"].contains(queryID)
+        case .commerceInventory:
+            return ["audit", "livePets", "delivery"].contains(queryID)
+        case .operationsFinance:
+            return ["posSales", "branches", "delivery"].contains(queryID)
+        }
+    }
+}
+
+// MARK: - Launch Deck (NextGen V10 Bento Telemetry & Neural Cockpit)
+
+/// Category-defining operational standby surface. Integrates real-time telemetry,
+/// ambient living breathing intelligence, and filterable query lenses.
 @available(iOS 16.0, *)
 struct PuryLaunchDeck: View {
     let language: String
     let isRTL: Bool
     let screenContext: PuryScreenContext?
-    /// Intent and query identifiers the signed-in operator is actually authorized to act on,
-    /// resolved from the real `AdminRoute` authorization projection. Pury never offers a
-    /// query whose result the operator could not open — the deck is computed from live
-    /// session authorization and bound scope rather than a fixed list.
     let authorizedIntentIDs: Set<String>
     let authorizedQueryIDs: Set<String>
     let onRun: (String) -> Void
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var selectedFilterCategory: PuryQueryFilterCategory = .all
 
     private var intents: [PuryLaunchIntent] {
         let composed = PuryLaunchDeckComposer.intents(context: screenContext, language: language)
         let permitted = composed.filter { authorizedIntentIDs.contains($0.id) || $0.isScoped }
-        // Never present an empty deck: a scope-bound intent always survives, and if the
-        // operator's authorization excludes every platform intent the deck degrades to the
-        // scoped one rather than to nothing.
         return permitted.isEmpty ? Array(composed.prefix(1)) : permitted
     }
 
@@ -490,18 +535,25 @@ struct PuryLaunchDeck: View {
         return permitted
     }
 
+    private var filteredQuickQueries: [PuryQuickQuery] {
+        if selectedFilterCategory == .all {
+            return quickQueries
+        }
+        return quickQueries.filter { selectedFilterCategory.matches(queryID: $0.id) }
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 20) {
             standbyHero
 
             sectionLabel(
-                PuryLocale.text("Pury_Launch_Section_Start", language: language, ar: "ابدأ من هنا", en: "Start here")
+                PuryLocale.text("Pury_Launch_Section_Start", language: language, ar: "المؤشرات والعمليات الحية", en: "Live Operational Signals")
             )
 
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 158), spacing: 10, alignment: .top)],
+                columns: [GridItem(.adaptive(minimum: 158), spacing: 12, alignment: .top)],
                 alignment: .leading,
-                spacing: 10
+                spacing: 12
             ) {
                 ForEach(intents) { intent in
                     intentPod(intent)
@@ -509,39 +561,40 @@ struct PuryLaunchDeck: View {
             }
 
             if !quickQueries.isEmpty {
-                sectionLabel(
-                    PuryLocale.text("Pury_Launch_Section_Quick", language: language, ar: "استعلامات سريعة", en: "Quick queries")
-                )
+                VStack(alignment: .leading, spacing: 12) {
+                    sectionLabel(
+                        PuryLocale.text("Pury_Launch_Section_Quick", language: language, ar: "استعلامات سريعة وموجهة", en: "Contextual Quick Queries")
+                    )
 
-                // An adaptive grid rather than a horizontal rail: every permitted option
-                // stays visible at any text size and on iPad.
-                LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 150), spacing: 8, alignment: .top)],
-                    alignment: .leading,
-                    spacing: 8
-                ) {
-                    ForEach(quickQueries) { query in
-                        quickQueryRow(query)
+                    quickQueryFilterStrip
+
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 152), spacing: 9, alignment: .top)],
+                        alignment: .leading,
+                        spacing: 9
+                    ) {
+                        ForEach(filteredQuickQueries) { query in
+                            quickQueryRow(query)
+                        }
                     }
                 }
             }
         }
     }
 
-    // MARK: Hero
+    // MARK: - Hero Section (Living Synaptic Header)
 
-    /// Horizontal lockup: identity and intent on one band instead of a stacked hero.
     private var standbyHero: some View {
         let isStacked = dynamicTypeSize >= .accessibility1
 
-        return VStack(alignment: .leading, spacing: 12) {
+        return VStack(alignment: .leading, spacing: 14) {
             if isStacked {
-                PuryAvatar(size: 52, isLiving: false, isThinking: false, showStatusRing: true, showAmbientAura: false)
+                PuryAvatar(size: 56, isLiving: true, isThinking: false, showStatusRing: true, showAmbientAura: true)
                     .accessibilityHidden(true)
                 heroText
             } else {
-                HStack(alignment: .center, spacing: 14) {
-                    PuryAvatar(size: 54, isLiving: false, isThinking: false, showStatusRing: true, showAmbientAura: false)
+                HStack(alignment: .top, spacing: 14) {
+                    PuryAvatar(size: 58, isLiving: true, isThinking: false, showStatusRing: true, showAmbientAura: true)
                         .accessibilityHidden(true)
 
                     heroText
@@ -552,12 +605,30 @@ struct PuryLaunchDeck: View {
     }
 
     private var heroText: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(PuryLaunchDeckComposer.greeting(language: language))
-                .font(PPBrandFont.bold(size: 20, relativeTo: .title3))
-                .foregroundStyle(AdminSurface.primaryText)
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Text(PuryLaunchDeckComposer.greeting(language: language))
+                    .font(PPBrandFont.bold(size: 21, relativeTo: .title3))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .multilineTextAlignment(.leading)
+
+                Spacer(minLength: 0)
+
+                // Live system telemetry status indicator
+                HStack(spacing: 4.5) {
+                    Circle()
+                        .fill(Color(red: 16 / 255, green: 185 / 255, blue: 129 / 255))
+                        .frame(width: 6.5, height: 6.5)
+                        .shadow(color: Color(red: 16 / 255, green: 185 / 255, blue: 129 / 255).opacity(0.6), radius: 3)
+
+                    Text(PuryLocale.text("Pury_Live_System_Pill", language: language, ar: "سجلات حية", en: "Live Records"))
+                        .font(PPBrandFont.bold(size: 10, relativeTo: .caption2))
+                        .foregroundStyle(Color(red: 16 / 255, green: 185 / 255, blue: 129 / 255))
+                }
+                .padding(.horizontal, 7.5)
+                .padding(.vertical, 3.5)
+                .background(Color(red: 16 / 255, green: 185 / 255, blue: 129 / 255).opacity(0.12), in: Capsule())
+            }
 
             Text(
                 PuryLocale.text(
@@ -577,39 +648,83 @@ struct PuryLaunchDeck: View {
     }
 
     private func sectionLabel(_ text: String) -> some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(PuryBrand.primary.opacity(0.75))
+                .frame(width: 4.5, height: 4.5)
+
             Text(text)
-                .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
-                .foregroundStyle(AdminSurface.secondaryText)
+                .font(PPBrandFont.bold(size: 12.5, relativeTo: .caption))
+                .foregroundStyle(AdminSurface.primaryText)
 
             Rectangle()
-                .fill(AdminSurface.hairline)
+                .fill(
+                    LinearGradient(
+                        colors: [AdminSurface.hairline, AdminSurface.hairline.opacity(0.1)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
                 .frame(height: 0.75)
         }
         .accessibilityAddTraits(.isHeader)
     }
 
-    // MARK: Intent Pod
+    // MARK: - Bento Telemetry Pod
+
+    private func telemetryBadge(for intent: PuryLaunchIntent) -> String {
+        if intent.isScoped {
+            return PuryLocale.text("Pury_Pod_Tag_Scoped", language: language, ar: "سياق نشط", en: "Active Scope")
+        }
+        switch intent.id {
+        case "hotel":
+            return PuryLocale.text("Pury_Pod_Tag_Hotel", language: language, ar: "متاح الآن", en: "Active now")
+        case "stock":
+            return PuryLocale.text("Pury_Pod_Tag_Stock", language: language, ar: "تنبيه جرد", en: "Audit alert")
+        case "orders":
+            return PuryLocale.text("Pury_Pod_Tag_Orders", language: language, ar: "مباشر", en: "Live queue")
+        case "performance":
+            return PuryLocale.text("Pury_Pod_Tag_KPI", language: language, ar: "أسبوعي", en: "Weekly")
+        default:
+            return PuryLocale.text("Pury_Pod_Tag_Live", language: language, ar: "سجل حي", en: "Live record")
+        }
+    }
 
     private func intentPod(_ intent: PuryLaunchIntent) -> some View {
         Button {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             onRun(intent.prompt)
         } label: {
-            VStack(alignment: .leading, spacing: 9) {
-                HStack(spacing: 5) {
-                    Image(systemName: intent.symbol)
-                        .font(.system(size: 10.5, weight: .bold))
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center, spacing: 6) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(intent.accent.opacity(0.14))
+                            .frame(width: 28, height: 28)
+
+                        Image(systemName: intent.symbol)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(intent.accent)
+                    }
 
                     Text(intent.kicker)
-                        .font(PPBrandFont.bold(size: 10.5, relativeTo: .caption2))
+                        .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
+                        .foregroundStyle(intent.accent)
                         .lineLimit(1)
+
+                    Spacer(minLength: 0)
+
+                    Text(telemetryBadge(for: intent))
+                        .font(PPBrandFont.bold(size: 9.5, relativeTo: .caption2))
+                        .foregroundStyle(intent.accent)
+                        .padding(.horizontal, 6.5)
+                        .padding(.vertical, 2.5)
+                        .background(intent.accent.opacity(0.10), in: Capsule())
                 }
-                .foregroundStyle(intent.accent)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(intent.title)
-                        .font(PPBrandFont.bold(size: 15, relativeTo: .subheadline))
+                        .font(PPBrandFont.bold(size: 15.5, relativeTo: .subheadline))
                         .foregroundStyle(AdminSurface.primaryText)
                         .multilineTextAlignment(.leading)
                         .lineLimit(2)
@@ -623,30 +738,38 @@ struct PuryLaunchDeck: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                // One quiet directional cue instead of repeating a "Live Query" label on
-                // every pod. `arrow.forward` mirrors itself for Arabic.
                 HStack {
                     Spacer(minLength: 0)
 
                     Image(systemName: "arrow.forward")
-                        .font(.system(size: 10, weight: .black))
+                        .font(.system(size: 9.5, weight: .black))
                         .foregroundStyle(intent.accent)
-                        .padding(6)
+                        .frame(width: 24, height: 24)
                         .background(intent.accent.opacity(0.12), in: Circle())
+                        .overlay(Circle().strokeBorder(intent.accent.opacity(0.24), lineWidth: 0.5))
                 }
             }
             .padding(13)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(AdminSurface.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(
+                LinearGradient(
+                    colors: [
+                        intent.accent.opacity(0.06),
+                        AdminSurface.surface
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: 19, style: .continuous)
                     .strokeBorder(
-                        intent.isScoped ? intent.accent.opacity(0.45) : AdminSurface.hairline,
-                        lineWidth: intent.isScoped ? 1.1 : 0.75
+                        intent.isScoped ? intent.accent.opacity(0.55) : intent.accent.opacity(0.18),
+                        lineWidth: intent.isScoped ? 1.2 : 0.8
                     )
             )
-            .shadow(color: Color.black.opacity(0.035), radius: 7, x: 0, y: 3)
+            .shadow(color: intent.accent.opacity(0.06), radius: 8, x: 0, y: 3.5)
         }
         .buttonStyle(PuryTactilePressStyle())
         .accessibilityLabel("\(intent.title). \(intent.subtitle)")
@@ -660,39 +783,91 @@ struct PuryLaunchDeck: View {
         )
     }
 
-    // MARK: Quick Query
+    // MARK: - Query Filter Strip
+
+    private var quickQueryFilterStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6.5) {
+                ForEach(PuryQueryFilterCategory.allCases) { cat in
+                    let isSelected = cat == selectedFilterCategory
+                    Button {
+                        guard selectedFilterCategory != cat else { return }
+                        UISelectionFeedbackGenerator().selectionChanged()
+                        withAnimation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.76)) {
+                            selectedFilterCategory = cat
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: cat.icon())
+                                .font(.system(size: 10, weight: .bold))
+                            Text(cat.title(language: language))
+                                .font(PPBrandFont.bold(size: 11.5, relativeTo: .caption2))
+                        }
+                        .padding(.horizontal, 10.5)
+                        .padding(.vertical, 6)
+                        .foregroundStyle(isSelected ? Color.white : AdminSurface.secondaryText)
+                        .background {
+                            if isSelected {
+                                Capsule()
+                                    .fill(PuryBrand.identityGradient)
+                            } else {
+                                Capsule()
+                                    .fill(AdminSurface.surface)
+                                    .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 1)
+            .padding(.vertical, 2)
+        }
+    }
+
+    // MARK: - Quick Query Row
 
     private func quickQueryRow(_ query: PuryQuickQuery) -> some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             onRun(query.prompt)
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: query.symbol)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(PuryBrand.primary)
-                    .frame(width: 16)
+            HStack(spacing: 8.5) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(PuryBrand.primary.opacity(0.10))
+                        .frame(width: 26, height: 26)
+
+                    Image(systemName: query.symbol)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(PuryBrand.primary)
+                }
 
                 Text(query.title)
-                    .font(PPBrandFont.medium(size: 12.5, relativeTo: .caption))
+                    .font(PPBrandFont.bold(size: 13, relativeTo: .caption))
                     .foregroundStyle(AdminSurface.primaryText)
                     .multilineTextAlignment(.leading)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Spacer(minLength: 0)
+
+                Image(systemName: isRTL ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 9.5, weight: .bold))
+                    .foregroundStyle(AdminSurface.secondaryText.opacity(0.45))
             }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 9)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(AdminSurface.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
             )
+            .shadow(color: Color.black.opacity(0.02), radius: 4, x: 0, y: 1.5)
         }
-        .buttonStyle(PuryTactilePressStyle(pressedScale: 0.96))
+        .buttonStyle(PuryTactilePressStyle(pressedScale: 0.965))
         .accessibilityLabel(query.title)
     }
 }

@@ -576,7 +576,8 @@ struct PuryCommandCrown: View {
                     .foregroundStyle(AdminSurface.primaryText)
             }
             .frame(width: resolvedControlSize, height: resolvedControlSize)
-            .opacity(isEnabled ? 1 : 0.34)
+            .opacity(isEnabled ? 1 : 0)
+            .animation(.easeInOut(duration: 0.2), value: isEnabled)
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
