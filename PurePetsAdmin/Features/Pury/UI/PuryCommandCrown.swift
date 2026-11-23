@@ -340,12 +340,10 @@ struct PuryCommandCrown: View {
     // MARK: Identity + Scope
 
     private var identityColumn: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            if !isCompact {
-                identityLockup
-            }
+        VStack(alignment: .leading, spacing: 2) {
+            identityLockup
 
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 scopeChip
                     .layoutPriority(0)
 
@@ -359,7 +357,7 @@ struct PuryCommandCrown: View {
     }
 
     private var identityLockup: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             Text(PuryLocale.text("Pury_Name", language: language, ar: "بيوري", en: "Pury"))
                 .font(AdminType.headline)
                 .foregroundStyle(AdminSurface.primaryText)
@@ -369,8 +367,8 @@ struct PuryCommandCrown: View {
                 Text(PuryLocale.text("Pury_Badge_AI", language: language, ar: "AI", en: "AI"))
                     .font(PPBrandFont.bold(size: 9.5, relativeTo: .caption2))
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1.5)
                     .background(PuryBrand.identityGradient, in: Capsule())
             }
         }
@@ -396,7 +394,7 @@ struct PuryCommandCrown: View {
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: "scope")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 8.5, weight: .bold))
 
                 Text(scopeLabel)
                     .font(AdminType.caption2Bold)
@@ -414,7 +412,7 @@ struct PuryCommandCrown: View {
             }
             .foregroundStyle(PuryBrand.primary)
             .padding(.horizontal, 7)
-            .frame(height: Self.navigationItemHeight)
+            .frame(height: 24)
             .background(PuryBrand.primary.opacity(0.085), in: Capsule())
             .overlay(Capsule().strokeBorder(PuryBrand.primary.opacity(0.20), lineWidth: 0.75))
         }
@@ -440,7 +438,7 @@ struct PuryCommandCrown: View {
         HStack(spacing: 4) {
             if let symbol = signal.symbol {
                 Image(systemName: symbol)
-                    .font(.system(size: 8.5, weight: .bold))
+                    .font(.system(size: 8, weight: .bold))
             }
 
             Text(label)
@@ -448,8 +446,8 @@ struct PuryCommandCrown: View {
                 .lineLimit(1)
         }
         .foregroundStyle(signal.tint)
-        .padding(.horizontal, 7)
-        .frame(height: Self.navigationItemHeight)
+        .padding(.horizontal, 6)
+        .frame(height: 24)
         .background(signal.tint.opacity(0.12), in: Capsule())
         .transition(
             .opacity.combined(
@@ -529,8 +527,13 @@ struct PuryCommandCrown: View {
     // MARK: Controls
 
     private var controlCluster: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 0) {
             languageDuoSwitch
+
+            Rectangle()
+                .fill(AdminSurface.hairline)
+                .frame(width: 0.75, height: 16)
+                .padding(.horizontal, 2)
 
             crownCircleButton(
                 symbol: "trash",
@@ -544,6 +547,11 @@ struct PuryCommandCrown: View {
                 action: onRequestClear
             )
 
+            Rectangle()
+                .fill(AdminSurface.hairline)
+                .frame(width: 0.75, height: 16)
+                .padding(.horizontal, 2)
+
             crownCircleButton(
                 symbol: "xmark",
                 accessibilityLabel: PuryLocale.text("Pury_Close", language: language, ar: "إغلاق", en: "Close"),
@@ -551,12 +559,17 @@ struct PuryCommandCrown: View {
                 action: onClose
             )
         }
+        .padding(.horizontal, 3)
+        .padding(.vertical, 2)
+        .background(
+            Capsule()
+                .fill(AdminSurface.control)
+                .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+        )
         .frame(height: Self.navigationItemHeight)
     }
 
-    /// Always-present controls with fixed geometry. The previous header inserted and
-    /// removed the clear button, which shifted the close button under the operator's
-    /// thumb the moment a conversation started.
+    /// Unified control cluster item with smooth tactile touch states.
     private func crownCircleButton(
         symbol: String,
         accessibilityLabel: String,
@@ -566,17 +579,14 @@ struct PuryCommandCrown: View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(AdminSurface.control)
-
-                Circle()
-                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+                    .fill(Color.clear)
 
                 Image(systemName: symbol)
-                    .font(.system(size: resolvedControlSize * 0.38, weight: .bold))
-                    .foregroundStyle(AdminSurface.primaryText)
+                    .font(.system(size: resolvedControlSize * 0.36, weight: .bold))
+                    .foregroundStyle(isEnabled ? AdminSurface.primaryText : AdminSurface.secondaryText.opacity(0.35))
             }
-            .frame(width: resolvedControlSize, height: resolvedControlSize)
-            .opacity(isEnabled ? 1 : 0)
+            .frame(width: resolvedControlSize - 4, height: resolvedControlSize - 4)
+            .contentShape(Circle())
             .animation(.easeInOut(duration: 0.2), value: isEnabled)
         }
         .buttonStyle(.plain)
@@ -600,10 +610,8 @@ struct PuryCommandCrown: View {
                 accessibleName: PuryLocale.text("Pury_Language_English", language: language, ar: "الإنجليزية", en: "English")
             )
         }
-        .padding(2)
-        .background(AdminSurface.control, in: Capsule())
-        .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
-        .frame(height: Self.navigationItemHeight)
+        .padding(1)
+        .frame(height: Self.navigationItemHeight - 6)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(
             PuryLocale.text("Pury_Language_A11y_Label", language: language, ar: "لغة بيوري", en: "Pury language")
@@ -620,7 +628,7 @@ struct PuryCommandCrown: View {
             Text(title)
                 .font(PPBrandFont.bold(size: 10.5, relativeTo: .caption2))
                 .foregroundStyle(isActive ? Color.white : AdminSurface.secondaryText)
-                .frame(minWidth: 22)
+                .frame(minWidth: 20)
                 .padding(.horizontal, 3.5)
                 .frame(maxHeight: .infinity)
                 .background {

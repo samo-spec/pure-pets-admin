@@ -1533,6 +1533,11 @@
 "PaymentMgmt_Settings_Revert" = "تراجع عن التعديلات";
 "PaymentMgmt_Settings_Changes_Pending" = "%d تعديل بانتظار الحفظ";
 "PaymentMgmt_Settings_Save_CTA" = "اعتماد وحفظ الإعدادات";
+"PaymentMgmt_Settings_Error_Generic" = "تعذر تحديث إعدادات الدفع حالياً. يرجى المحاولة مرة أخرى.";
+"PaymentMgmt_Settings_Error_Permission" = "لا تمتلك الصلاحيات الكافية لتعديل إعدادات الدفع (payments.manage).";
+"PaymentMgmt_Settings_Error_Session" = "انتهت صلاحية جلسة تسجيل الدخول، يرجى إعادة تسجيل الدخول.";
+"PaymentMgmt_Settings_Error_Network" = "تعذر الاتصال بالخادم، يرجى التحقق من اتصال الإنترنت والمحاولة ثانية.";
+"PaymentMgmt_Settings_Error_Server" = "تعذر حفظ إعدادات الدفع بسبب خطأ مؤقت في خادم المعاملات. يرجى إعادة المحاولة.";
 "PaymentMgmt_Value_NotAvailable" = "غير متاح";
 "PaymentMgmt_Value_SystemDefault" = "الإعداد الافتراضي للنظام";
 "PaymentMgmt_Search_Placeholder" = "ابحث برقم الطلب أو المستخدم أو طريقة الدفع";

@@ -1023,9 +1023,11 @@ private struct POSSubmitFailure: Sendable {
     let serverMessage: String
     let submittedPrice: Double?
     let authoritativePrice: Double?
+    let errorDomain: String
 
     init(error: Error) {
         let nsError = error as NSError
+        errorDomain = nsError.domain
         var details = PPPOSService.exactUnitConflictDetails(forError: error)
         if details.isEmpty {
             if let dict = (nsError.userInfo["details"] as? [String: Any]) ??
@@ -1087,11 +1089,40 @@ private struct POSSubmitFailure: Sendable {
     /// misleading recovery instruction.
     let isFunctionsError: Bool
 
+    /// Connection, reachability, or service unavailability where the request could not reach or was rejected by transport.
+    var isNetworkError: Bool {
+        if isFunctionsError && functionsCode == 14 {
+            return true
+        }
+        if errorDomain == NSURLErrorDomain {
+            switch functionsCode {
+            case NSURLErrorNotConnectedToInternet,
+                 NSURLErrorCannotConnectToHost,
+                 NSURLErrorNetworkConnectionLost,
+                 NSURLErrorDNSLookupFailed,
+                 NSURLErrorCannotFindHost,
+                 NSURLErrorDataNotAllowed,
+                 NSURLErrorInternationalRoamingOff,
+                 NSURLErrorCallIsActive:
+                return true
+            default:
+                break
+            }
+        }
+        let lower = serverMessage.lowercased()
+        return lower.contains("offline") ||
+               lower.contains("internet connection appears to be offline") ||
+               lower.contains("network connection was lost") ||
+               lower.contains("could not connect to the server") ||
+               lower.contains("service is currently unavailable")
+    }
+
     /// The server rejected the command outright, so no transaction exists and
     /// nothing needs reconciling. Anything else — transport failure, timeout,
     /// internal error — leaves the outcome genuinely unknown.
     var isDefinitiveRejection: Bool {
         if !domainCode.isEmpty { return true }
+        if isNetworkError { return true }
         guard isFunctionsError else {
             let c = functionsCode
             return c == 400 || c == 403 || c == 404 || c == 409 || c == 422
@@ -1099,8 +1130,8 @@ private struct POSSubmitFailure: Sendable {
         switch functionsCode {
         // invalid-argument (3), not-found (5), already-exists (6),
         // permission-denied (7), failed-precondition (9), aborted (10),
-        // out-of-range (11), unauthenticated (16).
-        case 3, 5, 6, 7, 9, 10, 11, 16:
+        // out-of-range (11), unavailable (14), unauthenticated (16).
+        case 3, 5, 6, 7, 9, 10, 11, 14, 16:
             return true
         default:
             return false
@@ -2776,7 +2807,16 @@ final class POSFastSellViewModel: ObservableObject {
     }
 
     private func localizedSubmitFailure(_ failure: POSSubmitFailure) -> String {
-        // Internal, timeout and transport failures can arrive after commit.
+        // If the failure is a network or reachability issue, provide clear reassurance
+        // that the service could not be reached and retrying is safe without duplicate sales.
+        if failure.isNetworkError {
+            return Language.get(
+                "POS_CheckoutNetworkUnavailable",
+                alter: "تعذر الوصول إلى خدمة البيع. تحقق من الاتصال ثم أعد المحاولة؛ لن يتكرر البيع عند إعادة المحاولة."
+            )
+        }
+
+        // Internal, timeout and server crash failures can arrive after commit.
         // Preserve that uncertainty in the operator's recovery instruction,
         // matching the retained command key and durable pending record.
         guard failure.isDefinitiveRejection else {
@@ -3654,6 +3694,7 @@ struct AdminPOSFastSellView: View {
     @State private var showsDiscountSheet = false
     @State private var showsDeliveryFeeSheet = false
     @State private var showsCategoryLens = false
+    @State private var showsHistorySheet = false
     @State private var lastScannedCode: String?
     /// Products a scanned code resolved to when it matched more than one.
     /// Non-empty means the operator must choose; nothing is added until they do.
@@ -3886,6 +3927,11 @@ struct AdminPOSFastSellView: View {
         .sheet(isPresented: $showsCategoryLens) {
             POSCategoryLensSheet(viewModel: viewModel)
         }
+        .sheet(isPresented: $showsHistorySheet) {
+            AdminPOSHistoryView(session: session) {
+                showsHistorySheet = false
+            }
+        }
         .sheet(isPresented: $showsDeepLogInspector) {
             POSDeepLogInspectorView()
         }
@@ -4014,24 +4060,54 @@ struct AdminPOSFastSellView: View {
         }
         .onChange(of: viewModel.submitError) { error in
             guard let error = error, !error.isEmpty else { return }
-            PPAlertHelper.showError(
-                in: nil,
-                title: Language.get("Error", alter: "خطأ"),
-                subtitle: error
-            ) {
-                // PPAlertHelper's completion is not main-actor isolated.
-                Task { @MainActor in viewModel.submitError = nil }
+            let isUnknownOutcome = error.contains("POS_SubmitOutcomeUnknown") ||
+                                   error == Language.get("POS_SubmitOutcomeUnknown", alter: nil) ||
+                                   error.contains("لم يتأكد اكتمال البيع") ||
+                                   error.contains("not confirmed")
+            if isUnknownOutcome {
+                PPAlertHelper.showConfirmation(
+                    in: nil,
+                    title: Language.get("POS_UnconfirmedSaleTitle", alter: "بيع غير مؤكد"),
+                    subtitle: error,
+                    confirmButton: Language.get("POS_History_Title", alter: "سجل المبيعات"),
+                    cancelButton: Language.get("OK", alter: "حسنًا"),
+                    icon: nil,
+                    confirmBlock: { _, _ in
+                        showsHistorySheet = true
+                        Task { @MainActor in viewModel.submitError = nil }
+                    },
+                    cancelBlock: {
+                        Task { @MainActor in viewModel.submitError = nil }
+                    }
+                )
+            } else {
+                PPAlertHelper.showError(
+                    in: nil,
+                    title: Language.get("Error", alter: "خطأ"),
+                    subtitle: error
+                ) {
+                    // PPAlertHelper's completion is not main-actor isolated.
+                    Task { @MainActor in viewModel.submitError = nil }
+                }
             }
         }
         .onChange(of: viewModel.unconfirmedSaleNotice) { notice in
             guard let notice = notice, !notice.isEmpty else { return }
-            PPAlertHelper.showWarning(
+            PPAlertHelper.showConfirmation(
                 in: nil,
                 title: Language.get("POS_UnconfirmedSaleTitle", alter: "بيع غير مؤكد"),
-                subtitle: notice
-            ) {
-                Task { @MainActor in viewModel.acknowledgeUnconfirmedSaleNotice() }
-            }
+                subtitle: notice,
+                confirmButton: Language.get("POS_History_Title", alter: "سجل المبيعات"),
+                cancelButton: Language.get("OK", alter: "حسنًا"),
+                icon: nil,
+                confirmBlock: { _, _ in
+                    showsHistorySheet = true
+                    Task { @MainActor in viewModel.acknowledgeUnconfirmedSaleNotice() }
+                },
+                cancelBlock: {
+                    Task { @MainActor in viewModel.acknowledgeUnconfirmedSaleNotice() }
+                }
+            )
         }
         .onChange(of: viewModel.showWholesaleReconciliationAlert) { isPresented in
             guard isPresented else { return }

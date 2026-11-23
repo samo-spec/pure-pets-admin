@@ -775,8 +775,8 @@ static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items)
             if (completion) completion(nil, PPPOSServiceError(403, @"The POS session changed before dispatch."));
             return;
         }
-        FIRHTTPSCallable *callable = [[FIRFunctions functions] HTTPSCallableWithName:name];
-        callable.timeoutInterval = 30.0;
+        FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:name];
+        callable.timeoutInterval = 45.0;
         [callable callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
             if (error && error.code == FIRFunctionsErrorCodeUnauthenticated) {
                 FIRUser *userToRefresh = [FIRAuth auth].currentUser;

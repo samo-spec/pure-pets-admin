@@ -44,6 +44,7 @@ enum AdminRoute: Hashable, Identifiable {
     case banners
     case listings
     case hotel
+    case pury
 
     var id: String { payload.map { "\(identifier):\($0)" } ?? identifier }
 
@@ -91,6 +92,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .banners: return "banners"
         case .listings: return "listings"
         case .hotel: return "hotel"
+        case .pury: return "pury"
         }
     }
 
@@ -142,6 +144,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .banners: return "Staff_Module_Banners"
         case .listings: return "Staff_Module_Listings"
         case .hotel: return "Hotel_Title"
+        case .pury: return "Pury_Name"
         }
     }
 
@@ -156,7 +159,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .driverWorkspace, .driverTask:
             return "Driver_Title"
         case .delivery, .providerApplications, .providerPlans, .providerFeatures, .providerAccounting,
-             .branches, .agents, .homeControl, .services, .veterinarians, .moderation, .community, .adoptionManager, .hotel:
+             .branches, .agents, .homeControl, .services, .veterinarians, .moderation, .community, .adoptionManager, .hotel, .pury:
             return "CommandCenter_Operations_Title"
         case .customerManagement, .users:
             return "CommandCenter_People_Title"
@@ -212,6 +215,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .banners: return "square.3.layers.3d.middle.filled"
         case .listings: return "list.bullet.clipboard"
         case .hotel: return "bed.double.fill"
+        case .pury: return "sparkles"
         }
     }
 
@@ -280,6 +284,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .banners: return ["banners.manage"]
         case .listings: return ["listings.view", "listings.manage", "listings.moderate"]
         case .hotel: return ["hotel.view", "hotel.reservations.manage", "hotel.checkin"]
+        case .pury: return ["nova.view"]
         }
     }
 

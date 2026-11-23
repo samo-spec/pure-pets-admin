@@ -299,7 +299,7 @@ struct PuryAssistantSheetView: View {
                 isClearConfirmationPresented = true
             },
             onClose: {
-                dismiss()
+                closeAssistant()
             }
         )
     }
@@ -1248,25 +1248,35 @@ struct PuryAssistantSheetView: View {
         }
     }
 
+    private func closeAssistant() {
+        if router.presentedRoute == .pury {
+            router.presentedRoute = nil
+        } else {
+            dismiss()
+        }
+    }
+
     private func handleDeepLink(entityType: String, entityId: String) {
-        dismiss()
-        switch entityType.lowercased() {
-        case "order", "orders":
-            router.presentedRoute = .paymentOrder(entityId)
-        case "petaccessories", "product", "accessories":
-            router.presentedRoute = .accessories
-        case "livepet", "livepets":
-            router.presentedRoute = .livePets
-        case "hotel", "stay", "reservation", "hotelstays":
-            router.presentedRoute = .hotel
-        case "userscol", "user", "users":
-            router.presentedRoute = .users
-        case "staff_users", "staff":
-            router.presentedRoute = .staff
-        case "branches", "branch":
-            router.presentedRoute = .branches
-        default:
-            break
+        closeAssistant()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            switch entityType.lowercased() {
+            case "order", "orders":
+                router.presentedRoute = .paymentOrder(entityId)
+            case "petaccessories", "product", "accessories":
+                router.presentedRoute = .accessories
+            case "livepet", "livepets":
+                router.presentedRoute = .livePets
+            case "hotel", "stay", "reservation", "hotelstays":
+                router.presentedRoute = .hotel
+            case "userscol", "user", "users":
+                router.presentedRoute = .users
+            case "staff_users", "staff":
+                router.presentedRoute = .staff
+            case "branches", "branch":
+                router.presentedRoute = .branches
+            default:
+                break
+            }
         }
     }
 }

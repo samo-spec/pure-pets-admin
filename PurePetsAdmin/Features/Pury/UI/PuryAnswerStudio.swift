@@ -130,7 +130,69 @@ enum PuryFieldSemantics {
         if key(label) == "collection", let name = collectionName(trimmed, language: language) {
             return name
         }
+        if key(label).contains("status") || key(label).contains("state") || isKnownStatus(trimmed) {
+            return localizedStatus(trimmed, language: language)
+        }
         return trimmed
+    }
+
+    static func isKnownStatus(_ value: String) -> Bool {
+        let v = key(value)
+        return [
+            "pendingreview", "pending", "ready", "completed", "delivering",
+            "outfordelivery", "ontheway", "cancelled", "canceled", "processing",
+            "preparing", "confirmed", "assigned", "active", "paid", "unpaid", "refunded"
+        ].contains(v)
+    }
+
+    static func localizedStatus(_ status: String, language: String) -> String {
+        let k = key(status)
+        switch k {
+        case "pendingreview", "pending":
+            return PuryLocale.text("Pury_Status_PendingReview", language: language, ar: "قيد المراجعة", en: "Pending Review")
+        case "ready":
+            return PuryLocale.text("Pury_Status_Ready", language: language, ar: "جاهز للتوصيل", en: "Ready for Delivery")
+        case "completed":
+            return PuryLocale.text("Pury_Status_Completed", language: language, ar: "مكتمل", en: "Completed")
+        case "delivering", "outfordelivery", "ontheway":
+            return PuryLocale.text("Pury_Status_Delivering", language: language, ar: "جاري التوصيل", en: "Out for Delivery")
+        case "cancelled", "canceled":
+            return PuryLocale.text("Pury_Status_Cancelled", language: language, ar: "ملغي", en: "Cancelled")
+        case "processing", "preparing":
+            return PuryLocale.text("Pury_Status_Processing", language: language, ar: "قيد التجهيز", en: "Processing")
+        case "confirmed":
+            return PuryLocale.text("Pury_Status_Confirmed", language: language, ar: "مؤكد", en: "Confirmed")
+        case "assigned":
+            return PuryLocale.text("Pury_Status_Assigned", language: language, ar: "تم التعيين", en: "Assigned")
+        case "active":
+            return PuryLocale.text("Pury_Status_Active", language: language, ar: "نشط", en: "Active")
+        case "paid":
+            return PuryLocale.text("Pury_Status_Paid", language: language, ar: "مدفوع", en: "Paid")
+        case "unpaid":
+            return PuryLocale.text("Pury_Status_Unpaid", language: language, ar: "غير مدفوع", en: "Unpaid")
+        case "refunded":
+            return PuryLocale.text("Pury_Status_Refunded", language: language, ar: "مسترجع", en: "Refunded")
+        default:
+            return status
+        }
+    }
+
+    static func statusColor(_ status: String) -> Color {
+        let k = key(status)
+        switch k {
+        case "completed", "paid", "active":
+            return AdminSurface.emerald
+        case "ready", "confirmed", "assigned":
+            return Color(red: 59/255, green: 130/255, blue: 246/255)
+        case "pendingreview", "pending", "processing", "preparing", "unpaid":
+            return AdminSurface.amber
+        case "delivering", "outfordelivery", "ontheway":
+            return Color(red: 14/255, green: 165/255, blue: 233/255)
+        case "cancelled", "canceled", "refunded":
+            return AdminSurface.crimson
+        default:
+            return PuryBrand.primary
+        }
     }
 
     static func collectionName(_ identifier: String, language: String) -> String? {
@@ -212,6 +274,60 @@ struct PuryRecordProjection: Identifiable, Equatable {
         if let actionRoute, !actionRoute.isEmpty { return actionRoute }
         if let entityType, !entityType.isEmpty { return entityType }
         return collection
+    }
+
+    func displayTitle(language: String) -> String {
+        let isRTL = language == "ar" || (language.isEmpty && Language.isRTL())
+        if !title.isEmpty && title != "طلب" && title != "Order" && title != "Record" && title != "سجل" {
+            return title
+        }
+        // If order or generic, extract order identifier
+        if let orderNumberField = field(matching: ["ordernumber", "ordercode", "orderid", "code", "id"]),
+           !orderNumberField.cleanValue.isEmpty {
+            let val = orderNumberField.cleanValue
+            let short = val.count > 8 ? String(val.suffix(6)) : val
+            return isRTL ? "طلب #\(short)" : "Order #\(short)"
+        }
+        if let id = entityId, !id.isEmpty {
+            let short = id.count > 8 ? String(id.suffix(6)) : id
+            return isRTL ? "طلب #\(short)" : "Order #\(short)"
+        }
+        if let customerField = field(matching: ["customername", "userfullname", "customer", "name"]),
+           !customerField.cleanValue.isEmpty {
+            return isRTL ? "طلب - \(customerField.cleanValue)" : "Order - \(customerField.cleanValue)"
+        }
+        return title.isEmpty ? PuryLocale.text("Pury_Record_Generic", language: language, ar: "بيانات السجل", en: "Record Details") : title
+    }
+
+    func displaySubtitle(language: String) -> String? {
+        var parts: [String] = []
+        if let customer = field(matching: ["customername", "userfullname", "customer"])?.cleanValue, !customer.isEmpty {
+            parts.append(customer)
+        }
+        if let price = field(matching: ["totalprice", "finalprice", "price", "total", "amount"])?.cleanValue, !price.isEmpty {
+            let formatted = price.contains("ر.ق") || price.contains("QAR") ? price : "\(price) ر.ق"
+            parts.append(formatted)
+        }
+        if let items = field(matching: ["itemscount", "items", "count"])?.cleanValue, !items.isEmpty {
+            let isRTL = language == "ar" || (language.isEmpty && Language.isRTL())
+            parts.append(isRTL ? "\(items) منتجات" : "\(items) items")
+        }
+        if !parts.isEmpty {
+            return parts.joined(separator: " • ")
+        }
+        if let sub = subtitle, !sub.isEmpty && !PuryFieldSemantics.isKnownStatus(sub) {
+            return sub
+        }
+        return nil
+    }
+
+    var effectiveStatus: String? {
+        if let s = status, !s.isEmpty { return s }
+        if let s = subtitle, !s.isEmpty && PuryFieldSemantics.isKnownStatus(s) { return s }
+        if let sField = field(matching: ["status", "orderstatus", "state", "paymentstatus"])?.cleanValue, !sField.isEmpty {
+            return sField
+        }
+        return nil
     }
 
     /// A disclosure is truthful only when it can reveal server-provided fields or open the
@@ -1106,31 +1222,63 @@ struct PuryRecordRosterView: View {
         isOpen: Bool,
         showsDisclosure: Bool
     ) -> some View {
-        HStack(alignment: .center, spacing: 11) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(record.title.isEmpty ? PuryLocale.text("Pury_Record_Generic", language: language, ar: "بيانات السجل", en: "Record Details") : record.title)
+        HStack(alignment: .center, spacing: 10) {
+            // Visual Kind Icon in Squircle
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(rowAccent(for: record).opacity(0.12))
+                    .frame(width: 36, height: 36)
+
+                Image(systemName: rowSymbol(for: record))
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(rowAccent(for: record))
+            }
+
+            VStack(alignment: .leading, spacing: 2.5) {
+                Text(record.displayTitle(language: language))
                     .font(PPBrandFont.bold(size: 14, relativeTo: .subheadline))
                     .foregroundStyle(AdminSurface.primaryText)
                     .lineLimit(1)
 
-                if let subtitle = record.subtitle ?? record.status {
+                if let subtitle = record.displaySubtitle(language: language) {
                     Text(subtitle)
-                        .font(PPBrandFont.regular(size: 11, relativeTo: .caption2))
+                        .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
                         .foregroundStyle(AdminSurface.secondaryText)
                         .lineLimit(1)
                 }
             }
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 6)
+
+            // Trailing: Semantic Status Badge Pill
+            if let rawStatus = record.effectiveStatus {
+                let statusText = PuryFieldSemantics.localizedStatus(rawStatus, language: language)
+                let tint = PuryFieldSemantics.statusColor(rawStatus)
+
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(tint)
+                        .frame(width: 5, height: 5)
+
+                    Text(statusText)
+                        .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
+                        .foregroundStyle(tint)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3.5)
+                .background(tint.opacity(0.10), in: Capsule())
+                .overlay(Capsule().strokeBorder(tint.opacity(0.25), lineWidth: 0.6))
+            }
 
             // Aligned shared columns: comparable down the list.
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 ForEach(summary) { field in
                     let kind = PuryFieldSemantics.kind(label: field.cleanLabel, value: field.cleanValue)
                     let value = PuryFieldSemantics.value(field.cleanValue, label: field.cleanLabel, language: language)
                     if kind == .quantity || kind == .currency {
-                        PuryNumeral(text: value, size: 13, weight: .bold)
-                    } else {
+                        PuryNumeral(text: value, size: 12.5, weight: .bold)
+                    } else if !PuryFieldSemantics.isKnownStatus(field.cleanValue) {
                         Text(value)
                             .font(PPBrandFont.medium(size: 11.5, relativeTo: .caption2))
                             .foregroundStyle(AdminSurface.secondaryText)
@@ -1147,8 +1295,27 @@ struct PuryRecordRosterView: View {
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 11)
+        .padding(.vertical, 10)
         .contentShape(Rectangle())
+    }
+
+    private func rowSymbol(for record: PuryRecordProjection) -> String {
+        let type = (record.entityType ?? record.collection ?? record.badge ?? record.title).lowercased()
+        if type.contains("order") || type.contains("طلب") { return "shippingbox.fill" }
+        if type.contains("hotel") || type.contains("stay") || type.contains("إقامة") { return "building.2.fill" }
+        if type.contains("product") || type.contains("accessor") || type.contains("منتج") { return "cube.box.fill" }
+        if type.contains("user") || type.contains("customer") || type.contains("عميل") { return "person.crop.circle.fill" }
+        if type.contains("staff") || type.contains("vet") { return "stethoscope" }
+        if type.contains("branch") || type.contains("فرع") { return "mappin.and.ellipse" }
+        return "doc.text.fill"
+    }
+
+    private func rowAccent(for record: PuryRecordProjection) -> Color {
+        let type = (record.entityType ?? record.collection ?? record.badge ?? record.title).lowercased()
+        if type.contains("order") || type.contains("طلب") { return Color(red: 59/255, green: 130/255, blue: 246/255) }
+        if type.contains("hotel") || type.contains("stay") { return AdminSurface.emerald }
+        if type.contains("product") || type.contains("accessor") { return AdminSurface.amber }
+        return PuryBrand.primary
     }
 }
 

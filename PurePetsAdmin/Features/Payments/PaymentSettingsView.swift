@@ -94,7 +94,7 @@ final class PaymentSettingsViewModel: ObservableObject {
                 guard let self else { return }
                 self.isLoading = false
                 if let errText {
-                    self.errorMessage = errText
+                    self.errorMessage = self.sanitizeErrorMessage(errText, error: error)
                     return
                 }
 
@@ -245,7 +245,7 @@ final class PaymentSettingsViewModel: ObservableObject {
                 guard let self else { return }
                 self.isSaving = false
                 if let errText {
-                    self.errorMessage = errText
+                    self.errorMessage = self.sanitizeErrorMessage(errText, error: error)
                     let notify = UINotificationFeedbackGenerator()
                     notify.notificationOccurred(.error)
                     return
@@ -273,6 +273,27 @@ final class PaymentSettingsViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    // MARK: - Error Sanitization & Recovery
+
+    func sanitizeErrorMessage(_ rawMessage: String, error: Error?) -> String {
+        let trimmed = rawMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.uppercased() == "INTERNAL" || trimmed.isEmpty {
+            return Language.get("PaymentMgmt_Settings_Error_Server", alter: "تعذر حفظ إعدادات الدفع بسبب خطأ في الخادم. يرجى المحاولة لاحقاً.")
+        }
+        return trimmed
+    }
+
+    func clearError() {
+        withAnimation(AdminAnimation.standard) {
+            errorMessage = nil
+        }
+    }
+
+    func retrySave() {
+        clearError()
+        save()
     }
 }
 
@@ -337,107 +358,182 @@ struct AdminPaymentSettingsView: View {
         } message: {
             Text(Language.get("PaymentMgmt_Settings_Saved", alter: "تم تحديث أساسيات الدفع بنجاح"))
         }
-        .alert(
-            Language.get("Error", alter: "خطأ"),
-            isPresented: Binding(
-                get: { viewModel.errorMessage != nil },
-                set: { if !$0 { viewModel.errorMessage = nil } }
-            )
-        ) {
-            Button(Language.get("OK", alter: "موافق")) {}
-        } message: {
-            Text(viewModel.errorMessage ?? "")
-        }
     }
 
     // MARK: - Sovereign Header
 
     private var sovereignHeaderView: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            AdminSovereignNavigationBar(
-                title: Language.get("PaymentMgmt_Settings_Title", alter: "أساسيات الدفع"),
-                subtitle: Language.get("CommandCenter_Payments_Workspace", alter: "مساحة المدفوعات"),
-                onBack: {
-                    if let onDismiss {
-                        onDismiss()
-                    } else {
-                        dismiss()
-                    }
+        AdminSovereignNavigationBar(
+            title: Language.get("PaymentMgmt_Settings_Title", alter: "أساسيات الدفع"),
+            subtitle: Language.get("CommandCenter_Payments_Workspace", alter: "مساحة المدفوعات"),
+            showsTopFade: false,
+            onBack: {
+                if let onDismiss {
+                    onDismiss()
+                } else {
+                    dismiss()
                 }
-            ) {
-                HStack(spacing: AdminSpacing.sm) {
-                    if viewModel.hasChanges && !isPadRegular {
-                        Button {
-                            viewModel.resetToOriginal()
-                        } label: {
-                            Image(systemName: "arrow.uturn.backward")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(AdminSurface.secondaryText)
-                                .frame(width: 44, height: 44)
-                                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .strokeBorder(AdminSurface.hairline, lineWidth: 0.8)
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(Language.get("PaymentMgmt_Settings_Revert", alter: "تراجع عن التعديلات"))
-                    }
-
+            }
+        ) {
+            HStack(spacing: AdminSpacing.sm) {
+                if viewModel.hasChanges && !isPadRegular {
                     Button {
-                        viewModel.load()
+                        viewModel.resetToOriginal()
                     } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundColor(AdminSurface.primaryText)
+                        Image(systemName: "arrow.uturn.backward")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(AdminSurface.secondaryText)
                             .frame(width: 44, height: 44)
                             .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                                     .strokeBorder(AdminSurface.hairline, lineWidth: 0.8)
                             )
-                            .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
                     }
                     .buttonStyle(.plain)
-                    .keyboardShortcut("r", modifiers: .command)
-                    .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
+                    .accessibilityLabel(Language.get("PaymentMgmt_Settings_Revert", alter: "تراجع عن التعديلات"))
                 }
-            }
 
-            if let error = viewModel.errorMessage {
-                AdminErrorBanner(message: error) { viewModel.load() }
-                    .padding(.horizontal, AdminSpacing.screenMargin)
-                    .padding(.top, AdminSpacing.xs)
+                Button {
+                    viewModel.load()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .frame(width: 44, height: 44)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(AdminSurface.hairline, lineWidth: 0.8)
+                        )
+                        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut("r", modifiers: .command)
+                .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
             }
         }
+        .background(AdminSurface.background)
+        .overlay(
+            Rectangle()
+                .fill(AdminSurface.hairline)
+                .frame(height: 0.8),
+            alignment: .bottom
+        )
+    }
+
+    // MARK: - Inline Error Card
+
+    private func inlineErrorCard(_ error: String) -> some View {
+        HStack(alignment: .top, spacing: AdminSpacing.sm) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(AdminSurface.crimson)
+                .frame(width: 32, height: 32)
+                .background(AdminSurface.crimson.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(Language.get("Error", alter: "خطأ"))
+                    .font(AdminType.captionBold)
+                    .foregroundColor(AdminSurface.crimson)
+
+                Text(error)
+                    .font(AdminType.caption)
+                    .foregroundColor(AdminSurface.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: AdminSpacing.sm) {
+                    Button {
+                        viewModel.retrySave()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 11, weight: .bold))
+                            Text(Language.get("Retry", alter: "إعادة المحاولة"))
+                                .font(AdminType.caption2Bold)
+                        }
+                        .foregroundColor(AdminSurface.crimson)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(AdminSurface.crimson.opacity(0.10), in: Capsule())
+                        .overlay(
+                            Capsule().strokeBorder(AdminSurface.crimson.opacity(0.25), lineWidth: 0.8)
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer()
+                }
+                .padding(.top, 4)
+            }
+
+            Spacer(minLength: 4)
+
+            Button {
+                viewModel.clearError()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .frame(width: 28, height: 28)
+                    .background(AdminSurface.control, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Language.get("Dismiss", alter: "إغلاق"))
+        }
+        .padding(AdminSpacing.base)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .strokeBorder(AdminSurface.crimson.opacity(0.35), lineWidth: 1.0)
+        )
+        .shadow(color: AdminSurface.crimson.opacity(0.08), radius: 8, x: 0, y: 3)
+        .id("error_banner_anchor")
+        .transition(.asymmetric(
+            insertion: .opacity.combined(with: .scale(scale: 0.96)),
+            removal: .opacity
+        ))
     }
 
     // MARK: - iPhone Single Column Cockpit
 
     private var iPhoneSingleColumnCockpit: some View {
         ZStack(alignment: .bottom) {
-            ScrollView {
-                VStack(spacing: AdminSpacing.lg) {
-                    if viewModel.showInterlockWarning {
-                        interlockWarningBanner
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: AdminSpacing.lg) {
+                        if let error = viewModel.errorMessage {
+                            inlineErrorCard(error)
+                        }
+
+                        if viewModel.showInterlockWarning {
+                            interlockWarningBanner
+                        }
+
+                        deliveryTariffStudioCard
+
+                        gatewaySwitchboardCard
+
+                        customerCheckoutSimulatorCard
+
+                        auditGovernanceCard
+
+                        // Spacer for bottom command bar clearance
+                        Color.clear.frame(height: 88)
                     }
-
-                    deliveryTariffStudioCard
-
-                    gatewaySwitchboardCard
-
-                    customerCheckoutSimulatorCard
-
-                    auditGovernanceCard
-
-                    // Spacer for bottom command bar clearance
-                    Color.clear.frame(height: 88)
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.top, AdminSpacing.md)
+                    .padding(.bottom, AdminSpacing.xl)
                 }
-                .padding(.horizontal, AdminSpacing.screenMargin)
-                .padding(.top, AdminSpacing.md)
-                .padding(.bottom, AdminSpacing.xl)
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: viewModel.errorMessage) { newError in
+                    if newError != nil {
+                        withAnimation(AdminAnimation.standard) {
+                            proxy.scrollTo("error_banner_anchor", anchor: .top)
+                        }
+                    }
+                }
             }
-            .scrollDismissesKeyboard(.interactively)
 
             iPhoneFloatingCommandBar
         }
@@ -450,6 +546,10 @@ struct AdminPaymentSettingsView: View {
             // Left / Leading Column: Controls Deck
             ScrollView {
                 VStack(spacing: AdminSpacing.lg) {
+                    if let error = viewModel.errorMessage {
+                        inlineErrorCard(error)
+                    }
+
                     if viewModel.showInterlockWarning {
                         interlockWarningBanner
                     }

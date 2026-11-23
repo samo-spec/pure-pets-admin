@@ -571,6 +571,69 @@ static NSArray<FIRDocumentSnapshot *> *PPPaymentMergeOrderDocuments(NSArray<NSAr
     }];
 }
 
+- (NSError *)pp_normalizedSettingsError:(NSError *)rawError
+{
+    if (!rawError) return nil;
+
+    NSString *domain = rawError.domain;
+    NSInteger code = rawError.code;
+    NSString *localizedMsg = kLang(@"PaymentMgmt_Settings_Error_Generic");
+
+    id details = rawError.userInfo[@"details"] ?: rawError.userInfo[@"FIRFunctionsErrorDetailsKey"];
+    if ([details isKindOfClass:NSString.class] && [(NSString *)details length] > 0) {
+        NSString *detailStr = (NSString *)details;
+        if ([detailStr localizedCaseInsensitiveContainsString:@"At least one checkout payment method"]) {
+            localizedMsg = kLang(@"PaymentMgmt_Settings_Error_NoMethodEnabled");
+        } else if ([detailStr localizedCaseInsensitiveContainsString:@"deliveryFee"]) {
+            localizedMsg = kLang(@"PaymentMgmt_Settings_Error_InvalidDeliveryFee");
+        }
+    } else if ([details isKindOfClass:NSDictionary.class]) {
+        NSDictionary *detailDict = (NSDictionary *)details;
+        NSString *msg = detailDict[@"message"] ?: detailDict[@"details"];
+        if ([msg isKindOfClass:NSString.class] && [(NSString *)msg localizedCaseInsensitiveContainsString:@"At least one checkout payment method"]) {
+            localizedMsg = kLang(@"PaymentMgmt_Settings_Error_NoMethodEnabled");
+        }
+    }
+
+    if ([domain isEqualToString:FIRFunctionsErrorCodeOK] || [domain isEqualToString:@"com.firebase.functions"]) {
+        switch (code) {
+            case FIRFunctionsErrorCodeUnauthenticated:
+                localizedMsg = kLang(@"PaymentMgmt_Settings_Error_Session");
+                break;
+            case FIRFunctionsErrorCodePermissionDenied:
+                localizedMsg = kLang(@"PaymentMgmt_Settings_Error_Permission");
+                break;
+            case FIRFunctionsErrorCodeUnavailable:
+            case FIRFunctionsErrorCodeDeadlineExceeded:
+                localizedMsg = kLang(@"PaymentMgmt_Settings_Error_Network");
+                break;
+            case FIRFunctionsErrorCodeInvalidArgument:
+            case FIRFunctionsErrorCodeFailedPrecondition:
+                if ([localizedMsg isEqualToString:kLang(@"PaymentMgmt_Settings_Error_Generic")]) {
+                    localizedMsg = kLang(@"PaymentMgmt_Settings_Error_NoMethodEnabled");
+                }
+                break;
+            case FIRFunctionsErrorCodeInternal:
+            default:
+                localizedMsg = kLang(@"PaymentMgmt_Settings_Error_Server");
+                break;
+        }
+    } else if ([domain isEqualToString:NSURLErrorDomain]) {
+        localizedMsg = kLang(@"PaymentMgmt_Settings_Error_Network");
+    }
+
+    NSMutableDictionary *userInfo = [rawError.userInfo mutableCopy] ?: [NSMutableDictionary dictionary];
+    userInfo[NSLocalizedDescriptionKey] = localizedMsg;
+    userInfo[NSUnderlyingErrorKey] = rawError;
+
+    NSLog(@"[PPPaymentManagementService] savePaymentSettings normalized error: code=%ld domain=%@ msg=%@",
+          (long)code, domain, localizedMsg);
+
+    return [NSError errorWithDomain:PPPaymentAdminServiceErrorDomain
+                               code:code
+                           userInfo:userInfo];
+}
+
 - (void)savePaymentSettings:(PPPaymentAdminSettings *)settings
                  completion:(PPPaymentAdminSettingsCompletion)completion
 {
@@ -578,7 +641,7 @@ static NSArray<FIRDocumentSnapshot *> *PPPaymentMergeOrderDocuments(NSArray<NSAr
         [self pp_completeSettings:nil
                             error:[NSError errorWithDomain:PPPaymentAdminServiceErrorDomain
                                                      code:401
-                                                 userInfo:@{NSLocalizedDescriptionKey: kLang(@"PaymentMgmt_Error_NoViewPaymentsPermission")}]
+                                                 userInfo:@{NSLocalizedDescriptionKey: kLang(@"PaymentMgmt_Settings_Error_Permission")}]
                        completion:completion];
         return;
     }
@@ -600,7 +663,8 @@ static NSArray<FIRDocumentSnapshot *> *PPPaymentMergeOrderDocuments(NSArray<NSAr
 
     [callable callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
         if (error) {
-            [self pp_completeSettings:nil error:error completion:completion];
+            NSError *normalized = [self pp_normalizedSettingsError:error];
+            [self pp_completeSettings:nil error:normalized completion:completion];
             return;
         }
 

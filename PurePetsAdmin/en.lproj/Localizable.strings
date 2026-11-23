@@ -1482,6 +1482,11 @@
 "PaymentMgmt_Settings_Revert" = "Revert Unsaved";
 "PaymentMgmt_Settings_Changes_Pending" = "%d Pending Changes";
 "PaymentMgmt_Settings_Save_CTA" = "Save & Deploy Settings";
+"PaymentMgmt_Settings_Error_Generic" = "Unable to update payment settings right now. Please try again.";
+"PaymentMgmt_Settings_Error_Permission" = "You do not have permission to modify payment settings (payments.manage).";
+"PaymentMgmt_Settings_Error_Session" = "Your session has expired. Please sign in again.";
+"PaymentMgmt_Settings_Error_Network" = "Cannot connect to server. Please check your internet connection and try again.";
+"PaymentMgmt_Settings_Error_Server" = "Unable to save payment settings due to a temporary server issue. Please retry.";
 "PaymentMgmt_Value_NotAvailable" = "Not available";
 "PaymentMgmt_Value_SystemDefault" = "System default";
 "PaymentMgmt_Search_Placeholder" = "Search order, user, payment method";

@@ -20,6 +20,37 @@ NSDate *PPPaymentAdminDateFromValue(id value)
     if ([value respondsToSelector:@selector(dateValue)]) {
         return [value dateValue];
     }
+    if ([value isKindOfClass:NSString.class]) {
+        NSString *str = (NSString *)value;
+        if (str.length > 0) {
+            NSISO8601DateFormatter *iso = [NSISO8601DateFormatter new];
+            iso.formatOptions = NSISO8601DateFormatWithInternetDateTime | NSISO8601DateFormatWithFractionalSeconds;
+            NSDate *parsed = [iso dateFromString:str];
+            if (!parsed) {
+                iso.formatOptions = NSISO8601DateFormatWithInternetDateTime;
+                parsed = [iso dateFromString:str];
+            }
+            if (parsed) return parsed;
+        }
+    }
+    if ([value isKindOfClass:NSNumber.class]) {
+        double ts = [value doubleValue];
+        if (ts > 100000000000.0) { // Milliseconds
+            return [NSDate dateWithTimeIntervalSince1970:ts / 1000.0];
+        } else if (ts > 0.0) { // Seconds
+            return [NSDate dateWithTimeIntervalSince1970:ts];
+        }
+    }
+    if ([value isKindOfClass:NSDictionary.class]) {
+        NSDictionary *dict = (NSDictionary *)value;
+        id sec = dict[@"_seconds"] ?: dict[@"seconds"];
+        if ([sec respondsToSelector:@selector(doubleValue)]) {
+            double s = [sec doubleValue];
+            id nsec = dict[@"_nanoseconds"] ?: dict[@"nanoseconds"];
+            double ns = [nsec respondsToSelector:@selector(doubleValue)] ? [nsec doubleValue] : 0.0;
+            return [NSDate dateWithTimeIntervalSince1970:s + (ns / 1e9)];
+        }
+    }
     return nil;
 }
 

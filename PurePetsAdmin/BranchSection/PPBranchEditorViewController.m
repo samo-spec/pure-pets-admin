@@ -643,13 +643,18 @@ static NSString *const kSwitchCellID = @"PPSwitchCell";
         FIRDocumentReference *newDocRef = [[db collectionWithPath:kPPBranchesCol] documentWithAutoID];
         if ([self.draft[@"isConsumerAppStock"] boolValue]) {
             NSMutableDictionary *cfg = [NSMutableDictionary dictionary];
+            cfg[@"branchId"] = newDocRef.documentID;
             cfg[@"activeConsumerBranchId"] = newDocRef.documentID;
+            cfg[@"branchCode"] = payload[@"code"] ?: @"";
             cfg[@"activeConsumerBranchCode"] = payload[@"code"] ?: @"";
+            cfg[@"nameAr"] = nameAr;
             cfg[@"activeConsumerBranchNameAr"] = nameAr;
+            cfg[@"nameEn"] = nameEn;
             cfg[@"activeConsumerBranchNameEn"] = nameEn;
             cfg[@"updatedAt"] = [FIRFieldValue fieldValueForServerTimestamp];
             cfg[@"updatedBy"] = uid;
             [[[db collectionWithPath:@"AppConfigCol"] documentWithPath:@"ConsumerStockConfig"] setData:cfg merge:YES];
+            [[[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"syncConsumerBranchStock"] callWithObject:@{@"branchId": newDocRef.documentID} completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {}];
         }
 
         [newDocRef setData:payload completion:^(NSError *error) {
@@ -659,13 +664,18 @@ static NSString *const kSwitchCellID = @"PPSwitchCell";
         NSString *docID = self.branch.branchID;
         if ([self.draft[@"isConsumerAppStock"] boolValue]) {
             NSMutableDictionary *cfg = [NSMutableDictionary dictionary];
+            cfg[@"branchId"] = docID;
             cfg[@"activeConsumerBranchId"] = docID;
+            cfg[@"branchCode"] = self.draft[@"code"] ?: @"";
             cfg[@"activeConsumerBranchCode"] = self.draft[@"code"] ?: @"";
+            cfg[@"nameAr"] = nameAr;
             cfg[@"activeConsumerBranchNameAr"] = nameAr;
+            cfg[@"nameEn"] = nameEn;
             cfg[@"activeConsumerBranchNameEn"] = nameEn;
             cfg[@"updatedAt"] = [FIRFieldValue fieldValueForServerTimestamp];
             cfg[@"updatedBy"] = uid;
             [[[db collectionWithPath:@"AppConfigCol"] documentWithPath:@"ConsumerStockConfig"] setData:cfg merge:YES];
+            [[[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"syncConsumerBranchStock"] callWithObject:@{@"branchId": docID} completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {}];
         }
 
         [[[db collectionWithPath:kPPBranchesCol] documentWithPath:docID]

@@ -13,6 +13,7 @@
 import SwiftUI
 import FirebaseFirestore
 import FirebaseAuth
+import FirebaseFunctions
 
 // MARK: - Sendable & Identifiable Conformance
 
@@ -362,6 +363,7 @@ final class AdminBranchesViewModel: ObservableObject {
         let uid = Auth.auth().currentUser?.uid ?? ""
         batch.setData([
             "branchId": targetID,
+            "activeConsumerBranchId": targetID,
             "branchCode": branch.code,
             "nameAr": branch.nameAr,
             "nameEn": branch.nameEn,
@@ -374,8 +376,79 @@ final class AdminBranchesViewModel: ObservableObject {
                 if let error {
                     completion(false, error.localizedDescription)
                 } else {
-                    self?.writeConsumerStockAuditLog(branch: branch)
-                    completion(true, Language.get("Branches_UserAppStock_Success", alter: "تم اعتماد مخزون هذا الفرع لتطبيق المستخدمين بنجاح."))
+                    guard let self else { return }
+                    self.writeConsumerStockAuditLog(branch: branch)
+                    self.synchronizeConsumerBranchStock(branch: branch) { _, _ in
+                        completion(true, Language.get("Branches_UserAppStock_Success", alter: "تم اعتماد مخزون هذا الفرع ومزامنة منتجات تطبيق العملاء بنجاح."))
+                    }
+                }
+            }
+        }
+    }
+
+    private func synchronizeConsumerBranchStock(branch: PPBranchModel, completion: @escaping @Sendable (Bool, String?) -> Void) {
+        let functions = Functions.functions(region: "us-central1")
+        functions.httpsCallable("syncConsumerBranchStock").call(["branchId": branch.branchID]) { result, error in
+            if let error = error {
+                print("⚠️ [ConsumerStockSync] Callable note: \(error.localizedDescription), projecting directly...")
+                self.projectBranchStockDirectly(branch: branch, completion: completion)
+            } else {
+                print("✅ [ConsumerStockSync] Callable sync succeeded for branch \(branch.nameAr)")
+                completion(true, nil)
+            }
+        }
+    }
+
+    private func projectBranchStockDirectly(branch: PPBranchModel, completion: @escaping @Sendable (Bool, String?) -> Void) {
+        let db = Firestore.firestore()
+        let branchID = branch.branchID
+
+        db.collection("branchInventory").whereField("branchId", isEqualTo: branchID).getDocuments { invSnap, invErr in
+            guard let invDocs = invSnap?.documents else {
+                completion(true, nil)
+                return
+            }
+
+            var stockMap: [String: Int] = [:]
+            for doc in invDocs {
+                let data = doc.data()
+                if let pid = data["productId"] as? String {
+                    let avail = (data["availableQuantity"] as? NSNumber)?.intValue ?? (data["quantity"] as? NSNumber)?.intValue ?? 0
+                    stockMap[pid] = max(0, avail)
+                }
+            }
+
+            db.collection("petAccessories").getDocuments { prodSnap, prodErr in
+                guard let prodDocs = prodSnap?.documents else {
+                    completion(true, nil)
+                    return
+                }
+
+                let batch = db.batch()
+                let now = FieldValue.serverTimestamp()
+
+                for doc in prodDocs {
+                    let pid = doc.documentID
+                    let branchQty = stockMap[pid] ?? 0
+                    let noStock = (branchQty <= 0)
+
+                    batch.updateData([
+                        "quantity": branchQty,
+                        "noStock": noStock,
+                        "storeBranchId": branchID,
+                        "storeBranchNameAr": branch.nameAr,
+                        "storeBranchNameEn": branch.nameEn,
+                        "updatedAt": now
+                    ], forDocument: doc.reference)
+                }
+
+                batch.commit { commitErr in
+                    if let commitErr {
+                        print("⚠️ [ConsumerStockSync] Direct projection note: \(commitErr.localizedDescription)")
+                    } else {
+                        print("✅ [ConsumerStockSync] Direct projection committed successfully")
+                    }
+                    completion(true, nil)
                 }
             }
         }

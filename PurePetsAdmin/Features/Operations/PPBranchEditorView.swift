@@ -17,6 +17,7 @@ import MapKit
 import CoreLocation
 import FirebaseFirestore
 import FirebaseAuth
+import FirebaseFunctions
 import UIKit
 
 // MARK: - Root Adaptive Coordinator
@@ -414,9 +415,12 @@ final class BranchEditorState: ObservableObject {
                 let configRef = Firestore.firestore().collection("AppConfigCol").document("ConsumerStockConfig")
                 batch.setData([
                     "branchId": docID,
+                    "activeConsumerBranchId": docID,
                     "branchCode": trimmedCode.isEmpty ? "PP-\(docID.prefix(6).uppercased())" : trimmedCode,
                     "nameAr": trimmedAr,
                     "nameEn": trimmedEn,
+                    "activeConsumerBranchNameAr": trimmedAr,
+                    "activeConsumerBranchNameEn": trimmedEn,
                     "updatedAt": FieldValue.serverTimestamp(),
                     "updatedBy": uid
                 ], forDocument: configRef, merge: true)
@@ -460,6 +464,9 @@ final class BranchEditorState: ObservableObject {
                             errorHaptic.notificationOccurred(.error)
                         } else {
                             self.writeSaveAuditLog(branchID: docID, isNew: !self.isEditing)
+                            if self.isConsumerAppStock {
+                                Functions.functions(region: "us-central1").httpsCallable("syncConsumerBranchStock").call(["branchId": docID]) { _, _ in }
+                            }
                             let successHaptic = UINotificationFeedbackGenerator()
                             successHaptic.notificationOccurred(.success)
                             let msg = self.isEditing ? Language.get("Branches_Updated", alter: "تم تحديث بيانات الفرع") : Language.get("Branches_Created", alter: "تم إنشاء الفرع بنجاح")

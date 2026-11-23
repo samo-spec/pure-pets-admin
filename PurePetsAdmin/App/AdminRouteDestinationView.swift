@@ -83,6 +83,12 @@ struct AdminRouteDestinationView: View {
             AdminPetsHotelHubView {
                 router.presentedRoute = nil
             }
+        case .pury:
+            PuryAssistantSheetView(
+                session: session,
+                router: router,
+                screenContext: nil
+            )
         case .homeControl:
             AdminHomeControlView {
                 router.presentedRoute = nil
