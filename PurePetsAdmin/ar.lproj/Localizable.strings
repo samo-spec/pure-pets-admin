@@ -12229,6 +12229,22 @@
 "POS_Customer_Directory_Loading" = "جارٍ تحميل دليل العملاء…";
 "POS_Customer_Directory_Empty" = "لا يوجد عملاء لعرضهم بعد";
 "POS_Customer_Directory_EmptyDetail" = "اسحب للتحديث أو ابحث عن العميل بالاسم أو رقم الهاتف.";
+"POS_Customer_DeleteButton" = "حذف العميل";
+"POS_Customer_Deleting" = "جارٍ حذف العميل…";
+"POS_Customer_DeleteConfirmTitle" = "حذف «%@»؟";
+"POS_Customer_DeleteConfirmMessage" = "سيتم حذف ملف العميل نهائياً إذا لم تكن هناك سجلات ائتمان أو أصناف مباعة باسمه.";
+"POS_Customer_DeleteConfirmAction" = "حذف";
+"POS_Customer_DeleteSuccess" = "تم حذف العميل من الدليل.";
+"POS_Customer_DeleteEligibilityHint" = "يمكن حذف العميل نهائياً فقط إذا لم تكن له سجلات ائتمان أو مبيعات باسمه.";
+"POS_Customer_DeleteCreditHint" = "لا يمكن حذف هذا العميل لوجود رصيد أو حد ائتمان مسجل باسمه.";
+"POS_Customer_DeleteBlockedCredit" = "لا يمكن حذف هذا العميل لوجود رصيد آجل أو سياسة ائتمان مسجلة باسمه.";
+"POS_Customer_DeleteBlockedSales" = "لا يمكن حذف هذا العميل لوجود مبيعات أو حجوزات باسمه.";
+"POS_Customer_DeleteBlockedCreditAndSales" = "لا يمكن حذف هذا العميل لوجود سجلات ائتمان ومبيعات مسجلة باسمه.";
+"POS_Customer_DeleteBlockedProforma" = "لا يمكن حذف هذا العميل لوجود فواتير مبدئية باسمه.";
+"POS_Customer_DeleteBlockedInactive" = "ملف هذا العميل غير نشط ولا يمكن حذفه.";
+"POS_Customer_DeleteAlreadyRemoved" = "تمت إزالة هذا العميل من الدليل مسبقاً.";
+"POS_Customer_DeletePermissionDenied" = "ليس لديك صلاحية لحذف هذا العميل.";
+"POS_Customer_DeleteNamed" = "حذف %@";
 
 /* POS credit account statement and administration presentation */
 "POS_CreditAccount_NoDueDate" = "لا يوجد موعد استحقاق محدد";

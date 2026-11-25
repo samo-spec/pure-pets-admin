@@ -240,6 +240,9 @@ final class POSCustomerCreditStore: ObservableObject {
             isPolicyVerified ? max(0, limitMinor - outstandingMinor) : 0
         }
         var hasRemainingCredit: Bool { isPolicyVerified && availableMinor > 0 }
+        var hasBlockingCreditLocally: Bool {
+            outstandingMinor > 0 || pendingAmountMinor > 0 || (isPolicyVerified && limitMinor > 0)
+        }
         var shouldDisplayCreditView: Bool {
             (isPolicyVerified && limitMinor > 0)
                 || outstandingMinor > 0
@@ -391,8 +394,36 @@ final class POSCustomerCacheStore: ObservableObject, @unchecked Sendable {
         }
     }
 
-    func mergeAndPersist(incoming: [POSCustomerRecord]) -> [POSCustomerRecord] {
+    func remove(customerId: String) {
+        guard !customerId.isEmpty else { return }
         queue.sync {
+            var list = inMemoryCache
+            let beforeCount = list.count
+            list.removeAll { $0.id == customerId }
+            if list.count != beforeCount {
+                inMemoryCache = list
+                persistLocked(list)
+            }
+        }
+    }
+
+    func mergeAndPersist(incoming: [POSCustomerRecord], replaceIfFewerThanPageSize pageSize: Int? = nil) -> [POSCustomerRecord] {
+        queue.sync {
+            if let pageSize, incoming.count < pageSize {
+                var deduped: [POSCustomerRecord] = []
+                var seen = Set<String>()
+                for c in incoming {
+                    if !seen.contains(c.id) {
+                        deduped.append(c)
+                        seen.insert(c.id)
+                    }
+                }
+                self.inMemoryCache = deduped
+                self.lastSyncTimestamp = Date()
+                self.persistLocked(deduped)
+                UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: lastSyncKey)
+                return deduped
+            }
             var map: [String: POSCustomerRecord] = [:]
             for c in inMemoryCache {
                 map[c.id] = c
@@ -554,6 +585,8 @@ final class POSCustomerPickerViewModel: ObservableObject {
     @Published var editNote: String = ""
     @Published var editBranchId: String = ""
     @Published var isEditingSubmitting: Bool = false
+    @Published var isDeletingCustomer: Bool = false
+    @Published var deletingCustomerId: String? = nil
 
     // iPad Cockpit State
     @Published var highlightedCustomer: POSCustomerRecord? = nil
@@ -731,11 +764,11 @@ final class POSCustomerPickerViewModel: ObservableObject {
 
                 let parsed = items.compactMap { self.parseCustomer($0) }
                 
-                // Merge authoritative Firestore records into local cache
-                let merged = POSCustomerCacheStore.shared.mergeAndPersist(incoming: parsed)
+                // Merge authoritative Firestore records into local cache (replace when authoritative list fits inside pageSize)
+                let merged = POSCustomerCacheStore.shared.mergeAndPersist(incoming: parsed, replaceIfFewerThanPageSize: 25)
                 
-                // Update recents if any were modified on Firestore
-                self.syncRecentsWithUpdatedCustomers(merged)
+                // Update recents if any were modified or removed on Firestore
+                self.syncRecentsWithUpdatedCustomers(merged, authoritativeIds: parsed.count < 25 ? Set(parsed.map(\.id)) : nil)
 
                 // If user hasn't typed a search in the meantime, update searchResults
                 if self.searchText.isEmpty {
@@ -765,9 +798,10 @@ final class POSCustomerPickerViewModel: ObservableObject {
         do {
             let callable = Functions.functions().httpsCallable("posCustomerCommand")
             callable.timeoutInterval = 20
+            let trimmedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
             let payload: [String: Any] = [
                 "action": "search",
-                "term": searchText.trimmingCharacters(in: .whitespacesAndNewlines),
+                "term": trimmedSearch,
                 "pageSize": 25
             ]
             let result = try await callable.call(payload)
@@ -777,8 +811,12 @@ final class POSCustomerPickerViewModel: ObservableObject {
                 return
             }
             let parsed = items.compactMap { self.parseCustomer($0) }
-            let merged = POSCustomerCacheStore.shared.mergeAndPersist(incoming: parsed)
-            self.syncRecentsWithUpdatedCustomers(merged)
+            let isExhaustive = trimmedSearch.isEmpty && parsed.count < 25
+            let merged = POSCustomerCacheStore.shared.mergeAndPersist(
+                incoming: parsed,
+                replaceIfFewerThanPageSize: trimmedSearch.isEmpty ? 25 : nil
+            )
+            self.syncRecentsWithUpdatedCustomers(merged, authoritativeIds: isExhaustive ? Set(parsed.map(\.id)) : nil)
             
             if searchText.isEmpty {
                 self.searchResults = merged
@@ -802,9 +840,16 @@ final class POSCustomerPickerViewModel: ObservableObject {
         }
     }
 
-    private func syncRecentsWithUpdatedCustomers(_ updatedList: [POSCustomerRecord]) {
+    private func syncRecentsWithUpdatedCustomers(_ updatedList: [POSCustomerRecord], authoritativeIds: Set<String>? = nil) {
         var recentsChanged = false
         var updatedRecents = recentCustomers
+        if let authoritativeIds {
+            let before = updatedRecents.count
+            updatedRecents.removeAll { !authoritativeIds.contains($0.id) }
+            if updatedRecents.count != before {
+                recentsChanged = true
+            }
+        }
         for updated in updatedList {
             if let idx = updatedRecents.firstIndex(where: { $0.id == updated.id }) {
                 if updatedRecents[idx] != updated {
@@ -1131,6 +1176,129 @@ final class POSCustomerPickerViewModel: ObservableObject {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
             }
         }
+    }
+
+    // MARK: - Delete Customer Lifecycle
+
+    func removeDeletedCustomerLocally(_ customer: POSCustomerRecord) {
+        let customerId = customer.id
+        searchResults.removeAll { $0.id == customerId }
+        if recentCustomers.contains(where: { $0.id == customerId }) {
+            recentCustomers.removeAll { $0.id == customerId }
+            saveRecents()
+        }
+        POSCustomerCacheStore.shared.remove(customerId: customerId)
+        cachedDirectoryCount = searchResults.count
+        POSCustomerCreditStore.shared.invalidate(customerID: customerId, branchID: customer.branchId)
+        if let activeBranchId = BranchContextStore.shared.activeBranch?.branchID, !activeBranchId.isEmpty {
+            POSCustomerCreditStore.shared.invalidate(customerID: customerId, branchID: activeBranchId)
+        }
+        if editingCustomer?.id == customerId {
+            editingCustomer = nil
+            editName = ""
+            editPhone = ""
+            editEmail = ""
+            editNote = ""
+            editBranchId = ""
+        }
+        if highlightedCustomer?.id == customerId {
+            highlightedCustomer = searchResults.first ?? recentCustomers.first
+        }
+    }
+
+    func deleteCustomer(_ customer: POSCustomerRecord, onSuccess: @escaping () -> Void = {}) {
+        guard !isDeletingCustomer, !isSubmitting, !isEditingSubmitting, !isAttachingUser,
+              customer.source == "directory", !customer.id.isEmpty else { return }
+
+        isDeletingCustomer = true
+        deletingCustomerId = customer.id
+        errorMessage = nil
+        successFeedbackMessage = nil
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let callable = Functions.functions().httpsCallable("posCustomerCommand")
+                callable.timeoutInterval = 25
+                let result = try await callable.call([
+                    "action": "delete",
+                    "payload": ["customerId": customer.id]
+                ])
+
+                guard let data = result.data as? [String: Any],
+                      data["ok"] as? Bool == true,
+                      data["deleted"] as? Bool == true else {
+                    self.isDeletingCustomer = false
+                    self.deletingCustomerId = nil
+                    self.errorMessage = Language.get("POS_Customer_DeleteBlockedCredit", alter: nil)
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    return
+                }
+
+                self.removeDeletedCustomerLocally(customer)
+                self.lastSyncDate = Date()
+                self.isDeletingCustomer = false
+                self.deletingCustomerId = nil
+                self.successFeedbackMessage = Language.get("POS_Customer_DeleteSuccess", alter: nil)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                onSuccess()
+
+                Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    if self?.successFeedbackMessage == Language.get("POS_Customer_DeleteSuccess", alter: nil) {
+                        self?.successFeedbackMessage = nil
+                    }
+                }
+            } catch {
+                self.isDeletingCustomer = false
+                self.deletingCustomerId = nil
+
+                let nsError = error as NSError
+                let details = nsError.userInfo["details"] as? [String: Any]
+                    ?? nsError.userInfo["FIRFunctionsErrorDetailsKey"] as? [String: Any]
+                    ?? [:]
+                let domainCode = details["domainCode"] as? String ?? ""
+
+                if domainCode == "POS_CUSTOMER_NOT_FOUND" ||
+                    (nsError.domain == FunctionsErrorDomain && nsError.code == FunctionsErrorCode.notFound.rawValue) {
+                    self.removeDeletedCustomerLocally(customer)
+                    self.successFeedbackMessage = Language.get("POS_Customer_DeleteAlreadyRemoved", alter: nil)
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    onSuccess()
+                    return
+                }
+
+                self.errorMessage = self.deletionFailureMessage(error)
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            }
+        }
+    }
+
+    private func deletionFailureMessage(_ error: Error) -> String {
+        let nsError = error as NSError
+        let details = nsError.userInfo["details"] as? [String: Any]
+            ?? nsError.userInfo["FIRFunctionsErrorDetailsKey"] as? [String: Any]
+            ?? [:]
+        switch details["domainCode"] as? String ?? "" {
+        case "POS_CUSTOMER_HAS_CREDIT_AND_SALES":
+            return Language.get("POS_Customer_DeleteBlockedCreditAndSales", alter: nil)
+        case "POS_CUSTOMER_HAS_CREDIT":
+            return Language.get("POS_Customer_DeleteBlockedCredit", alter: nil)
+        case "POS_CUSTOMER_HAS_SALES":
+            return Language.get("POS_Customer_DeleteBlockedSales", alter: nil)
+        case "POS_CUSTOMER_HAS_PROFORMA":
+            return Language.get("POS_Customer_DeleteBlockedProforma", alter: nil)
+        case "POS_CUSTOMER_INACTIVE":
+            return Language.get("POS_Customer_DeleteBlockedInactive", alter: nil)
+        default:
+            break
+        }
+        if nsError.domain == FunctionsErrorDomain,
+           nsError.code == FunctionsErrorCode.permissionDenied.rawValue ||
+           nsError.code == FunctionsErrorCode.unauthenticated.rawValue {
+            return Language.get("POS_Customer_DeletePermissionDenied", alter: nil)
+        }
+        return error.localizedDescription
     }
 
     // MARK: - Quick Actions
@@ -1516,6 +1684,7 @@ struct POSCustomerPickerSheet: View {
     let canCreateCustomer: Bool
     let purpose: POSCustomerPickerPurpose
     let onSelect: ((POSCustomerRecord) -> Void)?
+    private let onDelete: ((POSCustomerRecord) -> Void)?
     private let onDismiss: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
@@ -1527,21 +1696,24 @@ struct POSCustomerPickerSheet: View {
         currentSelected: POSCustomerRecord?,
         canCreateCustomer: Bool = true,
         purpose: POSCustomerPickerPurpose = .posCart,
-        onSelect: @escaping (POSCustomerRecord) -> Void
+        onSelect: @escaping (POSCustomerRecord) -> Void,
+        onDelete: ((POSCustomerRecord) -> Void)? = nil
     ) {
         self.currentSelected = currentSelected
         self.canCreateCustomer = canCreateCustomer
         self.purpose = purpose
         self.onSelect = onSelect
+        self.onDelete = onDelete
         self.onDismiss = nil
     }
 
     /// Standalone entry from People; there is no cart or selection callback.
-    init(canCreateCustomer: Bool, onDismiss: @escaping () -> Void) {
+    init(canCreateCustomer: Bool, onDelete: ((POSCustomerRecord) -> Void)? = nil, onDismiss: @escaping () -> Void) {
         self.currentSelected = nil
         self.canCreateCustomer = canCreateCustomer
         self.purpose = .customerManagement
         self.onSelect = nil
+        self.onDelete = onDelete
         self.onDismiss = onDismiss
     }
 
@@ -1561,6 +1733,7 @@ struct POSCustomerPickerSheet: View {
                         canAttachAppUser: canCreateCustomer && viewModel.canAttachAppUser,
                         onAttachAppUser: showAccountPicker,
                         onSelect: onSelect,
+                        onDelete: onDelete,
                         dismiss: close
                     )
                 } else {
@@ -1572,6 +1745,7 @@ struct POSCustomerPickerSheet: View {
                         canAttachAppUser: canCreateCustomer && viewModel.canAttachAppUser,
                         onAttachAppUser: showAccountPicker,
                         onSelect: onSelect,
+                        onDelete: onDelete,
                         dismiss: close
                     )
                 }
@@ -1872,14 +2046,17 @@ private struct iPhoneCustomerSensoryDeck: View {
     let canAttachAppUser: Bool
     let onAttachAppUser: () -> Void
     let onSelect: ((POSCustomerRecord) -> Void)?
+    let onDelete: ((POSCustomerRecord) -> Void)?
     let dismiss: () -> Void
 
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.layoutDirection) private var direction
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var contrast
+    @ObservedObject private var creditStore = POSCustomerCreditStore.shared
     @FocusState private var isSearchFocused: Bool
     @State private var selectedCountry: AdminCountryCodeItem = AdminCountryCatalog.defaultCountry
+    @State private var pendingDeleteCustomer: POSCustomerRecord? = nil
 
     private let quickNoteChips: [String] = [
         "🌟 عميل VIP",
@@ -1910,7 +2087,9 @@ private struct iPhoneCustomerSensoryDeck: View {
 
     private func text(_ key: String) -> String { Language.get(key, alter: nil) }
     private var locale: Locale { Locale(identifier: Language.isRTL() ? "ar_QA" : "en_QA") }
-    private var isBusy: Bool { viewModel.isSubmitting || viewModel.isEditingSubmitting || viewModel.isAttachingUser }
+    private var isBusy: Bool {
+        viewModel.isSubmitting || viewModel.isEditingSubmitting || viewModel.isAttachingUser || viewModel.isDeletingCustomer
+    }
     private var navigationTitle: String {
         if viewModel.activeTab == .create { return text("POS_Customer_Directory_New") }
         switch purpose {
@@ -1952,9 +2131,32 @@ private struct iPhoneCustomerSensoryDeck: View {
                     onSelectAndDismiss: { updated in
                         onSelect?(updated)
                         dismiss()
+                    },
+                    onDeleted: { deleted in
+                        onDelete?(deleted)
                     }
                 )
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+            }
+            .alert(
+                String(format: text("POS_Customer_DeleteConfirmTitle"), pendingDeleteCustomer?.name ?? ""),
+                isPresented: Binding(
+                    get: { pendingDeleteCustomer != nil },
+                    set: { if !$0 { pendingDeleteCustomer = nil } }
+                )
+            ) {
+                Button(text("Cancel"), role: .cancel) {
+                    pendingDeleteCustomer = nil
+                }
+                Button(text("POS_Customer_DeleteConfirmAction"), role: .destructive) {
+                    guard let target = pendingDeleteCustomer else { return }
+                    pendingDeleteCustomer = nil
+                    viewModel.deleteCustomer(target) {
+                        onDelete?(target)
+                    }
+                }
+            } message: {
+                Text(text("POS_Customer_DeleteConfirmMessage"))
             }
         }
         .navigationViewStyle(.stack)
@@ -2338,8 +2540,11 @@ private struct iPhoneCustomerSensoryDeck: View {
 
     private func iPhoneCustomerResultCard(customer: POSCustomerRecord) -> some View {
         let branchID = BranchContextStore.shared.activeBranch?.branchID ?? ""
+        let effectiveBranchID = branchID.isEmpty ? customer.branchId : branchID
         let canReadCredit = customer.source == "directory" && !customer.id.isEmpty &&
             POSCreditAccountCopy.permitted("pos.credit.read", branchID: branchID)
+        let hasLocalCredit = creditStore.summary(for: customer.id, branchID: effectiveBranchID)?.hasBlockingCreditLocally == true
+        let canMutate = canCreateCustomer && !unavailable(customer) && customer.source == "directory"
         return POSCustomerIdentityCell(
             customer: customer,
             branchName: viewModel.branchDisplayName(for: customer.branchId),
@@ -2349,6 +2554,26 @@ private struct iPhoneCustomerSensoryDeck: View {
             onEdit: canCreateCustomer && !purpose.isManagingCustomers ? { viewModel.startEditing(customer: customer) } : nil,
             creditBranchID: canReadCredit ? branchID : nil
         )
+        .contextMenu {
+            if canMutate {
+                Button {
+                    viewModel.startEditing(customer: customer)
+                } label: {
+                    Label(text("POS_Customer_EditButton"), systemImage: "pencil")
+                }
+                if !hasLocalCredit {
+                    Button(role: .destructive) {
+                        pendingDeleteCustomer = customer
+                    } label: {
+                        Label(text("POS_Customer_DeleteButton"), systemImage: "trash")
+                    }
+                }
+            }
+        }
+        .accessibilityAction(named: String(format: text("POS_Customer_DeleteNamed"), customer.name)) {
+            guard canMutate, !hasLocalCredit, !isBusy else { return }
+            pendingDeleteCustomer = customer
+        }
     }
 
     private var loadingDirectory: some View {
@@ -2918,9 +3143,33 @@ private struct POSCustomerEditSheet: View {
     let canEdit: Bool
     let purpose: POSCustomerPickerPurpose
     let onSelectAndDismiss: (POSCustomerRecord) -> Void
+    let onDeleted: (POSCustomerRecord) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var showsCreditPolicySheet = false
+    @State private var showsDeleteConfirmation = false
     @ObservedObject private var creditStore = POSCustomerCreditStore.shared
+
+    private var activeBranchID: String {
+        let branch = BranchContextStore.shared.activeBranch?.branchID ?? ""
+        return branch.isEmpty ? customer.branchId : branch
+    }
+
+    private var creditSummary: POSCustomerCreditStore.CreditSummary? {
+        creditStore.summary(for: customer.id, branchID: activeBranchID)
+    }
+
+    private var hasLocalCredit: Bool {
+        creditSummary?.hasBlockingCreditLocally == true
+    }
+
+    private var isUnavailable: Bool {
+        ["blocked", "banned", "disabled", "deactivated", "deleted", "suspended", "archived", "inactive"]
+            .contains(customer.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
+
+    private var isMutating: Bool {
+        viewModel.isEditingSubmitting || viewModel.isDeletingCustomer
+    }
 
     var body: some View {
         NavigationView {
@@ -2935,6 +3184,7 @@ private struct POSCustomerEditSheet: View {
                         statusDotColor: Color(uiColor: .ppSuccess),
                         isModal: true,
                         onBack: {
+                            guard !isMutating else { return }
                             viewModel.cancelEditing()
                             dismiss()
                         }
@@ -2950,15 +3200,20 @@ private struct POSCustomerEditSheet: View {
                     }
 
                     if let error = viewModel.errorMessage {
-                        HStack(spacing: 8) {
-                            Image(systemName: "exclamationmark.circle.fill").foregroundColor(.red)
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "exclamationmark.circle.fill")
+                                .foregroundStyle(AdminSurface.danger)
+                                .padding(.top, 2)
+                                .accessibilityHidden(true)
                             Text(error)
-                                .font(Font.custom("Beiruti-Medium", size: 12.5, relativeTo: .caption))
-                                .foregroundColor(AdminSurface.primaryText)
-                            Spacer()
+                                .font(AdminType.subheadline)
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 0)
                         }
-                        .padding(10)
-                        .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .padding(12)
+                        .background(AdminSurface.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
                     }
@@ -3198,7 +3453,7 @@ private struct POSCustomerEditSheet: View {
                                         .frame(maxWidth: .infinity, minHeight: 48)
                                         .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                                     }
-                                    .disabled(viewModel.isEditingSubmitting)
+                                    .disabled(isMutating)
 
                                     // Save and Link CTA
                                     if !purpose.isManagingCustomers {
@@ -3217,7 +3472,51 @@ private struct POSCustomerEditSheet: View {
                                             .frame(maxWidth: .infinity, minHeight: 44)
                                             .background(AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                                         }
-                                        .disabled(viewModel.isEditingSubmitting)
+                                        .disabled(isMutating)
+                                    }
+
+                                    // Delete Customer Section
+                                    if customer.source == "directory" && !customer.id.isEmpty {
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            Button(role: .destructive) {
+                                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                                showsDeleteConfirmation = true
+                                            } label: {
+                                                HStack(spacing: 8) {
+                                                    if viewModel.isDeletingCustomer {
+                                                        ProgressView().tint(AdminSurface.danger).scaleEffect(0.9)
+                                                    } else {
+                                                        Image(systemName: "trash")
+                                                            .font(.system(size: 14, weight: .semibold))
+                                                            .accessibilityHidden(true)
+                                                    }
+                                                    Text(Language.get(viewModel.isDeletingCustomer ? "POS_Customer_Deleting" : "POS_Customer_DeleteButton", alter: nil))
+                                                        .font(AdminType.calloutBold)
+                                                        .multilineTextAlignment(.leading)
+                                                        .fixedSize(horizontal: false, vertical: true)
+                                                }
+                                                .foregroundStyle(AdminSurface.danger)
+                                                .frame(maxWidth: .infinity, minHeight: 48)
+                                                .background(AdminSurface.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                                        .strokeBorder(AdminSurface.danger.opacity(0.24), lineWidth: 1)
+                                                )
+                                            }
+                                            .buttonStyle(POSCustomerContactPressStyle())
+                                            .disabled(isMutating || isUnavailable || hasLocalCredit)
+                                            .opacity((isMutating || isUnavailable || hasLocalCredit) ? 0.5 : 1)
+                                            .accessibilityLabel(String(format: Language.get("POS_Customer_DeleteNamed", alter: nil), customer.name))
+                                            .accessibilityIdentifier("pos.customer.delete")
+
+                                            Text(Language.get(hasLocalCredit ? "POS_Customer_DeleteCreditHint" : "POS_Customer_DeleteEligibilityHint", alter: nil))
+                                                .font(AdminType.caption)
+                                                .foregroundStyle(hasLocalCredit ? AdminSurface.crimson : AdminSurface.secondaryText)
+                                                .multilineTextAlignment(.leading)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                        .padding(.top, 6)
                                     }
                                 }
                                 .padding(.top, 8)
@@ -3229,6 +3528,12 @@ private struct POSCustomerEditSheet: View {
                 }
             }
             .navigationBarHidden(true)
+            .interactiveDismissDisabled(isMutating)
+            .task(id: "\(customer.id):\(activeBranchID):\(creditStore.revision)") {
+                if !activeBranchID.isEmpty, customer.source == "directory" {
+                    creditStore.loadCreditSummary(for: customer.id, branchID: activeBranchID)
+                }
+            }
             .sheet(isPresented: $showsCreditPolicySheet) {
                 let branchID = BranchContextStore.shared.activeBranch?.branchID ?? ""
                 let branchName = BranchContextStore.shared.activeBranch?.localizedName() ?? ""
@@ -3238,8 +3543,25 @@ private struct POSCustomerEditSheet: View {
                     customerPhone: customer.phone,
                     branchID: branchID,
                     branchName: branchName
-                ) {}
+                ) {
+                    POSCustomerCreditStore.shared.invalidate(customerID: customer.id, branchID: branchID)
+                    POSCustomerCreditStore.shared.loadCreditSummary(for: customer.id, branchID: branchID)
+                }
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+            }
+            .alert(
+                String(format: Language.get("POS_Customer_DeleteConfirmTitle", alter: nil), customer.name),
+                isPresented: $showsDeleteConfirmation
+            ) {
+                Button(Language.get("Cancel", alter: nil), role: .cancel) {}
+                Button(Language.get("POS_Customer_DeleteConfirmAction", alter: nil), role: .destructive) {
+                    viewModel.deleteCustomer(customer) {
+                        onDeleted(customer)
+                        dismiss()
+                    }
+                }
+            } message: {
+                Text(Language.get("POS_Customer_DeleteConfirmMessage", alter: nil))
             }
         }
     }
@@ -3257,11 +3579,28 @@ private struct iPadCustomerSpatialCockpit: View {
     let canAttachAppUser: Bool
     let onAttachAppUser: () -> Void
     let onSelect: ((POSCustomerRecord) -> Void)?
+    let onDelete: ((POSCustomerRecord) -> Void)?
     let dismiss: () -> Void
 
     @ObservedObject private var creditStore = POSCustomerCreditStore.shared
     @FocusState private var isSearchFocused: Bool
     @State private var selectedCountry: AdminCountryCodeItem = AdminCountryCatalog.defaultCountry
+    @State private var pendingDeleteCustomer: POSCustomerRecord? = nil
+
+    private var isBusy: Bool {
+        viewModel.isSubmitting || viewModel.isEditingSubmitting || viewModel.isAttachingUser || viewModel.isDeletingCustomer
+    }
+
+    private func isUnavailable(_ customer: POSCustomerRecord) -> Bool {
+        ["blocked", "banned", "disabled", "deactivated", "deleted", "suspended", "archived", "inactive"]
+            .contains(customer.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
+
+    private func hasLocalBlockingCredit(_ customer: POSCustomerRecord) -> Bool {
+        let activeBranch = BranchContextStore.shared.activeBranch?.branchID ?? ""
+        let effectiveBranchID = activeBranch.isEmpty ? customer.branchId : activeBranch
+        return creditStore.summary(for: customer.id, branchID: effectiveBranchID)?.hasBlockingCreditLocally == true
+    }
 
     private let quickNoteChips: [String] = [
         "🌟 عميل VIP",
@@ -3297,6 +3636,7 @@ private struct iPadCustomerSpatialCockpit: View {
             Color.black.opacity(0.35)
                 .ignoresSafeArea()
                 .onTapGesture {
+                    guard !isBusy else { return }
                     dismiss()
                 }
 
@@ -3357,6 +3697,26 @@ private struct iPadCustomerSpatialCockpit: View {
                     .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
                 }
             }
+            .alert(
+                String(format: Language.get("POS_Customer_DeleteConfirmTitle", alter: nil), pendingDeleteCustomer?.name ?? ""),
+                isPresented: Binding(
+                    get: { pendingDeleteCustomer != nil },
+                    set: { if !$0 { pendingDeleteCustomer = nil } }
+                )
+            ) {
+                Button(Language.get("Cancel", alter: nil), role: .cancel) {
+                    pendingDeleteCustomer = nil
+                }
+                Button(Language.get("POS_Customer_DeleteConfirmAction", alter: nil), role: .destructive) {
+                    guard let target = pendingDeleteCustomer else { return }
+                    pendingDeleteCustomer = nil
+                    viewModel.deleteCustomer(target) {
+                        onDelete?(target)
+                    }
+                }
+            } message: {
+                Text(Language.get("POS_Customer_DeleteConfirmMessage", alter: nil))
+            }
         }
     }
 
@@ -3405,13 +3765,14 @@ private struct iPadCustomerSpatialCockpit: View {
                 ZStack {
                     Circle()
                         .fill(AdminSurface.control)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 44, height: 44)
                     Image(systemName: "xmark")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundColor(AdminSurface.secondaryText)
                 }
             }
             .buttonStyle(PlainButtonStyle())
+            .disabled(isBusy)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
@@ -3421,14 +3782,17 @@ private struct iPadCustomerSpatialCockpit: View {
     // MARK: - Feedback Banner
 
     private func iPadFeedbackBanner(text: String, isError: Bool) -> some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .top, spacing: 8) {
             Image(systemName: isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                .foregroundColor(isError ? .red : .green)
+                .foregroundColor(isError ? AdminSurface.danger : .green)
                 .font(.system(size: 13))
+                .padding(.top, 2)
             Text(text)
-                .font(Font.custom("Beiruti-Medium", size: 13, relativeTo: .caption))
+                .font(AdminType.subheadline)
                 .foregroundColor(AdminSurface.primaryText)
-            Spacer()
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
             Button {
                 if isError { viewModel.errorMessage = nil }
                 else { viewModel.successFeedbackMessage = nil }
@@ -3436,11 +3800,13 @@ private struct iPadCustomerSpatialCockpit: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(AdminSurface.secondaryText)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background((isError ? Color.red : Color.green).opacity(0.1))
+        .background((isError ? AdminSurface.danger : Color.green).opacity(0.1))
     }
 
     // MARK: - Left Directory Column
@@ -3744,6 +4110,28 @@ private struct iPadCustomerSpatialCockpit: View {
                 creditStore.loadCreditSummary(for: customer.id, branchID: activeBranchID)
             }
         }
+        .contextMenu {
+            if canCreateCustomer && !isUnavailable(customer) && customer.source == "directory" {
+                Button {
+                    viewModel.highlightedCustomer = customer
+                    viewModel.startEditing(customer: customer)
+                } label: {
+                    Label(Language.get("POS_Customer_EditButton", alter: nil), systemImage: "pencil")
+                }
+                if !hasLocalBlockingCredit(customer) {
+                    Button(role: .destructive) {
+                        pendingDeleteCustomer = customer
+                    } label: {
+                        Label(Language.get("POS_Customer_DeleteButton", alter: nil), systemImage: "trash")
+                    }
+                }
+            }
+        }
+        .accessibilityAction(named: String(format: Language.get("POS_Customer_DeleteNamed", alter: nil), customer.name)) {
+            guard canCreateCustomer, !isUnavailable(customer), customer.source == "directory",
+                  !hasLocalBlockingCredit(customer), !isBusy else { return }
+            pendingDeleteCustomer = customer
+        }
     }
 
     // MARK: - Right Column: Morphing Studio
@@ -3922,52 +4310,99 @@ private struct iPadCustomerSpatialCockpit: View {
                 Divider().background(AdminSurface.hairline)
 
                 // Dock Action Controls
-                HStack(spacing: 10) {
-                    if canCreateCustomer {
-                        Button {
-                            viewModel.startEditing(customer: customer)
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "pencil")
-                                    .font(.system(size: 13, weight: .semibold))
-                                Text(Language.get("POS_Customer_EditButton", alter: "تعديل الملف"))
-                                    .font(Font.custom("Beiruti-Bold", size: 14.5, relativeTo: .callout))
-                            }
-                            .foregroundColor(AdminSurface.primary)
-                            .padding(.horizontal, 14)
-                            .frame(minHeight: 46)
-                            .background(AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        }
-                        .buttonStyle(PlainButtonStyle())
+                VStack(alignment: .leading, spacing: 8) {
+                    if canCreateCustomer && customer.source == "directory" && hasLocalBlockingCredit(customer) {
+                        Text(Language.get("POS_Customer_DeleteCreditHint", alter: nil))
+                            .font(AdminType.caption)
+                            .foregroundStyle(AdminSurface.crimson)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    // Primary Link To Cart Button
-                    if !purpose.isManagingCustomers {
-                        Button {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            viewModel.rememberCustomer(customer)
-                            onSelect?(customer)
-                            dismiss()
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 15, weight: .bold))
-                                Text(purpose.selectTitle)
-                                    .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
+                    HStack(spacing: 10) {
+                        if canCreateCustomer {
+                            if customer.source == "directory" && !customer.id.isEmpty {
+                                let localCredit = hasLocalBlockingCredit(customer)
+                                let disabledDelete = isBusy || isUnavailable(customer) || localCredit
+                                Button(role: .destructive) {
+                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                    pendingDeleteCustomer = customer
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        if viewModel.isDeletingCustomer && viewModel.deletingCustomerId == customer.id {
+                                            ProgressView().tint(AdminSurface.danger).scaleEffect(0.85)
+                                        } else {
+                                            Image(systemName: "trash")
+                                                .font(.system(size: 14, weight: .semibold))
+                                        }
+                                        if purpose.isManagingCustomers {
+                                            Text(Language.get("POS_Customer_DeleteButton", alter: nil))
+                                                .font(AdminType.calloutBold)
+                                        }
+                                    }
+                                    .foregroundStyle(AdminSurface.danger)
+                                    .padding(.horizontal, purpose.isManagingCustomers ? 14 : 0)
+                                    .frame(minWidth: 46, minHeight: 46)
+                                    .background(AdminSurface.danger.opacity(0.09), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                            .strokeBorder(AdminSurface.danger.opacity(0.22), lineWidth: 1)
+                                    )
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .disabled(disabledDelete)
+                                .opacity(disabledDelete ? 0.45 : 1)
+                                .accessibilityLabel(String(format: Language.get("POS_Customer_DeleteNamed", alter: nil), customer.name))
+                                .accessibilityIdentifier("pos.customer.ipad.delete")
                             }
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity, minHeight: 46)
-                            .background(
-                                LinearGradient(
-                                    colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.85)],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                ),
-                                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            )
-                            .shadow(color: AdminSurface.primary.opacity(0.2), radius: 6, y: 2)
+
+                            Button {
+                                viewModel.startEditing(customer: customer)
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "pencil")
+                                        .font(.system(size: 13, weight: .semibold))
+                                    Text(Language.get("POS_Customer_EditButton", alter: "تعديل الملف"))
+                                        .font(Font.custom("Beiruti-Bold", size: 14.5, relativeTo: .callout))
+                                }
+                                .foregroundColor(AdminSurface.primary)
+                                .padding(.horizontal, 14)
+                                .frame(maxWidth: purpose.isManagingCustomers ? .infinity : nil, minHeight: 46)
+                                .background(AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .disabled(isBusy)
                         }
-                        .buttonStyle(PlainButtonStyle())
+
+                        // Primary Link To Cart Button
+                        if !purpose.isManagingCustomers {
+                            Button {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                viewModel.rememberCustomer(customer)
+                                onSelect?(customer)
+                                dismiss()
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 15, weight: .bold))
+                                    Text(purpose.selectTitle)
+                                        .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
+                                }
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity, minHeight: 46)
+                                .background(
+                                    LinearGradient(
+                                        colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.85)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    ),
+                                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                )
+                                .shadow(color: AdminSurface.primary.opacity(0.2), radius: 6, y: 2)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .disabled(isBusy)
+                        }
                     }
                 }
                 .padding(14)
@@ -4258,6 +4693,46 @@ private struct iPadCustomerSpatialCockpit: View {
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
+
+                    if let editingCustomer, editingCustomer.source == "directory", !editingCustomer.id.isEmpty {
+                        let localCredit = hasLocalBlockingCredit(editingCustomer)
+                        let disabledDelete = isBusy || isUnavailable(editingCustomer) || localCredit
+                        VStack(alignment: .leading, spacing: 6) {
+                            Button(role: .destructive) {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                pendingDeleteCustomer = editingCustomer
+                            } label: {
+                                HStack(spacing: 8) {
+                                    if viewModel.isDeletingCustomer && viewModel.deletingCustomerId == editingCustomer.id {
+                                        ProgressView().tint(AdminSurface.danger).scaleEffect(0.85)
+                                    } else {
+                                        Image(systemName: "trash")
+                                            .font(.system(size: 13, weight: .semibold))
+                                    }
+                                    Text(Language.get(viewModel.isDeletingCustomer ? "POS_Customer_Deleting" : "POS_Customer_DeleteButton", alter: nil))
+                                        .font(AdminType.calloutBold)
+                                }
+                                .foregroundStyle(AdminSurface.danger)
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .background(AdminSurface.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .strokeBorder(AdminSurface.danger.opacity(0.22), lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .disabled(disabledDelete)
+                            .opacity(disabledDelete ? 0.45 : 1)
+                            .accessibilityLabel(String(format: Language.get("POS_Customer_DeleteNamed", alter: nil), editingCustomer.name))
+
+                            Text(Language.get(localCredit ? "POS_Customer_DeleteCreditHint" : "POS_Customer_DeleteEligibilityHint", alter: nil))
+                                .font(AdminType.caption)
+                                .foregroundStyle(localCredit ? AdminSurface.crimson : AdminSurface.secondaryText)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.top, 4)
+                    }
                 }
                 .padding(16)
             }
@@ -4277,6 +4752,7 @@ private struct iPadCustomerSpatialCockpit: View {
                         .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 .buttonStyle(PlainButtonStyle())
+                .disabled(isBusy)
 
                 Button {
                     viewModel.submitUpdateCustomer(andSelect: false) { _ in }
@@ -4294,7 +4770,7 @@ private struct iPadCustomerSpatialCockpit: View {
                     .frame(maxWidth: .infinity, minHeight: 44)
                     .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
-                .disabled(viewModel.isEditingSubmitting)
+                .disabled(isBusy)
                 .buttonStyle(PlainButtonStyle())
 
                 if !purpose.isManagingCustomers {
@@ -4314,7 +4790,7 @@ private struct iPadCustomerSpatialCockpit: View {
                         .frame(minHeight: 44)
                         .background(AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
-                    .disabled(viewModel.isEditingSubmitting)
+                    .disabled(isBusy)
                     .buttonStyle(PlainButtonStyle())
                 }
             }

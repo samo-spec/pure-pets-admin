@@ -3918,6 +3918,11 @@ struct AdminPOSFastSellView: View {
                 onSelect: { customer in
                     viewModel.selectedCustomer = customer
                     showsCustomerPicker = false
+                },
+                onDelete: { deleted in
+                    if viewModel.selectedCustomer?.id == deleted.id {
+                        viewModel.selectedCustomer = nil
+                    }
                 }
             )
         }

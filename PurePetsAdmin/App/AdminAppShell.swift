@@ -1,5 +1,5 @@
 import SwiftUI
-
+//غادة بت عوضية
 @MainActor
 struct AdminAppShell: View {
     let session: AdminSession
@@ -339,6 +339,7 @@ struct AdminAppShell: View {
         }
         .buttonStyle(PuryFloatingActionPressStyle())
         .accessibilityLabel(Language.get("Pury_AI_Assistant", alter: "مساعد بيوري الذكي"))
+        
     }
 
     private struct PuryFloatingActionPressStyle: ButtonStyle {

@@ -12200,6 +12200,22 @@
 "POS_Customer_Directory_Loading" = "Loading the customer directory…";
 "POS_Customer_Directory_Empty" = "No customers to show yet";
 "POS_Customer_Directory_EmptyDetail" = "Pull to refresh, or search for a customer by name or phone.";
+"POS_Customer_DeleteButton" = "Delete customer";
+"POS_Customer_Deleting" = "Deleting customer…";
+"POS_Customer_DeleteConfirmTitle" = "Delete “%@”?";
+"POS_Customer_DeleteConfirmMessage" = "This permanently removes this customer profile if there are no credit records or sold items under their name.";
+"POS_Customer_DeleteConfirmAction" = "Delete";
+"POS_Customer_DeleteSuccess" = "Customer deleted from the directory.";
+"POS_Customer_DeleteEligibilityHint" = "Customers with no credit records or sold items can be permanently deleted.";
+"POS_Customer_DeleteCreditHint" = "Cannot delete while this customer has a credit limit or balance.";
+"POS_Customer_DeleteBlockedCredit" = "This customer cannot be deleted because they have credit records or an active credit policy.";
+"POS_Customer_DeleteBlockedSales" = "This customer cannot be deleted because there are sold items or active reservations under their name.";
+"POS_Customer_DeleteBlockedCreditAndSales" = "This customer cannot be deleted because there are credit records and sold items under their name.";
+"POS_Customer_DeleteBlockedProforma" = "This customer cannot be deleted because there are proforma invoices under their name.";
+"POS_Customer_DeleteBlockedInactive" = "This customer record is inactive and cannot be deleted.";
+"POS_Customer_DeleteAlreadyRemoved" = "This customer was already removed from the directory.";
+"POS_Customer_DeletePermissionDenied" = "You do not have permission to delete this customer.";
+"POS_Customer_DeleteNamed" = "Delete %@";
 
 /* POS credit account statement and administration presentation */
 "POS_CreditAccount_NoDueDate" = "No due date scheduled";
